@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 110">
+  <defs>
+    <linearGradient id="shieldEdge" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f59e0b"/>
+      <stop offset="1" stop-color="#0f766e"/>
+    </linearGradient>
+    <linearGradient id="boxTop" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#14b8a6"/>
+      <stop offset="1" stop-color="#0f766e"/>
+    </linearGradient>
+    <path id="shield" d="M50 3
+           C 38 9, 22 13, 9 13.5
+           L 9 52
+           C 9 78, 27 96, 50 107
+           C 73 96, 91 78, 91 52
+           L 91 13.5
+           C 78 13, 62 9, 50 3 Z"/>
+  </defs>
+  <!-- 방패: 앰버→틸 그라데이션 링 + 흰 내부 -->
+  <use href="#shield" fill="url(#shieldEdge)"/>
+  <use href="#shield" fill="#ffffff" transform="translate(50,55) scale(0.958) translate(-50,-55)"/>
+  <!-- 마크: 화물 컨테이너(등각 박스) — 상단 틸, 정면 딥 페트롤, 측면 앰버 -->
+  <polygon points="50,24 78,37 50,50 22,37" fill="url(#boxTop)"/>
+  <polygon points="22,37 50,50 50,82 22,69" fill="#0b2a33"/>
+  <polygon points="78,37 50,50 50,82 78,69" fill="#f59e0b"/>
+  <!-- 컨테이너 골 라인 -->
+  <g stroke="#ffffff" stroke-width="1.6" stroke-opacity=".55" stroke-linecap="round">
+    <line x1="31" y1="47" x2="31" y2="70"/><line x1="40" y1="51" x2="40" y2="74"/>
+    <line x1="60" y1="51" x2="60" y2="74"/><line x1="69" y1="47" x2="69" y2="70"/>
+  </g>
+</svg>
