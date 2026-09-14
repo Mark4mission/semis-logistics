@@ -1541,7 +1541,8 @@ a.ct-tel:hover { color: var(--primary); }
 }
 .brand-text { font-size: 1.12rem; font-weight: 800; letter-spacing: -.3px; white-space: nowrap; }
 .brand-text b { color: #5eead4; font-weight: 800; }
-.brand-sub { color: #9fb6bd; }
+.brand-sub { color: #9fb6bd; white-space: nowrap; }
+@media (max-width: 1100px) { .brand-sub, .brand-chip { display: none; } }
 .brand-chip {
   align-self: center; font-size: .66rem; font-weight: 800; letter-spacing: .08em;
   padding: 2px 8px; border-radius: 6px; background: var(--accent); color: #1f1300;
