@@ -95,8 +95,8 @@ function makeFetchStub(server) {
       eq(e.S.BASE_USERS.map(u => u.role).join(","), "admin,hq,manager,user");
       eq(e.S.BASE_USERS.map(u => u.id).join(","), "mark3464,cargo-ss,cargo-mgr,cargo-user");
     });
-    t("C04 mark3464 해시 = SeMIS v2와 동일(동일 암호 접속)", () =>
-      eq(e.S.BASE_USERS[0].hash, "a033918b0ad1c21f2aa2ba2905f1c26a8c1eb14ae58d19d37b73c8cd5106a840"));
+    t("C04 mark3464 해시 = SeMIS v2 운영 해시(pwOverrides 반영, 동일 암호 접속)", () =>
+      eq(e.S.BASE_USERS[0].hash, "e656cd08712ab870c57a6d483f57f88cae49bcd541ec9bb862e412670c23f389"));
     t("C05 평문 암호 미보관(64 hex)", () => ok(e.S.BASE_USERS.every(u => /^[0-9a-f]{64}$/.test(u.hash))));
     t("C06 기본 계정 해시 상호 중복 없음", () => eq(new Set(e.S.BASE_USERS.map(u => u.hash)).size, 4));
     t("C07 초기 암호로 hq/manager/user 로그인 가능(해시 대조)", () => {

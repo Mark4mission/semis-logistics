@@ -8,7 +8,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.0.1";
+  const VERSION = "1.0.2";
   const APP_NAME = "SeMIS · Logistics";
   const LS_DATA = "semisl:data";
   const LS_UI   = "semisl:ui";
@@ -65,7 +65,7 @@ const SeMIS = (() => {
   /* ─────────── 기본 사용자 (암호는 해시로만 보관 — 평문 미노출) ─────────── */
   const BASE_USERS = [
     { id: "mark3464",   name: "시스템관리자",  role: "admin",
-      hash: "a033918b0ad1c21f2aa2ba2905f1c26a8c1eb14ae58d19d37b73c8cd5106a840" },
+      hash: "e656cd08712ab870c57a6d483f57f88cae49bcd541ec9bb862e412670c23f389" },
     { id: "cargo-ss",   name: "안전보안파트",  role: "hq",
       hash: "540a1c3facaa070d9713f09447a7572762a965d90cd36057c8048fe51a96b838" },
     { id: "cargo-mgr",  name: "화물팀 관리자", role: "manager",
