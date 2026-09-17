@@ -77,7 +77,18 @@ function makeFetchStub(server) {
     const method = opts.method || "GET";
     fn.calls.push({ url: String(url), method, body: opts.body ? JSON.parse(opts.body) : null });
     if (server.fail) return Promise.reject(new Error("network down"));
-    if (method === "GET") return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(server.rows.slice()) });
+    if (method === "GET") {
+      if (String(url).indexOf("semis_store_history") >= 0) {
+        const hist = (server.history || []).slice();
+        const m = /[?&]id=eq\.([^&]+)/.exec(String(url));
+        const km = /[?&]key=eq\.([^&]+)/.exec(String(url));
+        let out = hist;
+        if (m) out = hist.filter(h => String(h.id) === decodeURIComponent(m[1]));
+        else if (km) out = hist.filter(h => h.key === decodeURIComponent(km[1]));
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(out) });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(server.rows.slice()) });
+    }
     if (method === "POST") {
       const rows = JSON.parse(opts.body);
       rows.forEach(r => { const i = server.rows.findIndex(x => x.key === r.key); if (i >= 0) server.rows[i] = r; else server.rows.push(r); });
@@ -547,6 +558,14 @@ function makeFetchStub(server) {
       q(e, "#btn-reset-menu").click(); clickOk(e);
       ok(e.S.data.menus.some(m => m.id === "grp-rule"));
     });
+    t("S10b 데이터 탭: 변경 이력(서버 자동 백업) 복원 카드", () => {
+      qa(e, ".tab").find(x => x.dataset.tab === "data").click();
+      const tx = q(e, "#view").textContent;
+      ok(tx.includes("변경 이력"), "카드 제목");
+      ok(q(e, "#hist-key"), "컬렉션 선택");
+      ok(q(e, "#hist-body"), "이력 본문");
+      ok(q(e, "#btn-hist-reload"), "불러오기 버튼");
+    });
     t("S11 저장소 탭: fetch 없이도 렌더(조회 실패 안내)", () => {
       qa(e, ".tab").find(x => x.dataset.tab === "storage").click();
       ok(q(e, "#view").textContent.includes("semis-logi-files"));
@@ -793,6 +812,67 @@ function makeFetchStub(server) {
       eq(Sync.pendingKeys().length, 0);
     });
     t("Y08 uploadFile 경로: semis-logi-files 버킷", () => ok(Sync.PUBLIC_PREFIX.indexOf("/object/public/semis-logi-files/") > 0));
+
+    /* ── 대량 삭제 방어 (2026-09-17 일정 전량 유실 사고 대응) ── */
+    await ta("Y09 로컬 배열이 통째로 비면 push 차단 + 직전 상태 복구", async () => {
+      e.S.data.schedules = [
+        { id: "g1", title: "A", start: "2026-09-01", end: "2026-09-01" },
+        { id: "g2", title: "B", start: "2026-09-02", end: "2026-09-02" },
+        { id: "g3", title: "C", start: "2026-09-03", end: "2026-09-03" }
+      ];
+      e.S.save(); await Sync._flush();
+      eq(server.rows.find(r => r.key === "schedules").value.length, 3);
+      const before = Sync.guardEvents().length;
+      e.S.data.schedules = [];              // 저장소 손상·버그 상황 재현
+      e.S.save(); await Sync._flush();
+      eq(server.rows.find(r => r.key === "schedules").value.length, 3, "서버 데이터 보존");
+      eq(e.S.data.schedules.length, 3, "로컬 복구");
+      eq(Sync.guardEvents().length, before + 1, "가드 로그 기록");
+      eq(Sync.pendingKeys().indexOf("schedules"), -1, "pending에서 제외");
+    });
+    t("Y10 가드 기준: 1건뿐이던 배열을 지우는 것은 정상 삭제로 허용", () => {
+      eq(Sync.GUARD_MIN, 2);
+      e.S.data.schedules = [{ id: "g9", title: "only", start: "2026-09-09", end: "2026-09-09" }];
+      Sync.snapAll();
+      e.S.data.schedules = [];
+      eq(Sync.guardWipe(["schedules"]).length, 0);
+    });
+    await ta("Y11 confirmWipe() 후에는 전량 삭제가 서버에 반영", async () => {
+      e.S.data.schedules = [
+        { id: "h1", title: "A", start: "2026-09-01", end: "2026-09-01" },
+        { id: "h2", title: "B", start: "2026-09-02", end: "2026-09-02" }
+      ];
+      e.S.save(); await Sync._flush();
+      eq(server.rows.find(r => r.key === "schedules").value.length, 2);
+      e.S.data.schedules = [];
+      Sync.confirmWipe("schedules");
+      e.S.save(); await Sync._flush();
+      eq(server.rows.find(r => r.key === "schedules").value.length, 0);
+      eq(Sync.guardWipe(["schedules"]).length, 0);
+    });
+    await ta("Y12 confirmWipe는 1회용 — 다음 전량 삭제는 다시 차단", async () => {
+      e.S.data.schedules = [
+        { id: "i1", title: "A", start: "2026-09-01", end: "2026-09-01" },
+        { id: "i2", title: "B", start: "2026-09-02", end: "2026-09-02" }
+      ];
+      e.S.save(); await Sync._flush();
+      e.S.data.schedules = [];
+      e.S.save(); await Sync._flush();
+      eq(server.rows.find(r => r.key === "schedules").value.length, 2);
+      eq(e.S.data.schedules.length, 2);
+    });
+    await ta("Y13 변경 이력 조회 · 되돌리기(restoreHistory)", async () => {
+      server.history = [{ id: 11, key: "schedules", old_len: 5, new_len: 0,
+        changed_at: "2026-09-17T07:44:34Z", changed_by: "cmu557qn92utfk3",
+        old_value: [{ id: "r1", title: "복구된 일정", start: "2026-09-10", end: "2026-09-10" }] }];
+      const rows = await Sync.history("schedules", 10);
+      eq(rows.length, 1); eq(rows[0].key, "schedules");
+      ok(fetch.calls.some(c => c.url.indexOf("src=eq.semis_logi_store") >= 0), "src 필터");
+      await Sync.restoreHistory(11);
+      eq(e.S.data.schedules[0].title, "복구된 일정");
+      eq(server.rows.find(r => r.key === "schedules").value[0].title, "복구된 일정");
+    });
+    t("Y14 jsdom 오류 없음(동기화 블록)", () => eq(e.errors.length, 0, e.errors.join(" | ")));
     Sync.stop();
   }
 

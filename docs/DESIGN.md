@@ -131,6 +131,18 @@ SeMIS_Logistics/
 저장은 `", "` 로 이어 붙인 문자열(`schedule.assignee`)이라 1명 기준의 기존 데이터·검색·ICS와 호환된다.
 구글 캘린더 연동(API 키·ICS)은 일반 사용자에게 필요 없어 **시스템 설정 → 데이터 관리**로 이관했다.
 
+## 6-3. 데이터 보호 (v1.3)
+
+| 계층 | 위치 | 동작 |
+|---|---|---|
+| 대량 삭제 방어 | `js/sync.js` `guardWipe()` | 스냅샷 대비 배열이 2건 이상 → 0건이면 push 차단·로컬 롤백·경고. `SemisSync.confirmWipe(key)`로 1회 허용, forcePush(백업 복원)는 우회 |
+| 서버 자동 백업 | Supabase 트리거 `semis_store_snap` / `semis_logi_store_snap` | UPDATE/DELETE 직전 값을 `public.semis_store_history`(src·key·old_value·건수·시각·변경자)에 보관, 90일 보관 |
+| 되돌리기 | 시스템 설정 → 데이터 관리 → 변경 이력 | `SemisSync.history()` / `restoreHistory(id)` — 해당 시점 값으로 복구 후 서버 반영 |
+
+사고 기록: 2026-09-17 07:44:34Z `semis_logi_store.schedules`가 `[]`로 덮여 7건 전량 유실.
+단일 키만 기록되어 백업 복원(forcePush) 경로가 아닌 **로컬 배열이 비워진 채 push된 경로**로 확인.
+로컬·디스크·DB 어디에도 직전 값이 남아 있지 않아(트리거 도입 전) 인쇄 PDF·화면 캡처로 재구성 복원했다.
+
 ## 7. 배포
 
 - GitHub `Mark4mission/semis-logistics` → GitHub Pages(main, root). 주소 `https://mark4mission.github.io/semis-logistics/`.

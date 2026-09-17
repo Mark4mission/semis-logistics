@@ -1733,3 +1733,9 @@ a.ct-tel:hover { color: var(--primary); }
   border: 1px solid var(--border-strong); border-radius: 999px; font-size: .86rem; font-weight: 600;
 }
 .as-free-n { font-size: .74rem; color: var(--text-3); font-weight: 600; }
+
+.hist-sel { max-width: 240px; padding: 8px 10px; font: inherit; font-size: .93rem;
+  color: var(--text); background: #fff; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); }
+.hist-sel:focus { border-color: var(--primary); outline: none; }
+#hist-body .tbl td { vertical-align: middle; }
+

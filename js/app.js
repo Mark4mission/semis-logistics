@@ -8,7 +8,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.2.0";
+  const VERSION = "1.3.0";
   const APP_NAME = "SeMIS · Logistics";
   const LS_DATA = "semisl:data";
   const LS_UI   = "semisl:ui";
