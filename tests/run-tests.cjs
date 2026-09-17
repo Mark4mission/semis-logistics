@@ -62,6 +62,12 @@ function loginAs(env, role) {
   return S.user;
 }
 function go(env, route) { env.w.location.hash = "#/" + route; env.S.renderView(); }
+/* 시스템 설정 → 담당자 탭 다시 그리기 */
+function renderSettings(env, tab) {
+  go(env, "settings");
+  const t2 = qa(env, ".tab").find(x => x.dataset.tab === (tab || "assignees"));
+  if (t2) t2.click();
+}
 const q = (env, sel) => env.w.document.querySelector(sel);
 const qa = (env, sel) => Array.from(env.w.document.querySelectorAll(sel));
 const clickOk = (env) => q(env, "#modal-box [data-act=ok]").click();
@@ -140,6 +146,22 @@ function makeFetchStub(server) {
       ok(d.contacts && Array.isArray(d.contacts.sections));
       ok(d.safetyBoard && typeof d.safetyBoard.since === "string");
       ok(d.minuteFolders.length >= 6, "minutes 폴더 시드");
+    });
+    t("C14b 담당자 카테고리 시드 1명 + 필드 보정", () => {
+      const a = e.S.assignees();
+      eq(a.length, 1); eq(a[0].name, "최상일"); ok(a[0].short && a[0].emoji && a[0].id);
+      e.S.data.assignees.push({ name: "무필드" });
+      e.S.normalizeData();
+      const b = e.S.assignees().find(x => x.name === "무필드");
+      ok(b.id && b.emoji === "👤" && b.short === "드" && typeof b.seq === "number");
+      e.S.data.assignees = e.S.data.assignees.filter(x => x.name !== "무필드");
+    });
+    t("C14c 담당자를 모두 지워도 다시 시드되지 않음(seeded 플래그)", () => {
+      const keep = e.S.data.assignees.slice();
+      e.S.data.assignees = [];
+      e.S.normalizeData();
+      eq(e.S.assignees().length, 0);
+      e.S.data.assignees = keep; e.S.saveSilent();
     });
     t("C15 정규화: settings/dashboard 삭제·오염 시 복구", () => {
       const d = e.S.data;
@@ -233,7 +255,7 @@ function makeFetchStub(server) {
       loginAs(e, "admin");
       go(e, "settings");
       ok(q(e, "#view").textContent.includes("시스템 설정"));
-      ok(qa(e, ".tab").length === 4);
+      eq(qa(e, ".tab").length, 5);   // 메뉴·사용자·담당자·데이터·저장소
     });
     t("C29 로그아웃 → 세션 제거", () => {
       q(e, "#logout-btn").click();   // jsdom reload는 미구현(무해)
@@ -436,6 +458,60 @@ function makeFetchStub(server) {
       ok(q(e, "#f-urole").disabled); e.S.closeModal();
       ok(!q(e, `[data-del="${j}"]`), "관리자 삭제 버튼 없음");
     });
+    t("S9b 담당자 탭: 목록 렌더 · 추가 · 중복 거부", () => {
+      qa(e, ".tab").find(x => x.dataset.tab === "assignees").click();
+      ok(q(e, "#view").textContent.includes("일정 담당자"));
+      eq(qa(e, ".as-tbl tbody tr").length, 1);
+      q(e, "#btn-add-as").click();
+      q(e, "#f-asname").value = "최상일"; q(e, "#f-save").click();
+      ok(!q(e, "#modal-overlay").classList.contains("hidden"), "중복 이름 거부");
+      q(e, "#f-asname").value = "김화물"; q(e, "#f-astitle").value = "인천화물팀";
+      q(e, "#f-asemoji").value = "📦"; q(e, "#f-asshort").value = "김";
+      q(e, "#f-save").click();
+      const a = e.S.assignees();
+      eq(a.length, 2); eq(a[1].name, "김화물"); eq(a[1].short, "김"); eq(a[1].emoji, "📦");
+      ok(q(e, ".as-tbl").textContent.includes("인천화물팀"));
+    });
+    t("S9c 담당자 순서 이동(▲▼)", () => {
+      const before = e.S.assignees().map(x => x.name);
+      q(e, `[data-as-down="${e.S.assignees()[0].id}"]`).click();
+      const after = e.S.assignees().map(x => x.name);
+      eq(after[0], before[1]); eq(after[1], before[0]);
+      q(e, `[data-as-up="${e.S.assignees()[1].id}"]`).click();
+      eq(e.S.assignees().map(x => x.name).join(","), before.join(","));
+    });
+    t("S9d 담당자 이름 변경 시 배정된 일정의 담당자도 함께 변경", () => {
+      e.S.data.schedules.push({ id: "sA", title: "점검", start: "2026-09-20", end: "2026-09-20",
+        allDay: true, time: "", timeEnd: "", color: "teal", done: false, assignee: "김화물",
+        vehicle: false, room: false, reminders: [], repeat: { freq: "none", until: "" },
+        doneFrom: "", doneDates: [], undoneDates: [] });
+      e.S.saveSilent();
+      const id = e.S.assignees().find(x => x.name === "김화물").id;
+      q(e, `[data-as-edit="${id}"]`).click();
+      q(e, "#f-asname").value = "김화물주"; q(e, "#f-save").click();
+      eq(e.S.data.schedules.find(x => x.id === "sA").assignee, "김화물주");
+      ok(!e.S.assignees().some(x => x.name === "김화물"));
+    });
+    t("S9e 직접 입력된 담당자 → 목록에 추가(승격)", () => {
+      e.S.data.schedules.push({ id: "sB", title: "교육", start: "2026-09-21", end: "2026-09-21",
+        allDay: true, time: "", timeEnd: "", color: "blue", done: false, assignee: "박조업",
+        vehicle: false, room: false, reminders: [], repeat: { freq: "none", until: "" },
+        doneFrom: "", doneDates: [], undoneDates: [] });
+      e.S.saveSilent();
+      renderSettings(e);
+      ok(q(e, "#view").textContent.includes("박조업"));
+      q(e, '[data-as-promote="박조업"]').click();
+      eq(q(e, "#f-asname").value, "박조업");
+      q(e, "#f-save").click();
+      ok(e.S.assignees().some(x => x.name === "박조업"));
+      ok(!qa(e, ".as-free-item").length, "승격 후 직접 입력 목록에서 사라짐");
+    });
+    t("S9f 담당자 삭제 — 일정의 담당자 이름은 보존", () => {
+      const id = e.S.assignees().find(x => x.name === "박조업").id;
+      q(e, `[data-as-del="${id}"]`).click(); clickOk(e);
+      ok(!e.S.assignees().some(x => x.name === "박조업"));
+      eq(e.S.data.schedules.find(x => x.id === "sB").assignee, "박조업");
+    });
     t("S10 데이터 탭: 백업 JSON · 메뉴 재설정", () => {
       qa(e, ".tab").find(x => x.dataset.tab === "data").click();
       ok(q(e, "#view").textContent.includes("semis_logi_store"));
@@ -522,7 +598,73 @@ function makeFetchStub(server) {
       ok(hits.some(h => h.group === "메뉴 · 링크" && h.route === "schedule"));
       ok(!e.w.SemisSearch.search("시스템 설정").some(h => h.route === "settings"));
     });
+    t("M06b 일정관리: 담당자 목록이 필터 칩·선택 버튼에 반영", () => {
+      loginAs(e, "hq");
+      e.S.data.assignees.push({ id: "as-x", seq: 5, name: "정검색", title: "검색팀", emoji: "🔎", short: "정" });
+      e.S.saveSilent();
+      go(e, "schedule");
+      ok(qa(e, ".cal-filters [data-assignee]").some(b => b.dataset.assignee === "정검색"), "필터 칩");
+      eq(e.w.SemisCalendar.tagOf("정검색"), "정");
+      eq(e.w.SemisCalendar.tagOf("미등록자"), "미");
+      ok(e.w.SemisCalendar.assigneeList().indexOf("정검색") >= 0);
+      e.S.data.assignees = e.S.data.assignees.filter(x => x.id !== "as-x");
+      e.S.saveSilent();
+    });
     t("M07 jsdom 오류 없음(모듈 블록)", () => eq(e.errors.length, 0, e.errors.join(" | ")));
+  }
+
+  /* ══════════ [P] A4 인쇄 버튼 (모든 화면 공통 규칙) ══════════ */
+  {
+    const e = makeEnv();
+    let printed = 0;
+    e.w.print = () => { printed++; };
+    loginAs(e, "admin");
+    const ROUTES = ["dashboard", "schedule", "minutes", "contacts", "settings", "reg-sec", "car", "kc-ra"];
+    t("P01 모든 화면(대시보드·모듈·예정 모듈·설정)에 인쇄 버튼", () => {
+      ROUTES.forEach(r => {
+        go(e, r);
+        const btn = q(e, "#view [data-print-btn]");
+        ok(btn, r + " 인쇄 버튼 없음");
+        ok(btn.textContent.indexOf("인쇄") >= 0);
+        ok(btn.classList.contains("no-print"));
+      });
+    });
+    t("P02 인쇄 버튼은 화면 머리말(.ds-head/.page-head) 안에 위치", () => {
+      go(e, "dashboard");
+      ok(q(e, ".ds-head [data-print-btn]"));
+      go(e, "contacts");
+      ok(q(e, ".page-head [data-print-btn]"));
+    });
+    t("P03 중복 부착 없음(재렌더 시 1개 유지)", () => {
+      go(e, "schedule"); e.S.renderView(); e.S.renderView();
+      eq(qa(e, "#view [data-print-btn]").length, 1);
+    });
+    await ta("P04 인쇄 실행 → 문서 머리말(시스템명·화면명·출력일시·출력자) 삽입 + print 호출", async () => {
+      go(e, "minutes");
+      q(e, "#view [data-print-btn]").click();
+      const head = q(e, "#print-head");
+      ok(head, "print-head 없음");
+      eq(q(e, "#view").firstChild, head, "머리말이 화면 맨 위");
+      const tx = head.textContent;
+      ok(tx.indexOf("SeMIS · Logistics") >= 0);
+      ok(tx.indexOf("회의록 게시판") >= 0, "화면명");
+      ok(/출력일시 \d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(tx), "출력일시");
+      ok(tx.indexOf("시스템관리자") >= 0, "출력자");
+      await new Promise(r => setTimeout(r, 120));
+      eq(printed, 1);
+    });
+    t("P05 화면명은 메뉴 라벨을 따름(예정 모듈 포함)", () => {
+      eq(e.S.printTitle("car").indexOf("시정조치") >= 0, true);
+      eq(e.S.printTitle("dashboard").indexOf("대시보드") >= 0, true);
+    });
+    t("P06 CSS: @media print 규칙(헤더·사이드바·버튼 숨김, A4 여백)", () => {
+      const c = read("css/main.css");
+      ok(c.indexOf("@media print") > 0);
+      ok(c.indexOf("size: A4 portrait") > 0);
+      ok(/@media print[\s\S]*\.sidebar[\s\S]*display: none/.test(c), "사이드바 숨김");
+      ok(c.indexOf("#print-head") > 0);
+    });
+    t("P07 jsdom 오류 없음(인쇄 블록)", () => eq(e.errors.length, 0, e.errors.join(" | ")));
   }
 
   /* ══════════ [Y] 동기화 ══════════ */
@@ -532,7 +674,7 @@ function makeFetchStub(server) {
     const e = makeEnv({ fetch });
     const { Sync } = e;
     t("Y01 SYNC_KEYS 구성", () =>
-      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,minutes,minuteFolders,levelHistory,safetyBoard,contacts,pwOverrides,userOverrides,customUsers,gcal,chatRooms"));
+      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,pwOverrides,userOverrides,customUsers,gcal,chatRooms"));
     t("Y02 SYNC_KEYS는 모두 freshData 컬렉션에 존재", () => Sync.SYNC_KEYS.forEach(k => ok(e.S.data[k] !== undefined, k)));
     await ta("Y03 초기 pull: 빈 서버 → 로컬 시드 push (semis_logi_store)", async () => {
       await Sync.init();

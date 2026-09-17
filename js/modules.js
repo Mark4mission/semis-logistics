@@ -216,12 +216,7 @@
           item.innerHTML = `
             <div class="notice-title">${n.pinned ? '<span class="badge badge-red">고정</span>' : ""}${n.files && n.files.length ? "📎" : ""}<span>${esc(n.title)}</span></div>
             <div class="notice-meta">${esc(n.author)} · ${esc(fmtDate(n.created))}</div>
-            <div class="notice-body">${n.bodyHtml ? `<div class="notice-html">${sanitizeHtml(n.bodyHtml)}</div>` : esc(n.body)}
-              ${filesHtml}
-              ${canWrite ? `<div style="margin-top:10px;display:flex;gap:6px">
-                <button class="btn btn-ghost btn-sm" data-edit="${esc(n.id)}">수정</button>
-                <button class="btn btn-danger btn-sm" data-del="${esc(n.id)}">삭제</button></div>` : ""}
-            </div>`;
+            <div class="notice-body">${n.bodyHtml ? `<div class="notice-html">${sanitizeHtml(n.bodyHtml)}</div>` : esc(n.body)}${filesHtml}${canWrite ? `<div class="nb-acts"><button class="btn btn-ghost btn-sm" data-edit="${esc(n.id)}">수정</button><button class="btn btn-danger btn-sm" data-del="${esc(n.id)}">삭제</button></div>` : ""}</div>`;
           item.addEventListener("click", (e) => {
             if (e.target.closest("button") || e.target.closest("a")) return;
             item.classList.toggle("open");
@@ -579,11 +574,13 @@
         <div class="tabs">
           <button class="tab active" data-tab="menus">메뉴 관리</button>
           <button class="tab" data-tab="users">사용자 / 암호</button>
+          <button class="tab" data-tab="assignees">담당자 관리</button>
           <button class="tab" data-tab="data">데이터 관리</button>
           <button class="tab" data-tab="storage">저장소 관리</button>
         </div>
         <div id="tab-body"></div>`;
-      const tabs = { menus: renderMenuTab, users: renderUserTab, data: renderDataTab, storage: renderStorageTab };
+      const tabs = { menus: renderMenuTab, users: renderUserTab, assignees: renderAssigneeTab,
+        data: renderDataTab, storage: renderStorageTab };
       $$(".tab").forEach(t => t.onclick = () => {
         $$(".tab").forEach(x => x.classList.remove("active"));
         t.classList.add("active");
@@ -946,6 +943,129 @@
       if (hashInUse(h, id)) { toast("다른 사용자가 사용 중인 암호입니다.", true); return; }
       D().customUsers.push({ id, name, role, vendor, hash: h });
       SeMIS.save(); closeModal(); renderUserTab($("#tab-body")); toast("사용자가 추가되었습니다.");
+    };
+  }
+
+  /* ═════════════ 담당자 관리 탭 (일정관리 담당자 카테고리) ═════════════
+     일정관리의 담당자 칩·필터·선택 버튼에 쓰이는 목록(DATA.assignees)을
+     시스템관리자가 직접 관리한다. 여기서 바꾼 내용은 공용 DB로 즉시 공유된다. */
+  function renderAssigneeTab(box) {
+    const list = SeMIS.assignees();
+    const used = {};
+    (D().schedules || []).forEach(sc => { if (sc && sc.assignee) used[sc.assignee] = (used[sc.assignee] || 0) + 1; });
+    const free = Object.keys(used).filter(n => !list.some(a => a.name === n)).sort();
+    box.innerHTML = `
+      <div class="card">
+        <div class="card-title">🧭 일정 담당자 <span class="spacer"></span>
+          <button class="btn btn-primary btn-sm" id="btn-add-as">+ 담당자 추가</button></div>
+        <p class="form-hint" style="margin-bottom:12px">
+          일정관리 화면의 <b>담당자 선택 버튼 · 상단 필터 · 일정 칩의 약칭 태그</b>에 쓰이는 목록입니다.
+          여기에 없는 이름도 일정 등록 시 직접 입력할 수 있으며, 그렇게 입력된 이름은 아래 <b>직접 입력된 담당자</b>에 모입니다.
+          담당자를 지워도 기존 일정의 담당자 이름은 그대로 남습니다(태그 약칭만 이름 첫 글자로 표시).</p>
+        <div class="table-wrap"><table class="tbl as-tbl">
+          <colgroup><col style="width:70px"><col style="width:84px"><col><col><col style="width:90px"><col style="width:96px"><col style="width:150px"></colgroup>
+          <thead><tr><th>순서</th><th>아이콘</th><th>이름</th><th>소속 / 직책</th><th>약칭</th><th>배정 일정</th><th>관리</th></tr></thead>
+          <tbody>
+          ${list.length ? list.map((a, i) => `<tr>
+            <td>
+              <button class="mt-btn" data-as-up="${esc(a.id)}" title="위로" ${i === 0 ? "disabled" : ""}>▲</button>
+              <button class="mt-btn" data-as-down="${esc(a.id)}" title="아래로" ${i === list.length - 1 ? "disabled" : ""}>▼</button></td>
+            <td style="font-size:1.15rem;text-align:center">${esc(a.emoji)}</td>
+            <td><b>${esc(a.name)}</b></td>
+            <td>${esc(a.title || "-")}</td>
+            <td><span class="chip-tag as-chip">${esc(a.short)}</span></td>
+            <td>${used[a.name] ? esc(String(used[a.name])) + "건" : '<span style="color:var(--text-3)">-</span>'}</td>
+            <td>
+              <button class="btn btn-ghost btn-sm" data-as-edit="${esc(a.id)}">수정</button>
+              <button class="btn btn-danger btn-sm" data-as-del="${esc(a.id)}">삭제</button></td>
+          </tr>`).join("") : '<tr><td colspan="7"><div class="empty">등록된 담당자가 없습니다. [+ 담당자 추가]로 등록하세요.</div></td></tr>'}
+          </tbody></table></div>
+      </div>
+      <div class="card">
+        <div class="card-title">✍️ 직접 입력된 담당자 <span class="badge badge-gray">${free.length}명</span></div>
+        <p class="form-hint" style="margin-bottom:10px">일정 등록 시 직접 입력되어 목록에는 없는 이름입니다. [목록에 추가]를 누르면 정식 담당자로 등록됩니다.</p>
+        ${free.length ? `<div class="as-free">${free.map(n =>
+          `<span class="as-free-item">${esc(n)} <span class="as-free-n">${used[n]}건</span>
+            <button class="btn btn-ghost btn-sm" data-as-promote="${esc(n)}">목록에 추가</button></span>`).join("")}</div>`
+          : '<div class="empty" style="padding:18px">직접 입력된 담당자가 없습니다.</div>'}
+      </div>`;
+
+    $("#btn-add-as").onclick = () => assigneeForm(null);
+    $$("[data-as-edit]", box).forEach(b => b.onclick = () => assigneeForm(b.dataset.asEdit));
+    $$("[data-as-promote]", box).forEach(b => b.onclick = () => assigneeForm(null, b.dataset.asPromote));
+    $$("[data-as-up]", box).forEach(b => b.onclick = () => moveAssignee(b.dataset.asUp, -1));
+    $$("[data-as-down]", box).forEach(b => b.onclick = () => moveAssignee(b.dataset.asDown, 1));
+    $$("[data-as-del]", box).forEach(b => b.onclick = () => {
+      const a = SeMIS.assignees().find(x => x.id === b.dataset.asDel);
+      if (!a) return;
+      const n = used[a.name] || 0;
+      confirmModal(`담당자 "${a.name}"을(를) 목록에서 삭제하시겠습니까?` +
+        (n ? ` 배정된 일정 ${n}건의 담당자 이름은 그대로 유지됩니다.` : ""), () => {
+        D().assignees = (D().assignees || []).filter(x => x.id !== a.id);
+        SeMIS.save(); renderAssigneeTab($("#tab-body")); toast("삭제되었습니다.");
+      });
+    });
+  }
+
+  function moveAssignee(id, dir) {
+    const list = SeMIS.assignees();
+    const i = list.findIndex(a => a.id === id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= list.length) return;
+    const a = D().assignees.find(x => x.id === list[i].id);
+    const b = D().assignees.find(x => x.id === list[j].id);
+    const t = a.seq; a.seq = b.seq; b.seq = t;
+    SeMIS.save(); renderAssigneeTab($("#tab-body"));
+  }
+
+  /* 담당자 추가·수정 폼 (preset: 직접 입력 이름을 목록으로 승격할 때 채워 넣을 이름) */
+  function assigneeForm(id, preset) {
+    const a = id ? SeMIS.assignees().find(x => x.id === id) : null;
+    const nm = a ? a.name : (preset || "");
+    openModal(`
+      <h3>${a ? "담당자 수정" : "담당자 추가"}</h3>
+      <div class="form-grid">
+        <div class="form-row"><label>이름</label><input id="f-asname" maxlength="20" value="${esc(nm)}" placeholder="예: 홍길동"></div>
+        <div class="form-row"><label>소속 / 직책 (선택)</label><input id="f-astitle" maxlength="30" value="${esc(a ? a.title : "")}" placeholder="예: 안전보안파트"></div>
+      </div>
+      <div class="form-grid">
+        <div class="form-row"><label>아이콘 (이모지)</label><input id="f-asemoji" maxlength="4" value="${esc(a ? a.emoji : "👤")}"></div>
+        <div class="form-row"><label>약칭 (일정 칩 표시)</label><input id="f-asshort" maxlength="3" value="${esc(a ? a.short : (nm ? nm.slice(-1) : ""))}" placeholder="예: 홍"></div>
+      </div>
+      <div class="form-hint">약칭은 캘린더 일정 칩에 표시되는 한두 글자입니다. 비우면 이름 끝 글자가 쓰입니다.</div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="f-cancel">취소</button>
+        <button class="btn btn-primary" id="f-save">저장</button>
+      </div>`);
+    const nameEl = $("#f-asname"), shortEl = $("#f-asshort");
+    nameEl.oninput = () => { if (!shortEl.dataset.touched) shortEl.value = nameEl.value.trim().slice(-1); };
+    shortEl.oninput = () => { shortEl.dataset.touched = "1"; };
+    $("#f-cancel").onclick = closeModal;
+    $("#f-save").onclick = () => {
+      const name = nameEl.value.trim();
+      if (!name) { toast("이름을 입력하세요.", true); return; }
+      if (SeMIS.assignees().some(x => x.name === name && (!a || x.id !== a.id))) {
+        toast("이미 등록된 담당자입니다.", true); return;
+      }
+      const patch = {
+        name,
+        title: $("#f-astitle").value.trim(),
+        emoji: $("#f-asemoji").value.trim() || "👤",
+        short: shortEl.value.trim() || name.slice(-1)
+      };
+      if (a) {
+        const rec = D().assignees.find(x => x.id === a.id);
+        const oldName = rec.name;
+        Object.assign(rec, patch);
+        /* 이름을 바꾸면 이미 배정된 일정의 담당자도 함께 바꿔 준다(따로 손대지 않아도 되도록) */
+        if (oldName !== name) {
+          (D().schedules || []).forEach(sc => { if (sc && sc.assignee === oldName) sc.assignee = name; });
+        }
+      } else {
+        const seq = (D().assignees || []).reduce((mx, x) => Math.max(mx, x.seq || 0), 0) + 1;
+        D().assignees.push(Object.assign({ id: uid("as"), seq }, patch));
+      }
+      SeMIS.save(); closeModal(); renderAssigneeTab($("#tab-body")); toast("저장되었습니다.");
     };
   }
 

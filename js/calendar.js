@@ -46,13 +46,12 @@
     { id: "brown",  label: "갈색" }, { id: "gray",   label: "회색" }
   ];
 
-  /* ─────── 안전보안파트 팀 (담당자 태그) ───────
-     화물팀 안전보안파트 구성원이 확정되면 여기에 { name, title, emoji, short } 로 추가.
-     비어 있어도 담당자는 자유 입력으로 지정할 수 있다(입력한 이름은 자동 완성 목록에 축적). */
-  const TEAM = [
-    { name: "최상일", title: "안전보안파트", emoji: "🛡️", short: "최" }
-  ];
-  const memberOf = (name) => TEAM.find(t => t.name === name);
+  /* ─────── 담당자 카테고리 ───────
+     목록은 코드가 아니라 데이터(DATA.assignees)에 있고, 시스템 설정 → 담당자 관리에서
+     시스템관리자가 추가·수정·삭제·순서변경한다. 목록에 없는 이름도 자유 입력 가능
+     (입력한 이름은 자동 완성 목록에 축적). */
+  const team = () => SeMIS.assignees();
+  const memberOf = (name) => team().find(t => t.name === name);
   const tagOf = (name) => {
     if (!name) return "";
     const m = memberOf(name);
@@ -519,7 +518,7 @@
   function assigneeList() {
     const used = Array.from(new Set(D().schedules.map(e => e.assignee).filter(Boolean)));
     const extra = used.filter(n => !memberOf(n)).sort();
-    return TEAM.map(t => t.name).concat(extra);
+    return team().map(t => t.name).concat(extra);
   }
 
   /* ─────── 데이터 조작 ─────── */
@@ -982,7 +981,7 @@
         <div class="color-picker" id="f-colors">${COLORS.map(c =>
           `<button type="button" class="color-swatch ev-${c.id}${(e ? e.color : "blue") === c.id ? " sel" : ""}" data-color="${c.id}" title="${c.label}"></button>`).join("")}</div></div>
       <div class="form-row"><label>담당자 (카테고리)</label>
-        <div class="team-picker">${TEAM.map(t =>
+        <div class="team-picker">${team().map(t =>
           `<button type="button" class="cal-fchip team-btn" data-team="${esc(t.name)}">${t.emoji} ${esc(t.name)}</button>`).join("")}</div>
         <input id="f-assignee" value="${esc(e ? e.assignee || "" : "")}" maxlength="20" list="assignee-list" placeholder="위 버튼 선택 또는 직접 입력">
         <datalist id="assignee-list">${assigneeList().map(a => `<option value="${esc(a)}">`).join("")}</datalist></div>
@@ -1356,7 +1355,8 @@
     eventsOnDay, filteredEvents, assigneeList,
     meKey, canSeePriv, isMinePriv, autoRollOne, runAutoRoll, autoRollIfAllowed,
     addDays, diffDays, startOfWeek, rangeTitle,
-    COLORS, VIEWS, TEAM, tagOf,
+    COLORS, VIEWS, team, tagOf,
+    get TEAM() { return team(); },
     REMINDER_DEFS, eventStartMs, eventStartMsFor, dueReminders, checkReminders, startReminders, stopReminders,
     REPEAT_DEFS, isRepeat, occursOn, nextOccurrence, repeatLabel,
     mapGcalItem, fetchGcal, ICS_URL,

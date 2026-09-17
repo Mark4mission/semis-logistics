@@ -8,7 +8,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.0.2";
+  const VERSION = "1.1.0";
   const APP_NAME = "SeMIS · Logistics";
   const LS_DATA = "semisl:data";
   const LS_UI   = "semisl:ui";
@@ -197,6 +197,18 @@ const SeMIS = (() => {
     ];
   }
 
+  /* ─────────── 일정 담당자 카테고리 ───────────
+     일정관리의 담당자 태그(칩·필터·버튼) 목록. 시스템 설정 → 담당자 관리에서
+     시스템관리자가 추가·수정·삭제·순서변경한다(공용 DB 동기화).
+     목록에 없는 이름도 일정 폼에서 자유 입력할 수 있다. */
+  function seedAssignees() {
+    return [{ id: "as-csi", seq: 1, name: "최상일", title: "안전보안파트", emoji: "🛡️", short: "최" }];
+  }
+  function assignees() {
+    return (Array.isArray(DATA.assignees) ? DATA.assignees : [])
+      .slice().sort((a, b) => (a.seq || 0) - (b.seq || 0));
+  }
+
   /* ─────────── 저장소 ─────────── */
   function freshData() {
     return {
@@ -215,6 +227,7 @@ const SeMIS = (() => {
       userOverrides: {}, // 기본 계정 속성 변경 { baseUserId: { id?, name?, role?, vendor?, deleted? } }
       customUsers: [],   // [{id, name, role, vendor?, hash}]
       schedules: [],     // 일정관리
+      assignees: [],     // 일정 담당자 카테고리 (시스템 설정에서 관리) — normalize가 기본값 시드
       gcal: { enabled: false, calendarId: "", apiKey: "" },
       minutes: [],       // 회의록 게시판
       minuteFolders: [], // 회의록 폴더 — normalize가 기본 폴더 시드
@@ -303,6 +316,23 @@ const SeMIS = (() => {
       return s;
     }).filter(Boolean);
     if (!DATA.gcal || typeof DATA.gcal !== "object") DATA.gcal = { enabled: false, calendarId: "", apiKey: "" };
+
+    /* 일정 담당자 카테고리 — 최초 1회만 기본값 시드(이후 전부 삭제해도 되살아나지 않도록 플래그 사용),
+       필드 보정은 매번(멱등). */
+    if (!Array.isArray(DATA.assignees)) DATA.assignees = [];
+    if (!DATA.assigneesSeeded) {
+      if (!DATA.assignees.length) DATA.assignees = seedAssignees();
+      DATA.assigneesSeeded = 1;
+    }
+    DATA.assignees = DATA.assignees.filter(a => a && typeof a === "object" && String(a.name || "").trim());
+    DATA.assignees.forEach((a, i) => {
+      a.id = String(a.id || ("as" + i + Date.now().toString(36)));
+      a.name = String(a.name).trim();
+      a.title = String(a.title == null ? "" : a.title).trim();
+      a.emoji = String(a.emoji == null ? "" : a.emoji).trim() || "👤";
+      a.short = String(a.short == null ? "" : a.short).trim() || a.name.slice(-1);
+      if (typeof a.seq !== "number") a.seq = i + 1;
+    });
 
     // 비상연락망
     if (!DATA.contacts || typeof DATA.contacts !== "object" || Array.isArray(DATA.contacts)) DATA.contacts = { sections: [] };
@@ -536,6 +566,70 @@ const SeMIS = (() => {
     $("#modal-box [data-act=cancel]").onclick = closeModal;
   }
 
+  /* ═════════════ A4 인쇄 (전 화면 공통) ═════════════
+     모든 화면(대시보드·모듈·예정 모듈 안내)에 "🖨 인쇄" 버튼을 자동으로 붙여
+     지금 보고 있는 화면을 그대로 A4 보고용으로 출력한다. 화면 머리말(.ds-head/.page-head)이
+     있으면 그 오른쪽에, 없으면 화면 맨 위 인쇄 바에 넣는다.
+     인쇄 시에는 헤더·사이드바·버튼이 빠지고(css @media print), 문서 머리말
+     (시스템명 · 화면명 · 출력일시 · 출력자)이 자동으로 붙는다. */
+  function printTitle(route) {
+    const mn = menuForModule(route);
+    if (mn) return (mn.icon ? mn.icon + " " : "") + mn.label;
+    if (String(route).indexOf("embed/") === 0) {
+      const lk = DATA.menus.find(m => m && m.id === route.slice(6));
+      if (lk) return (lk.icon ? lk.icon + " " : "") + lk.label;
+    }
+    const def = modules[route];
+    return (def && def.title) || "화면 출력";
+  }
+  function printStamp() {
+    const d = new Date(), p = n => String(n).padStart(2, "0");
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) +
+      " " + p(d.getHours()) + ":" + p(d.getMinutes());
+  }
+  function printView(route) {
+    const view = $("#view");
+    if (!view) return;
+    const title = printTitle(route || currentRoute());
+    let head = $("#print-head");
+    if (!head) {
+      head = document.createElement("div");
+      head.id = "print-head";
+      head.className = "print-only";
+    }
+    head.innerHTML =
+      '<div class="ph-sys">' + esc(APP_NAME) + ' <span>에어제타 인천화물팀 안전보안파트</span></div>' +
+      '<div class="ph-title">' + esc(title) + '</div>' +
+      '<div class="ph-meta">출력일시 ' + esc(printStamp()) +
+        ' · 출력자 ' + esc((currentUser && currentUser.name) || "-") +
+        ' · ' + esc((ROLE_LABEL[currentUser && currentUser.role] || "")) + '</div>';
+    if (view.firstChild !== head) view.insertBefore(head, view.firstChild);
+    setTimeout(() => { try { window.print(); } catch (e) { toast("인쇄를 시작할 수 없습니다.", true); } }, 60);
+  }
+  /* 화면 머리말에 인쇄 버튼 부착 (모듈이 이미 넣어 두었으면 건너뜀) */
+  function attachPrintBtn(view, route) {
+    if (!view || view.querySelector("[data-print-btn]")) return;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-ghost btn-sm no-print";
+    btn.dataset.printBtn = "1";
+    btn.title = "이 화면을 A4 보고용으로 인쇄";
+    btn.innerHTML = "🖨 인쇄";
+    btn.onclick = () => printView(route);
+    const head = view.querySelector(".ds-head, .page-head");
+    if (head) {
+      /* 머리말에 이미 .spacer 가 있으면 오른쪽 버튼 묶음 끝에, 없으면 자체적으로 오른쪽 정렬 */
+      if (!head.querySelector(".spacer")) btn.classList.add("pb-right");
+      const desc = head.querySelector(".page-desc");
+      if (desc) head.insertBefore(btn, desc); else head.appendChild(btn);
+    } else {
+      const bar = document.createElement("div");
+      bar.className = "print-bar no-print";
+      bar.appendChild(btn);
+      view.insertBefore(bar, view.firstChild);
+    }
+  }
+
   /* ─────────── 모듈 레지스트리 & 라우터 ─────────── */
   const modules = {};
   function registerModule(id, def) { modules[id] = def; }
@@ -608,6 +702,7 @@ const SeMIS = (() => {
       applyViewWidth(view, route);
       const def = modules[route] || modules.dashboard;
       def.render(view);
+      attachPrintBtn(view, route);
       highlightNav(route);
       closeSidebar();
       return;
@@ -629,6 +724,7 @@ const SeMIS = (() => {
       else if (!def && menu && menu.type === "module") {
         // 예정 모듈 — 모듈 js가 아직 없으면 안내 화면
         renderPlannedView(view, menu);
+        attachPrintBtn(view, route);
         highlightNav(route);
         closeSidebar();
         return;
@@ -636,6 +732,7 @@ const SeMIS = (() => {
       if (!def) def = modules.dashboard;
       def.render(view);
     }
+    attachPrintBtn(view, route);
     highlightNav(route);
     closeSidebar();
   }
@@ -908,11 +1005,13 @@ const SeMIS = (() => {
     boot, registerModule, hasModule, navigate,
     get data() { return DATA; },
     save, load, onSave, saveSilent, normalizeData, defaultMenus,
+    assignees, seedAssignees,
     get user() { return currentUser; },
     allUsers, isAdmin, roleRank, canEdit, canDelete, canConfid, canSee,
     VENDOR_ACCESS, vendorAccess, vendorHome,
     pwHash, sha256, signCodeFor, signMinuteFor, signCodeFromHash, signUrlFor,
     renderNav, renderHeader, renderSecBadge, renderView, renderPlannedView,
+    printView, printTitle, attachPrintBtn,
     openModal, closeModal, confirmModal, toast,
     $, $$, esc, fmtDate, dsRing, sortedMenus,
     SEC_LEVELS, secCurrent, secNext, levelSorted,

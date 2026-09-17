@@ -40,7 +40,7 @@ SeMIS_Logistics/
 
 - **저장소**: Supabase 프로젝트 `semis-v2`(mzyuzrxkdcpzxojenwat, 서울) 안에 **별도 테이블** `public.semis_logi_store`(key, value jsonb, updated_at, updated_by) + **별도 버킷** `semis-logi-files`. SeMIS v2의 `semis_store`와 완전히 분리되어 서로 영향 없음.
 - **동기화**: 컬렉션 단위 KV. 로컬 `localStorage semisl:data` 오프라인 폴백 + pending 큐 + Realtime(폴링 폴백). SeMIS v2 sync.js와 동일 알고리즘.
-- **컬렉션(SYNC_KEYS)**: menus · notices · schedules · minutes · minuteFolders · levelHistory · safetyBoard · contacts · pwOverrides · userOverrides · customUsers · gcal · chatRooms(예약)
+- **컬렉션(SYNC_KEYS)**: menus · notices · schedules · assignees · assigneesSeeded · minutes · minuteFolders · levelHistory · safetyBoard · contacts · pwOverrides · userOverrides · customUsers · gcal · chatRooms(예약)
 - **개인정보 원칙**: 연락처·명단은 코드에 시드하지 않고 공용 DB에서만 동기화 (저장소가 공개 저장소이므로).
 
 ## 4. 계정·권한
@@ -117,6 +117,12 @@ SeMIS_Logistics/
 - 로그인 화면: 페트롤 그라디언트 + 미세한 격자 패턴, 카드 라운드 18px. 브랜드 "SeMIS **Logistics**".
 - 활성 메뉴는 틸 배경 + 좌측 앰버 인디케이터. 예정 모듈은 옅은 `예정` 태그.
 - 반응형: 900px 이하 사이드바 오버레이, 대시보드 1열.
+
+## 6-1. A4 인쇄 (전 화면 공통 규칙)
+
+모든 화면(대시보드·업무 모듈·예정 모듈 안내·시스템 설정)에 **A4 보고용 인쇄 버튼**을 둔다. 외부 링크 메뉴만 예외.
+코어가 화면 머리말에 버튼을 자동으로 붙이므로 모듈은 별도 구현이 필요 없다(`SeMIS.attachPrintBtn` / `SeMIS.printView`).
+인쇄 시 헤더·사이드바·조작 버튼이 빠지고, 문서 머리말(시스템명 · 화면명 · 출력일시 · 출력자)이 자동으로 붙는다(A4 세로, 여백 12/10/14mm).
 
 ## 7. 배포
 
