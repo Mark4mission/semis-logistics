@@ -8,7 +8,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.1.0";
+  const VERSION = "1.2.0";
   const APP_NAME = "SeMIS · Logistics";
   const LS_DATA = "semisl:data";
   const LS_UI   = "semisl:ui";
@@ -670,9 +670,9 @@ const SeMIS = (() => {
           <div class="ds-hd"><span class="ds-pill"><i class="em">🧩</i>모듈 개요</span></div>
           <div class="ds-lead">${esc(desc)}</div>
           <div class="ds-checks" style="margin-top:14px">
-            <div class="ds-check"><span>SeMIS · Logistics의 업무 모듈은 <b>한 개씩 독립 파일(js/&lt;모듈&gt;.js)</b>로 추가되며, 추가되는 즉시 이 자리에 실제 화면이 표시됩니다.</span></div>
-            <div class="ds-check"><span>메뉴 이름·아이콘·접근 권한·순서는 <b>시스템 설정 → 메뉴 관리</b>에서 지금 바로 조정할 수 있습니다.</span></div>
-            <div class="ds-check"><span>이 모듈에 담을 항목·서식·기존 자료(구글 시트·문서 등)는 관리자에게 전달해 주세요.</span></div>
+            <div class="ds-check"><span>모듈이 개발되면 이 자리에 <b>실제 화면</b>이 바로 표시됩니다.</span></div>
+            <div class="ds-check"><span>메뉴 이름·권한·순서는 <b>시스템 설정 → 메뉴 관리</b>에서 조정할 수 있습니다.</span></div>
+            <div class="ds-check"><span>담을 항목·서식·기존 자료(구글 시트 등)는 관리자에게 전달해 주세요.</span></div>
           </div>
         </div>
         <div class="ds-stack">
@@ -685,7 +685,7 @@ const SeMIS = (() => {
               <div class="ds-row" data-go="contacts"><span>☎️</span><span class="ds-row-t">비상연락망 · 보고체계</span></div>
             </div>
           </div>
-          <div class="ds-note">관련 자료를 먼저 <b>외부 링크 메뉴</b>로 등록해 두면, 모듈이 열리기 전에도 이 메뉴 그룹에서 바로 열 수 있습니다.</div>
+          <div class="ds-note">관련 자료는 <b>외부 링크 메뉴</b>로 먼저 등록해 두면 모듈 개발 전에도 여기서 바로 열 수 있습니다.</div>
         </div>
       </div>`;
     $$("[data-go]", root).forEach(el => el.onclick = () => navigate(el.dataset.go));

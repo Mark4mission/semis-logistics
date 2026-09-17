@@ -512,6 +512,33 @@ function makeFetchStub(server) {
       ok(!e.S.assignees().some(x => x.name === "박조업"));
       eq(e.S.data.schedules.find(x => x.id === "sB").assignee, "박조업");
     });
+    t("S9g 담당자 탭: 다중 담당자 일정도 사람별로 집계 · 개명 시 문자열 안에서 교체", () => {
+      e.S.data.schedules.push({ id: "sM2", title: "합동", start: "2026-09-26", end: "2026-09-26", allDay: true,
+        time: "", timeEnd: "", color: "teal", done: false, assignee: "최상일, 정검색", vehicle: false, room: false,
+        reminders: [], repeat: { freq: "none", until: "" }, doneFrom: "", doneDates: [], undoneDates: [] });
+      e.S.saveSilent();
+      renderSettings(e);
+      const row = qa(e, ".as-tbl tbody tr").find(r => r.textContent.indexOf("최상일") >= 0);
+      ok(row.textContent.indexOf("1건") >= 0, "다중 담당 일정도 집계");
+      ok(q(e, "#view").textContent.indexOf("정검색") >= 0, "직접 입력 담당자로 표시");
+      const id = e.S.assignees().find(x => x.name === "최상일").id;
+      q(e, `[data-as-edit="${id}"]`).click();
+      q(e, "#f-asname").value = "최상일프로"; q(e, "#f-save").click();
+      eq(e.S.data.schedules.find(x => x.id === "sM2").assignee, "최상일프로, 정검색");
+    });
+    t("S9h 데이터 탭: 구글 캘린더 연동이 시스템 설정으로 이관(관리자 전용)", () => {
+      renderSettings(e, "data");
+      ok(q(e, "#btn-gcal"), "연동 버튼");
+      ok(q(e, "#view").textContent.includes("구글 캘린더 연동"));
+      eq(q(e, "#gcal-state").textContent.indexOf("사용 안 함") >= 0, true);
+      q(e, "#btn-gcal").click();
+      ok(q(e, "#modal-box").textContent.includes("구글캘린더 연동"), "연동 설정 모달");
+      q(e, "#g-enabled").checked = true;
+      q(e, "#g-calid").value = "icncargo@gmail.com";
+      q(e, "#g-save").click();
+      eq(e.S.data.gcal.enabled, true);
+      eq(e.S.data.gcal.calendarId, "icncargo@gmail.com");
+    });
     t("S10 데이터 탭: 백업 JSON · 메뉴 재설정", () => {
       qa(e, ".tab").find(x => x.dataset.tab === "data").click();
       ok(q(e, "#view").textContent.includes("semis_logi_store"));
@@ -609,6 +636,64 @@ function makeFetchStub(server) {
       ok(e.w.SemisCalendar.assigneeList().indexOf("정검색") >= 0);
       e.S.data.assignees = e.S.data.assignees.filter(x => x.id !== "as-x");
       e.S.saveSilent();
+    });
+    t("M06c 담당자 다중 지정: 분해·태그·필터", () => {
+      const C = e.w.SemisCalendar;
+      e.S.data.assignees = [
+        { id: "a1", seq: 1, name: "최상일", title: "", emoji: "🛡️", short: "최" },
+        { id: "a2", seq: 2, name: "김화물", title: "", emoji: "📦", short: "김" },
+        { id: "a3", seq: 3, name: "이보안", title: "", emoji: "🔎", short: "이" }
+      ];
+      e.S.saveSilent();
+      eq(C.splitNames("최상일, 김화물 , 이보안").join("|"), "최상일|김화물|이보안");
+      eq(C.joinNames(["최상일", "김화물", "최상일", " "]), "최상일, 김화물");
+      eq(C.tagsOf("최상일, 김화물"), "최·김");
+      eq(C.tagsOf("최상일, 김화물, 이보안"), "최·김+1");
+      eq(C.tagsOf("최상일"), "최");
+      const ev = { assignee: "최상일, 김화물" };
+      ok(C.hasName(ev, "김화물")); ok(!C.hasName(ev, "이보안"));
+      const d = "2026-09-25";
+      e.S.data.schedules.push({ id: "sM", title: "합동 점검", start: d, end: d, allDay: true, time: "", timeEnd: "",
+        color: "teal", done: false, assignee: "최상일, 김화물", vehicle: false, room: false, reminders: [],
+        repeat: { freq: "none", until: "" }, doneFrom: "", doneDates: [], undoneDates: [] });
+      e.S.saveSilent();
+      C.setFilter("김화물", undefined);
+      ok(C.filteredEvents().some(x => x.id === "sM"), "다중 담당자 중 1명으로 필터");
+      C.setFilter("이보안", undefined);
+      ok(!C.filteredEvents().some(x => x.id === "sM"));
+      C.setFilter("", undefined);
+      ok(C.assigneeList().indexOf("김화물") >= 0);
+    });
+    t("M06d 일정 폼: 담당자 칩 다중 토글 → 쉼표 문자열 저장", () => {
+      go(e, "schedule");
+      q(e, "#cal-add").click();
+      const chips = qa(e, ".team-btn");
+      ok(chips.length >= 3);
+      chips[0].click(); chips[1].click();
+      eq(q(e, "#f-assignee").value, "최상일, 김화물");
+      ok(chips[0].classList.contains("sel") && chips[1].classList.contains("sel"));
+      chips[0].click();                                   // 다시 누르면 해제
+      eq(q(e, "#f-assignee").value, "김화물");
+      ok(!chips[0].classList.contains("sel"));
+      q(e, "#f-title").value = "다중 담당 일정";
+      q(e, "#f-assignee").value = "김화물, 이보안, 박조업";
+      q(e, "#f-save").click();
+      const rec = e.S.data.schedules.find(x => x.title === "다중 담당 일정");
+      ok(rec); eq(rec.assignee, "김화물, 이보안, 박조업");
+    });
+    t("M06e 일정관리 머리말: 안내문 축약 + 구글연동 버튼 없음", () => {
+      go(e, "schedule");
+      const head = q(e, ".page-head");
+      eq(q(e, ".page-note").textContent.trim(), "일정을 드래그하여 이동 가능");
+      ok(!head.textContent.includes("인천화물팀 안전보안파트 주요 일정"), "긴 안내문 제거");
+      ok(!q(e, "#cal-gcal"), "구글 연동 버튼은 일정관리에 없음");
+      ok(!q(e, ".page-desc"), "page-desc 제거");
+    });
+    t("M06f 일반 사용자(manager)에게는 안내문·등록 버튼 미노출", () => {
+      loginAs(e, "manager");
+      go(e, "schedule");
+      ok(!q(e, ".page-note")); ok(!q(e, "#cal-add"));
+      loginAs(e, "hq");
     });
     t("M07 jsdom 오류 없음(모듈 블록)", () => eq(e.errors.length, 0, e.errors.join(" | ")));
   }

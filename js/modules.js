@@ -151,7 +151,7 @@
                 <div class="ds-row" data-dash-go="${esc(m.module)}">
                   <span>${esc(m.icon || "▪")}</span><span class="ds-row-t">${esc(m.label)}</span>
                   <span class="ds-row-m">${esc(grpName(m.parent))}</span></div>`).join("")}</div>
-              <div class="form-hint" style="margin-top:8px">메뉴 이름·권한·순서는 시스템 설정 → 메뉴 관리에서 조정할 수 있습니다.</div>
+              <div class="form-hint" style="margin-top:8px">메뉴 구성은 시스템 설정 → 메뉴 관리에서 조정합니다.</div>
             </div>` : ""
       };
       const guest = SeMIS.roleRank() < 2;
@@ -627,8 +627,7 @@
       <div class="card">
         <div class="card-title">메뉴 구성 <span class="spacer"></span>
           <button class="btn btn-primary btn-sm" id="btn-add-menu">+ 메뉴 추가</button></div>
-        <p class="form-hint" style="margin-bottom:12px">외부 웹주소를 링크 메뉴로 등록하거나, 그룹을 만들어 메뉴를 분류할 수 있습니다. ▲▼로 순서 변경.
-          <b>예정 모듈</b>은 모듈 파일이 추가되는 즉시 실화면으로 바뀝니다.</p>
+        <p class="form-hint" style="margin-bottom:12px">외부 웹주소 등록 · 그룹 분류 · ▲▼ 순서 변경. <b>예정 모듈</b>은 개발 완료 시 자동으로 실제 화면으로 바뀝니다.</p>
         <div id="menu-tree">`;
     menus.filter(m => !m.parent || m.type === "group").forEach(m => {
       html += row(m, false);
@@ -806,8 +805,7 @@
         <div class="card-title">사용자 계정 <span class="spacer"></span>
           <button class="btn btn-primary btn-sm" id="btn-add-user">+ 사용자 추가</button></div>
         <p class="form-hint" style="margin-bottom:12px">
-          로그인은 <b>암호만 입력</b>하는 방식입니다. 암호로 사용자가 식별되므로 사용자별 암호는 서로 달라야 합니다.
-          암호는 SHA-256 해시로만 저장되어 코드/데이터에서 평문이 노출되지 않습니다.
+          <b>암호만 입력</b>해 로그인하므로 사용자마다 암호가 달라야 합니다. 암호는 해시로만 저장됩니다.<br>
           최고관리자(mark3464)는 잠금 방지를 위해 권한 변경·삭제가 불가합니다.</p>
         <div class="table-wrap"><table class="tbl">
           <thead><tr><th>계정</th><th>이름</th><th>권한</th><th style="width:240px">관리</th></tr></thead>
@@ -946,22 +944,25 @@
     };
   }
 
+  /* 일정의 담당자 문자열(", " 구분 다중) → 이름 배열. calendar.js 와 같은 규칙. */
+  const splitNames = (v) => String(v == null ? "" : v).split(/\s*[,、·]\s*/).map(x => x.trim()).filter(Boolean);
+  const joinNames = (arr) => Array.from(new Set((arr || []).map(x => String(x).trim()).filter(Boolean))).join(", ");
+
   /* ═════════════ 담당자 관리 탭 (일정관리 담당자 카테고리) ═════════════
      일정관리의 담당자 칩·필터·선택 버튼에 쓰이는 목록(DATA.assignees)을
      시스템관리자가 직접 관리한다. 여기서 바꾼 내용은 공용 DB로 즉시 공유된다. */
   function renderAssigneeTab(box) {
     const list = SeMIS.assignees();
     const used = {};
-    (D().schedules || []).forEach(sc => { if (sc && sc.assignee) used[sc.assignee] = (used[sc.assignee] || 0) + 1; });
+    (D().schedules || []).forEach(sc => splitNames(sc && sc.assignee).forEach(n => { used[n] = (used[n] || 0) + 1; }));
     const free = Object.keys(used).filter(n => !list.some(a => a.name === n)).sort();
     box.innerHTML = `
       <div class="card">
         <div class="card-title">🧭 일정 담당자 <span class="spacer"></span>
           <button class="btn btn-primary btn-sm" id="btn-add-as">+ 담당자 추가</button></div>
         <p class="form-hint" style="margin-bottom:12px">
-          일정관리 화면의 <b>담당자 선택 버튼 · 상단 필터 · 일정 칩의 약칭 태그</b>에 쓰이는 목록입니다.
-          여기에 없는 이름도 일정 등록 시 직접 입력할 수 있으며, 그렇게 입력된 이름은 아래 <b>직접 입력된 담당자</b>에 모입니다.
-          담당자를 지워도 기존 일정의 담당자 이름은 그대로 남습니다(태그 약칭만 이름 첫 글자로 표시).</p>
+          일정관리의 <b>담당자 선택 버튼 · 필터 · 칩 태그</b>에 쓰이는 목록입니다. 일정 하나에 여러 명을 지정할 수 있습니다.<br>
+          목록에 없는 이름을 직접 입력하면 아래 <b>직접 입력된 담당자</b>에 모이고, 담당자를 지워도 기존 일정의 이름은 남습니다.</p>
         <div class="table-wrap"><table class="tbl as-tbl">
           <colgroup><col style="width:70px"><col style="width:84px"><col><col><col style="width:90px"><col style="width:96px"><col style="width:150px"></colgroup>
           <thead><tr><th>순서</th><th>아이콘</th><th>이름</th><th>소속 / 직책</th><th>약칭</th><th>배정 일정</th><th>관리</th></tr></thead>
@@ -983,7 +984,7 @@
       </div>
       <div class="card">
         <div class="card-title">✍️ 직접 입력된 담당자 <span class="badge badge-gray">${free.length}명</span></div>
-        <p class="form-hint" style="margin-bottom:10px">일정 등록 시 직접 입력되어 목록에는 없는 이름입니다. [목록에 추가]를 누르면 정식 담당자로 등록됩니다.</p>
+        <p class="form-hint" style="margin-bottom:10px">일정에 직접 입력된, 목록에 없는 이름입니다.</p>
         ${free.length ? `<div class="as-free">${free.map(n =>
           `<span class="as-free-item">${esc(n)} <span class="as-free-n">${used[n]}건</span>
             <button class="btn btn-ghost btn-sm" data-as-promote="${esc(n)}">목록에 추가</button></span>`).join("")}</div>`
@@ -1059,7 +1060,12 @@
         Object.assign(rec, patch);
         /* 이름을 바꾸면 이미 배정된 일정의 담당자도 함께 바꿔 준다(따로 손대지 않아도 되도록) */
         if (oldName !== name) {
-          (D().schedules || []).forEach(sc => { if (sc && sc.assignee === oldName) sc.assignee = name; });
+          (D().schedules || []).forEach(sc => {
+            if (!sc || !sc.assignee) return;
+            const ns = splitNames(sc.assignee);
+            if (ns.indexOf(oldName) < 0) return;
+            sc.assignee = joinNames(ns.map(n => (n === oldName ? name : n)));
+          });
         }
       } else {
         const seq = (D().assignees || []).reduce((mx, x) => Math.max(mx, x.seq || 0), 0) + 1;
@@ -1075,9 +1081,8 @@
       <div class="card">
         <div class="card-title">💾 백업 / 복원</div>
         <p class="form-hint" style="margin-bottom:12px">
-          모든 데이터(메뉴, 공지, 일정, 회의록, 연락망, 사용자 설정)는 <b>Supabase 공용 DB</b>(semis_logi_store)에 실시간 동기화되며,
-          이 브라우저의 localStorage에도 저장되어 오프라인에서도 사용할 수 있습니다.
-          백업 파일은 비상 복구용으로 주기적으로 내려받아 두는 것을 권장합니다.</p>
+          모든 데이터는 공용 DB에 실시간 동기화되고, 이 브라우저에도 함께 저장되어 오프라인에서 동작합니다.<br>
+          백업 파일은 비상 복구용으로 가끔 내려받아 두시기 바랍니다.</p>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-primary" id="btn-export">⬇ 백업 파일 다운로드</button>
           <label class="btn btn-ghost" style="cursor:pointer">⬆ 백업 파일 복원
@@ -1091,6 +1096,16 @@
           <button class="btn btn-danger" id="btn-reset-all">이 브라우저 로컬 데이터 초기화</button>
         </div>
         <p class="form-hint" style="margin-top:10px">메뉴 재설정은 공지·일정·사용자는 유지합니다. 로컬 초기화 후에는 공용 DB에서 다시 동기화됩니다.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">🔗 구글 캘린더 연동 <span class="badge badge-gray">일정관리</span></div>
+        <p class="form-hint" style="margin-bottom:12px">
+          <b>Google → SeMIS</b> 공개 캘린더를 일정관리에 겹쳐 보기 · <b>SeMIS → Google</b> 구독 주소(ICS) 제공.<br>
+          시스템관리자 전용 설정입니다.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button class="btn btn-primary" id="btn-gcal">🔗 연동 설정 열기</button>
+          <span class="form-hint" id="gcal-state"></span>
+        </div>
       </div>
       <div class="card">
         <div class="card-title">ℹ️ 시스템 정보</div>
@@ -1148,6 +1163,19 @@
         sessionStorage.removeItem(SeMIS.SS_SESSION);
         location.reload();
       });
+
+    {
+      const g = D().gcal || {};
+      const st = $("#gcal-state");
+      if (st) st.innerHTML = g.enabled
+        ? "현재: <b>사용 중</b>" + (g.calendarId ? " · " + esc(g.calendarId) : " · 캘린더 ID 미입력")
+        : "현재: 사용 안 함";
+      const gb = $("#btn-gcal");
+      if (gb) gb.onclick = () => {
+        if (window.SemisCalendar && SemisCalendar.gcalForm) SemisCalendar.gcalForm();
+        else toast("일정관리 모듈이 로드되지 않았습니다.", true);
+      };
+    }
 
     const syncInfo = $("#sysinfo-sync");
     if (syncInfo) {
@@ -1234,8 +1262,7 @@
           <div id="st-file-gauge">${gaugeHTML("파일 스토리지 (semis-logi-files)", 0, STORE_LIMIT, "불러오는 중…")}</div>
           ${gaugeHTML("데이터베이스 (semis_logi_store)", ss.total, DB_LIMIT, ss.rows.length + "개 컬렉션")}
         </div>
-        <p class="form-hint" style="margin-top:10px">Supabase 무료 플랜 기준(파일 1GB · DB 500MB)이며 SeMIS v2와 같은 프로젝트를 공유합니다.
-          데이터베이스 수치는 이 시스템의 컬렉션 JSON 합계로, 인덱스·이력 등을 제외한 근사치입니다.</p>
+        <p class="form-hint" style="margin-top:10px">무료 플랜 기준(파일 1GB · DB 500MB). 데이터베이스 수치는 컬렉션 JSON 합계의 근사치입니다.</p>
       </div>
       <div class="card">
         <div class="card-title">📂 분류별 파일</div>
@@ -1243,8 +1270,7 @@
       </div>
       <div class="card">
         <div class="card-title">🧹 미참조 파일 정리</div>
-        <p class="form-hint" style="margin-bottom:12px">
-          공지·회의록 등 <b>어느 기록에서도 참조하지 않는</b> 파일입니다. 업로드 24시간 이내 파일은 제외합니다. <b>삭제는 되돌릴 수 없습니다.</b></p>
+        <p class="form-hint" style="margin-bottom:12px">어느 기록에서도 참조하지 않는 파일입니다(업로드 24시간 이내 제외). <b>삭제는 되돌릴 수 없습니다.</b></p>
         <div id="st-orphans" class="st-loading">참조 관계를 확인하는 중…</div>
       </div>
       <div class="card">

@@ -57,6 +57,26 @@
     const m = memberOf(name);
     return m ? m.short : name.slice(0, 1);
   };
+  /* 담당자는 여러 명일 수 있다 — 저장은 ", " 로 이어 붙인 한 문자열(e.assignee).
+     기존 1명 데이터와 그대로 호환되고, 검색·대시보드·ICS 등 문자열을 쓰는 곳도 손댈 필요가 없다. */
+  const splitNames = (v) => String(v == null ? "" : v).split(/\s*[,、·]\s*/).map(x => x.trim()).filter(Boolean);
+  const joinNames = (arr) => Array.from(new Set((arr || []).map(x => String(x).trim()).filter(Boolean))).join(", ");
+  const namesOf = (e) => splitNames(e && e.assignee);
+  const hasName = (e, name) => namesOf(e).indexOf(name) >= 0;
+  /* 일정 칩에 붙는 약칭 태그 — 2명까지 표시하고 그 이상은 +N */
+  function tagsOf(v) {
+    const ns = splitNames(v);
+    if (!ns.length) return "";
+    const head = ns.slice(0, 2).map(tagOf).join("·");
+    return ns.length > 2 ? head + "+" + (ns.length - 2) : head;
+  }
+  /* 담당자 이름 앞 아이콘까지 붙인 표시용 문자열 */
+  function namesHTML(v, sep) {
+    return splitNames(v).map(n => {
+      const m = memberOf(n);
+      return (m ? m.emoji + " " : "") + esc(n);
+    }).join(sep || ", ");
+  }
 
   /* ─────── 반복 일정 ─────── */
   const REPEAT_DEFS = [
@@ -486,7 +506,7 @@
     // 반복 일정은 회차별 완료 상태가 다르므로 완료 숨기기는 eventsOnDay 에서 회차 단위로 판정
     // v2.37: 다른 계정이 "나에게만 보이기"로 등록한 일정은 제외
     return D().schedules.filter(e => canSeePriv(e) &&
-      (!fAssignee || e.assignee === fAssignee) && (!fHideDone || isRepeat(e) || !e.done));
+      (!fAssignee || hasName(e, fAssignee)) && (!fHideDone || isRepeat(e) || !e.done));
   }
   function evCompare(a, b) {
     const am = (a.allDay || a.end !== a.start) ? 0 : 1;
@@ -516,8 +536,9 @@
     return native.concat(gcalOnDay(iso)).sort(evCompare);
   }
   function assigneeList() {
-    const used = Array.from(new Set(D().schedules.map(e => e.assignee).filter(Boolean)));
-    const extra = used.filter(n => !memberOf(n)).sort();
+    const used = new Set();
+    D().schedules.forEach(e => namesOf(e).forEach(n => used.add(n)));
+    const extra = Array.from(used).filter(n => !memberOf(n)).sort();
     return team().map(t => t.name).concat(extra);
   }
 
@@ -763,7 +784,7 @@
       ${checkHTML(e, canWrite, e.start)}
       ${!e.allDay && e.time ? `<span class="chip-time">${esc(e.time)}</span>` : ""}
       <span class="chip-title">${evIcons(e)}${esc(e.title)}</span>
-      ${e.assignee ? `<span class="chip-tag" title="${esc(e.assignee)}">${esc(tagOf(e.assignee))}</span>` : ""}
+      ${e.assignee ? `<span class="chip-tag" title="${esc(e.assignee)}">${esc(tagsOf(e.assignee))}</span>` : ""}
     </div>`;
   }
 
@@ -781,7 +802,7 @@
       <span class="chip-dot"></span>
       <span class="chip-time">${esc(e.time || "")}</span>
       <span class="chip-title">${evIcons(e)}${esc(e.title)}</span>
-      ${e.assignee ? `<span class="chip-tag" title="${esc(e.assignee)}">${esc(tagOf(e.assignee))}</span>` : ""}
+      ${e.assignee ? `<span class="chip-tag" title="${esc(e.assignee)}">${esc(tagsOf(e.assignee))}</span>` : ""}
     </div>`;
   }
 
@@ -872,7 +893,7 @@
       ${checkHTML(e, canWrite, e.start)}
       ${timeTxt}
       <span class="chip-title">${cont}${evIcons(e)}${esc(e.title)}${cont2}</span>
-      ${!noTag && e.assignee ? `<span class="chip-tag" title="${esc(e.assignee)}">${esc(tagOf(e.assignee))}</span>` : ""}
+      ${!noTag && e.assignee ? `<span class="chip-tag" title="${esc(e.assignee)}">${esc(tagsOf(e.assignee))}</span>` : ""}
     </div>`;
   }
 
@@ -882,7 +903,7 @@
     const alldays = evs.filter(e => e.allDay);
     const timed = evs.filter(e => !e.allDay);
     const row = (e) => {
-      const m = memberOf(e.assignee);
+      const who = namesHTML(e.assignee);
       return `
       <div class="cal-agenda-row">
         <div class="ag-time">${e.allDay ? "종일" : esc(e.time || "") + (e.timeEnd ? "~" + esc(e.timeEnd) : "")}</div>
@@ -890,7 +911,7 @@
           ${isRepeat(e) ? `<span class="badge badge-blue">🔁 ${esc(repeatLabel(e))}</span>` : ""}
           ${e.vehicle ? '<span class="badge badge-amber">🚗 차량</span>' : ""}
           ${e.room ? '<span class="badge badge-blue">🏢 회의실</span>' : ""}
-          ${e.assignee ? `<span class="badge badge-gray">${m ? m.emoji + " " : ""}${esc(e.assignee)}</span>` : ""}
+          ${who ? `<span class="badge badge-gray">${who}</span>` : ""}
           ${e.memoHtml ? `<div class="ag-memo notice-html">${sanitize(e.memoHtml)}</div>` : (e.memo ? `<div class="ag-memo">${esc(e.memo)}</div>` : "")}</div>
       </div>`;
     };
@@ -980,11 +1001,14 @@
       <div class="form-row"><label>색상</label>
         <div class="color-picker" id="f-colors">${COLORS.map(c =>
           `<button type="button" class="color-swatch ev-${c.id}${(e ? e.color : "blue") === c.id ? " sel" : ""}" data-color="${c.id}" title="${c.label}"></button>`).join("")}</div></div>
-      <div class="form-row"><label>담당자 (카테고리)</label>
-        <div class="team-picker">${team().map(t =>
-          `<button type="button" class="cal-fchip team-btn" data-team="${esc(t.name)}">${t.emoji} ${esc(t.name)}</button>`).join("")}</div>
-        <input id="f-assignee" value="${esc(e ? e.assignee || "" : "")}" maxlength="20" list="assignee-list" placeholder="위 버튼 선택 또는 직접 입력">
-        <datalist id="assignee-list">${assigneeList().map(a => `<option value="${esc(a)}">`).join("")}</datalist></div>
+      <div class="form-row"><label>담당자 <span class="form-sub">(여러 명 선택 가능)</span></label>
+        <div class="team-picker">${team().map(t => {
+          const on = splitNames(e ? e.assignee : "").indexOf(t.name) >= 0;
+          return `<button type="button" class="cal-fchip team-btn${on ? " sel" : ""}" data-team="${esc(t.name)}" aria-pressed="${on}">${t.emoji} ${esc(t.name)}</button>`;
+        }).join("")}</div>
+        <input id="f-assignee" value="${esc(e ? e.assignee || "" : "")}" maxlength="120" list="assignee-list" placeholder="위 버튼을 눌러 선택(다시 누르면 해제) 또는 쉼표로 직접 입력">
+        <datalist id="assignee-list">${assigneeList().map(a => `<option value="${esc(a)}">`).join("")}</datalist>
+        <div class="form-hint">목록에 없는 사람은 직접 입력하고, 여러 명이면 쉼표(,)로 구분합니다. 담당자 목록은 시스템 설정 → 담당자 관리에서 바꿉니다.</div></div>
       <div class="form-row"><label>메모</label>
         <div class="nb-toolbar nb-mini">
           <button type="button" data-cmd="bold" title="굵게"><b>B</b></button>
@@ -1016,7 +1040,24 @@
       color = b.dataset.color;
       $$("#f-colors .color-swatch").forEach(x => x.classList.toggle("sel", x === b));
     });
-    $$(".team-btn").forEach(b => b.onclick = () => { $("#f-assignee").value = b.dataset.team; });
+    /* 담당자 칩 = 토글(다중 선택). 직접 입력칸과 항상 같은 값을 보게 동기화한다. */
+    const syncTeamChips = () => {
+      const cur = splitNames($("#f-assignee").value);
+      $$(".team-btn").forEach(x => {
+        const on = cur.indexOf(x.dataset.team) >= 0;
+        x.classList.toggle("sel", on);
+        x.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+    };
+    $$(".team-btn").forEach(b => b.onclick = () => {
+      const inp = $("#f-assignee");
+      const cur = splitNames(inp.value);
+      const i = cur.indexOf(b.dataset.team);
+      if (i >= 0) cur.splice(i, 1); else cur.push(b.dataset.team);
+      inp.value = joinNames(cur);
+      syncTeamChips();
+    });
+    $("#f-assignee").addEventListener("input", syncTeamChips);
     $("#f-allday").onchange = () => {
       $("#row-time").style.display = $("#f-allday").checked ? "none" : "";
     };
@@ -1112,7 +1153,7 @@
         time: allday ? "" : ($("#f-time").value || "09:00"),
         timeEnd: allday ? "" : ($("#f-timeend").value || ""),
         color,
-        assignee: $("#f-assignee").value.trim(),
+        assignee: joinNames(splitNames($("#f-assignee").value)),
         vehicle: $("#f-vehicle").checked,
         room: $("#f-room").checked,
         reminders,
@@ -1168,7 +1209,7 @@
           e.autoExtend ? '<span class="badge badge-amber">↔️ 자동 연장 (종료일만 연장)</span>' : ""}</td></tr>` : ""}
         ${e.vehicle || e.room ? `<tr><td style="color:var(--text-2)">예약</td><td>${e.vehicle ? "🚗 차량 " : ""}${e.room ? "🏢 회의실" : ""}</td></tr>` : ""}
         ${remTxt ? `<tr><td style="color:var(--text-2)">리마인더</td><td>⏰ ${esc(remTxt)}</td></tr>` : ""}
-        ${e.assignee ? `<tr><td style="color:var(--text-2)">담당자</td><td>${esc(tagOf(e.assignee))} ${esc(e.assignee)}</td></tr>` : ""}
+        ${e.assignee ? `<tr><td style="color:var(--text-2)">담당자</td><td>${namesHTML(e.assignee, " · ")}</td></tr>` : ""}
         ${e.memoHtml ? `<tr><td style="color:var(--text-2)">메모</td><td class="notice-html">${sanitize(e.memoHtml)}</td></tr>`
           : (e.memo ? `<tr><td style="color:var(--text-2)">메모</td><td style="white-space:pre-wrap">${esc(e.memo)}</td></tr>` : "")}
       </table>
@@ -1248,9 +1289,8 @@
         <div class="page-head">
           <div class="page-title">📅 안전보안 일정관리</div>
           <span class="spacer"></span>
-          ${canWrite ? '<button class="btn btn-ghost" id="cal-gcal" title="구글캘린더 연동 설정">🔗</button>' : ""}
+          ${canWrite ? '<span class="page-note no-print">일정을 드래그하여 이동 가능</span>' : ""}
           ${canWrite ? '<button class="btn btn-primary" id="cal-add">+ 일정 등록</button>' : ""}
-          <div class="page-desc">점검 · 교육 · 회의 · 감사 등 인천화물팀 안전보안파트 주요 일정${canWrite ? " — 일정을 드래그하여 이동" : ""}</div>
         </div>
         <div class="card cal-card${fullscreen ? " cal-fullscreen" : ""}">
           <div class="cal-toolbar">
@@ -1296,7 +1336,7 @@
       $("#cal-fs").onclick = () => { fullscreen = !fullscreen; SeMIS.renderView(); };
       if (canWrite) {
         $("#cal-add").onclick = () => eventForm(null, view === "day" ? anchor : todayISO());
-        $("#cal-gcal").onclick = gcalForm;
+
         const add2 = $("#cal-add2");
         if (add2) add2.onclick = () => eventForm(null, view === "day" ? anchor : todayISO());
       }
@@ -1353,6 +1393,7 @@
     occDone, setOccDone, applyOccDone, askDoneScope, occurrenceStarts, stepOccurrence,
     shiftDoneMarks, clearDoneMarks, nextOpenOccurrence, DONE_SCOPES,
     eventsOnDay, filteredEvents, assigneeList,
+    splitNames, joinNames, namesOf, hasName, tagsOf, gcalForm,
     meKey, canSeePriv, isMinePriv, autoRollOne, runAutoRoll, autoRollIfAllowed,
     addDays, diffDays, startOfWeek, rangeTitle,
     COLORS, VIEWS, team, tagOf,

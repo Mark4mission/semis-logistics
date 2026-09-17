@@ -338,7 +338,7 @@
         </div>
         <div class="ct-hero">
           <div class="ct-hero-main">🚨 안전·보안 사건 발생 시 <b>인지 후 30분 이내</b> SMS 최초 보고</div>
-          <div class="ct-hero-sub">1차 SMS 문자 보고 → 2차 서면 보고 (E-MAIL / 서식) · 보고 내용은 파트 내 보관 (감독관 점검 시 확인)</div>
+          <div class="ct-hero-sub">1차 SMS → 2차 서면 보고(E-MAIL) · 보고 내용은 파트 내 보관</div>
         </div>
         <div class="ct-searchwrap">
           <input id="ct-search" class="ct-search" type="search"
