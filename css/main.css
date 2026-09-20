@@ -377,6 +377,10 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: .93rem; }
 
 .menu-tree-item { display: flex; align-items: center; gap: 8px; padding: 9px 11px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); margin-bottom: 6px; background: var(--surface); }
 .menu-tree-item.is-child { margin-left: 26px; }
+.menu-tree-item.is-hidden { background: repeating-linear-gradient(135deg, var(--surface), var(--surface) 7px, var(--bg) 7px, var(--bg) 14px); border-style: dashed; }
+.menu-tree-item.is-hidden .mt-label, .menu-tree-item.is-hidden .mt-url { color: var(--text-3); text-decoration: line-through; text-decoration-color: var(--text-3); }
+.menu-tree-item.is-hidden .mt-label .badge { text-decoration: none; }
+.mt-btn.on { background: var(--primary-soft); color: var(--primary-dark); }
 .menu-tree-item .mt-label { flex: 1; font-size: .93rem; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .menu-tree-item .mt-type { font-size: .77rem; }
 /* v2.31.4: 넓은 화면에서 라벨↔버튼 사이 빈 공간에 대상 주소·라우트 표시 */

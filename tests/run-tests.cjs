@@ -442,6 +442,75 @@ function makeFetchStub(server) {
     t("S07 dashboard/settings 삭제 버튼 없음", () => {
       ok(!q(e, '#menu-tree [data-del="dashboard"]')); ok(!q(e, '#menu-tree [data-del="settings"]'));
     });
+    /* ── 메뉴 숨기기 (권한과 별개) ── */
+    t("S07b 숨김 토글: 사이드바·검색·대시보드에서 제외, 데이터·라우트는 유지", () => {
+      qa(e, ".tab").find(x => x.dataset.tab === "menus").click();
+      const target = e.S.data.menus.find(m => m.type === "module" && m.module === "schedule");
+      ok(target, "일정관리 메뉴");
+      ok(q(e, `#menu-tree [data-hide="${target.id}"]`), "숨김 버튼");
+      // 숨기기 전: 사이드바에 있음
+      e.S.renderNav();
+      ok(q(e, '#nav-menu [data-route="schedule"]'), "숨기기 전 사이드바 노출");
+      q(e, `#menu-tree [data-hide="${target.id}"]`).click();
+      eq(e.S.data.menus.find(m => m.id === target.id).hidden, true, "hidden 플래그");
+      ok(!q(e, '#nav-menu [data-route="schedule"]'), "사이드바에서 제거");
+      ok(q(e, "#menu-tree").textContent.includes("숨김"), "숨김 배지");
+      // 권한 게이트와는 별개 — canSee는 그대로 통과, 라우트도 동작
+      ok(e.S.canSee(target), "canSee는 영향 없음");
+      eq(e.S.navVisible(target), false, "navVisible만 false");
+      go(e, "schedule");
+      ok(q(e, "#view").textContent.includes("일정"), "주소로는 기능 유지");
+      // 통합검색에서도 제외
+      const menuHit = (env) => (env.w.SemisSearch.search("일정관리") || [])
+        .some(h => h.group === "메뉴 · 링크" && h.route === "schedule");
+      eq(menuHit(e), false, "검색 메뉴 결과 제외");
+      // 되돌리기
+      go(e, "settings");
+      qa(e, ".tab").find(x => x.dataset.tab === "menus").click();
+      q(e, `#menu-tree [data-hide="${target.id}"]`).click();
+      eq(e.S.data.menus.find(m => m.id === target.id).hidden, undefined, "해제 시 플래그 제거");
+      e.S.renderNav();
+      ok(q(e, '#nav-menu [data-route="schedule"]'), "다시 노출");
+      eq(menuHit(e), true, "해제 후 검색에 다시 등장");
+    });
+    t("S07c 모든 권한 공통 — 일반사용자에게도 숨겨짐", () => {
+      const e2 = makeEnv();
+      loginAs(e2, "admin");
+      const t2 = e2.S.data.menus.find(m => m.type === "module" && m.module === "contacts");
+      t2.hidden = true; e2.S.saveSilent();
+      loginAs(e2, "manager");
+      e2.S.renderNav();
+      ok(!q(e2, '#nav-menu [data-route="contacts"]'), "manager 사이드바 제외");
+      eq(e2.S.canSee(t2), true, "권한 자체는 통과");
+    });
+    t("S07d 그룹 숨김 → 하위 메뉴까지 숨김", () => {
+      const grp2 = e.S.data.menus.find(m => m.type === "group");
+      const child = e.S.data.menus.find(m => m.parent === grp2.id);
+      ok(child, "하위 메뉴");
+      grp2.hidden = true; e.S.saveSilent(); e.S.renderNav();
+      eq(e.S.menuHidden(child), true, "하위 메뉴도 숨김 판정");
+      ok(!qa(e, "#nav-menu .nav-group-label").some(x => x.textContent.includes(grp2.label)), "그룹 자체 제거");
+      delete grp2.hidden; e.S.saveSilent(); e.S.renderNav();
+    });
+    t("S07e 대시보드·시스템 설정은 숨길 수 없음(버튼 없음 · 플래그 정규화)", () => {
+      qa(e, ".tab").find(x => x.dataset.tab === "menus").click();
+      ok(!q(e, '#menu-tree [data-hide="dashboard"]'));
+      ok(!q(e, '#menu-tree [data-hide="settings"]'));
+      const st = e.S.data.menus.find(m => m.module === "settings");
+      st.hidden = true;
+      e.S.normalizeData();
+      eq(st.hidden, undefined, "정규화가 제거");
+      eq(e.S.canHide(st), false);
+    });
+    t("S07f normalizeData 멱등 — hidden:false는 제거, true는 유지", () => {
+      const mn = e.S.data.menus.find(m => m.type === "module" && m.module === "minutes");
+      mn.hidden = false; e.S.normalizeData();
+      eq(mn.hidden, undefined);
+      mn.hidden = true;
+      eq(e.S.normalizeData(), false, "true는 변경 없음");
+      eq(mn.hidden, true);
+      delete mn.hidden; e.S.saveSilent();
+    });
     t("S08 사용자 추가 · 중복 암호 거부 · 암호 변경 · 삭제", () => {
       qa(e, ".tab").find(x => x.dataset.tab === "users").click();
       q(e, "#btn-add-user").click();

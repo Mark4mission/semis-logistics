@@ -131,6 +131,20 @@ SeMIS_Logistics/
 저장은 `", "` 로 이어 붙인 문자열(`schedule.assignee`)이라 1명 기준의 기존 데이터·검색·ICS와 호환된다.
 구글 캘린더 연동(API 키·ICS)은 일반 사용자에게 필요 없어 **시스템 설정 → 데이터 관리**로 이관했다.
 
+## 6-4. 메뉴 숨기기 (v1.4)
+
+메뉴 항목의 `hidden: true` 한 필드로 동작한다. 권한(`vis`)과 직교하는 별도 축.
+
+| 구분 | 판정 | 적용처 |
+|---|---|---|
+| 권한 | `canSee(menu)` — vis 대 roleRank | 라우트 접근 게이트 (변경 없음) |
+| 숨김 | `menuHidden(menu)` — 본인 또는 상위 그룹의 `hidden` | — |
+| 화면 노출 | `navVisible = canSee && !menuHidden` | 사이드바(일반·협력업체) · 통합검색 · 대시보드 바로가기/로드맵 |
+
+- 숨겨도 `#/module` 직접 접근은 허용된다("기능을 없애지 않는다"는 요구사항).
+- `dashboard` · `settings`는 `canHide()`가 false — 토글 버튼이 없고 `normalizeData()`가 `hidden`을 지운다.
+- `hidden`은 true일 때만 저장하고 해제 시 필드를 삭제해 정규화가 멱등이다.
+
 ## 6-3. 데이터 보호 (v1.3)
 
 | 계층 | 위치 | 동작 |
