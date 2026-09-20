@@ -20,6 +20,7 @@ SeMIS_Logistics/
 ├── js/qr.js            순수 JS QR 인코더
 ├── js/contacts.js      비상연락망 · 보고체계 (섹션 추가/삭제 · 기본 구성 시드)
 ├── js/vault.js         암호 관리 (AES-256-GCM 클라이언트 암호화 저장소)
+├── js/regulations.js   규정 관리 (항공보안 · 안전관리 · 위험물 DG, PDF 뷰어 · 개정 아이디어 노트)
 ├── js/search.js        전역 통합 검색 (Ctrl+K)
 ├── js/sync.js          Supabase 공용 DB 실시간 동기화 (semis_logi_store · semis-logi-files)
 ├── tests/run-tests.cjs jsdom 테스트 (npm test)
@@ -72,6 +73,23 @@ Google → SeMIS(공개 캘린더 겹쳐 보기) / SeMIS → Google(ICS 구독 �
 - 보조 글자색은 `--text-2`/`--text-3` 토큰만 사용(본문 대비 4.5:1 이상 확보). 임의의 옅은 회색 금지.
 - 경계선은 `--border`(면 구분) / `--border-strong`(카드·입력·버튼 테두리). 1px 초연한 선을 새로 만들지 않는다.
 - 안내 문구는 2줄 이내로 끊고, 긴 설명은 해당 화면의 안내 블록(`.ds-lead` / `.ds-note`)으로 옮긴다.
+
+## 규정 관리 (v1.6) — 항공보안 / 안전관리 / 위험물(DG)
+
+`js/regulations.js` — SeMIS v2 규정 모듈을 화물팀 문서 체계에 맞게 이식. 세 메뉴가 같은 코드를 쓰고 데이터만 `scope`로 나뉜다.
+
+| 메뉴 | scope | 내용 |
+|---|---|---|
+| 📘 항공보안 규정 | `sec` | 화물 보안 관련 법령 · 자체 보안규정 |
+| 🦺 안전관리 규정 | `safety` | 표준업무절차(CSOP) · 교범 · 품질/안전 절차서 |
+| ☢️ 위험물(DG) 기준 | `dg` | 위험물 교범 · 취급 기준 |
+
+- 등록 항목: 규정명 · 관리번호/주관부서 · 버전 · 제·개정일자 · **언어(국문/영문/국·영문)** · 원문 PDF · 신구대조표 PDF · 외부 링크 · 비고.
+- PDF는 Supabase Storage(`semis-logi-files/regs/`)에 올라가고 화면 안 모달 뷰어(iframe) 또는 새 탭으로 열람한다(25MB 이하).
+- 목록은 **관리번호 → 제목** 순 정렬. 규정명을 누르면 바로 열람, 행을 누르면 수정(hq 이상).
+- **개정 아이디어 노트** — 규정 위치 + 신규/변경/삭제 검토 내용을 규정별로 쌓아 차기 개정에 활용(열람 mgr 이상, 편집 hq 이상).
+- 권한: 메뉴 `vis=mgr`(화물팀 관리자 이상 열람) · 등록/수정은 `canEdit()`(안전보안파트 이상).
+- 구버전 데이터의 `planned` 플래그와 `vis=all`은 `normalizeData()`가 자동으로 정리한다(멱등).
 
 ## 암호 관리 (v1.5) — 클라이언트 암호화 저장소
 

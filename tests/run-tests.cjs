@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/app.js", "js/qr.js", "js/modules.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/vault.js", "js/search.js", "js/sync.js"];
+const FILES = ["js/app.js", "js/qr.js", "js/modules.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/sync.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -129,10 +129,10 @@ function makeFetchStub(server) {
     });
 
     /* ══════════ [C] 코어 — 메뉴 시드·정규화 ══════════ */
-    t("C08 메뉴 시드: 그룹 8개 · 예정 모듈 18개 이상 · 링크 5개", () => {
+    t("C08 메뉴 시드: 그룹 8개 · 예정 모듈 15개 이상 · 링크 5개", () => {
       const m = e.S.data.menus;
       eq(m.filter(x => x.type === "group").length, 8);
-      ok(m.filter(x => x.type === "module" && x.planned).length >= 18, "planned");
+      ok(m.filter(x => x.type === "module" && x.planned).length >= 15, "planned");
       eq(m.filter(x => x.type === "link").length, 5);
     });
     t("C09 실모듈 메뉴(dashboard/schedule/minutes/contacts/settings) 존재 · planned 아님", () => {
@@ -218,17 +218,16 @@ function makeFetchStub(server) {
       ok(q(e, "#user-chip").textContent.includes("일반사용자"));
       ok(q(e, "#app-version").textContent === "v" + e.S.VERSION);
     });
-    t("C20 user: 사이드바에 mgr/hq 메뉴 미노출 · 규정 그룹(all)은 노출", () => {
+    t("C20 user: 사이드바에 mgr/hq 메뉴 미노출 (규정도 mgr)", () => {
       const routes = qa(e, ".nav-item").map(b => b.dataset.route).filter(Boolean);
       ok(routes.indexOf("dashboard") >= 0);
       ok(routes.indexOf("schedule") < 0, "schedule는 mgr");
       ok(routes.indexOf("settings") < 0);
-      ok(routes.indexOf("reg-sec") >= 0, "규정(all)");
+      ok(routes.indexOf("reg-sec") < 0, "규정은 mgr 이상");
     });
-    t("C21 user: 예정 모듈(all) 라우트 → 준비 중 안내 화면", () => {
+    t("C21 user: 규정 라우트 접근 → 대시보드 폴백", () => {
       go(e, "reg-sec");
-      ok(q(e, "#view").textContent.includes("준비 중"));
-      ok(q(e, "#view").textContent.includes("항공보안 규정"));
+      ok(q(e, "#view").textContent.includes("대시보드"));
     });
     t("C22 user: mgr 라우트 접근 → 대시보드로", () => {
       go(e, "schedule");
@@ -247,7 +246,7 @@ function makeFetchStub(server) {
       eq(e.S.roleRank(), 3); ok(e.S.canSee({ vis: "hq" })); ok(!e.S.canSee({ vis: "admin" })); ok(e.S.canEdit()); ok(e.S.canDelete()); ok(e.S.canConfid());
     });
     t("C25 hq: 사이드바 예정 태그 표시 · 예정 모듈 클릭 시 안내", () => {
-      ok(qa(e, ".nav-item.planned .nav-tag").length >= 18);
+      ok(qa(e, ".nav-item.planned .nav-tag").length >= 15);
       go(e, "car");
       ok(q(e, "#view").textContent.includes("시정조치"));
       ok(q(e, "#view .badge").textContent.includes("준비 중"));
@@ -334,7 +333,7 @@ function makeFetchStub(server) {
     });
     t("D02 로드맵 카드에 예정 모듈 나열", () => {
       ok(q(e, "#view").textContent.includes("모듈 구축 로드맵"));
-      ok(qa(e, ".ds-rows .ds-row[data-dash-go]").length >= 18);
+      ok(qa(e, ".ds-rows .ds-row[data-dash-go]").length >= 15);
     });
     t("D03 무재해 기준일 설정 → D+ 계산", () => {
       q(e, "#btn-edit-zero").click();
@@ -852,7 +851,7 @@ function makeFetchStub(server) {
     const e = makeEnv({ fetch });
     const { Sync } = e;
     t("Y01 SYNC_KEYS 구성", () =>
-      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,pwOverrides,userOverrides,customUsers,gcal,chatRooms,vault"));
+      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,pwOverrides,userOverrides,customUsers,gcal,chatRooms,vault,regulations"));
     t("Y02 SYNC_KEYS는 모두 freshData 컬렉션에 존재", () => Sync.SYNC_KEYS.forEach(k => ok(e.S.data[k] !== undefined, k)));
     await ta("Y03 초기 pull: 빈 서버 → 로컬 시드 push (semis_logi_store)", async () => {
       await Sync.init();
@@ -948,6 +947,104 @@ function makeFetchStub(server) {
     });
     t("Y14 jsdom 오류 없음(동기화 블록)", () => eq(e.errors.length, 0, e.errors.join(" | ")));
     Sync.stop();
+  }
+
+  /* ══════════ [RG] 규정 관리 (항공보안 / 안전관리 / 위험물 DG) ══════════ */
+  {
+    const e = makeEnv();
+    loginAs(e, "hq");
+    const RG = e.w.SemisRegs;
+    const seed = (scope, o) => Object.assign({ id: "t" + Math.random().toString(36).slice(2, 8),
+      scope, title: "T", org: "", rev: "", date: "", lang: "", linkUrl: "", fileUrl: "", fileName: "",
+      diffUrl: "", diffName: "", note: "", ideas: [], updated: "" }, o);
+
+    t("RG01 규정 3종 메뉴가 실모듈 · vis=mgr (예정 플래그 해제)", () => {
+      ["reg-sec", "reg-safety", "reg-dg"].forEach(id => {
+        const mn = e.S.data.menus.find(m => m.type === "module" && m.module === id);
+        ok(mn, id + " 메뉴");
+        eq(!!mn.planned, false, id + " planned 해제");
+        eq(mn.vis, "mgr", id + " vis");
+        ok(e.S.hasModule(id), id + " 모듈 등록");
+      });
+      ok(e.Sync.SYNC_KEYS.includes("regulations"), "SYNC_KEYS 포함");
+    });
+    t("RG02 구버전 데이터 마이그레이션: planned 해제 · vis=all → mgr · scope 보정 (멱등)", () => {
+      const e2 = makeEnv();
+      const mn = e2.S.data.menus.find(m => m.module === "reg-safety");
+      mn.planned = true; mn.desc = "준비 중"; mn.vis = "all";
+      e2.S.data.regulations = [{ id: "x1", scope: "bogus" }];
+      eq(e2.S.normalizeData(), true);
+      const mn2 = e2.S.data.menus.find(m => m.module === "reg-safety");
+      eq(!!mn2.planned, false); eq(mn2.desc, undefined); eq(mn2.vis, "mgr");
+      eq(e2.S.data.regulations[0].scope, "safety", "알 수 없는 scope는 safety로");
+      ok(Array.isArray(e2.S.data.regulations[0].ideas), "ideas 배열 보정");
+      eq(e2.S.normalizeData(), false, "멱등");
+    });
+    t("RG03 3개 화면 렌더 · 통계 · 인쇄 버튼", () => {
+      ["reg-sec", "reg-safety", "reg-dg"].forEach(r => {
+        go(e, r);
+        ok(q(e, "#view .page-title"), r + " 머리말");
+        ok(q(e, "#view [data-print-btn]"), r + " A4 인쇄 버튼");
+        ok(qa(e, "#view .stat").length >= 4, r + " 통계 카드");
+      });
+    });
+    t("RG04 등록 → 목록 표시 · scope 분리 · PDF/링크 열람 버튼", () => {
+      e.S.data.regulations = [
+        seed("safety", { id: "s1", title: "화물 표준업무절차 (CSOP)", org: "CYB027", rev: "Rev.03",
+          date: "2026-09-09", lang: "국문", fileUrl: "https://x/a.pdf", fileName: "a.pdf" }),
+        seed("dg", { id: "d1", title: "위험물 교범", org: "CYA002", rev: "Rev.21",
+          date: "2026-07-20", lang: "국문", linkUrl: "https://example.com/dg" })
+      ];
+      e.S.saveSilent();
+      go(e, "reg-safety");
+      ok(q(e, "#rg-body").textContent.includes("화물 표준업무절차"), "safety 목록");
+      ok(!q(e, "#rg-body").textContent.includes("위험물 교범"), "dg 항목 미표시");
+      ok(q(e, '#rg-body [data-rg-pdf="s1"]'), "PDF 열람 버튼");
+      go(e, "reg-dg");
+      ok(q(e, "#rg-body").textContent.includes("위험물 교범"), "dg 목록");
+      ok(!q(e, '#rg-body [data-rg-pdf="d1"]'), "PDF 없으면 버튼 없음");
+      eq(RG.byScope("dg").length, 1);
+      eq(RG.stats("safety").pdf, 1);
+    });
+    t("RG05 정렬 = 관리번호 → 제목 · 검색 필터", () => {
+      e.S.data.regulations = [
+        seed("safety", { id: "a", title: "나중", org: "CYB027" }),
+        seed("safety", { id: "b", title: "먼저", org: "CYA001" }),
+        seed("safety", { id: "c", title: "가운데", org: "CYB001" })
+      ];
+      eq(RG.filtered("safety").map(r => r.org).join(","), "CYA001,CYB001,CYB027");
+      RG.setQuery("safety", "CYB027");
+      eq(RG.filtered("safety").length, 1);
+      RG.setQuery("safety", "");
+    });
+    t("RG06 개정 아이디어 노트: 추가 · 검토중 집계", () => {
+      e.S.data.regulations = [seed("safety", { id: "n1", title: "절차서", ideas: [] })];
+      e.S.saveSilent();
+      const r = e.S.data.regulations[0];
+      r.ideas.push({ id: "i1", loc: "3.2.1", kind: "변경", status: "검토중", content: "문구 수정", author: "T", created: "2026-09-01T00:00:00Z" });
+      r.ideas.push({ id: "i2", loc: "", kind: "신규", status: "반영완료", content: "추가", author: "T", created: "2026-09-02T00:00:00Z" });
+      eq(RG.stats("safety").ideas, 2);
+      eq(RG.stats("safety").open, 1);
+      go(e, "reg-safety");
+      ok(q(e, '#rg-body [data-rg-idea="n1"]'), "노트 버튼");
+      q(e, '#rg-body [data-rg-idea="n1"]').click();
+      ok(q(e, "#modal-box").textContent.includes("문구 수정"), "노트 목록");
+      e.S.closeModal();
+    });
+    t("RG07 manager는 열람만 (등록 버튼 없음)", () => {
+      const e3 = makeEnv();
+      loginAs(e3, "manager");
+      go(e3, "reg-safety");
+      ok(q(e3, "#view .page-title"), "화면 접근 가능");
+      ok(!q(e3, "#rg-add"), "등록 버튼 없음");
+    });
+    t("RG08 일반사용자(user)는 접근 차단", () => {
+      const e4 = makeEnv();
+      loginAs(e4, "user");
+      go(e4, "reg-safety");
+      ok(q(e4, "#view").textContent.includes("대시보드"), "대시보드 폴백");
+    });
+    t("RG09 jsdom 오류 없음(규정 블록)", () => eq(e.errors.length, 0, e.errors.join(" | ")));
   }
 
   /* ══════════ [VT] 암호 관리 (vault) — 클라이언트 암호화 저장소 ══════════ */

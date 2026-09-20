@@ -631,8 +631,7 @@
       <div class="card">
         <div class="card-title">메뉴 구성 <span class="spacer"></span>
           <button class="btn btn-primary btn-sm" id="btn-add-menu">+ 메뉴 추가</button></div>
-        <p class="form-hint" style="margin-bottom:12px">외부 웹주소 등록 · 그룹 분류 · ▲▼ 순서 변경. <b>예정 모듈</b>은 개발 완료 시 자동으로 실제 화면으로 바뀝니다.<br>
-          <b>👁 숨기기</b>는 권한과 별개로 <b>모든 사용자의 화면(사이드바 · 통합검색 · 대시보드 카드)</b>에서 해당 메뉴를 감춥니다. 기능은 그대로 남아 주소로는 접근할 수 있고, 그룹을 숨기면 하위 메뉴도 함께 숨겨집니다.</p>
+        <p class="form-hint" style="margin-bottom:12px">외부 웹주소 등록 · 그룹 분류 · ▲▼ 순서 변경 · <b>👁</b> 화면에서 숨기기(권한과 별개, 전 사용자 공통).</p>
         <div id="menu-tree">`;
     menus.filter(m => !m.parent || m.type === "group").forEach(m => {
       html += row(m, false);

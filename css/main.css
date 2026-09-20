@@ -1806,3 +1806,15 @@ a.ct-tel:hover { color: var(--primary); }
 .v-sort.on { color: var(--primary-dark); }
 .v-arw { font-size: .62rem; }
 
+
+/* ══════ 규정 관리 (regulations) ══════ */
+.reg-pdf-frame { width: 100%; height: 70vh; min-height: 320px; border: 1px solid var(--border-strong); border-radius: 10px; background: #fff; }
+.reg-lang { font-size: .74rem; vertical-align: 2px; }
+.reg-idea { border: 1px solid var(--border-strong); border-radius: 10px; padding: 11px 13px; margin-bottom: 8px; background: var(--surface); }
+.reg-idea-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.reg-idea-loc { font-size: .79rem; font-weight: 700; color: var(--text-2); }
+.reg-idea-body { font-size: .89rem; color: var(--text); margin-top: 6px; line-height: 1.6; word-break: break-word; }
+.reg-idea-meta { font-size: .77rem; color: var(--text-3); margin-top: 6px; }
+.reg-idea-open { display: inline-block; min-width: 15px; padding: 0 4px; margin-left: 3px; border-radius: 8px;
+  background: var(--warning); color: #fff; font-size: .74rem; font-weight: 800; line-height: 15px; text-align: center; }
+@media (max-width: 768px) { .reg-pdf-frame { height: 60vh; } }

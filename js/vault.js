@@ -328,7 +328,6 @@
         <div class="v-lock-card">
           <div class="v-lock-ico">🔐</div>
           <h2 class="v-lock-title">암호 관리 저장소</h2>
-          <p class="v-lock-sub">인천화물팀 안전보안파트 전용 — 본인 확인을 위해 <b>개인 비밀번호</b>를 입력하세요.</p>
           ${!hasCrypto()
             ? '<p class="login-error">이 브라우저는 암호화(WebCrypto)를 지원하지 않아 사용할 수 없습니다. HTTPS 접속 여부를 확인하세요.</p>'
             : members.length ? `
@@ -341,15 +340,14 @@
               <p id="vu-error" class="login-error"></p>
             </form>` : `
             <form id="vault-setup-form" autocomplete="off" class="v-form">
-              <p class="v-lock-note">최초 설정 — 저장소를 생성합니다.</p>
+              <p class="v-lock-note">최초 설정</p>
               <input id="vs-name" class="v-input" placeholder="본인 이름 (예: 최상일)" maxlength="20">
               ${pwFieldHTML("vs-pw", "개인 비밀번호 (4자 이상)", "new-password")}
               ${pwFieldHTML("vs-pw2", "비밀번호 확인", "new-password")}
               <button type="submit" class="btn btn-primary v-submit">저장소 생성</button>
               <p id="vs-error" class="login-error"></p>
             </form>`}
-          <p class="v-lock-foot">데이터는 AES-256으로 암호화해 저장되며, 개인 비밀번호는 서버에 저장되지 않습니다.<br>
-            해제 후 5분이 지나면 자동으로 잠기고 대시보드로 이동합니다.</p>
+          <p class="v-lock-foot">AES-256 암호화 저장 · 개인 비밀번호는 서버에 보관하지 않습니다.</p>
         </div>
       </div>`;
   }
@@ -438,7 +436,6 @@
         root.innerHTML = `
           <div class="page-head">
             <div class="page-title">🔐 암호 관리</div>
-            <div class="page-desc">인천화물팀 안전보안파트 공용 암호 저장소 (클라이언트 암호화)</div>
           </div>` + lockedHTML();
         wireLockUI();
         const uf = $("#vault-unlock-form");
@@ -480,8 +477,7 @@
           <button class="btn btn-ghost btn-sm" id="vault-members">👥 멤버</button>
           <button class="btn btn-ghost btn-sm" id="vault-lock">🔒 잠그기</button>
           <button class="btn btn-primary" id="vault-add">+ 항목 추가</button>
-          <div class="page-desc">${esc(unlockedBy)} 해제 중 · 5분 후 자동 잠금 · 항목 ${entries.length}건 ·
-            인쇄 시 비밀번호는 가려진 상태로 출력됩니다.</div>
+          <div class="page-desc">${esc(unlockedBy)} 해제 중 · 항목 ${entries.length}건</div>
         </div>
         <div class="card">
           <div class="cal-toolbar">

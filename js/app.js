@@ -8,7 +8,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.5.0";
+  const VERSION = "1.6.0";
   const APP_NAME = "SeMIS · Logistics";
   const LS_DATA = "semisl:data";
   const LS_UI   = "semisl:ui";
@@ -138,12 +138,9 @@ const SeMIS = (() => {
         null, "무재해 경과일·점검 완료율·미결 시정조치·교육 이수율 등 파트 핵심 지표를 한 화면에 모은 현황판. 각 업무 모듈이 쌓이면 자동 집계로 전환합니다."),
 
       g("grp-rule", "규정 / 기준"),
-      p("reg-sec", "항공보안 규정", "📘", "reg-sec", "all", "grp-rule",
-        "항공보안법·국가항공보안계획·자체 보안계획 중 화물 보안(RA/KC·보안검색·보호구역) 관련 조항과 자체 기준을 PDF·링크로 등록하고 개정 이력을 관리합니다."),
-      p("reg-safety", "안전관리 규정", "🦺", "reg-safety", "all", "grp-rule",
-        "산업안전보건·지상안전(Ramp Safety)·SMS(안전관리체계) 관련 규정과 작업 절차서(SOP)를 관리합니다."),
-      p("reg-dg", "위험물(DG) 기준", "☢️", "reg-dg", "all", "grp-rule",
-        "IATA DGR·ICAO TI·국토부 고시 등 위험물 취급 기준과 자체 위험물 처리 절차, 교육 요건을 관리합니다."),
+      m("reg-sec", "항공보안 규정", "📘", "reg-sec", "mgr", "grp-rule"),
+      m("reg-safety", "안전관리 규정", "🦺", "reg-safety", "mgr", "grp-rule"),
+      m("reg-dg", "위험물(DG) 기준", "☢️", "reg-dg", "mgr", "grp-rule"),
 
       g("grp-cargo", "화물 보안"),
       p("scr-status", "화물 보안검색 현황", "🔎", "scr-status", "mgr", "grp-cargo",
@@ -234,6 +231,7 @@ const SeMIS = (() => {
       minuteFolders: [], // 회의록 폴더 — normalize가 기본 폴더 시드
       contacts: { sections: [] }, // 비상연락망 (실데이터는 공용 DB만 — 코드 미시드)
       vault: { v: 1, members: [], data: null, updated: "" }, // 암호 관리 (클라이언트 AES-256 암호화)
+      regulations: [],   // 규정 관리 (항공보안 / 안전관리 / 위험물 DG)
       chatRooms: []      // (예약) 팀 채팅방
     };
   }
@@ -346,6 +344,18 @@ const SeMIS = (() => {
     // 비상연락망
     if (!DATA.contacts || typeof DATA.contacts !== "object" || Array.isArray(DATA.contacts)) DATA.contacts = { sections: [] };
     if (!Array.isArray(DATA.contacts.sections)) DATA.contacts.sections = [];
+    // 규정 관리 — 배열 보정 + 실모듈 전환(구버전 데이터의 planned 플래그 제거)
+    DATA.regulations = (Array.isArray(DATA.regulations) ? DATA.regulations : []).filter(r => r && r.id);
+    DATA.regulations.forEach(r => {
+      if (["sec", "safety", "dg"].indexOf(r.scope) < 0) r.scope = "safety";
+      if (!Array.isArray(r.ideas)) r.ideas = [];
+    });
+    ["reg-sec", "reg-safety", "reg-dg"].forEach(id => {
+      const mn = DATA.menus.find(m => m.type === "module" && m.module === id);
+      if (!mn) return;
+      if (mn.planned) { delete mn.planned; delete mn.desc; }
+      if (mn.vis === "all") mn.vis = "mgr";
+    });
     // 암호 관리 저장소 — 구조만 보정(암호문은 건드리지 않는다)
     if (!DATA.vault || typeof DATA.vault !== "object" || Array.isArray(DATA.vault))
       DATA.vault = { v: 1, members: [], data: null, updated: "" };
@@ -683,7 +693,8 @@ const SeMIS = (() => {
   /* 라우트별 콘텐츠 폭 — wide(2100px) / mid(1560px) / 기본 1180px */
   const VIEW_WIDTH = {
     schedule: "wide", dashboard: "wide", board: "wide",
-    minutes: "mid", contacts: "mid", settings: "mid", vault: "mid"
+    minutes: "mid", contacts: "mid", settings: "mid", vault: "mid",
+    "reg-sec": "mid", "reg-safety": "mid", "reg-dg": "mid"
   };
   function applyViewWidth(view, route) {
     const tier = String(route).indexOf("embed/") === 0 ? "wide" : (VIEW_WIDTH[route] || "");

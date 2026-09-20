@@ -131,6 +131,20 @@ SeMIS_Logistics/
 저장은 `", "` 로 이어 붙인 문자열(`schedule.assignee`)이라 1명 기준의 기존 데이터·검색·ICS와 호환된다.
 구글 캘린더 연동(API 키·ICS)은 일반 사용자에게 필요 없어 **시스템 설정 → 데이터 관리**로 이관했다.
 
+## 6-6. 규정 관리 (v1.6)
+
+`js/regulations.js` 하나가 `reg-sec` · `reg-safety` · `reg-dg` 세 라우트를 등록하고, 데이터는 `DATA.regulations[]`의 `scope`로 구분한다
+(`sec` | `safety` | `dg`). SeMIS v2 `regulations.js`에서 이식하며 바꾼 점:
+
+- 구분을 2종(intl/own) → 3종(sec/safety/dg)으로, 메뉴 라우트와 1:1 대응
+- `lang` 필드 추가 — 같은 교범의 국문·영문본을 한 목록에서 구분
+- 정렬을 개정일 역순 → **관리번호 → 제목** 순으로 (사내 문서번호 체계가 기준)
+- 신구대조표 첨부를 전 구분에서 사용 가능하게
+- 설명 문구 축약, 수정 열은 `no-print`
+
+PDF는 `semis-logi-files/regs/` 버킷에 올라가고 공개 URL로 열람한다. 25MB 초과 시 등록이 거부된다.
+초기 등록분(2026-09-20): 안전관리 14건 · 위험물(DG) 2건 — 화물서비스팀 교범·절차서 국·영문본.
+
 ## 6-5. 암호 관리 (v1.5)
 
 `js/vault.js` — SeMIS v2 vault 이식본. 데이터는 `DATA.vault = { v, members[], data, updated }` 이며 SYNC_KEYS에 포함되지만
