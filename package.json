@@ -1,7 +1,7 @@
 {
   "name": "semis-logistics",
   "private": true,
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "SeMIS · Logistics — 에어제타 인천화물팀 안전보안파트 화물터미널 안전보안 관리 정보시스템 (정적 웹앱)",
   "type": "commonjs",
   "scripts": {

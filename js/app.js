@@ -8,7 +8,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.4.0";
+  const VERSION = "1.5.0";
   const APP_NAME = "SeMIS · Logistics";
   const LS_DATA = "semisl:data";
   const LS_UI   = "semisl:ui";
@@ -193,6 +193,7 @@ const SeMIS = (() => {
       lk("ref-kosha", "안전보건공단 (KOSHA)", "🦺", "https://www.kosha.or.kr/", "grp-ref"),
       lk("ref-boannews", "보안뉴스", "📰", "https://www.boannews.com/", "grp-ref"),
 
+      m("vault", "암호 관리", "🔐", "vault", "hq"),
       m("settings", "시스템 설정", "⚙️", "settings", "admin")
     ];
   }
@@ -232,6 +233,7 @@ const SeMIS = (() => {
       minutes: [],       // 회의록 게시판
       minuteFolders: [], // 회의록 폴더 — normalize가 기본 폴더 시드
       contacts: { sections: [] }, // 비상연락망 (실데이터는 공용 DB만 — 코드 미시드)
+      vault: { v: 1, members: [], data: null, updated: "" }, // 암호 관리 (클라이언트 AES-256 암호화)
       chatRooms: []      // (예약) 팀 채팅방
     };
   }
@@ -265,11 +267,14 @@ const SeMIS = (() => {
         vis: vis || "all", parent: grp ? grpId : null }, extra || {}));
     };
     ensureModuleMenu("dashboard", null, "대시보드", "🏠", "dashboard", "all");
+    ensureModuleMenu("vault", null, "암호 관리", "🔐", "vault", "hq");
     ensureModuleMenu("settings", null, "시스템 설정", "⚙️", "settings", "admin");
     const dash = DATA.menus.find(m => m.type === "module" && m.module === "dashboard");
     if (dash) { dash.vis = "all"; dash.parent = null; if (dash.seq !== 0) dash.seq = Math.min(0, dash.seq || 0); }
     const st = DATA.menus.find(m => m.type === "module" && m.module === "settings");
     if (st) { st.vis = "admin"; st.parent = null; }
+    const vt = DATA.menus.find(m => m.type === "module" && m.module === "vault");
+    if (vt) { vt.parent = null; if (st && (vt.seq || 0) > (st.seq || 0)) vt.seq = (st.seq || 0) - 0.5; }
     // 예정 모듈 플래그 보정 (문자열 등 오염 방지)
     DATA.menus.forEach(m => { if (m.planned !== undefined) m.planned = !!m.planned; });
     // 숨김 플래그 정규화 — true 일 때만 보관(멱등). 대시보드·시스템 설정은 숨길 수 없다.
@@ -341,6 +346,13 @@ const SeMIS = (() => {
     // 비상연락망
     if (!DATA.contacts || typeof DATA.contacts !== "object" || Array.isArray(DATA.contacts)) DATA.contacts = { sections: [] };
     if (!Array.isArray(DATA.contacts.sections)) DATA.contacts.sections = [];
+    // 암호 관리 저장소 — 구조만 보정(암호문은 건드리지 않는다)
+    if (!DATA.vault || typeof DATA.vault !== "object" || Array.isArray(DATA.vault))
+      DATA.vault = { v: 1, members: [], data: null, updated: "" };
+    if (!Array.isArray(DATA.vault.members)) DATA.vault.members = [];
+    if (DATA.vault.v !== 1) DATA.vault.v = 1;
+    if (DATA.vault.data === undefined) DATA.vault.data = null;
+    if (typeof DATA.vault.updated !== "string") DATA.vault.updated = "";
 
     // 회의록 게시판 — 폴더 기본 시드는 minutes.js가 제공
     if (!Array.isArray(DATA.minutes)) DATA.minutes = [];
@@ -671,7 +683,7 @@ const SeMIS = (() => {
   /* 라우트별 콘텐츠 폭 — wide(2100px) / mid(1560px) / 기본 1180px */
   const VIEW_WIDTH = {
     schedule: "wide", dashboard: "wide", board: "wide",
-    minutes: "mid", contacts: "mid", settings: "mid"
+    minutes: "mid", contacts: "mid", settings: "mid", vault: "mid"
   };
   function applyViewWidth(view, route) {
     const tier = String(route).indexOf("embed/") === 0 ? "wide" : (VIEW_WIDTH[route] || "");
