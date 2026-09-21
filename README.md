@@ -5,7 +5,7 @@
 
 **접속 주소: https://mark4mission.github.io/semis-logistics/** (GitHub Pages, `main` push 시 자동 반영)
 
-설계서: [docs/DESIGN.md](docs/DESIGN.md)
+설계서: [docs/DESIGN.md](docs/DESIGN.md) · **세션 인계서: [docs/HANDOFF.md](docs/HANDOFF.md)** (새 작업 세션은 여기서 시작)
 
 ## 구조
 

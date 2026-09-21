@@ -121,11 +121,14 @@ function makeFetchStub(server) {
       eq(e.S.BASE_USERS[0].hash, "e656cd08712ab870c57a6d483f57f88cae49bcd541ec9bb862e412670c23f389"));
     t("C05 평문 암호 미보관(64 hex)", () => ok(e.S.BASE_USERS.every(u => /^[0-9a-f]{64}$/.test(u.hash))));
     t("C06 기본 계정 해시 상호 중복 없음", () => eq(new Set(e.S.BASE_USERS.map(u => u.hash)).size, 4));
-    t("C07 초기 암호로 hq/manager/user 로그인 가능(해시 대조)", () => {
-      const h = e.S.pwHash;
-      eq(e.S.BASE_USERS[1].hash, h("IcnSS#2609"));
-      eq(e.S.BASE_USERS[2].hash, h("IcnMgr#2609"));
-      eq(e.S.BASE_USERS[3].hash, h("IcnUser#2609"));
+    t("C07 기본 계정 암호 변경(pwOverrides) 후 새 암호로 로그인 · 기존 해시 무효", () => {
+      const e7 = makeEnv();
+      const before = e7.S.BASE_USERS[1].hash;
+      e7.S.data.pwOverrides["cargo-ss"] = e7.S.pwHash("rotated-pw-7");
+      e7.S.saveSilent();
+      submitLogin(e7, "rotated-pw-7");
+      ok(e7.S.user && e7.S.user.id === "cargo-ss", "새 암호 로그인");
+      ok(e7.S.allUsers().find(u => u.id === "cargo-ss").hash !== before, "기존 해시 대체");
     });
 
     /* ══════════ [C] 코어 — 메뉴 시드·정규화 ══════════ */
@@ -519,7 +522,7 @@ function makeFetchStub(server) {
       qa(e, ".tab").find(x => x.dataset.tab === "users").click();
       q(e, "#btn-add-user").click();
       q(e, "#f-uid").value = "kim"; q(e, "#f-uname").value = "김안전"; q(e, "#f-urole").value = "manager";
-      q(e, "#f-upw").value = "IcnSS#2609"; q(e, "#f-save").click();   // cargo-ss와 동일 암호
+      q(e, "#f-upw").value = "testpw-admin-9x"; q(e, "#f-save").click();   // 로그인 중인 관리자와 동일 암호
       ok(!q(e, "#modal-overlay").classList.contains("hidden"), "중복 암호 거부");
       q(e, "#f-upw").value = "kim-pw-77"; q(e, "#f-save").click();
       const u = e.S.allUsers().find(x => x.id === "kim");
