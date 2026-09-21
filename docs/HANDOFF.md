@@ -61,11 +61,11 @@ Claude가 할 일(순서대로):
 |---|---|
 | 홈 (hub-home) | board 안전보안 현황판 (mgr) |
 | 화물 보안 (hub-sec) | scr-status 화물 보안검색 현황 (mgr) · kc-ra 상용화주·RA 관리 (hq) · scr-equip 검색장비 유지관리 (mgr) · access 보안구역 출입 관리 (mgr) |
-| 현장 안전 (hub-saf) | daily-safety 일일 안전점검 (mgr) · risk 위험성 평가 (hq) · incident 사고·아차사고 보고 (mgr) · gse 지상조업(GSE) 안전 (mgr) |
+| 안전 관리 (hub-saf) | daily-safety 일일 안전점검 (mgr) · risk 위험성 평가 (hq) · incident 사고·아차사고 보고 (mgr) · gse 지상조업(GSE) 안전 (mgr) |
 | 점검 · 교육 (hub-aud) | inspection 안전보안 점검 일정 (mgr) · car 시정조치 CAR (hq) · training 안전보안 교육 관리 (mgr) · certs 이수증 관리 (mgr) |
-| 협력 · 연락 (hub-ops) | partners 조업사·협력사 현황 (mgr) · contracts 계약서 관리 (hq) |
+| 협력 · 비상 (hub-ops) | partners 조업사·협력사 현황 (mgr) · contracts 계약서 관리 (hq) |
 
-권장 개발 순서(DESIGN.md §9-6): ① car · inspection · training · certs → ② scr-equip · access · contracts → ③ 현장 안전 4종 → ④ scr-status · kc-ra · partners → ⑤ board.
+권장 개발 순서(DESIGN.md §9-6): ① car · inspection · training · certs → ② scr-equip · access · contracts → ③ 안전 관리 4종 → ④ scr-status · kc-ra · partners → ⑤ board.
 
 SeMIS v2에 같은 성격의 모듈이 있으면 이식한다(v2 저장소: Mac `~/SeMIS_v2`, 연결 폴더라 `device_bash`로 바로 읽기 가능).
 v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js · equipment.js · passes.js 등.
