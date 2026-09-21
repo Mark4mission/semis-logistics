@@ -132,9 +132,10 @@ function makeFetchStub(server) {
     });
 
     /* ══════════ [C] 코어 — 메뉴 시드·정규화 ══════════ */
-    t("C08 메뉴 시드: 그룹 8개 · 예정 모듈 15개 이상 · 링크 5개", () => {
+    t("C08 메뉴 시드: 허브 6개(hub-*) · 예정 모듈 15개 이상 · 링크 5개", () => {
       const m = e.S.data.menus;
-      eq(m.filter(x => x.type === "group").length, 8);
+      eq(m.filter(x => x.type === "group").map(x => x.id).join(","), "hub-home,hub-sec,hub-saf,hub-aud,hub-ops,hub-doc");
+      ok(m.filter(x => x.type === "group").every(g => e.S.ICONS[g.ico]), "허브 아이콘");
       ok(m.filter(x => x.type === "module" && x.planned).length >= 15, "planned");
       eq(m.filter(x => x.type === "link").length, 5);
     });
@@ -236,11 +237,12 @@ function makeFetchStub(server) {
       go(e, "schedule");
       ok(q(e, "#view").textContent.includes("대시보드"));
     });
-    t("C23 user: 대시보드 경량 — 공지·현황·바로가기, 로드맵/일정 카드 없음", () => {
+    t("C23 user: 대시보드 경량 — 공지·무재해·보안등급, 구축 현황/일정/편집 버튼 없음", () => {
       go(e, "dashboard");
       const tx = q(e, "#view").textContent;
-      ok(tx.includes("공지사항")); ok(tx.includes("안전보안 현황")); ok(tx.includes("바로가기"));
-      ok(!tx.includes("모듈 구축 로드맵")); ok(!tx.includes("다가오는 일정"));
+      ok(tx.includes("공지사항")); ok(tx.includes("무재해 경과일")); ok(tx.includes("국가 항공보안등급"));
+      ok(!tx.includes("모듈 구축 현황")); ok(!tx.includes("다가오는 일정"));
+      ok(!q(e, "#btn-edit-level") && !q(e, "#btn-add-notice"), "편집 버튼 없음");
     });
     t("C24 canSee/canEdit 등급표", () => {
       loginAs(e, "manager");
@@ -328,15 +330,22 @@ function makeFetchStub(server) {
     const e = makeEnv();
     loginAs(e, "hq");
     go(e, "dashboard");
-    t("D01 hq 대시보드: 요약 스트립 타일 5개(무재해·7일 일정·미완료·경과·등급)", () => {
-      const tiles = qa(e, ".ds-brief .ds-stat");
-      eq(tiles.length, 5);
-      ok(tiles[0].textContent.includes("무재해"));
-      ok(tiles[4].textContent.includes("평시"));
+    t("D01 hq 대시보드: 화물 태그 카드(무재해·보안등급) · 7일 일정 · 미완료/기한 경과 수치", () => {
+      ok(q(e, ".ticket .zero-n"), "무재해");
+      eq(q(e, ".ticket .tk-level").textContent, "평시");
+      eq(q(e, ".lv-bars i.on") && qa(e, ".lv-bars i").indexOf(q(e, ".lv-bars i.on")), 0, "5단계 눈금");
+      eq(q(e, "#dash-soon").textContent, "0");
+      eq(q(e, "#dash-open-n").textContent, "0"); eq(q(e, "#dash-late-n").textContent, "0");
+      ok(q(e, ".page-head #btn-add-notice") && q(e, "#btn-edit-level") && q(e, "#btn-edit-zero"), "hq 편집 버튼");
     });
-    t("D02 로드맵 카드에 예정 모듈 나열", () => {
-      ok(q(e, "#view").textContent.includes("모듈 구축 로드맵"));
-      ok(qa(e, ".ds-rows .ds-row[data-dash-go]").length >= 15);
+    t("D02 모듈 구축 현황: 허브별 운영/전체 (예정 모듈 포함, 숨김 제외)", () => {
+      ok(q(e, "#view").textContent.includes("모듈 구축 현황"));
+      const rows = qa(e, "#dash-build .build-row");
+      ok(rows.length >= 6, "허브 6 + 관리");
+      const sec = rows.find(r => r.dataset.dashHub === "hub-sec");
+      eq(sec.querySelector(".br-n").textContent, "0/4");
+      const home = rows.find(r => r.dataset.dashHub === "hub-home");
+      eq(home.querySelector(".br-n").textContent, "3/4", "대시보드·일정·회의록 운영 / 현황판 예정");
     });
     t("D03 무재해 기준일 설정 → D+ 계산", () => {
       q(e, "#btn-edit-zero").click();
@@ -346,7 +355,7 @@ function makeFetchStub(server) {
       eq(e.S.data.safetyBoard.since, since);
       eq(e.w.SemisDashFx.zeroDays(), 10);
       ok(q(e, ".zero-n").textContent === "D+10");
-      ok(q(e, ".ds-brief .ds-stat b").textContent === "D+10");
+      ok(q(e, ".ticket .tk-sub").textContent.includes("테스트"));
     });
     t("D04 무재해 기준일 미래 → 거부", () => {
       q(e, "#btn-edit-zero").click();
@@ -378,7 +387,11 @@ function makeFetchStub(server) {
       q(e, "#f-save").click();
       eq(e.S.secCurrent().level, "주의");
       eq(q(e, "#sec-level-badge").dataset.level, "주의");
-      ok(qa(e, ".ds-brief .ds-stat")[4].textContent.includes("주의"));
+      eq(q(e, ".ticket .tk-level").textContent, "주의");
+      eq(q(e, ".ticket .tk-level").dataset.tone, "warn");
+      q(e, "#btn-level-hist").click();
+      ok(q(e, "#level-box").textContent.includes("테스트"), "변경 이력 모달");
+      e.S.closeModal();
     });
     t("D08 회의 결정사항 미완료 → 대시보드 카드·타일", () => {
       e.S.data.minutes.push({ id: "m1", title: "제1차 정례회의", date: "2026-09-01", folder: "mf-part", status: "final",
@@ -387,9 +400,8 @@ function makeFetchStub(server) {
       const acts = e.w.SemisDashFx.openActions();
       eq(acts.length, 1); eq(acts[0].task, "지게차 점검표 개정");
       ok(q(e, "#actions-box").textContent.includes("지게차 점검표 개정"));
-      const tiles = qa(e, ".ds-brief .ds-stat");
-      eq(tiles[2].querySelector("b").textContent, "1");
-      eq(tiles[3].querySelector("b").textContent, "1", "기한 경과");
+      eq(q(e, "#dash-open-n").textContent, "1");
+      eq(q(e, "#dash-late-n").textContent, "1", "기한 경과");
     });
     t("D09 jsdom 오류 없음(대시보드 블록)", () => eq(e.errors.length, 0, e.errors.join(" | ")));
   }
@@ -405,7 +417,7 @@ function makeFetchStub(server) {
     });
     t("S02 링크 메뉴 추가(그룹 소속·바로가기)", () => {
       q(e, "#btn-add-menu").click();
-      const grp = e.S.data.menus.find(m => m.id === "grp-ref");
+      const grp = e.S.data.menus.find(m => m.id === "hub-doc");
       q(e, "#f-label").value = "화물 보안 구글시트"; q(e, "#f-url").value = "https://docs.google.com/x";
       q(e, "#f-parent").value = grp.id; q(e, "#f-quick").checked = true;
       q(e, "#f-save").click();
@@ -434,17 +446,18 @@ function makeFetchStub(server) {
       go(e, "settings");
     });
     t("S05 메뉴 순서 이동(▲▼)", () => {
-      const grp = e.S.data.menus.find(m => m.id === "grp-cargo");
+      const grp = e.S.data.menus.find(m => m.id === "hub-sec");
       const kids = () => e.S.sortedMenus().filter(m => m.parent === grp.id).map(m => m.id);
       const before = kids();
       q(e, `#menu-tree [data-down="${before[0]}"]`).click();
       const after = kids();
       eq(after[1], before[0]); eq(after[0], before[1]);
     });
-    t("S06 그룹 삭제 → 하위 함께 삭제", () => {
-      const grp = e.S.data.menus.find(m => m.id === "grp-partner");
+    t("S06 허브 삭제 → 하위 함께 삭제 · 레일에서 제거", () => {
+      const grp = e.S.data.menus.find(m => m.id === "hub-saf");
       q(e, `#menu-tree [data-del="${grp.id}"]`).click(); clickOk(e);
       ok(!e.S.data.menus.some(m => m.id === grp.id || m.parent === grp.id));
+      ok(!q(e, '#rail-hubs [data-hub="hub-saf"]'), "레일 제거");
     });
     t("S07 dashboard/settings 삭제 버튼 없음", () => {
       ok(!q(e, '#menu-tree [data-del="dashboard"]')); ok(!q(e, '#menu-tree [data-del="settings"]'));
@@ -496,7 +509,8 @@ function makeFetchStub(server) {
       ok(child, "하위 메뉴");
       grp2.hidden = true; e.S.saveSilent(); e.S.renderNav();
       eq(e.S.menuHidden(child), true, "하위 메뉴도 숨김 판정");
-      ok(!qa(e, "#nav-menu .nav-group-label").some(x => x.textContent.includes(grp2.label)), "그룹 자체 제거");
+      ok(!q(e, `#rail-hubs [data-hub="${grp2.id}"]`), "레일에서 허브 제거");
+      ok(!q(e, `#nav-menu .hub[data-hub="${grp2.id}"]`), "패널 섹션 제거");
       delete grp2.hidden; e.S.saveSilent(); e.S.renderNav();
     });
     t("S07e 대시보드·시스템 설정은 숨길 수 없음(버튼 없음 · 플래그 정규화)", () => {
@@ -629,10 +643,10 @@ function makeFetchStub(server) {
     t("S10 데이터 탭: 백업 JSON · 메뉴 재설정", () => {
       qa(e, ".tab").find(x => x.dataset.tab === "data").click();
       ok(q(e, "#view").textContent.includes("semis_logi_store"));
-      e.S.data.menus = e.S.data.menus.filter(m => m.id !== "grp-rule" && m.parent !== "grp-rule");
+      e.S.data.menus = e.S.data.menus.filter(m => m.id !== "hub-doc" && m.parent !== "hub-doc");
       e.S.saveSilent();
       q(e, "#btn-reset-menu").click(); clickOk(e);
-      ok(e.S.data.menus.some(m => m.id === "grp-rule"));
+      ok(e.S.data.menus.some(m => m.id === "hub-doc"));
     });
     t("S10b 데이터 탭: 변경 이력(서버 자동 백업) 복원 카드", () => {
       qa(e, ".tab").find(x => x.dataset.tab === "data").click();
@@ -674,8 +688,7 @@ function makeFetchStub(server) {
       e.S.saveSilent();
       go(e, "dashboard");
       ok(q(e, "#upcoming-box").textContent.includes("지게차 안전점검"));
-      ok(q(e, ".ds-brief").textContent.includes("7일 내 일정"));
-      eq(qa(e, ".ds-brief .ds-stat")[1].querySelector("b").textContent, "1");
+      eq(q(e, "#dash-soon").textContent, "1");
     });
     t("M02 회의록 게시판 렌더 · 폴더 시드(화물팀 구성)", () => {
       go(e, "minutes");
@@ -793,6 +806,204 @@ function makeFetchStub(server) {
     t("M07 jsdom 오류 없음(모듈 블록)", () => eq(e.errors.length, 0, e.errors.join(" | ")));
   }
 
+  /* ══════════ [H] 허브 내비게이션 (v1.8) — 마이그레이션 · 레일 · 패널 · 모바일 탭/시트 · 화면 키트 ══════════ */
+  {
+    /* v1.7 이하 메뉴 구조(그룹 8개) 픽스처 */
+    const OLD = () => {
+      const g = (id, label, seq, extra) => Object.assign({ id, seq, type: "group", label }, extra || {});
+      const m = (id, module, parent, seq, extra) => Object.assign({ id, seq, type: "module", label: id, icon: "▪", module, vis: "mgr", parent }, extra || {});
+      return [
+        m("dashboard", "dashboard", null, 0, { vis: "all" }), m("schedule", "schedule", null, 1), m("minutes", "minutes", null, 2),
+        m("board", "board", null, 3, { planned: true, desc: "현황판 설명 열 글자 이상", hidden: true }),
+        g("grp-rule", "규정 / 기준", 4), m("reg-sec", "reg-sec", "grp-rule", 5, { hidden: true }), m("reg-safety", "reg-safety", "grp-rule", 6), m("reg-dg", "reg-dg", "grp-rule", 7),
+        g("grp-cargo", "화물 보안", 8), m("scr-status", "scr-status", "grp-cargo", 9, { planned: true, desc: "x".repeat(12) }),
+        g("grp-safety", "안전 관리", 10), m("risk", "risk", "grp-safety", 11, { planned: true, desc: "x".repeat(12) }),
+        g("grp-inspect", "점검", 12), m("car", "car", "grp-inspect", 13, { planned: true, desc: "x".repeat(12) }),
+        g("grp-edu", "교육", 14), m("training", "training", "grp-edu", 15, { planned: true, desc: "x".repeat(12) }),
+        g("grp-partner", "협력사", 16), m("partners", "partners", "grp-partner", 17, { planned: true, desc: "x".repeat(12) }),
+        g("grp-emergency", "비상", 18), m("contacts", "contacts", "grp-emergency", 19, { quick: true }),
+        g("grp-ref", "참고", 20, { hidden: true }),
+        { id: "ref-semis", seq: 21, type: "link", label: "SeMIS v2", icon: "🛡️", url: "https://semis.pe.kr/", vis: "all", parent: "grp-ref", quick: true },
+        { id: "my-sheet", seq: 22, type: "link", label: "내 시트", icon: "🔗", url: "https://docs.google.com/y", vis: "all", parent: "grp-ref" },
+        { id: "top-link", seq: 23, type: "link", label: "최상위 링크", icon: "🔗", url: "https://example.com/", vis: "all", parent: null },
+        m("vault", "vault", null, 24, { vis: "hq" }), m("settings", "settings", null, 25, { vis: "admin" })
+      ];
+    };
+    const eM = makeEnv({ preData: { version: 1, menus: OLD() } });
+    const mn = (id) => eM.S.data.menus.find(x => x.id === id);
+    t("H01 v1.7 메뉴 → 허브 구조 마이그레이션 (그룹 8개 → 허브 6개, 소속 재배치)", () => {
+      const groups = eM.S.data.menus.filter(x => x.type === "group").map(x => x.id);
+      eq(groups.join(","), "hub-home,hub-sec,hub-saf,hub-aud,hub-ops,hub-doc");
+      eq(mn("schedule").parent, "hub-home"); eq(mn("board").parent, "hub-home");
+      eq(mn("reg-safety").parent, "hub-doc"); eq(mn("scr-status").parent, "hub-sec"); eq(mn("risk").parent, "hub-saf");
+      eq(mn("car").parent, "hub-aud"); eq(mn("training").parent, "hub-aud");
+      eq(mn("partners").parent, "hub-ops"); eq(mn("contacts").parent, "hub-ops");
+      eq(mn("my-sheet").parent, "hub-doc", "운영자가 만든 링크도 이동");
+      eq(mn("top-link").parent, "hub-home", "최상위 사용자 항목은 홈 허브로");
+      ["dashboard", "vault", "settings"].forEach(id => eq(mn(id).parent, null, id + " 최상위 유지"));
+    });
+    t("H02 마이그레이션: 숨김·바로가기 보존, 숨긴 구버전 그룹의 하위는 개별 숨김으로", () => {
+      eq(mn("board").hidden, true); eq(mn("reg-sec").hidden, true);
+      eq(mn("ref-semis").hidden, true); eq(mn("my-sheet").hidden, true);
+      eq(mn("contacts").quick, true);
+      ok(!mn("reg-safety").hidden);
+    });
+    t("H03 마이그레이션 멱등 · 허브 순서(seq) = 시드 순서", () => {
+      eq(eM.S.normalizeData(), false);
+      const seqOf = (id) => mn(id).seq;
+      ok(seqOf("dashboard") < seqOf("hub-home") && seqOf("hub-home") < seqOf("schedule") && seqOf("schedule") < seqOf("hub-sec"));
+      ok(seqOf("hub-doc") < seqOf("reg-safety") && seqOf("my-sheet") > seqOf("ref-semis"), "사용자 항목은 허브 끝");
+      ok(seqOf("settings") > seqOf("vault"));
+    });
+
+    const e = makeEnv();
+    loginAs(e, "admin");
+    go(e, "dashboard");
+    t("H04 레일: 허브 6개 + 하단 유틸리티(암호 관리·시스템 설정) · 선 아이콘", () => {
+      eq(qa(e, "#rail-hubs .rail-btn").map(b => b.dataset.hub).join(","), "hub-home,hub-sec,hub-saf,hub-aud,hub-ops,hub-doc");
+      ok(qa(e, "#rail-hubs .rail-btn svg").length === 6);
+      eq(qa(e, "#rail-util .rail-btn").map(b => b.dataset.route).join(","), "vault,settings");
+      eq(q(e, '#rail-hubs [data-hub="hub-aud"] span').textContent, "점검교육", "레일 짧은 이름");
+    });
+    t("H05 허브 패널: 현재 허브만 표시(.on) · 대시보드는 홈 허브 첫 항목 · 이동 시 허브 자동 전환 · 경로 표시", () => {
+      eq(qa(e, "#nav-menu .hub.on").length, 1);
+      eq(q(e, "#nav-menu .hub.on").dataset.hub, "hub-home");
+      eq(q(e, '#nav-menu .hub[data-hub="hub-home"] .hub-items .nav-item').dataset.route, "dashboard");
+      q(e, '#rail-hubs [data-hub="hub-sec"]').click();
+      eq(q(e, "#nav-menu .hub.on").dataset.hub, "hub-sec");
+      eq(q(e, '#rail-hubs [data-hub="hub-sec"]').getAttribute("aria-pressed"), "true");
+      go(e, "reg-safety");
+      eq(q(e, "#nav-menu .hub.on").dataset.hub, "hub-doc");
+      ok(q(e, "#crumbs").textContent.includes("규정 · 자료") && q(e, "#crumbs").textContent.includes("안전관리 규정"));
+      ok(q(e, '#nav-menu [data-route="reg-safety"]').classList.contains("active"));
+      go(e, "settings");
+      ok(q(e, '#rail-util [data-route="settings"]').classList.contains("active"));
+      ok(q(e, "#crumbs").textContent.includes("관리"));
+    });
+    t("H06 준비 중 블록: 운영 메뉴 없는 허브는 펼침 · 토글 상태는 계정별 저장", () => {
+      const blk = () => q(e, '#nav-menu .hub[data-hub="hub-sec"] .hub-planned');
+      ok(blk().classList.contains("open"), "화물 보안 — 기본 펼침");
+      ok(!q(e, '#nav-menu .hub[data-hub="hub-ops"] .hub-planned').classList.contains("open"), "협력·비상 — 운영 메뉴 있어 기본 접힘");
+      q(e, '[data-toggle-planned="hub-sec"]').click();
+      ok(!blk().classList.contains("open"));
+      e.S.renderNav();
+      ok(!blk().classList.contains("open"), "재렌더 후 유지");
+      q(e, '[data-toggle-planned="hub-sec"]').click();
+    });
+    t("H07 모듈 등록 → 준비 중 블록에서 운영 목록으로 · 구축 현황 증가", () => {
+      e.S.registerModule("kc-ra", { title: "RA", render(root) { root.innerHTML = e.S.ui.head({ title: "상용화주 · RA 관리" }); } });
+      e.S.renderNav(); go(e, "dashboard");
+      ok(q(e, '#nav-menu .hub[data-hub="hub-sec"] .hub-items [data-route="kc-ra"]'), "운영 목록");
+      ok(!q(e, '#nav-menu .hub[data-hub="hub-sec"] .planned-list [data-route="kc-ra"]'), "준비 중에서 제거");
+      const sec = qa(e, "#dash-build .build-row").find(r => r.dataset.dashHub === "hub-sec");
+      eq(sec.querySelector(".br-n").textContent, "1/4");
+      go(e, "kc-ra");
+      ok(q(e, "#view .page-head [data-print-btn]"), "키트 머리말에 인쇄 버튼 자동 부착");
+    });
+    t("H08 navBadge: 규정 건수가 메뉴 옆에 표시", () => {
+      e.S.data.regulations = [{ id: "r1", scope: "safety", title: "a", ideas: [] }, { id: "r2", scope: "safety", title: "b", ideas: [] }];
+      e.S.saveSilent(); e.S.renderNav();
+      eq(q(e, '#nav-menu [data-route="reg-safety"] .nav-meta').textContent, "2");
+      ok(!q(e, '#nav-menu [data-route="reg-dg"] .nav-meta'), "0건은 표시 안 함");
+      e.S.data.regulations = []; e.S.saveSilent(); e.S.renderNav();
+    });
+    t("H09 고정한 메뉴(홈 허브) = quick 항목 · 다른 허브 소속만", () => {
+      const pins = qa(e, '#nav-menu .hub[data-hub="hub-home"] .nav-pin').map(x => x.textContent);
+      ok(pins.some(x => x.includes("비상연락망")), "연락망");
+      ok(pins.some(x => x.includes("SeMIS v2")), "링크");
+    });
+    t("H10 모바일 하단 탭: 권한에 맞춰 표시 · 규정 탭은 허브 첫 운영 모듈 · 전체 → 시트", () => {
+      eq(qa(e, "#tabbar .tab-btn[data-route]").map(b => b.dataset.route).join(","), "dashboard,schedule,contacts,reg-sec");
+      ok(q(e, "#tabbar .tab-all"));
+      q(e, "#tabbar .tab-all").click();
+      ok(q(e, "#app").classList.contains("sheet-open"));
+      ok(q(e, "#sidebar-backdrop").classList.contains("show"));
+      go(e, "schedule");
+      ok(!q(e, "#app").classList.contains("sheet-open"), "이동 시 닫힘");
+      ok(q(e, '#tabbar [data-route="schedule"]').classList.contains("active"));
+      const e2 = makeEnv(); loginAs(e2, "user");
+      eq(qa(e2, "#tabbar .tab-btn[data-route]").map(b => b.dataset.route).join(","), "dashboard", "일반사용자");
+    });
+    t("H11 패널 접기(데스크톱) · 태블릿 떠 있는 패널", () => {
+      Object.defineProperty(e.w, "innerWidth", { value: 1440, configurable: true });
+      q(e, "#menu-toggle").click();
+      ok(q(e, "#app").classList.contains("panel-collapsed"));
+      e.S.renderNav();
+      ok(q(e, "#app").classList.contains("panel-collapsed"), "계정별 저장");
+      q(e, '#rail-hubs [data-hub="hub-doc"]').click();
+      ok(q(e, "#app").classList.contains("panel-open"), "접힌 상태에서 허브 클릭 → 떠서 열림");
+      e.S.closeOverlays();
+      q(e, "#menu-toggle").click();
+      ok(!q(e, "#app").classList.contains("panel-collapsed"));
+      Object.defineProperty(e.w, "innerWidth", { value: 1024, configurable: true });
+      q(e, '#rail-hubs [data-hub="hub-sec"]').click();
+      ok(q(e, "#app").classList.contains("panel-open"), "태블릿");
+      e.S.closeOverlays();
+    });
+    t("H12 통합 검색 팔레트: 열기 버튼 · Ctrl+K · Esc · 결과 이동", () => {
+      const box = q(e, "#cmdk");
+      ok(box.classList.contains("hidden"));
+      q(e, ".panel-search").click();
+      ok(!box.classList.contains("hidden"), "패널 검색 버튼");
+      q(e, "#hdr-search").dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      ok(box.classList.contains("hidden"), "Esc 닫기");
+      e.w.document.dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "k", ctrlKey: true, bubbles: true }));
+      ok(!box.classList.contains("hidden"), "Ctrl+K");
+      q(e, "#hdr-search").value = "안전관리 규정";
+      q(e, "#hdr-search").dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+    t("H13 화면 키트: ui.head · ui.stats · ui.search · ui.empty · icon", () => {
+      const h = e.S.ui.head({ title: "제목", meta: "메타", desc: "설명", actions: "<button>x</button>" });
+      ok(h.indexOf('class="page-head"') >= 0 && h.indexOf('class="page-title">제목') >= 0 && h.indexOf("page-desc") >= 0);
+      const st = e.S.ui.stats([{ label: "건수", value: 3, tone: "ok" }, { label: "지연", value: 0, tone: "bad", sub: "없음" }]);
+      ok(st.indexOf('class="stat-row"') >= 0 && st.indexOf("tone-bad") >= 0 && st.indexOf("stat-sub") >= 0);
+      ok(e.S.ui.search("q1", "검색").indexOf('id="q1"') >= 0);
+      ok(e.S.ui.empty("없음").indexOf("empty-state") >= 0);
+      ok(/^<svg class="ico"/.test(e.S.icon("scan", 18)));
+      ok(e.S.icon("no-such").indexOf("<path") > 0, "모르는 키는 기본 아이콘");
+      ok(e.S.HUB_ICONS.every(k => e.S.ICONS[k]));
+    });
+    t("H14 시스템 설정: 허브 추가(아이콘 선택) + 하위 링크 → 레일에 새 허브", () => {
+      go(e, "settings");
+      q(e, "#btn-add-menu").click();
+      q(e, "#f-type").value = "group"; q(e, "#f-type").dispatchEvent(new e.w.Event("change"));
+      q(e, "#f-label").value = "ULD 관리";
+      q(e, '#modal-box input[name="f-ico"][value="calendar"]').checked = true;
+      q(e, "#f-save").click();
+      const hub = e.S.data.menus.find(m => m.type === "group" && m.label === "ULD 관리");
+      ok(hub && hub.ico === "calendar");
+      ok(!q(e, `#rail-hubs [data-hub="${hub.id}"]`), "빈 허브는 레일에 숨김");
+      q(e, "#btn-add-menu").click();
+      q(e, "#f-label").value = "ULD 시트"; q(e, "#f-url").value = "https://docs.google.com/uld";
+      q(e, "#f-parent").value = hub.id; q(e, "#f-save").click();
+      ok(q(e, `#rail-hubs [data-hub="${hub.id}"]`), "하위가 생기면 레일에 표시");
+    });
+    t("H15 vendor·signer: 레일 허브 숨김(nav-lite)", () => {
+      const e3 = makeEnv();
+      e3.S.data.customUsers.push({ id: "vend2", name: "협력", role: "vendor", vendor: "○○", hash: e3.S.pwHash("vend-pw-2") });
+      e3.S.saveSilent(); submitLogin(e3, "vend-pw-2");
+      ok(q(e3, "#app").classList.contains("nav-lite"));
+      eq(qa(e3, "#rail-hubs .rail-btn").length, 0);
+      eq(qa(e3, "#tabbar .tab-btn[data-route]").map(b => b.dataset.route).join(","), "dashboard");
+    });
+    t("H17 모듈 템플릿(docs/module-template.js)이 그대로 동작 — 예정→운영 승격 · 키트 화면 · 인쇄 · 배지 · 검색", () => {
+      const e4 = makeEnv();
+      loginAs(e4, "hq");
+      e4.S.data.cars = [{ id: "c1", no: "26-ICN-01", title: "지게차 통로 표시 미흡", due: "2026-01-01", status: "open" }];
+      e4.S.saveSilent();
+      e4.w.eval(read("docs/module-template.js"));
+      e4.S.renderNav(); go(e4, "car");
+      ok(q(e4, "#view .page-head .page-title").textContent === "시정조치 (CAR)");
+      ok(q(e4, "#view .stat-row .stat.tone-bad"), "기한 경과 강조");
+      ok(q(e4, "#view .page-head [data-print-btn]"), "인쇄 버튼");
+      ok(q(e4, '#nav-menu .hub[data-hub="hub-aud"] .hub-items [data-route="car"] .nav-meta'), "운영 목록 + 배지");
+      eq(q(e4, '#nav-menu [data-route="car"] .nav-meta').textContent, "1");
+      ok(e4.w.SemisSearch.search("지게차 통로").some(h => h.route === "car"), "검색 프로바이더");
+      eq(e4.errors.length, 0, e4.errors.join(" | "));
+    });
+    t("H16 jsdom 오류 없음(허브 블록)", () => eq(e.errors.length, 0, e.errors.join(" | ")));
+  }
+
   /* ══════════ [P] A4 인쇄 버튼 (모든 화면 공통 규칙) ══════════ */
   {
     const e = makeEnv();
@@ -811,7 +1022,7 @@ function makeFetchStub(server) {
     });
     t("P02 인쇄 버튼은 화면 머리말(.ds-head/.page-head) 안에 위치", () => {
       go(e, "dashboard");
-      ok(q(e, ".ds-head [data-print-btn]"));
+      ok(q(e, ".page-head [data-print-btn]"));
       go(e, "contacts");
       ok(q(e, ".page-head [data-print-btn]"));
     });
@@ -1350,7 +1561,7 @@ function makeFetchStub(server) {
     t("W06 CSS: 팔레트 토큰(틸 primary·페트롤 사이드바) · 예정 태그 스타일", () => {
       const c = read("css/main.css");
       ok(c.indexOf("--primary: #0f766e") > 0); ok(c.indexOf("--sidebar-bg: #0b1f26") > 0);
-      ok(c.indexOf(".nav-tag") > 0); ok(c.indexOf(".zero-box") > 0);
+      ok(c.indexOf(".nav-tag") > 0); ok(c.indexOf(".ticket") > 0); ok(c.indexOf(".rail") > 0); ok(c.indexOf(".tabbar") > 0);
       ok(c.indexOf("#1d4ed8") < 0, "v2 블루 잔재");
     });
   }

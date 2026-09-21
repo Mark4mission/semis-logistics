@@ -10,16 +10,17 @@
   const todayISO = () => new Date().toISOString().slice(0, 10);
   const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
-  /* ════════════════ 대시보드 ════════════════ */
-  /* 카드별 표시 권한 — 새 카드를 추가할 때는 반드시 여기에 등록하고 vis를 지정할 것.
+  /* ════════════════ 대시보드 (v1.8 — Terminal Calm) ════════════════
+     구성: 머리말(빠른 실행) · 화물 태그 카드(무재해 경과일 + 국가 항공보안등급) · 다가오는 일정
+           · 하단 시트(공지사항 | 회의 결정사항 | 모듈 구축 현황)
+     카드별 표시 권한 — 새 카드를 추가할 때는 반드시 여기에 등록하고 vis를 지정할 것.
      vis: "all" | "mgr"(관리자 이상) | "hq"(안전보안파트 이상) | "adm" */
   const DASH_CARDS = {
-    notice:   "all",  // 📢 공지사항
-    status:   "all",  // 🛡️ 안전보안 현황 (무재해 경과일 · 보안등급)
-    quick:    "all",  // ⚡ 바로가기
-    upcoming: "mgr",  // 📅 다가오는 일정
-    actions:  "mgr",  // ✅ 회의 결정사항 (미완료)
-    roadmap:  "hq"    // 🧩 모듈 구축 로드맵 (예정 모듈)
+    status:   "all",  // 무재해 경과일 · 보안등급 (화물 태그 카드)
+    notice:   "all",  // 공지사항
+    upcoming: "mgr",  // 다가오는 일정
+    actions:  "mgr",  // 회의 결정사항 (미완료 · 기한 경과)
+    build:    "hq"    // 모듈 구축 현황 (허브별 운영/전체)
   };
   const cardVis = (id) => {
     const v = DASH_CARDS[id] || "all";
@@ -27,6 +28,10 @@
     return v === "all" || (v === "mgr" && r >= 2) || (v === "hq" && r >= 3) || (v === "adm" && r >= 4);
   };
   window.SemisDash = { DASH_CARDS, cardVis };
+  const ico = (n, z) => SeMIS.icon(n, z);
+  const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
+  const md = (iso) => String(iso || "").slice(5).replace("-", ".");
+  const dotDate = (iso) => String(iso || "").replace(/-/g, ".");
 
   /* 무재해 경과일 — safetyBoard.since(기준일) 로부터 오늘까지 */
   function zeroDays() {
@@ -52,28 +57,100 @@
       return String(a.due || "9999").localeCompare(String(b.due || "9999"));
     });
   }
+  /* 다가오는 일정 (반복 일정은 다음 회차) */
+  function upcomingList() {
+    const out = [];
+    (D().schedules || []).forEach(s => {
+      if (window.SemisCalendar && SemisCalendar.canSeePriv && !SemisCalendar.canSeePriv(s)) return;
+      const rep = s.repeat && s.repeat.freq && s.repeat.freq !== "none";
+      if (rep && window.SemisCalendar) {
+        const open = SemisCalendar.nextOpenOccurrence ? SemisCalendar.nextOpenOccurrence(s, todayISO()) : null;
+        const occ = open || SemisCalendar.nextOccurrence(s, todayISO());
+        if (occ) out.push(Object.assign({}, s, {
+          start: occ.start, end: occ.end,
+          done: SemisCalendar.occDone ? SemisCalendar.occDone(s, occ.start) : !!s.done
+        }));
+      } else if ((s.end || s.start) >= todayISO()) out.push(s);
+    });
+    return out.sort((a, b) => String(a.start).localeCompare(String(b.start)));
+  }
+  /* 허브별 모듈 구축 현황 — 화면에 보이는 모듈 메뉴 기준 (운영 = 모듈 js 등록 완료) */
+  function buildStatus() {
+    const rows = SeMIS.hubList().map(g => {
+      const mods = SeMIS.hubEntries(g.id).filter(m => m.type === "module");
+      const live = mods.filter(m => SeMIS.hasModule(m.module) || !m.planned).length;
+      return { id: g.id, label: g.label, ico: g.ico, live, total: mods.length };
+    }).filter(r => r.total);
+    const utilMods = SeMIS.utilEntries().filter(m => m.type === "module");
+    if (utilMods.length) rows.push({ id: "", label: "관리", ico: "sliders",
+      live: utilMods.filter(m => SeMIS.hasModule(m.module) || !m.planned).length, total: utilMods.length });
+    return rows;
+  }
+  const LV_TONE = { "평시": "ok", "관심": "info", "주의": "warn", "경계": "high", "심각": "crit" };
+  const lvColor = (l) => ({ "평시": "badge-green", "관심": "badge-blue", "주의": "badge-amber",
+    "경계": "badge-orange", "심각": "badge-red" }[l] || "badge-gray");
+  const lvRange = (e2) => {
+    if (!e2.date) return "";
+    if (!e2.end) return e2.date + " ~";
+    const sameYear = e2.end.slice(0, 4) === e2.date.slice(0, 4);
+    return e2.date + " ~ " + (sameYear ? e2.end.slice(5) : e2.end);
+  };
 
-  /* 상단 한 줄 요약 — 화면을 열자마자 "지금 챙길 것"이 먼저 보이도록 */
-  function briefStrip(d, upcoming, actions) {
-    const tiles = [];
+  function ticketHTML(canWrite) {
+    const d = D();
     const z = zeroDays();
-    tiles.push({ n: z === null ? "-" : "D+" + z, label: "무재해 경과일", tone: z === null ? "tone-gray" : "tone-green", go: "dashboard" });
-    const wk = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
-    const soon = (upcoming || []).filter(s => String(s.start) <= wk).length;
-    tiles.push({ n: soon, label: "7일 내 일정", tone: soon ? "tone-blue" : "tone-gray", go: "schedule" });
-    if (SeMIS.roleRank() >= 2) {
-      const t = todayISO();
-      const late = actions.filter(a => a.due && a.due < t).length;
-      tiles.push({ n: actions.length, label: "미완료 결정사항", tone: actions.length ? "tone-blue" : "tone-gray", go: "minutes" });
-      tiles.push({ n: late, label: "기한 경과 조치", tone: late ? "tone-red" : "tone-gray", go: "minutes" });
-    }
     const cur = SeMIS.secCurrent();
-    tiles.push({ n: cur.level, label: "국가 항공보안등급", tone: cur.level === "평시" ? "tone-green" : "tone-amber", go: "dashboard" });
-    return `<div class="ds-panel ds-panel-tint ds-brief">
-      <div class="ds-stats">${tiles.map(t =>
-        `<div class="ds-stat ${t.tone} ds-stat-go" data-dash-go="${esc(t.go)}" title="클릭하여 이동">
-          <b>${esc(String(t.n))}</b><span>${esc(t.label)}</span></div>`).join("")}</div>
-    </div>`;
+    const nxt = SeMIS.secNext();
+    const li = SeMIS.SEC_LEVELS.indexOf(cur.level);
+    return `<section class="ticket${z === null ? " no-zero" : ""}" aria-label="안전보안 현황">
+      <div class="tk-main">
+        <div class="tk-top"><span class="tk-label">무재해 경과일</span><span class="tk-code">ICNKF</span></div>
+        <div class="zero-n">${z === null ? "—" : "D+" + z}</div>
+        <div class="tk-foot">
+          <span class="tk-sub">${z === null ? "기준일이 설정되지 않았습니다" : esc(dotDate(d.safetyBoard.since)) + (d.safetyBoard.note ? " · " + esc(d.safetyBoard.note) : "") + " 기준"}</span>
+          ${canWrite ? '<button type="button" class="tk-btn" id="btn-edit-zero">기준일 설정</button>' : ""}
+        </div>
+      </div>
+      <div class="tk-perf" aria-hidden="true"></div>
+      <div class="tk-side">
+        <span class="tk-label">국가 항공보안등급</span>
+        <div class="tk-level-wrap">
+          <div class="tk-level" data-tone="${esc(LV_TONE[cur.level] || "info")}">${esc(cur.level)}</div>
+          <div class="tk-sub">${cur.date ? esc(dotDate(cur.date)) + (cur.end ? " ~ " + esc(dotDate(cur.end)) : " 부터") : ""}</div>
+          ${nxt ? `<div class="tk-next">${esc(dotDate(nxt.date))}부터 <b>${esc(nxt.level)}</b> 예약</div>` : ""}
+        </div>
+        <div class="lv-scale" aria-label="5단계 중 ${li + 1}단계">
+          <div class="lv-bars">${SeMIS.SEC_LEVELS.map((l, i) => `<i class="${i === li ? "on" : ""}" data-tone="${esc(LV_TONE[l])}"></i>`).join("")}</div>
+          <div class="lv-names">${SeMIS.SEC_LEVELS.map((l, i) => `<span class="${i === li ? "on" : ""}">${esc(l)}</span>`).join("")}</div>
+        </div>
+        <div class="tk-acts">
+          ${SeMIS.roleRank() >= 2 ? '<button type="button" class="tk-btn" id="btn-level-hist">변경 이력</button>' : ""}
+          ${canWrite ? '<button type="button" class="tk-btn" id="btn-edit-level">등급 변경</button>' : ""}
+        </div>
+      </div>
+    </section>`;
+  }
+
+  function levelHistModal() {
+    const canWrite = SeMIS.canEdit();
+    const hist = SeMIS.levelSorted().slice().reverse();
+    openModal(`
+      <h3>국가 항공보안등급 변경 이력</h3>
+      <div class="lv-hist" id="level-box">
+        ${hist.map(e => `<div class="lv-row${e.end && e.end < todayISO() ? " expired" : ""}">
+          <span class="lv-range">${esc(lvRange(e))}</span>
+          <span class="badge ${lvColor(e.level)} lv-badge">${esc(e.level)}</span>
+          <span class="lv-note">${esc(e.note || "")}</span>
+          ${canWrite && hist.length > 1 ? `<button class="mt-btn danger" data-lvdel="${esc(e.id)}" title="삭제" aria-label="삭제">${ico("x", 16)}</button>` : "<span></span>"}
+        </div>`).join("")}
+      </div>
+      <div class="modal-actions"><button class="btn btn-ghost" id="f-cancel">닫기</button></div>`);
+    $("#f-cancel").onclick = closeModal;
+    $$("#level-box [data-lvdel]").forEach(b => b.onclick = () =>
+      confirmModal("이 등급 기록을 삭제하시겠습니까?", () => {
+        D().levelHistory = D().levelHistory.filter(x => x.id !== b.dataset.lvdel);
+        SeMIS.save(); SeMIS.renderSecBadge(); SeMIS.renderView(); toast("삭제되었습니다.");
+      }));
   }
 
   SeMIS.registerModule("dashboard", {
@@ -81,140 +158,94 @@
     render(root) {
       const d = D();
       const canWrite = SeMIS.canEdit();
+      const rank = SeMIS.roleRank();
       const notices = d.notices.slice().sort((a, b) =>
         (b.pinned - a.pinned) || String(b.created).localeCompare(String(a.created)));
-      const upcoming = [];
-      (d.schedules || []).forEach(s => {
-        if (window.SemisCalendar && SemisCalendar.canSeePriv && !SemisCalendar.canSeePriv(s)) return;
-        const rep = s.repeat && s.repeat.freq && s.repeat.freq !== "none";
-        if (rep && window.SemisCalendar) {
-          const open = SemisCalendar.nextOpenOccurrence ? SemisCalendar.nextOpenOccurrence(s, todayISO()) : null;
-          const occ = open || SemisCalendar.nextOccurrence(s, todayISO());
-          if (occ) upcoming.push(Object.assign({}, s, {
-            start: occ.start, end: occ.end,
-            done: SemisCalendar.occDone ? SemisCalendar.occDone(s, occ.start) : !!s.done
-          }));
-        } else if ((s.end || s.start) >= todayISO()) upcoming.push(s);
-      });
-      upcoming.sort((a, b) => String(a.start).localeCompare(String(b.start)));
-      upcoming.length = Math.min(upcoming.length, 6);
-      const actions = SeMIS.roleRank() >= 2 ? openActions() : [];
-      const quicks = SeMIS.sortedMenus().filter(m => (m.type === "link" || m.type === "module") && m.quick && SeMIS.navVisible(m));
-      const planned = SeMIS.sortedMenus().filter(m => m.type === "module" && m.planned && !SeMIS.hasModule(m.module) && SeMIS.navVisible(m));
-      const grpName = (id) => { const g = d.menus.find(x => x.id === id && x.type === "group"); return g ? g.label : ""; };
+      const upcoming = upcomingList();
+      const wk = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+      const soon = upcoming.filter(s => String(s.start) <= wk).length;
+      const upShow = upcoming.slice(0, 4);
+      const actions = rank >= 2 ? openActions() : [];
+      const late = actions.filter(a => a.due && a.due < todayISO()).length;
+      const now = new Date();
+      const today = todayISO();
+      const schedMenu = SeMIS.data.menus.find(m => m.type === "module" && m.module === "schedule");
+      const canSched = canWrite && SeMIS.hasModule("schedule") && schedMenu && SeMIS.navVisible(schedMenu);
+      const canMinute = window.SemisMinutes && SemisMinutes.canWrite && SemisMinutes.canWrite();
 
-      const cur = SeMIS.secCurrent();
-      const nxt = SeMIS.secNext();
-      const z = zeroDays();
-      const C = {
-        notice: cardVis("notice") ? `<div class="ds-panel">
-              <div class="ds-hd"><span class="ds-pill ds-pill-lite"><i class="em">📢</i>공지사항</span> <span class="spacer"></span>
-                ${canWrite ? '<button class="btn btn-primary btn-sm" id="btn-add-notice">+ 새 공지</button>' : ""}
-              </div>
-              <div id="notice-list"></div>
-            </div>` : "",
-        status: cardVis("status") ? `<div class="ds-panel">
-              <div class="ds-hd"><span class="ds-pill ds-pill-lite"><i class="em">🛡️</i>안전보안 현황</span> <span class="spacer"></span>
-                ${canWrite ? '<button class="btn btn-ghost btn-sm" id="btn-edit-zero" title="무재해 기준일 설정">무재해 설정</button><button class="btn btn-ghost btn-sm" id="btn-edit-level">등급 변경</button>' : ""}
-              </div>
-              <div class="zero-box${z === null ? " none" : ""}">
-                <div class="zero-n">${z === null ? "—" : "D+" + z}</div>
-                <div class="zero-l"><b>무재해 경과일</b><span>${z === null ? "기준일이 설정되지 않았습니다" : "기준일 " + esc(d.safetyBoard.since) + (d.safetyBoard.note ? " · " + esc(d.safetyBoard.note) : "")}</span></div>
-              </div>
-              <div id="level-box"></div>
-            </div>` : "",
-        quick: cardVis("quick") ? `<div class="ds-panel">
-              <div class="ds-hd"><span class="ds-pill ds-pill-lite"><i class="em">⚡</i>바로가기</span></div>
-              <div class="quick-links">
-                ${quicks.map(m => m.type === "module"
-                  ? `<a class="quick-link" href="#/${esc(m.module)}"><span>${esc(m.icon || "▪")}</span><span>${esc(m.label)}</span></a>`
-                  : m.open === "frame"
-                  ? `<a class="quick-link" href="#/embed/${esc(m.id)}"><span>${esc(m.icon || "🔗")}</span><span>${esc(m.label)}</span></a>`
-                  : `<a class="quick-link" href="${esc(m.url)}" target="_blank" rel="noopener"><span>${esc(m.icon || "🔗")}</span><span>${esc(m.label)}</span></a>`).join("") ||
-                  '<div class="empty">등록된 바로가기가 없습니다.</div>'}
-              </div>
-            </div>` : "",
-        upcoming: cardVis("upcoming") ? `<div class="ds-panel">
-              <div class="ds-hd"><span class="ds-pill ds-pill-lite"><i class="em">📅</i>다가오는 일정</span> <span class="spacer"></span>
-                <button class="btn btn-ghost btn-sm" id="btn-go-schedule">전체보기</button></div>
-              <div id="upcoming-box"></div>
-            </div>` : "",
-        actions: cardVis("actions") && window.SemisMinutes ? `<div class="ds-panel">
-              <div class="ds-hd"><span class="ds-pill ds-pill-lite"><i class="em">✅</i>회의 결정사항 · 미완료</span> <span class="spacer"></span>
-                <button class="btn btn-ghost btn-sm" id="btn-go-minutes">회의록</button></div>
-              <div id="actions-box"></div>
-            </div>` : "",
-        roadmap: cardVis("roadmap") && planned.length ? `<div class="ds-panel">
-              <div class="ds-hd"><span class="ds-pill ds-pill-lite"><i class="em">🧩</i>모듈 구축 로드맵</span> <span class="spacer"></span>
-                <span class="badge badge-amber">예정 ${planned.length}</span></div>
-              <div class="ds-rows roadmap-grid">${planned.map(m => `
-                <div class="ds-row" data-dash-go="${esc(m.module)}">
-                  <span>${esc(m.icon || "▪")}</span><span class="ds-row-t">${esc(m.label)}</span>
-                  <span class="ds-row-m">${esc(grpName(m.parent))}</span></div>`).join("")}</div>
-              <div class="form-hint" style="margin-top:8px">메뉴 구성은 시스템 설정 → 메뉴 관리에서 조정합니다.</div>
-            </div>` : ""
-      };
-      const guest = SeMIS.roleRank() < 2;
-      const colL = guest ? C.notice : C.notice + C.actions + C.roadmap;
-      const colR = guest ? C.status + C.quick : C.status + C.quick + C.upcoming;
+      const acts = [
+        canWrite ? `<button type="button" class="btn btn-soft" id="btn-add-notice">${ico("megaphone", 17)}<span>새 공지</span></button>` : "",
+        canSched ? `<button type="button" class="btn btn-soft" id="btn-add-sched">${ico("calendar", 17)}<span>일정 추가</span></button>` : "",
+        canMinute ? `<button type="button" class="btn btn-soft" id="btn-add-minute">${ico("notes", 17)}<span>회의록 작성</span></button>` : ""
+      ].join("");
+
+      const upcomingCard = cardVis("upcoming") ? `<section class="dash-card dash-up" aria-label="다가오는 일정">
+          <div class="dc-head"><h2>다가오는 일정</h2><span class="dc-meta">7일 내 <b class="mono" id="dash-soon">${soon}</b>건</span>
+            <span class="spacer"></span><button type="button" class="link-btn" id="btn-go-schedule">일정관리</button></div>
+          <div id="upcoming-box" class="up-list">${upShow.length ? upShow.map(s => {
+            const dd = new Date(s.start + "T00:00:00");
+            const isToday = s.start === today;
+            const range = s.end && s.end !== s.start ? md(s.start) + " – " + md(s.end) : "";
+            const when = [(!s.allDay && s.time) ? s.time + (s.timeEnd ? "–" + s.timeEnd : "") : "", range].filter(Boolean).join(" · ");
+            return `<div class="up-row">
+              <div class="up-date"><b class="mono">${esc(md(s.start))}</b><span class="${isToday ? "today" : ""}">${isToday ? "오늘" : (isNaN(dd) ? "" : WEEK[dd.getDay()])}</span></div>
+              <div class="up-body"><span class="up-title${s.done ? " done" : ""}">${esc(s.title)}</span>
+                ${when || s.assignee ? `<span class="up-sub">${esc([when, s.assignee].filter(Boolean).join(" · "))}</span>` : ""}</div>
+              <span class="up-dot ev-${esc(s.color || "blue")}" aria-hidden="true"></span>
+            </div>`;
+          }).join("") : '<div class="empty">예정된 일정이 없습니다.</div>'}</div>
+        </section>` : "";
+
+      const noticeCol = `<section class="sheet-col" aria-label="공지사항">
+          <div class="dc-head"><h2>공지사항</h2><span class="dc-meta mono">${notices.length}</span></div>
+          <div id="notice-list" class="notice-list"></div>
+        </section>`;
+      const actionCol = cardVis("actions") && window.SemisMinutes ? `<section class="sheet-col" aria-label="회의 결정사항">
+          <div class="dc-head"><h2>회의 결정사항</h2><span class="spacer"></span><button type="button" class="link-btn" id="btn-go-minutes">회의록</button></div>
+          <div class="dc-nums">
+            <div><span>미완료</span><b class="mono" id="dash-open-n">${actions.length}</b></div>
+            <div class="${late ? "bad" : ""}"><span>기한 경과</span><b class="mono" id="dash-late-n">${late}</b></div>
+          </div>
+          <div id="actions-box" class="act-list"></div>
+        </section>` : "";
+      const build = cardVis("build") ? buildStatus() : [];
+      const bLive = build.reduce((n, r) => n + r.live, 0), bTot = build.reduce((n, r) => n + r.total, 0);
+      const buildCol = build.length ? `<section class="sheet-col" aria-label="모듈 구축 현황">
+          <div class="dc-head"><h2>모듈 구축 현황</h2><span class="spacer"></span><span class="dc-meta mono"><b>${bLive}</b> / ${bTot}</span></div>
+          <div class="build-list" id="dash-build">${build.map(r => `
+            <button type="button" class="build-row" ${r.id ? `data-dash-hub="${esc(r.id)}"` : ""}>
+              <span class="br-l">${esc(r.label)}</span>
+              <span class="br-bar"><i style="width:${r.total ? Math.round(r.live / r.total * 100) : 0}%"></i></span>
+              <span class="br-n mono">${r.live}/${r.total}</span>
+            </button>`).join("")}</div>
+        </section>` : "";
+
+      const guest = rank < 2;
       root.innerHTML = `
-        <div class="ds-head">
-          <div class="ds-head-t"><i class="em">🏠</i>대시보드 <small>인천화물팀 안전보안파트</small></div>
+        <div class="page-head">
+          <div class="page-title">대시보드</div>
+          <span class="page-meta mono">${esc(dotDate(today))} (${WEEK[now.getDay()]})</span>
           <span class="spacer"></span>
-          <span class="ds-head-meta">${esc(fmtDate(new Date().toISOString()))}</span>
+          ${acts ? `<div class="head-acts">${acts}</div>` : ""}
         </div>
-        ${briefStrip(d, upcoming, actions)}
-        <div class="dash-grid">
-          <div class="dash-col">${colL}</div>
-          <div class="dash-col">${colR}</div>
-        </div>`;
-
-      $$("[data-dash-go]", root).forEach(el => el.onclick = () => SeMIS.navigate(el.dataset.dashGo));
-
-      // 보안등급 (5단계)
-      if ($("#level-box")) {
-        const lvColor = (l) => ({ "평시": "badge-green", "관심": "badge-blue", "주의": "badge-amber",
-          "경계": "badge-orange", "심각": "badge-red" }[l] || "badge-gray");
-        const hist = SeMIS.levelSorted().slice().reverse().slice(0, 4);
-        const lvRange = (e2) => {
-          if (!e2.date) return "";
-          if (!e2.end) return e2.date + " ~";
-          const sameYear = e2.end.slice(0, 4) === e2.date.slice(0, 4);
-          return e2.date + " ~ " + (sameYear ? e2.end.slice(5) : e2.end);
-        };
-        $("#level-box").innerHTML = `
-          <div class="lv-cur"><b>국가 항공보안등급</b> <span class="badge ${lvColor(cur.level)}">${esc(cur.level)}</span>
-            <span class="lv-cur-r">${esc(lvRange(cur))}</span></div>
-          ${cur.note ? `<p class="lv-cur-n">${esc(cur.note)}</p>` : ""}
-          ${nxt ? `<p class="lv-next">⏰ <b>변경 예약:</b> ${esc(nxt.date)}부터 <span class="badge ${lvColor(nxt.level)}">${esc(nxt.level)}</span>${nxt.end ? " (" + esc(nxt.end) + "까지)" : ""}</p>` : ""}
-          ${SeMIS.roleRank() >= 2 ? `<div class="lv-hist">
-            <div class="lv-hist-t">변경 이력</div>
-            ${hist.map(e => `<div class="lv-row${e.end && e.end < todayISO() ? " expired" : ""}">
-              <span class="lv-range">${esc(lvRange(e))}</span>
-              <span class="badge ${lvColor(e.level)} lv-badge">${esc(e.level)}</span>
-              <span class="lv-note">${esc(e.note || "")}</span>
-              ${canWrite && hist.length > 1 ? `<button class="mt-btn danger" data-lvdel="${esc(e.id)}" title="삭제">✕</button>` : "<span></span>"}
-            </div>`).join("")}
-          </div>` : ""}`;
-        $$("#level-box [data-lvdel]").forEach(b => b.onclick = () =>
-          confirmModal("이 등급 기록을 삭제하시겠습니까?", () => {
-            D().levelHistory = D().levelHistory.filter(x => x.id !== b.dataset.lvdel);
-            SeMIS.save(); SeMIS.renderSecBadge(); SeMIS.renderView(); toast("삭제되었습니다.");
-          }));
-      }
+        <div class="dash-top${guest ? " guest" : ""}">
+          ${cardVis("status") ? ticketHTML(canWrite) : ""}
+          ${guest ? `<section class="dash-card">${noticeCol}</section>` : upcomingCard}
+        </div>
+        ${guest ? "" : `<div class="dash-sheet">${noticeCol}${actionCol}${buildCol}</div>`}`;
 
       // 공지 리스트
-      if ($("#notice-list")) {
-        const nl = $("#notice-list");
+      const nl = $("#notice-list");
+      if (nl) {
         if (!notices.length) nl.innerHTML = '<div class="empty">등록된 공지가 없습니다.</div>';
         notices.forEach(n => {
           const item = document.createElement("div");
           item.className = "notice-item";
           const filesHtml = (n.files && n.files.length)
             ? `<div class="nb-files-view">${n.files.map(f =>
-                `<a class="nb-file" href="${esc(f.url)}" target="_blank" rel="noopener">📎 ${esc(f.name)}</a>`).join("")}</div>` : "";
+                `<a class="nb-file" href="${esc(f.url)}" target="_blank" rel="noopener">${ico("link", 14)} ${esc(f.name)}</a>`).join("")}</div>` : "";
           item.innerHTML = `
-            <div class="notice-title">${n.pinned ? '<span class="badge badge-red">고정</span>' : ""}${n.files && n.files.length ? "📎" : ""}<span>${esc(n.title)}</span></div>
+            <div class="notice-title">${n.pinned ? '<span class="badge badge-red">고정</span>' : ""}<span>${esc(n.title)}</span>${n.files && n.files.length ? `<span class="nt-clip" title="첨부 ${n.files.length}">${ico("link", 14)}</span>` : ""}</div>
             <div class="notice-meta">${esc(n.author)} · ${esc(fmtDate(n.created))}</div>
             <div class="notice-body">${n.bodyHtml ? `<div class="notice-html">${sanitizeHtml(n.bodyHtml)}</div>` : esc(n.body)}${filesHtml}${canWrite ? `<div class="nb-acts"><button class="btn btn-ghost btn-sm" data-edit="${esc(n.id)}">수정</button><button class="btn btn-danger btn-sm" data-del="${esc(n.id)}">삭제</button></div>` : ""}</div>`;
           item.addEventListener("click", (e) => {
@@ -235,36 +266,31 @@
       if ($("#actions-box")) {
         const t = todayISO();
         $("#actions-box").innerHTML = actions.length
-          ? actions.slice(0, 8).map(a => `<div class="ds-row" data-mn-open="${esc(a.mid)}" title="${esc(a.from)}">
-              <span class="badge ${a.due && a.due < t ? "badge-red" : a.due ? "badge-amber" : "badge-gray"}" style="flex:none">${a.due ? esc(a.due.slice(5)) : "기한 없음"}</span>
-              <span class="ds-row-t">${esc(a.task)}</span>
-              <span class="ds-row-m">${esc(a.owner || a.from)}</span></div>`).join("")
-          : '<div class="ds-empty">미완료 결정사항이 없습니다. ✅</div>';
+          ? actions.slice(0, 5).map(a => `<button type="button" class="act-row" data-mn-open="${esc(a.mid)}" title="${esc(a.from)}">
+              <span class="badge ${a.due && a.due < t ? "badge-red" : a.due ? "badge-amber" : "badge-gray"}">${a.due ? esc(md(a.due)) : "기한 없음"}</span>
+              <span class="act-t">${esc(a.task)}</span>
+              <span class="act-m">${esc(a.owner || a.from)}</span></button>`).join("")
+          : `<div class="ok-line">${ico("check", 16)}모든 결정사항 처리 완료</div>`;
         $$("#actions-box [data-mn-open]").forEach(el => el.onclick = () => {
           if (window.SemisMinutes && SemisMinutes.open) SemisMinutes.open(el.dataset.mnOpen);
           else SeMIS.navigate("minutes");
         });
         if ($("#btn-go-minutes")) $("#btn-go-minutes").onclick = () => SeMIS.navigate("minutes");
       }
+      if ($("#btn-go-schedule")) $("#btn-go-schedule").onclick = () => SeMIS.navigate("schedule");
+      $$("[data-dash-hub]", root).forEach(el => el.onclick = () => SeMIS.openHub(el.dataset.dashHub));
 
-      // 일정
-      if ($("#upcoming-box")) {
-        $("#upcoming-box").innerHTML = upcoming.length
-          ? upcoming.map(s => `<div class="up-row">
-              <span class="cal-dot ev-${esc(s.color || "blue")}"></span>
-              <b class="up-date">${esc(String(s.start).slice(5))}${s.end && s.end !== s.start ? "~" + esc(String(s.end).slice(5)) : ""}</b>
-              ${!s.allDay && s.time ? `<span class="up-time">${esc(s.time)}</span>` : ""}
-              <span class="up-title${s.done ? " done" : ""}">${s.done ? "✓ " : ""}${s.vehicle ? "🚗" : ""}${s.room ? "🏢" : ""}${(s.reminders && s.reminders.length) ? "⏰" : ""}${esc(s.title)}</span>
-              ${s.assignee ? `<span class="badge badge-gray up-who">${esc(s.assignee)}</span>` : ""}</div>`).join("")
-          : '<div class="empty">예정된 일정이 없습니다.</div>';
-        $("#btn-go-schedule").onclick = () => SeMIS.navigate("schedule");
-      }
-
-      if (canWrite) {
-        if ($("#btn-add-notice")) $("#btn-add-notice").onclick = () => noticeForm(null);
-        if ($("#btn-edit-level")) $("#btn-edit-level").onclick = levelForm;
-        if ($("#btn-edit-zero")) $("#btn-edit-zero").onclick = zeroForm;
-      }
+      if ($("#btn-add-notice")) $("#btn-add-notice").onclick = () => noticeForm(null);
+      if ($("#btn-edit-level")) $("#btn-edit-level").onclick = levelForm;
+      if ($("#btn-edit-zero")) $("#btn-edit-zero").onclick = zeroForm;
+      if ($("#btn-level-hist")) $("#btn-level-hist").onclick = levelHistModal;
+      if ($("#btn-add-sched")) $("#btn-add-sched").onclick = () => {
+        SeMIS.navigate("schedule");
+        SeMIS.renderView();
+        const b = document.getElementById("cal-add");
+        if (b) b.click();
+      };
+      if ($("#btn-add-minute")) $("#btn-add-minute").onclick = () => SemisMinutes.newMinute();
     }
   });
 
@@ -568,7 +594,7 @@
       }
       root.innerHTML = `
         <div class="page-head">
-          <div class="page-title">⚙️ 시스템 설정</div>
+          <div class="page-title">시스템 설정</div>
           <div class="page-desc">메뉴 · 사용자 권한 · 데이터 · 저장소 관리</div>
         </div>
         <div class="tabs">
@@ -594,7 +620,7 @@
   function renderMenuTab(box) {
     const menus = SeMIS.sortedMenus();
     const typeBadge = (m) =>
-      m.type === "group" ? '<span class="badge badge-gray mt-type">그룹</span>'
+      m.type === "group" ? '<span class="badge badge-gray mt-type">허브</span>'
       : m.type === "link" ? (m.open === "frame"
         ? '<span class="badge badge-blue mt-type">링크 ▣ 내부</span>'
         : '<span class="badge badge-blue mt-type">링크 ↗</span>')
@@ -604,10 +630,10 @@
 
     const row = (m, isChild) => `
       <div class="menu-tree-item ${isChild ? "is-child" : ""}${m.hidden ? " is-hidden" : ""}" data-id="${esc(m.id)}">
-        <span>${esc(m.icon || (m.type === "group" ? "📂" : "▪"))}</span>
+        <span class="mt-ico">${m.type === "group" ? SeMIS.icon(m.ico, 18) : esc(m.icon || "▪")}</span>
         <span class="mt-label">${esc(m.label)}
           ${m.hidden ? '<span class="badge badge-gray mt-type">숨김</span>' : ""}
-          ${m.quick ? '<span class="badge badge-amber mt-type">바로가기</span>' : ""}</span>
+          ${m.quick ? '<span class="badge badge-amber mt-type">고정</span>' : ""}</span>
         ${m.type === "link" && m.url
           ? `<span class="mt-url col-ext" title="${esc(m.url)}">${esc(m.url)}</span>`
           : m.type === "module" && m.module
@@ -631,7 +657,7 @@
       <div class="card">
         <div class="card-title">메뉴 구성 <span class="spacer"></span>
           <button class="btn btn-primary btn-sm" id="btn-add-menu">+ 메뉴 추가</button></div>
-        <p class="form-hint" style="margin-bottom:12px">외부 웹주소 등록 · 그룹 분류 · ▲▼ 순서 변경 · <b>👁</b> 화면에서 숨기기(권한과 별개, 전 사용자 공통).</p>
+        <p class="form-hint" style="margin-bottom:12px"><b>허브</b>는 왼쪽 아이콘 줄에 표시되는 업무 묶음입니다. 허브 없는 항목은 아이콘 줄 아래(관리)에 놓입니다. ▲▼ 순서 · 👁 숨기기(권한과 별개).</p>
         <div id="menu-tree">`;
     menus.filter(m => !m.parent || m.type === "group").forEach(m => {
       html += row(m, false);
@@ -654,7 +680,7 @@
     $$("#menu-tree [data-del]").forEach(b => b.onclick = () => {
       const m = D().menus.find(x => x.id === b.dataset.del);
       const msg = m.type === "group"
-        ? `그룹 "${m.label}"과 하위 메뉴가 모두 삭제됩니다. 계속하시겠습니까?`
+        ? `허브 "${m.label}"와 하위 메뉴가 모두 삭제됩니다. 계속하시겠습니까?`
         : `메뉴 "${m.label}"을(를) 삭제하시겠습니까?`;
       confirmModal(msg, () => {
         D().menus = D().menus.filter(x => x.id !== m.id && x.parent !== m.id);
@@ -687,12 +713,16 @@
       ${m ? "" : `<div class="form-row"><label>유형</label>
         <select id="f-type">
           <option value="link">외부 링크 (웹주소 등록)</option>
-          <option value="group">그룹 (메뉴 분류)</option>
+          <option value="group">허브 (업무 묶음)</option>
           <option value="planned">예정 모듈 (준비 중 안내 화면)</option>
         </select></div>`}
       <div class="form-row"><label>이름</label><input id="f-label" value="${esc(m ? m.label : "")}" maxlength="40" placeholder="메뉴 이름"></div>
-      <div class="form-row" id="row-icon" ${type === "group" && m ? 'style="display:none"' : ""}>
-        <label>아이콘 (이모지)</label><input id="f-icon" value="${esc(m ? m.icon || "" : "🔗")}" maxlength="4"></div>
+      <div class="form-row" id="row-icon" ${type === "group" ? 'style="display:none"' : ""}>
+        <label>아이콘 (검색·관리 화면용 이모지)</label><input id="f-icon" value="${esc(m ? m.icon || "" : "🔗")}" maxlength="4"></div>
+      <div class="form-row" id="row-ico" ${type === "group" ? "" : 'style="display:none"'}>
+        <label>허브 아이콘</label>
+        <div class="ico-pick">${SeMIS.HUB_ICONS.map(k => `<label class="ico-opt" title="${esc(k)}">
+          <input type="radio" name="f-ico" value="${esc(k)}" ${(m && m.ico ? m.ico : "folder") === k ? "checked" : ""}>${SeMIS.icon(k, 20)}</label>`).join("")}</div></div>
       <div class="form-row" id="row-url" ${type !== "link" ? 'style="display:none"' : ""}>
         <label>웹주소 (URL)</label><input id="f-url" value="${esc(m && m.url ? m.url : "")}" placeholder="https://...">
         <div class="form-hint">기존 구글 문서/시트/사이트 등 외부 주소를 그대로 연결합니다.</div></div>
@@ -709,9 +739,9 @@
       <div class="form-row" id="row-desc" ${m && m.planned ? "" : 'style="display:none"'}>
         <label>모듈 개요 (준비 중 화면에 표시)</label><textarea id="f-desc" maxlength="400">${esc(m && m.desc ? m.desc : "")}</textarea></div>
       <div class="form-row" id="row-parent" ${type === "group" ? 'style="display:none"' : ""}>
-        <label>소속 그룹</label>
+        <label>소속 허브</label>
         <select id="f-parent">
-          <option value="">(최상위)</option>
+          <option value="">(허브 없음 · 아이콘 줄 아래 관리)</option>
           ${groups.map(g => `<option value="${esc(g.id)}" ${m && m.parent === g.id ? "selected" : ""}>${esc(g.label)}</option>`).join("")}
         </select></div>
       <div class="form-row" id="row-vis" ${type === "group" ? 'style="display:none"' : ""}>
@@ -724,7 +754,7 @@
         </select></div>
       <div class="form-row" id="row-quick" ${type === "group" ? 'style="display:none"' : ""}>
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-          <input type="checkbox" id="f-quick" style="width:auto" ${m && m.quick ? "checked" : ""}> 대시보드 바로가기에 표시</label></div>
+          <input type="checkbox" id="f-quick" style="width:auto" ${m && m.quick ? "checked" : ""}> 홈 허브 '고정한 메뉴'에 표시</label></div>
       <div class="form-row" id="row-hide" ${m && !SeMIS.canHide(m) ? 'style="display:none"' : ""}>
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
           <input type="checkbox" id="f-hidden" style="width:auto" ${m && m.hidden ? "checked" : ""}> 화면에서 숨기기 (모든 권한 공통)</label>
@@ -744,6 +774,8 @@
       $("#row-parent").style.display = t === "group" ? "none" : "";
       $("#row-vis").style.display = t === "group" ? "none" : "";
       $("#row-quick").style.display = t === "group" ? "none" : "";
+      $("#row-icon").style.display = t === "group" ? "none" : "";
+      $("#row-ico").style.display = t === "group" ? "" : "none";
     };
     $("#f-cancel").onclick = closeModal;
     const hiddenVal = () => !!($("#f-hidden") && $("#f-hidden").checked);
@@ -761,8 +793,10 @@
         else D().menus.push(applyHidden({ id: uid("mn"), seq: nextSeq(), type: "link", label, icon, url, open,
           parent: $("#f-parent").value || null, vis: $("#f-vis").value, quick: $("#f-quick").checked }));
       } else if (t === "group") {
-        if (m) applyHidden(Object.assign(m, { label }));
-        else D().menus.push(applyHidden({ id: uid("g"), seq: nextSeq(), type: "group", label }));
+        const pick = document.querySelector('#modal-box input[name="f-ico"]:checked');
+        const ico = pick ? pick.value : "folder";
+        if (m) applyHidden(Object.assign(m, { label, ico }));
+        else D().menus.push(applyHidden({ id: uid("g"), seq: nextSeq(), type: "group", label, ico }));
       } else if (t === "planned") {
         const route = $("#f-route").value.trim().toLowerCase();
         if (!/^[a-z0-9][a-z0-9-]{1,29}$/.test(route)) { toast("모듈 ID는 영문 소문자·숫자·하이픈 2~30자입니다.", true); return; }

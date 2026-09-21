@@ -1287,7 +1287,7 @@
       const assignees = assigneeList();
       root.innerHTML = `
         <div class="page-head">
-          <div class="page-title">📅 안전보안 일정관리</div>
+          <div class="page-title">안전보안 일정관리</div>
           <span class="spacer"></span>
           ${canWrite ? '<span class="page-note no-print">일정을 드래그하여 이동 가능</span>' : ""}
           ${canWrite ? '<button class="btn btn-primary" id="cal-add">+ 일정 등록</button>' : ""}

@@ -331,7 +331,7 @@
       const canWrite = SeMIS.canEdit();
       root.innerHTML = `
         <div class="page-head">
-          <div class="page-title">☎️ 비상연락망 · 보고체계</div>
+          <div class="page-title">비상연락망 · 보고체계</div>
           <span class="spacer"></span>
           ${canWrite && secs().length ? '<button class="btn btn-ghost btn-sm" id="ct-addsec">+ 섹션 추가</button>' : ""}
           <div class="page-desc">화물터미널 안전·보안 사건 발생 시 보고 절차 · 유관기관 비상 연락처</div>
@@ -342,7 +342,7 @@
         </div>
         <div class="ct-searchwrap">
           <input id="ct-search" class="ct-search" type="search"
-            placeholder="🔍 이름 · 기관 · 전화번호 · 담당 통합 검색" value="${esc(query)}" autocomplete="off">
+            placeholder="이름 · 기관 · 전화번호 · 담당 통합 검색" value="${esc(query)}" autocomplete="off">
         </div>
         <div id="ct-body">${bodyHTML(query, canWrite)}</div>`;
 

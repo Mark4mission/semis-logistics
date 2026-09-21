@@ -6,10 +6,10 @@
 
 | 항목 | 값 |
 |---|---|
-| 현재 버전 | **v1.7.0** (2026-09-21) |
+| 현재 버전 | **v1.8.0** (2026-09-21) — 디자인 개편 "Terminal Calm" (허브 내비게이션) |
 | 접속 주소 | https://mark4mission.github.io/semis-logistics/ |
 | 저장소 | GitHub `Mark4mission/semis-logistics` (공개) · Mac `~/SeMIS_Logistics` |
-| 테스트 | `npm test` 137건 전부 통과 (코드·문서에 암호 평문 없음) |
+| 테스트 | `npm test` 154건 전부 통과 (코드·문서에 암호 평문 없음) |
 | 백엔드 | Supabase `mzyuzrxkdcpzxojenwat` — 테이블 `semis_logi_store`, 버킷 `semis-logi-files` |
 
 ## 2. 새 세션 시작
@@ -47,7 +47,7 @@ Claude가 할 일(순서대로):
 
 | 라우트 | 파일 | 권한 | 비고 |
 |---|---|---|---|
-| dashboard | modules.js | all | 요약 스트립 · 공지 · 현황 · 결정사항 · 로드맵 |
+| dashboard | modules.js | all | 화물 태그 카드(무재해·보안등급) · 다가오는 일정 · 공지 · 결정사항 · 모듈 구축 현황 |
 | schedule | calendar.js | mgr | 담당자 다중 지정 · 드래그 이동 |
 | minutes | minutes.js | mgr | 회의록 + QR 참석 서명 |
 | reg-sec · reg-safety · reg-dg | regulations.js | mgr (편집 hq) | 규정 3종 · PDF 뷰어 · 개정 아이디어 노트 |
@@ -55,16 +55,17 @@ Claude가 할 일(순서대로):
 | vault | vault.js | hq | 암호 관리 (AES-256-GCM, 5분 자동 잠금, 공용/개인용 — 개인용은 본인 키로만 해독) |
 | settings | modules.js | admin | 메뉴(숨기기 포함) · 사용자 · 담당자 · 데이터(변경 이력 복원) · 저장소 |
 
-**예정 (15)** — `planned:true` 메뉴. 같은 module id로 `registerModule` 하면 자동 대체된다.
+**예정 (15)** — `planned:true` 메뉴. 같은 module id로 `registerModule` 하면 자동으로 정식 메뉴가 되고, 허브 패널의 "준비 중인 모듈"에서 빠져 위쪽 목록으로 올라간다.
 
-| 그룹 | 라우트 · 메뉴명 (vis) |
+| 허브 | 라우트 · 메뉴명 (vis) |
 |---|---|
-| (최상위) | board 안전보안 현황판 (mgr) |
-| 화물 보안 | scr-status 화물 보안검색 현황 (mgr) · kc-ra 상용화주·RA 관리 (hq) · scr-equip 검색장비 유지관리 (mgr) · access 보안구역 출입 관리 (mgr) |
-| 안전 관리 | daily-safety 일일 안전점검 (mgr) · risk 위험성 평가 (hq) · incident 사고·아차사고 보고 (mgr) · gse 지상조업(GSE) 안전 (mgr) |
-| 점검 / 시정조치 | inspection 안전보안 점검 일정 (mgr) · car 시정조치 CAR (hq) |
-| 교육 / 훈련 | training 안전보안 교육 관리 (mgr) · certs 이수증 관리 (mgr) |
-| 협력사 / 조업사 | partners 조업사·협력사 현황 (mgr) · contracts 계약서 관리 (hq) |
+| 홈 (hub-home) | board 안전보안 현황판 (mgr) |
+| 화물 보안 (hub-sec) | scr-status 화물 보안검색 현황 (mgr) · kc-ra 상용화주·RA 관리 (hq) · scr-equip 검색장비 유지관리 (mgr) · access 보안구역 출입 관리 (mgr) |
+| 현장 안전 (hub-saf) | daily-safety 일일 안전점검 (mgr) · risk 위험성 평가 (hq) · incident 사고·아차사고 보고 (mgr) · gse 지상조업(GSE) 안전 (mgr) |
+| 점검 · 교육 (hub-aud) | inspection 안전보안 점검 일정 (mgr) · car 시정조치 CAR (hq) · training 안전보안 교육 관리 (mgr) · certs 이수증 관리 (mgr) |
+| 협력 · 연락 (hub-ops) | partners 조업사·협력사 현황 (mgr) · contracts 계약서 관리 (hq) |
+
+권장 개발 순서(DESIGN.md §9-6): ① car · inspection · training · certs → ② scr-equip · access · contracts → ③ 현장 안전 4종 → ④ scr-status · kc-ra · partners → ⑤ board.
 
 SeMIS v2에 같은 성격의 모듈이 있으면 이식한다(v2 저장소: Mac `~/SeMIS_v2`, 연결 폴더라 `device_bash`로 바로 읽기 가능).
 v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js · equipment.js · passes.js 등.
@@ -86,6 +87,7 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 4. **공개 저장소**: 연락처·명단·암호 평문을 코드에 넣지 않는다. 실데이터는 공용 DB에만
 5. 애매한 요구는 질문 후 진행 (AskUserQuestion), 보고는 간결하게
 6. 가독성 기준: 본문 17px · 보조 문구 `.81rem` 이상 · 보조 색은 `--text-2`/`--text-3`만
+7. **디자인 규칙(v1.8)**: 새 모듈은 `docs/module-template.js`를 복사해 시작. 화면은 `SeMIS.ui.head/stats/search/empty/chip`, 아이콘은 `SeMIS.icon()`만 사용. 제목·메뉴에 이모지 금지. 메뉴는 반드시 허브(hub-*)에 소속. 390px 모바일 화면까지 확인
 
 ## 7. 미결 · 주의
 
@@ -105,3 +107,4 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 | v1.5.0 | 09-20 | 암호 관리 (v2 vault 이식, 해제 UI 개편, 제목 정렬) |
 | v1.6.0 | 09-20 | 규정 관리 3종 (v2 regulations 이식) · 문서 18건 등록 · 안내 문구 정리 |
 | v1.7.0 | 09-21 | 암호 관리 공용/개인용 구분 (개인용 = 멤버별 개인 키 암호화). SeMIS v2도 v2.52.0으로 동일 적용 |
+| v1.8.0 | 09-21 | 디자인 개편 Terminal Calm — 6개 허브(아이콘 줄 + 허브 패널), 모바일 하단 탭 · 메뉴 시트, Ctrl K 검색 팔레트, 대시보드 개편, 모듈 화면 키트(SeMIS.ui · icon · navBadge), v1.7 메뉴 자동 이전, docs/module-template.js |

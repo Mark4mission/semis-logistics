@@ -11,18 +11,19 @@
 
 ```
 SeMIS_Logistics/
-├── index.html          앱 셸 (로그인 모달 · 헤더 · 사이드바 · 메인)
-├── css/main.css        디자인 시스템 (딥 페트롤 + 틸 + 앰버, Section Kit ds-*)
-├── js/app.js           코어: 인증(SHA-256) · 저장소/정규화 · 메뉴 엔진 · 권한 · 라우터 · 예정 모듈 안내 · A4 인쇄
-├── js/modules.js       대시보드(공지 · 안전보안 현황 · 결정사항 · 로드맵) · 시스템 설정(메뉴/사용자/담당자/데이터/저장소)
+├── index.html          앱 셸 (로그인 · 아이콘 줄(레일) · 허브 패널 · 헤더 · 메인 · 모바일 하단 탭 · 검색 팔레트)
+├── css/main.css        디자인 시스템 v1.8 "Terminal Calm" (토큰 · 허브 내비 · 반응형 · 모듈 키트 · Section Kit ds-*)
+├── js/app.js           코어: 인증(SHA-256) · 저장소/정규화 · 허브 메뉴 엔진 · 권한 · 라우터 · 예정 모듈 안내 · A4 인쇄 · 화면 키트(SeMIS.ui · icon)
+├── js/modules.js       대시보드(화물 태그 카드 · 일정 · 공지 · 결정사항 · 모듈 구축 현황) · 시스템 설정(메뉴/사용자/담당자/데이터/저장소)
 ├── js/calendar.js      일정관리 (SeMIS v2 이식)
 ├── js/minutes.js       회의록 게시판 + QR 참석 서명 (SeMIS v2 이식)
 ├── js/qr.js            순수 JS QR 인코더
 ├── js/contacts.js      비상연락망 · 보고체계 (섹션 추가/삭제 · 기본 구성 시드)
 ├── js/vault.js         암호 관리 (AES-256-GCM 클라이언트 암호화 저장소)
 ├── js/regulations.js   규정 관리 (항공보안 · 안전관리 · 위험물 DG, PDF 뷰어 · 개정 아이디어 노트)
-├── js/search.js        전역 통합 검색 (Ctrl+K)
+├── js/search.js        통합 검색 팔레트 (Ctrl+K · /)
 ├── js/sync.js          Supabase 공용 DB 실시간 동기화 (semis_logi_store · semis-logi-files)
+├── docs/module-template.js 신규 모듈 표준 예시 (복사해서 시작)
 ├── tests/run-tests.cjs jsdom 테스트 (npm test)
 └── tools/bump-version.cjs 버전 스탬프 (npm run bump 1.0.1)
 ```
@@ -42,8 +43,8 @@ SeMIS_Logistics/
 
 ## A4 인쇄 (보고용) — 모든 화면 공통
 
-모든 화면에 **🖨 인쇄** 버튼이 자동으로 붙는다(`SeMIS.attachPrintBtn`, 외부 링크 메뉴 제외).
-누르면 문서 머리말(시스템명 · 화면명 · 출력일시 · 출력자)이 붙고 헤더·사이드바·버튼이 빠진 **A4 세로** 형태로 인쇄된다.
+모든 화면에 **A4 인쇄** 버튼이 자동으로 붙는다(`SeMIS.attachPrintBtn`, 외부 링크 메뉴 제외).
+누르면 문서 머리말(시스템명 · 화면명 · 출력일시 · 출력자)이 붙고 헤더·메뉴·버튼이 빠진 **A4 세로** 형태로 인쇄된다.
 
 - 모듈 쪽에서 따로 할 일은 없다. 화면 머리말(`.ds-head` 또는 `.page-head`)만 두면 버튼이 그 오른쪽에 들어간다.
 - 모듈이 자체 인쇄 버튼을 넣고 싶으면 `data-print-btn` 속성을 단 버튼을 직접 두면 자동 부착이 생략된다.
@@ -118,9 +119,9 @@ Google → SeMIS(공개 캘린더 겹쳐 보기) / SeMIS → Google(ICS 구독 �
 
 ## 메뉴 숨기기 (v1.4) — 권한과 별개
 
-시스템 설정 → 메뉴 관리에서 각 메뉴 행의 **👁 버튼**(또는 메뉴 수정 창의 "화면에서 숨기기")으로 토글한다.
+시스템 설정 → 메뉴 관리에서 각 메뉴 행의 **눈 버튼**(또는 메뉴 수정 창의 "화면에서 숨기기")으로 토글한다.
 
-- 숨긴 메뉴는 **어떤 권한으로 접속해도** 사이드바 · 통합검색 결과 · 대시보드 바로가기/로드맵 카드에 나오지 않는다(협력업체 계정 포함).
+- 숨긴 메뉴는 **어떤 권한으로 접속해도** 허브 패널 · 통합검색 결과 · 대시보드 모듈 구축 현황에 나오지 않는다(협력업체 계정 포함).
 - **기능은 그대로 살아 있다.** 주소(`#/module`)로 직접 들어가면 정상 동작하고 데이터도 보존된다 — 권한 게이트(`canSee`)와는 완전히 분리된 판정(`navVisible = canSee && !menuHidden`).
 - **그룹을 숨기면 하위 메뉴도 함께** 숨겨진다.
 - **대시보드 · 시스템 설정은 숨길 수 없다**(관리 화면 잠금 방지). 데이터에 `hidden`이 섞여 들어와도 `normalizeData()`가 제거한다.
@@ -142,19 +143,24 @@ Google → SeMIS(공개 캘린더 겹쳐 보기) / SeMIS → Google(ICS 구독 �
 ## 예정 모듈(planned)
 
 메뉴 항목에 `planned:true, desc`가 있으면 라우트가 "준비 중" 안내 화면을 그린다.
-같은 module id로 `SeMIS.registerModule()`이 호출되는 순간 실화면으로 자동 대체되며 사이드바의 `예정` 태그도 사라진다.
+허브 패널에서는 "준비 중인 모듈" 접이식 목록에 모인다.
+같은 module id로 `SeMIS.registerModule()`이 호출되는 순간 실화면으로 자동 대체되고, 메뉴가 허브 위쪽 정식 목록으로 올라가며 대시보드 구축 현황 수치도 갱신된다.
 시스템 설정 → 메뉴 추가 → **예정 모듈** 유형으로 운영자가 직접 추가할 수도 있다.
 
 ## 신규 모듈 추가 체크리스트
 
-1. `js/<module>.js` 작성 — `SeMIS.registerModule("<id>", { title, render(root) })`. 데이터 컬렉션은 `SeMIS.data.<key>`.
+`docs/module-template.js`를 복사해 시작한다(화면 키트 · 배지 · 검색 프로바이더 예시 포함).
+
+1. `js/<module>.js` 작성 — `SeMIS.registerModule("<id>", { title, render(root), navBadge() })`. 데이터 컬렉션은 `SeMIS.data.<key>`.
+   화면은 `SeMIS.ui.head/stats/search/empty/chip`, 아이콘은 `SeMIS.icon()`. 제목·메뉴에 이모지 금지.
 2. `js/app.js` — `freshData()`에 컬렉션 기본값, `normalizeData()`에 배열 보정(멱등), 필요 시 `VIEW_WIDTH` 폭 티어.
-3. 메뉴 — 기존 예정 메뉴의 module id를 그대로 쓰면 자동 대체. 새 라우트면 `defaultMenus()` + `normalizeData`의 `ensureModuleMenu`.
+3. 메뉴 — 기존 예정 메뉴의 module id를 그대로 쓰면 자동 대체(허브 위치도 그대로). 새 라우트면 `defaultMenus()`에서 알맞은 허브(`parent:"hub-*"`)에 넣고 `normalizeData`의 `ensureModuleMenu`.
 4. `js/sync.js` — `SYNC_KEYS`에 컬렉션 키 추가.
 5. `js/search.js` — `register({...})` 프로바이더 추가.
 6. `index.html` — `<script src="js/<module>.js?v=...">` 등록.
 7. `tests/run-tests.cjs` — `FILES`에 추가 + 테스트(Y01 SYNC_KEYS 기대 문자열 갱신).
-8. `npm run bump <ver>` → `npm test` → `git push`.
+8. 화면 확인 — 1440 · 1024 · 390px 세 폭에서 확인(supabase 비-GET 차단 상태).
+9. `npm run bump <ver>` → `npm test` → 배포.
 
 ## 데이터 저장
 

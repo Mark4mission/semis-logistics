@@ -299,7 +299,7 @@
     const s = stats(scope);
     root.innerHTML = `
       <div class="page-head">
-        <div class="page-title">${sc.icon} ${esc(sc.title)}</div>
+        <div class="page-title">${esc(sc.title)}</div>
         <span class="spacer"></span>
         ${canWrite ? '<button class="btn btn-primary" id="rg-add">+ 규정 등록</button>' : ""}
         <div class="page-desc">${esc(sc.desc)}</div>
@@ -315,7 +315,7 @@
       <div class="card">
         <div class="cal-toolbar">
           <input id="rg-search" class="ct-search" type="search" style="max-width:300px"
-            placeholder="🔍 규정명 · 관리번호 · 버전 검색" value="${esc(query[scope])}" autocomplete="off">
+            placeholder="규정명 · 관리번호 · 버전 검색" value="${esc(query[scope])}" autocomplete="off">
         </div>
         <div id="rg-body">${tableHTML(scope)}</div>
       </div>`;
@@ -355,6 +355,7 @@
   Object.keys(SCOPES).forEach(scope => {
     SeMIS.registerModule(SCOPES[scope].route, {
       title: SCOPES[scope].title,
+      navBadge() { return list().filter(r => r.scope === scope).length || ""; },   // 허브 패널 메뉴 옆 건수
       render(root) { renderPage(root, scope); }
     });
   });

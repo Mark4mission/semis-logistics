@@ -527,7 +527,7 @@
       if (!isUnlocked()) {
         root.innerHTML = `
           <div class="page-head">
-            <div class="page-title">🔐 암호 관리</div>
+            <div class="page-title">암호 관리</div>
           </div>` + lockedHTML();
         wireLockUI();
         const uf = $("#vault-unlock-form");
@@ -562,7 +562,7 @@
       /* 해제 상태 */
       root.innerHTML = `
         <div class="page-head">
-          <div class="page-title">🔐 암호 관리</div>
+          <div class="page-title">암호 관리</div>
           <span class="spacer"></span>
           <button class="btn btn-ghost btn-sm" id="vault-extend" title="잠금 시간을 지금부터 5분으로 연장">🕐 5분 연장</button>
           <span class="badge badge-amber" id="vault-timer" title="남은 시간 후 자동 잠금">⏳ ${fmtRemain()}</span>
@@ -574,7 +574,7 @@
         <div class="card">
           <div class="cal-toolbar">
             <input id="vault-search" class="ct-search" type="search" style="max-width:300px"
-              placeholder="🔍 제목 · 계정 · 분류 검색" value="${esc(query)}" autocomplete="off">
+              placeholder="제목 · 계정 · 분류 검색" value="${esc(query)}" autocomplete="off">
             <div id="vault-chips">${scopeChipsHTML()}</div>
           </div>
           <div id="vault-body">${unlockedBody()}</div>

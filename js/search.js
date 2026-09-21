@@ -147,7 +147,7 @@ const SemisSearch = (() => {
         if (!it || !it.title) return;
         const sc = scoreOf(it, ts);
         if (sc) hits.push(Object.assign({
-          group: p.group, icon: it.icon || p.icon || "▪", score: sc,
+          group: p.group, icon: it.icon || p.icon || "▪", ico: it.ico || p.ico || "", score: sc,
           route: it.route != null ? it.route : (p.module || "dashboard")
         }, it));
       });
@@ -212,12 +212,32 @@ const SemisSearch = (() => {
 
 
   /* ─────── UI ─────── */
+  /* 결과 아이콘 — 선 아이콘(SeMIS.icon). 프로바이더는 ico 키로 지정할 수 있다. */
+  const GROUP_ICO = { "공지사항": "megaphone", "보안등급": "alert", "일정관리": "calendar", "회의록": "notes",
+    "비상연락망": "phone", "규정": "book", "메뉴 · 링크": "chevron" };
+  function icoOf(it) {
+    const k = it.ico || (it.url ? "external" : GROUP_ICO[it.group]) || "doc";
+    return S().icon ? S().icon(k, 18) : esc(it.icon || "▪");
+  }
   let pop = null, input = null, wrap = null, items = [], active = -1;
 
-  function goItem(it) {
+  /* v1.8: 통합 검색 팔레트(#cmdk) — 열기·닫기는 애니메이션 없이 즉시 (자주 쓰는 키보드 동작) */
+  function openPalette() {
+    const u = S().user;
+    if (!u || u.role === "signer") return;
+    const box = document.getElementById("cmdk");
+    if (box) box.classList.remove("hidden");
+    if (S().closeOverlays) S().closeOverlays();
+    if (input) { input.focus(); input.select(); if (input.value.trim()) renderPop(input.value); }
+  }
+  function closePalette() {
     closePop();
+    const box = document.getElementById("cmdk");
+    if (box) box.classList.add("hidden");
     if (input) input.blur();
-    document.querySelector(".header").classList.remove("search-open");
+  }
+  function goItem(it) {
+    closePalette();
     if (it.url) { window.open(it.url, "_blank", "noopener"); return; }
     if (it.route) S().navigate(it.route);
   }
@@ -247,7 +267,7 @@ const SemisSearch = (() => {
         lastGroup = it.group;
       }
       html += '<button type="button" class="sp-item" data-i="' + i + '">' +
-        '<span class="sp-ico">' + esc(it.icon || "▪") + "</span>" +
+        '<span class="sp-ico">' + icoOf(it) + "</span>" +
         '<span class="sp-txt"><span class="sp-title">' + hl(it.title, ts) + "</span>" +
         (it.sub ? '<span class="sp-sub">' + hl(snip(it.sub, ts), ts) + "</span>" : "") +
         "</span></button>";
@@ -286,13 +306,12 @@ const SemisSearch = (() => {
         e.preventDefault();
         if (active >= 0 && items[active]) goItem(items[active]);
         else if (items.length) goItem(items[0]);
-      } else if (e.key === "Escape") { closePop(); input.blur(); }
+      } else if (e.key === "Escape") { e.stopPropagation(); closePalette(); }
     });
 
-    // 바깥 클릭 시 닫기
-    document.addEventListener("click", (e) => {
-      if (wrap && !wrap.contains(e.target) && e.target.id !== "hdr-search-btn") closePop();
-    });
+    // 팔레트 바깥(배경) 클릭 시 닫기
+    const box = document.getElementById("cmdk");
+    if (box) box.addEventListener("click", (e) => { if (e.target === box) closePalette(); });
 
     // 단축키: Ctrl/Cmd+K 또는 "/" (입력 중이 아닐 때)
     document.addEventListener("keydown", (e) => {
@@ -302,22 +321,16 @@ const SemisSearch = (() => {
         (e.target && e.target.isContentEditable);
       if (((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") || (!inField && e.key === "/")) {
         e.preventDefault();
-        document.querySelector(".header").classList.add("search-open");
-        input.focus(); input.select();
+        openPalette();
       }
     });
 
-    // 모바일: 🔍 버튼으로 검색바 토글
-    const btn = document.getElementById("hdr-search-btn");
-    if (btn) btn.addEventListener("click", () => {
-      const h = document.querySelector(".header");
-      h.classList.toggle("search-open");
-      if (h.classList.contains("search-open")) { input.focus(); }
-      else closePop();
-    });
+    // 검색 열기 버튼 (허브 패널 · 모바일 상단바)
+    Array.prototype.forEach.call(document.querySelectorAll("[data-search-open]"), b =>
+      b.addEventListener("click", openPalette));
   }
 
-  return { init, search, register, terms };
+  return { init, search, register, terms, open: openPalette, close: closePalette };
 })();
 
 if (typeof window !== "undefined") window.SemisSearch = SemisSearch;

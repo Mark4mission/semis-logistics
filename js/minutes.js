@@ -520,7 +520,7 @@
 
       root.innerHTML = `
         <div class="page-head">
-          <div class="page-title">🗒️ 회의록 게시판</div>
+          <div class="page-title">회의록 게시판</div>
           <span class="spacer"></span>
           ${canManageFolders() ? '<button class="btn btn-ghost" id="mn-folders">🗂 폴더 관리</button>' : ""}
           ${canWrite() ? '<button class="btn btn-primary" id="mn-add">+ 새 회의록</button>' : ""}
