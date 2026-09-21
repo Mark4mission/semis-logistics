@@ -49,7 +49,9 @@
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html { font-size: 17px; }
-body { font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.6; -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; }
+body { font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.6; -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums;
+  word-break: keep-all; overflow-wrap: break-word; } /* v1.9.1: 한글은 어절(띄어쓰기) 단위로만 줄바꿈 */
+h1, h2, h3, .page-title, .dc-head h2 { text-wrap: balance; }
 a { color: var(--primary); text-decoration: none; text-underline-offset: 3px; }
 button { font-family: inherit; cursor: pointer; color: inherit; }
 input, select, textarea { font-family: inherit; font-size: .95rem; color: var(--text); }
@@ -985,7 +987,7 @@ a.ct-tel:hover { color: var(--primary); }
 .br-train-item:last-child { margin-bottom: 0; }
 .br-train-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .br-train-head b { font-size: .88rem; font-variant-numeric: tabular-nums; }
-.br-train-content { margin-top: 6px; font-size: .86rem; color: var(--text); white-space: pre-wrap; word-break: break-word; }
+.br-train-content { margin-top: 6px; font-size: .86rem; color: var(--text); white-space: pre-wrap; overflow-wrap: break-word; }
 .br-train-note { margin-top: 4px; font-size: .82rem; color: var(--text-2); }
 /* 첨부 접이식(disclosure) — 기본 접힘, 개수만 노출해 모달 세로 길이 절약 */
 .br-train-files { margin-top: 7px; }
@@ -1028,7 +1030,7 @@ a.ct-tel:hover { color: var(--primary); }
 
 /* 목록 표: 고정 레이아웃 — 회의명이 폭을 독점하지 않도록, 참석·사례결정에 넉넉한 폭 배분 */
 .cn-list-tbl { table-layout: fixed; min-width: 760px; }
-.cn-list-tbl td { word-break: break-word; }
+.cn-list-tbl td { overflow-wrap: break-word; }
 
 /* ── 상세 모달(읽기) — 섹션 구분선·헤더 강조·표 격자선 ── */
 .cn-meta { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: .84rem; color: var(--text-2);
@@ -1039,14 +1041,14 @@ a.ct-tel:hover { color: var(--primary); }
 .cn-sec-h { font-size: .9rem; font-weight: 800; color: var(--text);
   border-left: 4px solid var(--primary); padding: 1px 0 5px 9px; margin-bottom: 9px;
   border-bottom: 1px solid var(--border); }
-.cn-text { font-size: .86rem; color: var(--text); white-space: pre-wrap; word-break: break-word;
+.cn-text { font-size: .86rem; color: var(--text); white-space: pre-wrap; overflow-wrap: break-word;
   border: 1.5px solid var(--border-strong); border-left: 3px solid var(--primary);
   border-radius: 6px; padding: 9px 11px; background: var(--surface); }
 /* 상세 표: 셀마다 격자선(세로 구분 뚜렷) + 진한 헤더 밑줄 */
 .cn-att-tbl, .cn-case-tbl, .cn-act-tbl { border: 1.5px solid var(--border-strong); border-radius: 6px; overflow: hidden; }
 /* 참석자 표는 고정 레이아웃 — 소속이 폭을 독점하지 않도록 소속·비고가 잔여폭 분배 */
 .cn-att-tbl, .cn-case-tbl { table-layout: fixed; }
-.cn-att-tbl td { word-break: break-word; }
+.cn-att-tbl td { overflow-wrap: break-word; }
 .cn-att-tbl td:nth-child(2) { white-space: nowrap; }  /* 구분 badge 줄바꿈 방지 */
 /* 직책은 한글 단어 중간에서 끊지 않음 — "책임연구원"이 "책임연구/원"으로 잘리던 문제.
    폭을 넘기는 예외적으로 긴 값만 마지막 수단으로 줄바꿈(overflow-wrap). */
@@ -1061,7 +1063,7 @@ a.ct-tel:hover { color: var(--primary); }
 .cn-case-tbl th:last-child, .cn-case-tbl td:last-child,
 .cn-act-tbl th:last-child, .cn-act-tbl td:last-child { border-right: none; }
 .cn-att-tbl tr:hover td, .cn-case-tbl tr:hover td, .cn-act-tbl tr:hover td { background: var(--primary-soft); }
-.cn-case-tbl td { white-space: pre-wrap; word-break: break-word; }
+.cn-case-tbl td { white-space: pre-wrap; overflow-wrap: break-word; }
 .cn-act-done td { color: var(--text-3); text-decoration: line-through; }
 .cn-act-done td:first-child { text-decoration: none; }
 
@@ -1266,7 +1268,7 @@ a.ct-tel:hover { color: var(--primary); }
 
 /* 목록 */
 .mn-list-tbl { table-layout: fixed; min-width: 720px; }
-.mn-list-tbl td { word-break: break-word; }
+.mn-list-tbl td { overflow-wrap: break-word; }
 .mn-fchip { display: inline-block; font-size: .76rem; color: var(--text-2); background: var(--surface-2);
   border: 1px solid var(--border); border-radius: 999px; padding: 2px 9px; white-space: nowrap;
   max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
@@ -1980,7 +1982,7 @@ a.ct-tel:hover { color: var(--primary); }
 .reg-idea { border: 1px solid var(--border-strong); border-radius: 10px; padding: 11px 13px; margin-bottom: 8px; background: var(--surface); }
 .reg-idea-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .reg-idea-loc { font-size: .79rem; font-weight: 700; color: var(--text-2); }
-.reg-idea-body { font-size: .89rem; color: var(--text); margin-top: 6px; line-height: 1.6; word-break: break-word; }
+.reg-idea-body { font-size: .89rem; color: var(--text); margin-top: 6px; line-height: 1.6; overflow-wrap: break-word; }
 .reg-idea-meta { font-size: .77rem; color: var(--text-3); margin-top: 6px; }
 .reg-idea-open { display: inline-block; min-width: 15px; padding: 0 4px; margin-left: 3px; border-radius: 8px;
   background: var(--warning); color: #fff; font-size: .74rem; font-weight: 800; line-height: 15px; text-align: center; }
@@ -2014,18 +2016,18 @@ a.ct-tel:hover { color: var(--primary); }
 /* ═════════ v1.9 일정 등록 모달 — 입력(왼쪽)과 설정(오른쪽) 분리, 설명은 ⓘ 말풍선으로 ═════════ */
 .modal-box:has(.evf) { max-width: 920px; padding: 0; display: flex; flex-direction: column; overflow: hidden; }
 .evf { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.evf-body { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 0; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.evf-body { display: grid; grid-template-columns: minmax(0, 1fr) 344px; gap: 0; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .evf-main { padding: 22px 26px 12px; min-width: 0; }
 .evf-title { margin: 0 0 18px !important; font-size: 1.2rem !important; }
-.evf-side { background: var(--panel-bg); border-left: 1px solid var(--border); padding: 24px 20px 16px;
-  display: flex; flex-direction: column; gap: 18px; }
+.evf-side { background: var(--panel-bg); border-left: 1px solid var(--border); padding: 20px 20px 16px;
+  display: flex; flex-direction: column; gap: 14px; }
 .evf-box .ico { color: inherit !important; }
 .evf .nb-mini button { display: inline-flex; align-items: center; gap: 5px; }
 .evf .modal-actions { margin: 0; padding: 14px 26px 20px; border-top: 1px solid var(--border); }
 .evf-group { padding: 14px 16px 2px; margin: 4px 0 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); }
 .evf-group .form-row { margin-bottom: 12px; }
 .evf-inline { display: flex; gap: 10px; margin: -2px 0 12px; }
-.evf-label { display: flex; align-items: center; gap: 4px; font-size: .86rem; font-weight: 700; color: var(--text-2); margin-bottom: 8px; }
+.evf-label { display: flex; align-items: center; gap: 4px; font-size: .86rem; font-weight: 700; color: var(--text-2); margin-bottom: 7px; }
 .evf-side input:not([type=checkbox]), .evf-side select {
   width: 100%; padding: 9px 12px; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface); outline: none; }
 .evf-side input:not([type=checkbox]):focus, .evf-side select:focus { border-color: var(--primary); }
@@ -2038,7 +2040,7 @@ a.ct-tel:hover { color: var(--primary); }
 .evf-opt { display: flex; align-items: center; gap: 4px; }
 .evf-opt.is-disabled { opacity: .45; }
 .evf-opt.is-disabled .evf-check { cursor: not-allowed; }
-.evf-check { position: relative; display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 6px 12px 6px 9px;
+.evf-check { position: relative; display: inline-flex; align-items: center; gap: 8px; min-height: 34px; padding: 5px 12px 5px 9px; white-space: nowrap;
   border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface); cursor: pointer;
   font-size: .9rem; font-weight: 600; color: var(--text-2); transition: border-color .16s var(--ease-out), background-color .16s var(--ease-out), color .16s var(--ease-out); }
 .evf-opts-col .evf-check { flex: 1; }
@@ -2052,11 +2054,10 @@ a.ct-tel:hover { color: var(--primary); }
 .evf-check:has(input:checked) .ico { color: var(--primary); }
 .evf-check:has(input:focus-visible) { outline: 2px solid var(--primary); outline-offset: 2px; }
 .evf-occ { font-family: var(--mono); font-size: .78rem; font-weight: 500; color: var(--text-3); margin-left: 4px; }
-.evf-done { margin-top: auto; padding-top: 14px; border-top: 1px dashed var(--border-strong); }
-.evf-side .rem-picker { gap: 6px; }
+.evf-side .rem-picker { gap: 6px; flex-wrap: nowrap; }
 .evf-side .rem-opt { position: relative; }
 .evf-side .rem-opt input { position: absolute; opacity: 0; width: 1px; height: 1px; }
-.evf-side .rem-opt span { display: inline-block; padding: 5px 10px; border: 1px solid var(--border-strong); border-radius: 999px;
+.evf-side .rem-opt span { display: inline-block; white-space: nowrap; padding: 5px 10px; border: 1px solid var(--border-strong); border-radius: 999px;
   background: var(--surface); font-size: .82rem; font-weight: 600; color: var(--text-2); transition: background-color .16s var(--ease-out); }
 .evf-side .rem-opt input:checked + span { background: var(--primary); border-color: var(--primary); color: #fff; }
 .evf-side .rem-opt input:focus-visible + span { outline: 2px solid var(--primary); outline-offset: 2px; }
@@ -2081,7 +2082,6 @@ a.ct-tel:hover { color: var(--primary); }
   .modal-box:has(.evf) { max-width: 560px; }
   .evf-body { grid-template-columns: 1fr; }
   .evf-side { border-left: 0; border-top: 1px solid var(--border); }
-  .evf-done { margin-top: 0; }
 }
 @media (max-width: 520px) {
   .evf-main { padding-left: 18px; padding-right: 18px; }
@@ -2173,17 +2173,22 @@ a.ct-tel:hover { color: var(--primary); }
 .tk-hero .tk-top { max-width: 260px; }
 .tk-hero .zero-n { text-shadow: 0 2px 24px rgba(8,26,32,.6); }
 .tk-hero .tk-side { width: 236px; background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,0)); }
-.dash-sheet.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.dash-sheet.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-@media (max-width: 1500px) {
-  .dash-sheet.cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .dash-sheet.cols-4 .sheet-col:nth-child(2n) { border-right: 0; }
-  .dash-sheet.cols-4 .sheet-col:nth-child(-n+2) { border-bottom: 1px solid #edf1f0; }
+/* v1.9.1: 하단 시트 칸 수는 시트 자신의 폭(container query)으로 — 좁은 칸에서 머리글이 줄바꿈되던 문제 */
+/* 쿼리 대상은 자손만 가능하므로 바깥 wrap을 컨테이너로 둔다 */
+.dash-sheet-wrap { container-type: inline-size; }
+.dash-sheet { gap: 1px; background: #e6ecea; grid-template-columns: 1fr; }
+.dash-sheet .sheet-col { background: var(--surface); border: 0 !important; }
+@container (min-width: 620px) {
+  .dash-sheet.cols-2, .dash-sheet.cols-3, .dash-sheet.cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dash-sheet.cols-3 .sheet-col:last-child { grid-column: 1 / -1; }
 }
-@media (max-width: 1100px) {
-  .dash-sheet.cols-3 { grid-template-columns: 1fr; }
-  .dash-sheet.cols-3 .sheet-col { border-right: 0; border-bottom: 1px solid #edf1f0; }
+@container (min-width: 1040px) {
+  .dash-sheet.cols-3 { grid-template-columns: 1.3fr 1fr 1fr; }
+  .dash-sheet.cols-3 .sheet-col:last-child { grid-column: auto; }
+  .dash-sheet.cols-4 { grid-template-columns: 1.35fr 1fr 1fr 1fr; }
 }
+.dc-head { flex-wrap: wrap; row-gap: 2px; }
+.dc-head h2, .dc-head .dc-meta, .dc-head .link-btn { white-space: nowrap; }
 @media (max-width: 768px) {
   .tk-hero { min-height: 0; }
   .tk-hero .tk-main { padding: 20px 20px 16px; }
@@ -2194,13 +2199,10 @@ a.ct-tel:hover { color: var(--primary); }
     mask-image: linear-gradient(180deg, transparent 0%, #000 16%, #000 84%, transparent 100%); }
   .tk-hero .tk-foot { order: 3; }
   .tk-hero .tk-side { width: auto; }
-  .dash-sheet.cols-4 { grid-template-columns: 1fr; }
-  .dash-sheet.cols-4 .sheet-col { border-right: 0; border-bottom: 1px solid #edf1f0; }
-  .dash-sheet .sheet-col:last-child { border-bottom: 0; }
 }
 @media print {
   .tk-stage { display: none !important; }
-  .dash-sheet.cols-4, .dash-sheet.cols-3 { grid-template-columns: repeat(2, 1fr) !important; }
+  .dash-sheet.cols-4, .dash-sheet.cols-3 { grid-template-columns: repeat(2, 1fr) !important; background: #c9d4d4 !important; }
 }
 @media (prefers-reduced-motion: reduce) {
   #view[data-hub] .page-head::before { animation: none; }
@@ -2211,3 +2213,16 @@ a.ct-tel:hover { color: var(--primary); }
   .lb-body { flex: 1; justify-content: space-between; padding-top: 34px; }
 }
 @media (min-width: 769px) and (max-width: 1180px) { .tk-stage { inset: 0 0 0 34%; } }
+
+/* v1.9.1: 완료는 하단 버튼줄(항상 보임) — 스크롤해야 보이던 문제 */
+.evf-foot { flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.evf-foot .spacer { flex: 1; }
+.evf-done { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.evf-done select { height: 34px; padding: 0 30px 0 10px; border: 1px solid var(--border-strong); border-radius: 10px; background-color: var(--surface); font-size: .86rem; }
+@media (max-width: 520px) {
+  .evf-foot .spacer { display: none; }
+  .evf-foot #f-cancel { margin-left: auto; }
+  .evf-side .rem-picker { flex-wrap: wrap; }
+}
+/* v1.9.1: 어절 단위 줄바꿈으로 긴 제목 + 당직실 번호가 한 줄을 넘치면 번호를 다음 줄로 */
+.ct-sec .card-title { flex-wrap: wrap; row-gap: 6px; }

@@ -1020,17 +1020,17 @@
           <section class="evf-sec"><div class="evf-label">알림 ${tip("접속 중인 브라우저에 알림이 뜹니다. 종일 일정은 당일 09:00 기준입니다.", "알림 설명")}</div>
             <div class="rem-picker">${REMINDER_DEFS.map(r =>
               `<label class="rem-opt"><input type="checkbox" data-rem="${r.id}" ${rems.includes(r.id) ? "checked" : ""}><span>${r.label}</span></label>`).join("")}</div></section>
-          <section class="evf-sec evf-done">
-            ${opt("f-done", occWasDone, "", wasRepeat ? `완료 <span class="evf-occ">${esc(occ)} 회차</span>` : "완료")}
-            ${wasRepeat ? `<div id="row-donescope" style="display:none;margin-top:8px">
-              <label class="evf-label" for="f-donescope">적용 범위</label>
-              <select id="f-donescope">${DONE_SCOPES.map(sc =>
-                `<option value="${sc.id}">${sc.label}</option>`).join("")}</select>
-            </div>` : ""}</section>
+
         </aside>
       </div>
-      <div class="modal-actions">
-        ${e ? '<button class="btn btn-danger" id="f-del" style="margin-right:auto">삭제</button>' : ""}
+      <div class="modal-actions evf-foot">
+        ${e ? '<button class="btn btn-danger" id="f-del">삭제</button>' : ""}
+        <div class="evf-done">
+          ${opt("f-done", occWasDone, "", wasRepeat ? `완료 <span class="evf-occ">${esc(occ)} 회차</span>` : "완료")}
+          ${wasRepeat ? `<select id="f-donescope" aria-label="완료 적용 범위" style="display:none">${DONE_SCOPES.map(sc =>
+            `<option value="${sc.id}">${sc.label}</option>`).join("")}</select>` : ""}
+        </div>
+        <span class="spacer"></span>
         <button class="btn btn-ghost" id="f-cancel">취소</button>
         <button class="btn btn-primary" id="f-save">저장</button>
       </div>
@@ -1091,7 +1091,7 @@
 
     /* 반복 일정: 완료 체크 상태가 바뀌면 적용 범위 선택을 노출 */
     function syncDoneScope() {
-      const row = $("#row-donescope");
+      const row = $("#f-donescope");
       if (!row) return;
       const changed = $("#f-done").checked !== occWasDone;
       row.style.display = (changed && $("#f-repeat").value !== "none") ? "" : "none";
@@ -1401,7 +1401,7 @@
     splitNames, joinNames, namesOf, hasName, tagsOf, gcalForm,
     meKey, canSeePriv, isMinePriv, autoRollOne, runAutoRoll, autoRollIfAllowed,
     addDays, diffDays, startOfWeek, rangeTitle,
-    COLORS, COLOR_ALIAS, pickColor, VIEWS, team, tagOf,
+    COLORS, COLOR_ALIAS, pickColor, VIEWS, team, tagOf, eventForm,
     get TEAM() { return team(); },
     REMINDER_DEFS, eventStartMs, eventStartMsFor, dueReminders, checkReminders, startReminders, stopReminders,
     REPEAT_DEFS, isRepeat, occursOn, nextOccurrence, repeatLabel,

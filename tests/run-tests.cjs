@@ -1637,6 +1637,49 @@ function makeFetchStub(server) {
       ok(/rel="preload" as="image" href="assets\/img\/login-dusk\.webp"/.test(html));
       ok(css.indexOf("login-dusk.webp") > 0 && css.indexOf("login-dusk-sm.webp") > 0);
     });
+    t("V12 (v1.9.1) 일정 폼: 완료는 스크롤 영역 밖 하단 버튼줄에", () => {
+      go(e, "schedule");
+      q(e, "#cal-add").click();
+      const done = q(e, "#f-done");
+      ok(done && done.closest(".modal-actions.evf-foot"), "완료 = 하단 버튼줄");
+      ok(!done.closest(".evf-body"), "스크롤되는 본문 밖");
+      ok(q(e, ".evf-foot #f-save") && q(e, ".evf-foot #f-cancel"));
+      e.S.closeModal();
+    });
+    t("V13 (v1.9.1) 반복 일정 완료: 체크를 바꾸면 적용 범위 선택이 하단에 나타남", () => {
+      const d = "2026-10-05";
+      e.S.data.schedules.push({ id: "sRep1", title: "주간 점검 회의", start: d, end: d, allDay: true, time: "", timeEnd: "",
+        color: "blue", done: false, assignee: "", vehicle: false, room: false, reminders: [],
+        repeat: { freq: "weekly", until: "" }, doneFrom: "", doneDates: [], undoneDates: [] });
+      e.S.saveSilent();
+      go(e, "schedule");
+      e.w.SemisCalendar.eventForm("sRep1", null, d);
+      ok(q(e, "#f-done"), "수정 폼 열림");
+      ok(q(e, ".evf-foot .evf-occ"), "회차 표시");
+      const sc = q(e, ".evf-foot #f-donescope");
+      ok(sc, "적용 범위 선택은 하단 버튼줄"); eq(sc.style.display, "none");
+      const done = q(e, "#f-done"); done.checked = true; done.dispatchEvent(new e.w.Event("change"));
+      eq(sc.style.display, "");
+      e.S.closeModal();
+    });
+    t("V14 (v1.9.1) 한글 줄바꿈: 본문 전체 어절 단위(keep-all), 글자 단위로 끊는 word-break:break-word 잔재 없음", () => {
+      const css = read("css/main.css");
+      ok(/body \{[^}]*word-break: keep-all;[^}]*overflow-wrap: break-word;/.test(css));
+      ok(css.indexOf("word-break: break-word") < 0);
+    });
+    t("V15 (v1.9.1) 대시보드 하단 시트: 칸 수를 시트 폭(container query)으로 결정 · 머리글 줄바꿈 없음", () => {
+      const css = read("css/main.css");
+      ok(/\.dash-sheet-wrap \{ container-type: inline-size; \}/.test(css), "쿼리 컨테이너는 시트 바깥 wrap");
+      go(e, "dashboard"); ok(q(e, ".dash-sheet-wrap > .dash-sheet.cols-4"), "시트를 감싼 컨테이너");
+      ok(/@container \(min-width: 1040px\)[\s\S]*\.dash-sheet\.cols-4 \{ grid-template-columns: 1\.35fr 1fr 1fr 1fr; \}/.test(css));
+      ok(/\.dc-head h2, \.dc-head \.dc-meta, \.dc-head \.link-btn \{ white-space: nowrap; \}/.test(css));
+    });
+    t("V16 (v1.9.1) 3D: three.js 주소에 버전(배포 직후 옛 404 회피) · 대체 사진 사유 기록", () => {
+      const src = read("js/hero3d.js");
+      ok(src.indexOf('three.module.min.js?v=r170') > 0);
+      go(e, "dashboard");
+      eq(q(e, "#dash-3d").dataset.h3d, "no-webgl");
+    });
     t("V11 새 아이콘(info·car·door·bell·forward·stretch·repeat·user·palette) 등록", () => {
       ["info", "car", "door", "bell", "forward", "stretch", "repeat", "user", "palette"].forEach(k => ok(e.S.ICONS[k], k));
     });

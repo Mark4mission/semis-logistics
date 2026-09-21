@@ -231,7 +231,7 @@
         </div>
         ${cardVis("status") ? `<div class="dash-top${guest ? " guest" : ""}">${ticketHTML(canWrite)}</div>` : ""}
         ${guest ? `<section class="dash-card">${noticeCol}</section>`
-          : `<div class="dash-sheet cols-${[upcomingCard, noticeCol, actionCol, buildCol].filter(Boolean).length}">${upcomingCard}${noticeCol}${actionCol}${buildCol}</div>`}`;
+          : `<div class="dash-sheet-wrap"><div class="dash-sheet cols-${[upcomingCard, noticeCol, actionCol, buildCol].filter(Boolean).length}">${upcomingCard}${noticeCol}${actionCol}${buildCol}</div></div>`}`;
       if (window.SemisHero3D && $("#dash-3d")) SemisHero3D.mount($("#dash-3d"));
 
       // 공지 리스트

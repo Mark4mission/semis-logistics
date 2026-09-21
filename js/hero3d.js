@@ -22,16 +22,22 @@ window.SemisHero3D = (() => {
     if (/jsdom/i.test(navigator.userAgent || "")) return false;
     return true;
   }
-  function fallback(host) {
+  /* 대체 사진으로 바꾸고 이유를 남긴다 (host.dataset.h3d / SemisHero3D.state.reason) */
+  function fallback(host, reason) {
+    S.reason = reason || S.reason || "unknown";
     if (!host) return;
     host.classList.add("h3d-fallback");
     host.classList.remove("h3d-on");
+    host.dataset.h3d = S.reason;
   }
+  /* 파일 주소에 버전을 붙여 배포 직후 CDN에 남은 옛 응답(404)을 피한다.
+     불러오기 실패는 일시적일 수 있으므로 영구 실패로 두지 않고 다음 대시보드 진입 때 다시 시도한다. */
+  const THREE_URL = "assets/vendor/three.module.min.js?v=r170";
   function loadThree() {
     if (S.T) return Promise.resolve(S.T);
     if (!S.loading) {
-      const url = new URL("assets/vendor/three.module.min.js", document.baseURI).href;
-      S.loading = import(url).then(m => (S.T = m)).catch(err => { S.failed = true; throw err; });
+      const url = new URL(THREE_URL, document.baseURI).href;
+      S.loading = import(url).then(m => (S.T = m)).catch(err => { S.loading = null; S.reason = "load"; throw err; });
     }
     return S.loading;
   }
@@ -375,7 +381,7 @@ window.SemisHero3D = (() => {
       if (S.probe && S.probe.n < 90) {
         if (S.probe.last) S.probe.sum += now - S.probe.last;
         S.probe.last = now; S.probe.n++;
-        if (S.probe.n === 90 && S.probe.sum / 89 > 45) { S.slow = true; stop(); return; }
+        if (S.probe.n === 90 && S.probe.sum / 89 > 45) { S.slow = true; if (S.host) S.host.dataset.h3d = "static"; stop(); return; }
       }
     } else if (S.probe) S.probe.last = 0;
     S.raf = requestAnimationFrame(loop);
@@ -403,7 +409,8 @@ window.SemisHero3D = (() => {
   /* 대시보드가 그려질 때마다 호출 — host는 3D가 들어갈 자리(.tk-stage) */
   function mount(host) {
     if (!host) return;
-    if (!webglOK() || S.failed) { fallback(host); return; }
+    if (!webglOK()) { fallback(host, "no-webgl"); return; }
+    if (S.failed) { fallback(host, "webgl-context"); return; }
     S.reduce = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
     loadThree().then(T => {
       if (!host.isConnected) return;
@@ -411,7 +418,7 @@ window.SemisHero3D = (() => {
         let r;
         try {
           r = new T.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "low-power" });
-        } catch (err) { S.failed = true; fallback(host); return; }
+        } catch (err) { S.failed = true; fallback(host, "webgl-context"); return; }
         r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
         r.outputColorSpace = T.SRGBColorSpace;
         r.toneMapping = T.ACESFilmicToneMapping;
@@ -444,6 +451,7 @@ window.SemisHero3D = (() => {
       S.host = host;
       host.appendChild(S.canvas);
       host.classList.remove("h3d-fallback");
+      host.dataset.h3d = S.slow ? "static" : "live";
       const tk = host.closest(".ticket") || host;
       tk.addEventListener("pointermove", onPointer, { passive: true });
       tk.addEventListener("pointerleave", onLeave, { passive: true });
@@ -456,7 +464,7 @@ window.SemisHero3D = (() => {
       frame(performance.now());
       requestAnimationFrame(() => host.classList.add("h3d-on"));
       start();
-    }).catch(() => fallback(host));
+    }).catch(() => fallback(host, S.reason === "load" ? "load" : "error"));
   }
 
   document.addEventListener("visibilitychange", () => {

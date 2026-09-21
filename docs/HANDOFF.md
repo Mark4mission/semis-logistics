@@ -6,10 +6,10 @@
 
 | 항목 | 값 |
 |---|---|
-| 현재 버전 | **v1.9.0** (2026-09-22) — 사진·3D 비주얼, 일정 등록 폼 재구성, 일정 12색 팔레트 |
+| 현재 버전 | **v1.9.1** (2026-09-22) — 한글 어절 단위 줄바꿈, 일정 폼 '완료' 하단 고정, 대시보드 하단 칸 폭 자동 |
 | 접속 주소 | https://mark4mission.github.io/semis-logistics/ |
 | 저장소 | GitHub `Mark4mission/semis-logistics` (공개) · Mac `~/SeMIS_Logistics` |
-| 테스트 | `npm test` 165건 전부 통과 (코드·문서에 암호 평문 없음) |
+| 테스트 | `npm test` 170건 전부 통과 (코드·문서에 암호 평문 없음) |
 | 백엔드 | Supabase `mzyuzrxkdcpzxojenwat` — 테이블 `semis_logi_store`, 버킷 `semis-logi-files` |
 
 ## 2. 새 세션 시작
@@ -90,6 +90,8 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 6. 가독성 기준: 본문 17px · 보조 문구 `.81rem` 이상 · 보조 색은 `--text-2`/`--text-3`만
 7. **디자인 규칙(v1.8~)**: 새 모듈은 `docs/module-template.js`를 복사해 시작. 화면은 `SeMIS.ui.head/stats/search/empty/chip`, 아이콘은 `SeMIS.icon()`만 사용. 제목·메뉴에 이모지 금지. 메뉴는 반드시 허브(hub-*)에 소속. 390px 모바일 화면까지 확인
 8. **비주얼 규칙(v1.9)**: 허브에 속한 화면은 `.page-head`가 자동으로 허브 사진 배너가 된다(`#view[data-hub]`, 사진은 `assets/img/hero-*.webp`). 새 허브를 만들면 홈 사진이 기본 — 전용 사진은 CSS `#view[data-hub="hub-…"]` 한 줄 추가. 입력 폼의 설명 문구는 문단으로 쓰지 말고 `SeMIS.ui.tip(text, label)`(ⓘ 말풍선)로. 일정 색은 12색(`SemisCalendar.COLORS`) — 추가 시 ΔE2000 18 이상·글자 대비 4.5:1 이상 확인
+9. **줄바꿈(v1.9.1)**: 본문 전체 `word-break: keep-all`(한글은 어절 단위). 글자 단위로 끊는 `word-break: break-word`는 쓰지 말고 `overflow-wrap: break-word`로. 좁은 칸의 머리글(제목·건수·링크)은 `white-space: nowrap`. 새 화면은 390px에서 가로 넘침이 없는지 확인
+10. **모달 버튼줄**: 저장·취소처럼 자주 누르는 조작(완료 체크 포함)은 스크롤되는 본문이 아니라 하단 `.modal-actions`에 둔다
 
 ## 7. 미결 · 주의
 
@@ -98,7 +100,8 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 - CARES Mobile 배포 주소 링크 미등록
 - 연락망 이관(2026-09-22): SeMIS v2 `semis_store.contacts`에서 안전보안실 28 · 국토부 항공보안정책과 8 · 서울지방항공청 보안과 16 · 비상안전기획관실 3 · 대테러센터·국가위기관리센터 4 · 서면보고 이메일 10을 복사(두 시스템은 이후 따로 관리). 이관 직전 값은 `semis_store_history` id 112. 서면보고 섹션의 v2 비고("지점 내 별도 유지…")는 지점 기준 문구라 옮기지 않음
 - 인천화물팀 안전보안파트 · 인천화물팀 · 인천공항공사 섹션은 아직 비어 있음(v2에 대응 자료 없음)
-- 3D 장면: GPU 없는 PC(소프트웨어 렌더링)·느린 PC(평균 45ms/프레임 초과)·동작 줄이기 설정에서는 정지 화면, WebGL 없으면 사진
+- 3D 장면: GPU 없는 PC(소프트웨어 렌더링)·느린 PC(평균 45ms/프레임 초과)·동작 줄이기 설정에서는 정지 화면, WebGL 없으면 사진. 사진이 보이면 대시보드에서 `document.querySelector('#dash-3d').dataset.h3d`로 사유 확인(no-webgl · webgl-context · load · live · static)
+- 2026-09-22 v1.9.0 배포 직후 Mark의 Chrome에서 3D 대신 사진이 보였음 — 같은 Mac의 내장 브라우저에서는 3D 정상(Apple M4 Pro, Metal). 배포 전 요청한 three.js 404가 CDN에 남은 것으로 추정해 v1.9.1에서 주소에 버전을 붙임. 재발 시 위 사유 값과 chrome://gpu의 WebGL 항목 확인
 
 ## 8. 작업 기록
 
@@ -114,3 +117,4 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 | v1.7.0 | 09-21 | 암호 관리 공용/개인용 구분 (개인용 = 멤버별 개인 키 암호화). SeMIS v2도 v2.52.0으로 동일 적용 |
 | v1.8.0 | 09-21 | 디자인 개편 Terminal Calm — 6개 허브(아이콘 줄 + 허브 패널), 모바일 하단 탭 · 메뉴 시트, Ctrl K 검색 팔레트, 대시보드 개편, 모듈 화면 키트(SeMIS.ui · icon · navBadge), v1.7 메뉴 자동 이전, docs/module-template.js |
 | v1.9.0 | 09-22 | 로그인 실사 사진 · 대시보드 3D 장면(Three.js r170 로컬, 화물기 ULD 탑재 애니메이션) · 허브 화면 사진 배너 6종 · 일정 등록 폼 2단 재구성(설명은 ⓘ 말풍선, 일정명 예시 'OO회의') · 일정 색 15→12색(파랑=청록 중복 해소, 최소 ΔE 18.8) · SeMIS v2 연락망 이관 · Impeccable 스킬 적용 |
+| v1.9.1 | 09-22 | 한글 어절 단위 줄바꿈(전역 keep-all) · 대시보드 하단 시트 칸 수를 시트 폭으로 결정(container query, 1040px↑ 4칸) · 일정 폼 '완료'를 하단 버튼줄로(스크롤 없이 보임) · 오른쪽 설정 패널 압축(1512×825에서 스크롤 없음) · 3D 불러오기 주소에 버전 부여(배포 직후 옛 404 캐시 회피)·실패 사유 기록(`#dash-3d[data-h3d]`) |
