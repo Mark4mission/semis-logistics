@@ -6,10 +6,10 @@
 
 | 항목 | 값 |
 |---|---|
-| 현재 버전 | **v1.6.0** (2026-09-20) |
+| 현재 버전 | **v1.7.0** (2026-09-21) |
 | 접속 주소 | https://mark4mission.github.io/semis-logistics/ |
 | 저장소 | GitHub `Mark4mission/semis-logistics` (공개) · Mac `~/SeMIS_Logistics` |
-| 테스트 | `npm test` 132건 전부 통과 (코드·문서에 암호 평문 없음) |
+| 테스트 | `npm test` 137건 전부 통과 (코드·문서에 암호 평문 없음) |
 | 백엔드 | Supabase `mzyuzrxkdcpzxojenwat` — 테이블 `semis_logi_store`, 버킷 `semis-logi-files` |
 
 ## 2. 새 세션 시작
@@ -52,7 +52,7 @@ Claude가 할 일(순서대로):
 | minutes | minutes.js | mgr | 회의록 + QR 참석 서명 |
 | reg-sec · reg-safety · reg-dg | regulations.js | mgr (편집 hq) | 규정 3종 · PDF 뷰어 · 개정 아이디어 노트 |
 | contacts | contacts.js | mgr | 비상연락망 · 보고체계 |
-| vault | vault.js | hq | 암호 관리 (AES-256-GCM, 5분 자동 잠금) |
+| vault | vault.js | hq | 암호 관리 (AES-256-GCM, 5분 자동 잠금, 공용/개인용 — 개인용은 본인 키로만 해독) |
 | settings | modules.js | admin | 메뉴(숨기기 포함) · 사용자 · 담당자 · 데이터(변경 이력 복원) · 저장소 |
 
 **예정 (15)** — `planned:true` 메뉴. 같은 module id로 `registerModule` 하면 자동 대체된다.
@@ -89,9 +89,7 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 
 ## 7. 미결 · 주의
 
-- ⚠️ **기본 계정 초기 암호 공개 노출** — 과거 테스트 파일에 `cargo-ss`(hq) · `cargo-mgr`(manager) · `cargo-user` 초기 암호 평문이 있었고 저장소가 공개 상태다.
-  2026-09-21 현재 파일에서는 제거했지만 **git 이력에는 남아 있다.** 운영 DB `pwOverrides` 기준 `cargo-user`만 변경됨 →
-  **`cargo-ss` · `cargo-mgr` 암호를 시스템 설정 › 사용자/암호에서 반드시 변경**(변경 여부는 `semis_logi_store.pwOverrides` 키로 확인)
+- 기본 계정 초기 암호가 공개 저장소 git 이력에 남아 있으나, 2026-09-21 네 계정 모두 운영 암호로 변경 완료(`pwOverrides` 확인). 코드·테스트에 평문 재유입 금지
 - 커스텀 도메인 미설정 (추후 `logistics.semis.pe.kr` CNAME 가능)
 - CARES Mobile 배포 주소 링크 미등록
 
@@ -106,3 +104,4 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 | v1.4.0 | 09-20 | 메뉴 숨기기 (권한과 별개) |
 | v1.5.0 | 09-20 | 암호 관리 (v2 vault 이식, 해제 UI 개편, 제목 정렬) |
 | v1.6.0 | 09-20 | 규정 관리 3종 (v2 regulations 이식) · 문서 18건 등록 · 안내 문구 정리 |
+| v1.7.0 | 09-21 | 암호 관리 공용/개인용 구분 (개인용 = 멤버별 개인 키 암호화). SeMIS v2도 v2.52.0으로 동일 적용 |

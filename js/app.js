@@ -8,7 +8,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.6.0";
+  const VERSION = "1.7.0";
   const APP_NAME = "SeMIS · Logistics";
   const LS_DATA = "semisl:data";
   const LS_UI   = "semisl:ui";
@@ -230,7 +230,7 @@ const SeMIS = (() => {
       minutes: [],       // 회의록 게시판
       minuteFolders: [], // 회의록 폴더 — normalize가 기본 폴더 시드
       contacts: { sections: [] }, // 비상연락망 (실데이터는 공용 DB만 — 코드 미시드)
-      vault: { v: 1, members: [], data: null, updated: "" }, // 암호 관리 (클라이언트 AES-256 암호화)
+      vault: { v: 1, members: [], data: null, personal: {}, updated: "" }, // 암호 관리 (클라이언트 AES-256 암호화)
       regulations: [],   // 규정 관리 (항공보안 / 안전관리 / 위험물 DG)
       chatRooms: []      // (예약) 팀 채팅방
     };
@@ -358,11 +358,13 @@ const SeMIS = (() => {
     });
     // 암호 관리 저장소 — 구조만 보정(암호문은 건드리지 않는다)
     if (!DATA.vault || typeof DATA.vault !== "object" || Array.isArray(DATA.vault))
-      DATA.vault = { v: 1, members: [], data: null, updated: "" };
+      DATA.vault = { v: 1, members: [], data: null, personal: {}, updated: "" };
     if (!Array.isArray(DATA.vault.members)) DATA.vault.members = [];
     if (DATA.vault.v !== 1) DATA.vault.v = 1;
     if (DATA.vault.data === undefined) DATA.vault.data = null;
     if (typeof DATA.vault.updated !== "string") DATA.vault.updated = "";
+    if (!DATA.vault.personal || typeof DATA.vault.personal !== "object" || Array.isArray(DATA.vault.personal))
+      DATA.vault.personal = {};   // 멤버별 개인용 항목 암호문 { memberId: {iv, ct} }
 
     // 회의록 게시판 — 폴더 기본 시드는 minutes.js가 제공
     if (!Array.isArray(DATA.minutes)) DATA.minutes = [];

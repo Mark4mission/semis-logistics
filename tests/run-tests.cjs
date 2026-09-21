@@ -1209,11 +1209,115 @@ function makeFetchStub(server) {
       await VT.addEntryForTest({ category: "시스템", title: "마스킹", account: "a", pw: "PlainPw!", url: "", note: "" });
       go(e, "vault");
       ok(q(e, "#view [data-print-btn]"), "A4 인쇄 버튼 자동 부착");
-      q(e, '[data-vp-eye="0"]').click();
-      eq(q(e, '[data-vp-span="0"]').textContent, "PlainPw!", "표시 전환");
+      q(e, "[data-vp-eye]").click();
+      eq(q(e, "[data-vp-span]").textContent, "PlainPw!", "표시 전환");
       VT.maskAll();
-      eq(q(e, '[data-vp-span="0"]').textContent, "••••••••", "인쇄 전 재마스킹");
+      eq(q(e, "[data-vp-span]").textContent, "••••••••", "인쇄 전 재마스킹");
       VT.lock();
+    });
+    await ta("VT12 개인용 항목: 본인만 해독 · 다른 멤버에게는 보이지 않음 · 서버엔 암호문만", async () => {
+      const e = makeEnv();
+      loginAs(e, "hq");
+      const VT = e.w.SemisVault;
+      await VT.setup("최상일", "pw-choi");
+      await VT.addMember("김홍석", "pw-kim");
+      await VT.addEntryForTest({ category: "시스템", title: "팀 공용 CCTV", account: "cctv", pw: "SharedPw1!", url: "", note: "" }, "shared");
+      await VT.addEntryForTest({ category: "웹사이트", title: "내 개인 메일", account: "me", pw: "MyOwnPw9!", url: "", note: "" }, "personal");
+      eq(VT.sharedCount(), 1); eq(VT.personalCount(), 1);
+      const choiId = e.S.data.vault.members.find(m => m.name === "최상일").id;
+      ok(e.S.data.vault.personal[choiId] && e.S.data.vault.personal[choiId].ct, "개인용 암호문 저장");
+      const raw = JSON.stringify(e.S.data.vault) + (e.w.localStorage.getItem("semisl:data") || "");
+      ok(!raw.includes("MyOwnPw9!") && !raw.includes("내 개인 메일"), "개인용 평문 미노출");
+      VT.lock();
+      // 다른 멤버로 해제 → 공용만 보임
+      const kimId = e.S.data.vault.members.find(m => m.name === "김홍석").id;
+      await VT.unlock(kimId, "pw-kim");
+      eq(VT.sharedCount(), 1, "공용은 보임");
+      eq(VT.personalCount(), 0, "타인의 개인용은 안 보임");
+      eq(VT.findEntry("내 개인 메일"), null);
+      VT.lock();
+      // 본인 재해제 → 개인용 복호화
+      await VT.unlock(choiId, "pw-choi");
+      eq(VT.findEntry("내 개인 메일").pw, "MyOwnPw9!", "본인은 복호화");
+      eq(VT.scopeOf("내 개인 메일"), "personal");
+      eq(VT.scopeOf("팀 공용 CCTV"), "shared");
+      VT.lock();
+    });
+    await ta("VT13 항목 폼: 공용/개인용 선택 · 저장 · 구분 전환 이동", async () => {
+      const e = makeEnv();
+      loginAs(e, "hq");
+      const VT = e.w.SemisVault;
+      await VT.setup("최상일", "pw-choi");
+      go(e, "vault");
+      q(e, "#vault-add").click();
+      eq(qa(e, '#modal-box input[name="v-scope"]').length, 2, "공용/개인용 2택");
+      ok(q(e, '#modal-box input[name="v-scope"][value="shared"]').checked, "기본값 공용");
+      q(e, '#modal-box input[name="v-scope"][value="personal"]').checked = true;
+      q(e, "#v-title").value = "개인 VPN"; q(e, "#v-pw").value = "vpn-pw";
+      q(e, "#v-save").click();
+      await new Promise(r => setTimeout(r, 400));
+      eq(VT.scopeOf("개인 VPN"), "personal", "개인용 저장");
+      ok(q(e, "#vault-body .v-tag-personal"), "개인 배지 표시");
+      // 수정에서 공용으로 전환
+      q(e, "#vault-body [data-ve-edit]").click();
+      ok(q(e, '#modal-box input[name="v-scope"][value="personal"]').checked, "현재 구분 반영");
+      q(e, '#modal-box input[name="v-scope"][value="shared"]').checked = true;
+      q(e, "#v-save").click();
+      await new Promise(r => setTimeout(r, 400));
+      eq(VT.scopeOf("개인 VPN"), "shared", "공용으로 이동");
+      eq(VT.personalCount(), 0); eq(VT.sharedCount(), 1);
+      VT.lock();
+    });
+    await ta("VT14 필터 칩: 전체 · 공용 · 개인용", async () => {
+      const e = makeEnv();
+      loginAs(e, "hq");
+      const VT = e.w.SemisVault;
+      await VT.setup("최상일", "pw-choi");
+      await VT.addEntryForTest({ category: "시스템", title: "A공용", account: "", pw: "", url: "", note: "" }, "shared");
+      await VT.addEntryForTest({ category: "시스템", title: "B개인", account: "", pw: "", url: "", note: "" }, "personal");
+      go(e, "vault");
+      eq(qa(e, "#vault-chips [data-scope]").length, 3);
+      eq(qa(e, "#vault-body tbody tr").length, 2, "전체 2건");
+      qa(e, "#vault-chips [data-scope]").find(b => b.dataset.scope === "personal").click();
+      eq(qa(e, "#vault-body tbody tr").length, 1, "개인용 1건");
+      ok(q(e, "#vault-body").textContent.includes("B개인"));
+      qa(e, "#vault-chips [data-scope]").find(b => b.dataset.scope === "shared").click();
+      ok(q(e, "#vault-body").textContent.includes("A공용"));
+      ok(!q(e, "#vault-body").textContent.includes("B개인"));
+      VT.lock();
+    });
+    await ta("VT15 개인용이 있는 다른 멤버의 비밀번호는 변경 불가 · 본인은 가능(개인용 유지) · 제거 시 개인용 폐기", async () => {
+      const e = makeEnv();
+      loginAs(e, "hq");
+      const VT = e.w.SemisVault;
+      await VT.setup("최상일", "pw-choi");
+      await VT.addMember("김홍석", "pw-kim");
+      VT.lock();
+      const kimId = e.S.data.vault.members.find(m => m.name === "김홍석").id;
+      const choiId = e.S.data.vault.members.find(m => m.name === "최상일").id;
+      await VT.unlock(kimId, "pw-kim");
+      await VT.addEntryForTest({ category: "기타", title: "김 개인", account: "", pw: "k1", url: "", note: "" }, "personal");
+      VT.lock();
+      await VT.unlock(choiId, "pw-choi");
+      let blocked = false;
+      try { await VT.changeMemberPw(kimId, "pw-kim-new"); } catch (err) { blocked = /본인만/.test(err.message); }
+      ok(blocked, "타인 비밀번호 변경 차단");
+      await VT.addEntryForTest({ category: "기타", title: "최 개인", account: "", pw: "c1", url: "", note: "" }, "personal");
+      await VT.changeMemberPw(choiId, "pw-choi-2");
+      VT.lock();
+      await VT.unlock(choiId, "pw-choi-2");
+      eq(VT.findEntry("최 개인").pw, "c1", "본인 비밀번호 변경 후에도 개인용 유지");
+      ok(VT.hasPersonal(kimId), "김 개인용 존재");
+      VT.removeMember(kimId);
+      ok(!VT.hasPersonal(kimId), "멤버 제거 시 개인용 폐기");
+      VT.lock();
+    });
+    t("VT16 normalize: vault.personal 구조 보정 (멱등)", () => {
+      const e = makeEnv();
+      e.S.data.vault.personal = [];
+      e.S.normalizeData();
+      ok(e.S.data.vault.personal && !Array.isArray(e.S.data.vault.personal), "객체로 보정");
+      eq(e.S.normalizeData(), false, "멱등");
     });
     t("VT11 검색 프로바이더 미등록 — 저장소 내용은 통합검색에 노출되지 않음", () => {
       const e = makeEnv();
