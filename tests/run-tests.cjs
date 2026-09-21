@@ -3,7 +3,7 @@
    실행: npm test  (jsdom 필요: npm install)
    구성: [C] 코어(해시·계정·메뉴·정규화·권한·라우터·예정 모듈)
          [D] 대시보드·공지·현황판  [S] 시스템 설정  [M] 이식 모듈 스모크(일정·회의록·연락망·검색)
-         [Y] 동기화  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
+         [Y] 동기화  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
    ═══════════════════════════════════════════════════════ */
 "use strict";
 const fs = require("fs");
@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/app.js", "js/qr.js", "js/modules.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/sync.js"];
+const FILES = ["js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/sync.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -1536,6 +1536,109 @@ function makeFetchStub(server) {
       const ids = (e.w.SemisSearch.terms ? [] : []);
       ok(!read("js/vault.js").includes("SemisSearch.register"), "vault는 검색에 등록하지 않음");
       ok(ids.length === 0);
+    });
+  }
+
+  /* ══════════ [V] v1.9 — 일정 등록 폼 · 12색 팔레트 · 설명 말풍선 · 허브 사진 배너 · 대시보드 3D ══════════ */
+  {
+    const e = makeEnv();
+    loginAs(e, "hq");
+    const C = e.w.SemisCalendar;
+    t("V01 팔레트 12색 · id 중복 없음 · 구버전 id(lime·amber·indigo)는 선택지에서 빠지고 가까운 색으로", () => {
+      eq(C.COLORS.length, 12);
+      eq(new Set(C.COLORS.map(c => c.id)).size, 12);
+      ["lime", "amber", "indigo"].forEach(id => ok(!C.COLORS.some(c => c.id === id), id));
+      eq(C.pickColor("lime"), "green"); eq(C.pickColor("amber"), "orange"); eq(C.pickColor("indigo"), "blue");
+      eq(C.pickColor("rose"), "rose"); eq(C.pickColor(""), "blue"); eq(C.pickColor("nope"), "blue");
+    });
+    t("V02 CSS: 12색 칠(--evf) 값이 모두 다름 · 파랑≠청록(예전엔 같은 색)", () => {
+      const css = read("css/main.css");
+      const fills = C.COLORS.map(c => {
+        const m = new RegExp("\\.ev-" + c.id + "\\b[^{]*\\{[^}]*--evf:\\s*(#[0-9a-f]{6})", "i").exec(css);
+        ok(m, "fill for " + c.id); return m[1].toLowerCase();
+      });
+      eq(new Set(fills).size, 12, fills.join(","));
+      ok(/\.ev-orange, \.ev-amber/.test(css) && /\.ev-green, \.ev-lime/.test(css) && /\.ev-blue, \.ev-indigo/.test(css), "구버전 id 별칭 CSS");
+    });
+    t("V03 일정 등록 폼: 입력(왼쪽) · 설정(오른쪽) 분리, 설명 문구는 말풍선으로만", () => {
+      go(e, "schedule");
+      q(e, "#cal-add").click();
+      ok(q(e, "#modal-box .evf .evf-main #f-title"), "일정명은 입력 영역");
+      ok(q(e, "#modal-box .evf-side #f-colors"), "색상은 설정 영역");
+      ok(q(e, "#modal-box .evf-side #f-priv") && q(e, "#modal-box .evf-side #f-autodefer") && q(e, "#modal-box .evf-side #f-vehicle"));
+      eq(q(e, "#f-title").getAttribute("placeholder"), "예: OO회의");
+      ok(!q(e, "#modal-box").textContent.includes("지점"), "지점 보안점검 예시 없음");
+      eq(qa(e, "#modal-box .form-hint").length, 0, "폼 안 설명 문단 없음");
+      ok(!q(e, "#hint-auto"));
+      ok(qa(e, "#modal-box .help-tip").length >= 4, "ⓘ 설명 버튼");
+      eq(qa(e, "#f-colors .color-swatch").length, 12);
+      ok(!/[\u{1F300}-\u{1FAFF}\u2600-\u27BF]/u.test(q(e, "#modal-box .evf").textContent), "폼에 이모지 없음");
+    });
+    t("V04 말풍선: 클릭하면 설명 표시, 다시 클릭·Esc로 닫힘", () => {
+      const b = qa(e, "#modal-box .help-tip")[0];
+      b.click();
+      const box = q(e, "#help-tipbox");
+      ok(box && box.classList.contains("on")); ok(box.textContent.length > 5);
+      eq(b.getAttribute("aria-expanded"), "true");
+      b.click();
+      return new Promise(r => setTimeout(r, 5)).then(() => {});
+    });
+    t("V05 저장: 색상 선택·체크 칩이 그대로 저장된다", () => {
+      go(e, "schedule");
+      q(e, "#cal-add").click();
+      q(e, "#f-title").value = "팔레트 확인 회의";
+      q(e, '#f-colors [data-color="purple"]').click();
+      eq(q(e, '#f-colors [data-color="purple"]').getAttribute("aria-checked"), "true");
+      q(e, "#f-vehicle").checked = true;
+      q(e, "#f-save").click();
+      const rec = e.S.data.schedules.find(x => x.title === "팔레트 확인 회의");
+      ok(rec); eq(rec.color, "purple"); eq(rec.vehicle, true);
+    });
+    t("V06 반복 일정이면 자동 연기·연장 칩 비활성", () => {
+      go(e, "schedule");
+      q(e, "#cal-add").click();
+      const rep = q(e, "#f-repeat"); rep.value = "weekly"; rep.dispatchEvent(new e.w.Event("change"));
+      ok(q(e, "#f-autodefer").disabled);
+      ok(q(e, "#f-autodefer").closest(".evf-opt").classList.contains("is-disabled"));
+      e.S.closeModal();
+    });
+    t("V07 허브 화면은 사진 배너(#view[data-hub]), 대시보드·관리 메뉴는 제외", () => {
+      go(e, "contacts"); eq(q(e, "#view").getAttribute("data-hub"), "hub-ops");
+      go(e, "schedule"); eq(q(e, "#view").getAttribute("data-hub"), "hub-home");
+      go(e, "reg-safety"); eq(q(e, "#view").getAttribute("data-hub"), "hub-doc");
+      go(e, "scr-status"); eq(q(e, "#view").getAttribute("data-hub"), "hub-sec");
+      ok(q(e, "#view .page-head [data-print-btn]"), "배너에도 A4 인쇄 버튼");
+      go(e, "dashboard"); ok(!q(e, "#view").hasAttribute("data-hub"));
+      go(e, "vault"); ok(!q(e, "#view").hasAttribute("data-hub"));
+    });
+    t("V08 대시보드: 화물 태그 카드에 3D 자리 · jsdom(WebGL 없음)은 사진 대체 · 하단 4칸", () => {
+      go(e, "dashboard");
+      const st = q(e, ".ticket .tk-main #dash-3d.tk-stage");
+      ok(st, "3D 자리"); ok(st.classList.contains("no-print"));
+      ok(st.classList.contains("h3d-fallback"), "WebGL 없으면 사진");
+      ok(q(e, ".dash-sheet.cols-4 #upcoming-box"), "다가오는 일정은 하단 시트 첫 칸");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    t("V09 자산: 사진 13장(webp) · three.js 로컬 사본 · CSS가 참조하는 이미지가 모두 존재", () => {
+      const css = read("css/main.css");
+      const urls = Array.from(css.matchAll(/url\("?\.\.\/(assets\/[^")]+)"?\)/g)).map(m => m[1]);
+      ok(urls.length >= 14, "url " + urls.length);
+      urls.forEach(u => ok(fs.existsSync(path.join(ROOT, u)), u));
+      const imgs = fs.readdirSync(path.join(ROOT, "assets/img")).filter(f => f.endsWith(".webp"));
+      ok(imgs.length >= 13, "webp " + imgs.length);
+      imgs.forEach(f => ok(fs.statSync(path.join(ROOT, "assets/img", f)).size < 160 * 1024, f + " 160KB 이하"));
+      const three = read("assets/vendor/three.module.min.js");
+      ok(three.indexOf("SPDX-License-Identifier: MIT") > 0 && /REVISION="170"|const t="170"/.test(three.slice(0, 400)), "three r170");
+      ok(read("js/hero3d.js").indexOf("assets/vendor/three.module.min.js") > 0, "CDN 아닌 로컬 사본 사용");
+      ok(fs.existsSync(path.join(ROOT, "assets/img/CREDITS.md")), "사진 출처 기록");
+    });
+    t("V10 로그인: 사진 배경 + 데스크톱 LCP 미리 불러오기", () => {
+      const html = read("index.html"), css = read("css/main.css");
+      ok(/rel="preload" as="image" href="assets\/img\/login-dusk\.webp"/.test(html));
+      ok(css.indexOf("login-dusk.webp") > 0 && css.indexOf("login-dusk-sm.webp") > 0);
+    });
+    t("V11 새 아이콘(info·car·door·bell·forward·stretch·repeat·user·palette) 등록", () => {
+      ["info", "car", "door", "bell", "forward", "stretch", "repeat", "user", "palette"].forEach(k => ok(e.S.ICONS[k], k));
     });
   }
 

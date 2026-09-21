@@ -35,16 +35,18 @@
   const dowName = (iso) => DOW[fromISO(iso).getDay()];
 
   /* ─────── 색상 팔레트 (14색) ─────── */
+  /* v1.9: 12색 — 서로 뚜렷이 구분되도록 재설계(색차 ΔE2000 최소 18 이상, 글자 대비 4.5:1 이상).
+     예전 id(lime·amber·indigo)는 가까운 색으로 그려지고 선택지에서만 빠진다(COLOR_ALIAS). */
   const COLORS = [
-    { id: "blue",   label: "파랑" }, { id: "sky",    label: "하늘" },
-    { id: "teal",   label: "청록" }, { id: "green",  label: "초록" },
-    { id: "lime",   label: "연두" }, { id: "yellow", label: "노랑" },
-    { id: "amber",  label: "황갈" }, { id: "orange", label: "주황" },
-    { id: "red",    label: "빨강" }, { id: "pink",   label: "분홍" },
-    { id: "rose",   label: "연분홍" },
-    { id: "purple", label: "보라" }, { id: "indigo", label: "남색" },
+    { id: "red",    label: "빨강" }, { id: "orange", label: "주황" },
+    { id: "yellow", label: "노랑" }, { id: "green",  label: "초록" },
+    { id: "teal",   label: "청록" }, { id: "sky",    label: "하늘" },
+    { id: "blue",   label: "파랑" }, { id: "purple", label: "보라" },
+    { id: "pink",   label: "분홍" }, { id: "rose",   label: "연분홍" },
     { id: "brown",  label: "갈색" }, { id: "gray",   label: "회색" }
   ];
+  const COLOR_ALIAS = { lime: "green", amber: "orange", indigo: "blue" };
+  const pickColor = (c) => COLOR_ALIAS[c] || (COLORS.some(x => x.id === c) ? c : "blue");
 
   /* ─────── 담당자 카테고리 ───────
      목록은 코드가 아니라 데이터(DATA.assignees)에 있고, 시스템 설정 → 담당자 관리에서
@@ -954,91 +956,93 @@
     const wasRepeat = !!(e && isRepeat(e));
     const occ = (wasRepeat && /^\d{4}-\d{2}-\d{2}$/.test(String(occIso))) ? occIso : (e ? e.start : start);
     const occWasDone = e ? occDone(e, occ) : false;
+    const I = (n) => SeMIS.icon(n, 17);
+    const tip = (t, l) => SeMIS.ui.tip(t, l);
+    const opt = (id, on, ico, label, help) =>
+      `<div class="evf-opt"><label class="evf-check"><input type="checkbox" id="${id}" ${on ? "checked" : ""}>
+        <span class="evf-box" aria-hidden="true">${SeMIS.icon("check", 13)}</span>${ico ? I(ico) : ""}<span>${label}</span></label>${help ? tip(help, label + " 설명") : ""}</div>`;
+    const selColor = pickColor(e ? e.color : "blue");
     openModal(`
-      <h3>${e ? "일정 수정" : "일정 등록"}</h3>
-      <div class="form-row"><label>일정명</label>
-        <input id="f-title" value="${esc(e ? e.title : "")}" maxlength="120" placeholder="예: OO지점 보안점검"></div>
-      <div class="form-grid">
-        <div class="form-row"><label>시작일</label><input type="date" id="f-start" value="${esc(start)}"></div>
-        <div class="form-row"><label>종료일</label><input type="date" id="f-end" value="${esc(end)}"></div>
-      </div>
-      <div class="form-row" style="display:flex;gap:18px;flex-wrap:wrap">
-        <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-weight:600">
-          <input type="checkbox" id="f-allday" style="width:auto" ${allDay ? "checked" : ""}> 종일 일정</label>
-        <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-weight:600">
-          <input type="checkbox" id="f-vehicle" style="width:auto" ${e && e.vehicle ? "checked" : ""}> 🚗 차량 예약</label>
-        <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-weight:600">
-          <input type="checkbox" id="f-room" style="width:auto" ${e && e.room ? "checked" : ""}> 🏢 회의실 예약</label>
-      </div>
-      <div class="form-row" style="display:flex;gap:18px;flex-wrap:wrap">
-        <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-weight:600">
-          <input type="checkbox" id="f-priv" style="width:auto" ${e && e.priv ? "checked" : ""}> 🔒 나에게만 보이기</label>
-        <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-weight:600">
-          <input type="checkbox" id="f-autodefer" style="width:auto" ${e && e.autoDefer ? "checked" : ""}> ⏩ 자동 연기</label>
-        <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-weight:600">
-          <input type="checkbox" id="f-autoextend" style="width:auto" ${e && e.autoExtend ? "checked" : ""}> ↔️ 자동 연장</label>
-      </div>
-      <div class="form-hint" id="hint-auto" style="margin:-6px 0 4px">
-        🔒 <b>나에게만 보이기</b> — 지금 로그인한 계정에서만 표시됩니다(다른 계정에는 보이지 않음).<br>
-        ⏩ <b>자동 연기</b> — 종료일까지 완료를 체크하지 않으면 시작일·종료일이 하루씩 밀립니다(기간 유지).<br>
-        ↔️ <b>자동 연장</b> — 종료일만 하루씩 늘어납니다(시작일 고정). 반복 일정에는 적용되지 않습니다.
-      </div>
-      <div class="form-grid" id="row-time" ${allDay ? 'style="display:none"' : ""}>
-        <div class="form-row"><label>시작 시간</label><input type="time" id="f-time" value="${esc(e && e.time ? e.time : "09:00")}"></div>
-        <div class="form-row"><label>종료 시간 (선택)</label><input type="time" id="f-timeend" value="${esc(e ? e.timeEnd || "" : "")}"></div>
-      </div>
-      <div class="form-grid">
-        <div class="form-row"><label>반복</label>
-          <select id="f-repeat">${REPEAT_DEFS.map(r =>
-            `<option value="${r.id}" ${rep.freq === r.id ? "selected" : ""}>${r.label}</option>`).join("")}</select></div>
-        <div class="form-row" id="row-until" ${rep.freq === "none" ? 'style="display:none"' : ""}>
-          <label>반복 종료일 (선택)</label><input type="date" id="f-runtil" value="${esc(rep.until || "")}"></div>
-      </div>
-      <div class="form-row"><label>리마인더 (알림)</label>
-        <div class="rem-picker">${REMINDER_DEFS.map(r =>
-          `<label class="rem-opt"><input type="checkbox" data-rem="${r.id}" style="width:auto" ${rems.includes(r.id) ? "checked" : ""}> ${r.label}</label>`).join("")}</div>
-        <div class="form-hint">접속 중인 브라우저에서 알림(토스트/시스템 알림)으로 안내됩니다. 종일 일정은 당일 09:00 기준.</div></div>
-      <div class="form-row"><label>색상</label>
-        <div class="color-picker" id="f-colors">${COLORS.map(c =>
-          `<button type="button" class="color-swatch ev-${c.id}${(e ? e.color : "blue") === c.id ? " sel" : ""}" data-color="${c.id}" title="${c.label}"></button>`).join("")}</div></div>
-      <div class="form-row"><label>담당자 <span class="form-sub">(여러 명 선택 가능)</span></label>
-        <div class="team-picker">${team().map(t => {
-          const on = splitNames(e ? e.assignee : "").indexOf(t.name) >= 0;
-          return `<button type="button" class="cal-fchip team-btn${on ? " sel" : ""}" data-team="${esc(t.name)}" aria-pressed="${on}">${t.emoji} ${esc(t.name)}</button>`;
-        }).join("")}</div>
-        <input id="f-assignee" value="${esc(e ? e.assignee || "" : "")}" maxlength="120" list="assignee-list" placeholder="위 버튼을 눌러 선택(다시 누르면 해제) 또는 쉼표로 직접 입력">
-        <datalist id="assignee-list">${assigneeList().map(a => `<option value="${esc(a)}">`).join("")}</datalist>
-        <div class="form-hint">목록에 없는 사람은 직접 입력하고, 여러 명이면 쉼표(,)로 구분합니다. 담당자 목록은 시스템 설정 → 담당자 관리에서 바꿉니다.</div></div>
-      <div class="form-row"><label>메모</label>
-        <div class="nb-toolbar nb-mini">
-          <button type="button" data-cmd="bold" title="굵게"><b>B</b></button>
-          <button type="button" id="m-link" title="링크">🔗 링크</button>
-          <button type="button" id="m-img" title="이미지">🖼 이미지</button>
-          <button type="button" id="m-file" title="파일 첨부">📎 파일</button>
+      <div class="evf">
+      <div class="evf-body">
+        <div class="evf-main">
+          <h3 class="evf-title">${e ? "일정 수정" : "일정 등록"}</h3>
+          <div class="form-row"><label for="f-title">일정명</label>
+            <input id="f-title" value="${esc(e ? e.title : "")}" maxlength="120" placeholder="예: OO회의" autocomplete="off"></div>
+          <div class="evf-group">
+            <div class="form-grid">
+              <div class="form-row"><label for="f-start">시작일</label><input type="date" id="f-start" value="${esc(start)}"></div>
+              <div class="form-row"><label for="f-end">종료일</label><input type="date" id="f-end" value="${esc(end)}"></div>
+            </div>
+            <div class="evf-inline">${opt("f-allday", allDay, "calendar", "종일")}</div>
+            <div class="form-grid" id="row-time" ${allDay ? 'style="display:none"' : ""}>
+              <div class="form-row"><label for="f-time">시작 시간</label><input type="time" id="f-time" value="${esc(e && e.time ? e.time : "09:00")}"></div>
+              <div class="form-row"><label for="f-timeend">종료 시간</label><input type="time" id="f-timeend" value="${esc(e ? e.timeEnd || "" : "")}"></div>
+            </div>
+            <div class="form-grid">
+              <div class="form-row"><label for="f-repeat">반복</label>
+                <select id="f-repeat">${REPEAT_DEFS.map(r =>
+                  `<option value="${r.id}" ${rep.freq === r.id ? "selected" : ""}>${r.label}</option>`).join("")}</select></div>
+              <div class="form-row" id="row-until" ${rep.freq === "none" ? 'style="display:none"' : ""}>
+                <label for="f-runtil">반복 종료일</label><input type="date" id="f-runtil" value="${esc(rep.until || "")}"></div>
+            </div>
+          </div>
+          <div class="form-row evf-memo"><label>메모</label>
+            <div class="nb-toolbar nb-mini">
+              <button type="button" data-cmd="bold" title="굵게"><b>B</b></button>
+              <button type="button" id="m-link" title="링크">${SeMIS.icon("link", 15)} 링크</button>
+              <button type="button" id="m-img" title="이미지">${SeMIS.icon("doc", 15)} 이미지</button>
+              <button type="button" id="m-file" title="파일 첨부">${SeMIS.icon("folder", 15)} 파일</button>
+            </div>
+            <div id="f-memo" class="nb-editor nb-memo" contenteditable="true" data-placeholder="링크·이미지·파일은 붙여넣거나 끌어다 놓아도 됩니다"></div>
+            <input type="file" id="m-imgfile" accept="image/*" style="display:none">
+            <input type="file" id="m-anyfile" style="display:none" multiple></div>
         </div>
-        <div id="f-memo" class="nb-editor nb-memo" contenteditable="true"></div>
-        <input type="file" id="m-imgfile" accept="image/*" style="display:none">
-        <input type="file" id="m-anyfile" style="display:none" multiple>
-        <div class="form-hint">링크·이미지·파일 지원 — 붙여넣기/드래그앤드롭으로도 추가됩니다.</div></div>
-      <div class="form-row"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-        <input type="checkbox" id="f-done" style="width:auto" ${occWasDone ? "checked" : ""}> 완료된 일정${
-          wasRepeat ? ` <span style="color:var(--text-3);font-weight:500">(이 회차: ${esc(occ)})</span>` : ""}</label>
-        ${wasRepeat ? `<div id="row-donescope" style="display:none;margin-top:8px">
-          <label>적용 범위</label>
-          <select id="f-donescope">${DONE_SCOPES.map(s =>
-            `<option value="${s.id}">${s.label}</option>`).join("")}</select>
-          <div class="form-hint">🔁 반복 일정입니다. 완료/해제를 어느 회차까지 적용할지 선택하세요.</div>
-        </div>` : ""}</div>
+        <aside class="evf-side">
+          <section class="evf-sec"><div class="evf-label">색상</div>
+            <div class="color-picker" id="f-colors" role="radiogroup" aria-label="색상">${COLORS.map(c =>
+              `<button type="button" class="color-swatch ev-${c.id}${selColor === c.id ? " sel" : ""}" data-color="${c.id}" title="${c.label}" aria-label="${c.label}" role="radio" aria-checked="${selColor === c.id}"></button>`).join("")}</div></section>
+          <section class="evf-sec"><div class="evf-label">담당자</div>
+            <div class="team-picker">${team().map(t => {
+              const on = splitNames(e ? e.assignee : "").indexOf(t.name) >= 0;
+              return `<button type="button" class="cal-fchip team-btn${on ? " sel" : ""}" data-team="${esc(t.name)}" aria-pressed="${on}">${esc(t.name)}</button>`;
+            }).join("")}</div>
+            <input id="f-assignee" value="${esc(e ? e.assignee || "" : "")}" maxlength="120" list="assignee-list" placeholder="직접 입력 (쉼표로 구분)" aria-label="담당자 직접 입력">
+            <datalist id="assignee-list">${assigneeList().map(a => `<option value="${esc(a)}">`).join("")}</datalist></section>
+          <section class="evf-sec"><div class="evf-label">예약</div>
+            <div class="evf-opts">${opt("f-vehicle", e && e.vehicle, "car", "차량")}${opt("f-room", e && e.room, "door", "회의실")}</div></section>
+          <section class="evf-sec"><div class="evf-label">표시 · 자동 처리</div>
+            <div class="evf-opts evf-opts-col">
+              ${opt("f-priv", e && e.priv, "lock", "나에게만 보이기", "지금 로그인한 계정에서만 보입니다.")}
+              ${opt("f-autodefer", e && e.autoDefer, "forward", "자동 연기", "종료일까지 완료하지 않으면 시작일·종료일이 하루씩 밀립니다. 기간은 그대로입니다.")}
+              ${opt("f-autoextend", e && e.autoExtend, "stretch", "자동 연장", "완료하지 않으면 종료일만 하루씩 늘어납니다. 반복 일정에는 쓸 수 없습니다.")}
+            </div></section>
+          <section class="evf-sec"><div class="evf-label">알림 ${tip("접속 중인 브라우저에 알림이 뜹니다. 종일 일정은 당일 09:00 기준입니다.", "알림 설명")}</div>
+            <div class="rem-picker">${REMINDER_DEFS.map(r =>
+              `<label class="rem-opt"><input type="checkbox" data-rem="${r.id}" ${rems.includes(r.id) ? "checked" : ""}><span>${r.label}</span></label>`).join("")}</div></section>
+          <section class="evf-sec evf-done">
+            ${opt("f-done", occWasDone, "", wasRepeat ? `완료 <span class="evf-occ">${esc(occ)} 회차</span>` : "완료")}
+            ${wasRepeat ? `<div id="row-donescope" style="display:none;margin-top:8px">
+              <label class="evf-label" for="f-donescope">적용 범위</label>
+              <select id="f-donescope">${DONE_SCOPES.map(sc =>
+                `<option value="${sc.id}">${sc.label}</option>`).join("")}</select>
+            </div>` : ""}</section>
+        </aside>
+      </div>
       <div class="modal-actions">
         ${e ? '<button class="btn btn-danger" id="f-del" style="margin-right:auto">삭제</button>' : ""}
         <button class="btn btn-ghost" id="f-cancel">취소</button>
         <button class="btn btn-primary" id="f-save">저장</button>
+      </div>
       </div>`, { wide: true });
 
-    let color = e ? (e.color || "blue") : "blue";
+    let color = selColor;
     $$("#f-colors .color-swatch").forEach(b => b.onclick = () => {
       color = b.dataset.color;
-      $$("#f-colors .color-swatch").forEach(x => x.classList.toggle("sel", x === b));
+      $$("#f-colors .color-swatch").forEach(x => {
+        x.classList.toggle("sel", x === b);
+        x.setAttribute("aria-checked", x === b ? "true" : "false");
+      });
     });
     /* 담당자 칩 = 토글(다중 선택). 직접 입력칸과 항상 같은 값을 보게 동기화한다. */
     const syncTeamChips = () => {
@@ -1070,8 +1074,9 @@
       [defEl, extEl].forEach(el => {
         el.disabled = rep;
         if (rep) el.checked = false;
-        el.parentElement.style.opacity = rep ? ".45" : "";
-        el.parentElement.title = rep ? "반복 일정에는 자동 연기·연장을 적용할 수 없습니다." : "";
+        const box = el.closest(".evf-opt") || el.parentElement;
+        box.classList.toggle("is-disabled", rep);
+        box.title = rep ? "반복 일정에는 자동 연기·연장을 적용할 수 없습니다." : "";
       });
     }
     defEl.onchange = () => syncAuto("defer");
@@ -1198,17 +1203,17 @@
     const dur = diffDays(e.start, e.end || e.start);
     const occEnd = addDays(occ, dur);
     openModal(`
-      <h3><span class="cal-dot ev-${esc(e.color || "blue")}"></span> ${esc(e.title)} ${dn ? '<span class="badge badge-green">완료</span>' : ""}</h3>
+      <h3><span class="cal-dot ev-${esc(pickColor(e.color))}"></span> ${esc(e.title)} ${dn ? '<span class="badge badge-green">완료</span>' : ""}</h3>
       <table class="tbl" style="font-size:.88rem">
         <tr><td style="width:90px;color:var(--text-2)">기간</td><td>${esc(occ)}${occEnd !== occ ? " ~ " + esc(occEnd) : ""}</td></tr>
         <tr><td style="color:var(--text-2)">시간</td><td>${e.allDay ? "종일" : esc(e.time || "") + (e.timeEnd ? " ~ " + esc(e.timeEnd) : "")}</td></tr>
-        ${isRepeat(e) ? `<tr><td style="color:var(--text-2)">반복</td><td>🔁 ${esc(repeatLabel(e))}</td></tr>` : ""}
+        ${isRepeat(e) ? `<tr><td style="color:var(--text-2)">반복</td><td>${esc(repeatLabel(e))}</td></tr>` : ""}
         ${e.priv || e.autoDefer || e.autoExtend ? `<tr><td style="color:var(--text-2)">옵션</td><td>${
-          e.priv ? '<span class="badge badge-gray">🔒 나에게만 보이기</span> ' : ""}${
-          e.autoDefer ? '<span class="badge badge-amber">⏩ 자동 연기 (시작·종료일 이동)</span> ' : ""}${
-          e.autoExtend ? '<span class="badge badge-amber">↔️ 자동 연장 (종료일만 연장)</span>' : ""}</td></tr>` : ""}
-        ${e.vehicle || e.room ? `<tr><td style="color:var(--text-2)">예약</td><td>${e.vehicle ? "🚗 차량 " : ""}${e.room ? "🏢 회의실" : ""}</td></tr>` : ""}
-        ${remTxt ? `<tr><td style="color:var(--text-2)">리마인더</td><td>⏰ ${esc(remTxt)}</td></tr>` : ""}
+          e.priv ? '<span class="badge badge-gray">나에게만 보이기</span> ' : ""}${
+          e.autoDefer ? '<span class="badge badge-amber">자동 연기 (시작·종료일 이동)</span> ' : ""}${
+          e.autoExtend ? '<span class="badge badge-amber">자동 연장 (종료일만 연장)</span>' : ""}</td></tr>` : ""}
+        ${e.vehicle || e.room ? `<tr><td style="color:var(--text-2)">예약</td><td>${[e.vehicle ? "차량" : "", e.room ? "회의실" : ""].filter(Boolean).join(" · ")}</td></tr>` : ""}
+        ${remTxt ? `<tr><td style="color:var(--text-2)">리마인더</td><td>${esc(remTxt)}</td></tr>` : ""}
         ${e.assignee ? `<tr><td style="color:var(--text-2)">담당자</td><td>${namesHTML(e.assignee, " · ")}</td></tr>` : ""}
         ${e.memoHtml ? `<tr><td style="color:var(--text-2)">메모</td><td class="notice-html">${sanitize(e.memoHtml)}</td></tr>`
           : (e.memo ? `<tr><td style="color:var(--text-2)">메모</td><td style="white-space:pre-wrap">${esc(e.memo)}</td></tr>` : "")}
@@ -1396,7 +1401,7 @@
     splitNames, joinNames, namesOf, hasName, tagsOf, gcalForm,
     meKey, canSeePriv, isMinePriv, autoRollOne, runAutoRoll, autoRollIfAllowed,
     addDays, diffDays, startOfWeek, rangeTitle,
-    COLORS, VIEWS, team, tagOf,
+    COLORS, COLOR_ALIAS, pickColor, VIEWS, team, tagOf,
     get TEAM() { return team(); },
     REMINDER_DEFS, eventStartMs, eventStartMsFor, dueReminders, checkReminders, startReminders, stopReminders,
     REPEAT_DEFS, isRepeat, occursOn, nextOccurrence, repeatLabel,

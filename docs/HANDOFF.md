@@ -6,10 +6,10 @@
 
 | 항목 | 값 |
 |---|---|
-| 현재 버전 | **v1.8.0** (2026-09-21) — 디자인 개편 "Terminal Calm" (허브 내비게이션) |
+| 현재 버전 | **v1.9.0** (2026-09-22) — 사진·3D 비주얼, 일정 등록 폼 재구성, 일정 12색 팔레트 |
 | 접속 주소 | https://mark4mission.github.io/semis-logistics/ |
 | 저장소 | GitHub `Mark4mission/semis-logistics` (공개) · Mac `~/SeMIS_Logistics` |
-| 테스트 | `npm test` 154건 전부 통과 (코드·문서에 암호 평문 없음) |
+| 테스트 | `npm test` 165건 전부 통과 (코드·문서에 암호 평문 없음) |
 | 백엔드 | Supabase `mzyuzrxkdcpzxojenwat` — 테이블 `semis_logi_store`, 버킷 `semis-logi-files` |
 
 ## 2. 새 세션 시작
@@ -27,6 +27,7 @@ Claude가 할 일(순서대로):
 1. `git clone --depth 1 https://github.com/Mark4mission/semis-logistics.git /home/claude/logi` (컨테이너에서 clone 가능 — push는 불가)
 2. `cd /home/claude/logi && npm install && npm test` — 기준선 통과 확인
 3. 이 문서 §4 · §6 · §7 확인 후 작업 시작
+4. 디자인 작업이면 Impeccable 스킬을 세션에 설치: `git clone --depth 1 https://github.com/pbakaus/impeccable.git /tmp/imp && mkdir -p ~/.claude/skills && cp -r /tmp/imp/.claude/skills/impeccable ~/.claude/skills/` → `~/.claude/skills/impeccable/scripts/impeccable context` (PRODUCT.md 없음 — 좁은 개선은 그대로 진행 가능)
 
 ## 3. 배포 절차 (컨테이너 → Mac → GitHub Pages)
 
@@ -47,11 +48,11 @@ Claude가 할 일(순서대로):
 
 | 라우트 | 파일 | 권한 | 비고 |
 |---|---|---|---|
-| dashboard | modules.js | all | 화물 태그 카드(무재해·보안등급) · 다가오는 일정 · 공지 · 결정사항 · 모듈 구축 현황 |
-| schedule | calendar.js | mgr | 담당자 다중 지정 · 드래그 이동 |
+| dashboard | modules.js · hero3d.js | all | 화물 태그 카드(무재해·보안등급) + 3D 장면(화물기 ULD 탑재) · 하단 4칸(다가오는 일정 · 공지 · 결정사항 · 모듈 구축 현황) |
+| schedule | calendar.js | mgr | 담당자 다중 지정 · 드래그 이동 · 등록 폼 2단(입력/설정) · 12색 |
 | minutes | minutes.js | mgr | 회의록 + QR 참석 서명 |
 | reg-sec · reg-safety · reg-dg | regulations.js | mgr (편집 hq) | 규정 3종 · PDF 뷰어 · 개정 아이디어 노트 |
-| contacts | contacts.js | mgr | 비상연락망 · 보고체계 |
+| contacts | contacts.js | mgr | 비상연락망 · 보고체계 (2026-09-22 SeMIS v2 연락망 69건 이관 — 12섹션 78행) |
 | vault | vault.js | hq | 암호 관리 (AES-256-GCM, 5분 자동 잠금, 공용/개인용 — 개인용은 본인 키로만 해독) |
 | settings | modules.js | admin | 메뉴(숨기기 포함) · 사용자 · 담당자 · 데이터(변경 이력 복원) · 저장소 |
 
@@ -87,13 +88,17 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 4. **공개 저장소**: 연락처·명단·암호 평문을 코드에 넣지 않는다. 실데이터는 공용 DB에만
 5. 애매한 요구는 질문 후 진행 (AskUserQuestion), 보고는 간결하게
 6. 가독성 기준: 본문 17px · 보조 문구 `.81rem` 이상 · 보조 색은 `--text-2`/`--text-3`만
-7. **디자인 규칙(v1.8)**: 새 모듈은 `docs/module-template.js`를 복사해 시작. 화면은 `SeMIS.ui.head/stats/search/empty/chip`, 아이콘은 `SeMIS.icon()`만 사용. 제목·메뉴에 이모지 금지. 메뉴는 반드시 허브(hub-*)에 소속. 390px 모바일 화면까지 확인
+7. **디자인 규칙(v1.8~)**: 새 모듈은 `docs/module-template.js`를 복사해 시작. 화면은 `SeMIS.ui.head/stats/search/empty/chip`, 아이콘은 `SeMIS.icon()`만 사용. 제목·메뉴에 이모지 금지. 메뉴는 반드시 허브(hub-*)에 소속. 390px 모바일 화면까지 확인
+8. **비주얼 규칙(v1.9)**: 허브에 속한 화면은 `.page-head`가 자동으로 허브 사진 배너가 된다(`#view[data-hub]`, 사진은 `assets/img/hero-*.webp`). 새 허브를 만들면 홈 사진이 기본 — 전용 사진은 CSS `#view[data-hub="hub-…"]` 한 줄 추가. 입력 폼의 설명 문구는 문단으로 쓰지 말고 `SeMIS.ui.tip(text, label)`(ⓘ 말풍선)로. 일정 색은 12색(`SemisCalendar.COLORS`) — 추가 시 ΔE2000 18 이상·글자 대비 4.5:1 이상 확인
 
 ## 7. 미결 · 주의
 
 - 기본 계정 초기 암호가 공개 저장소 git 이력에 남아 있으나, 2026-09-21 네 계정 모두 운영 암호로 변경 완료(`pwOverrides` 확인). 코드·테스트에 평문 재유입 금지
 - 커스텀 도메인 미설정 (추후 `logistics.semis.pe.kr` CNAME 가능)
 - CARES Mobile 배포 주소 링크 미등록
+- 연락망 이관(2026-09-22): SeMIS v2 `semis_store.contacts`에서 안전보안실 28 · 국토부 항공보안정책과 8 · 서울지방항공청 보안과 16 · 비상안전기획관실 3 · 대테러센터·국가위기관리센터 4 · 서면보고 이메일 10을 복사(두 시스템은 이후 따로 관리). 이관 직전 값은 `semis_store_history` id 112. 서면보고 섹션의 v2 비고("지점 내 별도 유지…")는 지점 기준 문구라 옮기지 않음
+- 인천화물팀 안전보안파트 · 인천화물팀 · 인천공항공사 섹션은 아직 비어 있음(v2에 대응 자료 없음)
+- 3D 장면: GPU 없는 PC(소프트웨어 렌더링)·느린 PC(평균 45ms/프레임 초과)·동작 줄이기 설정에서는 정지 화면, WebGL 없으면 사진
 
 ## 8. 작업 기록
 
@@ -108,3 +113,4 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 | v1.6.0 | 09-20 | 규정 관리 3종 (v2 regulations 이식) · 문서 18건 등록 · 안내 문구 정리 |
 | v1.7.0 | 09-21 | 암호 관리 공용/개인용 구분 (개인용 = 멤버별 개인 키 암호화). SeMIS v2도 v2.52.0으로 동일 적용 |
 | v1.8.0 | 09-21 | 디자인 개편 Terminal Calm — 6개 허브(아이콘 줄 + 허브 패널), 모바일 하단 탭 · 메뉴 시트, Ctrl K 검색 팔레트, 대시보드 개편, 모듈 화면 키트(SeMIS.ui · icon · navBadge), v1.7 메뉴 자동 이전, docs/module-template.js |
+| v1.9.0 | 09-22 | 로그인 실사 사진 · 대시보드 3D 장면(Three.js r170 로컬, 화물기 ULD 탑재 애니메이션) · 허브 화면 사진 배너 6종 · 일정 등록 폼 2단 재구성(설명은 ⓘ 말풍선, 일정명 예시 'OO회의') · 일정 색 15→12색(파랑=청록 중복 해소, 최소 ΔE 18.8) · SeMIS v2 연락망 이관 · Impeccable 스킬 적용 |

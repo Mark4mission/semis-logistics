@@ -102,8 +102,9 @@
     const cur = SeMIS.secCurrent();
     const nxt = SeMIS.secNext();
     const li = SeMIS.SEC_LEVELS.indexOf(cur.level);
-    return `<section class="ticket${z === null ? " no-zero" : ""}" aria-label="안전보안 현황">
+    return `<section class="ticket tk-hero${z === null ? " no-zero" : ""}" aria-label="안전보안 현황">
       <div class="tk-main">
+        <div class="tk-stage no-print" id="dash-3d" aria-hidden="true"></div>
         <div class="tk-top"><span class="tk-label">무재해 경과일</span><span class="tk-code">ICNKF</span></div>
         <div class="zero-n">${z === null ? "—" : "D+" + z}</div>
         <div class="tk-foot">
@@ -179,7 +180,7 @@
         canMinute ? `<button type="button" class="btn btn-soft" id="btn-add-minute">${ico("notes", 17)}<span>회의록 작성</span></button>` : ""
       ].join("");
 
-      const upcomingCard = cardVis("upcoming") ? `<section class="dash-card dash-up" aria-label="다가오는 일정">
+      const upcomingCard = cardVis("upcoming") ? `<section class="sheet-col dash-up" aria-label="다가오는 일정">
           <div class="dc-head"><h2>다가오는 일정</h2><span class="dc-meta">7일 내 <b class="mono" id="dash-soon">${soon}</b>건</span>
             <span class="spacer"></span><button type="button" class="link-btn" id="btn-go-schedule">일정관리</button></div>
           <div id="upcoming-box" class="up-list">${upShow.length ? upShow.map(s => {
@@ -191,7 +192,7 @@
               <div class="up-date"><b class="mono">${esc(md(s.start))}</b><span class="${isToday ? "today" : ""}">${isToday ? "오늘" : (isNaN(dd) ? "" : WEEK[dd.getDay()])}</span></div>
               <div class="up-body"><span class="up-title${s.done ? " done" : ""}">${esc(s.title)}</span>
                 ${when || s.assignee ? `<span class="up-sub">${esc([when, s.assignee].filter(Boolean).join(" · "))}</span>` : ""}</div>
-              <span class="up-dot ev-${esc(s.color || "blue")}" aria-hidden="true"></span>
+              <span class="up-dot ev-${esc(window.SemisCalendar && SemisCalendar.pickColor ? SemisCalendar.pickColor(s.color) : (s.color || "blue"))}" aria-hidden="true"></span>
             </div>`;
           }).join("") : '<div class="empty">예정된 일정이 없습니다.</div>'}</div>
         </section>` : "";
@@ -228,11 +229,10 @@
           <span class="spacer"></span>
           ${acts ? `<div class="head-acts">${acts}</div>` : ""}
         </div>
-        <div class="dash-top${guest ? " guest" : ""}">
-          ${cardVis("status") ? ticketHTML(canWrite) : ""}
-          ${guest ? `<section class="dash-card">${noticeCol}</section>` : upcomingCard}
-        </div>
-        ${guest ? "" : `<div class="dash-sheet">${noticeCol}${actionCol}${buildCol}</div>`}`;
+        ${cardVis("status") ? `<div class="dash-top${guest ? " guest" : ""}">${ticketHTML(canWrite)}</div>` : ""}
+        ${guest ? `<section class="dash-card">${noticeCol}</section>`
+          : `<div class="dash-sheet cols-${[upcomingCard, noticeCol, actionCol, buildCol].filter(Boolean).length}">${upcomingCard}${noticeCol}${actionCol}${buildCol}</div>`}`;
+      if (window.SemisHero3D && $("#dash-3d")) SemisHero3D.mount($("#dash-3d"));
 
       // 공지 리스트
       const nl = $("#notice-list");

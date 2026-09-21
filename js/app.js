@@ -8,7 +8,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.8.0";
+  const VERSION = "1.9.0";
   const APP_NAME = "SeMIS · Logistics";
   const LS_DATA = "semisl:data";
   const LS_UI   = "semisl:ui";
@@ -152,7 +152,16 @@ const SeMIS = (() => {
     folder: '<path d="M3.5 7.5A1.5 1.5 0 0 1 5 6h4.5l2 2H19a1.5 1.5 0 0 1 1.5 1.5V18a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 18z"/>',
     link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
     alert: '<path d="M12 4 2.8 19.5h18.4z"/><path d="M12 10v4.5M12 17.2v.1"/>',
-    doc: '<path d="M7 3.5h7l4 4V20a.5.5 0 0 1-.5.5h-10A.5.5 0 0 1 7 20z"/><path d="M14 3.5V8h4"/>'
+    doc: '<path d="M7 3.5h7l4 4V20a.5.5 0 0 1-.5.5h-10A.5.5 0 0 1 7 20z"/><path d="M14 3.5V8h4"/>',
+    info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.2"/><path d="M12 7.9v.1"/>',
+    car: '<path d="M5 16.5h14"/><path d="M4.5 16.5V12l2-4.5A1.5 1.5 0 0 1 7.9 6.5h8.2a1.5 1.5 0 0 1 1.4 1L19.5 12v4.5"/><path d="M4.5 12h15"/><path d="M6.5 16.5V19M17.5 16.5V19"/><circle cx="8" cy="14.2" r=".4"/><circle cx="16" cy="14.2" r=".4"/>',
+    door: '<path d="M4 20.5h16"/><path d="M6.5 20.5V4.5A1 1 0 0 1 7.5 3.5h9a1 1 0 0 1 1 1v16"/><path d="M14.5 12.2v.1"/>',
+    bell: '<path d="M6.5 16.5V11a5.5 5.5 0 0 1 11 0v5.5l1.5 1.5h-14z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
+    forward: '<path d="M4 7l6.5 5L4 17z"/><path d="M12 7l6.5 5-6.5 5z"/><path d="M20.5 6.5v11"/>',
+    stretch: '<path d="M3.5 12h17"/><path d="m7 8.5-3.5 3.5L7 15.5"/><path d="m17 8.5 3.5 3.5-3.5 3.5"/>',
+    repeat: '<path d="M4.5 11V9.5A2.5 2.5 0 0 1 7 7h12.5"/><path d="m16.5 4 3 3-3 3"/><path d="M19.5 13v1.5A2.5 2.5 0 0 1 17 17H4.5"/><path d="m7.5 20-3-3 3-3"/>',
+    user: '<circle cx="12" cy="8" r="3.8"/><path d="M4.5 20.5c.9-4 3.7-6 7.5-6s6.6 2 7.5 6"/>',
+    palette: '<path d="M12 3.5a8.5 8.5 0 1 0 0 17c1.2 0 1.8-.8 1.8-1.7 0-1.3-1-1.5-1-2.6 0-1 .8-1.7 1.8-1.7h2.1a3.8 3.8 0 0 0 3.8-3.8c0-4-3.8-7.2-8.5-7.2z"/><circle cx="7.8" cy="11" r="1"/><circle cx="10.5" cy="7.5" r="1"/><circle cx="15" cy="8" r="1"/>'
   };
   /* 허브 선택용 아이콘 목록 (시스템 설정 → 메뉴 관리) */
   const HUB_ICONS = ["home", "scan", "hardhat", "clipboard", "users", "book", "folder", "calendar", "notes", "alert", "link", "doc"];
@@ -815,11 +824,26 @@ const SeMIS = (() => {
     $$("[data-go]", root).forEach(el => el.onclick = () => navigate(el.dataset.go));
   }
 
+  /* v1.9: 허브 화면의 머리말을 사진 배너로 — #view[data-hub] 로 CSS가 허브별 사진을 고른다.
+     대시보드(3D 장면)·관리 메뉴(허브 없음)·외부 링크 화면은 제외. 모듈이 내부적으로 다시 그려도
+     #view 속성은 남으므로 배너가 유지된다. */
+  function markHub(view, route) {
+    let hub = null;
+    if (route && route !== "dashboard" && String(route).indexOf("embed/") !== 0) {
+      const mn = menuForModule(route);
+      const hid = mn ? hubOf(mn) : null;
+      const g = hid ? DATA.menus.find(x => x.id === hid && x.type === "group") : null;
+      if (g) hub = g;
+    }
+    if (hub) view.setAttribute("data-hub", hub.id); else view.removeAttribute("data-hub");
+  }
+
   function renderView() {
     let route = currentRoute();
     const view = $("#view");
     view.innerHTML = "";
     applyViewWidth(view, route);
+    markHub(view, currentUser && (currentUser.role === "vendor" || currentUser.role === "signer") ? "" : route);
     if (currentUser && currentUser.role === "vendor") {
       const allow = vendorAccess(currentUser).routes;
       if (allow.indexOf(route) < 0) route = vendorHome(currentUser);
@@ -844,7 +868,7 @@ const SeMIS = (() => {
     } else {
       let def = modules[route];
       const menu = menuForModule(route);
-      if (menu && !canSee(menu)) { toast("접근 권한이 없습니다.", true); def = modules.dashboard; }
+      if (menu && !canSee(menu)) { toast("접근 권한이 없습니다.", true); def = modules.dashboard; markHub(view, "dashboard"); }
       else if (!def && menu && menu.type === "module") {
         // 예정 모듈 — 모듈 js가 아직 없으면 안내 화면
         renderPlannedView(view, menu);
@@ -853,7 +877,7 @@ const SeMIS = (() => {
         closeSidebar();
         return;
       }
-      if (!def) def = modules.dashboard;
+      if (!def) { def = modules.dashboard; markHub(view, "dashboard"); }
       def.render(view);
     }
     attachPrintBtn(view, route);
@@ -1312,8 +1336,78 @@ const SeMIS = (() => {
     empty(text, actions) {
       return '<div class="empty-state">' + icon("folder", 26) + '<p>' + esc(text || "등록된 항목이 없습니다.") + '</p>' + (actions || "") + '</div>';
     },
-    chip(text, tone) { return '<span class="badge badge-' + esc(tone || "gray") + '">' + esc(text) + '</span>'; }
+    chip(text, tone) { return '<span class="badge badge-' + esc(tone || "gray") + '">' + esc(text) + '</span>'; },
+    /* 설명 말풍선 — 입력 화면에서 설명 문구를 걷어내고 ⓘ 버튼으로만 보여 준다(마우스 올림·포커스·탭) */
+    tip(text, label) {
+      return '<button type="button" class="help-tip" data-tip="' + esc(text) + '" aria-label="' + esc(label || "설명") +
+        '" aria-expanded="false">' + icon("info", 16) + '</button>';
+    }
   };
+
+  /* 설명 말풍선 동작: 문서 전체에 한 번만 위임. 화면에 하나만 뜨고 Esc·바깥 클릭·스크롤로 닫힌다.
+     마우스를 말풍선 위로 옮겨도 닫히지 않는다(WCAG 1.4.13). */
+  let tipEl = null, tipFor = null, tipTimer = 0;
+  function tipBox() {
+    if (tipEl) return tipEl;
+    tipEl = document.createElement("div");
+    tipEl.id = "help-tipbox"; tipEl.className = "help-tipbox"; tipEl.setAttribute("role", "tooltip");
+    tipEl.addEventListener("mouseenter", () => clearTimeout(tipTimer));
+    tipEl.addEventListener("mouseleave", () => hideTip(160));
+    document.body.appendChild(tipEl);
+    return tipEl;
+  }
+  function showTip(btn) {
+    clearTimeout(tipTimer);
+    const box = tipBox();
+    if (tipFor && tipFor !== btn) tipFor.setAttribute("aria-expanded", "false");
+    tipFor = btn;
+    box.textContent = btn.getAttribute("data-tip") || "";
+    btn.setAttribute("aria-expanded", "true");
+    btn.setAttribute("aria-describedby", "help-tipbox");
+    box.classList.add("on");
+    const r = btn.getBoundingClientRect(), vw = window.innerWidth || 1024, vh = window.innerHeight || 768;
+    const w = Math.min(300, vw - 24);
+    box.style.maxWidth = w + "px";
+    const bw = box.offsetWidth || w, bh = box.offsetHeight || 60;
+    let left = r.left + r.width / 2 - bw / 2;
+    left = Math.max(12, Math.min(left, vw - bw - 12));
+    let top = r.bottom + 8;
+    if (top + bh > vh - 8) top = Math.max(8, r.top - bh - 8);
+    box.style.left = left + "px"; box.style.top = top + "px";
+  }
+  function hideTip(delay) {
+    clearTimeout(tipTimer);
+    tipTimer = setTimeout(() => {
+      if (tipEl) tipEl.classList.remove("on");
+      if (tipFor) { tipFor.setAttribute("aria-expanded", "false"); tipFor.removeAttribute("aria-describedby"); }
+      tipFor = null;
+    }, delay || 0);
+  }
+  if (typeof document !== "undefined") {
+    const fine = () => !!(window.matchMedia && window.matchMedia("(hover: hover) and (pointer: fine)").matches);
+    document.addEventListener("click", (ev) => {
+      const b = ev.target.closest && ev.target.closest(".help-tip");
+      if (b) { ev.preventDefault(); if (tipFor === b && tipEl && tipEl.classList.contains("on")) hideTip(); else showTip(b); return; }
+      if (tipEl && !tipEl.contains(ev.target)) hideTip();
+    });
+    document.addEventListener("mouseover", (ev) => {
+      const b = fine() && ev.target.closest && ev.target.closest(".help-tip");
+      if (b) { clearTimeout(tipTimer); tipTimer = setTimeout(() => showTip(b), 120); }
+    });
+    document.addEventListener("mouseout", (ev) => {
+      const b = ev.target.closest && ev.target.closest(".help-tip");
+      if (b && fine() && !(ev.relatedTarget && tipEl && tipEl.contains(ev.relatedTarget))) hideTip(160);
+    });
+    document.addEventListener("focusin", (ev) => {
+      const b = ev.target.closest && ev.target.closest(".help-tip");
+      let kb = false;
+      try { kb = ev.target.matches(":focus-visible"); } catch (err) { kb = false; }
+      if (b && kb) showTip(b);
+    });
+    document.addEventListener("focusout", (ev) => { if (ev.target.closest && ev.target.closest(".help-tip")) hideTip(120); });
+    document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && tipEl && tipEl.classList.contains("on")) { ev.stopPropagation(); hideTip(); } }, true);
+    window.addEventListener("scroll", () => { if (tipFor) hideTip(); }, true);
+  }
 
   /* ─────────── 공개 API ─────────── */
   return {
@@ -1326,7 +1420,7 @@ const SeMIS = (() => {
     VENDOR_ACCESS, vendorAccess, vendorHome,
     pwHash, sha256, signCodeFor, signMinuteFor, signCodeFromHash, signUrlFor,
     renderNav, renderHeader, renderSecBadge, renderView, renderPlannedView,
-    printView, printTitle, attachPrintBtn,
+    printView, printTitle, attachPrintBtn, markHub,
     icon, ui, ICONS, HUB_ICONS, hubOf, hubList, hubEntries, utilEntries, homeHubId, openHub, togglePanel, openSheet,
     closeSidebar, closeOverlays, migrateHubs,
     openModal, closeModal, confirmModal, toast,
