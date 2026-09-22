@@ -1674,6 +1674,13 @@ function makeFetchStub(server) {
       ok(/@container \(min-width: 1040px\)[\s\S]*\.dash-sheet\.cols-4 \{ grid-template-columns: 1\.35fr 1fr 1fr 1fr; \}/.test(css));
       ok(/\.dc-head h2, \.dc-head \.dc-meta, \.dc-head \.link-btn \{ white-space: nowrap; \}/.test(css));
     });
+    t("V17 (v1.10.1) 3D: 에어제타 B747-400F 도장·형상 요소(기수 화물문 · 2층 혹 · 엔진 4기 · 윙렛 · 꼬리 로고 · AIRZETA)", () => {
+      const src = read("js/hero3d.js");
+      ["AIRZETA", "liveryCanvas", "tailLogoCanvas", "hinge.rotation.z", "hump(", "[3.45, 6.15]", "wletGeo", "loft("].forEach(k => ok(src.indexOf(k) >= 0, k));
+      ok(/AZ = \{ white: "#f3f5f6", navy: "#27348b", blue: "#22379a", red: "#e23a3f" \}/.test(src), "도장 색");
+      ok(src.indexOf("fontReady()") > 0, "글자 그리기 전 글꼴 대기");
+      ok(src.indexOf("fitDist(") > 0 && src.indexOf("setViewOffset") > 0, "화면 비율별 자동 거리");
+    });
     t("V16 (v1.9.1) 3D: three.js 주소에 버전(배포 직후 옛 404 회피) · 대체 사진 사유 기록", () => {
       const src = read("js/hero3d.js");
       ok(src.indexOf('three.module.min.js?v=r170') > 0);
