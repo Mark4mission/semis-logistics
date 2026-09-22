@@ -207,6 +207,15 @@ const SemisSearch = (() => {
         else outc.push({
           title: r.items || sec.title || "", sub: r.to || "", text: [r.no, r.items, r.to, sec.title] });
       }));
+      // v1.10 보고 체계도 (사고 유형별) — 체계도 자체 + 연락처 행
+      A(D().contacts && D().contacts.flows).forEach(f => {
+        outc.push({ title: f.title || "보고 체계도", sub: "보고 체계도" + (f.ver ? " · Ver." + f.ver : ""),
+          text: [f.title, f.short, "보고 체계도", f.steps] });
+        A(f.rows).forEach(r => outc.push({
+          title: (r.role || "") + (f.short ? " · " + f.short : ""),
+          sub: [r.office, r.mobile, r.note].filter(Boolean).join(" · "),
+          text: [r.role, r.grp, r.office, r.mobile, r.note, f.title, f.short] }));
+      });
       return outc;
     } });
 

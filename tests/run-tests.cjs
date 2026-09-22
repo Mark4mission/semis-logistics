@@ -3,7 +3,7 @@
    실행: npm test  (jsdom 필요: npm install)
    구성: [C] 코어(해시·계정·메뉴·정규화·권한·라우터·예정 모듈)
          [D] 대시보드·공지·현황판  [S] 시스템 설정  [M] 이식 모듈 스모크(일정·회의록·연락망·검색)
-         [Y] 동기화  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
+         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
    ═══════════════════════════════════════════════════════ */
 "use strict";
 const fs = require("fs");
@@ -1682,6 +1682,206 @@ function makeFetchStub(server) {
     });
     t("V11 새 아이콘(info·car·door·bell·forward·stretch·repeat·user·palette) 등록", () => {
       ["info", "car", "door", "bell", "forward", "stretch", "repeat", "user", "palette"].forEach(k => ok(e.S.ICONS[k], k));
+    });
+  }
+
+  /* ══════════ [CF] v1.10 비상연락망 — 보고 체계도(사고 유형별 탭 · 전체 화면 뷰어 · 편집) ══════════
+     픽스처는 가짜 번호만 사용 (실연락처는 공용 DB에만) */
+  {
+    const fx = () => [
+      { id: "cf-a", title: "보안사고 비상 연락망", short: "보안사고", ver: "26.09",
+        steps: "최초 발견자\n해당 파트장\n안전보안파트\n팀장",
+        memo: "초도 지시 테스트", fileUrl: "https://files.test/a.pdf", fileName: "a.pdf",
+        imgUrl: "https://files.test/a.webp", thumbUrl: "https://files.test/a-thumb.webp",
+        rows: [
+          { id: "r1", grp: "보고선", role: "테스트팀장", office: "032-000-0001", mobile: "", note: "" },
+          { id: "r2", grp: "보고선", role: "테스트파트장", office: "032-000-0002", mobile: "010-0000-0002", note: "" },
+          { id: "r3", grp: "해외기관", role: "해외상황실", office: "+1-000-000-0003", mobile: "", note: "24시간" }
+        ] },
+      { id: "cf-b", title: "위험물 사고 발생시 보고 체계도", short: "위험물사고", ver: "26.09", steps: "", memo: "",
+        fileUrl: "https://files.test/b.pdf", fileName: "b.pdf", imgUrl: "", thumbUrl: "",
+        rows: [{ id: "r4", grp: "유관기관", role: "방사능신고센터", office: "080-000-0004~6", mobile: "", note: "" }] }
+    ];
+    const e = makeEnv();
+    loginAs(e, "hq");
+    e.S.data.contacts = { sections: e.w.SemisContacts.seedSections(), flows: fx() };
+    e.S.saveSilent();
+    const C = e.w.SemisContacts;
+    const viewer = () => q(e, "#ct-viewer");
+    const isOpen = () => !!(viewer() && (viewer().open || viewer().hasAttribute("open")));
+
+    t("CF01 telHref: 범위(~)·국제(+)·미주(1-)·복수(,) 표기", () => {
+      eq(C.telHref("032-741-3906~8"), "tel:0327413906");
+      eq(C.telHref("+65-6476-9487"), "tel:+6564769487");
+      eq(C.telHref("1-734-484-0088"), "tel:+17344840088");
+      eq(C.telHref("02-6026-1359, 1363"), "tel:0260261359");
+      eq(C.telHref("032-740-2700, 4, 16"), "tel:0327402700");
+    });
+    t("CF02 체계도 카드: 탭(tablist) · 첫 탭 선택 · 나머지 패널 숨김", () => {
+      go(e, "contacts");
+      const tabs = qa(e, '.ct-ftabs [role="tab"]');
+      eq(tabs.length, 2);
+      eq(tabs[0].getAttribute("aria-selected"), "true"); eq(tabs[1].getAttribute("aria-selected"), "false");
+      eq(tabs[0].textContent.trim(), "보안사고");
+      ok(!q(e, '[data-ctf-panel="cf-a"]').hidden); ok(q(e, '[data-ctf-panel="cf-b"]').hidden);
+      eq(q(e, '[data-ctf-panel="cf-a"]').getAttribute("aria-labelledby"), "ctf-tab-cf-a");
+    });
+    t("CF03 패널 내용: 보고 순서 4단계 · 구분 제목 · 원터치 번호 · PDF 원본 링크", () => {
+      const p = q(e, '[data-ctf-panel="cf-a"]');
+      eq(qa(e, '[data-ctf-panel="cf-a"] .ct-fsteps li').length, 4);
+      eq(qa(e, '[data-ctf-panel="cf-a"] .ct-fgrp-t').map(x => x.textContent.trim()).join(","), "보고선,해외기관");
+      ok(p.querySelector('a[href="tel:0320000001"]'));
+      ok(p.querySelector('a[href="sms:01000000002"]'), "휴대전화 문자");
+      ok(p.querySelector('a[href="tel:+10000000003"]'), "국제번호");
+      ok(p.querySelector('a[href="https://files.test/a.pdf"][target="_blank"]'));
+      ok(p.querySelector(".ct-fthumb img").getAttribute("src").indexOf("a-thumb.webp") > 0);
+      ok(p.textContent.indexOf("Ver.26.09") >= 0);
+    });
+    t("CF04 탭 전환: 클릭 · 방향키(→/Home) — 선택 상태·패널·모듈 상태 동기화", () => {
+      q(e, '[data-ctf-tab="cf-b"]').click();
+      eq(q(e, '[data-ctf-tab="cf-b"]').getAttribute("aria-selected"), "true");
+      ok(!q(e, '[data-ctf-panel="cf-b"]').hidden); ok(q(e, '[data-ctf-panel="cf-a"]').hidden);
+      eq(C.getFlowTab(), "cf-b");
+      q(e, '[data-ctf-tab="cf-b"]').dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "Home", bubbles: true }));
+      eq(C.getFlowTab(), "cf-a");
+      q(e, '[data-ctf-tab="cf-a"]').dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      eq(C.getFlowTab(), "cf-b");
+      go(e, "contacts");
+      eq(q(e, '[data-ctf-tab="cf-b"]').getAttribute("aria-selected"), "true", "재렌더 후 선택 유지");
+      q(e, '[data-ctf-tab="cf-a"]').click();
+    });
+    t("CF05 뷰어: 미리보기 누르면 전체 화면 dialog — 이미지·제목·PDF 원본·위치", () => {
+      q(e, '[data-ctf-panel="cf-a"] [data-ctf-view]').click();
+      ok(isOpen(), "dialog open");
+      eq(viewer().parentNode, e.w.document.body);
+      eq(q(e, "#ctv-title").textContent, "보안사고 비상 연락망");
+      ok(q(e, "#ct-viewer .ctv-img").getAttribute("src").indexOf("a-thumb.webp") > 0);
+      eq(q(e, "#ct-viewer .ctv-pdf").getAttribute("href"), "https://files.test/a.pdf");
+      eq(q(e, "#ct-viewer .ctv-pos").textContent, "1 / 2");
+      ok(e.w.document.documentElement.classList.contains("ct-viewing"));
+    });
+    t("CF06 뷰어: 다음(→) — PDF만 있는 체계도는 PDF 프레임 · 확대 버튼 숨김 · 탭도 따라감", () => {
+      viewer().dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      eq(q(e, "#ctv-title").textContent, "위험물 사고 발생시 보고 체계도");
+      ok(q(e, "#ct-viewer iframe.ctv-frame[src='https://files.test/b.pdf']"));
+      ok(q(e, "#ct-viewer [data-ctv=zoom]").hidden);
+      eq(C.getFlowTab(), "cf-b");
+      q(e, "#ct-viewer [data-ctv=prev]").click();
+      eq(q(e, "#ctv-title").textContent, "보안사고 비상 연락망");
+    });
+    t("CF07 뷰어: 확대 토글(aria-pressed) · 닫기 → 초기화", () => {
+      q(e, "#ct-viewer [data-ctv=zoom]").click();
+      eq(q(e, "#ct-viewer [data-ctv=zoom]").getAttribute("aria-pressed"), "true");
+      ok(q(e, "#ct-viewer [data-ctv-stage]").classList.contains("zoomed"));
+      q(e, "#ct-viewer [data-ctv=close]").click();
+      ok(!isOpen(), "닫힘");
+      ok(!e.w.document.documentElement.classList.contains("ct-viewing"));
+      eq(q(e, "#ct-viewer [data-ctv-stage]").innerHTML, "");
+      C.openViewer("cf-a");
+      eq(q(e, "#ct-viewer [data-ctv=zoom]").getAttribute("aria-pressed"), "false", "다시 열면 화면 맞춤");
+      C.closeViewer();
+    });
+    await ta("CF07b 휴대폰 '뒤로' = 뷰어 닫기 (기록 1칸) · 버튼으로 닫으면 기록도 되돌림", async () => {
+      const h0 = e.w.history.length;
+      C.openViewer("cf-a");
+      eq(e.w.history.length, h0 + 1);
+      e.w.history.back();
+      await new Promise(r => setTimeout(r, 40));
+      ok(!isOpen(), "뒤로 → 닫힘");
+      eq(e.w.location.hash, "#/contacts", "화면은 그대로");
+      C.openViewer("cf-a");
+      q(e, "#ct-viewer [data-ctv=close]").click();
+      await new Promise(r => setTimeout(r, 40));
+      ok(!isOpen());
+      eq(e.w.location.hash, "#/contacts");
+    });
+    t("CF08 검색: 맞는 행만 · 탭에 건수 · 맞는 탭 자동 선택 · 없으면 카드 숨김", () => {
+      go(e, "contacts");
+      const s = q(e, "#ct-search");
+      s.value = "방사능신고"; s.dispatchEvent(new e.w.Event("input"));
+      eq(qa(e, ".ct-fcount").map(x => x.textContent).join(","), "0,1");
+      eq(q(e, '[data-ctf-tab="cf-b"]').getAttribute("aria-selected"), "true");
+      s.value = "0000-0002"; s.dispatchEvent(new e.w.Event("input"));
+      eq(qa(e, '[data-ctf-panel="cf-a"] .ct-frow').length, 1, "번호 검색(하이픈 무시)");
+      s.value = "위험물"; s.dispatchEvent(new e.w.Event("input"));
+      eq(qa(e, '[data-ctf-panel="cf-b"] .ct-frow').length, 1, "체계도 제목이 맞으면 전체");
+      s.value = "없는이름xyz"; s.dispatchEvent(new e.w.Event("input"));
+      ok(!q(e, ".ct-flow"));
+      s.value = ""; s.dispatchEvent(new e.w.Event("input"));
+      ok(q(e, ".ct-flow"));
+    });
+    t("CF09 통합 검색(Ctrl K)에 체계도·연락처 행 포함", () => {
+      const hits = e.w.SemisSearch.search("해외상황실");
+      ok(hits.some(h => h.group === "비상연락망" && h.title.indexOf("해외상황실") >= 0));
+      ok(e.w.SemisSearch.search("위험물 사고").some(h => h.sub.indexOf("보고 체계도") >= 0));
+    });
+    await ta("CF10 편집(hq): 제목·행 수정 저장 · PDF만 새로 올리면 옛 이미지 떼기", async () => {
+      go(e, "contacts");
+      q(e, '[data-ctf-panel="cf-a"] [data-ctf-edit]').click();
+      ok(q(e, "#modal-box .cfe"), "편집 모달");
+      ok(q(e, "#modal-box .cfe > .modal-actions #cfe-save"), "저장 버튼은 하단 고정 줄");
+      eq(qa(e, "#cfe-rows .ct-editrow").length, 3);
+      eq(qa(e, "#cfe-files .cfe-file").length, 2);
+      q(e, "#cfe-title").value = "보안사고 비상 연락망(개정)";
+      q(e, "#cfe-add").click();
+      const last = qa(e, "#cfe-rows .ct-editrow").pop();
+      last.querySelector('[data-f="grp"]').value = "보고선";
+      last.querySelector('[data-f="role"]').value = "신규담당";
+      last.querySelector('[data-f="office"]').value = "032-000-0009";
+      const up = e.w.SemisSync.uploadFile, hadFetch = e.w.fetch;
+      e.w.fetch = async () => ({ ok: true });
+      e.w.SemisSync.uploadFile = async (file, prefix) => ({ url: "https://files.test/" + prefix + "/" + file.name, name: file.name });
+      const inp = q(e, "#cfe-pdf");
+      Object.defineProperty(inp, "files", { value: [new e.w.File(["%PDF"], "new.pdf", { type: "application/pdf" })], configurable: true });
+      inp.dispatchEvent(new e.w.Event("change"));
+      await new Promise(r => setTimeout(r, 20));
+      e.w.SemisSync.uploadFile = up; e.w.fetch = hadFetch;
+      eq(qa(e, "#cfe-files .cfe-file").length, 1, "이미지 떼고 PDF만");
+      ok(q(e, "#cfe-files").textContent.indexOf("new.pdf") >= 0);
+      q(e, "#cfe-save").click();
+      const f = e.S.data.contacts.flows.find(x => x.id === "cf-a");
+      eq(f.title, "보안사고 비상 연락망(개정)");
+      eq(f.rows.length, 4); eq(f.rows[3].role, "신규담당");
+      eq(f.fileUrl, "https://files.test/contacts/new.pdf"); eq(f.imgUrl, ""); eq(f.thumbUrl, "");
+      ok(q(e, '[data-ctf-panel="cf-a"] .ct-fthumb-pdf'), "이미지 없으면 PDF 표지");
+    });
+    t("CF11 체계도 추가 · 삭제", () => {
+      q(e, "#ct-addflow").click();
+      q(e, "#cfe-title").value = "안전 사고 발생시 보고 체계도";
+      q(e, "#cfe-short").value = "안전사고";
+      q(e, "#cfe-save").click();
+      eq(e.S.data.contacts.flows.length, 3);
+      eq(C.getFlowTab(), e.S.data.contacts.flows[2].id, "추가한 탭 선택");
+      eq(q(e, `[data-ctf-tab="${C.getFlowTab()}"]`).getAttribute("aria-selected"), "true");
+      q(e, `[data-ctf-panel="${C.getFlowTab()}"] [data-ctf-edit]`).click();
+      q(e, "#cfe-del").click(); clickOk(e);
+      eq(e.S.data.contacts.flows.length, 2);
+    });
+    t("CF12 manager: 탭·뷰어는 되고 편집·추가 버튼은 없음", () => {
+      loginAs(e, "manager");
+      go(e, "contacts");
+      ok(q(e, ".ct-ftabs")); ok(!q(e, "[data-ctf-edit]")); ok(!q(e, "#ct-addflow"));
+      q(e, '[data-ctf-tab="cf-b"] ') && q(e, '[data-ctf-tab="cf-b"]').click();
+      q(e, '[data-ctf-panel="cf-b"] [data-ctf-view]').click();
+      ok(isOpen()); C.closeViewer();
+    });
+    t("CF13 flows 없는 데이터(구버전) — 체계도 카드 없이 기존 화면 그대로 · 정규화가 flows를 만들지 않음", () => {
+      const e2 = makeEnv({ preData: { contacts: { sections: [] } } });
+      loginAs(e2, "hq");
+      go(e2, "contacts");
+      ok(!q(e2, ".ct-flow")); ok(q(e2, "#ct-seed")); ok(q(e2, "#ct-addflow"));
+      ok(!("flows" in e2.S.data.contacts), "동기화 오염 방지");
+    });
+    t("CF14 인쇄: 모든 체계도 패널 펼침 · 탭/미리보기/뷰어 숨김 규칙", () => {
+      const c = read("css/main.css");
+      const pr = c.slice(c.lastIndexOf("@media print"));
+      ok(pr.indexOf(".ct-fpanel[hidden] { display: block !important; }") > 0);
+      ok(pr.indexOf(".ct-ftabs, .ct-fthumb, #ct-viewer, .ct-searchwrap") > 0);
+    });
+    t("CF15 공개 저장소: 체계도 파일 주소·실연락처를 코드에 시드하지 않음", () => {
+      const s = read("js/contacts.js");
+      ok(s.indexOf("supabase.co") < 0); ok(s.indexOf("/contacts/flow-") < 0);
+      ok(!/0\d{1,2}-\d{3,4}-\d{4}/.test(s.split("032-740-2107, 2108").join("").replace("032-000-1000~2", "")), "전화번호 패턴");
     });
   }
 
