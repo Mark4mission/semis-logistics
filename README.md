@@ -22,6 +22,9 @@ SeMIS_Logistics/
 ├── js/vault.js         암호 관리 (AES-256-GCM 클라이언트 암호화 저장소)
 ├── js/regulations.js   규정 관리 (항공보안 · 안전관리 · 위험물 DG, PDF 뷰어 · 개정 아이디어 노트)
 ├── js/search.js        통합 검색 팔레트 (Ctrl+K · /)
+├── js/cares.js         CARES 연동 계층 (Firestore REST 읽기 전용 · 60초 캐시 · 이슬점/결로 판정 · 가동률 계산)
+├── js/screening.js     화물 보안검색 현황 (검색 라인 배치 · 일일점검 이행 · 검색 환경 · 최근 고장) + 대시보드 요약 띠
+├── js/equipment.js     검색장비 유지관리 (장비 대장 · 고장·수리 이력 · 가동 분석, SeMIS v2 equipment.js 이식)
 ├── js/sync.js          Supabase 공용 DB 실시간 동기화 (semis_logi_store · semis-logi-files)
 ├── docs/module-template.js 신규 모듈 표준 예시 (복사해서 시작)
 ├── tests/run-tests.cjs jsdom 테스트 (npm test)
@@ -101,6 +104,19 @@ Google → SeMIS(공개 캘린더 겹쳐 보기) / SeMIS → Google(ICS 구독 �
 - **개정 아이디어 노트** — 규정 위치 + 신규/변경/삭제 검토 내용을 규정별로 쌓아 차기 개정에 활용(열람 mgr 이상, 편집 hq 이상).
 - 권한: 메뉴 `vis=mgr`(화물팀 관리자 이상 열람) · 등록/수정은 `canEdit()`(안전보안파트 이상).
 - 구버전 데이터의 `planned` 플래그와 `vis=all`은 `normalizeData()`가 자동으로 정리한다(멱등).
+
+## 화물 보안 허브 (v1.12) — CARES 연동
+
+| 메뉴 | 라우트 | 권한 | 내용 |
+|---|---|---|---|
+| 화물 보안검색 현황 | `scr-status` | mgr | 검색대(X-ray 1~3)별 장비·옆에 둔 ETD·환적/예비 구역, 오늘 일일점검, 장비 × 최근 28일 점검 이행(+주간·월간 최근일), 센서 3곳 × 지표 표 + 결로 판정, 최근 고장 5건 |
+| 검색장비 유지관리 | `scr-equip` | mgr (편집 hq) | 장비 대장(유형별 · 내용연수 · CARES 상태) · 고장·수리 이력(처리 단계 · 원인 · 부품 · 사진) · 가동 분석(가동률 · 다운타임 · 원인 분류) |
+| 대시보드 요약 띠 | `dashboard` | mgr | 검색 라인 미니 배치도 · 오늘 점검 · 최근 6개월 고장 막대 · 검색 환경 |
+
+- **CARES가 마스터** — 장비 상태·배치·고장·점검·센서는 CARES(Firestore) 공개 읽기 컬렉션을 REST로 읽기만 한다. Logistics에서 CARES로 쓰는 요청은 없다.
+- 연동 키는 공용 DB `semis_logi_store` 의 `caresCfg` 행(SYNC_KEYS 밖)에서 읽는다 — 공개 저장소에 키를 두지 않는다.
+- 대장(`DATA.equipment`)은 SeMIS v2 대장 22대를 2026-09-22 복사한 것으로, 이후 두 시스템은 따로 관리한다. S/N이 같으면 CARES와 자동 연결.
+- 구입가는 대외비(hq 이상). 유지보수 계약·비용·대금 청구는 옮기지 않았다(v2 항공보안파트 업무).
 
 ## 암호 관리 (v1.5) — 클라이언트 암호화 저장소
 

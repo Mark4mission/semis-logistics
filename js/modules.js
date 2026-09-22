@@ -20,6 +20,7 @@
     notice:   "all",  // 공지사항
     upcoming: "mgr",  // 다가오는 일정
     actions:  "mgr",  // 회의 결정사항 (미완료 · 기한 경과)
+    screen:   "mgr",  // 화물 보안검색 요약 띠 (CARES — 검색 라인 · 오늘 점검 · 고장 · 환경)
     build:    "hq"    // 모듈 구축 현황 (허브별 운영/전체)
   };
   const cardVis = (id) => {
@@ -85,6 +86,11 @@
     if (utilMods.length) rows.push({ id: "", label: "관리", ico: "sliders",
       live: utilMods.filter(m => SeMIS.hasModule(m.module) || !m.planned).length, total: utilMods.length });
     return rows;
+  }
+  /* 화물 보안검색 요약 띠 — 보안검색 현황 메뉴를 볼 수 있을 때만(권한·숨김 따름) */
+  function scrVisible() {
+    const mn = (D().menus || []).find(m => m.type === "module" && m.module === "scr-status");
+    return !!(mn && SeMIS.navVisible(mn) && SeMIS.hasModule("scr-status"));
   }
   const LV_TONE = { "평시": "ok", "관심": "info", "주의": "warn", "경계": "high", "심각": "crit" };
   const lvColor = (l) => ({ "평시": "badge-green", "관심": "badge-blue", "주의": "badge-amber",
@@ -230,9 +236,11 @@
           ${acts ? `<div class="head-acts">${acts}</div>` : ""}
         </div>
         ${cardVis("status") ? `<div class="dash-top${guest ? " guest" : ""}">${ticketHTML(canWrite)}</div>` : ""}
+        ${!guest && cardVis("screen") && window.SemisScreen && scrVisible() ? SemisScreen.dashHTML() : ""}
         ${guest ? `<section class="dash-card">${noticeCol}</section>`
           : `<div class="dash-sheet-wrap"><div class="dash-sheet cols-${[upcomingCard, noticeCol, actionCol, buildCol].filter(Boolean).length}">${upcomingCard}${noticeCol}${actionCol}${buildCol}</div></div>`}`;
       if (window.SemisHero3D && $("#dash-3d")) SemisHero3D.mount($("#dash-3d"));
+      if (window.SemisScreen && $("#dash-scr")) SemisScreen.mountDash();
 
       // 공지 리스트
       const nl = $("#notice-list");

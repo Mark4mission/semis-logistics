@@ -3,7 +3,7 @@
    실행: npm test  (jsdom 필요: npm install)
    구성: [C] 코어(해시·계정·메뉴·정규화·권한·라우터·예정 모듈)
          [D] 대시보드·공지·현황판  [S] 시스템 설정  [M] 이식 모듈 스모크(일정·회의록·연락망·검색)
-         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
+         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
    ═══════════════════════════════════════════════════════ */
 "use strict";
 const fs = require("fs");
@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/sync.js"];
+const FILES = ["js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/sync.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -132,11 +132,11 @@ function makeFetchStub(server) {
     });
 
     /* ══════════ [C] 코어 — 메뉴 시드·정규화 ══════════ */
-    t("C08 메뉴 시드: 허브 6개(hub-*) · 예정 모듈 15개 이상 · 링크 5개", () => {
+    t("C08 메뉴 시드: 허브 6개(hub-*) · 예정 모듈 13개 이상 · 링크 5개", () => {
       const m = e.S.data.menus;
       eq(m.filter(x => x.type === "group").map(x => x.id).join(","), "hub-home,hub-sec,hub-saf,hub-aud,hub-ops,hub-doc");
       ok(m.filter(x => x.type === "group").every(g => e.S.ICONS[g.ico]), "허브 아이콘");
-      ok(m.filter(x => x.type === "module" && x.planned).length >= 15, "planned");
+      ok(m.filter(x => x.type === "module" && x.planned).length >= 13, "planned");
       eq(m.filter(x => x.type === "link").length, 5);
     });
     t("C09 실모듈 메뉴(dashboard/schedule/minutes/contacts/settings) 존재 · planned 아님", () => {
@@ -251,7 +251,7 @@ function makeFetchStub(server) {
       eq(e.S.roleRank(), 3); ok(e.S.canSee({ vis: "hq" })); ok(!e.S.canSee({ vis: "admin" })); ok(e.S.canEdit()); ok(e.S.canDelete()); ok(e.S.canConfid());
     });
     t("C25 hq: 사이드바 예정 태그 표시 · 예정 모듈 클릭 시 안내", () => {
-      ok(qa(e, ".nav-item.planned .nav-tag").length >= 15);
+      ok(qa(e, ".nav-item.planned .nav-tag").length >= 13);
       go(e, "car");
       ok(q(e, "#view").textContent.includes("시정조치"));
       ok(q(e, "#view .badge").textContent.includes("준비 중"));
@@ -348,7 +348,7 @@ function makeFetchStub(server) {
       const rows = qa(e, "#dash-build .build-row");
       ok(rows.length >= 6, "허브 6 + 관리");
       const sec = rows.find(r => r.dataset.dashHub === "hub-sec");
-      eq(sec.querySelector(".br-n").textContent, "0/4");
+      eq(sec.querySelector(".br-n").textContent, "2/4", "보안검색 현황·검색장비 운영 / 상용화주·출입 예정");
       const home = rows.find(r => r.dataset.dashHub === "hub-home");
       eq(home.querySelector(".br-n").textContent, "3/4", "대시보드·일정·회의록 운영 / 현황판 예정");
     });
@@ -886,14 +886,15 @@ function makeFetchStub(server) {
       ok(q(e, "#crumbs").textContent.includes("관리"));
     });
     t("H06 준비 중 블록: 운영 메뉴 없는 허브는 펼침 · 토글 상태는 계정별 저장", () => {
-      const blk = () => q(e, '#nav-menu .hub[data-hub="hub-sec"] .hub-planned');
-      ok(blk().classList.contains("open"), "화물 보안 — 기본 펼침");
+      const blk = () => q(e, '#nav-menu .hub[data-hub="hub-saf"] .hub-planned');
+      ok(blk().classList.contains("open"), "안전 관리 — 기본 펼침");
+      ok(!q(e, '#nav-menu .hub[data-hub="hub-sec"] .hub-planned').classList.contains("open"), "화물 보안 — v1.12부터 운영 메뉴 있어 기본 접힘");
       ok(!q(e, '#nav-menu .hub[data-hub="hub-ops"] .hub-planned').classList.contains("open"), "협력·비상 — 운영 메뉴 있어 기본 접힘");
-      q(e, '[data-toggle-planned="hub-sec"]').click();
+      q(e, '[data-toggle-planned="hub-saf"]').click();
       ok(!blk().classList.contains("open"));
       e.S.renderNav();
       ok(!blk().classList.contains("open"), "재렌더 후 유지");
-      q(e, '[data-toggle-planned="hub-sec"]').click();
+      q(e, '[data-toggle-planned="hub-saf"]').click();
     });
     t("H07 모듈 등록 → 준비 중 블록에서 운영 목록으로 · 구축 현황 증가", () => {
       e.S.registerModule("kc-ra", { title: "RA", render(root) { root.innerHTML = e.S.ui.head({ title: "상용화주 · RA 관리" }); } });
@@ -901,7 +902,7 @@ function makeFetchStub(server) {
       ok(q(e, '#nav-menu .hub[data-hub="hub-sec"] .hub-items [data-route="kc-ra"]'), "운영 목록");
       ok(!q(e, '#nav-menu .hub[data-hub="hub-sec"] .planned-list [data-route="kc-ra"]'), "준비 중에서 제거");
       const sec = qa(e, "#dash-build .build-row").find(r => r.dataset.dashHub === "hub-sec");
-      eq(sec.querySelector(".br-n").textContent, "1/4");
+      eq(sec.querySelector(".br-n").textContent, "3/4");
       go(e, "kc-ra");
       ok(q(e, "#view .page-head [data-print-btn]"), "키트 머리말에 인쇄 버튼 자동 부착");
     });
@@ -1070,7 +1071,7 @@ function makeFetchStub(server) {
     const e = makeEnv({ fetch });
     const { Sync } = e;
     t("Y01 SYNC_KEYS 구성", () =>
-      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,pwOverrides,userOverrides,customUsers,gcal,chatRooms,vault,regulations"));
+      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,pwOverrides,userOverrides,customUsers,gcal,chatRooms,vault,regulations,equipment"));
     t("Y02 SYNC_KEYS는 모두 freshData 컬렉션에 존재", () => Sync.SYNC_KEYS.forEach(k => ok(e.S.data[k] !== undefined, k)));
     await ta("Y03 초기 pull: 빈 서버 → 로컬 시드 push (semis_logi_store)", async () => {
       await Sync.init();
@@ -1896,9 +1897,9 @@ function makeFetchStub(server) {
     });
     t("CF14 인쇄: 모든 체계도 패널 펼침 · 탭/미리보기/뷰어 숨김 규칙", () => {
       const c = read("css/main.css");
-      const pr = c.slice(c.lastIndexOf("@media print"));
-      ok(pr.indexOf(".ct-fpanel[hidden] { display: block !important; }") > 0);
-      ok(pr.indexOf(".ct-ftabs, .ct-fthumb, #ct-viewer, .ct-searchwrap") > 0);
+      const inPrint = (needle) => { const i = c.indexOf(needle); return i > 0 && c.lastIndexOf("@media print", i) > 0 && c.lastIndexOf("@media print", i) > c.lastIndexOf("}\n}", i); };
+      ok(inPrint(".ct-fpanel[hidden] { display: block !important; }"));
+      ok(inPrint(".ct-ftabs, .ct-fthumb, #ct-viewer, .ct-searchwrap"));
     });
     t("CF15 공개 저장소: 체계도 파일 주소·실연락처를 코드에 시드하지 않음", () => {
       const s = read("js/contacts.js");
@@ -2091,6 +2092,295 @@ function makeFetchStub(server) {
       ok(read("js/flowpdf.js").indexOf("supabase.co") < 0);
       ok(read("js/flowpdf.js").indexOf('intent: "print"') > 0, "가려진 탭에서도 렌더 완료(rAF 미사용)");
     });
+  }
+
+  /* ══════════ [SC] v1.12 화물 보안 — CARES 연동 · 보안검색 현황 · 검색장비 유지관리 · 대시보드 요약 띠 ══════════ */
+  {
+    const HOUR = 3600000, DAY = 86400000, NOW = Date.now();
+    const fsVal = (v) => {
+      if (v === null || v === undefined) return { nullValue: null };
+      if (typeof v === "boolean") return { booleanValue: v };
+      if (typeof v === "number") return Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
+      if (Array.isArray(v)) return { arrayValue: { values: v.map(fsVal) } };
+      if (typeof v === "object") return { mapValue: { fields: Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fsVal(x)])) } };
+      return { stringValue: String(v) };
+    };
+    const doc = (coll, id, o) => ({ name: "projects/p/databases/(default)/documents/" + coll + "/" + id,
+      fields: Object.fromEntries(Object.entries(o).map(([k, v]) => [k, fsVal(v)])) });
+    const EQUIPS = [
+      ["x1", "X-RAY", "RAP-638DV", "6212421", "X-ray 1호기"], ["x2", "X-RAY", "RAP-638DV", "6231201", "X-ray 2호기"],
+      ["x3", "X-RAY", "RAP-638DV", "6231202", "X-ray 3호기"],
+      ["e1", "ETD", "IONAB 1호기", "IONAB-N22-4021", "예비"], ["e2", "ETD", "IONAB 2호기", "IONAB-N22-4022", "환적화물"],
+      ["e3", "ETD", "IONAB 3호기", "IONAB-N22-4023", "X-ray 3호기"], ["e4", "ETD", "IONAB 4호기", "IONAB-N24-1006", "X-ray 2호기"],
+      ["e5", "ETD", "IONAB 5호기", "IONAB-N25-3003", "X-ray 1호기"]
+    ].map(([id, type, name, serial, location]) => ({ id, type, name, serial, location, status: id === "e3" ? "broken" : "safe" }));
+    const REPAIRS = [
+      { id: "r-act", equipmentId: "e3", equipmentName: "IONAB 3호기", symptom: "모니터 글자 깨짐", reporter: "검색요원", reportedAtMs: NOW - 5 * HOUR, status: "in_repair", repairStartedAtMs: NOW - 2 * HOUR },
+      { id: "r-old", equipmentId: "x3", equipmentName: "RAP-638DV", symptom: "갑자기 꺼짐", reporter: "검색요원", reportedAtMs: NOW - 20 * DAY, resolvedAtMs: NOW - 20 * DAY + 3 * HOUR, status: "resolved", causeCategory: "mechanical",
+        parts: [{ part: "그래픽카드", qty: 1, isPaid: false }], cause: "그래픽카드 교체" },
+      { id: "r-env", equipmentId: "x1", equipmentName: "RAP-638DV", symptom: "다운", reporter: "검색요원", reportedAtMs: NOW - 40 * DAY, resolvedAtMs: NOW - 40 * DAY + HOUR, status: "resolved", causeCategory: "environmental" }
+    ];
+    const INSP = EQUIPS.filter(e => e.id !== "x2").map((e, i) => ({ id: "i" + i, type: "daily", equipmentId: e.id, equipmentName: e.name, equipmentType: e.type,
+      inspector: "안도빈", inspectedAtMs: NOW - 10 * 60000 - i * 60000, checklist: [{ itemId: "a", itemName: "동작", result: e.id === "e1" ? "bad" : "ok", note: "" }], remark: "" }));
+    const PERIODIC = [{ id: "w1", type: "weekly", equipmentId: "x1", equipmentName: "RAP-638DV", equipmentType: "X-RAY", inspector: "최정희", inspectedAtMs: NOW - 26 * DAY, remark: "" }];
+    const TS = new Date(NOW - 60000).toISOString();
+    const SENS = [
+      { deviceId: "ICN_CARGO_B", online: true, temp: 25.2, humidity: 57, co2: 428, hcho: 0.113, tvoc: 1.3, pm25: 20, pm10: 26, timestamp: TS },
+      { deviceId: "ICN_ETD_CASE", online: true, temp: 25.8, humidity: 57, co2: 2367, hcho: 0.05, tvoc: 1.1, pm25: 23, pm10: 30, timestamp: TS },
+      { deviceId: "ICN_SEARCH_ROOM", online: false, timestamp: TS }
+    ];
+    const TH = { ICN_ETD_CASE: { co2: { min: null, max: 2000 }, tvoc: { min: null, max: 1 } } };
+    const calls = [];
+    const fake = (url, opts) => {
+      url = String(url); const method = (opts && opts.method) || "GET";
+      calls.push({ url, method, body: opts && opts.body ? JSON.parse(opts.body) : null });
+      const ok = (j) => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(j) });
+      if (url.indexOf(":runQuery") >= 0) {
+        const q = JSON.parse(opts.body).structuredQuery;
+        const c = q.from[0].collectionId;
+        const wrap = (coll, arr) => arr.map(o => ({ document: doc(coll, o.id || o.deviceId + o.timestamp, o) }));
+        if (c === "repairLogs") return ok(wrap(c, REPAIRS));
+        if (c === "sensorLogs") return ok(wrap(c, SENS));
+        if (c === "inspectionLogs") return ok(wrap(c, q.where.fieldFilter.op === "IN" ? PERIODIC : INSP));
+        return ok([]);
+      }
+      if (url.indexOf("/equipments?") >= 0) return ok({ documents: EQUIPS.map(o => doc("equipments", o.id, o)) });
+      if (url.indexOf("/sensorThresholds?") >= 0) return ok({ documents: Object.keys(TH).map(k => doc("sensorThresholds", k, TH[k])) });
+      if (url.indexOf("/repairLogs/") >= 0) return ok(doc("repairLogs", "r-old", { reportPhotos: ["data:image/png;base64,AAAA"], repairPhotos: ["javascript:alert(1)"] }));
+      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
+    };
+    const LEDGER = [
+      { id: "eq-1", type: "X-Ray", name: "RAP-638DV 1호기", serial: "6212421", location: "인천 화물터미널 B동", vendor: "라피스캔 / 인씨스", installed: "2021-08-29", mfgDate: "", lifeYears: null, replaceDue: "2031-08-29", price: 460000000, cert: "TSA", status: "정상", logs: [], note: "" },
+      { id: "eq-3", type: "ETD(폭발물흔적)", name: "IONAB 3호기", serial: "IONAB-N22-4023", location: "인천 화물터미널 B동", vendor: "뉴원에스엔티 / 프로에스콤", installed: "2023-01-01", mfgDate: "", lifeYears: null, replaceDue: "", price: 40000000, cert: "KIAST", status: "정상", logs: [], note: "" },
+      { id: "eq-h", type: "HHMD(휴대용)", name: "CEIA PD240", serial: "HH-1", location: "인천 화물터미널 B동", vendor: "CEIA", installed: new Date(NOW - 3.8 * 365 * DAY).toISOString().slice(0, 10), mfgDate: "", lifeYears: null, replaceDue: "", price: 600000, cert: "", status: "정상", logs: [], note: "" },
+      { id: "eq-w", type: "WTMD(문형)", name: "Metor 6E", serial: "W-1", location: "", vendor: "", installed: "2025-05-20", mfgDate: "", lifeYears: null, replaceDue: "", price: null, cert: "", status: "폐기", logs: [], note: "" }
+    ];
+    const e = makeEnv();
+    e.w.localStorage.setItem("semisl:caresKey", "test-key");
+    e.w.print = () => {};
+    const K = e.w.SemisCares;
+    K._setFetch(fake);
+    e.S.data.equipment = JSON.parse(JSON.stringify(LEDGER)); e.S.saveSilent();
+
+    t("SC01 이슬점(Magnus) · 기준 초과 · 오프라인 판정 — CARES 규약과 같은 값", () => {
+      eq(K.dewPoint(25.2, 57), 16.1); eq(K.dewPoint(30, 90), 28.2); eq(K.dewPoint(null, 50), null); eq(K.dewPoint(20, 0), null);
+      ok(K.exceed(2367, { min: null, max: 2000 })); ok(!K.exceed(1999, { min: null, max: 2000 })); ok(K.exceed(4, { min: 5, max: 35 }));
+      ok(K.isOffline({ online: false, timestamp: new Date().toISOString() }));
+      ok(K.isOffline({ online: true, timestamp: new Date(Date.now() - 9 * 60000).toISOString() }), "8분 무수신");
+      ok(!K.isOffline({ online: true, timestamp: new Date(Date.now() - 60000).toISOString() }));
+      eq(K.thFor("ICN_SEARCH_ROOM", "dewPoint").max, 18, "서버 임계치 없으면 권장값");
+    });
+    t("SC02 결로 교차 판정: 가장 습한 곳 이슬점 vs 가장 차가운 곳 온도", () => {
+      const mk = (id, t2, rh) => ({ id, name: id, offline: false, vals: { temp: t2, dewPoint: K.dewPoint(t2, rh) } });
+      eq(K.condensation([mk("A", 26, 57), mk("B", 21, 53)]).level, "safe");
+      eq(K.condensation([mk("A", 28, 80), mk("B", 22, 50)]).level, "danger");
+      eq(K.condensation([mk("A", 27, 60), mk("B", 21.5, 50)]).level, "watch");
+      eq(K.condensation([]).level, "unknown");
+    });
+    await ta("SC03 CARES 읽기: 장비·고장·점검·정기점검·센서·임계치 (키는 캐시 · 쓰기 요청 없음 · 사진 투영 제외)", async () => {
+      await K.load(true);
+      eq(K.state.err, null, "err"); eq(K.state.equips.length, 8); eq(K.state.repairs.length, 3);
+      eq(K.state.inspections.length, 7); eq(K.state.periodic.length, 1); eq(Object.keys(K.state.sensors).length, 3);
+      ok(calls.every(c => c.url.indexOf("key=test-key") >= 0), "키");
+      ok(calls.every(c => c.method === "GET" || c.url.indexOf(":runQuery") >= 0), "GET·runQuery만");
+      const n = calls.length; await K.load(); eq(calls.length, n, "60초 캐시");
+      ok(read("js/cares.js").indexOf('"repairPhotos"') > 0 && read("js/cares.js").indexOf("REPAIR_FIELDS") > 0, "목록 투영");
+      ok(!/method:\s*"(PATCH|DELETE|PUT)"/.test(read("js/cares.js")), "쓰기 메서드 없음");
+    });
+    t("SC04 장비 단위: X-ray는 배치 위치의 호기 · ETD는 검색대 번호 · 진행 중 고장은 bad", () => {
+      const us = K.units();
+      eq(us.map(u => u.short).join(","), "X1,X2,X3,E1,E2,E3,E4,E5");
+      eq(us[0].label, "X-ray 1호기"); eq(us[0].model, "RAP-638DV");
+      eq(K.unitById("e5").lane, 1); eq(K.unitById("e4").lane, 2); eq(K.unitById("e1").lane, null);
+      const e3 = K.unitById("e3"); eq(e3.state, "bad"); eq(K.stateLabel(e3), "수리 중");
+      ok(K.unitById("x1").ledger && K.unitById("x1").ledger.id === "eq-1", "S/N으로 대장 연결");
+    });
+    t("SC05 보안검색 현황: 요약 띠 · 검색대 3열 + 환적·예비 · 인쇄 버튼 · 허브 배너", () => {
+      loginAs(e, "manager");
+      go(e, "scr-status");
+      const v = q(e, "#view");
+      eq(v.getAttribute("data-hub"), "hub-sec");
+      ok(q(e, "#view .page-head [data-print-btn]"), "인쇄");
+      const vals = qa(e, "#scr-body .stat-row .stat-value").map(x => x.textContent);
+      eq(vals.join("|"), "3/3|4/5|7/8|1|3", "X-ray · ETD · 오늘 점검 · 진행 중 고장 · 기준 초과(입구 HCHO · 케이스 CO₂·TVOC)");
+      const lanes = qa(e, ".lane-board > .lane:not(.lane-zone)");
+      eq(lanes.length, 3);
+      eq(lanes[0].querySelectorAll(".unit-tile").length, 2, "1번 검색대 = X-ray 1 + IONAB 5");
+      ok(lanes[0].textContent.indexOf("IONAB 5호기") >= 0);
+      eq(lanes[2].getAttribute("data-state"), "bad", "IONAB 3호기 수리 중 → 3번 검색대 경고");
+      const z = q(e, ".lane-zone").textContent;
+      ok(z.indexOf("환적화물") >= 0 && z.indexOf("예비") >= 0);
+      ok(z.indexOf("환적화물") < z.indexOf("예비"), "예비는 끝");
+      ok(q(e, '.unit-tile[data-unit="x2"] .ut-ins:not(.done)'), "X-ray 2호기 오늘 미점검");
+      ok(q(e, '.unit-tile[data-unit="e3"] .badge-blue'), "수리 중 칩");
+    });
+    t("SC06 일일점검 이행: 장비 8행 × 28칸 · 오늘 칸 · 불량 표시 · 주간 26일 경과 강조", () => {
+      eq(qa(e, ".heat .heat-row:not(.heat-head)").length, 8);
+      const row = qa(e, ".heat .heat-row:not(.heat-head)")[0];
+      eq(row.querySelectorAll(".hc").length, 28);
+      eq(row.querySelectorAll(".hc")[27].getAttribute("data-st"), "done", "오늘 점검");
+      const x2 = qa(e, ".heat .heat-row:not(.heat-head)")[1];
+      eq(x2.querySelectorAll(".hc")[27].getAttribute("data-st"), "wait", "오늘 아직");
+      ok(qa(e, ".heat .hc[data-bad]").length === 1, "불량 1건");
+      ok(q(e, ".heat .heat-last.late"), "주간 점검 주기 경과");
+      eq(qa(e, ".heat .heat-row:not(.heat-head)")[5].querySelectorAll('.hc[data-st="down"], .hc[data-st="done"]').length >= 1, true);
+    });
+    t("SC07 검색 환경 표: 지점 3열 · 기준 초과 칸 · 오프라인 열 · 결로 판정", () => {
+      eq(qa(e, ".env-tbl thead th").length, 4);
+      const over = qa(e, ".env-tbl td.over").map(td => td.textContent.replace(/\s*기준 초과/, ""));
+      ok(over.indexOf("2,367") >= 0, "CO₂ 2,367 > 2,000");
+      ok(over.indexOf("1.10") >= 0, "ETD TVOC > 1");
+      ok(over.indexOf("0.113") >= 0, "HCHO > 0.1 (권장값)");
+      eq(qa(e, ".env-tbl td.env-off").length, 8, "검색실 오프라인 — 8개 지표 모두 —");
+      ok(q(e, ".env-cond .badge"));
+    });
+    t("SC08 최근 고장 → 상세: 처리 단계 · 원인 · 부품", () => {
+      qa(e, ".scr-faults [data-repair]").find(b => b.dataset.repair === "r-old").click();
+      const box = q(e, "#modal-box");
+      ok(box.textContent.indexOf("X-ray 3호기") >= 0);
+      eq(qa(e, ".rp-steps li.on").length, 2, "신고·완료");
+      ok(box.textContent.indexOf("그래픽카드") >= 0 && box.textContent.indexOf("무상") >= 0);
+      e.S.closeModal();
+    });
+    await ta("SC09 사진은 data:image · https만 (javascript: 차단)", async () => {
+      const p = await K.repairPhotos("r-old");
+      eq(p.report.length, 1); eq(p.repair.length, 0);
+    });
+    t("SC10 대시보드 요약 띠: 관리자 이상 · 4칸(검색 라인 · 오늘 점검 · 고장 · 환경) · 일반 사용자 제외", () => {
+      go(e, "dashboard");
+      ok(q(e, "#dash-scr"), "띠");
+      eq(qa(e, "#dash-scr .dscr-cell").length, 4);
+      eq(qa(e, "#dash-scr .ml-row").length, 3);
+      eq(q(e, "#dash-scr .dscr-n b").textContent, "7");
+      eq(qa(e, "#dash-scr .ins-dot.on").length, 7);
+      eq(qa(e, "#dash-scr .mb-c").length, 6, "최근 6개월");
+      ok(q(e, ".dash-top + #dash-scr, .dash-top + .dash-scr"), "태그 카드 바로 아래");
+      loginAs(e, "user"); go(e, "dashboard");
+      ok(!q(e, "#dash-scr"), "일반 사용자 — 권한 밖");
+      loginAs(e, "manager");
+    });
+    t("SC11 검색장비 대장: 유형별 묶음 · CARES 연동 · CARES 상태 우선 · 내용연수 임박 · 폐기", () => {
+      go(e, "scr-equip");
+      ok(q(e, "#view .page-head [data-print-btn]"));
+      ok(!q(e, "#eq-add"), "관리자(manager)는 등록 불가");
+      const grp = qa(e, ".eq-tbl .grp-row").map(r => r.textContent.replace(/\s+/g, ""));
+      eq(grp.join(","), "X-ray1,ETD1,WTMD1,HHMD1");
+      const Eq = e.w.SemisEquip;
+      eq(Eq.effStatus(e.S.data.equipment[1]), "수리중", "CARES in_repair");
+      eq(Eq.effStatus(e.S.data.equipment[0]), "정상");
+      ok(Eq.isLifeDue(e.S.data.equipment[2]), "HHMD 4년 — 1년 이내");
+      eq(Eq.ledgerStats().total, 3, "폐기 제외"); eq(Eq.ledgerStats().linked, 2);
+      const extra = qa(e, ".eq-tbl tr[data-cares-only]");
+      eq(extra.length, 6, "대장에 없는 CARES 장비 6");
+    });
+    t("SC12 대장 필터·검색 · 상세(구입가는 hq 이상)", () => {
+      const seg = (n, v) => q(e, '[data-seg="' + n + '"][data-v="' + v + '"]').click();
+      seg("kind", "etd"); eq(qa(e, ".eq-tbl tr[data-eq]").length, 1);
+      seg("kind", "all"); seg("st", "due"); eq(qa(e, ".eq-tbl tr[data-eq]").length, 1);
+      seg("st", "disposed"); eq(qa(e, ".eq-tbl tr[data-eq]").length, 1);
+      seg("st", "all");
+      const s1 = q(e, "#eq-q"); s1.value = "인씨스"; s1.dispatchEvent(new e.w.Event("input"));
+      eq(qa(e, ".eq-tbl tr[data-eq]").length, 1); eq(qa(e, ".eq-tbl tr[data-cares-only]").length, 0);
+      const s2 = q(e, "#eq-q"); s2.value = ""; s2.dispatchEvent(new e.w.Event("input"));
+      q(e, '.eq-tbl tr[data-eq="eq-1"]').click();
+      ok(q(e, "#modal-box").textContent.indexOf("구입가") < 0, "manager — 구입가 숨김");
+      ok(!q(e, "#eqd-edit"), "manager — 수정 없음");
+      e.S.closeModal();
+    });
+    t("SC13 고장·수리 이력 탭: 연도·유형 필터 · 행 → 상세", () => {
+      q(e, '[data-etab="repairs"]').click();
+      const now = new Date(Date.now() + 9 * 3600000);
+      q(e, '[data-seg="ryear"][data-v="all"]').click();
+      eq(qa(e, ".rp-tbl tr[data-repair-row]").length, 3);
+      q(e, '[data-seg="rkind"][data-v="xray"]').click();
+      eq(qa(e, ".rp-tbl tr[data-repair-row]").length, 2);
+      q(e, '[data-seg="rkind"][data-v="all"]').click();
+      q(e, '.rp-tbl tr[data-repair-row="r-act"]').click();
+      ok(q(e, "#modal-box").textContent.indexOf("수리 중") >= 0);
+      e.S.closeModal();
+      ok(now.getUTCFullYear() > 2000);
+    });
+    t("SC14 가동 분석: 가동률 = 정상 가동일 ÷ 기간 일수 · ETD 목표선 · 원인 분류 막대", () => {
+      const y = Number(K.todayKey().slice(0, 4));
+      const st = K.yearStats(y);
+      const x3 = st.find(s => s.unit.id === "x3");
+      ok(x3.days > 0 && x3.downDays >= 1 && x3.downDays <= 2, "하루(또는 자정 걸침 이틀)");
+      ok(Math.abs(x3.avail - (x3.days - x3.downDays) / x3.days) < 1e-9);
+      eq(Math.round(x3.downMs / HOUR), 3);
+      eq(x3.count, K.dayKey(NOW - 20 * DAY).slice(0, 4) === String(y) ? 1 : 0);
+      q(e, '[data-etab="analysis"]').click();
+      eq(qa(e, ".av-row").length, 8);
+      eq(qa(e, ".av-target").length, 5, "ETD 5대에만 목표선");
+      ok(q(e, ".cz-bar i"), "원인 분류");
+      q(e, '[data-etab="list"]').click();
+    });
+    t("SC15 hq: 장비 등록·수정(자체 기록) · 구입가 입력 · 삭제는 대장만", () => {
+      loginAs(e, "hq");
+      go(e, "scr-equip");
+      q(e, "#eq-add").click();
+      q(e, "#e-name").value = "Metor 6E"; q(e, "#e-serial").value = "W-2"; q(e, "#e-type").value = "WTMD(문형)";
+      q(e, "#e-price").value = "7000000";
+      q(e, "#elog-add").click();
+      q(e, "#e-logs .elog-row input[type=text]").value = "성능검사 완료";
+      q(e, "#e-save").click();
+      const nw = e.S.data.equipment.find(x => x.serial === "W-2");
+      ok(nw && nw.price === 7000000 && nw.logs.length === 1 && nw.logs[0].text === "성능검사 완료");
+      ok(q(e, '.eq-tbl tr[data-eq="' + nw.id + '"]'), "목록 반영");
+      q(e, '.eq-tbl tr[data-eq="' + nw.id + '"]').click();
+      ok(q(e, "#modal-box").textContent.indexOf("구입가") >= 0, "hq — 구입가");
+      q(e, "#eqd-edit").click(); q(e, "#e-del").click(); clickOk(e);
+      ok(!e.S.data.equipment.some(x => x.serial === "W-2"));
+    });
+    t("SC16 메뉴: 화물 보안 허브 2개 운영 · 구버전 데이터의 예정 플래그 해제(멱등) · SYNC 키", () => {
+      const mn = (id) => e.S.data.menus.find(m => m.module === id);
+      ok(!mn("scr-status").planned && !mn("scr-equip").planned);
+      ok(mn("kc-ra").planned && mn("access").planned);
+      mn("scr-equip").planned = true; mn("scr-equip").desc = "준비";
+      e.S.normalizeData();
+      eq(mn("scr-equip").planned, undefined); eq(mn("scr-equip").desc, undefined);
+      eq(e.S.normalizeData(), false, "두 번째는 변화 없음");
+      ok(e.w.SemisSync.SYNC_KEYS.indexOf("equipment") >= 0);
+    });
+    t("SC17 통합 검색: 검색장비 대장 · 공개 저장소에 연동 키 없음", () => {
+      const r = e.w.SemisSearch.search("IONAB");
+      ok(r.some(x => x.group === "검색장비 유지관리"), "검색 결과");
+      ["js/cares.js", "js/screening.js", "js/equipment.js", "index.html"].forEach(f => ok(!/AIza[0-9A-Za-z_-]{20,}/.test(read(f)), f));
+    });
+    await ta("SC18 CARES 연결 실패: 화면은 오류 안내 · 대장은 그대로 · 재시도 버튼", async () => {
+      K._reset();
+      K._setFetch(() => Promise.resolve({ ok: false, status: 403, json: () => Promise.resolve({}) }));
+      e.w.localStorage.setItem("semisl:caresKey", "bad-key");
+      await K.load(true);
+      ok(K.state.err, "err");
+      go(e, "scr-status");
+      ok(q(e, "[data-scr-retry]"), "재시도");
+      go(e, "scr-equip");
+      ok(qa(e, ".eq-tbl tr[data-eq]").length >= 3, "대장은 표시");
+      ok(q(e, "#eq-meta").textContent.indexOf("연동 불가") >= 0);
+      eq(e.w.localStorage.getItem("semisl:caresKey"), null, "403이면 키 캐시 삭제");
+      K._setFetch(fake); K._reset();
+    });
+    await ta("SC19 읽기량: 대시보드는 live·repairs만(45일 점검 제외) · 자동 새로고침은 live만 · 유효기간 안이면 요청 없음", async () => {
+      K._reset(); e.w.localStorage.setItem("semisl:caresKey", "test-key");
+      calls.length = 0;
+      await K.load({ parts: ["live", "repairs"] });
+      const qs = calls.filter(c => c.body).map(c => c.body.structuredQuery);
+      ok(!qs.some(q2 => q2.where && q2.where.fieldFilter.op === "IN"), "정기점검 조회 없음");
+      const since = qs.filter(q2 => q2.from[0].collectionId === "inspectionLogs").map(q2 => Number(q2.where.fieldFilter.value.integerValue));
+      eq(since.length, 1); ok(since[0] >= K.dayStartMs(K.todayKey()), "오늘 점검만");
+      eq(qs.find(q2 => q2.from[0].collectionId === "sensorLogs").limit, 12);
+      ok(K.has("live") && K.has("repairs") && !K.has("history"));
+      calls.length = 0;
+      await K.load({ parts: ["live", "repairs"], force: ["live"] });
+      eq(calls.length, 3, "장비 · 센서 · 오늘 점검");
+      calls.length = 0;
+      await K.load({ parts: ["live", "repairs"] });
+      eq(calls.length, 0, "유효기간 안");
+      await K.load();
+      ok(K.has("history"), "보안검색 현황 진입 시 45일 점검");
+      eq(K.allInspections().length, 7, "오늘 점검과 45일 점검 중복 제거");
+    });
+    t("SC20 jsdom 오류 없음(화물 보안 블록)", () => eq(e.errors.length, 0, e.errors.join(" | ")));
   }
 
   /* ══════════ [W] 릴리스 위생 ══════════ */

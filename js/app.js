@@ -8,7 +8,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.11.1";
+  const VERSION = "1.12.0";
   const APP_NAME = "SeMIS · Logistics";
   const LS_DATA = "semisl:data";
   const LS_UI   = "semisl:ui";
@@ -161,6 +161,9 @@ const SeMIS = (() => {
     stretch: '<path d="M3.5 12h17"/><path d="m7 8.5-3.5 3.5L7 15.5"/><path d="m17 8.5 3.5 3.5-3.5 3.5"/>',
     repeat: '<path d="M4.5 11V9.5A2.5 2.5 0 0 1 7 7h12.5"/><path d="m16.5 4 3 3-3 3"/><path d="M19.5 13v1.5A2.5 2.5 0 0 1 17 17H4.5"/><path d="m7.5 20-3-3 3-3"/>',
     user: '<circle cx="12" cy="8" r="3.8"/><path d="M4.5 20.5c.9-4 3.7-6 7.5-6s6.6 2 7.5 6"/>',
+    xray: '<path d="M3 17.5V8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v9.5"/><path d="M7.5 17.5v-5a4.5 4.5 0 0 1 9 0v5"/><path d="M2 17.5h20"/><path d="M5 20.5h.01M9.5 20.5h.01M14.5 20.5h.01M19 20.5h.01"/>',
+    etd: '<rect x="6" y="3" width="12" height="18" rx="2"/><path d="M9.5 6.5h5"/><rect x="9" y="9.5" width="6" height="4.5" rx="1"/><path d="M10.5 17.5h3"/>',
+    refresh: '<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/>',
     palette: '<path d="M12 3.5a8.5 8.5 0 1 0 0 17c1.2 0 1.8-.8 1.8-1.7 0-1.3-1-1.5-1-2.6 0-1 .8-1.7 1.8-1.7h2.1a3.8 3.8 0 0 0 3.8-3.8c0-4-3.8-7.2-8.5-7.2z"/><circle cx="7.8" cy="11" r="1"/><circle cx="10.5" cy="7.5" r="1"/><circle cx="15" cy="8" r="1"/>'
   };
   /* 허브 선택용 아이콘 목록 (시스템 설정 → 메뉴 관리) */
@@ -196,12 +199,10 @@ const SeMIS = (() => {
         "무재해 경과일·점검 완료율·미결 시정조치·교육 이수율 등 파트 핵심 지표를 한 화면에 모은 현황판. 각 업무 모듈이 쌓이면 자동 집계로 전환합니다."),
 
       h("hub-sec", "화물 보안", "scan"),
-      p("scr-status", "화물 보안검색 현황", "🔎", "scr-status", "mgr", "hub-sec",
-        "일일 보안검색 실적(X-ray·ETD·개봉검색 건수), 미검색·재검색 사유, 검색요원 배치 현황을 기록·집계합니다."),
+      m("scr-status", "화물 보안검색 현황", "🔎", "scr-status", "mgr", "hub-sec"),
       p("kc-ra", "상용화주 · RA 관리", "🏷️", "kc-ra", "hq", "hub-sec",
         "상용화주·보안업체(RA) 지정 현황, 유효기간, 점검 이력, 화물 인수 시 확인 절차를 관리합니다."),
-      p("scr-equip", "검색장비 유지관리", "🔧", "scr-equip", "mgr", "hub-sec",
-        "X-ray·ETD 등 검색장비 대장, 일일 점검·교정·고장 이력, 유지보수 계약을 관리합니다. CARES(보안장비 관제)와 연계 예정."),
+      m("scr-equip", "검색장비 유지관리", "🔧", "scr-equip", "mgr", "hub-sec"),
       p("access", "보안구역 출입 관리", "🪪", "access", "mgr", "hub-sec",
         "화물터미널 보호구역 출입증·차량 출입·임시 출입 현황과 만료 도래 알림을 관리합니다."),
 
@@ -318,6 +319,7 @@ const SeMIS = (() => {
       contacts: { sections: [] }, // 비상연락망 (실데이터는 공용 DB만 — 코드 미시드)
       vault: { v: 1, members: [], data: null, personal: {}, updated: "" }, // 암호 관리 (클라이언트 AES-256 암호화)
       regulations: [],   // 규정 관리 (항공보안 / 안전관리 / 위험물 DG)
+      equipment: [],     // 검색장비 대장 (상태·고장·점검은 CARES 실시간 — js/cares.js)
       chatRooms: []      // (예약) 팀 채팅방
     };
   }
@@ -439,7 +441,10 @@ const SeMIS = (() => {
       if (["sec", "safety", "dg"].indexOf(r.scope) < 0) r.scope = "safety";
       if (!Array.isArray(r.ideas)) r.ideas = [];
     });
-    ["reg-sec", "reg-safety", "reg-dg"].forEach(id => {
+    // 검색장비 대장 (v1.12) — 배열 보정만. 실데이터는 공용 DB(SeMIS v2 대장 이관분)
+    DATA.equipment = (Array.isArray(DATA.equipment) ? DATA.equipment : []).filter(x => x && typeof x === "object" && x.id);
+    DATA.equipment.forEach(x => { if (!Array.isArray(x.logs)) x.logs = []; });
+    ["reg-sec", "reg-safety", "reg-dg", "scr-status", "scr-equip"].forEach(id => {
       const mn = DATA.menus.find(m => m.type === "module" && m.module === id);
       if (!mn) return;
       if (mn.planned) { delete mn.planned; delete mn.desc; }
@@ -785,7 +790,7 @@ const SeMIS = (() => {
   const VIEW_WIDTH = {
     schedule: "wide", dashboard: "wide", board: "wide",
     minutes: "mid", contacts: "mid", settings: "mid", vault: "mid",
-    "reg-sec": "mid", "reg-safety": "mid", "reg-dg": "mid"
+    "reg-sec": "mid", "reg-safety": "mid", "reg-dg": "mid", "scr-status": "mid", "scr-equip": "mid"
   };
   function applyViewWidth(view, route) {
     const tier = String(route).indexOf("embed/") === 0 ? "wide" : (VIEW_WIDTH[route] || "");
