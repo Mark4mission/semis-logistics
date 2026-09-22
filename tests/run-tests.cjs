@@ -269,6 +269,11 @@ function makeFetchStub(server) {
       go(e, "embed/" + lk.id);
       ok(q(e, "#view iframe.embed-frame"));
       eq(q(e, "#view iframe").getAttribute("src"), lk.url);
+      ok(!q(e, "#view").textContent.includes("차단"), "안내 문구 제거");
+      eq(q(e, "#view .page-head [data-print-btn]").textContent.trim(), "Print");
+      const c = read("css/main.css"), pm = c.slice(c.indexOf("@media print"));
+      ok(/\.embed-frame \{ display: block;[^}]*height: 232mm/.test(pm), "인쇄 시 프레임 표시");
+      ok(!/\.embed-frame \{ display: none/.test(pm), "인쇄 시 프레임 숨김 금지");
       lk.open = "tab";
     });
     t("C28 admin 로그인 → 시스템 설정 라우트 렌더", () => {
@@ -1016,7 +1021,7 @@ function makeFetchStub(server) {
         go(e, r);
         const btn = q(e, "#view [data-print-btn]");
         ok(btn, r + " 인쇄 버튼 없음");
-        ok(btn.textContent.indexOf("인쇄") >= 0);
+        eq(btn.textContent.trim(), "Print");
         ok(btn.classList.contains("no-print"));
       });
     });
@@ -1685,7 +1690,8 @@ function makeFetchStub(server) {
       const src = read("js/hero3d.js");
       ok(src.indexOf("const LOGO_RED = [[0.846, 0.151]") > 0 && src.indexOf("const LOGO_BLUE = [[0.861, 0.418]") > 0, "로고 윤곽 좌표");
       ok(src.indexOf('drawLogo(g, 256, "#ffffff")') > 0, "꼬리 로고: 파랑 조각은 흰색");
-      ok(src.indexOf("visorCanvas(") > 0 && src.indexOf("drawLogo(g, size, LOGO_C.blue)") > 0, "기수 아래 로고");
+      ok(src.indexOf("const NOSE_LOGO = { x: 7.6") > 0 && src.indexOf("drawLogo(g, NOSE_LOGO.size * px, LOGO_C.blue)") > 0, "기수 아래 로고(고정 동체)");
+      ok(src.indexOf("visorCanvas(") < 0, "들어 올린 화물문에는 로고 없음(v1.10.3)");
       ok(/XN = 9\.62, NX = 8\.0/.test(src), "기수 길이 1.62(≈ 동체 지름 0.85배)");
       ok(src.indexOf('const KINDS = ["crate", "heli"]') > 0 && src.indexOf("const CL = 2.5") > 0, "긴 화물 2종");
       ok(src.indexOf("makeUld") < 0 && src.indexOf('"container"') < 0, "짧은 컨테이너 제거");

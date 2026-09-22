@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════════════════
    SeMIS · Logistics — 대시보드 3D 장면 (v1.9)
    에어제타 B747-400F(흰 동체 · AIRZETA · 파란 꼬리 · 빨간 윙렛)가 기수 화물문을 들어 올리고
-   로더가 긴 화물(목재 상자 · 헬기 동체)을 번갈아 싣는 장면을 로우폴리로 그린다. (v1.10.2)
+   로더가 긴 화물(목재 상자 · 헬기 동체)을 번갈아 싣는 장면을 로우폴리로 그린다. (v1.10.3)
    - Three.js r170 (assets/vendor, 대시보드에 처음 들어올 때만 지연 로드)
    - 캔버스 하나를 계속 재사용: 대시보드가 다시 그려지면 새 자리로 옮겨 붙인다
    - 화면 밖·다른 탭·다른 화면에서는 렌더링을 멈춘다
@@ -104,6 +104,15 @@ window.SemisHero3D = (() => {
       g.moveTo(x0 + r, y0); g.arcTo(x0 + w, y0, x0 + w, y0 + h, r); g.arcTo(x0 + w, y0 + h, x0, y0 + h, r);
       g.arcTo(x0, y0 + h, x0, y0, r); g.arcTo(x0, y0, x0 + w, y0, r); g.closePath(); g.stroke();
     });
+    // 기수 아래 회사 로고 — 화물문(바이저)이 아니라 문 경계 바로 뒤 고정 동체 아래쪽(앞바퀴 위)에 있어
+    // 기수를 들어 올려도 아래에 남는다(실기 사진 기준). 좌현은 180° 돌려 그린다.
+    [[0.75 + NOSE_LOGO.dv, 0], [0.25 - NOSE_LOGO.dv, Math.PI]].forEach(([v, rot]) => {
+      g.save();
+      g.translate(X(NOSE_LOGO.x), v * H);
+      g.rotate(rot);
+      drawLogo(g, NOSE_LOGO.size * px, LOGO_C.blue);
+      g.restore();
+    });
     return cv;
   }
   /* 회사 로고 — 제공받은 로고 이미지를 윤곽 추출한 좌표(0~1). 빨강 위 · 파랑 아래 조각이 엇갈린 계단형.
@@ -111,6 +120,7 @@ window.SemisHero3D = (() => {
   const LOGO_RED = [[0.846, 0.151], [0.613, 0.151], [0.109, 0.551], [0.372, 0.551], [0.372, 0.389], [0.65, 0.389]];
   const LOGO_BLUE = [[0.861, 0.418], [0.673, 0.418], [0.673, 0.632], [0.395, 0.632], [0.126, 0.879], [0.524, 0.879]];
   const LOGO_C = { red: "#df4552", blue: "#1b3088" };
+  const NOSE_LOGO = { x: 7.6, dv: 0.085, size: 0.56 };   // 동체 길이 위치 · 옆면 중심선 아래 둘레 비율 · 크기
   function drawLogo(g, size, lower) {
     const poly = (pts, c) => {
       g.fillStyle = c; g.beginPath();
@@ -126,25 +136,6 @@ window.SemisHero3D = (() => {
     const g = cv.getContext("2d");
     g.translate(128, 128);
     drawLogo(g, 256, "#ffffff");
-    return cv;
-  }
-  /* 기수(화물문) 도장 — 흰색 + 아래쪽 옆면 로고. 문을 들어 올린 상태에서 똑바로 보이도록 들어 올린 각도만큼 미리 돌려 그린다 */
-  function visorCanvas(len, R, rLogo, uLogo, angle) {
-    const C = 2 * Math.PI * R, px = 180;
-    const W = Math.round(len * px), H = Math.round(C * px);
-    const cv = document.createElement("canvas");
-    cv.width = W; cv.height = H;
-    const g = cv.getContext("2d");
-    g.fillStyle = AZ.white; g.fillRect(0, 0, W, H);
-    const size = 0.46 * px, squash = R / rLogo;           // 기수 끝으로 갈수록 둘레가 짧아지는 만큼 세로를 늘려 그림
-    [[0.75 + 0.1, angle, 1], [0.25 - 0.1, Math.PI - angle, -1]].forEach(([v, rot]) => {
-      g.save();
-      g.translate(uLogo * W, v * H);
-      g.scale(1, squash);
-      g.rotate(rot);
-      drawLogo(g, size, LOGO_C.blue);
-      g.restore();
-    });
     return cv;
   }
   /* 팔레트 화물 그물 텍스처 */
@@ -309,9 +300,8 @@ window.SemisHero3D = (() => {
     const hinge = new T.Group();
     hinge.position.set(NX + 0.05, CY + R * 0.93, 0);
     ac.add(hinge);
-    const OPEN = 1.38, uLogo = 0.5;
-    mat.visor = M(0xffffff, { map: tex(visorCanvas(XN - NX, R, rAt(NX + (XN - NX) * uLogo), uLogo, OPEN), { flipY: false }),
-      roughness: 0.4, metalness: 0.08, side: T.DoubleSide });
+    const OPEN = 1.38;
+    mat.visor = M(hex(AZ.white), { roughness: 0.4, metalness: 0.08, side: T.DoubleSide });
     const visor = add(hinge, hull(NX, XN, 30, 64), mat.visor, 0, 0, 0);
     visor.position.set(-hinge.position.x, CY - hinge.position.y, 0);
     hinge.rotation.z = OPEN;

@@ -8,7 +8,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.10.2";
+  const VERSION = "1.10.3";
   const APP_NAME = "SeMIS · Logistics";
   const LS_DATA = "semisl:data";
   const LS_UI   = "semisl:ui";
@@ -703,7 +703,7 @@ const SeMIS = (() => {
   }
 
   /* ═════════════ A4 인쇄 (전 화면 공통) ═════════════
-     모든 화면(대시보드·모듈·예정 모듈 안내)에 "🖨 인쇄" 버튼을 자동으로 붙여
+     모든 화면(대시보드·모듈·예정 모듈 안내·내부 링크)에 "Print" 버튼을 자동으로 붙여
      지금 보고 있는 화면을 그대로 A4 보고용으로 출력한다. 화면 머리말(.ds-head/.page-head)이
      있으면 그 오른쪽에, 없으면 화면 맨 위 인쇄 바에 넣는다.
      인쇄 시에는 헤더·사이드바·버튼이 빠지고(css @media print), 문서 머리말
@@ -750,7 +750,7 @@ const SeMIS = (() => {
     btn.className = "btn btn-ghost btn-sm no-print";
     btn.dataset.printBtn = "1";
     btn.title = "이 화면을 A4 보고용으로 인쇄";
-    btn.innerHTML = icon("print", 17) + "<span>A4 인쇄</span>";
+    btn.innerHTML = icon("print", 17) + "<span>Print</span>";
     btn.onclick = () => printView(route);
     const head = view.querySelector(".ds-head, .page-head");
     if (head) {
@@ -912,7 +912,6 @@ const SeMIS = (() => {
         <div class="page-title">${esc(mn.label)}</div>
         <span class="spacer"></span>
         <a class="btn btn-ghost btn-sm" href="${esc(mn.url)}" target="_blank" rel="noopener">${icon("external", 16)}<span>새 탭에서 열기</span></a>
-        <div class="page-desc">화면이 비어 있으면 해당 사이트가 내부 열기(iframe)를 차단하는 것입니다 — 새 탭에서 열기를 이용하세요.</div>
       </div>
       <iframe class="embed-frame" src="${esc(mn.url)}" title="${esc(mn.label)}"
         allow="fullscreen" referrerpolicy="no-referrer-when-downgrade"></iframe>`;
