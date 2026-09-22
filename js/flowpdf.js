@@ -261,7 +261,10 @@
           cv.width = Math.round(v2.width); cv.height = Math.round(v2.height);
           const ctx = cv.getContext("2d");
           ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height);
-          await page.render({ canvasContext: ctx, viewport: v2 }).promise;
+          // intent "print": requestAnimationFrame을 쓰지 않아 탭이 가려져 있어도 멈추지 않는다 (+20초 안전장치)
+          const task = page.render({ canvasContext: ctx, viewport: v2, intent: "print" });
+          const done = await Promise.race([task.promise.then(() => true), new Promise(r => setTimeout(() => r(false), 20000))]);
+          if (!done) { try { task.cancel(); } catch (e) { /* noop */ } throw new Error("render timeout"); }
           const stem = "flow-" + Date.now().toString(36);
           res.image = await toImage(cv, 1800, stem);
           res.thumb = await toImage(cv, 640, stem + "-thumb");

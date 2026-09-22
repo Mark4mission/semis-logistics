@@ -2089,6 +2089,7 @@ function makeFetchStub(server) {
       ok(read("assets/vendor/pdfjs/LICENSE").indexOf("Apache License") >= 0);
       ok(read("index.html").indexOf("pdf.min.mjs") < 0, "첫 화면에서 불러오지 않음");
       ok(read("js/flowpdf.js").indexOf("supabase.co") < 0);
+      ok(read("js/flowpdf.js").indexOf('intent: "print"') > 0, "가려진 탭에서도 렌더 완료(rAF 미사용)");
     });
   }
 
