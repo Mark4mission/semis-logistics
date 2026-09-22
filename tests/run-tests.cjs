@@ -3,7 +3,7 @@
    실행: npm test  (jsdom 필요: npm install)
    구성: [C] 코어(해시·계정·메뉴·정규화·권한·라우터·예정 모듈)
          [D] 대시보드·공지·현황판  [S] 시스템 설정  [M] 이식 모듈 스모크(일정·회의록·연락망·검색)
-         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
+         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
    ═══════════════════════════════════════════════════════ */
 "use strict";
 const fs = require("fs");
@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/sync.js"];
+const FILES = ["js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/sync.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -1904,6 +1904,191 @@ function makeFetchStub(server) {
       const s = read("js/contacts.js");
       ok(s.indexOf("supabase.co") < 0); ok(s.indexOf("/contacts/flow-") < 0);
       ok(!/0\d{1,2}-\d{3,4}-\d{4}/.test(s.split("032-740-2107, 2108").join("").replace("032-000-1000~2", "")), "전화번호 패턴");
+    });
+  }
+
+  /* ══════════ [FP] v1.11 보고 체계도 — 개정 PDF 비교(반자동 반영) ══════════
+     글자 위치는 실제 체계도 배치를 흉내 낸 가짜 번호(555·5555) 픽스처 */
+  {
+    const ITEMS = [
+      { s: "인천화물팀장", x: 100, y: 100, w: 60, h: 12 },
+      { s: "☎ 032-555-0700", x: 95, y: 116, w: 80, h: 12 },
+      { s: "안전보안파트", x: 100, y: 200, w: 60, h: 12 },
+      { s: "☎ 555-0800 /", x: 60, y: 216, w: 60, h: 11 },
+      { s: "☏ 010-5555-4130", x: 125, y: 216, w: 70, h: 11 },
+      { s: "(파트장)", x: 197, y: 216, w: 30, h: 8 },
+      { s: "화물서비스팀 ☎ 02-5555-1141", x: 400, y: 100, w: 150, h: 12 },
+      { s: "☏ 010-5555-7032", x: 440, y: 115, w: 80, h: 12 },
+      { s: "PCC", x: 40, y: 300, w: 20, h: 12 },
+      { s: "(외곽 상황실)", x: 30, y: 315, w: 50, h: 9 },
+      { s: "032-555-3906~8", x: 30, y: 330, w: 70, h: 12 },
+      { s: "우체국 물류지원팀 ☎ 555-1245", x: 400, y: 300, w: 150, h: 12 },
+      { s: "국정원 ☎ 032-555-0525", x: 200, y: 500, w: 120, h: 12 },
+      { s: "☏ 010-5555-1111", x: 230, y: 515, w: 80, h: 12 },
+      { s: "(근무시간 외 010-5555-2222)", x: 420, y: 520, w: 140, h: 11 },
+      { s: "Ver.26.12 (☏ 0705)", x: 450, y: 800, w: 80, h: 10 }
+    ];
+    const ROWS = () => [
+      { id: "a", grp: "보고선", role: "인천화물팀장", office: "032-555-0799", mobile: "", note: "" },
+      { id: "b", grp: "보고선", role: "안전보안파트 파트장", office: "032-555-0800", mobile: "010-5555-4130", note: "" },
+      { id: "c", grp: "관련팀", role: "화물서비스팀", office: "02-5555-1141", mobile: "010-5555-0000", note: "" },
+      { id: "d", grp: "종합상황실", role: "PCC", office: "032-555-3906~8", mobile: "", note: "" },
+      { id: "e", grp: "유관기관", role: "없어진기관", office: "032-555-9999", mobile: "", note: "" },
+      { id: "f", grp: "주요기관", role: "국정원", office: "032-555-0525", mobile: "", note: "" }
+    ];
+    const e = makeEnv();
+    const P = e.w.SemisFlowPdf;
+    const phones = P.extractPhones(ITEMS);
+    const byNum = (n) => phones.find(p => p.num === n) || {};
+
+    t("FP01 번호 인식: 지역번호 보정(032)·범위(~)·라벨(같은 줄/왼쪽/위)·괄호 메모·버전", () => {
+      eq(phones.length, 10);
+      eq(byNum("032-555-0700").label, "인천화물팀장", "위쪽 이름");
+      eq(byNum("032-555-0800").label, "안전보안파트", "7자리 → 032 보정 + 위쪽 이름");
+      eq(byNum("010-5555-4130").note, "파트장");
+      eq(byNum("02-5555-1141").label, "화물서비스팀", "같은 줄 이름");
+      eq(byNum("032-555-3906~8").label, "PCC", "괄호 줄을 건너뛴 위쪽 이름");
+      eq(byNum("032-555-3906~8").note, "외곽 상황실");
+      eq(byNum("032-555-1245").label, "우체국 물류지원팀");
+      eq(byNum("010-5555-2222").note, "근무시간 외", "여는 괄호 메모");
+      eq(P.detectVersion(ITEMS), "26.12");
+      eq(P.formatNum("080-004 4949"), "080-004-4949");
+      eq(P.formatNum("740-2700,4,16"), "032-740-2700, 4, 16");
+      eq(P.formatNum("1661-9881"), "1661-9881");
+      eq(P.formatNum("703-563-3240"), "+1-703-563-3240", "북미");
+      eq(P.formatNum("65-6476-9487"), "+65-6476-9487", "국가번호 2자리");
+      eq(P.formatNum("044-201-4236"), "044-201-4236"); eq(P.formatNum("02-6026-1141"), "02-6026-1141");
+      eq(P.formatNum("1-914-701-8047"), "1-914-701-8047");
+      ok(P.sameNum(P.keyOf("555-0800"), P.keyOf("032-555-0800")));
+      ok(!P.sameNum(P.keyOf("0800"), P.keyOf("032-555-0800")), "7자리 미만은 대조 안 함");
+    });
+    t("FP02 대조: 그대로 · 바뀜(이름/위치) · 빈 칸 채움 · 새 번호(구분 추정) · PDF에 없음", () => {
+      const rows = ROWS();
+      const d = P.diffRows(rows, phones);
+      eq(d.same.length, 5);
+      const ch = d.changed.map(c => rows[c.ri].id + ":" + c.f + ":" + c.old + ">" + c.num + ":" + c.how).sort().join(" | ");
+      eq(ch, "a:office:032-555-0799>032-555-0700:label | c:mobile:010-5555-0000>010-5555-7032:pos | f:mobile:>010-5555-1111:fill");
+      eq(d.added.map(a => a.num + ":" + a.label).sort().join(","), "010-5555-2222:,032-555-1245:우체국 물류지원팀");
+      ok(d.added.find(a => a.num === "010-5555-2222").mobile);
+      eq(d.missing.map(m => rows[m.ri].id).join(","), "e");
+    });
+    t("FP03 같은 PDF를 다시 올리면 변경 없음(오탐 0)", () => {
+      const rows = [
+        { id: "x1", role: "인천화물팀장", office: "032-555-0700" }, { id: "x2", role: "안전보안파트", office: "032-555-0800", mobile: "010-5555-4130" },
+        { id: "x3", role: "화물서비스팀", office: "02-5555-1141", mobile: "010-5555-7032" }, { id: "x4", role: "PCC", office: "032-555-3906~8" },
+        { id: "x5", role: "우체국 물류지원팀", office: "032-555-1245" }, { id: "x6", role: "국정원", office: "032-555-0525", mobile: "010-5555-1111" },
+        { id: "x7", role: "상황실", office: "", mobile: "010-5555-2222" }];
+      const d = P.diffRows(rows, phones);
+      eq(d.changed.length + d.added.length + d.missing.length, 0);
+      eq(d.same.length, 10);
+    });
+
+    loginAs(e, "hq");
+    e.S.data.contacts = { sections: [], flows: [{ id: "cf-t", title: "테스트 체계도", short: "테스트", ver: "26.09", steps: "", memo: "",
+      fileUrl: "https://files.test/old.pdf", fileName: "old.pdf", imgUrl: "https://files.test/old.webp", thumbUrl: "https://files.test/old-t.webp", rows: ROWS() }] };
+    e.S.saveSilent();
+    const tick = (ms) => new Promise(r => setTimeout(r, ms || 30));
+    async function uploadPdf(analyzeImpl) {
+      const up = e.w.SemisSync.uploadFile, hadFetch = e.w.fetch, an = P.analyze;
+      e.w.fetch = async () => ({ ok: true });
+      e.w.SemisSync.uploadFile = async (file, prefix) => ({ url: "https://files.test/" + prefix + "/" + file.name, name: file.name });
+      P.analyze = analyzeImpl;
+      const inp = q(e, "#cfe-pdf");
+      Object.defineProperty(inp, "files", { value: [new e.w.File(["%PDF"], "rev.pdf", { type: "application/pdf" })], configurable: true });
+      inp.dispatchEvent(new e.w.Event("change"));
+      await tick(40);
+      e.w.SemisSync.uploadFile = up; e.w.fetch = hadFetch; P.analyze = an;
+    }
+    const okAnalyze = async () => ({ phones: P.extractPhones(ITEMS), ver: "26.12", pages: 1,
+      image: new e.w.File(["i"], "flow-z.webp", { type: "image/webp" }), thumb: new e.w.File(["t"], "flow-z-thumb.webp", { type: "image/webp" }) });
+
+    await ta("FP04 편집에서 개정 PDF 올리기 → 미리보기 이미지 자동 교체 · 비교 목록(기본 선택: 바뀜·새 번호·버전)", async () => {
+      go(e, "contacts");
+      q(e, '[data-ctf-panel="cf-t"] [data-ctf-edit]').click();
+      await uploadPdf(okAnalyze);
+      ok(q(e, "#cfe-review") && !q(e, "#cfe-review").hidden);
+      const tx = q(e, "#cfe-review").textContent;
+      ok(tx.indexOf("개정 비교") >= 0); ok(tx.indexOf("그대로 5") >= 0); ok(tx.indexOf("바뀜 3") >= 0);
+      ok(tx.indexOf("새 번호 2") >= 0); ok(tx.indexOf("PDF에 없음 1") >= 0);
+      eq(qa(e, "#cfe-review .cfe-rv-list li").length, 7, "버전 1 + 바뀜 3 + 새 번호 2 + 없음 1");
+      ok(q(e, "#cfe-review [data-rv-ver]").checked);
+      ok(!q(e, "#cfe-review .rv-miss input").checked, "삭제는 기본 해제");
+      ok(q(e, "#cfe-files").textContent.indexOf("flow-z.webp") >= 0, "새 미리보기 이미지");
+      ok(q(e, "#cfe-files").textContent.indexOf("rev.pdf") >= 0);
+      ok(!q(e, "#cfe-save").disabled);
+    });
+    await ta("FP05 선택 반영 → 행 수정·채움·추가·삭제 · 강조 표시 · 버전 → 저장 시 데이터 반영", async () => {
+      const addNoName = qa(e, "#cfe-review .rv-add").find(li => li.textContent.indexOf("010-5555-2222") >= 0);
+      addNoName.querySelector("[data-rv-name]").value = "항공운항과";
+      addNoName.querySelector("[data-rv-name]").dispatchEvent(new e.w.Event("input"));
+      const miss = q(e, "#cfe-review .rv-miss input");
+      miss.checked = true; miss.dispatchEvent(new e.w.Event("change"));
+      q(e, "#cfe-rv-apply").click();
+      ok(q(e, "#cfe-review").textContent.indexOf("7건 반영") >= 0, q(e, "#cfe-review").textContent);
+      eq(q(e, "#cfe-ver").value, "26.12");
+      eq(qa(e, "#cfe-rows .ct-editrow-hit").length, 5, "a·c·f + 새 2행");
+      q(e, "#cfe-save").click();
+      const f = e.S.data.contacts.flows[0];
+      const row = (id) => f.rows.find(r => r.id === id);
+      eq(row("a").office, "032-555-0700"); eq(row("c").mobile, "010-5555-7032"); eq(row("f").mobile, "010-5555-1111");
+      ok(!row("e"), "없어진 기관 삭제");
+      const post = f.rows.find(r => r.role === "우체국 물류지원팀");
+      ok(post && post.office === "032-555-1245");
+      const mob = f.rows.find(r => r.role === "항공운항과");
+      ok(mob && mob.mobile === "010-5555-2222" && !mob.office && mob.note === "근무시간 외");
+      eq(f.ver, "26.12");
+      eq(f.fileUrl, "https://files.test/contacts/rev.pdf");
+      eq(f.imgUrl, "https://files.test/contacts/flow-z.webp"); eq(f.thumbUrl, "https://files.test/contacts/flow-z-thumb.webp");
+    });
+    await ta("FP06 PDF를 못 읽으면 대조는 건너뛰고 옛 이미지 떼기 · 번호 없는(스캔) PDF 안내", async () => {
+      q(e, '[data-ctf-panel="cf-t"] [data-ctf-edit]').click();
+      await uploadPdf(async () => { throw new Error("no pdfjs"); });
+      ok(q(e, "#cfe-review").textContent.indexOf("읽지 못해") >= 0);
+      ok(q(e, "#cfe-files").textContent.indexOf("flow-z.webp") < 0, "옛 이미지 뗌");
+      await uploadPdf(async () => ({ phones: [], ver: "", pages: 1 }));
+      ok(q(e, "#cfe-review").textContent.indexOf("찾지 못했습니다") >= 0);
+      q(e, "#cfe-cancel").click();
+    });
+    await ta("FP07 번호가 모두 같으면 '모두 같음' + 반영 버튼 없음 · 버전만 다르면 버전 항목만", async () => {
+      const f = e.S.data.contacts.flows[0];
+      f.rows = [{ id: "z1", role: "인천화물팀장", office: "032-555-0700", mobile: "" }];
+      f.ver = "26.09";
+      e.S.saveSilent(); go(e, "contacts");
+      const same = async () => ({ phones: P.extractPhones(ITEMS.slice(0, 2)), ver: "26.12", pages: 1 });
+      q(e, '[data-ctf-panel="cf-t"] [data-ctf-edit]').click();
+      await uploadPdf(same);
+      eq(qa(e, "#cfe-review .cfe-rv-list li").length, 1, "버전 항목만");
+      ok(q(e, "#cfe-review [data-rv-ver]")); ok(q(e, "#cfe-rv-apply"));
+      q(e, "#cfe-cancel").click();
+      f.ver = "26.12"; e.S.saveSilent(); go(e, "contacts");
+      q(e, '[data-ctf-panel="cf-t"] [data-ctf-edit]').click();
+      await uploadPdf(same);
+      ok(q(e, "#cfe-review").textContent.indexOf("모두 PDF와 같습니다") >= 0);
+      ok(!q(e, "#cfe-rv-apply"));
+      q(e, "#cfe-cancel").click();
+    });
+    await ta("FP07b 새 체계도: PDF만 올려 연락처를 한 번에 — 같은 이름의 휴대전화는 한 행으로 합침", async () => {
+      go(e, "contacts");
+      q(e, "#ct-addflow").click();
+      q(e, "#cfe-title").value = "새 체계도";
+      await uploadPdf(async () => ({ phones: P.extractPhones(ITEMS), ver: "26.12", pages: 1 }));
+      eq(qa(e, "#cfe-review .rv-add").length, 10);
+      q(e, "#cfe-rv-apply").click();
+      q(e, "#cfe-save").click();
+      const nf = e.S.data.contacts.flows.find(x => x.title === "새 체계도");
+      const cs = nf.rows.filter(r => r.role === "화물서비스팀");
+      eq(cs.length, 1); eq(cs[0].office, "02-5555-1141"); eq(cs[0].mobile, "010-5555-7032");
+      eq(nf.rows.find(r => r.role === "안전보안파트").mobile, "010-5555-4130");
+      eq(nf.ver, "26.12");
+      eq(nf.rows.length, 7);
+    });
+    t("FP08 pdf.js는 필요할 때만(로컬 legacy 빌드) · 파일 · 라이선스", () => {
+      ok(P.LIB_URL.indexOf("assets/vendor/pdfjs/pdf.min.mjs") === 0);
+      ok(fs.existsSync(path.join(ROOT, "assets/vendor/pdfjs/pdf.min.mjs")));
+      ok(fs.existsSync(path.join(ROOT, "assets/vendor/pdfjs/pdf.worker.min.mjs")));
+      ok(read("assets/vendor/pdfjs/LICENSE").indexOf("Apache License") >= 0);
+      ok(read("index.html").indexOf("pdf.min.mjs") < 0, "첫 화면에서 불러오지 않음");
+      ok(read("js/flowpdf.js").indexOf("supabase.co") < 0);
     });
   }
 

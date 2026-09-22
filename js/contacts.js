@@ -253,7 +253,8 @@
 
   /* 행 편집기 — 연락처 섹션 · 보고 체계도 공용. rows 배열을 제자리에서 고친다. */
   function rowEditor(listSel, defs, rows) {
-    const rowBlock = (r, i) => `<div class="ct-editrow" data-row="${i}">
+    let hits = new Set();   // 방금 바뀐 행(개정 비교 반영) 강조
+    const rowBlock = (r, i) => `<div class="ct-editrow${hits.has(r.id) ? " ct-editrow-hit" : ""}" data-row="${i}">
       <div class="ct-editfields">
         ${defs.map(([f, label, kind]) => kind === "textarea"
           ? `<label class="ct-ef ct-ef-wide"><span>${label}</span><textarea data-i="${i}" data-f="${f}" rows="3">${esc(r[f] || "")}</textarea></label>`
@@ -288,7 +289,8 @@
       rows.push(r); paint();
       const list = $(listSel); list.scrollTop = list.scrollHeight;
     }
-    return { collect, paint, add };
+    function mark(ids) { hits = new Set(ids || []); paint(); }
+    return { collect, paint, add, mark };
   }
 
   function editSection(secId) {
@@ -625,12 +627,13 @@
           <div class="form-row"><label for="cfe-short">탭 이름</label><input id="cfe-short" maxlength="12" value="${esc(f.short || "")}" placeholder="예: 보안사고"></div>
           <div class="form-row"><label for="cfe-ver">버전</label><input id="cfe-ver" maxlength="12" value="${esc(f.ver || "")}" placeholder="예: 26.09"></div>
         </div>
-        <div class="cfe-sec"><div class="cfe-sec-t">체계도 파일 ${tip("PDF와 함께 이미지(PNG·JPG·WebP)를 올리면 휴대폰에서도 바로 크게 보입니다. 이미지가 없으면 PDF로 엽니다.", "체계도 파일 설명")}</div>
+        <div class="cfe-sec"><div class="cfe-sec-t">체계도 파일 ${tip("개정 PDF를 올리면 미리보기 이미지를 자동으로 만들고, 등록된 번호와 대조해 바뀐 번호를 보여 줍니다. 반영할 항목을 골라 반영한 뒤 저장합니다.", "체계도 파일 설명")}</div>
           <div id="cfe-files" class="cfe-files"></div>
           <div class="cfe-upbtns">
             <label class="btn btn-ghost btn-sm">${SeMIS.icon("doc", 16)}<span>PDF 올리기</span><input type="file" id="cfe-pdf" accept="application/pdf,.pdf" hidden></label>
             <label class="btn btn-ghost btn-sm">${SeMIS.icon("eye", 16)}<span>이미지 올리기</span><input type="file" id="cfe-img" accept="image/png,image/jpeg,image/webp" hidden></label>
-          </div></div>
+          </div>
+          <div id="cfe-review" class="cfe-review" aria-live="polite" hidden></div></div>
         <div class="form-row"><label class="cfe-label" for="cfe-steps">보고 순서 ${tip("최초 발견자부터 한 줄에 한 단계씩 적습니다.", "보고 순서 설명")}</label>
           <textarea id="cfe-steps" rows="4">${esc(f.steps || "")}</textarea></div>
         <div class="cfe-sec"><div class="cfe-sec-t">연락처</div>
@@ -661,15 +664,144 @@
       });
     }
     paintFiles();
+    /* ── 개정 PDF: 올리기 + 읽기(번호·미리보기 이미지) → 비교 목록 → 고른 항목만 반영 ── */
+    let review = null;
+    const FL = { office: "유선", mobile: "휴대전화" };
+    const reviewBox = () => $("#cfe-review");
+    function setBusy(msg) {
+      const sv = $("#cfe-save");
+      if (sv) sv.disabled = !!msg;
+      const box = reviewBox();
+      if (box && msg) { box.hidden = false; box.innerHTML = `<div class="cfe-rv-wait"><span class="cfe-spin" aria-hidden="true"></span>${esc(msg)}</div>`; }
+    }
+    function showReview(an) {
+      const box = reviewBox();
+      if (!box) return;
+      box.hidden = false;
+      if (!an) { review = null; box.innerHTML = '<div class="cfe-rv-note">PDF를 읽지 못해 번호 대조는 건너뛰었습니다.</div>'; return; }
+      ed.collect();
+      const P = window.SemisFlowPdf;
+      const d = P.diffRows(rows, an.phones || []);
+      const items = [];
+      d.changed.forEach(c => items.push({ kind: "chg", rowId: rows[c.ri].id, role: rows[c.ri].role, f: c.f, old: c.old, num: c.num, on: true }));
+      d.added.forEach(a => items.push({ kind: "add", num: a.num, label: a.label, note: a.note, grp: a.grp, mobile: a.mobile, on: true }));
+      d.missing.forEach(m => items.push({ kind: "miss", rowId: rows[m.ri].id, role: rows[m.ri].role, f: m.f, old: m.old, on: false }));
+      const cur = $("#cfe-ver").value.trim();
+      review = { items, same: d.same.length, total: (an.phones || []).length, pages: an.pages || 1,
+                 ver: an.ver && an.ver !== cur ? an.ver : "", curVer: cur, verOn: true };
+      paintReview();
+    }
+    function missAction(it) {
+      const r = rows.find(x => x.id === it.rowId);
+      const other = it.f === "office" ? "mobile" : "office";
+      return r && SemisFlowPdf.keyOf(r[other]) ? FL[it.f] + " 번호 비우기" : "행 삭제";
+    }
+    function rvItem(it, i) {
+      const cb = `<input type="checkbox" data-rv="${i}"${it.on ? " checked" : ""}>`;
+      if (it.kind === "chg") return `<li class="rv-chg"><label class="rv-main">${cb}<span class="rv-tag">${it.old ? "바뀜" : "추가"}</span>
+        <b>${esc(it.role || "")}</b> <span class="rv-f">${FL[it.f]}</span> ${it.old ? `<s class="mono">${esc(it.old)}</s> →` : ""} <b class="mono">${esc(it.num)}</b></label></li>`;
+      if (it.kind === "add") return `<li class="rv-add"><label class="rv-main">${cb}<span class="rv-tag">새 번호</span>
+        <b class="mono">${esc(it.num)}</b>${it.note ? ` <span class="rv-f">(${esc(it.note)})</span>` : ""}</label>
+        <div class="rv-fields"><input data-rv-name="${i}" value="${esc(it.label || "")}" placeholder="기관 · 직책" aria-label="기관 · 직책">
+          <input data-rv-grp="${i}" value="${esc(it.grp || "")}" list="cfe-grps" placeholder="구분" aria-label="구분"></div></li>`;
+      return `<li class="rv-miss"><label class="rv-main">${cb}<span class="rv-tag">PDF에 없음</span>
+        <b>${esc(it.role || "")}</b> <span class="rv-f">${FL[it.f]}</span> <span class="mono">${esc(it.old)}</span> — ${missAction(it)}</label></li>`;
+    }
+    function paintReview() {
+      const box = reviewBox(), r = review;
+      if (!box || !r) return;
+      const n = (k) => r.items.filter(i => i.kind === k).length;
+      const chip = SeMIS.ui.chip;
+      if (!r.total) {
+        box.innerHTML = '<div class="cfe-rv-note">PDF에서 전화번호를 찾지 못했습니다(스캔 이미지일 수 있음). 번호는 직접 확인해 주세요.</div>';
+        return;
+      }
+      const grps = Array.from(new Set(rows.map(x => String(x.grp || "").trim()).filter(Boolean)));
+      box.innerHTML = `
+        <div class="cfe-rv-head"><b>개정 비교</b><span class="cfe-rv-sum">${chip("그대로 " + r.same, "gray")}
+          ${n("chg") ? chip("바뀜 " + n("chg"), "amber") : ""}${n("add") ? chip("새 번호 " + n("add"), "blue") : ""}${n("miss") ? chip("PDF에 없음 " + n("miss"), "red") : ""}</span></div>
+        ${r.pages > 1 ? '<div class="cfe-rv-note">1쪽만 읽었습니다.</div>' : ""}
+        ${!r.items.length && !r.ver ? '<div class="cfe-rv-note">등록된 번호가 모두 PDF와 같습니다.</div>' : ""}
+        ${r.items.length || r.ver ? `<ul class="cfe-rv-list">
+          ${r.ver ? `<li class="rv-ver"><label class="rv-main"><input type="checkbox" data-rv-ver${r.verOn ? " checked" : ""}><span class="rv-tag">버전</span>
+            ${r.curVer ? `<s class="mono">${esc(r.curVer)}</s> →` : ""} <b class="mono">${esc(r.ver)}</b></label></li>` : ""}
+          ${r.items.map(rvItem).join("")}</ul>
+          <datalist id="cfe-grps">${grps.map(g => `<option value="${esc(g)}">`).join("")}</datalist>
+          <div class="cfe-rv-acts"><button type="button" class="btn btn-primary btn-sm" id="cfe-rv-apply">선택한 항목 반영</button></div>` : ""}`;
+      $$("#cfe-review [data-rv]").forEach(c => c.onchange = () => { r.items[Number(c.dataset.rv)].on = c.checked; });
+      $$("#cfe-review [data-rv-name]").forEach(c => c.oninput = () => { r.items[Number(c.dataset.rvName)].label = c.value; });
+      $$("#cfe-review [data-rv-grp]").forEach(c => c.oninput = () => { r.items[Number(c.dataset.rvGrp)].grp = c.value; });
+      const vb = $("#cfe-review [data-rv-ver]");
+      if (vb) vb.onchange = () => { r.verOn = vb.checked; };
+      const ap = $("#cfe-rv-apply");
+      if (ap) ap.onclick = applyReview;
+    }
+    function applyReview() {
+      if (!review) return;
+      ed.collect();
+      const hit = new Set();
+      let n = 0;
+      const on = review.items.filter(it => it.on);
+      on.filter(it => it.kind === "chg").forEach(it => {
+        const r = rows.find(x => x.id === it.rowId);
+        if (r) { r[it.f] = it.num; hit.add(r.id); n++; }
+      });
+      on.filter(it => it.kind === "miss").forEach(it => {
+        const r = rows.find(x => x.id === it.rowId);
+        if (!r) return;
+        const other = it.f === "office" ? "mobile" : "office";
+        const otherGone = on.some(o => o.kind === "miss" && o.rowId === r.id && o.f === other);
+        if (SemisFlowPdf.keyOf(r[other]) && !otherGone) { r[it.f] = ""; hit.add(r.id); }
+        else rows.splice(rows.indexOf(r), 1);
+        n++;
+      });
+      // 새 번호: 유선 먼저, 휴대전화는 이름이 같은 행(방금 추가한 행 포함)의 빈 칸에 합친다
+      const same = (a, b) => { const x = String(a || "").replace(/\s+/g, ""), y = String(b || "").replace(/\s+/g, ""); return x && x === y; };
+      on.filter(it => it.kind === "add").sort((a, b) => (a.mobile ? 1 : 0) - (b.mobile ? 1 : 0)).forEach(it => {
+        const g = String(it.grp || "").trim();
+        const name = String(it.label || "").trim();
+        const fld = it.mobile ? "mobile" : "office";
+        const host = name && rows.find(x => same(x.role, name) && !String(x[fld] || "").trim());
+        if (host) { host[fld] = it.num; if (it.note && !host.note) host.note = it.note; hit.add(host.id); n++; return; }
+        const r = { id: uid("ct"), grp: g, role: name || "이름 확인 필요",
+                    office: it.mobile ? "" : it.num, mobile: it.mobile ? it.num : "", note: it.note || "" };
+        let at = -1;
+        rows.forEach((x, i) => { if (String(x.grp || "").trim() === g) at = i; });
+        rows.splice(at >= 0 ? at + 1 : rows.length, 0, r);
+        hit.add(r.id); n++;
+      });
+      if (review.ver && review.verOn) { $("#cfe-ver").value = review.ver; n++; }
+      ed.mark(hit);
+      review = null;
+      reviewBox().innerHTML = `<div class="cfe-rv-done">${SeMIS.icon("check", 16)}<span>${n}건 반영했습니다. 아래 연락처(강조 표시)를 확인한 뒤 저장하세요.</span></div>`;
+      const first = $("#cfe-rows .ct-editrow-hit");
+      if (first && first.scrollIntoView) first.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+
     $("#cfe-pdf").onchange = async (ev) => {
       const fl = ev.target.files && ev.target.files[0];
       ev.target.value = "";
       if (!fl) return;
-      const up = await uploadTo(fl, "pdf");
-      if (!up) return;
+      if (!(fl.type === "application/pdf" || /\.pdf$/i.test(fl.name || ""))) { toast("PDF 파일만 올릴 수 있습니다.", true); return; }
+      setBusy("PDF를 읽는 중…");
+      const P = window.SemisFlowPdf;
+      const [up, an] = await Promise.all([
+        uploadTo(fl, "pdf"),
+        P ? P.analyze(fl).catch(() => null) : Promise.resolve(null)
+      ]);
+      if (!up) { setBusy(""); const b = reviewBox(); if (b) { b.hidden = true; b.innerHTML = ""; } return; }
       file = up;
-      if (!imgFresh) img = null;
+      if (an && an.image && an.thumb) {
+        setBusy("미리보기 이미지를 올리는 중…");
+        try {
+          const [a, b] = await Promise.all([SemisSync.uploadFile(an.image, "contacts"), SemisSync.uploadFile(an.thumb, "contacts")]);
+          img = { url: a.url, thumb: b.url, name: an.image.name };
+          imgFresh = true;
+        } catch (e) { if (!imgFresh) img = null; toast("미리보기 이미지를 올리지 못했습니다.", true); }
+      } else if (!imgFresh) img = null;
       paintFiles();
+      setBusy("");
+      showReview(an);
     };
     $("#cfe-img").onchange = async (ev) => {
       const fl = ev.target.files && ev.target.files[0];
@@ -768,7 +900,7 @@
     telHref, smsHref, isMobile, matches, rowText,
     sections: secs, editSection,
     flows, editFlow, openViewer, closeViewer, selectFlowTab, groupRows,
-    getFlowTab: () => flowTab,
+    getFlowTab: () => flowTab, FLOW_DEFS,
     getQuery: () => query, setQuery: (q) => { query = String(q || ""); }
   };
 })();

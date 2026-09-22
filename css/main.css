@@ -2347,3 +2347,30 @@ html.ct-viewing { overflow: hidden; }
   .ct-fsteps { background: none !important; }
   .ct-fmemo { display: none; }
 }
+
+/* ═════════ v1.11 보고 체계도 — 개정 PDF 비교(반자동 반영) ═════════ */
+.cfe-review { margin-top: 12px; padding: 12px 14px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface); }
+.cfe-rv-head { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin-bottom: 8px; font-size: .9rem; }
+.cfe-rv-sum { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.cfe-rv-note { font-size: .84rem; color: var(--text-2); }
+.cfe-rv-wait { display: flex; align-items: center; gap: 8px; font-size: .86rem; color: var(--text-2); }
+.cfe-spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--primary-soft); border-top-color: var(--primary); animation: cfe-spin .8s linear infinite; }
+@keyframes cfe-spin { to { transform: rotate(360deg); } }
+.cfe-rv-done { display: flex; align-items: center; gap: 8px; font-size: .86rem; font-weight: 600; color: var(--success); }
+.cfe-rv-list { list-style: none; display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; max-height: 300px; overflow-y: auto; }
+.cfe-rv-list li { padding: 7px 10px; border-radius: 9px; background: var(--surface-2); border-left: 4px solid var(--border-strong); font-size: .86rem; }
+.cfe-rv-list li.rv-chg { border-left-color: var(--accent); }
+.cfe-rv-list li.rv-add { border-left-color: var(--primary); }
+.cfe-rv-list li.rv-miss { border-left-color: var(--danger); }
+.cfe-rv-list li.rv-ver { border-left-color: var(--info); }
+.rv-main { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 7px; cursor: pointer; }
+.rv-main input { width: 17px; height: 17px; accent-color: var(--primary); flex: none; }
+.rv-tag { font-size: .74rem; font-weight: 700; color: var(--text-2); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0 6px; }
+.rv-f { font-size: .78rem; color: var(--text-3); }
+.cfe-rv-list s { color: var(--text-3); }
+.rv-fields { display: flex; gap: 6px; margin: 6px 0 0 24px; flex-wrap: wrap; }
+.rv-fields input { flex: 1 1 160px; min-width: 0; padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; font-size: .84rem; background: var(--surface); }
+.rv-fields input[data-rv-grp] { flex: 0 1 120px; }
+.cfe-rv-acts { display: flex; justify-content: flex-end; margin-top: 10px; }
+.ct-editrow-hit { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 4px 0 0 var(--accent); }
+@media (max-width: 640px) { .rv-fields { margin-left: 0; } }

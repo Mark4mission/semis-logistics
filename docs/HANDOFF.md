@@ -6,10 +6,10 @@
 
 | 항목 | 값 |
 |---|---|
-| 현재 버전 | **v1.10.3** (2026-09-22) — 기수 로고를 고정 동체 아래쪽으로 · 인쇄 버튼 이름 Print · 내부 링크 화면 인쇄 |
+| 현재 버전 | **v1.11.0** (2026-09-22) — 보고 체계도 개정 PDF 반자동 반영(번호 대조 · 미리보기 이미지 자동 생성) |
 | 접속 주소 | https://mark4mission.github.io/semis-logistics/ |
 | 저장소 | GitHub `Mark4mission/semis-logistics` (공개) · Mac `~/SeMIS_Logistics` |
-| 테스트 | `npm test` 188건 전부 통과 (코드·문서에 암호 평문 없음) |
+| 테스트 | `npm test` 197건 전부 통과 (코드·문서에 암호 평문 없음) |
 | 백엔드 | Supabase `mzyuzrxkdcpzxojenwat` — 테이블 `semis_logi_store`, 버킷 `semis-logi-files` |
 
 ## 2. 새 세션 시작
@@ -102,6 +102,7 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 - 인천화물팀 안전보안파트 · 인천화물팀 · 인천공항공사 섹션은 아직 비어 있음(v2에 대응 자료 없음). 체계도 3종의 연락처는 `contacts.flows`에 따로 있음
 - **보고 체계도(v1.10)**: 데이터 `contacts.flows[]` = { id, title, short(탭 이름), ver, steps(한 줄에 한 단계), memo, fileUrl, imgUrl, thumbUrl, rows[{grp, role, office, mobile, note}] }. 파일은 `semis-logi-files/contacts/flow-{sec|saf|dg}-2609.{pdf,webp}`(+`-thumb.webp` 640px, 원본 1800px). 반영 직전 값은 `semis_store_history` id 116. 개정판이 오면 화면의 ✎ 편집에서 PDF·이미지만 바꾸면 됨(PDF만 새로 올리면 옛 이미지는 자동으로 떼어 PDF 뷰어로 표시)
 - 체계도 원문 차이: AAP탑재 번호가 안전사고 체계도는 744-5470, 위험물 체계도는 270-5470 — 원문대로 각각 입력. 원문의 7자리 번호는 032 지역번호를 붙여 저장, 해외 번호(TSOC·IIR in SIN)는 +1·+65 국제 형식
+- **개정 PDF 반자동 반영(v1.11)**: 체계도 ✎ 편집 → PDF 올리기 → `js/flowpdf.js`가 pdf.js(`assets/vendor/pdfjs/`, 4.10.38 legacy, Apache-2.0, 필요할 때만 불러옴)로 1쪽 글자·위치를 읽어 번호·라벨을 뽑고 등록 행과 대조(그대로 · 바뀜[이름/위치] · 빈 칸 채움 · 새 번호[구분 추정] · PDF에 없음) + 1쪽을 WebP 1800/640px로 만들어 자동 업로드. 사용자가 고른 항목만 행에 반영(강조 표시) → 저장. 대조 키는 번호 숫자 끝 7자리 이상 일치(032 생략 표기 대응). 이름(기관명) 변경은 감지하지 않음 — 번호 기준. 스캔 PDF(글자 없음)는 안내만. 실PDF 3종 재업로드 시 오탐 0 확인
 - `normalizeData`는 `contacts.flows`를 만들지 않는다(구버전 데이터에 빈 배열을 넣으면 동기화 push가 생김) — contacts.js가 없으면 빈 목록으로 읽음
 - 3D 장면: GPU 없는 PC(소프트웨어 렌더링)·느린 PC(평균 45ms/프레임 초과)·동작 줄이기 설정에서는 정지 화면, WebGL 없으면 사진. 사진이 보이면 대시보드에서 `document.querySelector('#dash-3d').dataset.h3d`로 사유 확인(no-webgl · webgl-context · load · live · static)
 - 2026-09-22 v1.9.0 배포 직후 Mark의 Chrome에서 3D 대신 사진이 보였음 — 같은 Mac의 내장 브라우저에서는 3D 정상(Apple M4 Pro, Metal). 배포 전 요청한 three.js 404가 CDN에 남은 것으로 추정해 v1.9.1에서 주소에 버전을 붙임. 재발 시 위 사유 값과 chrome://gpu의 WebGL 항목 확인
@@ -124,4 +125,5 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 | v1.10.1 | 09-22 | 대시보드 3D를 에어제타 B747-400F로 교체 — 흰 동체 · AIRZETA 글자(남색) · 파란 꼬리·후방 동체 · 꼬리 로고 · 빨간 윙렛 · 2층 혹(-400F 단축형) · 엔진 4기 · 기수 화물문을 들어 올리고 로더가 컨테이너/팔레트를 번갈아 탑재 · 테이퍼 날개(로프트) · 화면 비율별 자동 거리(fitDist) |
 | v1.10.2 | 09-22 | 3D 보완 — 들어 올린 기수를 사진 비례로 축소(길이 ≈ 동체 지름 0.85배) · 기수 아래 옆면에 회사 로고(빨강·파랑, 들어 올린 상태에서 똑바로) · 꼬리 로고를 제공 로고 윤곽 그대로(빨강·흰색) · 화물을 기수 탑재에 맞는 긴 화물(8.5m 목재 상자 / 회전날개 뗀 헬기)로 교체, 20ft 돌리 |
 | v1.10.3 | 09-22 | 기수 로고를 들어 올린 화물문에서 빼 문 경계 뒤 고정 동체 아래쪽(앞바퀴 위)으로 · 인쇄 버튼 'A4 인쇄' → 'Print' · 내부 링크 화면의 iframe 차단 안내 문구 삭제 · 내부 링크 화면 인쇄 시 빈 장 대신 프레임 내용(A4 한 장) |
+| v1.11.0 | 09-22 | 보고 체계도 개정 PDF 반자동 반영 — PDF 올리면 번호·이름 읽기(pdf.js, 로컬 legacy 빌드) → 등록 연락처와 대조 목록(바뀜·새 번호·PDF에 없음·버전) → 고른 항목만 반영(행 강조) · 미리보기 이미지(1800/640 WebP) 자동 생성 · 새 체계도는 PDF만으로 연락처 일괄 입력(같은 이름 휴대전화는 한 행으로) · 해외 번호 +1/+국가번호 보정 |
 | v1.9.1 | 09-22 | 한글 어절 단위 줄바꿈(전역 keep-all) · 대시보드 하단 시트 칸 수를 시트 폭으로 결정(container query, 1040px↑ 4칸) · 일정 폼 '완료'를 하단 버튼줄로(스크롤 없이 보임) · 오른쪽 설정 패널 압축(1512×825에서 스크롤 없음) · 3D 불러오기 주소에 버전 부여(배포 직후 옛 404 캐시 회피)·실패 사유 기록(`#dash-3d[data-h3d]`) |
