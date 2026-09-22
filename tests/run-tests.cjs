@@ -1681,6 +1681,15 @@ function makeFetchStub(server) {
       ok(src.indexOf("fontReady()") > 0, "글자 그리기 전 글꼴 대기");
       ok(src.indexOf("fitDist(") > 0 && src.indexOf("setViewOffset") > 0, "화면 비율별 자동 거리");
     });
+    t("V18 (v1.10.2) 3D: 회사 로고 윤곽(꼬리=빨강·흰색, 기수=빨강·파랑) · 짧은 기수 · 긴 화물(목재 상자·헬기 동체)", () => {
+      const src = read("js/hero3d.js");
+      ok(src.indexOf("const LOGO_RED = [[0.846, 0.151]") > 0 && src.indexOf("const LOGO_BLUE = [[0.861, 0.418]") > 0, "로고 윤곽 좌표");
+      ok(src.indexOf('drawLogo(g, 256, "#ffffff")') > 0, "꼬리 로고: 파랑 조각은 흰색");
+      ok(src.indexOf("visorCanvas(") > 0 && src.indexOf("drawLogo(g, size, LOGO_C.blue)") > 0, "기수 아래 로고");
+      ok(/XN = 9\.62, NX = 8\.0/.test(src), "기수 길이 1.62(≈ 동체 지름 0.85배)");
+      ok(src.indexOf('const KINDS = ["crate", "heli"]') > 0 && src.indexOf("const CL = 2.5") > 0, "긴 화물 2종");
+      ok(src.indexOf("makeUld") < 0 && src.indexOf('"container"') < 0, "짧은 컨테이너 제거");
+    });
     t("V16 (v1.9.1) 3D: three.js 주소에 버전(배포 직후 옛 404 회피) · 대체 사진 사유 기록", () => {
       const src = read("js/hero3d.js");
       ok(src.indexOf('three.module.min.js?v=r170') > 0);

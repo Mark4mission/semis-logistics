@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════════════════
    SeMIS · Logistics — 대시보드 3D 장면 (v1.9)
    에어제타 B747-400F(흰 동체 · AIRZETA · 파란 꼬리 · 빨간 윙렛)가 기수 화물문을 들어 올리고
-   로더가 컨테이너·팔레트를 번갈아 싣는 장면을 로우폴리로 그린다. (v1.10.1)
+   로더가 긴 화물(목재 상자 · 헬기 동체)을 번갈아 싣는 장면을 로우폴리로 그린다. (v1.10.2)
    - Three.js r170 (assets/vendor, 대시보드에 처음 들어올 때만 지연 로드)
    - 캔버스 하나를 계속 재사용: 대시보드가 다시 그려지면 새 자리로 옮겨 붙인다
    - 화면 밖·다른 탭·다른 화면에서는 렌더링을 멈춘다
@@ -106,14 +106,45 @@ window.SemisHero3D = (() => {
     });
     return cv;
   }
-  /* 꼬리 로고(간략화) — 빨강·흰색 두 조각이 엇갈린 계단형 */
+  /* 회사 로고 — 제공받은 로고 이미지를 윤곽 추출한 좌표(0~1). 빨강 위 · 파랑 아래 조각이 엇갈린 계단형.
+     파란 꼬리 위에서는 파랑 조각을 흰색으로(실기 도장과 같음) */
+  const LOGO_RED = [[0.846, 0.151], [0.613, 0.151], [0.109, 0.551], [0.372, 0.551], [0.372, 0.389], [0.65, 0.389]];
+  const LOGO_BLUE = [[0.861, 0.418], [0.673, 0.418], [0.673, 0.632], [0.395, 0.632], [0.126, 0.879], [0.524, 0.879]];
+  const LOGO_C = { red: "#df4552", blue: "#1b3088" };
+  function drawLogo(g, size, lower) {
+    const poly = (pts, c) => {
+      g.fillStyle = c; g.beginPath();
+      pts.forEach(([x, y], i) => i ? g.lineTo((x - 0.5) * size, (y - 0.515) * size) : g.moveTo((x - 0.5) * size, (y - 0.515) * size));
+      g.closePath(); g.fill();
+    };
+    poly(LOGO_RED, LOGO_C.red);
+    poly(LOGO_BLUE, lower);
+  }
   function tailLogoCanvas() {
     const cv = document.createElement("canvas");
     cv.width = cv.height = 256;
     const g = cv.getContext("2d");
-    const poly = (pts, c) => { g.fillStyle = c; g.beginPath(); pts.forEach(([x, y], i) => i ? g.lineTo(x * 256, y * 256) : g.moveTo(x * 256, y * 256)); g.closePath(); g.fill(); };
-    poly([[0.30, 0.10], [0.94, 0.10], [0.80, 0.42], [0.47, 0.42], [0.47, 0.27], [0.23, 0.27]], AZ.red);
-    poly([[0.20, 0.52], [0.53, 0.52], [0.53, 0.67], [0.78, 0.67], [0.70, 0.90], [0.06, 0.90]], "#ffffff");
+    g.translate(128, 128);
+    drawLogo(g, 256, "#ffffff");
+    return cv;
+  }
+  /* 기수(화물문) 도장 — 흰색 + 아래쪽 옆면 로고. 문을 들어 올린 상태에서 똑바로 보이도록 들어 올린 각도만큼 미리 돌려 그린다 */
+  function visorCanvas(len, R, rLogo, uLogo, angle) {
+    const C = 2 * Math.PI * R, px = 180;
+    const W = Math.round(len * px), H = Math.round(C * px);
+    const cv = document.createElement("canvas");
+    cv.width = W; cv.height = H;
+    const g = cv.getContext("2d");
+    g.fillStyle = AZ.white; g.fillRect(0, 0, W, H);
+    const size = 0.46 * px, squash = R / rLogo;           // 기수 끝으로 갈수록 둘레가 짧아지는 만큼 세로를 늘려 그림
+    [[0.75 + 0.1, angle, 1], [0.25 - 0.1, Math.PI - angle, -1]].forEach(([v, rot]) => {
+      g.save();
+      g.translate(uLogo * W, v * H);
+      g.scale(1, squash);
+      g.rotate(rot);
+      drawLogo(g, size, LOGO_C.blue);
+      g.restore();
+    });
     return cv;
   }
   /* 팔레트 화물 그물 텍스처 */
@@ -153,7 +184,7 @@ window.SemisHero3D = (() => {
     const M = (color, o) => new T.MeshStandardMaterial(Object.assign({ color, roughness: 0.6, metalness: 0.1 }, o || {}));
     const MB = (color) => new T.MeshBasicMaterial({ color });
     const R = 0.95, CY = 1.86;                       // 동체 반지름 · 중심 높이
-    const XT = -10.2, XN = 10.4, NX = 8.0;           // 꼬리 끝 · 기수 끝 · 기수 화물문 경계
+    const XT = -10.4, XN = 9.62, NX = 8.0;           // 꼬리 끝 · 기수 끝 · 기수 화물문 경계 (기수 길이 1.62 ≈ 5.5m)
     const livery = tex(liveryCanvas(XT, NX, R), { flipY: false });
     const apron = tex(apronCanvas(), { wrapS: T.RepeatWrapping, wrapT: T.RepeatWrapping });
     apron.repeat.set(45, 30);
@@ -162,7 +193,7 @@ window.SemisHero3D = (() => {
     const mat = {
       body: M(0xffffff, { map: livery, roughness: 0.38, metalness: 0.08, side: T.DoubleSide }),
       white: M(hex(AZ.white), { roughness: 0.38, metalness: 0.08 }),
-      visor: M(hex(AZ.white), { roughness: 0.4, metalness: 0.08, side: T.DoubleSide }),
+      visor: null,
       wing: M(0xdde3e5, { roughness: 0.42, metalness: 0.22 }),
       tail: M(hex(AZ.blue), { roughness: 0.4, metalness: 0.1 }),
       red: M(hex(AZ.red), { roughness: 0.45 }),
@@ -184,6 +215,9 @@ window.SemisHero3D = (() => {
       uld: M(0xc6d0d4, { roughness: 0.32, metalness: 0.75 }),
       uldEdge: M(0x8e9ca2, { roughness: 0.4, metalness: 0.6 }),
       cargo: M(0xffffff, { map: net, roughness: 0.85 }),
+      crate: M(0xb48a58, { roughness: 0.85 }),
+      slat: M(0x7a5a36, { roughness: 0.9 }),
+      wrap: M(0xa9b2b7, { roughness: 0.45, metalness: 0.15 }),
       tagT: MB(0x14b8a6), tagA: MB(0xf59e0b),
       mast: M(0x2c434b, { roughness: 0.8 }),
       lamp: MB(0xfff1cf),
@@ -246,10 +280,10 @@ window.SemisHero3D = (() => {
     /* ── 동체 (꼬리 올림 · 기수 약간 처짐) ── */
     const ac = new T.Group();
     scene.add(ac);
-    const XTC = -4.9, XNC = 7.0;
+    const XTC = -4.9, XNC = 7.25;
     const rAt = (x) => {
       if (x < XTC) { const t = Math.min(1, (XTC - x) / (XTC - XT)); return Math.max(0.09, R * Math.pow(1 - Math.pow(t, 1.8), 0.62)); }
-      if (x > XNC) { const t = Math.min(1, (x - XNC) / (XN - XNC)); return Math.max(0.02, R * Math.pow(1 - Math.pow(t, 2.3), 1 / 2.3)); }
+      if (x > XNC) { const t = Math.min(1, (x - XNC) / (XN - XNC)); return Math.max(0.02, R * Math.pow(1 - Math.pow(t, 2.1), 1 / 2.1)); }
       return R;
     };
     const liftAt = (x) => { const r = rAt(x); return x < XTC ? (R - r) * 0.86 : x > XNC ? -(R - r) * 0.22 : 0; };
@@ -275,9 +309,12 @@ window.SemisHero3D = (() => {
     const hinge = new T.Group();
     hinge.position.set(NX + 0.05, CY + R * 0.93, 0);
     ac.add(hinge);
+    const OPEN = 1.38, uLogo = 0.5;
+    mat.visor = M(0xffffff, { map: tex(visorCanvas(XN - NX, R, rAt(NX + (XN - NX) * uLogo), uLogo, OPEN), { flipY: false }),
+      roughness: 0.4, metalness: 0.08, side: T.DoubleSide });
     const visor = add(hinge, hull(NX, XN, 30, 64), mat.visor, 0, 0, 0);
     visor.position.set(-hinge.position.x, CY - hinge.position.y, 0);
-    hinge.rotation.z = 1.38;
+    hinge.rotation.z = OPEN;
 
     // 주 화물칸 내부(바닥 · 칸막이 · 조명)
     const floorY = CY - R * 0.38;
@@ -371,9 +408,9 @@ window.SemisHero3D = (() => {
     finGeo.translate(0, 0, -0.07);
     const FINY = CY + R * 0.84;
     add(ac, finGeo, mat.tail, 0, FINY, 0);
-    const logoGeo = new T.PlaneGeometry(1.45, 1.45);
-    add(ac, logoGeo, mat.logo, -8.5, FINY + 1.55, 0.1, false);
-    const logoP = add(ac, logoGeo, mat.logo, -8.5, FINY + 1.55, -0.1, false);
+    const logoGeo = new T.PlaneGeometry(1.72, 1.72);
+    add(ac, logoGeo, mat.logo, -8.45, FINY + 1.6, 0.1, false);
+    const logoP = add(ac, logoGeo, mat.logo, -8.45, FINY + 1.6, -0.1, false);
     logoP.rotation.y = Math.PI;
 
     /* ── 착륙장치: 앞바퀴 1 · 날개 2 · 동체 2 (보기 4바퀴) ── */
@@ -406,9 +443,9 @@ window.SemisHero3D = (() => {
     add(platform, new T.BoxGeometry(2.75, 0.1, 1.36), mat.gse, -0.05, -0.05, 0);
     const railTop = new T.BoxGeometry(2.7, 0.05, 0.05), railHalf = new T.BoxGeometry(1.3, 0.05, 0.05), post = new T.BoxGeometry(0.05, 0.34, 0.05);
     add(platform, railTop, mat.rail, -0.05, 0.34, -0.68);
-    add(platform, railHalf, mat.rail, -0.75, 0.34, 0.68);                                  // 우현 뒤쪽은 옆 이송구(난간 없음)
+    add(platform, new T.BoxGeometry(0.4, 0.05, 0.05), mat.rail, -1.2, 0.34, 0.68);         // 우현은 옆 이송구(긴 화물) — 앞쪽 짧은 난간만
     [-1.35, -0.7, -0.05, 0.6, 1.25].forEach(x => add(platform, post, mat.rail, x, 0.17, -0.68));
-    [-1.35, -0.7, -0.1].forEach(x => add(platform, post, mat.rail, x, 0.17, 0.68));
+    [-1.35, -1.02].forEach(x => add(platform, post, mat.rail, x, 0.17, 0.68));
     const legs = [];
     [-0.5, 0.5].forEach(z => [1, -1].forEach(sg => {
       const leg = add(loader, new T.BoxGeometry(2.3, 0.07, 0.07), mat.gseDark, 0, 0, z);
@@ -422,48 +459,67 @@ window.SemisHero3D = (() => {
     };
     setLift(LOW);
 
-    /* ── ULD(컨테이너 · 그물 덮은 팔레트) · 돌리 · 토잉카 ── */
-    const contGeo = (() => {
-      const s = shape([[-0.47, 0], [0.47, 0], [0.47, 0.72], [-0.47, 0.72]]);
-      const g = new T.ExtrudeGeometry(s, { depth: 0.66, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.02, bevelSegments: 1 });
-      g.translate(0, 0, -0.33);
-      return g;
-    })();
-    const makeUld = (kind) => {
+    /* ── 긴 화물(Long cargo) · 20ft 돌리 · 토잉카 ──
+       기수 화물문은 메인 도어로 못 싣는 긴 화물용 — 20ft 팔레트 위 긴 목재 상자와 포장한 헬기 동체를 번갈아 싣는다 */
+    const CL = 2.5;                                        // 화물 길이 약 8.5m
+    const makeCargo = (kind) => {
       const u = new T.Group();
-      add(u, new T.BoxGeometry(0.98, 0.04, 0.74), mat.uldEdge, 0, 0.02, 0);
-      if (kind === "pallet") {
-        const c = add(u, new T.BoxGeometry(0.9, 0.66, 0.68), mat.cargo, 0, 0.37, 0);
-        c.scale.set(1, 1, 1);
+      add(u, new T.BoxGeometry(CL + 0.1, 0.045, 0.72), mat.uldEdge, 0, 0.022, 0);        // 20ft 팔레트
+      if (kind === "crate") {
+        add(u, new T.BoxGeometry(CL, 0.56, 0.6), mat.crate, 0, 0.33, 0);
+        [-1.05, -0.35, 0.35, 1.05].forEach(x => add(u, new T.BoxGeometry(0.07, 0.58, 0.62), mat.slat, x, 0.33, 0, false));
+        add(u, new T.BoxGeometry(CL + 0.02, 0.07, 0.62), mat.slat, 0, 0.6, 0, false);
+        const t = new T.Mesh(new T.PlaneGeometry(0.34, 0.16), mat.tagA);
+        t.position.set(0.9, 0.36, 0.305); u.add(t);
       } else {
-        add(u, contGeo, mat.uld, 0, 0.04, 0);
-        const t = new T.Mesh(new T.PlaneGeometry(0.2, 0.12), mat.tagA);
-        t.position.set(0.2, 0.46, 0.36); u.add(t);
+        // 헬기(주 회전날개를 떼어 낸 상태) — 옆모습 윤곽을 둥글게 압출한 동체 · 큰 조종석 창 · 엔진 덮개 · 꼬리 붐 · 스키드
+        const ex = (pts, depth, bev) => {
+          const g = new T.ExtrudeGeometry(shape(pts), { depth, bevelEnabled: true, bevelThickness: bev, bevelSize: bev, bevelSegments: 3, curveSegments: 4 });
+          g.translate(0, 0, -depth / 2);
+          return g;
+        };
+        const hx = 0.2;                                    // 전체 길이 약 2.6 이 팔레트 위에 오도록
+        const cabin = [[-0.35, 0.07], [0.75, 0.07], [0.97, 0.16], [1.07, 0.3], [1.02, 0.46], [0.82, 0.6], [0.35, 0.64],
+          [0.3, 0.73], [-0.2, 0.75], [-0.36, 0.6], [-0.56, 0.47], [-0.56, 0.34]].map(([x, y]) => [x + hx, y + 0.08]);
+        add(u, ex(cabin, 0.42, 0.06), mat.wrap, 0, 0, 0);
+        const canopy = [[0.64, 0.3], [0.99, 0.25], [1.08, 0.33], [1.02, 0.48], [0.82, 0.62], [0.6, 0.63]].map(([x, y]) => [x + hx, y + 0.08]);
+        add(u, ex(canopy, 0.46, 0.065), mat.glass, 0, 0, 0, false);
+        add(u, new T.CylinderGeometry(0.1, 0.05, 1.05, 14).rotateZ(Math.PI / 2), mat.wrap, -1.0 + hx, 0.54, 0);
+        const fin = add(u, ex([[-1.43, 0.5], [-1.3, 0.5], [-1.4, 0.92], [-1.54, 0.92]].map(([x, y]) => [x + hx, y]), 0.03, 0.01), mat.wrap, 0, 0, 0);
+        fin.castShadow = true;
+        add(u, new T.BoxGeometry(0.16, 0.025, 0.46), mat.wrap, -1.22 + hx, 0.55, 0);
+        add(u, new T.CylinderGeometry(0.05, 0.065, 0.14, 12), mat.gear, 0.12 + hx, 0.88, 0);
+        add(u, new T.CylinderGeometry(0.14, 0.14, 0.035, 18), mat.gear, 0.12 + hx, 0.96, 0);
+        const skid = new T.CylinderGeometry(0.022, 0.022, 1.25, 8).rotateZ(Math.PI / 2);
+        [-0.29, 0.29].forEach(z => {
+          add(u, skid, mat.gear, 0.32 + hx, 0.07, z);
+          [-0.1, 0.7].forEach(x => add(u, new T.BoxGeometry(0.035, 0.12, 0.035), mat.gear, x + hx, 0.13, z * 0.9, false));
+        });
       }
       return u;
     };
-    const BED = LOW, DZ = 2.35;
-    const dollyGeo = new T.BoxGeometry(1.05, 0.07, 0.86);
+    const BED = LOW, DZ = 2.35, PX = LX - 0.05;            // PX = 로더 플랫폼 중앙
+    const dollyGeo = new T.BoxGeometry(CL + 0.25, 0.07, 0.86);
     const dwheel = new T.CylinderGeometry(0.08, 0.08, 0.07, 12).rotateX(Math.PI / 2);
     const dollies = [];
-    [LX + 0.7, LX + 2.05].forEach((x, i) => {
+    [PX, PX + 2.95].forEach((x) => {
       const d = new T.Group();
       d.position.set(x, 0, DZ);
       add(d, dollyGeo, mat.gseDark, 0, BED - 0.04, 0);
-      [[-0.38, -0.36], [0.38, -0.36], [-0.38, 0.36], [0.38, 0.36]].forEach(([a, b]) => add(d, dwheel, mat.tyre, a, 0.08, b));
-      add(d, new T.BoxGeometry(0.3, 0.03, 0.03), mat.gear, 0.66, 0.14, 0);
-      const us = { container: makeUld("container"), pallet: makeUld("pallet") };
+      [-1.1, 0, 1.1].forEach(a => [-0.36, 0.36].forEach(b => add(d, dwheel, mat.tyre, a, 0.08, b)));
+      add(d, new T.BoxGeometry(0.3, 0.03, 0.03), mat.gear, CL / 2 + 0.28, 0.14, 0);
+      const us = { crate: makeCargo("crate"), heli: makeCargo("heli") };
       Object.values(us).forEach(u => { u.position.y = BED; d.add(u); });
       dollies.push({ g: d, us });
       scene.add(d);
     });
     const tug = new T.Group();
-    tug.position.set(LX + 3.4, 0, DZ);
+    tug.position.set(PX + 4.95, 0, DZ);
     add(tug, new T.BoxGeometry(1.0, 0.42, 0.82), mat.gse, 0, 0.36, 0);
     add(tug, new T.BoxGeometry(0.45, 0.36, 0.72), mat.glass, 0.12, 0.75, 0, false);
     [[-0.32, -0.38], [0.32, -0.38], [-0.32, 0.38], [0.32, 0.38]].forEach(([a, b]) => add(tug, dwheel, mat.tyre, a, 0.1, b));
     scene.add(tug);
-    const movers = { container: makeUld("container"), pallet: makeUld("pallet") };
+    const movers = { crate: makeCargo("crate"), heli: makeCargo("heli") };
     Object.values(movers).forEach(m => scene.add(m));
 
     /* ── 투광등 ── */
@@ -495,8 +551,11 @@ window.SemisHero3D = (() => {
     const AZ0 = 0.92, POL0 = 1.37;
     // 화면에 반드시 들어올 기준점(꼬리·기수 화물문·로더·첫 돌리). 가까운 날개 끝은 왼쪽 가림막 쪽으로 잘려도 된다
     const FIT = [[-10.45, CY + 0.3, 0], [-9.85, FINY + 2.95, 0], [-6.8, WY + 1.2, -9.5],
-      [9.45, CY + 3.1, 0], [XN, 0.3, 0], [LX + 1.4, 0.3, -0.7], [LX + 0.7, 0.3, DZ]]
+      [XN, 0.3, 0], [LX + 1.4, 0.3, -0.7], [PX + 1.3, 0.3, DZ], [PX - 1.3, 0.3, DZ]]
       .map(p => new T.Vector3(p[0], p[1], p[2]));
+    ac.updateMatrixWorld(true);
+    const vb = new T.Box3().setFromObject(visor);
+    FIT.push(vb.max.clone(), new T.Vector3(vb.max.x, vb.min.y, 0));
     const UP = new T.Vector3(0, 1, 0);
     const camDir = (az, pol) => new T.Vector3(Math.sin(pol) * Math.sin(az), Math.cos(pol), Math.sin(pol) * Math.cos(az));
     /* 화면 비율에 맞춰 모든 기준점이 들어오는 최소 거리.
@@ -520,29 +579,29 @@ window.SemisHero3D = (() => {
       return best;
     }
 
-    /* ── 애니메이션 (10초 주기, 컨테이너·팔레트 번갈아) ── */
+    /* ── 애니메이션 (10초 주기, 긴 상자·헬기 동체 번갈아) ── */
     const smooth = (a, b, t) => { const x = Math.min(1, Math.max(0, (t - a) / (b - a))); return x * x * (3 - 2 * x); };
-    const KINDS = ["container", "pallet"];
+    const KINDS = ["crate", "heli"];
     function update(t, pr) {
       const c = t % 10, cyc = Math.floor(t / 10);
       const kind = KINDS[cyc % 2], next = KINDS[(cyc + 1) % 2];
-      // 1) 돌리 → 로더 옆 이송 (0–1.6s)  2) 상승 (1.6–4)  3) 기수로 반입 (4–6.2)  4) 하강 (6–8)  5) 다음 ULD 준비 (8–10)
-      const slide = smooth(0, 1.6, c), lift = smooth(1.6, 4, c) - smooth(6.0, 8, c), load = smooth(4, 6.2, c);
+      // 1) 돌리 → 로더 옆 이송 (0–1.8s)  2) 상승 (1.8–4)  3) 기수로 반입 (4–6.6)  4) 하강 (6.4–8.2)  5) 다음 화물 준비 (8.2–10)
+      const slide = smooth(0, 1.8, c), lift = smooth(1.8, 4, c) - smooth(6.4, 8.2, c), load = smooth(4, 6.6, c);
       setLift(LOW + (HIGH - LOW) * lift);
       Object.entries(movers).forEach(([k, m]) => {
-        m.visible = k === kind && c < 6.2;
+        m.visible = k === kind && c < 6.6;
         if (!m.visible) return;
-        const x0 = LX + 0.7, xIn = 4.7;
-        m.position.set(x0 + (xIn - x0) * load, c < 1.6 ? BED : platform.position.y, DZ * (1 - slide));
+        const xIn = 5.1 - CL / 2 - 0.2;                    // 칸막이 뒤로 완전히 들어가는 위치
+        m.position.set(PX + (xIn - PX) * load, c < 1.8 ? BED : platform.position.y, DZ * (1 - slide));
       });
-      // 첫 돌리: 옮기는 동안 비었다가 8–10초에 다음 ULD가 내려앉음 · 둘째 돌리는 그다음 차례
-      const drop = smooth(8, 9.6, c);
+      // 첫 돌리: 옮기는 동안 비었다가 8.2–10초에 다음 화물이 내려앉음 · 둘째 돌리는 그다음 차례
+      const drop = smooth(8.2, 9.7, c);
       Object.entries(dollies[0].us).forEach(([k, u]) => {
-        u.visible = k === next && c >= 8;
+        u.visible = k === next && c >= 8.2;
         u.position.y = BED + (1 - drop) * 0.55;
-        u.scale.setScalar(0.001 + 0.999 * smooth(8, 8.6, c));
+        u.scale.setScalar(0.001 + 0.999 * smooth(8.2, 8.8, c));
       });
-      Object.entries(dollies[1].us).forEach(([k, u]) => { u.visible = k === (c >= 8 ? kind : next); });
+      Object.entries(dollies[1].us).forEach(([k, u]) => { u.visible = k === (c >= 8.2 ? kind : next); });
       mat.beacon.opacity = (t % 1.2) < 0.12 ? 1 : 0.08;
       beaconTop.visible = beaconBot.visible = true;
       // 카메라: 느린 좌우 선회 + 포인터 시차
