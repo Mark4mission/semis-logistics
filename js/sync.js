@@ -170,8 +170,12 @@
 
   /* ─── pull: 서버 → 로컬 ─── */
   async function pull(initial) {
+    /* GET 이전의 pending·dirty 를 함께 기억한다 — GET 이 도는 동안 push 가 끝나
+       pending 이 비면, 아직 서버에 반영되지 않은 로컬 변경을 서버의 옛 값으로
+       덮어써 "저장한 항목이 사라졌다가 새로고침하면 다시 보이는" 일이 생긴다. */
+    const before = Array.from(new Set(pendingKeys().concat(dirtyKeys())));
     const rows = await restGet();
-    const pend = pendingKeys();
+    const pend = Array.from(new Set(pendingKeys().concat(dirtyKeys(), before)));
     const force = initial && localStorage.getItem(LS_FORCE) === "1";
     let changed = false;
     const present = {};

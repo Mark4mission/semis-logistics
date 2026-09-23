@@ -326,8 +326,15 @@
         cert: $("#e-cert").value.trim(), status: $("#e-status").value, logs: clean, note: $("#e-note").value.trim()
       };
       if (!Array.isArray(D().equipment)) D().equipment = [];
-      if (x) Object.assign(x, rec); else D().equipment.push(Object.assign({ id: uid("eq") }, rec));
-      SeMIS.save(); closeModal(); SeMIS.renderView(); toast("저장되었습니다.");
+      let saved;
+      if (x) { Object.assign(x, rec); saved = x; }
+      else { saved = Object.assign({ id: uid("eq") }, rec); D().equipment.push(saved); }
+      /* 검색·필터가 걸린 채 저장하면 방금 저장한 장비가 목록에서 빠져 "사라진 것처럼" 보인다
+         (필터는 모듈 메모리에 남아 화면을 옮겨도 유지된다) → 목록에 안 잡히면 조건을 푼다. */
+      const hidden = !filtered().some(v => v.id === saved.id);
+      if (hidden) { query = ""; kindF = "all"; stF = "all"; tab = "list"; }
+      SeMIS.save(); closeModal(); SeMIS.renderView();
+      toast(hidden ? "저장되었습니다. 검색·필터를 해제하고 전체 목록을 표시합니다." : "저장되었습니다.");
     };
   }
 

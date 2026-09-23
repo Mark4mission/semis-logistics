@@ -1264,6 +1264,69 @@ function makeFetchStub(server) {
       go(e4, "reg-safety");
       ok(q(e4, "#view").textContent.includes("대시보드"), "대시보드 폴백");
     });
+    t("RG10 검색어가 걸린 채 등록해도 새 규정이 목록에 보인다 (검색어 자동 해제)", () => {
+      e.S.data.regulations = [seed("sec", { id: "s1", title: "보안규정", org: "CYB010" })];
+      e.S.saveSilent();
+      go(e, "reg-sec");
+      const box = q(e, "#rg-search");
+      box.value = "CYB010"; box.dispatchEvent(new e.w.Event("input", { bubbles: true }));
+      eq(qa(e, "#rg-body [data-rg-row]").length, 1, "검색 적용");
+      eq(RG.getQuery("sec"), "CYB010");
+      q(e, "#rg-add").click();
+      q(e, "#rg-title").value = "새 화물보안 지침";
+      q(e, "#rg-save").click();
+      eq(RG.getQuery("sec"), "", "저장한 규정이 검색어에 안 걸리면 검색어 해제");
+      ok(q(e, "#rg-body").textContent.includes("새 화물보안 지침"), "저장 직후 목록에 보임");
+      go(e, "dashboard"); go(e, "reg-sec");
+      ok(q(e, "#rg-body").textContent.includes("새 화물보안 지침"), "화면 이동 후에도 보임");
+      eq(q(e, "#rg-search").value, "", "검색창도 비어 있다");
+    });
+    t("RG11 검색어에 걸리는 규정을 저장하면 검색은 유지된다", () => {
+      go(e, "reg-sec");
+      const box = q(e, "#rg-search");
+      box.value = "CYB010"; box.dispatchEvent(new e.w.Event("input", { bubbles: true }));
+      q(e, "#rg-add").click();
+      q(e, "#rg-title").value = "추가 지침";
+      q(e, "#rg-org").value = "CYB010";
+      q(e, "#rg-save").click();
+      eq(RG.getQuery("sec"), "CYB010", "검색 유지");
+      ok(q(e, "#rg-body").textContent.includes("추가 지침"));
+    });
+    t("RG12 검색 중임을 화면에 표시 · 해제 버튼 · 결과 없음 안내", () => {
+      RG.setQuery("sec", "");
+      go(e, "reg-sec");
+      ok(q(e, "#rg-fnote").hidden, "검색 전에는 숨김");
+      ok(q(e, "#rg-clear").hidden);
+      const box = q(e, "#rg-search");
+      box.value = "CYB010"; box.dispatchEvent(new e.w.Event("input", { bubbles: true }));
+      ok(!q(e, "#rg-fnote").hidden, "검색 중 표시");
+      ok(q(e, "#rg-fnote").textContent.includes("전체"), q(e, "#rg-fnote").textContent);
+      box.value = "없는검색어zzz"; box.dispatchEvent(new e.w.Event("input", { bubbles: true }));
+      ok(q(e, "#rg-body .empty").textContent.includes("일치하는 규정이 없습니다"), "빈 결과 안내");
+      q(e, "#rg-body [data-rg-clear]").click();
+      eq(RG.getQuery("sec"), "", "빈 화면의 해제 버튼");
+      ok(qa(e, "#rg-body [data-rg-row]").length > 0, "전체 목록 복귀");
+      q(e, "#rg-clear") && ok(q(e, "#rg-clear").hidden, "표시 숨김");
+    });
+    t("RG13 pull 경합 방어 — push 직후 도착한 옛 서버 값이 로컬 변경을 덮지 않는다", () => {
+      const e5 = makeEnv({ boot: false });
+      e5.S.load();
+      const server = { rows: [{ key: "regulations", value: [{ id: "old1", scope: "sec", title: "옛 규정", ideas: [] }],
+        updated_at: "2026-09-23T00:00:00Z", updated_by: "other" }] };
+      const fn = makeFetchStub(server);
+      e5.w.fetch = fn;
+      e5.S.boot();
+      e5.Sync.snapAll();
+      // 로컬에서 새 규정 등록(아직 서버 미반영) → pending 은 비어 있지만 dirty 상태
+      e5.S.data.regulations = [{ id: "old1", scope: "sec", title: "옛 규정", ideas: [] },
+        { id: "new1", scope: "sec", title: "새 규정", ideas: [] }];
+      e5.S.saveSilent();
+      ok(e5.Sync.dirtyKeys().includes("regulations"), "dirty 감지");
+      return e5.Sync.pull(false).then(() => {
+        const ids = e5.S.data.regulations.map(r => r.id).sort().join(",");
+        eq(ids, "new1,old1", "로컬 변경 보존(병합)");
+      });
+    });
     t("RG09 jsdom 오류 없음(규정 블록)", () => eq(e.errors.length, 0, e.errors.join(" | ")));
   }
 
@@ -1818,6 +1881,22 @@ function makeFetchStub(server) {
       ok(!isOpen());
       eq(e.w.location.hash, "#/contacts");
     });
+    t("CF07b 검색 중 섹션을 추가하면 검색어를 풀어 새 섹션이 보인다", () => {
+      loginAs(e, "hq");
+      go(e, "contacts");
+      C.setQuery("없는이름xyz");
+      go(e, "contacts");
+      eq(C.getQuery(), "없는이름xyz");
+      const n0 = e.S.data.contacts.sections.length;
+      q(e, "#ct-addsec").click();
+      q(e, "#cs-title").value = "테스트 섹션";
+      q(e, "#cs-save").click();
+      eq(e.S.data.contacts.sections.length, n0 + 1, "섹션 추가됨");
+      eq(C.getQuery(), "", "검색어 해제");
+      ok(q(e, "#ct-body").textContent.includes("테스트 섹션"), "목록에 보임");
+      e.S.data.contacts.sections = e.S.data.contacts.sections.filter(x => x.title !== "테스트 섹션");
+      e.S.saveSilent();
+    });
     t("CF08 검색: 맞는 행만 · 탭에 건수 · 맞는 탭 자동 선택 · 없으면 카드 숨김", () => {
       go(e, "contacts");
       const s = q(e, "#ct-search");
@@ -2272,6 +2351,26 @@ function makeFetchStub(server) {
       eq(Eq.ledgerStats().total, 3, "폐기 제외"); eq(Eq.ledgerStats().linked, 2);
       const extra = qa(e, ".eq-tbl tr[data-cares-only]");
       eq(extra.length, 6, "대장에 없는 CARES 장비 6");
+    });
+    t("SC12b 검색·필터가 걸린 채 장비를 등록해도 목록에 보인다 (조건 자동 해제)", () => {
+      const e6 = makeEnv();
+      loginAs(e6, "hq");
+      e6.S.data.equipment = [{ id: "q1", type: "X-ray 검색장비", name: "테스트 X", serial: "SN-A", location: "1호기", logs: [] }];
+      e6.S.saveSilent();
+      go(e6, "scr-equip");
+      const Eq6 = e6.w.SemisEquip;
+      Eq6.setQuery("SN-A"); Eq6.setTab("list");
+      go(e6, "scr-equip");
+      eq(Eq6.filtered().length, 1, "검색 적용");
+      q(e6, "#eq-add").click();
+      q(e6, "#e-name").value = "새 ETD 장비";
+      q(e6, "#e-type").value = "폭발물흔적탐지장비(ETD)";
+      q(e6, "#e-save").click();
+      ok(e6.S.data.equipment.some(x => x.name === "새 ETD 장비"), "저장됨");
+      eq(Eq6.filtered().length, 2, "조건 해제 후 전체");
+      ok(q(e6, "#view").textContent.includes("새 ETD 장비"), "목록에 보임");
+      go(e6, "dashboard"); go(e6, "scr-equip");
+      ok(q(e6, "#view").textContent.includes("새 ETD 장비"), "화면 이동 후에도 보임");
     });
     t("SC12 대장 필터·검색 · 상세(구입가는 hq 이상)", () => {
       const seg = (n, v) => q(e, '[data-seg="' + n + '"][data-v="' + v + '"]').click();

@@ -55,10 +55,11 @@
       open: l.reduce((n, r) => n + ideasOf(r).filter(i => i.status === "검토중").length, 0)
     };
   }
+  const matchQ = (r, q) => !q || [r.title, r.rev, r.org, r.note, r.lang]
+    .some(v => String(v || "").toLowerCase().includes(q));
   function filtered(scope) {
     const q = (query[scope] || "").toLowerCase();
-    return byScope(scope).filter(r => !q ||
-      [r.title, r.rev, r.org, r.note, r.lang].some(v => String(v || "").toLowerCase().includes(q)))
+    return byScope(scope).filter(r => matchQ(r, q))
       .sort((a, b) => String(a.org || "힣").localeCompare(String(b.org || "힣"), "ko")
         || String(a.title).localeCompare(String(b.title), "ko"));
   }
@@ -170,9 +171,16 @@
         diffUrl: diff ? diff.url : "", diffName: diff ? diff.name : "",
         note: $("#rg-note").value.trim(), updated: new Date().toISOString()
       };
-      if (x) Object.assign(x, rec);
-      else D().regulations.push(Object.assign({ id: uid("rg"), scope, ideas: [] }, rec));
-      SeMIS.save(); closeModal(); SeMIS.renderView(); toast("저장되었습니다.");
+      let saved;
+      if (x) { Object.assign(x, rec); saved = x; }
+      else { saved = Object.assign({ id: uid("rg"), scope, ideas: [] }, rec); D().regulations.push(saved); }
+      /* 검색어가 걸린 채로 등록하면 방금 저장한 규정이 목록에서 빠져 "사라진 것처럼" 보인다.
+         (검색어는 모듈 메모리에 남아 화면을 옮겨도 유지되고 새로고침해야 초기화됐다)
+         → 저장한 규정이 현재 검색어에 걸리지 않으면 검색어를 풀고 알린다. */
+      const cleared = !!query[scope] && !matchQ(saved, query[scope].toLowerCase());
+      if (cleared) query[scope] = "";
+      SeMIS.save(); closeModal(); SeMIS.renderView();
+      toast(cleared ? "저장되었습니다. 검색어를 지우고 전체 목록을 표시합니다." : "저장되었습니다.");
     };
   }
 
@@ -258,7 +266,10 @@
   function tableHTML(scope) {
     const items = filtered(scope);
     const showIdeas = canSeeIdeas();
-    if (!items.length) return '<div class="empty">등록된 규정이 없습니다.</div>';
+    if (!items.length) return query[scope]
+      ? '<div class="empty">"' + esc(query[scope]) + '" 와(과) 일치하는 규정이 없습니다. (전체 ' + byScope(scope).length +
+        '건)<button type="button" class="btn btn-ghost btn-sm" data-rg-clear style="margin-top:10px">검색 해제</button></div>'
+      : '<div class="empty">등록된 규정이 없습니다.</div>';
     const canWrite = SeMIS.canEdit();
     return `<div class="table-wrap"><table class="tbl tbl-cap" style="--cap:1260px"><thead><tr>
         <th style="min-width:250px">규정명 <span class="th-hint">(클릭 → 열람)</span></th>
@@ -316,11 +327,20 @@
         <div class="cal-toolbar">
           <input id="rg-search" class="ct-search" type="search" style="max-width:300px"
             placeholder="규정명 · 관리번호 · 버전 검색" value="${esc(query[scope])}" autocomplete="off">
+          <span id="rg-fnote" class="rg-fnote" hidden></span>
+          <button type="button" class="btn btn-ghost btn-sm" id="rg-clear" hidden>검색 해제</button>
         </div>
         <div id="rg-body">${tableHTML(scope)}</div>
       </div>`;
 
     const wire = () => {
+      $$("#rg-body [data-rg-clear]").forEach(b => b.onclick = () => {
+        query[scope] = ""; $("#rg-search").value = "";
+        $("#rg-body").innerHTML = tableHTML(scope); wire();
+        const note = $("#rg-fnote"), cb = $("#rg-clear");
+        if (note) note.hidden = true;
+        if (cb) cb.hidden = true;
+      });
       if (canWrite) $$("#rg-body [data-rg-row]").forEach(el => el.onclick = (ev) => {
         if (ev.target.closest("button,a")) return;
         regForm(scope, el.dataset.rgRow);
@@ -344,12 +364,24 @@
         regForm(scope, b.dataset.rgEdit);
       });
     };
+    /* 검색 중이면 "검색 결과 N / 전체 M"과 해제 버튼을 보여 준다 — 필터가 켜져 있는 줄 모르고
+       "등록한 규정이 안 보인다"고 오해하는 일을 막는다. */
+    const paintFilter = () => {
+      const q = query[scope], note = $("#rg-fnote"), btn = $("#rg-clear");
+      if (!note || !btn) return;
+      note.hidden = !q; btn.hidden = !q;
+      if (q) note.innerHTML = '검색 결과 <b>' + filtered(scope).length + '</b>건 / 전체 ' + byScope(scope).length + '건';
+    };
+    const repaint = () => { $("#rg-body").innerHTML = tableHTML(scope); wire(); paintFilter(); };
+    const clearQuery = () => { query[scope] = ""; $("#rg-search").value = ""; repaint(); };
     $("#rg-search").oninput = () => {
       query[scope] = $("#rg-search").value.trim();
-      $("#rg-body").innerHTML = tableHTML(scope); wire();
+      repaint();
     };
+    $("#rg-clear").onclick = clearQuery;
     if (canWrite) $("#rg-add").onclick = () => regForm(scope, null);
     wire();
+    paintFilter();
   }
 
   Object.keys(SCOPES).forEach(scope => {
@@ -363,7 +395,8 @@
   /* ─────── 테스트/외부 노출 ─────── */
   window.SemisRegs = {
     SCOPES, LANGS, IDEA_KINDS, IDEA_STATUS,
-    list, byScope, stats, filtered, ideasOf, canSeeIdeas,
+    list, byScope, stats, filtered, matchQ, ideasOf, canSeeIdeas,
+    getQuery: (scope) => query[scope] || "",
     setQuery: (scope, q) => { query[scope] = String(q || ""); },
     regForm, ideaList, ideaForm, viewPdf
   };

@@ -2794,3 +2794,9 @@ a.nb-file, .nb-file > a, .nb-editor img, .notice-html img, .ag-memo img, .cn-ric
   .lk-card { box-shadow: none; break-inside: avoid; }
   .lk-go { display: none; }
 }
+
+/* ═════════ v1.12.3 규정 목록 검색 상태 표시 ═════════ */
+.rg-fnote { font-size: .82rem; color: var(--text-2); white-space: nowrap; }
+.rg-fnote b { font-weight: 700; color: var(--primary-dark); }
+.rg-fnote[hidden] { display: none; }
+.empty [data-rg-clear] { display: inline-flex; }

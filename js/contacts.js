@@ -238,7 +238,10 @@
       if (!title) { toast("제목을 입력하세요.", true); return; }
       const type = $("#cs-type").value;
       secs().push({ id: uid("cs"), type, icon: $("#cs-icon").value.trim(), title, rows: [], note: "", duty: type === "people" ? "" : undefined });
-      SeMIS.save(); closeModal(); SeMIS.renderView(); toast("섹션이 추가되었습니다. ✎ 로 내용을 채워 주세요.");
+      /* 검색 중이면 새 섹션이 목록에서 빠져 보이지 않는다 — 검색어를 풀고 전체를 보여 준다 */
+      const hadQ = !!query; if (hadQ) query = "";
+      SeMIS.save(); closeModal(); SeMIS.renderView();
+      toast("섹션이 추가되었습니다. ✎ 로 내용을 채워 주세요." + (hadQ ? " (검색어 해제)" : ""));
     };
   }
 
@@ -331,7 +334,10 @@
       sec.note = $("#cte-note").value.trim();
       const dutyEl = $("#cte-duty");
       if (dutyEl) sec.duty = dutyEl.value.trim();
-      SeMIS.save(); closeModal(); SeMIS.renderView(); toast("저장되었습니다. (실시간 공유)");
+      /* 검색 중이면 방금 입력한 행이 검색어에 안 걸려 보이지 않을 수 있다 → 검색어 해제 */
+      const hadQ = !!query; if (hadQ) query = "";
+      SeMIS.save(); closeModal(); SeMIS.renderView();
+      toast("저장되었습니다. (실시간 공유)" + (hadQ ? " 검색어를 지웠습니다." : ""));
     };
   }
 
