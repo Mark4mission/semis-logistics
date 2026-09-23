@@ -852,6 +852,12 @@
   }
 
   /* ─────── 모듈 렌더 ─────── */
+  /* v1.13 위기대응 담당자 화면으로 가는 버튼 — 메뉴가 보이는 사용자에게만 */
+  function crisisLink() {
+    if (!SeMIS.hasModule("crisis")) return false;
+    const mn = (SeMIS.data.menus || []).find(m => m.type === "module" && m.module === "crisis");
+    return !!mn && SeMIS.navVisible(mn);
+  }
   SeMIS.registerModule("contacts", {
     title: "비상연락망 · 보고체계",
     render(root) {
@@ -860,6 +866,7 @@
         <div class="page-head">
           <div class="page-title">비상연락망 · 보고체계</div>
           <span class="spacer"></span>
+          ${crisisLink() ? '<a class="btn btn-ghost btn-sm" href="#/crisis" id="ct-crisis">위기대응 담당자</a>' : ""}
           ${canWrite ? '<button class="btn btn-ghost btn-sm" id="ct-addflow">+ 체계도 추가</button>' : ""}
           ${canWrite && secs().length ? '<button class="btn btn-ghost btn-sm" id="ct-addsec">+ 섹션 추가</button>' : ""}
           <div class="page-desc">화물터미널 안전·보안 사건 발생 시 보고 절차 · 유관기관 비상 연락처</div>

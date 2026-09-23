@@ -18,7 +18,7 @@
   const REST = SUPA_URL + "/rest/v1/" + TABLE;
   const HEADERS = { apikey: SUPA_KEY, Authorization: "Bearer " + SUPA_KEY, "Content-Type": "application/json" };
 
-  const SYNC_KEYS = ["menus", "notices", "schedules", "assignees", "assigneesSeeded", "minutes", "minuteFolders", "levelHistory", "safetyBoard", "contacts", "pwOverrides", "userOverrides", "customUsers", "gcal", "chatRooms", "vault", "regulations", "equipment"];
+  const SYNC_KEYS = ["menus", "notices", "schedules", "assignees", "assigneesSeeded", "minutes", "minuteFolders", "levelHistory", "safetyBoard", "contacts", "pwOverrides", "userOverrides", "customUsers", "gcal", "chatRooms", "vault", "regulations", "equipment", "crisis"];
   const LS_PENDING = "semisl:pendingSync";
   const LS_FORCE = "semisl:forcePush";
   const LS_GUARD = "semisl:guardLog";

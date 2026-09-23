@@ -3,7 +3,7 @@
    실행: npm test  (jsdom 필요: npm install)
    구성: [C] 코어(해시·계정·메뉴·정규화·권한·라우터·예정 모듈)
          [D] 대시보드·공지·현황판  [S] 시스템 설정  [M] 이식 모듈 스모크(일정·회의록·연락망·검색)
-         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
+         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
    ═══════════════════════════════════════════════════════ */
 "use strict";
 const fs = require("fs");
@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/sync.js"];
+const FILES = ["js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/crisis.js", "js/sync.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -1071,7 +1071,7 @@ function makeFetchStub(server) {
     const e = makeEnv({ fetch });
     const { Sync } = e;
     t("Y01 SYNC_KEYS 구성", () =>
-      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,pwOverrides,userOverrides,customUsers,gcal,chatRooms,vault,regulations,equipment"));
+      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,pwOverrides,userOverrides,customUsers,gcal,chatRooms,vault,regulations,equipment,crisis"));
     t("Y02 SYNC_KEYS는 모두 freshData 컬렉션에 존재", () => Sync.SYNC_KEYS.forEach(k => ok(e.S.data[k] !== undefined, k)));
     await ta("Y03 초기 pull: 빈 서버 → 로컬 시드 push (semis_logi_store)", async () => {
       await Sync.init();
@@ -2710,6 +2710,194 @@ function makeFetchStub(server) {
       const c = read("css/main.css");
       ok(c.indexOf(".lk-grid") > 0 && c.indexOf(".lk-card") > 0 && c.indexOf(".menu-tree-item.is-sub") > 0);
       eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+  }
+
+  /* ══════════ [CR] v1.13 위기대응 담당자 — 엑셀 읽기 · 조직/팀/담당자/매트릭스 보기 · 편집 · 대조 반영 ══════════ */
+  {
+    /* 무압축(stored) xlsx 만들기 — 가상 이름만 사용(실명단은 공용 DB에만) */
+    const zipStored = (files) => {
+      const enc = (s) => Buffer.from(s, "utf8");
+      const locals = [], cents = [];
+      let off = 0;
+      Object.keys(files).forEach(name => {
+        const nb = enc(name), data = enc(files[name]);
+        const lh = Buffer.alloc(30); lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4);
+        lh.writeUInt32LE(data.length, 18); lh.writeUInt32LE(data.length, 22); lh.writeUInt16LE(nb.length, 26);
+        const ch = Buffer.alloc(46); ch.writeUInt32LE(0x02014b50, 0); ch.writeUInt16LE(20, 4); ch.writeUInt16LE(20, 6);
+        ch.writeUInt32LE(data.length, 20); ch.writeUInt32LE(data.length, 24); ch.writeUInt16LE(nb.length, 28); ch.writeUInt32LE(off, 42);
+        locals.push(lh, nb, data); cents.push(ch, nb);
+        off += 30 + nb.length + data.length;
+      });
+      const cd = Buffer.concat(cents);
+      const eo = Buffer.alloc(22); eo.writeUInt32LE(0x06054b50, 0); eo.writeUInt16LE(Object.keys(files).length, 8);
+      eo.writeUInt16LE(Object.keys(files).length, 10); eo.writeUInt32LE(cd.length, 12); eo.writeUInt32LE(off, 16);
+      const b = Buffer.concat(locals.concat([cd, eo]));
+      return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);
+    };
+    const esx = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const makeXlsx = (sheets) => {
+      const strs = [];
+      const si = (v) => { let i = strs.indexOf(v); if (i < 0) { strs.push(v); i = strs.length - 1; } return i; };
+      const col = (c) => String.fromCharCode(64 + c);
+      const files = {};
+      sheets.forEach((sh, n) => {
+        const rows = sh.rows.map((r, ri) => `<row r="${ri + 1}">${r.map((v, ci) => v == null ? "" :
+          `<c r="${col(ci + 1)}${ri + 1}" t="s"><v>${si(v)}</v></c>`).join("")}</row>`).join("");
+        const mg = (sh.merges || []).length ? `<mergeCells>${sh.merges.map(m => `<mergeCell ref="${m}"/>`).join("")}</mergeCells>` : "";
+        files["xl/worksheets/sheet" + (n + 1) + ".xml"] = `<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${rows}</sheetData>${mg}</worksheet>`;
+      });
+      files["xl/workbook.xml"] = `<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${sheets.map((s, i) => `<sheet name="${esx(s.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join("")}</sheets></workbook>`;
+      files["xl/_rels/workbook.xml.rels"] = `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((s, i) => `<Relationship Id="rId${i + 1}" Target="worksheets/sheet${i + 1}.xml"/>`).join("")}</Relationships>`;
+      files["xl/sharedStrings.xml"] = `<?xml version="1.0"?><sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${strs.map(s => `<si><t xml:space="preserve">${esx(s)}</t></si>`).join("")}</sst>`;
+      return zipStored(files);
+    };
+    const HEAD = ["팀", "위기대응 조직", "위기대응 업무", "담당자(정)", "담당자(부)"];
+    const T = ["테스트 위기대응 담당자", null, null, null, null], D = [null, null, null, null, "기준시점: 26년 9월"];
+    const SHEETS = [
+      { name: "전체", rows: [T, D, HEAD,
+        ["가팀", "초동조치센터", "☐ 첫 보고", "갑일", "을일"],
+        [null, null, "☐ 두 번째\n   업무 설명", "갑일", "을일"],
+        [null, "종합지원센터", "☐ 물자 지원", "병일", "정일"],
+        ["인천화물팀", "현장지원센터", "☐ 유해 송환 지원", "무일", "기일"],
+        ["<End>"]], merges: ["A4:A6", "B4:B5"] },
+      { name: "갑본부", rows: [T, D, HEAD, ["가팀", "초동조치센터", "☐ 첫 보고", "갑일", "을일"], [null, null, "☐ 두 번째\n   업무 설명", "갑일", "을일"], [null, "종합지원센터", "☐ 물자 지원", "병일", "정일"], ["<End>"]], merges: ["A4:A6", "B4:B5"] },
+      { name: "을본부", rows: [T, D, HEAD, ["인천화물팀", "현장지원센터", "☐ 유해 송환 지원", "무일", "기일"], ["<End>"]] },
+      { name: "통제실", rows: [T, D, HEAD, ["통제팀", "초동조치센터", "☐ 비상 소집", "아래 주) 참조", null], [null, null, "☐ 최초 보고", null, null],
+        ["주)"], ["1. 통제팀은 팀원 전원이 담당자가 되며, "], ["   지정된 임무를 수행함"], ["2. 문의는 OCC(T.02-0000-0000)"], ["<End>"]],
+        merges: ["A4:A5", "B4:B5", "D4:E5"] }
+    ];
+    const e = makeEnv();
+    const CR = e.w.SemisCrisis;
+    e.w.TextDecoder = require("util").TextDecoder;
+    let parsed = null;
+    await ta("CR01 엑셀 읽기: 병합 셀 채움 · 합본+본부 시트 · 본부에만 있는 행 덧붙임 · 주석 이어 붙이기", async () => {
+      parsed = CR.parseSheets(await CR.readXlsx(makeXlsx(SHEETS)));
+      eq(parsed.title, "테스트 위기대응 담당자"); eq(parsed.asOf, "26년 9월");
+      eq(parsed.rows.length, 6);
+      const r2 = parsed.rows[1];
+      eq(r2.team, "가팀"); eq(r2.org, "초동조치센터"); eq(r2.task, "두 번째 업무 설명"); eq(r2.div, "갑본부");
+      eq(parsed.rows[2].org, "종합지원센터");
+      eq(parsed.rows.filter(r => r.team === "통제팀").length, 2);
+      const ct = parsed.rows.find(r => r.team === "통제팀");
+      eq(ct.main, "아래 주) 참조"); eq(ct.sub, "", "가로 병합(정=부) → 부는 비움"); eq(ct.div, "통제실");
+      eq(parsed.notes.length, 2); eq(parsed.notes[0], "통제팀은 팀원 전원이 담당자가 되며, 지정된 임무를 수행함");
+      ok(parsed.rows.every(r => r.id));
+      eq(CR.people(parsed.rows).map(p => p.name).join(","), "갑일,기일,무일,병일,을일,정일", "안내 문구는 사람 아님");
+    });
+    t("CR02 메뉴: 협력 · 비상 허브 · 비상연락망 바로 아래 · mgr", () => {
+      const m = e.S.data.menus.find(x => x.module === "crisis");
+      ok(m && m.type === "module" && !m.planned); eq(m.parent, "hub-ops"); eq(m.vis, "mgr");
+      const ct = e.S.data.menus.find(x => x.module === "contacts");
+      ok(m.seq > ct.seq);
+      const old = makeEnv({ preData: { version: 1, menus: e.S.defaultMenus().filter(x => x.id !== "crisis") } });
+      const m2 = old.S.data.menus.find(x => x.module === "crisis");
+      ok(m2 && m2.parent === "hub-ops", "기존 메뉴 데이터에 자동 추가");
+      eq(old.S.normalizeData(), false, "멱등");
+    });
+    const seedData = () => {
+      e.S.data.crisis = { title: parsed.title, asOf: parsed.asOf, notes: parsed.notes.slice(), rows: JSON.parse(JSON.stringify(parsed.rows)) };
+      e.S.data.contacts.sections = [{ id: "s1", type: "people", title: "t", rows: [{ id: "p1", name: "무일", mobile: "010-0000-1111" },
+        { id: "p2", name: "갑일", mobile: "010-0000-2222" }, { id: "p3", name: "갑일", mobile: "010-0000-3333" }] }];
+      e.S.saveSilent();
+    };
+    t("CR03 화면: 우리 팀 띠 · 요약 · 조직 줄 · 조직별 표 · 참고(전화 링크) · 인쇄 버튼", () => {
+      seedData(); loginAs(e, "manager"); go(e, "crisis");
+      const home = q(e, ".cr-home");
+      ok(home && home.textContent.indexOf("인천화물팀") >= 0 && home.textContent.indexOf("유해 송환 지원") >= 0);
+      ok(q(e, ".cr-home .cr-tel"), "연락망에 한 명뿐인 이름 → 전화");
+      eq(qa(e, ".stat-value").map(x => x.textContent).join(","), "3,3,6,6");
+      eq(qa(e, ".cr-orgbtn").length, 4);
+      eq(qa(e, "#cr-body .cr-sec").length, 3);
+      eq(qa(e, "#cr-body .cr-sec")[0].dataset.org, "초동조치센터", "조직 순서");
+      ok(!qa(e, ".cr-line").some(l => l.querySelector(".cr-tel") && l.textContent.indexOf("갑일") >= 0), "동명이인 → 번호 잇지 않음");
+      ok(q(e, ".cr-ref[data-jump=notes]"));
+      ok(q(e, "#cr-notes a[href='tel:0200000000']"));
+      ok(q(e, ".page-head .print-btn, .page-head [data-print], .page-head .btn-print") || q(e, ".page-head").textContent.indexOf("Print") >= 0, "인쇄 버튼");
+      ok(!q(e, "#cr-add") && !q(e, "#cr-import") && !q(e, ".cr-edit"), "manager 편집 없음");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    t("CR04 필터 · 검색 · 이름 누르면 담당자별 · 매트릭스 칸 → 조직별 필터", () => {
+      q(e, ".cr-orgbtn[data-org='종합지원센터']").click();
+      eq(qa(e, "#cr-body .cr-sec").length, 1); eq(qa(e, ".cr-line").length, 1);
+      ok(q(e, "#cr-clear"));
+      q(e, "#cr-clear").click();
+      const qi = q(e, "#cr-q"); qi.value = "송환"; qi.dispatchEvent(new e.w.Event("input"));
+      eq(qa(e, ".cr-line").length, 1); ok(q(e, ".cr-line mark"));
+      const q2 = q(e, "#cr-q"); q2.value = ""; q2.dispatchEvent(new e.w.Event("input"));
+      if (!q(e, ".cr-pn[data-person='병일']")) throw new Error("no 병일: " + CR.getState().query + "/" + qa(e, ".cr-pn").map(x => x.dataset.person).join(","));
+      q(e, ".cr-pn[data-person='병일']").click();
+      eq(CR.getState().view, "person"); eq(qa(e, ".cr-person").length, 1);
+      ok(q(e, ".cr-person").textContent.indexOf("물자 지원") >= 0);
+      q(e, "[data-view=matrix]").click();
+      ok(q(e, ".cr-mxt")); CR.setState({ query: "" }); e.S.renderView();
+      const cell = q(e, ".cr-mx[data-mx-team='가팀'][data-mx-org='초동조치센터']");
+      eq(cell.textContent, "2");
+      cell.click();
+      eq(CR.getState().view, "org"); eq(CR.getState().org, "초동조치센터"); eq(qa(e, ".cr-line").length, 2);
+      q(e, "[data-view=team]").click();
+      ok(qa(e, "#cr-body .cr-sec h3").map(h => h.textContent).indexOf("갑본부") >= 0);
+      CR.setState({ view: "org", org: "", query: "" });
+    });
+    t("CR05 hq 편집: 추가(같은 팀 뒤) · 검색에 걸리지 않으면 조건 해제 · 삭제 · 필수값", () => {
+      e.S.logout ? e.S.logout() : null;
+      loginAs(e, "hq"); go(e, "crisis");
+      ok(q(e, "#cr-add") && q(e, "#cr-import") && q(e, ".cr-edit"));
+      CR.setState({ query: "송환" }); e.S.renderView();
+      q(e, "#cr-add").click();
+      q(e, "#cr-f-team").value = "가팀"; q(e, "#cr-f-org").value = "종합지원센터"; q(e, "#cr-f-task").value = "새 임무"; q(e, "#cr-f-main").value = "신일";
+      clickOk(e);
+      const rows = e.S.data.crisis.rows;
+      eq(rows.length, 7); eq(rows[3].task, "새 임무", "가팀 마지막 행 뒤");
+      eq(CR.getState().query, "", "저장한 행이 보이도록 검색 해제");
+      ok(qa(e, ".cr-line").some(l => l.textContent.indexOf("새 임무") >= 0));
+      q(e, "#cr-add").click(); clickOk(e);
+      eq(e.S.data.crisis.rows.length, 7, "필수값 없으면 저장 안 함");
+      e.S.closeModal();
+      q(e, `.cr-edit[data-edit='${rows[3].id}']`).click();
+      q(e, "#modal-box [data-act=del]").click(); clickOk(e);
+      eq(e.S.data.crisis.rows.length, 6);
+    });
+    t("CR06 기본 정보: 우리 팀 바꾸기 · 참고 사항 줄 단위", () => {
+      q(e, "#cr-meta").click();
+      q(e, "#cr-m-home").value = "가팀"; q(e, "#cr-m-notes").value = "하나\n\n둘";
+      clickOk(e);
+      eq(e.S.data.crisis.homeTeam, "가팀"); eq(e.S.data.crisis.notes.join("|"), "하나|둘");
+      ok(q(e, ".cr-home h2").textContent === "가팀");
+      e.S.data.crisis.homeTeam = "인천화물팀"; e.S.renderView();
+    });
+    t("CR07 엑셀 대조 반영: 담당자 변경 · 새 임무 · 빠지는 임무 → 반영", () => {
+      const next = JSON.parse(JSON.stringify(parsed));
+      next.asOf = "27년 3월";
+      next.rows[0].main = "새일";
+      next.rows = next.rows.filter(r => r.task !== "물자 지원");
+      next.rows.push({ id: "x1", div: "을본부", team: "인천화물팀", org: "현장지원센터", task: "소지품 반환", main: "무일", sub: "기일" });
+      CR.previewImport(next, { name: "2027.xlsx", size: 10 });
+      const box = q(e, "#modal-box");
+      const hs = qa(e, "#modal-box .cr-dsec h4").map(h => h.textContent.replace(/\s+/g, " ").trim());
+      eq(hs.join("|"), "담당자 변경 1|새 임무 1|빠지는 임무 1");
+      ok(box.textContent.indexOf("27년 3월") >= 0);
+      return new Promise(r => r());
+    });
+    await ta("CR08 반영 실행 → 데이터 교체 · 조건 초기화", async () => {
+      clickOk(e);
+      await new Promise(r => setTimeout(r, 20));
+      eq(e.S.data.crisis.asOf, "27년 3월"); eq(e.S.data.crisis.rows.length, 6);
+      ok(e.S.data.crisis.rows.some(r => r.task === "소지품 반환"));
+      ok(q(e, "#view .cr-home"));
+    });
+    t("CR09 통합 검색: 담당자 이름 → 위기대응 담당자(담당자별 보기로)", () => {
+      const it = e.w.SemisSearch.search ? e.w.SemisSearch.search("무일") : null;
+      if (it) ok(it.some(x => x.group === "위기대응 담당자"), "검색 결과");
+      const src = read("js/search.js");
+      ok(src.indexOf('typeof it.pick === "function"') > 0);
+    });
+    t("CR10 공개 저장소 위생: crisis.js에 전화번호·명단 없음 · 동기화 키", () => {
+      const s = read("js/crisis.js");
+      ok(!/01\d-\d{3,4}-\d{4}/.test(s)); ok(s.indexOf("rows: [{") < 0 || s.indexOf("데이터:") > 0);
+      ok(e.Sync.SYNC_KEYS.indexOf("crisis") >= 0);
+      const c = read("css/main.css");
+      ok(c.indexOf(".cr-home") > 0 && c.indexOf(".cr-line") > 0 && c.indexOf(".cr-mxt") > 0);
     });
   }
 

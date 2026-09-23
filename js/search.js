@@ -226,7 +226,7 @@ const SemisSearch = (() => {
   /* ─────── UI ─────── */
   /* 결과 아이콘 — 선 아이콘(SeMIS.icon). 프로바이더는 ico 키로 지정할 수 있다. */
   const GROUP_ICO = { "공지사항": "megaphone", "보안등급": "alert", "일정관리": "calendar", "회의록": "notes",
-    "비상연락망": "phone", "규정": "book", "메뉴 · 링크": "chevron" };
+    "비상연락망": "phone", "위기대응 담당자": "users", "규정": "book", "메뉴 · 링크": "chevron" };
   function icoOf(it) {
     const k = it.ico || (it.url ? "external" : GROUP_ICO[it.group]) || "doc";
     return S().icon ? S().icon(k, 18) : esc(it.icon || "▪");
@@ -251,6 +251,7 @@ const SemisSearch = (() => {
   function goItem(it) {
     closePalette();
     if (it.url) { window.open(it.url, "_blank", "noopener"); return; }
+    if (typeof it.pick === "function") { try { it.pick(); } catch (e) { /* 화면 상태 지정 실패는 이동만 */ } }
     if (it.route) S().navigate(it.route);
   }
 

@@ -8,7 +8,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.12.3";
+  const VERSION = "1.13.0";
   const APP_NAME = "SeMIS · Logistics";
   const LS_DATA = "semisl:data";
   const LS_UI   = "semisl:ui";
@@ -230,6 +230,7 @@ const SeMIS = (() => {
 
       h("hub-ops", "협력 · 비상", "users"),
       Object.assign(m("contacts", "비상연락망 · 보고체계", "☎️", "contacts", "mgr", "hub-ops"), { quick: true }),
+      m("crisis", "위기대응 담당자", "🧭", "crisis", "mgr", "hub-ops"),
       p("partners", "조업사 · 협력사 현황", "🤝", "partners", "mgr", "hub-ops",
         "조업사·경비·청소·유지보수 업체 담당자, 인원, 보안서약·교육 이수 현황."),
       p("contracts", "계약서 관리", "💼", "contracts", "hq", "hub-ops",
@@ -319,6 +320,7 @@ const SeMIS = (() => {
       minutes: [],       // 회의록 게시판
       minuteFolders: [], // 회의록 폴더 — normalize가 기본 폴더 시드
       contacts: { sections: [] }, // 비상연락망 (실데이터는 공용 DB만 — 코드 미시드)
+      crisis: { rows: [] },        // 위기대응 담당자 (명단은 공용 DB만 — 코드 미시드)
       vault: { v: 1, members: [], data: null, personal: {}, updated: "" }, // 암호 관리 (클라이언트 AES-256 암호화)
       regulations: [],   // 규정 관리 (항공보안 / 안전관리 / 위험물 DG)
       equipment: [],     // 검색장비 대장 (상태·고장·점검은 CARES 실시간 — js/cares.js)
@@ -360,6 +362,14 @@ const SeMIS = (() => {
     ensureModuleMenu("dashboard", null, "대시보드", "🏠", "dashboard", "all");
     ensureModuleMenu("vault", null, "암호 관리", "🔐", "vault", "hq");
     ensureModuleMenu("settings", null, "시스템 설정", "⚙️", "settings", "admin");
+    // v1.13 위기대응 담당자 — 기존 메뉴 데이터에 없으면 비상연락망 바로 아래에 1회 추가(이후 숨김·이름은 운영자 설정 유지)
+    if (!DATA.menus.some(m => m.type === "module" && m.module === "crisis")) {
+      const ct = DATA.menus.find(m => m.type === "module" && m.module === "contacts");
+      const hub = DATA.menus.find(m => m.id === "hub-ops" && m.type === "group");
+      DATA.menus.push({ id: "crisis", seq: ct ? (ct.seq || 0) + 0.5 : DATA.menus.reduce((mx, m) => Math.max(mx, m.seq || 0), 0) + 1,
+        type: "module", label: "위기대응 담당자", icon: "🧭", module: "crisis", vis: "mgr",
+        parent: ct && ct.parent ? ct.parent : (hub ? "hub-ops" : null) });
+    }
     const dash = DATA.menus.find(m => m.type === "module" && m.module === "dashboard");
     if (dash) { dash.vis = "all"; dash.parent = null; if (dash.seq !== 0) dash.seq = Math.min(0, dash.seq || 0); }
     const st = DATA.menus.find(m => m.type === "module" && m.module === "settings");
@@ -444,6 +454,8 @@ const SeMIS = (() => {
     // 비상연락망
     if (!DATA.contacts || typeof DATA.contacts !== "object" || Array.isArray(DATA.contacts)) DATA.contacts = { sections: [] };
     if (!Array.isArray(DATA.contacts.sections)) DATA.contacts.sections = [];
+    if (!DATA.crisis || typeof DATA.crisis !== "object" || Array.isArray(DATA.crisis)) DATA.crisis = { rows: [] };
+    if (!Array.isArray(DATA.crisis.rows)) DATA.crisis.rows = [];
     // 규정 관리 — 배열 보정 + 실모듈 전환(구버전 데이터의 planned 플래그 제거)
     DATA.regulations = (Array.isArray(DATA.regulations) ? DATA.regulations : []).filter(r => r && r.id);
     DATA.regulations.forEach(r => {
@@ -799,7 +811,7 @@ const SeMIS = (() => {
   /* 라우트별 콘텐츠 폭 — wide(2100px) / mid(1560px) / 기본 1180px */
   const VIEW_WIDTH = {
     schedule: "wide", dashboard: "wide", board: "wide",
-    minutes: "mid", contacts: "mid", settings: "mid", vault: "mid",
+    minutes: "mid", contacts: "mid", crisis: "mid", settings: "mid", vault: "mid",
     "reg-sec": "mid", "reg-safety": "mid", "reg-dg": "mid", "scr-status": "mid", "scr-equip": "mid"
   };
   function applyViewWidth(view, route) {

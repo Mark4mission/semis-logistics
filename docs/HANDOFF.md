@@ -6,10 +6,10 @@
 
 | 항목 | 값 |
 |---|---|
-| 현재 버전 | **v1.12.1** (2026-09-23) — 첨부 뷰어(공지·일정 메모·회의록 파일/이미지 미리보기 · 원래 이름 내려받기) |
+| 현재 버전 | **v1.13.0** (2026-09-23) — 위기대응 담당자 화면(협력 · 비상 허브, 비상연락망 바로 아래) |
 | 접속 주소 | https://mark4mission.github.io/semis-logistics/ |
 | 저장소 | GitHub `Mark4mission/semis-logistics` (공개) · Mac `~/SeMIS_Logistics` |
-| 테스트 | `npm test` 226건 전부 통과 (코드·문서에 암호 평문·CARES 키 없음) |
+| 테스트 | `npm test` 252건 전부 통과 (코드·문서에 암호 평문·CARES 키 없음) |
 | 백엔드 | Supabase `mzyuzrxkdcpzxojenwat` — 테이블 `semis_logi_store`, 버킷 `semis-logi-files` |
 
 ## 2. 새 세션 시작
@@ -54,6 +54,7 @@ Claude가 할 일(순서대로):
 | schedule | calendar.js | mgr | 담당자 다중 지정 · 드래그 이동 · 등록 폼 2단(입력/설정) · 12색 |
 | minutes | minutes.js | mgr | 회의록 + QR 참석 서명 |
 | reg-sec · reg-safety · reg-dg | regulations.js | mgr (편집 hq) | 규정 3종 · PDF 뷰어 · 개정 아이디어 노트 |
+| crisis | crisis.js | mgr (편집 hq) | **위기대응 담당자**(v1.13) — 회사 위기대응 조직 11곳 × 27팀 × 임무 96건 × 담당자 78명(2026년 명단, 기준 26년 9월). 우리 팀(인천화물팀) 임무 띠 · 조직 줄 필터 · 검색 · 보기 4종(조직별 · 팀별 · 담당자별 · 매트릭스) · 이름 누르면 그 사람 임무 전체 · 비상연락망 동명 1명이면 전화 버튼 · hq: 엑셀 반영(대조 후) · 행 편집 · 기본 정보 · 원본 엑셀 내려받기 |
 | contacts | contacts.js | mgr (편집 hq) | 비상연락망 · 보고체계 (2026-09-22 SeMIS v2 연락망 69건 이관 — 12섹션 78행) · **보고 체계도 탭**(v1.10: 보안사고 20 · 안전사고 18 · 위험물사고 29행, 미리보기 → 전체 화면 뷰어) |
 | vault | vault.js | hq | 암호 관리 (AES-256-GCM, 5분 자동 잠금, 공용/개인용 — 개인용은 본인 키로만 해독) |
 | settings | modules.js | admin | 메뉴(숨기기 포함) · 사용자 · 담당자 · 데이터(변경 이력 복원) · 저장소 |
@@ -77,7 +78,7 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 
 ## 5. 데이터 · 백엔드
 
-- **SYNC_KEYS(18)**: menus · notices · schedules · assignees · assigneesSeeded · minutes · minuteFolders · levelHistory · safetyBoard · contacts · pwOverrides · userOverrides · customUsers · gcal · chatRooms · vault · regulations · equipment
+- **SYNC_KEYS(19)**: menus · notices · schedules · assignees · assigneesSeeded · minutes · minuteFolders · levelHistory · safetyBoard · contacts · pwOverrides · userOverrides · customUsers · gcal · chatRooms · vault · regulations · equipment · crisis
 - SYNC_KEYS 밖 설정 행: `caresCfg`(CARES Firebase 웹 키 — `SemisSync.fetchKV`로만 읽음, 앱이 쓰지 않음)
 - 신규 컬렉션 추가 시: `freshData()` 기본값 → `normalizeData()` 보정(멱등) → `sync.js` SYNC_KEYS → 테스트 Y01 기대 문자열 갱신
 - **대량 삭제 방어**(sync.js `guardWipe`): 2건 이상 → 0건 push 차단. 정상 전체 삭제는 `SemisSync.confirmWipe(key)`
@@ -108,6 +109,8 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 - **보고 체계도(v1.10)**: 데이터 `contacts.flows[]` = { id, title, short(탭 이름), ver, steps(한 줄에 한 단계), memo, fileUrl, imgUrl, thumbUrl, rows[{grp, role, office, mobile, note}] }. 파일은 `semis-logi-files/contacts/flow-{sec|saf|dg}-2609.{pdf,webp}`(+`-thumb.webp` 640px, 원본 1800px). 반영 직전 값은 `semis_store_history` id 116. 개정판이 오면 화면의 ✎ 편집에서 PDF·이미지만 바꾸면 됨(PDF만 새로 올리면 옛 이미지는 자동으로 떼어 PDF 뷰어로 표시)
 - 체계도 원문 차이: AAP탑재 번호가 안전사고 체계도는 744-5470, 위험물 체계도는 270-5470 — 원문대로 각각 입력. 원문의 7자리 번호는 032 지역번호를 붙여 저장, 해외 번호(TSOC·IIR in SIN)는 +1·+65 국제 형식
 - **링크 묶음(v1.12.2)**: 링크 메뉴에 `open:"group"` 을 주면 묶음, 하위 링크는 `parent` 가 그 링크의 id. 허브를 늘리지 않으려고 링크 안에 한 단계만 둔 구조라 `hubOf` 가 허브가 아닌 값을 돌려준다 — 허브 목록(`hubEntries`)·레일에서 자동으로 빠지고, 빵부스러기·레일 강조는 `hubOfDeep` 로 상위를 따라 올라간다. 라우트 `#/links/<id>`. 사내망(10.31.61.163) 주소는 https 화면에서 iframe 이 막히므로 하위 링크는 새 탭 방식으로 등록했다. SCAN 하위 4건(파트별 박스)은 사람 이름이라 공개 저장소 코드에 넣지 않고 공용 DB `semis_logi_store.menus` 에만 등록
+- **위기대응 담당자(v1.13)**: 데이터 `crisis` = { title, asOf(원문 그대로 "26년 9월"), homeTeam(기본 인천화물팀), notes[], fileUrl, fileName, updatedAt, rows[{ id, div(본부=시트 이름), team, org, task, main, sub }] } — 명단은 공용 DB에만(2026-09-23 SQL로 96행 등록, updated_by `crisis-import`), 원본 엑셀은 `semis-logi-files/crisis/`. 엑셀 읽기는 외부 라이브러리 없이 ZIP(DecompressionStream deflate-raw) + XML을 직접 읽는다: 머리글('팀 · 위기대응 업무 · 담당자(정) · 담당자(부)')을 찾아 그 아래를 `<End>`까지 읽고, 병합 셀은 값을 채우고, '전체' 시트는 합본·나머지 시트 이름은 본부로 쓰며, 합본에 없는 행(2026년 명단의 종합통제팀 5행)은 본부 시트에서 덧붙인다. '주)' 아래 줄은 참고 사항(번호로 시작하면 새 항목). 가로 병합으로 정=부가 같으면 부를 비움. "아래 주) 참조" 같은 비(非)이름 값은 사람 색인에서 빠지고 참고로 이동하는 버튼으로 표시. 반영 전 대조(담당자 변경 · 새 임무 · 빠지는 임무, 키 = 팀|조직|업무). 메뉴는 기존 메뉴 데이터에 없으면 `normalizeData`가 비상연락망 바로 아래에 추가(이후 숨김·이름은 운영자 설정 유지). 비상연락망 머리말에 '위기대응 담당자' 버튼. 통합 검색 항목에 `pick`(이동 전 화면 상태 지정) 지원 추가(search.js `goItem`)
+- 비상연락망 검색줄(`.ct-searchwrap`)의 sticky 위치가 머리글 아래로 숨던 문제를 `top: var(--header-h)`로 함께 고침
 - **목록 필터 잔존 버그(v1.12.3)**: 규정·장비 대장·연락망의 검색어/필터는 모듈 메모리(`let query`)에 있어 화면을 옮겨도 유지되고 새로고침해야 초기화된다. 검색어를 켠 채 새 항목을 등록하면 목록에서 걸러져 "등록했는데 사라졌다(새로고침하면 보임)"로 보였다. → 저장한 항목이 현재 조건에 안 걸리면 조건을 자동 해제하고 토스트로 알린다(규정·장비: 조건 판정 후 해제, 연락망: 검색어 해제). 규정 화면은 검색 중 '검색 결과 N / 전체 M · 검색 해제'를 항상 표시. 새 목록 화면을 만들 때 같은 함정을 주의할 것(vault는 화면을 나가면 잠기며 query가 초기화되어 해당 없음)
 - **pull 경합 방어(v1.12.3)**: `pull()`이 GET 이전의 pending+dirty 를 기억한다. GET 이 도는 동안 push 가 끝나 pending 이 비면 아직 서버에 없는 로컬 변경을 서버 옛 값으로 덮어쓸 수 있었다(같은 증상: 저장한 게 사라졌다가 새로고침하면 보임). 이제 dirty 키는 덮지 않고 id 기준 병합 후 재push
 - **첨부 뷰어(v1.12.1)**: `js/files.js` 가 문서 전체에서 `a.nb-file` · `.nb-file > a` · 본문 이미지(.nb-editor/.notice-html/.ag-memo/.cn-rich) 클릭을 가로채 `<dialog id="fv-viewer">` 로 연다. 저장소 경로는 한글이 `_` 로 바뀌어 있어 이름은 칩 글자(또는 img alt)에서 얻는다. 규정 모듈의 PDF 뷰어는 자체 모달을 그대로 쓴다(변경 없음). DOCX·HWP 등은 미리보기 불가 — 외부 문서 뷰어(Microsoft/Google)로 보내면 내부 문서 주소가 외부로 나가므로 쓰지 않았다
@@ -144,4 +147,5 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 | v1.12.1 | 09-23 | **첨부 뷰어**(js/files.js) — 공지·일정 메모·회의록의 파일 칩(.nb-file)과 본문 이미지를 누르면 열린다. 사진·PDF는 그 자리 미리보기, 그 밖은 형식 안내 + 다운로드/새 탭. 편집 중인 메모에서도 눌러 열리고(그동안은 contenteditable 안이라 링크가 먹지 않았음) 뷰어에서 바로 첨부를 뺄 수 있다. 같은 글의 첨부는 ←/→ 로 이동. 내려받기는 올릴 때 이름 그대로(Supabase `?download=`), `<dialog>`라 모달 위에 겹치고 Esc는 뷰어만 닫는다 |
 | v1.12.2 | 09-23 | **링크 묶음** — 바로가기 하나(홈 'SCAN 폴더')에 하위 링크를 달아, 메뉴는 한 줄로 두고 누르면 카드 화면(`#/links/<id>`)이 열린다. 카드별 열기 방식(새 탭·내부 화면·중첩 묶음) · 사내망 표시 · 묶음 자체 주소는 '전체 열기' · 내부 화면에서 묶음으로 복귀 · 설정에서 3단 트리와 '소속' 선택 · 정합성 자동 보정(하위 있는 링크는 묶음 승격, 상위 잃은 링크는 소속 해제). SCAN 하위 파트별 박스 4건 등록 |
 | v1.12.3 | 09-23 | **목록 필터 잔존 버그 수정** — 규정 자료에서 검색어를 켠 채 새 규정을 등록하면 목록에서 걸러져 보이지 않던 문제. 저장한 항목이 현재 검색·필터에 안 걸리면 조건을 자동 해제하고 알린다(규정·검색장비 대장·비상연락망). 규정 화면은 검색 중 '검색 결과 N / 전체 M · 검색 해제' 표시, 빈 결과도 검색 때문임을 안내. 더불어 `pull()` 경합 방어(push 중 도착한 옛 서버 값이 로컬 변경을 덮지 않게) |
+| v1.13.0 | 09-23 | **위기대응 담당자** — 2026년 에어제타 위기대응 담당자 명단(엑셀 7개 시트)을 별도 화면으로. 우리 팀 임무 띠(짙은 판, 정·부 · 전화) · 요약(조직 11 · 팀 27 · 임무 96 · 담당자 78) · 조직 줄(색 점 · 건수, 누르면 필터) · 검색(이름 · 팀 · 업무, 강조) · 보기 4종: 조직별(팀 묶음 표) · 팀별(본부 묶음) · 담당자별(이름 누르면 이동, 정/부 배지) · 매트릭스(팀 × 조직 건수, 칸 누르면 조직별 필터) · 참고(OCC 번호 원터치) · hq 엑셀 반영(대조 후) · 행 편집 · 기본 정보 · 원본 내려받기 · 모바일 행 카드 · 인쇄 |
 | v1.9.1 | 09-22 | 한글 어절 단위 줄바꿈(전역 keep-all) · 대시보드 하단 시트 칸 수를 시트 폭으로 결정(container query, 1040px↑ 4칸) · 일정 폼 '완료'를 하단 버튼줄로(스크롤 없이 보임) · 오른쪽 설정 패널 압축(1512×825에서 스크롤 없음) · 3D 불러오기 주소에 버전 부여(배포 직후 옛 404 캐시 회피)·실패 사유 기록(`#dash-3d[data-h3d]`) |
