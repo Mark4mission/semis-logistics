@@ -2755,3 +2755,42 @@ a.nb-file, .nb-file > a, .nb-editor img, .notice-html img, .ag-memo img, .cn-ric
   .fv-close { margin-left: auto; }
   .fv-stage { padding: 8px; }
 }
+
+/* ═════════ v1.12.2 링크 묶음 — 바로가기 하나 아래 하위 링크를 카드로 ═════════ */
+.nav-item.nav-set .ext-mark { color: var(--text-3); }
+.nav-item.nav-set.active .ext-mark { color: var(--primary-dark); }
+.menu-tree-item.is-sub { margin-left: 52px; }
+
+.lk-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.lk-card { display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px 14px 14px 13px; text-align: left;
+  background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--primary);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow); color: var(--text);
+  transition: transform .12s var(--ease-out), box-shadow .12s ease, border-color .12s ease; }
+.lk-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); border-color: var(--border-strong);
+  border-left-color: var(--primary-dark); color: var(--text); }
+.lk-card:active { transform: translateY(0); }
+.lk-card:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.lk-ico { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 10px;
+  background: var(--primary-soft); color: var(--primary-dark); font-size: 1.1rem; }
+.lk-emo { line-height: 1; }
+.lk-b { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.lk-t { font-size: .96rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lk-s { font-family: var(--mono); font-size: .72rem; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lk-tag { flex: none; font-size: .68rem; font-weight: 600; padding: 2px 7px; border-radius: 5px;
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text-3); white-space: nowrap; }
+.lk-go { flex: none; display: flex; color: var(--text-3); }
+.lk-card:hover .lk-go { color: var(--primary); }
+.lk-note { display: flex; align-items: center; gap: 7px; margin-top: 14px; font-size: .82rem; color: var(--text-3); }
+.lk-note .ico { flex: none; color: var(--accent-dark); }
+@media (max-width: 520px) {
+  .lk-grid { grid-template-columns: 1fr; gap: 10px; }
+  .lk-card { padding: 12px; gap: 10px; }
+  .lk-ico { width: 34px; height: 34px; }
+  .lk-tag { display: none; }
+  .menu-tree-item.is-sub { margin-left: 28px; }
+}
+@media print {
+  .lk-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .lk-card { box-shadow: none; break-inside: avoid; }
+  .lk-go { display: none; }
+}

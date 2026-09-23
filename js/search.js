@@ -126,11 +126,14 @@ const SemisSearch = (() => {
     } else S().sortedMenus().forEach(mn => {
       if (!mn || mn.type === "group") return;
       if (!(S().navVisible ? S().navVisible(mn) : S().canSee(mn))) return;
+      const up = mn.parent ? S().sortedMenus().find(x => x && x.id === mn.parent && x.type === "link") : null;
+      const way = mn.open === "group" ? "링크 모음 열기" : mn.open === "frame" ? "내부 화면으로 열기" : "새 탭으로 열기";
       const it = mn.type === "module"
         ? { title: mn.label, sub: "메뉴로 이동", icon: mn.icon || "▪", route: mn.module }
-        : { title: mn.label, sub: mn.open === "frame" ? "내부 화면으로 열기" : "새 탭으로 열기",
-            icon: mn.icon || "🔗", text: [mn.label, mn.url],
-            route: mn.open === "frame" ? "embed/" + mn.id : "", url: mn.open === "frame" ? "" : mn.url };
+        : { title: mn.label, sub: (up ? up.label + " · " : "") + way,
+            icon: mn.icon || (mn.open === "group" ? "🗂" : "🔗"), text: [mn.label, mn.url, up ? up.label : ""],
+            route: mn.open === "group" ? "links/" + mn.id : mn.open === "frame" ? "embed/" + mn.id : "",
+            url: (mn.open === "frame" || mn.open === "group") ? "" : mn.url };
       const sc = scoreOf(it, ts);
       if (sc) menuHits.push(Object.assign({ group: "메뉴 · 링크", score: sc }, it));
     });

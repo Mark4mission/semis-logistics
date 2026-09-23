@@ -629,15 +629,17 @@
     const menus = SeMIS.sortedMenus();
     const typeBadge = (m) =>
       m.type === "group" ? '<span class="badge badge-gray mt-type">허브</span>'
-      : m.type === "link" ? (m.open === "frame"
-        ? '<span class="badge badge-blue mt-type">링크 ▣ 내부</span>'
-        : '<span class="badge badge-blue mt-type">링크 ↗</span>')
+      : m.type === "link" ? (m.open === "group"
+        ? '<span class="badge badge-blue mt-type">링크 묶음 ⊞</span>'
+        : m.open === "frame"
+          ? '<span class="badge badge-blue mt-type">링크 ▣ 내부</span>'
+          : '<span class="badge badge-blue mt-type">링크 ↗</span>')
       : (m.planned && !SeMIS.hasModule(m.module))
         ? '<span class="badge badge-amber mt-type">예정 모듈</span>'
         : '<span class="badge badge-green mt-type">모듈</span>';
 
-    const row = (m, isChild) => `
-      <div class="menu-tree-item ${isChild ? "is-child" : ""}${m.hidden ? " is-hidden" : ""}" data-id="${esc(m.id)}">
+    const row = (m, depth) => `
+      <div class="menu-tree-item ${depth ? "is-child" : ""}${depth > 1 ? " is-sub" : ""}${m.hidden ? " is-hidden" : ""}" data-id="${esc(m.id)}">
         <span class="mt-ico">${m.type === "group" ? SeMIS.icon(m.ico, 18) : esc(m.icon || "▪")}</span>
         <span class="mt-label">${esc(m.label)}
           ${m.hidden ? '<span class="badge badge-gray mt-type">숨김</span>' : ""}
@@ -667,10 +669,11 @@
           <button class="btn btn-primary btn-sm" id="btn-add-menu">+ 메뉴 추가</button></div>
         <p class="form-hint" style="margin-bottom:12px"><b>허브</b>는 왼쪽 아이콘 줄에 표시되는 업무 묶음입니다. 허브 없는 항목은 아이콘 줄 아래(관리)에 놓입니다. ▲▼ 순서 · 👁 숨기기(권한과 별개).</p>
         <div id="menu-tree">`;
-    menus.filter(m => !m.parent || m.type === "group").forEach(m => {
-      html += row(m, false);
-      if (m.type === "group") menus.filter(c => c.parent === m.id).forEach(c => { html += row(c, true); });
-    });
+    const walk = (m, depth) => {
+      html += row(m, depth);
+      if (depth < 2) menus.filter(c => c.parent === m.id).forEach(c => walk(c, depth + 1));
+    };
+    menus.filter(m => !m.parent || m.type === "group").forEach(m => walk(m, 0));
     html += `</div></div>`;
     box.innerHTML = html;
 
@@ -687,9 +690,12 @@
     });
     $$("#menu-tree [data-del]").forEach(b => b.onclick = () => {
       const m = D().menus.find(x => x.id === b.dataset.del);
+      const kids = D().menus.filter(x => x.parent === m.id).length;
       const msg = m.type === "group"
         ? `허브 "${m.label}"와 하위 메뉴가 모두 삭제됩니다. 계속하시겠습니까?`
-        : `메뉴 "${m.label}"을(를) 삭제하시겠습니까?`;
+        : kids
+          ? `"${m.label}"와 하위 링크 ${kids}개가 모두 삭제됩니다. 계속하시겠습니까?`
+          : `메뉴 "${m.label}"을(를) 삭제하시겠습니까?`;
       confirmModal(msg, () => {
         D().menus = D().menus.filter(x => x.id !== m.id && x.parent !== m.id);
         SeMIS.save(); SeMIS.renderNav(); renderMenuTab($("#tab-body")); toast("삭제되었습니다.");
@@ -714,6 +720,7 @@
   function menuForm(id) {
     const m = id ? D().menus.find(x => x.id === id) : null;
     const groups = SeMIS.sortedMenus().filter(x => x.type === "group");
+    const sets = SeMIS.sortedMenus().filter(x => x.type === "link" && x.open === "group" && (!m || x.id !== m.id));
     const isCore = m && m.type === "module";
     const type = m ? m.type : "link";
     openModal(`
@@ -737,21 +744,24 @@
       <div class="form-row" id="row-open" ${type !== "link" ? 'style="display:none"' : ""}>
         <label>열기 방식</label>
         <select id="f-open">
-          <option value="tab" ${!m || m.open !== "frame" ? "selected" : ""}>새 탭(새 창)에서 열기 ↗</option>
+          <option value="tab" ${!m || (m.open !== "frame" && m.open !== "group") ? "selected" : ""}>새 탭(새 창)에서 열기 ↗</option>
           <option value="frame" ${m && m.open === "frame" ? "selected" : ""}>시스템 내부 화면에서 열기 ▣</option>
+          <option value="group" ${m && m.open === "group" ? "selected" : ""}>링크 묶음 — 하위 링크 카드 화면 ⊞</option>
         </select>
-        <div class="form-hint">일부 사이트는 내부 열기(iframe)를 차단합니다. 화면이 비어 보이면 새 탭 방식으로 변경하세요.</div></div>
+        <div class="form-hint">일부 사이트는 내부 열기(iframe)를 차단합니다. 화면이 비어 보이면 새 탭 방식으로 변경하세요.<br><b>링크 묶음</b>은 메뉴 한 줄로 두고, 눌렀을 때 하위 링크를 카드로 펼쳐 보여 줍니다. 하위 링크는 아래 '소속'에서 이 묶음을 골라 추가하세요.</div></div>
       <div class="form-row" id="row-route" style="display:none">
         <label>모듈 ID (라우트)</label><input id="f-route" maxlength="30" placeholder="영문 소문자·숫자·하이픈 (예: dg-check)">
         <div class="form-hint">나중에 같은 ID로 모듈 파일이 등록되면 이 메뉴가 실화면으로 연결됩니다.</div></div>
       <div class="form-row" id="row-desc" ${m && m.planned ? "" : 'style="display:none"'}>
         <label>모듈 개요 (준비 중 화면에 표시)</label><textarea id="f-desc" maxlength="400">${esc(m && m.desc ? m.desc : "")}</textarea></div>
       <div class="form-row" id="row-parent" ${type === "group" ? 'style="display:none"' : ""}>
-        <label>소속 허브</label>
+        <label>소속 (허브 · 링크 묶음)</label>
         <select id="f-parent">
           <option value="">(허브 없음 · 아이콘 줄 아래 관리)</option>
           ${groups.map(g => `<option value="${esc(g.id)}" ${m && m.parent === g.id ? "selected" : ""}>${esc(g.label)}</option>`).join("")}
-        </select></div>
+          ${sets.map(g => `<option value="${esc(g.id)}" ${m && m.parent === g.id ? "selected" : ""}>⊞ ${esc(g.label)} (링크 묶음)</option>`).join("")}
+        </select>
+        <div class="form-hint">링크 묶음을 고르면 사이드바에는 나오지 않고 그 묶음 화면 안의 카드로만 표시됩니다.</div></div>
       <div class="form-row" id="row-vis" ${type === "group" ? 'style="display:none"' : ""}>
         <label>접근 권한</label>
         <select id="f-vis">
@@ -795,11 +805,22 @@
       const icon = $("#f-icon") ? $("#f-icon").value.trim() : "";
       if (t === "link") {
         const url = $("#f-url").value.trim();
-        if (!/^https?:\/\/.+/.test(url)) { toast("올바른 웹주소(https://...)를 입력하세요.", true); return; }
-        const open = $("#f-open").value === "frame" ? "frame" : "tab";
-        if (m) applyHidden(Object.assign(m, { label, icon, url, open, parent: $("#f-parent").value || null, vis: $("#f-vis").value, quick: $("#f-quick").checked }));
+        const open = ["frame", "group"].indexOf($("#f-open").value) >= 0 ? $("#f-open").value : "tab";
+        if (open === "group" ? (url && !/^https?:\/\/.+/.test(url)) : !/^https?:\/\/.+/.test(url)) {
+          toast(open === "group" ? "웹주소는 비워 두거나 https:// 형식으로 입력하세요." : "올바른 웹주소(https://...)를 입력하세요.", true); return;
+        }
+        const par = $("#f-parent").value || null;
+        if (m && par === m.id) { toast("자기 자신을 소속으로 지정할 수 없습니다.", true); return; }
+        if (m && open !== "group" && D().menus.some(x => x.parent === m.id)) {
+          toast("하위 링크가 있는 묶음입니다. 하위 링크를 먼저 옮기거나 지우세요.", true); return;
+        }
+        if (open === "group" && par) {
+          const pp = D().menus.find(x => x.id === par);
+          if (pp && pp.type === "link" && pp.parent) { toast("링크 묶음은 두 단계까지만 지원합니다.", true); return; }
+        }
+        if (m) applyHidden(Object.assign(m, { label, icon, url, open, parent: par, vis: $("#f-vis").value, quick: $("#f-quick").checked }));
         else D().menus.push(applyHidden({ id: uid("mn"), seq: nextSeq(), type: "link", label, icon, url, open,
-          parent: $("#f-parent").value || null, vis: $("#f-vis").value, quick: $("#f-quick").checked }));
+          parent: par, vis: $("#f-vis").value, quick: $("#f-quick").checked }));
       } else if (t === "group") {
         const pick = document.querySelector('#modal-box input[name="f-ico"]:checked');
         const ico = pick ? pick.value : "folder";

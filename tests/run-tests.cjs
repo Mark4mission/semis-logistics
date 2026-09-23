@@ -2494,6 +2494,126 @@ function makeFetchStub(server) {
     t("FV09 jsdom 오류 없음(첨부 뷰어 블록)", () => eq(e.errors.length, 0, e.errors.join(" | ")));
   }
 
+  /* ══════════ [LG] v1.12.2 링크 묶음 — 바로가기 한 줄 아래 하위 링크를 카드 화면으로 ══════════ */
+  {
+    const e = makeEnv();
+    const set = { id: "lk-set", seq: 90, type: "link", label: "SCAN 폴더", icon: "🗂",
+      url: "http://10.31.61.163/apps/box/", open: "group", parent: "hub-home", vis: "hq", quick: true };
+    const k1 = { id: "lk-a", seq: 91, type: "link", label: "가 파트 박스", icon: "📦",
+      url: "http://10.31.61.163/apps/box/index.html#a", open: "tab", parent: "lk-set", vis: "hq" };
+    const k2 = { id: "lk-b", seq: 92, type: "link", label: "나 파트 박스",
+      url: "https://example.org/b", open: "frame", parent: "lk-set", vis: "hq" };
+    e.S.data.menus.push(set, k1, k2);
+    e.S.saveSilent();
+    loginAs(e, "hq");
+
+    t("LG01 묶음 판정 · 하위 링크 목록 · 사내망 주소 판정", () => {
+      ok(e.S.isLinkGroup(set)); ok(!e.S.isLinkGroup(k1));
+      eq(e.S.linkChildren("lk-set").map(m => m.id).join(","), "lk-a,lk-b");
+      eq(e.S.linkChildren("lk-a").length, 0);
+      ok(e.S.isIntranet("http://10.31.61.163/apps/box/"), "사설 IP");
+      ok(!e.S.isIntranet("https://example.org/b"));
+      eq(e.S.hostOf("http://10.31.61.163:8080/x"), "10.31.61.163:8080");
+    });
+
+    t("LG02 사이드바 — 묶음은 한 줄(하위 개수 표시), 하위 링크는 허브 목록에 없다", () => {
+      e.S.renderNav();
+      const item = q(e, '.nav-item[data-route="links/lk-set"]');
+      ok(item, "묶음 메뉴 한 줄");
+      ok(item.textContent.includes("SCAN 폴더") && item.textContent.includes("2"), "하위 개수");
+      eq(qa(e, ".nav-item").filter(el => el.textContent.includes("파트 박스")).length, 0, "하위는 숨김");
+      eq(e.S.hubEntries("hub-home").filter(m => m.parent === "lk-set").length, 0);
+      eq(e.S.hubOfDeep(k1), "hub-home", "하위 링크의 실제 허브");
+    });
+
+    t("LG03 #/links/<id> — 하위 링크가 카드로, 열기 방식별 요소", () => {
+      go(e, "links/lk-set");
+      eq(q(e, "#view .page-title").textContent.trim(), "SCAN 폴더");
+      eq(qa(e, "#view .lk-card").length, 2);
+      const a = q(e, '#view a.lk-card[href="' + k1.url + '"]');
+      ok(a && a.getAttribute("target") === "_blank" && /noopener/.test(a.getAttribute("rel")), "새 탭 카드");
+      ok(q(e, '#view button.lk-card[data-go="embed/lk-b"]'), "내부 화면 카드");
+      ok(q(e, '#view .page-head a[href="' + set.url + '"]'), "묶음 자체 주소도 열 수 있다");
+      ok(q(e, "#view .lk-note"), "사내망 안내");
+      eq(q(e, "#view .page-head [data-print-btn]").textContent.trim(), "Print");
+      eq(q(e, "#view").getAttribute("data-hub"), "hub-home", "허브 배너 유지");
+      ok(q(e, "#view").classList.contains("view-mid"));
+      ok(q(e, "#crumbs").textContent.includes("SCAN 폴더"));
+    });
+
+    t("LG04 카드 → 내부 화면, embed 화면에서 묶음으로 복귀", () => {
+      q(e, '#view button.lk-card[data-go="embed/lk-b"]').click();
+      eq(e.w.location.hash, "#/embed/lk-b");
+      e.S.renderView();
+      ok(q(e, "#view iframe.embed-frame"), "내부 프레임");
+      const back = q(e, '#view .page-head [data-go="links/lk-set"]');
+      ok(back && back.textContent.includes("SCAN 폴더"), "묶음 복귀 버튼");
+      ok(q(e, "#crumbs").textContent.includes("SCAN 폴더"), "빵부스러기에 묶음");
+      eq(e.S.printTitle("links/lk-set"), "SCAN 폴더");
+    });
+
+    t("LG05 통합검색 — 묶음은 묶음 화면, 하위 링크는 상위 이름과 함께", () => {
+      const hits = e.w.SemisSearch.search("SCAN 폴더");
+      ok(hits.some(h => h.route === "links/lk-set"), "묶음 → links 라우트");
+      const kid = (e.w.SemisSearch.search("가 파트 박스") || []).find(h => h.title === "가 파트 박스");
+      ok(kid, "하위 링크도 검색된다");
+      ok(String(kid.sub).indexOf("SCAN 폴더") === 0, "상위 묶음 이름: " + kid.sub);
+      eq(kid.url, k1.url);
+    });
+
+    t("LG06 하위 링크 숨김·권한은 상위를 따른다", () => {
+      set.hidden = true; e.S.renderNav();
+      eq(qa(e, '.nav-item[data-route="links/lk-set"]').length, 0);
+      eq(e.S.linkChildren("lk-set").length, 0, "상위가 숨겨지면 하위도 빠진다");
+      delete set.hidden; e.S.renderNav();
+      eq(e.S.linkChildren("lk-set").length, 2);
+    });
+
+    t("LG07 설정 · 메뉴 관리 — 하위 링크는 2단 들여쓰기, 소속 선택에 묶음이 뜬다", () => {
+      loginAs(e, "admin");
+      renderSettings(e, "menus");
+      ok(q(e, '#menu-tree [data-id="lk-set"]'), "묶음 행");
+      const sub = q(e, '#menu-tree [data-id="lk-a"]');
+      ok(sub && sub.classList.contains("is-sub"), "하위 행 들여쓰기");
+      ok(q(e, '#menu-tree [data-id="lk-set"]').textContent.includes("링크 묶음"), "유형 배지");
+      q(e, '#menu-tree [data-edit="lk-a"]').click();
+      const opt = q(e, '#f-parent option[value="lk-set"]');
+      ok(opt && opt.selected, "소속 선택에 묶음");
+      ok(q(e, '#f-open option[value="group"]'), "열기 방식에 링크 묶음");
+      q(e, "#f-cancel").click();
+    });
+
+    t("LG08 하위가 있는 묶음은 열기 방식을 함부로 못 바꾼다", () => {
+      renderSettings(e, "menus");
+      q(e, '#menu-tree [data-edit="lk-set"]').click();
+      q(e, "#f-open").value = "tab";
+      q(e, "#f-save").click();
+      eq(e.S.data.menus.find(x => x.id === "lk-set").open, "group", "변경 거부");
+      ok(q(e, "#f-save"), "모달 유지");
+      q(e, "#f-open").value = "group";
+      q(e, "#f-save").click();
+      eq(e.S.data.menus.find(x => x.id === "lk-set").open, "group");
+      ok(!q(e, "#f-save"), "정상 저장 후 모달 닫힘");
+    });
+
+    t("LG09 정합성 보정 — 하위를 가진 링크는 묶음으로 승격, 없는 상위는 소속 해제", () => {
+      const m = e.S.data.menus.find(x => x.id === "lk-set");
+      m.open = "tab";
+      e.S.data.menus.push({ id: "lk-orphan", seq: 93, type: "link", label: "떠도는 링크",
+        url: "https://example.org/z", open: "tab", parent: "no-such-menu", vis: "all" });
+      e.S.normalizeData();
+      eq(e.S.data.menus.find(x => x.id === "lk-set").open, "group");
+      eq(e.S.data.menus.find(x => x.id === "lk-orphan").parent, null);
+      e.S.data.menus = e.S.data.menus.filter(x => x.id !== "lk-orphan");
+    });
+
+    t("LG10 CSS · jsdom 오류 없음(링크 묶음 블록)", () => {
+      const c = read("css/main.css");
+      ok(c.indexOf(".lk-grid") > 0 && c.indexOf(".lk-card") > 0 && c.indexOf(".menu-tree-item.is-sub") > 0);
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+  }
+
   /* ══════════ [W] 릴리스 위생 ══════════ */
   {
     const html = read("index.html");

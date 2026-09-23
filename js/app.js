@@ -8,7 +8,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.12.1";
+  const VERSION = "1.12.2";
   const APP_NAME = "SeMIS · Logistics";
   const LS_DATA = "semisl:data";
   const LS_UI   = "semisl:ui";
@@ -372,6 +372,13 @@ const SeMIS = (() => {
     DATA.menus.forEach(m => {
       if (m.hidden !== undefined && (m.hidden !== true || !canHide(m))) delete m.hidden;
     });
+    // 링크 묶음 정합성 — 상위가 사라졌으면 소속 해제, 하위를 가진 링크는 묶음으로 승격
+    DATA.menus.forEach(m => {
+      if (!m.parent) return;
+      const p = DATA.menus.find(x => x.id === m.parent);
+      if (!p || (p.type !== "group" && p.type !== "link")) { m.parent = null; return; }
+      if (p.type === "link" && p.open !== "group") p.open = "group";
+    });
 
     DATA.notices = Array.isArray(DATA.notices) ? DATA.notices : [];
     DATA.pwOverrides = DATA.pwOverrides || {};
@@ -718,8 +725,9 @@ const SeMIS = (() => {
   function printTitle(route) {
     const mn = menuForModule(route);
     if (mn) return mn.label;
-    if (String(route).indexOf("embed/") === 0) {
-      const lk = DATA.menus.find(m => m && m.id === route.slice(6));
+    const rt = String(route);
+    if (rt.indexOf("embed/") === 0 || rt.indexOf("links/") === 0) {
+      const lk = DATA.menus.find(m => m && m.id === rt.slice(6));
       if (lk) return lk.label;
     }
     const def = modules[route];
@@ -795,7 +803,8 @@ const SeMIS = (() => {
     "reg-sec": "mid", "reg-safety": "mid", "reg-dg": "mid", "scr-status": "mid", "scr-equip": "mid"
   };
   function applyViewWidth(view, route) {
-    const tier = String(route).indexOf("embed/") === 0 ? "wide" : (VIEW_WIDTH[route] || "");
+    const r = String(route);
+    const tier = r.indexOf("embed/") === 0 ? "wide" : r.indexOf("links/") === 0 ? "mid" : (VIEW_WIDTH[route] || "");
     view.classList.toggle("view-wide", tier === "wide");
     view.classList.toggle("view-mid", tier === "mid");
   }
@@ -836,9 +845,10 @@ const SeMIS = (() => {
      #view 속성은 남으므로 배너가 유지된다. */
   function markHub(view, route) {
     let hub = null;
-    if (route && route !== "dashboard" && String(route).indexOf("embed/") !== 0) {
-      const mn = menuForModule(route);
-      const hid = mn ? hubOf(mn) : null;
+    const rt = String(route || "");
+    if (route && route !== "dashboard" && rt.indexOf("embed/") !== 0) {
+      const mn = rt.indexOf("links/") === 0 ? DATA.menus.find(x => x && x.id === rt.slice(6)) : menuForModule(route);
+      const hid = mn ? hubOfDeep(mn) : null;
       const g = hid ? DATA.menus.find(x => x.id === hid && x.type === "group") : null;
       if (g) hub = g;
     }
@@ -872,6 +882,8 @@ const SeMIS = (() => {
     }
     if (route.indexOf("embed/") === 0) {
       renderEmbedView(view, route.slice(6));
+    } else if (route.indexOf("links/") === 0) {
+      renderLinkGroup(view, route.slice(6));
     } else {
       let def = modules[route];
       const menu = menuForModule(route);
@@ -914,14 +926,77 @@ const SeMIS = (() => {
       modules.dashboard.render(root);
       return;
     }
+    const up = mn.parent ? DATA.menus.find(x => x && x.id === mn.parent && x.type === "link") : null;
     root.innerHTML = `
       <div class="page-head">
         <div class="page-title">${esc(mn.label)}</div>
         <span class="spacer"></span>
+        ${up ? `<button type="button" class="btn btn-ghost btn-sm" data-go="links/${esc(up.id)}">${icon("folder", 16)}<span>${esc(up.label)}</span></button>` : ""}
         <a class="btn btn-ghost btn-sm" href="${esc(mn.url)}" target="_blank" rel="noopener">${icon("external", 16)}<span>새 탭에서 열기</span></a>
       </div>
       <iframe class="embed-frame" src="${esc(mn.url)}" title="${esc(mn.label)}"
         allow="fullscreen" referrerpolicy="no-referrer-when-downgrade"></iframe>`;
+    $$("[data-go]", root).forEach(el => el.onclick = () => navigate(el.dataset.go));
+  }
+
+  /* ═════════════ 링크 묶음 (v1.12.2) ═════════════
+     열기 방식이 "group" 인 링크는 메뉴에서 한 줄만 차지하고, 눌렀을 때 하위 링크를
+     카드로 펼쳐 보여 주는 전용 화면(#/links/<메뉴id>)을 연다. 하위 링크는 parent 가
+     그 링크의 id 인 링크 메뉴들이며, 허브 목록(hubEntries)에는 잡히지 않는다. */
+  const isLinkGroup = (m) => !!m && m.type === "link" && m.open === "group";
+  function linkChildren(id) {
+    return sortedMenus().filter(c => c && c.type === "link" && c.parent === id && navVisible(c));
+  }
+  function hostOf(url) {
+    const m = String(url || "").match(/^https?:\/\/([^/?#]+)/i);
+    return m ? m[1] : "";
+  }
+  /* 사내망(사설망) 주소 — 회사 네트워크에서만 열리고, https 화면에서는 내부 표시가 막힌다 */
+  function isIntranet(url) {
+    const u = String(url || "");
+    if (!u) return false;
+    const h = hostOf(u).split(":")[0];
+    if (/^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(h)) return true;
+    return h === "localhost" || h.indexOf(".") < 0;
+  }
+  function linkCardHTML(m) {
+    const mode = isLinkGroup(m) ? "group" : m.open === "frame" ? "frame" : "tab";
+    const kids = mode === "group" ? linkChildren(m.id).length : 0;
+    const ico = m.icon ? '<span class="lk-emo">' + esc(m.icon) + '</span>'
+      : icon(mode === "group" ? "folder" : "link", 20);
+    const meta = (isIntranet(m.url) ? "사내망 · " : "") + (hostOf(m.url) || "주소 없음");
+    const tag = mode === "group" ? "링크 모음" + (kids ? " " + kids : "") : mode === "frame" ? "내부 화면" : "새 탭";
+    const body = '<span class="lk-ico">' + ico + '</span>' +
+      '<span class="lk-b"><span class="lk-t">' + esc(m.label) + '</span>' +
+      '<span class="lk-s">' + esc(meta) + '</span></span>' +
+      '<span class="lk-tag">' + esc(tag) + '</span>' +
+      '<span class="lk-go">' + icon(mode === "tab" ? "external" : "chevron", 16) + '</span>';
+    if (mode === "tab") return '<a class="lk-card" href="' + esc(m.url) + '" target="_blank" rel="noopener" title="' + esc(m.url) + '">' + body + '</a>';
+    return '<button type="button" class="lk-card" data-go="' + esc((mode === "group" ? "links/" : "embed/") + m.id) + '">' + body + '</button>';
+  }
+  function renderLinkGroup(root, id) {
+    const mn = DATA.menus.find(m => m && m.id === id && m.type === "link");
+    if (!mn || !canSee(mn)) {
+      toast(mn ? "접근 권한이 없습니다." : "메뉴를 찾을 수 없습니다.", true);
+      modules.dashboard.render(root);
+      return;
+    }
+    const kids = linkChildren(mn.id);
+    const actions = mn.url
+      ? '<a class="btn btn-soft btn-sm" href="' + esc(mn.url) + '" target="_blank" rel="noopener">' +
+        icon("external", 16) + '<span>전체 열기</span></a>' : "";
+    root.innerHTML = ui.head({
+      title: mn.label,
+      meta: kids.length ? kids.length + "개 링크" : "",
+      desc: mn.desc || "",
+      actions
+    }) + (kids.length
+      ? '<div class="lk-grid">' + kids.map(linkCardHTML).join("") + '</div>'
+      : '<div class="card">' + ui.empty("등록된 하위 링크가 없습니다.",
+          isAdmin() ? '<button type="button" class="btn btn-soft btn-sm" data-go="settings">메뉴 관리에서 추가</button>' : "") + '</div>')
+      + (kids.some(k => isIntranet(k.url))
+        ? '<p class="lk-note">' + icon("info", 15) + '<span>사내망 주소는 회사 네트워크(사내 PC)에서만 열립니다.</span></p>' : "");
+    $$("[data-go]", root).forEach(el => el.onclick = () => navigate(el.dataset.go));
   }
 
   /* ═════════════ 허브 내비게이션 (v1.8) ═════════════
@@ -949,6 +1024,19 @@ const SeMIS = (() => {
     if (!mn) return null;
     if (mn.parent) return mn.parent;
     if (mn.type === "module" && mn.module === "dashboard") return homeHubId();
+    return null;
+  }
+  /* 링크 묶음 하위 링크는 hubOf 가 상위 '링크'의 id 라서 허브 목록에 잡히지 않는다.
+     빵부스러기·레일 강조용으로만 상위를 따라 올라가 실제 허브(group)를 찾는다. */
+  function hubOfDeep(mn) {
+    let cur = mn;
+    for (let i = 0; cur && i < 6; i++) {
+      const h = hubOf(cur);
+      if (!h) return null;
+      const g = DATA.menus.find(x => x && x.id === h);
+      if (!g || g.type === "group") return h;
+      cur = g;
+    }
     return null;
   }
   function hubEntries(hubId) {
@@ -979,6 +1067,13 @@ const SeMIS = (() => {
 
   function navItemHTML(m) {
     const tag = m.type === "link" ? "a" : "button";
+    if (isLinkGroup(m)) {
+      const kn = linkChildren(m.id).length;
+      return '<button type="button" class="nav-item nav-link nav-set" data-route="links/' + esc(m.id) + '" title="' + esc(m.label) + ' (링크 모음)">' +
+        '<span class="nav-lbl">' + esc(m.label) + '</span>' +
+        (kn ? '<span class="nav-meta">' + kn + '</span>' : "") +
+        '<span class="ext-mark">' + icon("chevron", 15) + '</span></button>';
+    }
     if (m.type === "link" && m.open !== "frame") {
       return '<a class="nav-item nav-link" href="' + esc(m.url) + '" target="_blank" rel="noopener" title="' + esc(m.label) + '">' +
         '<span class="nav-lbl">' + esc(m.label) + '</span><span class="ext-mark">' + icon("external", 15) + '</span></a>';
@@ -1013,9 +1108,9 @@ const SeMIS = (() => {
     if (pins.length) h += '<div class="hub-block hub-pins"><div class="hub-block-t">고정한 메뉴</div>' +
       pins.map(m => {
         const pinIco = '<span class="pin-ico">' + icon("pin", 15) + '</span>';
-        if (m.type === "link" && m.open !== "frame")
+        if (m.type === "link" && m.open !== "frame" && !isLinkGroup(m))
           return '<a class="nav-pin" href="' + esc(m.url) + '" target="_blank" rel="noopener">' + pinIco + '<span>' + esc(m.label) + '</span></a>';
-        const r = m.type === "link" ? "embed/" + m.id : m.module;
+        const r = m.type === "link" ? (isLinkGroup(m) ? "links/" : "embed/") + m.id : m.module;
         return '<button type="button" class="nav-pin" data-go="' + esc(r) + '">' + pinIco + '<span>' + esc(m.label) + '</span></button>';
       }).join("") + '</div>';
     if (planned.length) h += '<div class="hub-block hub-planned' + (open ? " open" : "") + '">' +
@@ -1064,9 +1159,9 @@ const SeMIS = (() => {
       const utils = utilEntries();
       if (util) util.innerHTML = utils.map(m => {
         const ico = icon(m.ico || UTIL_ICO[m.module] || (m.type === "link" ? "link" : "folder"), 21);
-        if (m.type === "link" && m.open !== "frame")
+        if (m.type === "link" && m.open !== "frame" && !isLinkGroup(m))
           return '<a class="rail-btn util" href="' + esc(m.url) + '" target="_blank" rel="noopener" title="' + esc(m.label) + '" aria-label="' + esc(m.label) + '">' + ico + '</a>';
-        const r = m.type === "link" ? "embed/" + m.id : m.module;
+        const r = m.type === "link" ? (isLinkGroup(m) ? "links/" : "embed/") + m.id : m.module;
         return '<button type="button" class="rail-btn util" data-route="' + esc(r) + '" title="' + esc(m.label) + '" aria-label="' + esc(m.label) + '">' + ico + '</button>';
       }).join("");
       if (utils.length) html += '<section class="hub hub-util" data-hub="_util" aria-label="관리"><div class="hub-head"><span class="hub-ico">' +
@@ -1177,7 +1272,9 @@ const SeMIS = (() => {
     const g = hub ? DATA.menus.find(x => x.id === hub) : null;
     const hubName = g ? g.label : (mn && !mn.parent ? "관리" : "");
     const leaf = mn ? mn.label : ((modules[route] && modules[route].title) || "");
+    const up = mn && mn.parent ? DATA.menus.find(x => x && x.id === mn.parent && x.type === "link") : null;
     el.innerHTML = (hubName && hubName !== leaf ? '<span class="cr-hub">' + esc(hubName) + '</span>' + icon("chevron", 14) : "") +
+      (up && up.label !== leaf ? '<span class="cr-hub">' + esc(up.label) + '</span>' + icon("chevron", 14) : "") +
       '<b class="cr-leaf">' + esc(leaf) + '</b>';
   }
   function highlightNav(route) {
@@ -1185,8 +1282,9 @@ const SeMIS = (() => {
     $$(".nav-item").forEach(el => el.classList.toggle("active", el.dataset.route === route));
     $$(".rail-btn.util").forEach(el => el.classList.toggle("active", el.dataset.route === route));
     const role = currentUser && currentUser.role;
-    const mn = route.indexOf("embed/") === 0 ? DATA.menus.find(m => m && m.id === route.slice(6)) : menuForModule(route);
-    const hub = mn ? hubOf(mn) : null;
+    const mn = (route.indexOf("embed/") === 0 || route.indexOf("links/") === 0)
+      ? DATA.menus.find(m => m && m.id === route.slice(6)) : menuForModule(route);
+    const hub = mn ? hubOfDeep(mn) : null;
     $$(".tab-btn[data-route]").forEach(el => {
       el.classList.toggle("active", el.dataset.route === route || (!!el.dataset.hub && el.dataset.hub === hub));
     });
@@ -1427,7 +1525,8 @@ const SeMIS = (() => {
     pwHash, sha256, signCodeFor, signMinuteFor, signCodeFromHash, signUrlFor,
     renderNav, renderHeader, renderSecBadge, renderView, renderPlannedView,
     printView, printTitle, attachPrintBtn, markHub,
-    icon, ui, ICONS, HUB_ICONS, hubOf, hubList, hubEntries, utilEntries, homeHubId, openHub, togglePanel, openSheet,
+    icon, ui, ICONS, HUB_ICONS, hubOf, hubOfDeep, hubList, hubEntries, utilEntries, homeHubId,
+    isLinkGroup, linkChildren, isIntranet, hostOf, openHub, togglePanel, openSheet,
     closeSidebar, closeOverlays, migrateHubs,
     openModal, closeModal, confirmModal, toast,
     $, $$, esc, fmtDate, dsRing, sortedMenus,
