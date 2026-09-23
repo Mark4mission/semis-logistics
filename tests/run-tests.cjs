@@ -3,7 +3,7 @@
    실행: npm test  (jsdom 필요: npm install)
    구성: [C] 코어(해시·계정·메뉴·정규화·권한·라우터·예정 모듈)
          [D] 대시보드·공지·현황판  [S] 시스템 설정  [M] 이식 모듈 스모크(일정·회의록·연락망·검색)
-         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
+         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [IM] 한글 입력 보호  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
    ═══════════════════════════════════════════════════════ */
 "use strict";
 const fs = require("fs");
@@ -2898,6 +2898,42 @@ function makeFetchStub(server) {
       ok(e.Sync.SYNC_KEYS.indexOf("crisis") >= 0);
       const c = read("css/main.css");
       ok(c.indexOf(".cr-home") > 0 && c.indexOf(".cr-line") > 0 && c.indexOf(".cr-mxt") > 0);
+    });
+  }
+
+  /* ══════════ [IM] v1.13.1 한글 입력(IME) 보호 — 검색 입력칸을 다시 만들지 않는다 ══════════ */
+  {
+    const e = makeEnv();
+    t("IM01 ui.searchValue: 끝의 조합 중 자모 제거", () => {
+      const sv = e.S.ui.searchValue;
+      eq(sv("최ㅅ"), "최"); eq(sv("ㅊ"), ""); eq(sv("최상일"), "최상일"); eq(sv(" 안전 "), "안전"); eq(sv("ETD ㅇ"), "ETD");
+    });
+    t("IM02 ui.repaintKeep: 입력칸·조상은 그대로(같은 노드), 나머지는 새것", () => {
+      const box = e.w.document.createElement("div");
+      box.innerHTML = '<p class="a">옛</p><section class="card old"><div class="toolbar"><label><input id="k-q" value="x"></label><b>1</b></div><div class="t">옛표</div></section>';
+      e.w.document.body.appendChild(box);
+      const inp = box.querySelector("#k-q"); inp.value = "최ㅅ";
+      const ok1 = e.S.ui.repaintKeep(box, '<p class="a">새</p><section class="card new"><div class="toolbar"><label><input id="k-q" value="최"></label><b>2</b></div><div class="t">새표</div></section>', inp);
+      ok(ok1); ok(box.querySelector("#k-q") === inp, "같은 입력칸"); eq(inp.value, "최ㅅ", "입력 중인 값 유지");
+      eq(box.querySelector("p").textContent, "새"); eq(box.querySelector("b").textContent, "2"); eq(box.querySelector(".t").textContent, "새표");
+      ok(box.querySelector("section").classList.contains("new") && !box.querySelector("section").classList.contains("old"), "조상 속성 갱신");
+      const ok2 = e.S.ui.repaintKeep(box, "<p>입력칸 없음</p>", inp);
+      eq(ok2, false); ok(!box.querySelector("#k-q"));
+      box.remove();
+    });
+    t("IM03 위기대응 담당자 · 검색장비 검색: 입력해도 입력칸 노드 유지", () => {
+      e.S.data.crisis = { rows: [{ id: "a", div: "", team: "가팀", org: "초동조치센터", task: "첫 보고", main: "갑일", sub: "을일" },
+        { id: "b", div: "", team: "나팀", org: "종합지원센터", task: "지원", main: "병일", sub: "" }] };
+      e.S.saveSilent(); loginAs(e, "hq"); go(e, "crisis");
+      const qi = q(e, "#cr-q"); qi.value = "갑ㅇ"; qi.dispatchEvent(new e.w.Event("input"));
+      ok(q(e, "#cr-q") === qi, "crisis 입력칸 유지"); eq(qa(e, ".cr-line").length, 1);
+      ok(q(e, ".page-head") && q(e, ".cr-home") !== undefined);
+      qi.value = ""; qi.dispatchEvent(new e.w.Event("input"));
+      eq(qa(e, ".cr-line").length, 2); ok(!q(e, ".cr-result"));
+      go(e, "scr-equip");
+      const eqi = q(e, "#eq-q");
+      if (eqi) { eqi.value = "ETDㅇ"; eqi.dispatchEvent(new e.w.Event("input")); ok(q(e, "#eq-q") === eqi, "equipment 입력칸 유지"); }
+      eq(e.errors.length, 0, e.errors.join(" | "));
     });
   }
 

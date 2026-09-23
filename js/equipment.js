@@ -557,11 +557,15 @@
     const liveSearch = (id, set) => {
       const el = $("#" + id, box);
       if (!el) return;
+      // v1.13.1: 입력칸은 그대로 두고 나머지만 다시 그린다 — 다시 만들면 한글 조합이 자모로 풀림
       el.oninput = () => {
-        set(el.value.trim());
-        paint();
-        const n = document.getElementById(id);
-        if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); }
+        set(ui.searchValue(el.value));
+        const b = document.getElementById("eq-body");
+        if (!b || !b.contains(el)) { paint(); return; }
+        ui.repaintKeep(b, tabBody(), el);
+        const m = document.getElementById("eq-meta");
+        if (m) m.textContent = syncText(C().state);
+        wire(b.parentNode);
       };
     };
     liveSearch("eq-q", v => { query = v; });

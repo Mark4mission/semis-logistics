@@ -23,6 +23,7 @@
    - 숫자·날짜·코드만 .mono (IBM Plex Mono). 본문은 기본 글꼴
    - 색은 토큰만: --primary(틸) · --accent(앰버, 강조 1곳) · 상태 배지 badge-green/amber/red/blue/gray
    - 안내 문구는 꼭 필요한 한 줄만 (권한상 자명한 "○○ 전용" 문구 금지)
+   - 검색 입력칸은 절대 다시 만들지 않는다 (한글 조합 깨짐) → ui.searchValue + ui.repaintKeep
    ═══════════════════════════════════════════════════════ */
 "use strict";
 
@@ -35,9 +36,21 @@
   const today = () => new Date().toISOString().slice(0, 10);
   let query = "";
 
+  /* 목록 카드(검색줄 + 표) — 검색어 입력 때는 이 카드만 다시 그린다 */
+  function listHTML() {
+    const rows = list().filter(r => !query || [r.no, r.title].join(" ").toLowerCase().indexOf(query.toLowerCase()) >= 0);
+    return `<div class="toolbar">${ui.search("x-q", "번호 · 제목 검색", query)}</div>
+      ${rows.length ? `<div class="table-wrap"><table class="tbl tbl-cap">
+        <thead><tr><th>번호</th><th>제목</th><th>기한</th><th>상태</th></tr></thead>
+        <tbody>${rows.map(r => `<tr data-id="${esc(r.id)}">
+          <td class="mono">${esc(r.no)}</td><td>${esc(r.title)}</td><td class="mono">${esc(r.due || "-")}</td>
+          <td>${ui.chip(r.status === "closed" ? "종결" : "조치 중", r.status === "closed" ? "green" : "amber")}</td></tr>`).join("")}
+        </tbody></table></div>`
+      : ui.empty(query ? "검색 결과가 없습니다." : "등록된 항목이 없습니다.")}`;
+  }
+
   function render(root) {
     const all = list();
-    const rows = all.filter(r => !query || [r.no, r.title].join(" ").toLowerCase().indexOf(query.toLowerCase()) >= 0);
     const late = all.filter(r => r.due && r.due < today() && r.status !== "closed").length;
     const canWrite = SeMIS.canEdit();
 
@@ -52,19 +65,17 @@
         { label: "조치 중", value: all.filter(r => r.status !== "closed").length },
         { label: "기한 경과", value: late, tone: late ? "bad" : "ok" }
       ]) +
-      `<section class="card">
-        <div class="toolbar">${ui.search("x-q", "번호 · 제목 검색", query)}</div>
-        ${rows.length ? `<div class="table-wrap"><table class="tbl tbl-cap">
-          <thead><tr><th>번호</th><th>제목</th><th>기한</th><th>상태</th></tr></thead>
-          <tbody>${rows.map(r => `<tr data-id="${esc(r.id)}">
-            <td class="mono">${esc(r.no)}</td><td>${esc(r.title)}</td><td class="mono">${esc(r.due || "-")}</td>
-            <td>${ui.chip(r.status === "closed" ? "종결" : "조치 중", r.status === "closed" ? "green" : "amber")}</td></tr>`).join("")}
-          </tbody></table></div>`
-        : ui.empty(query ? "검색 결과가 없습니다." : "등록된 항목이 없습니다.")}
-      </section>`;
+      `<section class="card" id="x-list">${listHTML()}</section>`;
 
+    /* 검색: 화면 전체를 다시 그리면 입력칸이 새로 만들어져 한글 조합이 자모로 풀린다(v1.13.1).
+       ui.searchValue로 조합 중 자모를 떼고, ui.repaintKeep으로 입력칸은 그대로 둔 채 목록만 바꾼다. */
     const q = $("#x-q", root);
-    if (q) q.oninput = () => { query = q.value; render(root); const n = $("#x-q", root); n.focus(); n.setSelectionRange(n.value.length, n.value.length); };
+    if (q) q.oninput = () => {
+      const v = ui.searchValue(q.value);
+      if (v === query) return;
+      query = v;
+      ui.repaintKeep($("#x-list", root), listHTML(), q);
+    };
     const add = $("#x-add", root);
     if (add) add.onclick = () => toast("등록 폼을 연결하세요.");
   }

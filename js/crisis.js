@@ -258,9 +258,21 @@
       return;
     }
     if (org && !rows.some(r => r.org === org)) org = "";
+    const ps = people(rows);
+    root.innerHTML = head + homeBand() +
+      ui.stats([
+        { label: "위기대응 조직", value: orgs(rows).length },
+        { label: "참여 팀", value: teamsOf(rows).length },
+        { label: "임무", value: rows.length },
+        { label: "담당자", value: ps.length, sub: "정 · 부 합산 인원" }
+      ]) + `<div id="cr-main">${mainHTML(canWrite)}</div>` + notesHTML();
+    wire(root, canWrite);
+  }
+  /* 조직 줄 · 검색/보기 줄 · 본문 — 검색어 입력 때는 이 부분만 다시 그린다(입력칸은 유지) */
+  function mainHTML(canWrite) {
+    const rows = all();
     const list = filtered();
     const os = orgs(rows);
-    const ps = people(rows);
     const strip = `<div class="cr-orgs" role="group" aria-label="위기대응 조직">
       <button type="button" class="cr-orgbtn" data-org="" aria-pressed="${!org}"><span class="n">전체</span><span class="c mono">${rows.length}</span></button>
       ${os.map(o => `<button type="button" class="cr-orgbtn" data-org="${esc(o)}" aria-pressed="${org === o}">${dot(o)}<span class="n">${esc(o)}</span><span class="c mono">${rows.filter(r => r.org === o).length}</span></button>`).join("")}
@@ -277,25 +289,20 @@
       : view === "person" ? (personView(list) || `<section class="card">${ui.empty("조건에 맞는 담당자가 없습니다.")}</section>`)
       : view === "matrix" ? matrixView(list)
       : orgView(list, canWrite);
-
-    root.innerHTML = head + homeBand() +
-      ui.stats([
-        { label: "위기대응 조직", value: os.length },
-        { label: "참여 팀", value: teamsOf(rows).length },
-        { label: "임무", value: rows.length },
-        { label: "담당자", value: ps.length, sub: "정 · 부 합산 인원" }
-      ]) + strip + toolbar + `<div id="cr-body" data-mode="${esc(view)}">${body}</div>` + notesHTML();
-    wire(root, canWrite);
+    return strip + toolbar + `<div id="cr-body" data-mode="${esc(view)}">${body}</div>`;
   }
 
   function rerender() { SeMIS.renderView(); }
   function wire(root, canWrite) {
     const qi = $("#cr-q", root);
     if (qi) qi.oninput = () => {
-      query = qi.value;
-      rerender();
-      const n = $("#cr-q");
-      if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); }
+      // 한글 조합 중에도 입력칸을 새로 만들지 않는다 — 조합이 깨져 자모로 풀리는 문제(v1.13.1)
+      const v = ui.searchValue(qi.value);
+      if (v === query) return;
+      query = v;
+      const main = $("#cr-main");
+      if (main) { ui.repaintKeep(main, mainHTML(canWrite), qi); wire(main, canWrite); }
+      else rerender();
     };
     $$(".seg-btn[data-view]", root).forEach(b => b.onclick = () => { view = b.dataset.view; rerender(); });
     $$(".cr-orgbtn", root).forEach(b => b.onclick = () => { org = b.dataset.org === org ? "" : b.dataset.org; rerender(); });

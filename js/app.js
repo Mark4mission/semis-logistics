@@ -8,7 +8,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.13.0";
+  const VERSION = "1.13.1";
   const APP_NAME = "SeMIS · Logistics";
   const LS_DATA = "semisl:data";
   const LS_UI   = "semisl:ui";
@@ -1453,6 +1453,39 @@ const SeMIS = (() => {
       return '<div class="empty-state">' + icon("folder", 26) + '<p>' + esc(text || "등록된 항목이 없습니다.") + '</p>' + (actions || "") + '</div>';
     },
     chip(text, tone) { return '<span class="badge badge-' + esc(tone || "gray") + '">' + esc(text) + '</span>'; },
+    /* v1.13.1 한글 입력(IME) 보호 — 검색어 입력 중 화면을 다시 그리면 입력칸이 새로 만들어져
+       조합 중이던 글자가 "ㅊㅗㅣ" 처럼 자모로 풀린다. 아래 두 조각으로 입력칸은 그대로 두고 나머지만 바꾼다.
+       searchValue(v): 끝에 붙은 조합 중 자모(ㄱ~ㅣ)를 떼고 검색에 쓸 값을 돌려준다("최ㅅ" → "최").
+       repaintKeep(box, html, keepEl): box 내용을 html로 바꾸되 keepEl(입력칸)과 그 조상은 옮기지 않고
+       주변 형제만 새것으로 교체한다. keepEl을 찾을 수 없으면 통째로 바꾸고 false. */
+    searchValue(v) { return String(v == null ? "" : v).replace(/[\u3131-\u318E]+$/, "").trim(); },
+    repaintKeep(box, html, keep) {
+      const whole = () => { box.innerHTML = html; return false; };
+      if (!box || !keep || !keep.id || !box.contains(keep)) return whole();
+      const tmp = document.createElement(box.tagName);
+      tmp.innerHTML = html;
+      const twin = tmp.querySelector("#" + (window.CSS && CSS.escape ? CSS.escape(keep.id) : keep.id));
+      if (!twin || twin.tagName !== keep.tagName) return whole();
+      const oldChain = [], newChain = [];
+      for (let a = keep; a && a !== box; a = a.parentNode) oldChain.unshift(a);
+      for (let a = twin; a && a !== tmp; a = a.parentNode) newChain.unshift(a);
+      if (oldChain.length !== newChain.length) return whole();
+      for (let i = 0; i < oldChain.length; i++) {
+        const oc = oldChain[i], nc = newChain[i], par = oc.parentNode;
+        while (oc.previousSibling) par.removeChild(oc.previousSibling);
+        while (oc.nextSibling) par.removeChild(oc.nextSibling);
+        const before = [], after = [];
+        for (let x = nc.parentNode.firstChild; x && x !== nc; x = x.nextSibling) before.push(x);
+        for (let x = nc.nextSibling; x; x = x.nextSibling) after.push(x);
+        before.forEach(x => par.insertBefore(x, oc));
+        after.forEach(x => par.appendChild(x));
+        if (oc !== keep) {   // 조상 요소의 속성(class 등)은 새것으로 맞춘다
+          Array.from(oc.attributes).forEach(at => { if (!nc.hasAttribute(at.name)) oc.removeAttribute(at.name); });
+          Array.from(nc.attributes).forEach(at => { if (oc.getAttribute(at.name) !== at.value) oc.setAttribute(at.name, at.value); });
+        }
+      }
+      return true;
+    },
     /* 설명 말풍선 — 입력 화면에서 설명 문구를 걷어내고 ⓘ 버튼으로만 보여 준다(마우스 올림·포커스·탭) */
     tip(text, label) {
       return '<button type="button" class="help-tip" data-tip="' + esc(text) + '" aria-label="' + esc(label || "설명") +
