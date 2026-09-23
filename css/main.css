@@ -2707,3 +2707,51 @@ button.dscr-cell { transition: background-color .15s ease; }
   .dash-scr { break-inside: avoid; }
 }
 @media (prefers-reduced-motion: reduce) { .sk { animation: none; } }
+
+/* ═════════ v1.12.1 첨부 뷰어 — 공지·일정 메모·회의록의 파일/이미지 미리보기 ═════════ */
+.fv-viewer { width: 100vw; height: 100vh; height: 100dvh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0;
+  background: #0b1f26; color: #fff; }
+.fv-viewer[open] { display: flex; flex-direction: column; animation: rise .18s var(--ease-out); }
+.fv-viewer::backdrop { background: rgba(6,16,20,.72); }
+.fv-viewer [hidden] { display: none !important; }
+.fv-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 10px 14px; padding-top: max(10px, env(safe-area-inset-top));
+  border-bottom: 1px solid rgba(255,255,255,.1); }
+.fv-t { flex: 1 1 240px; min-width: 0; display: flex; align-items: baseline; gap: 10px; }
+.fv-t b { font-size: 1rem; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fv-ext { font-size: .76rem; color: var(--rail-text); white-space: nowrap; }
+.fv-acts { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.fv-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px; padding: 0 12px;
+  border: 1px solid rgba(255,255,255,.18); border-radius: 10px; background: rgba(255,255,255,.06); color: #fff;
+  font-size: .84rem; font-weight: 600; white-space: nowrap; transition: background-color .12s ease; }
+.fv-btn:hover { background: rgba(255,255,255,.14); color: #fff; }
+.fv-primary { background: var(--primary); border-color: transparent; }
+.fv-primary:hover { background: #12897f; }
+.fv-danger { color: #fca5a5; }
+.fv-danger:hover { background: rgba(252,165,165,.16); color: #fecaca; }
+.fv-ico { width: 38px; padding: 0; }
+.fv-ico[data-fv="prev"] .ico { transform: scaleX(-1); }
+.fv-pos { min-width: 44px; text-align: center; font-size: .8rem; color: var(--rail-text); }
+.fv-stage { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; display: grid;
+  grid-template-rows: minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); place-items: center; padding: 14px; }
+.fv-img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; background: #fff; border-radius: 4px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.45); cursor: zoom-in; }
+.fv-viewer.is-zoom .fv-stage { display: block; }
+.fv-viewer.is-zoom .fv-img { max-width: none; max-height: none; height: auto; margin: 0 auto; cursor: zoom-out; }
+.fv-frame { width: 100%; height: 100%; border: 0; border-radius: 6px; background: #fff; }
+.fv-none { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 40px 24px; text-align: center; color: #dbe8eb; }
+.fv-none .ico { color: #7f9ba3; }
+.fv-none b { font-size: 1rem; font-weight: 600; word-break: break-all; }
+.fv-none span { font-size: .84rem; color: var(--rail-text); }
+html.fv-viewing { overflow: hidden; }
+/* 첨부 칩·본문 이미지는 눌러서 여는 것 — 편집 중에도 같다 */
+a.nb-file, .nb-file > a, .nb-editor img, .notice-html img, .ag-memo img, .cn-rich img { cursor: pointer; }
+.nb-editor img:hover, .notice-html img:hover, .ag-memo img:hover, .cn-rich img:hover { outline: 2px solid var(--primary); outline-offset: 2px; }
+@media (max-width: 560px) {
+  .fv-bar { padding: 8px 10px; padding-top: max(8px, env(safe-area-inset-top)); }
+  .fv-t { flex-basis: 100%; }
+  .fv-acts { width: 100%; }
+  .fv-acts { flex-wrap: wrap; }
+  .fv-btn { padding: 0 10px; font-size: .8rem; }
+  .fv-close { margin-left: auto; }
+  .fv-stage { padding: 8px; }
+}

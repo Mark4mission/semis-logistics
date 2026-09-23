@@ -6,10 +6,10 @@
 
 | 항목 | 값 |
 |---|---|
-| 현재 버전 | **v1.12.0** (2026-09-22) — 화물 보안 허브: 보안검색 현황 · 검색장비 유지관리 (CARES 실시간 연동) + 대시보드 요약 띠 |
+| 현재 버전 | **v1.12.1** (2026-09-23) — 첨부 뷰어(공지·일정 메모·회의록 파일/이미지 미리보기 · 원래 이름 내려받기) |
 | 접속 주소 | https://mark4mission.github.io/semis-logistics/ |
 | 저장소 | GitHub `Mark4mission/semis-logistics` (공개) · Mac `~/SeMIS_Logistics` |
-| 테스트 | `npm test` 217건 전부 통과 (코드·문서에 암호 평문·CARES 키 없음) |
+| 테스트 | `npm test` 226건 전부 통과 (코드·문서에 암호 평문·CARES 키 없음) |
 | 백엔드 | Supabase `mzyuzrxkdcpzxojenwat` — 테이블 `semis_logi_store`, 버킷 `semis-logi-files` |
 
 ## 2. 새 세션 시작
@@ -107,6 +107,7 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 - 인천화물팀 안전보안파트 · 인천화물팀 · 인천공항공사 섹션은 아직 비어 있음(v2에 대응 자료 없음). 체계도 3종의 연락처는 `contacts.flows`에 따로 있음
 - **보고 체계도(v1.10)**: 데이터 `contacts.flows[]` = { id, title, short(탭 이름), ver, steps(한 줄에 한 단계), memo, fileUrl, imgUrl, thumbUrl, rows[{grp, role, office, mobile, note}] }. 파일은 `semis-logi-files/contacts/flow-{sec|saf|dg}-2609.{pdf,webp}`(+`-thumb.webp` 640px, 원본 1800px). 반영 직전 값은 `semis_store_history` id 116. 개정판이 오면 화면의 ✎ 편집에서 PDF·이미지만 바꾸면 됨(PDF만 새로 올리면 옛 이미지는 자동으로 떼어 PDF 뷰어로 표시)
 - 체계도 원문 차이: AAP탑재 번호가 안전사고 체계도는 744-5470, 위험물 체계도는 270-5470 — 원문대로 각각 입력. 원문의 7자리 번호는 032 지역번호를 붙여 저장, 해외 번호(TSOC·IIR in SIN)는 +1·+65 국제 형식
+- **첨부 뷰어(v1.12.1)**: `js/files.js` 가 문서 전체에서 `a.nb-file` · `.nb-file > a` · 본문 이미지(.nb-editor/.notice-html/.ag-memo/.cn-rich) 클릭을 가로채 `<dialog id="fv-viewer">` 로 연다. 저장소 경로는 한글이 `_` 로 바뀌어 있어 이름은 칩 글자(또는 img alt)에서 얻는다. 규정 모듈의 PDF 뷰어는 자체 모달을 그대로 쓴다(변경 없음). DOCX·HWP 등은 미리보기 불가 — 외부 문서 뷰어(Microsoft/Google)로 보내면 내부 문서 주소가 외부로 나가므로 쓰지 않았다
 - **CARES 연동(v1.12)**: `js/cares.js` 한 곳에서 Firestore REST로 **읽기만**(equipments · repairLogs · inspectionLogs · sensorLogs · sensorThresholds — 공개 읽기 규칙). deployLogs · locationStates는 로그인 전용이라 안 씀 → 배치는 `equipments.location`("X-ray n호기" · "환적화물" · "예비"). repairLogs 사진이 data URL이라 목록은 `select` 투영(2.3MB→80KB), 사진은 상세에서 1건만. 읽기량을 줄이려고 세 묶음으로 캐시 — live(장비·센서 12건·오늘 점검, 60초) · repairs(고장·임계치, 10분) · history(45일 점검·정기점검, 15분 — 보안검색 현황·검색장비 화면에 들어올 때만). 자동 새로고침은 5분마다 live만(보안검색 현황·대시보드를 보고 있고 탭이 보일 때). 대시보드는 history를 읽지 않는다. CARES Firebase 요금제(무료 한도 여부)는 확인하지 못했음 — 읽기량이 문제되면 자동 새로고침 주기(screening.js DASH_PARTS 타이머)부터 늘릴 것. 키: 공용 DB `caresCfg` → `localStorage semisl:caresKey`(400/403이면 삭제 후 재조회). CARES 쪽 컬렉션 규칙이 바뀌어 403이 나면 화면은 "CARES 연동 불가"와 재시도 버튼, 대장은 그대로 표시
 - 대장 이관(2026-09-22): SeMIS v2 `semis_store.equipment` 22대(X-ray 3 · ETD 5 · WTMD 4 · HHMD 10, 모두 인천 화물터미널 B동)를 `semis_logi_store.equipment`로 복사(이후 따로 관리). 유지보수 계약 · 비용 · 대금 청구(`equipMaint` · `billing`)는 옮기지 않음 — v2 항공보안파트 업무
 - 2026-09-22 CARES 실데이터에서 확인한 점(화면에 그대로 드러남): X-ray 일일점검이 3일에 한 번 기록 없음(09-15 · 18 · 21 — ETD만 점검, 이행 64%) · 주간 점검 최근 기록 08-27(26일 경과) · X-ray 월간 점검 최근 07-30 · ETD 보호케이스 CO₂(2,000ppm↑)·TVOC(1mg/㎥↑), 입구 HCHO(0.1↑) 기준 초과
@@ -137,4 +138,5 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 | v1.11.0 | 09-22 | 보고 체계도 개정 PDF 반자동 반영 — PDF 올리면 번호·이름 읽기(pdf.js, 로컬 legacy 빌드) → 등록 연락처와 대조 목록(바뀜·새 번호·PDF에 없음·버전) → 고른 항목만 반영(행 강조) · 미리보기 이미지(1800/640 WebP) 자동 생성 · 새 체계도는 PDF만으로 연락처 일괄 입력(같은 이름 휴대전화는 한 행으로) · 해외 번호 +1/+국가번호 보정 |
 | v1.11.1 | 09-22 | 개정 PDF 미리보기 이미지 렌더를 intent "print"로 — 창이 가려진 상태에서 멈추던 문제(requestAnimationFrame 정지) 해소, 20초 안전장치(넘으면 이미지 없이 번호 대조만) |
 | v1.12.0 | 09-22 | 화물 보안 허브 — **화물 보안검색 현황**(scr-status: 검색 라인 배치 · 오늘 일일점검 · 28일 점검 이행 + 주간·월간 경과 · 센서 3곳 × 지표 표 + 결로 교차 판정 · 최근 고장) · **검색장비 유지관리**(scr-equip: v2 equipment.js 이식 — 대장 22대 이관 · 내용연수 · CARES 상태 · 고장·수리 이력/상세(단계 · 원인 · 부품 · 사진) · 가동 분석(정상 가동일 ÷ 기간, ETD 목표 90%, 원인 분류)) · 대시보드 요약 띠(검색 라인 미니 배치도 · 오늘 점검 · 6개월 고장 막대 · 검색 환경) · CARES 연동 계층 js/cares.js(읽기 전용) · 인쇄 규칙(A4 2쪽) · 모바일 행 카드 |
+| v1.12.1 | 09-23 | **첨부 뷰어**(js/files.js) — 공지·일정 메모·회의록의 파일 칩(.nb-file)과 본문 이미지를 누르면 열린다. 사진·PDF는 그 자리 미리보기, 그 밖은 형식 안내 + 다운로드/새 탭. 편집 중인 메모에서도 눌러 열리고(그동안은 contenteditable 안이라 링크가 먹지 않았음) 뷰어에서 바로 첨부를 뺄 수 있다. 같은 글의 첨부는 ←/→ 로 이동. 내려받기는 올릴 때 이름 그대로(Supabase `?download=`), `<dialog>`라 모달 위에 겹치고 Esc는 뷰어만 닫는다 |
 | v1.9.1 | 09-22 | 한글 어절 단위 줄바꿈(전역 keep-all) · 대시보드 하단 시트 칸 수를 시트 폭으로 결정(container query, 1040px↑ 4칸) · 일정 폼 '완료'를 하단 버튼줄로(스크롤 없이 보임) · 오른쪽 설정 패널 압축(1512×825에서 스크롤 없음) · 3D 불러오기 주소에 버전 부여(배포 직후 옛 404 캐시 회피)·실패 사유 기록(`#dash-3d[data-h3d]`) |

@@ -21,6 +21,7 @@ SeMIS_Logistics/
 ├── js/contacts.js      비상연락망 · 보고체계 (섹션 추가/삭제 · 기본 구성 시드)
 ├── js/vault.js         암호 관리 (AES-256-GCM 클라이언트 암호화 저장소)
 ├── js/regulations.js   규정 관리 (항공보안 · 안전관리 · 위험물 DG, PDF 뷰어 · 개정 아이디어 노트)
+├── js/files.js         첨부 뷰어 (파일 칩·본문 이미지 → 미리보기 · 원래 이름으로 내려받기)
 ├── js/search.js        통합 검색 팔레트 (Ctrl+K · /)
 ├── js/cares.js         CARES 연동 계층 (Firestore REST 읽기 전용 · 60초 캐시 · 이슬점/결로 판정 · 가동률 계산)
 ├── js/screening.js     화물 보안검색 현황 (검색 라인 배치 · 일일점검 이행 · 검색 환경 · 최근 고장) + 대시보드 요약 띠

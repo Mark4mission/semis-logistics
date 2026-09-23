@@ -8,7 +8,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.12.0";
+  const VERSION = "1.12.1";
   const APP_NAME = "SeMIS · Logistics";
   const LS_DATA = "semisl:data";
   const LS_UI   = "semisl:ui";
@@ -164,6 +164,8 @@ const SeMIS = (() => {
     xray: '<path d="M3 17.5V8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v9.5"/><path d="M7.5 17.5v-5a4.5 4.5 0 0 1 9 0v5"/><path d="M2 17.5h20"/><path d="M5 20.5h.01M9.5 20.5h.01M14.5 20.5h.01M19 20.5h.01"/>',
     etd: '<rect x="6" y="3" width="12" height="18" rx="2"/><path d="M9.5 6.5h5"/><rect x="9" y="9.5" width="6" height="4.5" rx="1"/><path d="M10.5 17.5h3"/>',
     refresh: '<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/>',
+    down: '<path d="M12 4v11"/><path d="m7.5 11.5 4.5 4.5 4.5-4.5"/><path d="M4.5 19.5h15"/>',
+    trash: '<path d="M4.5 7h15"/><path d="M9.5 7V4.8a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1V7"/><path d="M6.5 7l.8 12.3a1 1 0 0 0 1 .95h7.4a1 1 0 0 0 1-.95L17.5 7"/><path d="M10.5 11v5.5M13.5 11v5.5"/>',
     palette: '<path d="M12 3.5a8.5 8.5 0 1 0 0 17c1.2 0 1.8-.8 1.8-1.7 0-1.3-1-1.5-1-2.6 0-1 .8-1.7 1.8-1.7h2.1a3.8 3.8 0 0 0 3.8-3.8c0-4-3.8-7.2-8.5-7.2z"/><circle cx="7.8" cy="11" r="1"/><circle cx="10.5" cy="7.5" r="1"/><circle cx="15" cy="8" r="1"/>'
   };
   /* 허브 선택용 아이콘 목록 (시스템 설정 → 메뉴 관리) */

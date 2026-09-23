@@ -3,7 +3,7 @@
    실행: npm test  (jsdom 필요: npm install)
    구성: [C] 코어(해시·계정·메뉴·정규화·권한·라우터·예정 모듈)
          [D] 대시보드·공지·현황판  [S] 시스템 설정  [M] 이식 모듈 스모크(일정·회의록·연락망·검색)
-         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
+         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
    ═══════════════════════════════════════════════════════ */
 "use strict";
 const fs = require("fs");
@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/sync.js"];
+const FILES = ["js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/sync.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -2381,6 +2381,117 @@ function makeFetchStub(server) {
       eq(K.allInspections().length, 7, "오늘 점검과 45일 점검 중복 제거");
     });
     t("SC20 jsdom 오류 없음(화물 보안 블록)", () => eq(e.errors.length, 0, e.errors.join(" | ")));
+  }
+
+  /* ══════════ [FV] v1.12.1 첨부 뷰어 — 파일 칩·이미지 누르면 미리보기/내려받기 ══════════ */
+  {
+    const e = makeEnv();
+    const F = e.w.SemisFiles;
+    const SUPA = "https://mzyuzrxkdcpzxojenwat.supabase.co/storage/v1/object/public/semis-logi-files/schedules/abc______brief.docx";
+    loginAs(e, "hq");
+    const viewer = () => q(e, "#fv-viewer");
+    const openAttr = () => { const d = viewer(); return !!(d && (d.open || d.hasAttribute("open"))); };
+
+    t("FV01 형식 판정 · 이름 정리(앞머리 📎 제거 · alt · 주소 폴백)", () => {
+      eq(F.kindOf(SUPA, "회의자료.docx"), "file");
+      eq(F.kindOf("https://x/y/a.PDF", "규정.pdf"), "pdf");
+      eq(F.kindOf("https://x/y/a.webp", "체계도.webp"), "image");
+      eq(F.kindOf("data:image/png;base64,AA", ""), "image");
+      eq(F.nameFromUrl("https://x/y/%EA%B5%AD%EC%A0%95%EC%9B%90.docx"), "국정원.docx");
+      const a = e.w.document.createElement("a");
+      a.className = "nb-file"; a.href = SUPA; a.textContent = "📎 국정원대테러 회의_brief.docx";
+      eq(F.nameOf(a), "국정원대테러 회의_brief.docx");
+      const img = e.w.document.createElement("img");
+      img.src = SUPA; img.alt = "";
+      eq(F.nameOf(img), "abc______brief.docx", "alt 없으면 주소에서");
+    });
+    t("FV02 내려받기 주소: Supabase 공개 URL은 원래 이름으로(?download=) · 그 밖은 blob 경로", () => {
+      eq(F.downloadHref(SUPA, "국정원 회의.docx"),
+        SUPA + "?download=" + encodeURIComponent("국정원 회의.docx"));
+      eq(F.downloadHref("https://other.test/a.docx", "a.docx"), "", "다른 호스트는 blob 으로");
+      eq(F.downloadHref(SUPA, ""), SUPA + "?download=" + encodeURIComponent("abc______brief.docx"));
+    });
+    t("FV03 편집 중인 메모의 파일 칩을 누르면 뷰어(기본 이동 차단) · 첨부 삭제 버튼 노출", () => {
+      go(e, "schedule");
+      e.S.openModal('<div id="f-memo" class="nb-editor" contenteditable="true">' +
+        '<a class="nb-file" href="' + SUPA + '" target="_blank">📎 회의자료.docx</a>&nbsp;' +
+        '<img src="https://files.test/photo.png" alt="현장사진.png">' +
+        '<a class="nb-file" href="https://files.test/규정.pdf" target="_blank">📎 규정.pdf</a></div>');
+      const chip = q(e, "#f-memo a.nb-file");
+      const ev = new e.w.MouseEvent("click", { bubbles: true, cancelable: true });
+      chip.dispatchEvent(ev);
+      ok(ev.defaultPrevented, "링크 기본 이동 차단");
+      ok(openAttr(), "뷰어 열림");
+      eq(q(e, "#fv-title").textContent, "회의자료.docx");
+      eq(q(e, "#fv-viewer .fv-ext").textContent, "DOCX");
+      eq(q(e, "#fv-viewer .fv-pos").textContent, "1 / 3", "같은 글의 첨부 3개");
+      eq(q(e, "#fv-viewer [data-fv=del]").hidden, false, "편집 중이면 삭제 가능");
+      eq(q(e, "#fv-viewer [data-fv-stage]").dataset.kind, "file");
+      ok(q(e, "#fv-viewer .fv-none"), "미리보기 미지원 안내");
+      eq(q(e, '#fv-viewer [data-fv="tab"]').getAttribute("href"), SUPA);
+    });
+    t("FV04 ← → 로 다음 첨부 — 이미지는 미리보기, PDF는 프레임", () => {
+      q(e, "#fv-viewer [data-fv=next]").click();
+      eq(q(e, "#fv-viewer [data-fv-stage]").dataset.kind, "image");
+      eq(q(e, "#fv-title").textContent, "현장사진.png");
+      ok(q(e, "#fv-viewer img.fv-img"));
+      q(e, "#fv-viewer [data-fv=next]").click();
+      eq(q(e, "#fv-viewer [data-fv-stage]").dataset.kind, "pdf");
+      ok(q(e, "#fv-viewer iframe.fv-frame"));
+      eq(q(e, "#fv-viewer .fv-pos").textContent, "3 / 3");
+      q(e, "#fv-viewer [data-fv=next]").click();
+      eq(q(e, "#fv-viewer .fv-pos").textContent, "1 / 3", "끝에서 처음으로");
+    });
+    t("FV05 뷰어에서 첨부 빼기 — 편집기에서 칩과 뒤따르는 빈칸까지 제거", () => {
+      eq(qa(e, "#f-memo a.nb-file").length, 2);
+      q(e, "#fv-viewer [data-fv=del]").click();
+      eq(qa(e, "#f-memo a.nb-file").length, 1, "칩 제거");
+      eq(q(e, "#f-memo").innerHTML.indexOf(" "), -1, "뒤 빈칸도 정리");
+      eq(q(e, "#fv-viewer .fv-pos").textContent, "1 / 2");
+      q(e, "#fv-viewer [data-fv=close]").click();
+      ok(!openAttr(), "닫힘");
+      ok(q(e, "#f-memo"), "뒤에 열려 있던 모달은 그대로");
+      e.S.closeModal();
+    });
+    t("FV06 Esc 는 뷰어만 닫는다(뒤 모달 유지)", () => {
+      e.S.openModal('<div class="notice-html"><a class="nb-file" href="' + SUPA + '">📎 회의자료.docx</a></div>');
+      q(e, "#modal-box a.nb-file").dispatchEvent(new e.w.MouseEvent("click", { bubbles: true, cancelable: true }));
+      ok(openAttr());
+      eq(q(e, "#fv-viewer [data-fv=del]").hidden, true, "읽기 화면에서는 삭제 없음");
+      let leaked = 0;
+      const onKey = () => { leaked++; };
+      e.w.document.addEventListener("keydown", onKey);
+      q(e, "#fv-viewer").dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+      e.w.document.removeEventListener("keydown", onKey);
+      eq(leaked, 0, "Esc 가 문서까지 올라가지 않음");
+      e.S.closeModal();
+    });
+    t("FV07 읽기 화면(공지·일정 상세)의 첨부도 같은 뷰어로", () => {
+      go(e, "dashboard");
+      e.S.data.notices = [{ id: "n-fv", title: "첨부 시험", body: "본문", author: "시스템", pinned: false,
+        created: new Date().toISOString(), files: [{ name: "안내문.pdf", url: "https://files.test/안내문.pdf" }] }];
+      e.S.saveSilent(); e.S.renderView();
+      const link = q(e, "#notice-list .nb-file");
+      ok(link, "공지 첨부 칩");
+      link.dispatchEvent(new e.w.MouseEvent("click", { bubbles: true, cancelable: true }));
+      ok(openAttr());
+      eq(q(e, "#fv-title").textContent, "안내문.pdf");
+      eq(q(e, "#fv-viewer [data-fv-stage]").dataset.kind, "pdf");
+      q(e, "#fv-viewer [data-fv=close]").click();
+    });
+    t("FV08 뷰어가 본문을 고치지 않음 · 모달 위에 겹치는 dialog · index.html 로드", () => {
+      e.S.openModal('<div id="f-memo" class="nb-editor" contenteditable="true"><a class="nb-file" href="' + SUPA + '">📎 회의자료.docx</a></div>');
+      const before = q(e, "#f-memo").innerHTML;
+      q(e, "#f-memo a.nb-file").dispatchEvent(new e.w.MouseEvent("click", { bubbles: true, cancelable: true }));
+      eq(q(e, "#f-memo").innerHTML, before, "열기만으로는 본문 변화 없음");
+      eq(viewer().tagName, "DIALOG", "모달 위에 겹치도록 dialog");
+      q(e, "#fv-viewer [data-fv=close]").click();
+      e.S.closeModal();
+      ok(read("index.html").indexOf("js/files.js?v=") > 0);
+      const src = read("js/files.js");
+      ok(src.indexOf("esc(c.url)") > 0 && src.indexOf("esc(c.name)") > 0, "주소·이름은 esc 로 넣는다");
+    });
+    t("FV09 jsdom 오류 없음(첨부 뷰어 블록)", () => eq(e.errors.length, 0, e.errors.join(" | ")));
   }
 
   /* ══════════ [W] 릴리스 위생 ══════════ */
