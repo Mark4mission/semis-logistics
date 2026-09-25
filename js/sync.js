@@ -143,10 +143,47 @@
   }
 
   /* ─── 로그인 · 확인 · 로그아웃 ─── */
+  /* ─── 작업증명(PoW) — js/pow.js (v1.16) ───
+     로그인마다 서버가 서명한 문제(2분 유효·1회용)를 풀어 첨부한다. 로그인 창이 떠 있는 동안 미리 푼다. */
+  const POW = () => (typeof window !== "undefined" && window.SemisPow) || null;
+  let powPre = null;              // { exp, promise }
+  async function challenge() {
+    const d = await rpc("semis_logi_challenge", {});
+    if (!d || !d.ok || !d.c) throw new Error("challenge");
+    const exp = Number(String(d.c).split(".")[1]) * 1000 || (Date.now() + 110000);
+    return { c: String(d.c), d: Number(d.d) || 16, exp };
+  }
+  function solveOne(ch) {
+    const P = POW();
+    if (!P) return Promise.reject(new Error("pow"));
+    return P.solve(ch.c, ch.d).then(x => ({ c: ch.c, x: String(x) }));
+  }
+  function prepare() {
+    if (typeof fetch === "undefined") return null;
+    if (powPre && powPre.exp - 20000 > Date.now()) return powPre.promise;
+    const box = { exp: Date.now() + 100000, promise: null };
+    box.promise = challenge().then(ch => { box.exp = ch.exp; return solveOne(ch); });
+    box.promise.catch(() => { if (powPre === box) powPre = null; });
+    powPre = box;
+    return box.promise;
+  }
+  async function takeProof() {
+    const cur = powPre;
+    powPre = null;
+    if (cur && cur.exp - 15000 > Date.now()) {
+      try { return await cur.promise; } catch (e) { /* 새로 푼다 */ }
+    }
+    return solveOne(await challenge());
+  }
   async function login(pw) {
     const ua = (typeof navigator !== "undefined" && navigator.userAgent) ? String(navigator.userAgent).slice(0, 200) : "";
     token = "";
-    const d = await rpc("semis_logi_login", { p_pw: String(pw == null ? "" : pw), p_ua: ua });
+    let d = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const proof = await takeProof();
+      d = await rpc("semis_logi_login", { p_pw: String(pw == null ? "" : pw), p_ua: ua, p_pow: proof });
+      if (!(d && /^pow/.test(String(d.error || "")))) break;        // 문제 만료·재사용 — 한 번 더
+    }
     if (d && d.ok && d.token) {
       token = String(d.token);
       ss.set(SS_TOKEN, token);
@@ -154,6 +191,7 @@
       lostFired = false;
     } else {
       clearAuth();
+      prepare();                                                      // 다음 시도용
     }
     return d || { ok: false, error: "invalid" };
   }
@@ -591,7 +629,7 @@
     confirmWipe, guardEvents, guardWipe, GUARD_MIN,
     dirtyKeys, pendingKeys, snapAll,
     rpc, canRead, canWrite, readKeys, writeKeys,
-    auth: { login, whoami, logout, check: checkSession,
+    auth: { login, whoami, logout, check: checkSession, prepare,
             token: () => token, session: () => sess, clear: clearAuth,
             _set(t, d) { token = t || ""; if (t) ss.set(SS_TOKEN, token); if (d) setSession(d); lostFired = false; } },
     get status() { return status; },

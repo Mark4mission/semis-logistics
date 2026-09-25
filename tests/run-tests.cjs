@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/crisis.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/fileauth.js"];
+const FILES = ["js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/crisis.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -124,7 +124,15 @@ function makeServer(opts = {}) {
   }
   const isAdmin = (o) => rankOf(sessOf(o)) >= 4;
   const rpc = {
+    semis_logi_challenge() { return { ok: true, c: "0".repeat(32) + "." + (Math.floor(Date.now() / 1000) + 120) + ".1.sig" + (++seq), d: 1 }; },
     semis_logi_login(b) {
+      /* v1.16 작업증명: 서명된 문제 · 해답 · 1회용 */
+      if (!b.p_pow || !b.p_pow.c || b.p_pow.x == null) return { ok: false, error: "pow" };
+      srv.powSeen = srv.powSeen || {};
+      if (srv.powSeen[b.p_pow.c]) return { ok: false, error: "pow_used" };
+      srv.powSeen[b.p_pow.c] = true;
+      if (srv.powFailOnce) { srv.powFailOnce = false; return { ok: false, error: "pow_expired" }; }
+      if (srv.signPaused && /^\d{6}$/.test(String(b.p_pw))) return { ok: false, error: "sign_paused", wait: 15 };
       if (srv.fails >= 20) return { ok: false, error: "locked", wait: 15 };
       const a = srv.accounts.find(x => x.pw === b.p_pw && !x.disabled);
       if (a) { const t = newTok(); srv.sessions[t] = { acc: a.id, kind: "user" }; srv.audit.push({ action: "login", actor: a.id }); return Object.assign({ ok: true, token: t }, payload(srv.sessions[t])); }
@@ -190,7 +198,7 @@ function makeServer(opts = {}) {
       return { ok: true, events: srv.audit.map(e => ({ at: "2026-09-25T01:00:00Z", actor: e.actor || null, action: e.action, detail: null, ip: "1.2.3.4" })),
         sessions: Object.keys(srv.sessions).map(t => ({ account: (srv.accounts.find(a => a.id === srv.sessions[t].acc) || {}).login || "signer",
           name: "", kind: srv.sessions[t].kind, created: "2026-09-25T01:00:00Z", lastSeen: "2026-09-25T01:00:00Z", ip: "1.2.3.4", current: t === tokOf(o) })),
-        locked: [] };
+        locked: [], stats: { fail15: srv.fails, fail60: srv.fails, signFail60: 0, powBits: srv.powBits || 18, powBase: 18, signPaused: !!srv.signPaused } };
     },
     semis_logi_end_sessions(b, o) {
       if (!isAdmin(o)) return { ok: false, error: "forbidden" };
@@ -847,6 +855,8 @@ function makeServer(opts = {}) {
       await tick(40);
       ok(q(e, "#sec-sessions").textContent.includes("이 화면"), "현재 세션 표시");
       ok(q(e, "#sec-events").textContent.includes("로그인"), "기록");
+      const st = q(e, "#sec-stats").textContent;
+      ok(/로그인 실패 \(15분/.test(st) && /접속 확인 난이도/.test(st) && /회의 서명 코드/.test(st), "자동 접속 방어 통계(v1.16)");
       qa(e, ".tab").find(x => x.dataset.tab === "users").click();
       await tick(30);
     });
@@ -1359,7 +1369,7 @@ function makeServer(opts = {}) {
     t("Y02 SYNC_KEYS는 모두 freshData 컬렉션에 존재", () => Sync.SYNC_KEYS.forEach(k => ok(e.S.data[k] !== undefined, k)));
     await ta("Y03 로그인 전에는 서버를 부르지 않음 · 로그인 후 초기 pull + 쓰기 권한 있는 컬렉션만 시드", async () => {
       await Sync.start();
-      eq(server.calls.length, 0, "세션 없음 → 호출 없음");
+      eq(server.calls.filter(c => !/semis_logi_challenge/.test(c.url)).length, 0, "세션 없음 → 데이터 호출 없음(작업증명 문제만 미리 받음)");
       await server.loginAs(e, "hq-pw-2222");
       await Sync.start();
       ok(server.calls.some(c => c.url.indexOf("/rest/v1/semis_logi_store") >= 0 && c.token.length === 64));
@@ -3459,7 +3469,7 @@ function makeServer(opts = {}) {
     });
     t("SEC08 CSP · 인라인 스크립트 없음 · 시작 코드는 main.js(마지막)", () => {
       const html = read("index.html");
-      ok(/http-equiv="Content-Security-Policy" content="script-src 'self' https:\/\/cdn\.jsdelivr\.net\/npm\/@supabase\/supabase-js@2\/dist\/umd\/supabase\.min\.js; object-src 'none'; base-uri 'self'/.test(html), "CSP");
+      ok(/http-equiv="Content-Security-Policy" content="script-src 'self' https:\/\/cdn\.jsdelivr\.net\/npm\/@supabase\/supabase-js@2\/dist\/umd\/supabase\.min\.js; worker-src 'self'; object-src 'none'; base-uri 'self'/.test(html), "CSP");
       ok(!/<script>(?!<\/script>)/.test(html) && !/<script(?![^>]*\bsrc=)[^>]*>/.test(html), "인라인 스크립트");
       ok(!/\son[a-z]+="/i.test(html.replace(/<meta[^>]*>/g, "")), "인라인 이벤트 속성(html)");
       FILES.forEach(f => ok(!/\son(click|change|error|load|input|submit|mouse\w+|key\w+)=\\?["']/.test(read(f)), f + ": 인라인 이벤트"));
@@ -3493,6 +3503,76 @@ function makeServer(opts = {}) {
     });
     t("SEC12 jsdom 오류 없음(보안 블록)", () => eq(e.errors.length, 0, e.errors.join(" | ")));
     FA.stop(); e.Sync.stop();
+  }
+
+
+  /* ══════════ [PW] 로그인 자동공격 방어 — 작업증명 (v1.16) ══════════ */
+  {
+    const until = async (fn, n) => { for (let i = 0; i < (n || 300) && !fn(); i++) await tick(5); return fn(); };
+    const nodeHash = (x) => require("crypto").createHash("sha256").update(x).digest("hex");
+    t("PW01 작업증명 계산기 — sha256 표준 일치 · 64바이트 넘는 문제 · 해답 검증", () => {
+      const e = makeEnv({ boot: false });
+      const P = e.w.SemisPow;
+      ["", "abc", "한글 문제", "x".repeat(200)].forEach(v => eq(P.sha256hex(v), nodeHash(v), "sha256 " + v.slice(0, 6)));
+      const c = "0123456789abcdef0123456789abcdef." + (Math.floor(Date.now() / 1000) + 120) + ".12.0123456789abcdef0123456789abcdef";
+      const Q = P.prep(c);
+      const x = P.scan(Q, 12, 0, 2000000);
+      ok(x >= 0, "해답");
+      const h = nodeHash(c + ":" + x);
+      ok(/^000/.test(h), "앞 12비트 0: " + h.slice(0, 6));
+      ok(P.ok(Q, x, 12) && !P.ok(Q, x, 32), "ok() 판정");
+      e.w.close();
+    });
+    t("PW02 파일 등록 · CSP worker-src · pow.js 는 v2 와 같은 계산기", () => {
+      const html = read("index.html");
+      ok(/<script src="js\/pow\.js\?v=[\d.]+"><\/script>/.test(html), "index.html pow.js");
+      ok(html.indexOf("js/pow.js") > html.indexOf("js/sync.js"), "sync.js 다음");
+      ok(/worker-src 'self'/.test(html), "worker-src");
+      ok(read("js/sync.js").indexOf("semis_logi_challenge") > 0 && read("js/sync.js").indexOf("p_pow") > 0, "로그인에 해답 첨부");
+      const sql = read("tools/sql/semis-logi-pow.sql");
+      ok(/pow_check\(p_pow\)/.test(sql) && /pow_used/.test(sql) && /sign_paused/.test(sql), "서버 SQL");
+      ok(!/'secret', '[0-9a-f]{16,}'/.test(sql), "비밀값은 서버에서 생성(코드에 없음)");
+    });
+    await ta("PW03 로그인 창이 뜨면 문제를 미리 받아 풀고, 로그인에 해답을 붙인다(1회용)", async () => {
+      const server = makeServer();
+      const e = makeEnv({ fetch: server.fetch });
+      await until(() => server.calls.some(c => /semis_logi_challenge/.test(c.url)));
+      ok(server.calls.some(c => /semis_logi_challenge/.test(c.url)), "로그인 창에서 미리 문제 받음");
+      submitLogin(e, "mgr-pw-3333");
+      await until(() => e.S.user);
+      ok(e.S.user && e.S.user.origId === "cargo-mgr", "로그인");
+      const lg = server.calls.filter(c => /semis_logi_login/.test(c.url));
+      eq(lg.length, 1, "한 번에 성공");
+      ok(lg[0].body.p_pow && /^\d+$/.test(String(lg[0].body.p_pow.x)), "해답 첨부");
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("PW04 문제 만료·재사용이면 새 문제로 한 번 더", async () => {
+      const server = makeServer();
+      server.powFailOnce = true;
+      const e = makeEnv({ fetch: server.fetch });
+      submitLogin(e, "hq-pw-2222");
+      await until(() => e.S.user);
+      ok(e.S.user && e.S.user.origId === "cargo-ss", "재시도 후 로그인");
+      const lg = server.calls.filter(c => /semis_logi_login/.test(c.url));
+      eq(lg.length, 2, "로그인 요청 2회");
+      ok(lg[0].body.p_pow.c !== lg[1].body.p_pow.c, "두 번째는 새 문제");
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("PW05 IP 제한 · 서명 코드 일시 중지 안내", async () => {
+      const s1 = makeServer(); s1.fails = 20;
+      const e = makeEnv({ fetch: s1.fetch });
+      submitLogin(e, "whatever-pw-1");
+      await until(() => /제한/.test(q(e, "#login-error").textContent));
+      ok(/15분 동안 제한/.test(q(e, "#login-error").textContent), "IP 제한");
+      e.w.close();
+      const s2 = makeServer(); s2.signPaused = true;
+      const e2 = makeEnv({ fetch: s2.fetch });
+      submitLogin(e2, "123456");
+      await until(() => /중지/.test(q(e2, "#login-error").textContent));
+      ok(/서명 코드 접속이 잠시 중지/.test(q(e2, "#login-error").textContent), "서명 코드 중지");
+      ok(!e2.S.user);
+      e2.w.close();
+    });
   }
 
   /* ══════════ [W] 릴리스 위생 ══════════ */

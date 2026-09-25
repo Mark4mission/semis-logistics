@@ -1070,16 +1070,20 @@
     };
   }
 
-  /* ═════════════ 보안 — 접속 중인 세션 · 접속 기록 (시스템관리자) ═════════════ */
+  /* ═════════════ 보안 — 자동 접속 방어 · 접속 중인 세션 · 접속 기록 (시스템관리자, v1.16) ═════════════ */
   const SEC_ACTION = {
     login: "로그인", login_fail: "로그인 실패", login_locked: "로그인 제한", logout: "로그아웃",
-    sign_open: "회의 서명 접속", sign: "회의 서명", sign_info: "서명 정보 수정",
+    sign_open: "회의 서명 접속", sign: "회의 서명", sign_info: "서명 정보 수정", sign_paused: "서명 코드 일시 중지",
     pw_change: "암호 변경", user_create: "계정 추가", user_update: "계정 수정", user_delete: "계정 삭제",
     sessions_end: "접속 일괄 종료"
   };
-  const SEC_TONE = { login_fail: "badge-amber", login_locked: "badge-red", pw_change: "badge-blue", user_delete: "badge-red", sessions_end: "badge-red" };
+  const SEC_TONE = { login_fail: "badge-amber", login_locked: "badge-red", sign_paused: "badge-red", pw_change: "badge-blue", user_delete: "badge-red", sessions_end: "badge-red" };
   function renderSecurityTab(box) {
     box.innerHTML = `
+      <div class="card">
+        <div class="card-title">자동 접속 방어</div>
+        <div id="sec-stats" class="form-hint">불러오는 중…</div>
+      </div>
       <div class="card">
         <div class="card-title">접속 중 <span class="spacer"></span>
           <button class="btn btn-ghost btn-sm" id="sec-reload">↻ 새로고침</button>
@@ -1088,7 +1092,6 @@
       </div>
       <div class="card">
         <div class="card-title">접속 기록</div>
-        <p class="form-hint" style="margin-bottom:10px">같은 IP에서 15분 안에 20번 틀리면 15분 동안 로그인이 막힙니다.</p>
         <div id="sec-events" class="form-hint">불러오는 중…</div>
       </div>`;
     $("#sec-reload").onclick = () => loadSecurity();
@@ -1101,11 +1104,19 @@
   }
   async function loadSecurity() {
     const d = await callAdmin("semis_logi_security", { p_limit: 150 });
-    const sb = $("#sec-sessions"), eb = $("#sec-events");
-    if (!sb || !eb) return;
-    if (!d.ok) { sb.textContent = userErr(d); eb.textContent = ""; return; }
-    const sessions = d.sessions || [], events = d.events || [], locked = d.locked || [];
-    sb.className = ""; eb.className = "";
+    const sb = $("#sec-sessions"), eb = $("#sec-events"), tb = $("#sec-stats");
+    if (!sb || !eb || !tb) return;
+    if (!d.ok) { tb.textContent = userErr(d); sb.textContent = ""; eb.textContent = ""; return; }
+    const sessions = d.sessions || [], events = d.events || [], locked = d.locked || [], st = d.stats || {};
+    sb.className = ""; eb.className = ""; tb.className = "";
+    const raised = Number(st.powBits) > Number(st.powBase);
+    tb.innerHTML = SeMIS.ui.stats([
+      { label: "로그인 실패 (15분 · 전체)", value: String(st.fail15 || 0), tone: Number(st.fail15) >= 50 ? "bad" : "muted" },
+      { label: "로그인 실패 (1시간)", value: String(st.fail60 || 0), tone: "muted" },
+      { label: "접속 확인 난이도", value: String(st.powBits || "-"), sub: raised ? "상향됨" : "", tone: raised ? "warn" : "muted" },
+      { label: "회의 서명 코드", value: st.signPaused ? "중지" : "정상", tone: st.signPaused ? "bad" : "ok" }
+    ]) + `<p class="form-hint" style="margin-top:10px">같은 IP에서 15분 안에 20번 틀리면 15분 동안 제한됩니다. 전체 실패가 늘면 접속 확인 난이도가 자동으로 오르고,
+        회의 서명 코드는 1시간 실패가 200회를 넘으면 15분 동안 받지 않습니다.</p>`;
     sb.innerHTML = (locked.length ? `<div class="badge badge-red" style="margin-bottom:8px">로그인 제한 중 IP ${locked.map(esc).join(", ")}</div>` : "") +
       (sessions.length ? `<div class="table-wrap"><table class="tbl"><thead><tr><th>계정</th><th>종류</th><th>시작</th><th>최근 확인</th><th>IP</th></tr></thead><tbody>
         ${sessions.map(s => `<tr><td style="white-space:nowrap"><b>${esc(s.account)}</b> ${esc(s.name || "")}${s.current ? ' <span class="badge badge-green">이 화면</span>' : ""}</td>

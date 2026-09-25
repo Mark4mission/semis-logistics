@@ -3156,3 +3156,6 @@ table.fo-tbl { font-size: .88rem; }
   .fo-legend, .fo-lb, .fo-apt b, .fo-apt i, .fo-ac, .fo-alert { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .fo-tiles { filter: grayscale(1) contrast(.9) brightness(1.08); }
 }
+
+/* v1.16 로그인 확인 중(작업증명·서버 확인) */
+#login-form.is-busy button[type="submit"] { opacity: .6; cursor: progress; }

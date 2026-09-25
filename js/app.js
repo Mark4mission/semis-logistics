@@ -8,7 +8,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.15.0";
+  const VERSION = "1.16.0";
   const APP_NAME = "SeMIS · Logistics";
   /* v1.15: 데이터 캐시는 이 탭의 sessionStorage 에만 둔다(탭을 닫거나 로그아웃하면 사라짐).
      화면 설정(LS_UI)만 localStorage. */
@@ -663,6 +663,7 @@ const SeMIS = (() => {
     if (er) er.textContent = "접속이 만료되었습니다. 다시 로그인해 주세요.";
     const pw = $("#login-pw");
     if (pw) { pw.value = ""; setTimeout(() => { try { pw.focus(); } catch (e) {} }, 50); }
+    const A = Auth(); if (A && A.prepare) A.prepare();   // 다시 로그인할 작업증명 미리 계산
   }
   /* 세션 확인(10분) 결과 — 권한이 바뀌었으면 화면을 다시 그린다 */
   function sessionUpdated(d) {
@@ -1436,8 +1437,16 @@ const SeMIS = (() => {
   }
   const LOGIN_MSG = {
     locked: (d) => "로그인 시도가 많아 " + ((d && d.wait) || 15) + "분 동안 제한됩니다.",
+    sign_paused: (d) => "회의 서명 코드 접속이 잠시 중지되었습니다. " + ((d && d.wait) || 15) + "분 뒤 다시 시도해 주세요.",
     network: () => "서버에 연결할 수 없습니다. 네트워크를 확인해 주세요.",
+    pow: () => "접속 확인에 실패했습니다. 다시 시도해 주세요.",
     invalid: () => "암호가 올바르지 않습니다."
+  };
+  /* v1.16: pow · pow_expired · pow_used 는 같은 안내 */
+  const loginMsg = (d) => {
+    const code = String((d && d.error) || "invalid");
+    const fn = LOGIN_MSG[code] || (/^pow/.test(code) ? LOGIN_MSG.pow : LOGIN_MSG.invalid);
+    return fn(d);
   };
   let loginBusy = false;
   async function onLoginSubmit(e) {
@@ -1464,8 +1473,7 @@ const SeMIS = (() => {
       afterLogin(true);
       return;
     }
-    const fn = LOGIN_MSG[(d && d.error) || "invalid"] || LOGIN_MSG.invalid;
-    $("#login-error").textContent = fn(d);
+    $("#login-error").textContent = loginMsg(d);
     $("#login-pw").value = "";
     $("#login-pw").focus();
   }
@@ -1477,7 +1485,8 @@ const SeMIS = (() => {
     login(code).then(d => {
       setLoginBusy(false);
       if (d && d.ok) { if (errEl) errEl.textContent = ""; location.hash = ""; afterLogin(true); return; }
-      if (errEl) errEl.textContent = d && d.error === "locked" ? LOGIN_MSG.locked(d) : "회의 정보를 찾지 못했습니다. 진행자에게 문의해 주세요.";
+      if (errEl) errEl.textContent = d && (d.error === "locked" || d.error === "sign_paused") ? loginMsg(d)
+        : "회의 정보를 찾지 못했습니다. 진행자에게 문의해 주세요.";
     }).catch(() => {
       setLoginBusy(false);
       if (errEl) errEl.textContent = "서버에 연결할 수 없습니다. 네트워크를 확인한 뒤 [로그인]을 눌러 주세요.";
@@ -1533,10 +1542,12 @@ const SeMIS = (() => {
         setLoginBusy(false, "");
         if (ok) { afterLogin(false); return; }
         if (qrCode) { signFromQr(qrCode); return; }
+        if (A.prepare) A.prepare();
         setTimeout(() => $("#login-pw") && $("#login-pw").focus(), 100);
       });
     }
     if (qrCode) { signFromQr(qrCode); return; }
+    if (A && A.prepare) A.prepare();                 // 암호를 입력하는 동안 작업증명을 미리 푼다
     setTimeout(() => $("#login-pw") && $("#login-pw").focus(), 100);
   }
 
