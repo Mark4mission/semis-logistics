@@ -3,7 +3,7 @@
    실행: npm test  (jsdom 필요: npm install)
    구성: [C] 코어(해시·계정·메뉴·정규화·권한·라우터·예정 모듈)
          [D] 대시보드·공지·현황판  [S] 시스템 설정  [M] 이식 모듈 스모크(일정·회의록·연락망·검색)
-         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [IM] 한글 입력 보호  [FL] 운항 현황  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [SEC] 서버 보안(비공개 파일·살균·CSP)  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
+         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [IM] 한글 입력 보호  [FL] 운항 현황  [AU] 수검 대응 센터  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [SEC] 서버 보안(비공개 파일·살균·CSP)  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
    ═══════════════════════════════════════════════════════ */
 "use strict";
 const fs = require("fs");
@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/crisis.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
+const FILES = ["js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/crisis.js", "js/audit.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -1365,7 +1365,7 @@ function makeServer(opts = {}) {
     const e = makeEnv({ fetch: server.fetch });
     const { Sync } = e;
     t("Y01 SYNC_KEYS 구성(계정 자료 제외)", () =>
-      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,chatRooms,vault,regulations,equipment,crisis,fleet"));
+      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,chatRooms,vault,regulations,equipment,crisis,fleet,audits"));
     t("Y02 SYNC_KEYS는 모두 freshData 컬렉션에 존재", () => Sync.SYNC_KEYS.forEach(k => ok(e.S.data[k] !== undefined, k)));
     await ta("Y03 로그인 전에는 서버를 부르지 않음 · 로그인 후 초기 pull + 쓰기 권한 있는 컬렉션만 시드", async () => {
       await Sync.start();
@@ -3573,6 +3573,240 @@ function makeServer(opts = {}) {
       ok(!e2.S.user);
       e2.w.close();
     });
+  }
+
+  /* ══════════ [AU] 수검 대응 센터 (v1.17) ══════════ */
+  {
+    const e = makeEnv();
+    const A = e.w.SemisAudit;
+    const Cal = e.w.SemisCalendar;
+    const setv = (sel, v) => { const el = q(e, sel); el.value = v; return el; };
+    const sched = (id) => (e.S.data.schedules || []).find(s => s && s.id === id);
+    A.setToday("2026-10-01");
+    t("AU01 메뉴: 점검 · 교육 허브 맨 위(점검 일정 위) · mgr · 기존 데이터 자동 추가(멱등)", () => {
+      const m = e.S.data.menus.find(x => x.module === "audit");
+      ok(m && m.type === "module" && !m.planned); eq(m.parent, "hub-aud"); eq(m.vis, "mgr"); eq(m.label, "수검 대응 센터");
+      const ins = e.S.data.menus.find(x => x.module === "inspection");
+      ok(m.seq < ins.seq, "점검 일정보다 위");
+      const old = makeEnv({ preData: { version: 1, menus: e.S.defaultMenus().filter(x => x.id !== "audit") } });
+      const m2 = old.S.data.menus.find(x => x.module === "audit");
+      ok(m2 && m2.parent === "hub-aud" && m2.seq < old.S.data.menus.find(x => x.module === "inspection").seq, "기존 메뉴 데이터에 자동 추가");
+      eq(old.S.normalizeData(), false, "멱등");
+      old.w.close();
+    });
+    t("AU02 데이터 · 권한표 · 파일 폴더 등급", () => {
+      ok(Array.isArray(e.S.data.audits) && e.S.data.audits.length === 0);
+      e.S.data.audits = { bad: 1 }; e.S.normalizeData(); ok(Array.isArray(e.S.data.audits), "배열 보정");
+      eq(ACL.audits.join(","), "2,3");
+      const edge = read("tools/edge/semis-logi-files.ts");
+      ok(/READ_RANK[\s\S]*?audits: 2[\s\S]*?WRITE_RANK[\s\S]*?audits: 3/.test(edge), "audits 폴더: 열람 2 · 올리기 3");
+    });
+    t("AU03 진행 단계: 준비 → 수검 중 → 결과 대기 → 조치 중 → 종결 · 취소 · D-day", () => {
+      const a = { id: "x", body: "gov", org: "기관", kind: "정기점검", start: "2026-10-10", end: "2026-10-11", findings: [] };
+      eq(A.phase(a, "2026-10-01"), "plan"); eq(A.dday(a, "2026-10-01"), 9);
+      A.setToday("2026-10-01"); eq(A.ddayText(a), "D-9");
+      eq(A.phase(a, "2026-10-10"), "live"); eq(A.phase(a, "2026-10-11"), "live");
+      eq(A.phase(a, "2026-10-12"), "wait");
+      a.outcome = "none"; eq(A.phase(a, "2026-10-12"), "closed");
+      a.outcome = ""; a.findings = [{ id: "f", status: "open" }]; eq(A.phase(a, "2026-10-12"), "action");
+      a.findings[0].status = "done"; eq(A.phase(a, "2026-10-12"), "closed");
+      a.cancelled = true; eq(A.phase(a, "2026-10-12"), "cancel");
+      eq(A.phase({ id: "y", start: "" }), "plan", "일정 미정");
+      eq(A.prep({ checklist: [{ done: true }, { done: false }, { done: true }] }).pct, 67);
+    });
+    let aid = "";
+    t("AU04 hq 등록: 기본 준비 항목 · 상세로 이동 · 일정관리 수검 일정 · 인쇄 버튼", () => {
+      e.S.data.audits = [{ id: "old1", body: "gov", org: "서울지방항공청", kind: "정기점검", start: "2025-10-14", end: "",
+        findings: [{ id: "of1", type: "car", ref: "자체보안계획 7.3", text: "검색 기록 서명 누락", status: "done", doneDate: "2025-11-01" }] }];
+      loginAs(e, "hq"); go(e, "audit");
+      ok(q(e, ".page-head").textContent.indexOf("Print") >= 0, "인쇄 버튼");
+      eq(qa(e, "tr[data-aud]").length, 0, "기본 필터 = 진행 중(종결 제외)");
+      q(e, "#au-add").click();
+      setv("#af-org", "서울지방항공청"); setv("#af-kind", "정기점검");
+      setv("#af-start", "2026-10-21"); setv("#af-end", "2026-10-20");
+      setv("#af-place", "인천 화물터미널");
+      ok(q(e, "#af-tpl").checked && q(e, "#af-cal").checked);
+      clickOk(e);
+      eq(e.S.data.audits.length, 2);
+      const a = e.S.data.audits[1]; aid = a.id;
+      eq(a.start, "2026-10-20"); eq(a.end, "2026-10-21", "시작 > 종료 → 서로 바꿈");
+      eq(a.checklist.length, A.TEMPLATES.gov.length);
+      eq(A.getState().sel, aid, "등록하면 상세로");
+      eq(q(e, ".au-title").textContent, "서울지방항공청 정기점검");
+      ok(q(e, ".au-ddchip").textContent === "D-19");
+      const s = sched("aud_" + aid);
+      ok(s, "수검 일정"); eq(s.title, "[수검] 서울지방항공청 정기점검"); eq(s.start + "~" + s.end, "2026-10-20~2026-10-21");
+      eq(s.color, "purple"); eq(s.src, "aud:" + aid); ok(s.reminders.indexOf("1w") >= 0);
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    t("AU05 준비 체크리스트: 제자리 토글(완료자 기록) · 항목 추가 · 수정 · 삭제", () => {
+      const a = e.S.data.audits.find(x => x.id === aid);
+      q(e, "[data-ck]").click();
+      ok(a.checklist[0].done && a.checklist[0].doneBy === "Thq" && a.checklist[0].doneAt);
+      eq(q(e, "#au-checks .au-cnt").textContent, "1/" + A.TEMPLATES.gov.length);
+      ok(q(e, "[data-ck]").getAttribute("aria-pressed") === "true");
+      q(e, "[data-ck]").click();
+      ok(!a.checklist[0].done && !a.checklist[0].doneBy);
+      q(e, "#au-ck-add").click();
+      setv("#ac-text", "  현장 사진   준비 "); setv("#ac-ref", "자체보안계획 7.3");
+      q(e, "#ac-done").checked = true;
+      clickOk(e);
+      const c = a.checklist[a.checklist.length - 1];
+      eq(c.text, "현장 사진 준비"); eq(c.ref, "자체보안계획 7.3"); ok(c.done && c.doneBy === "Thq");
+      q(e, `[data-ck-edit='${c.id}']`).click();
+      setv("#ac-owner", "갑일"); clickOk(e);
+      eq(a.checklist[a.checklist.length - 1].owner, "갑일");
+      q(e, `[data-ck-edit='${c.id}']`).click();
+      q(e, "#modal-box [data-act=del]").click();
+      eq(a.checklist.length, A.TEMPLATES.gov.length);
+      q(e, "#au-ck-add").click(); clickOk(e);
+      eq(a.checklist.length, A.TEMPLATES.gov.length, "항목 없으면 저장 안 함");
+      e.S.closeModal();
+    });
+    let fid = "";
+    t("AU06 지적사항: 이전 지적 안내 · 재발 표시 · 조치 중 단계 · 조치 기한 일정 · 메뉴 배지", () => {
+      A.setToday("2026-10-25"); e.S.renderView();
+      const a = e.S.data.audits.find(x => x.id === aid);
+      eq(A.phase(a), "wait");
+      ok(q(e, "#au-none"), "결과 대기 → 지적 없음 버튼");
+      q(e, "#au-f-add").click();
+      setv("#fd-type", "car");
+      setv("#fd-ref", "자체보안계획  7.3").dispatchEvent(new e.w.Event("input"));
+      ok(q(e, "#fd-rep").textContent.indexOf("이전 지적 1건") >= 0, "같은 조항 이전 지적");
+      setv("#fd-text", "화물 검색 기록 누락"); setv("#fd-owner", "을일"); setv("#fd-due", "2026-11-10");
+      clickOk(e);
+      eq(a.findings.length, 1); fid = a.findings[0].id;
+      eq(a.findings[0].ref, "자체보안계획 7.3"); eq(a.findings[0].status, "open");
+      eq(A.phase(a), "action");
+      eq(A.repeatCount(a.findings[0]), 2);
+      ok(qa(e, "#au-finds tr[data-fnd]")[0].textContent.indexOf("재발 2회") >= 0);
+      const s = sched("audf_" + fid);
+      ok(s && s.title.indexOf("[지적 조치] 화물 검색 기록 누락") === 0 && s.start === "2026-11-10" && s.done === false && s.color === "orange");
+      e.S.renderNav();
+      const nb = q(e, ".nav-item[data-route='audit'] .nav-meta");
+      if (nb) eq(nb.textContent, "1", "미결 지적 배지");
+      ok(!q(e, "#au-none"), "지적이 있으면 지적 없음 버튼 없음");
+    });
+    t("AU07 일정관리 되반영: 옮기기 → 수검 기간 · 완료 → 지적 완료 · 삭제 → 그 일정만 연동 해제", () => {
+      const a = e.S.data.audits.find(x => x.id === aid);
+      Cal.moveEvent("aud_" + aid, "2026-10-22");
+      eq(a.start + "~" + a.end, "2026-10-22~2026-10-23", "기간 유지");
+      Cal.toggleDone("audf_" + fid);
+      eq(a.findings[0].status, "done"); eq(a.findings[0].doneDate, "2026-10-25");
+      eq(A.phase(a), "closed");
+      Cal.toggleDone("audf_" + fid);
+      eq(a.findings[0].status, "doing");
+      Cal.moveEvent("audf_" + fid, "2026-11-12");
+      eq(a.findings[0].due, "2026-11-12");
+      ok(Cal.isInspEvent(sched("aud_" + aid)) && Cal.isInspEvent(sched("audf_" + fid)));
+      eq(A.unlinkBySchedule("aud_" + aid), true);
+      e.S.data.schedules = e.S.data.schedules.filter(s => s.id !== "aud_" + aid);
+      A.syncCalendar(a);
+      ok(!sched("aud_" + aid), "지운 수검 일정은 다시 만들지 않음");
+      ok(sched("audf_" + fid), "지적 기한 일정은 그대로");
+      A.setState({ sel: aid }); go(e, "audit");
+      q(e, "#au-edit").click();
+      ok(!q(e, "#af-cal").checked, "연동 해제 상태가 폼에 보임");
+      q(e, "#af-cal").checked = true; clickOk(e);
+      ok(sched("aud_" + aid), "다시 켜면 수검 일정 복구");
+    });
+    t("AU08 지적사항 탭: 요약 · 필터 · 검색(입력칸 유지) · 수검으로 이동", () => {
+      A.setState({ sel: "", tab: "findings", fStF: "open", fq: "" }); go(e, "audit");
+      eq(qa(e, ".stat-value").map(x => x.textContent).slice(0, 3).join(","), "2,1,0");
+      eq(qa(e, "#au-flist tr[data-fnd]").length, 1);
+      q(e, "[data-aseg=fst][data-v=all]").click();
+      eq(qa(e, "#au-flist tr[data-fnd]").length, 2);
+      const inp = q(e, "#au-fq"); inp.value = "서명"; inp.dispatchEvent(new e.w.Event("input"));
+      ok(q(e, "#au-fq") === inp, "입력칸 노드 유지(한글 조합 보호)");
+      eq(qa(e, "#au-flist tr[data-fnd]").length, 1);
+      eq(qa(e, "#au-flist tr[data-fnd]")[0].dataset.fa, "old1");
+      q(e, "#au-flist [data-aud-open]").click();
+      eq(A.getState().sel, "old1");
+      ok(q(e, ".au-title").textContent.indexOf("서울지방항공청") >= 0);
+      A.setState({ fq: "", fStF: "open", tab: "list", sel: "" });
+    });
+    t("AU09 목록: 진행/종결 필터 · 구분 필터 · 취소 표시 · 검색", () => {
+      A.setState({ stF: "active" }); go(e, "audit");
+      eq(qa(e, "tr[data-aud]").length, 1);
+      q(e, "[data-aseg=st][data-v=closed]").click();
+      eq(qa(e, "tr[data-aud]").length, 1); eq(q(e, "tr[data-aud]").dataset.aud, "old1");
+      q(e, "[data-aseg=st][data-v=all]").click();
+      eq(qa(e, "tr[data-aud]").length, 2);
+      q(e, "[data-aseg=body][data-v=foreign]").click();
+      eq(qa(e, "tr[data-aud]").length, 0); ok(q(e, "#au-list .empty-state"));
+      q(e, "[data-aseg=body][data-v=all]").click();
+      const qi = q(e, "#au-q"); qi.value = "누락"; qi.dispatchEvent(new e.w.Event("input"));
+      eq(qa(e, "tr[data-aud]").length, 2, "지적 내용으로도 찾음");
+      qi.value = ""; qi.dispatchEvent(new e.w.Event("input"));
+      A.setState({ stF: "active" });
+    });
+    t("AU10 manager 열람 전용 · user 는 메뉴 없음", () => {
+      loginAs(e, "manager");
+      A.setState({ sel: aid }); go(e, "audit");
+      ok(q(e, ".au-title"), "상세 열람");
+      ok(!q(e, "#au-edit") && !q(e, "button[data-ck]") && !q(e, "#au-f-add") && !q(e, "#au-ck-add") && !q(e, "[data-ck-edit]"));
+      ok(!q(e, "tr[data-fnd].is-click"));
+      A.setState({ sel: "" }); go(e, "audit");
+      ok(!q(e, "#au-add"));
+      loginAs(e, "user"); go(e, "audit");
+      ok(!q(e, "#au-body"), "권한 없음 → 대시보드");
+      loginAs(e, "hq");
+    });
+    t("AU11 대시보드 띠: 60일 안 수검 D-day · 준비율 · 미결 지적 / 해당 없으면 없음 / user 없음", () => {
+      A.setToday("2026-10-05");
+      loginAs(e, "manager"); go(e, "dashboard");
+      ok(q(e, "#dash-aud"), "띠");
+      eq(q(e, "#dash-aud .da-dd").textContent, "D-17");
+      ok(q(e, "#dash-aud .da-t b").textContent.indexOf("서울지방항공청") >= 0);
+      ok(q(e, "#dash-aud [data-dau-f]").textContent.replace(/\s+/g, "").indexOf("미결지적1") >= 0);
+      q(e, "#dash-aud [data-dau-open]").click();
+      eq(A.getState().sel, aid);
+      loginAs(e, "user"); go(e, "dashboard");
+      ok(!q(e, "#dash-aud"), "user 없음");
+      const saved = e.S.data.audits;
+      e.S.data.audits = []; loginAs(e, "hq"); go(e, "dashboard");
+      ok(!q(e, "#dash-aud"), "해당 없으면 띠 없음");
+      e.S.data.audits = saved;
+      A.setToday("2026-10-25");
+    });
+    await ta("AU12 통합 검색 · 첨부 올리기(audits 폴더 · 50MB 제한)", async () => {
+      const r = e.w.SemisSearch.search ? e.w.SemisSearch.search("누락") : [];
+      ok(r.some(x => x.group === "수검 대응 센터"), "검색 결과");
+      const up = e.w.SemisSync.uploadFile;
+      const calls = [];
+      e.w.SemisSync.uploadFile = async (file, prefix) => { calls.push(prefix); return { url: "https://x.supabase.co/storage/v1/object/public/semis-logi-files/" + prefix + "/r_" + file.name, name: file.name, size: file.size }; };
+      const files = [];
+      let done = 0;
+      await A.uploadInto(files, [{ name: "공문.pdf", size: 1000 }, { name: "큰파일.zip", size: 60 * 1024 * 1024 }], () => { done++; });
+      e.w.SemisSync.uploadFile = up;
+      eq(calls.join(","), "audits"); eq(files.length, 1); ok(/\/audits\/r_공문\.pdf$/.test(files[0].url)); eq(done, 1);
+    });
+    t("AU13 삭제: 수검 · 준비 항목 · 지적 · 연동 일정 함께", () => {
+      loginAs(e, "hq"); A.setState({ sel: aid }); go(e, "audit");
+      q(e, "#au-edit").click();
+      q(e, "#modal-box [data-act=del]").click(); clickOk(e);
+      ok(!e.S.data.audits.some(a => a.id === aid));
+      ok(!(e.S.data.schedules || []).some(s => s && s.src === "aud:" + aid), "연동 일정 정리");
+      eq(A.getState().sel, "");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    t("AU14 회의록 조치 일정: 자동 연기로 밀린 날짜를 되돌리지 않음(접속마다 저장 반복 방지)", () => {
+      const M = e.w.SemisMinutes;
+      const rec = { id: "mm1", title: "회의", date: "2026-09-01", linkDec: true,
+        decisions: [{ id: "d1", task: "조치할 일", due: "2026-09-10", done: false }] };
+      e.S.data.minutes = [rec];
+      e.S.data.schedules = (e.S.data.schedules || []).filter(s => s && s.id !== M.DID("d1"));
+      M.syncDecisions(rec);
+      const s = e.S.data.schedules.find(x => x.id === M.DID("d1"));
+      s.autoDefer = true; s.start = "2026-09-25"; s.end = "2026-09-25"; s.autoRolledAt = "2026-09-25";
+      M.syncDecisions(rec);
+      eq(s.start + "~" + s.end, "2026-09-25~2026-09-25", "밀린 날짜 유지");
+      eq(M.normalizeDecisions(), false, "변화 없음 → 저장 안 함");
+      rec.decisions[0].due = "2026-09-30";
+      M.syncDecisions(rec);
+      eq(s.start + "~" + s.end, "2026-09-30~2026-09-30", "기한을 더 뒤로 바꾸면 그 날짜로");
+    });
+    e.w.close();
   }
 
   /* ══════════ [W] 릴리스 위생 ══════════ */

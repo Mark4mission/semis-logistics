@@ -40,8 +40,8 @@ SeMIS_Logistics/
 
 - **저장소**: Supabase 프로젝트 `semis-v2`(mzyuzrxkdcpzxojenwat, 서울) 안에 **별도 테이블** `public.semis_logi_store`(key, value jsonb, updated_at, updated_by) + **별도 버킷** `semis-logi-files`. SeMIS v2의 `semis_store`와 완전히 분리되어 서로 영향 없음.
 - **동기화**: 컬렉션 단위 KV. 탭 세션 사본(`sessionStorage semisl:data`) + pending 큐 + 변경 알림(Broadcast, 폴링 폴백). v1.15부터 로그인 세션 토큰(`x-semis-token`)으로 서버 RLS가 권한별로 거른다.
-- **컬렉션(SYNC_KEYS)**: menus · notices · schedules · assignees · assigneesSeeded · minutes · minuteFolders · levelHistory · safetyBoard · contacts · gcal · chatRooms · vault · regulations · equipment · crisis · fleet (계정 자료 pwOverrides·userOverrides·customUsers는 v1.15에 서버 전용 표로 이관)
-- **권한표(서버 `semis_logi_private.key_acl`)**: 읽기/쓰기 등급 — menus 1/4 · notices·levelHistory·safetyBoard·fleet·chatRooms 1/3 · minutes·minuteFolders 1/2 · schedules 2/2 · assignees·assigneesSeeded·gcal 2/4 · contacts·crisis·regulations·equipment 2/3 · caresCfg 2/- · vault 3/3. 표에 없는 키는 2/3.
+- **컬렉션(SYNC_KEYS)**: menus · notices · schedules · assignees · assigneesSeeded · minutes · minuteFolders · levelHistory · safetyBoard · contacts · gcal · chatRooms · vault · regulations · equipment · crisis · fleet · audits (계정 자료 pwOverrides·userOverrides·customUsers는 v1.15에 서버 전용 표로 이관)
+- **권한표(서버 `semis_logi_private.key_acl`)**: 읽기/쓰기 등급 — menus 1/4 · notices·levelHistory·safetyBoard·fleet·chatRooms 1/3 · minutes·minuteFolders 1/2 · schedules 2/2 · assignees·assigneesSeeded·gcal 2/4 · contacts·crisis·regulations·equipment·audits 2/3 · caresCfg 2/- · vault 3/3. 표에 없는 키는 2/3.
 - **개인정보 원칙**: 연락처·명단은 코드에 시드하지 않고 공용 DB에서만 동기화 (저장소가 공개 저장소이므로).
 
 ## 4. 계정·권한

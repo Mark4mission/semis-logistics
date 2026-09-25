@@ -547,14 +547,24 @@
   /* ─────── 데이터 조작 ─────── */
   /* v2.36.4: 보안점검 연동 일정("insp_*")을 일정관리에서 옮기거나 완료 처리하면
      보안점검 일정관리에도 되반영한다(원본은 점검 모듈 — 제목·색은 그쪽 값이 유지됨). */
+  /* v1.17: 수검 대응 센터 연동 일정("aud_*" 수검 기간 · "audf_*" 지적 조치 기한)도 같은 방식으로 되반영한다. */
+  const LINKED = [
+    { pre: ["insp_"], api: () => window.SemisInspection, note: "보안점검 연동이 해제됩니다. 점검 기록 자체는 남습니다." },
+    { pre: ["aud_", "audf_"], api: () => window.SemisAudit, note: "수검 대응 센터 연동이 해제됩니다. 수검 기록 자체는 남습니다." }
+  ];
+  function linkOf(e) {
+    const id = e ? String(e.id) : "";
+    return LINKED.find(l => l.pre.some(p => id.indexOf(p) === 0)) || null;
+  }
   function backSyncInsp(e) {
-    if (!e || String(e.id).indexOf("insp_") !== 0) return false;
-    if (!window.SemisInspection || !SemisInspection.syncFromSchedule) return false;
+    const l = linkOf(e);
+    const api = l && l.api();
+    if (!api || !api.syncFromSchedule) return false;
     try {
-      return SemisInspection.syncFromSchedule(e.id, { start: e.start, end: e.end || e.start, done: !!e.done });
+      return api.syncFromSchedule(e.id, { start: e.start, end: e.end || e.start, done: !!e.done });
     } catch (err) { return false; }
   }
-  const isInspEvent = (e) => !!e && String(e.id).indexOf("insp_") === 0;
+  const isInspEvent = (e) => !!linkOf(e);
 
   function moveEvent(id, newStart) {
     const e = D().schedules.find(x => x.id === id);
@@ -1125,9 +1135,10 @@
     if (e) $("#f-del").onclick = () =>
       confirmModal("이 일정을 삭제하시겠습니까?"
         + (isRepeat(e) ? " (반복 전체가 삭제됩니다.)" : "")
-        + (isInspEvent(e) ? " (보안점검 연동이 해제됩니다. 점검 기록 자체는 남습니다.)" : ""), () => {
-        if (isInspEvent(e) && window.SemisInspection && SemisInspection.unlinkBySchedule) {
-          try { SemisInspection.unlinkBySchedule(e.id); } catch (err) {}
+        + (linkOf(e) ? " (" + linkOf(e).note + ")" : ""), () => {
+        const lk = linkOf(e), api = lk && lk.api();
+        if (api && api.unlinkBySchedule) {
+          try { api.unlinkBySchedule(e.id); } catch (err) {}
         }
         D().schedules = D().schedules.filter(x => x.id !== e.id);
         SeMIS.save(); closeModal(); SeMIS.renderView(); toast("삭제되었습니다.");

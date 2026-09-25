@@ -791,12 +791,16 @@
       (x.decisions || []).forEach(d => {
         if (!d || !d.id || !d.due || !String(d.task || "").trim()) return;
         keep[DID(d.id)] = true;
+        /* 일정관리의 자동 연기·연장으로 밀린 날짜는 되돌리지 않는다 — 되돌리면 다음 접속 때 다시 밀려
+           접속할 때마다 schedules 저장이 반복된다(SeMIS v2.53에서 확인·수정한 문제). */
+        const cur = D().schedules.find(s => s && s.id === DID(d.id));
+        const rolled = !!(cur && !d.done && (cur.autoDefer || cur.autoExtend) && cur.autoRolledAt && String(cur.end || "") > d.due);
         upsertSchedule({
           id: DID(d.id), src,
           title: "[조치] " + String(d.task).trim().slice(0, 60),
           memo: "회의록에서 관리되는 일정입니다 — " + (x.title || "")
             + (x.date ? " (" + x.date + ")" : "") + (d.owner ? " · 담당 " + d.owner : ""),
-          start: d.due, end: d.due,
+          start: rolled ? cur.start : d.due, end: rolled ? cur.end : d.due,
           allDay: true, time: "", timeEnd: "",
           color: CAL_ACTION, done: !!d.done,
           assignee: d.owner || "", vehicle: false, room: false,

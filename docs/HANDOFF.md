@@ -6,10 +6,10 @@
 
 | 항목 | 값 |
 |---|---|
-| 현재 버전 | **v1.16.0** (2026-09-26) — **로그인 자동공격 방어**(보이지 않는 작업증명 · 전체 실패 기반 난이도 상향 · 서명 코드 중지) · v1.15 서버 보안 위 |
+| 현재 버전 | **v1.17.0** (2026-09-26) — **수검 대응 센터**(국토부 · 해외 당국 · 화주 · 사내 심사 수검의 준비 · 증빙 · 지적 조치 · 재발 추적) · v1.16 로그인 자동공격 방어 · v1.15 서버 보안 위 |
 | 접속 주소 | https://mark4mission.github.io/semis-logistics/ |
 | 저장소 | GitHub `Mark4mission/semis-logistics` (공개) · Mac `~/SeMIS_Logistics` |
-| 테스트 | `npm test` 286건 전부 통과 (가짜 서버로 로그인(작업증명 포함)·RLS·파일 함수 흉내 · 코드에 해시·토큰 없음) |
+| 테스트 | `npm test` 300건 전부 통과 (가짜 서버로 로그인(작업증명 포함)·RLS·파일 함수 흉내 · 코드에 해시·토큰 없음) |
 | 백엔드 | Supabase `mzyuzrxkdcpzxojenwat` — 테이블 `semis_logi_store`(세션 RLS), **비공개** 버킷 `semis-logi-files`, 비공개 스키마 `semis_logi_private`(계정 · 세션 · 로그인 시도 · 접속 기록 · 권한표), RPC `semis_logi_*`, Edge Function `semis-logi-files`(서명 URL) · 운항 현황: Edge Function `semis-logi-adsb` + 테이블 `semis_logi_adsb` · `semis_logi_adsb_events` + pg_cron 2분 |
 
 ## 2. 새 세션 시작
@@ -58,6 +58,7 @@ Claude가 할 일(순서대로):
 | crisis | crisis.js | mgr (편집 hq) | **위기대응 담당자**(v1.13) — 회사 위기대응 조직 11곳 × 27팀 × 임무 96건 × 담당자 78명(2026년 명단, 기준 26년 9월). 우리 팀(인천화물팀) 임무 띠 · 조직 줄 필터 · 검색 · 보기 4종(조직별 · 팀별 · 담당자별 · 매트릭스) · 이름 누르면 그 사람 임무 전체 · 비상연락망 동명 1명이면 전화 버튼 · hq: 엑셀 반영(대조 후) · 행 편집 · 기본 정보 · 원본 엑셀 내려받기 |
 | contacts | contacts.js | mgr (편집 hq) | 비상연락망 · 보고체계 (2026-09-22 SeMIS v2 연락망 69건 이관 — 12섹션 78행) · **보고 체계도 탭**(v1.10: 보안사고 20 · 안전사고 18 · 위험물사고 29행, 미리보기 → 전체 화면 뷰어) |
 | vault | vault.js | hq | 암호 관리 (AES-256-GCM, 5분 자동 잠금, 공용/개인용 — 개인용은 본인 키로만 해독) |
+| audit | audit.js | mgr (편집 hq) | **수검 대응 센터**(v1.17, M1) — 외부·사내 점검을 받는 쪽의 준비 → 수검 → 지적 조치 → 종결. 구분 3종(국토부 · 지방항공청 / 해외 당국 · 화주 / 사내 심사). 수검 일정 탭(다음 수검 D-day · 준비 진행 · 미결 지적 · 기한 경과 · 올해 수검, 구분 · 진행 필터) · 지적사항 탭(전 수검 지적 한 표, 미결 · 기한 경과 · 완료) · 상세(기본 정보 · 공문/결과 첨부 · 준비 체크리스트(구분별 기본 항목 · 근거 조항 · 담당 · 증빙 파일 · 제자리 완료 체크) · 지적사항(시정조치 · 개선권고 · 현장시정 · 관찰사항, 조항 · 조치 · 담당 · 기한 · 상태 · 증빙)). 같은 조항이 2개 이상 수검에서 지적되면 '재발'. 일정관리 연동(수검 기간 · 지적 기한). 대시보드 띠(mgr, 60일 안 수검 또는 미결 지적이 있을 때만) · 메뉴 배지(미결 지적) · 통합 검색 · 390px 행 카드 · A4 인쇄 |
 | settings | modules.js | admin | 메뉴(숨기기 포함) · 사용자(서버 계정 RPC) · 담당자 · 데이터(변경 이력 복원 — 관리자 RPC) · 저장소(파일 함수) · **보안**(접속 중 · 접속 기록 · 다른 접속 모두 끊기, v1.15) |
 | scr-status | screening.js · cares.js | mgr | 화물 보안검색 현황 — 검색 라인 배치(검색대별 X-ray·ETD · 환적·예비) · 오늘 일일점검 · 장비 × 28일 점검 이행(+주간·월간 최근일) · 센서 3곳 × 지표 + 결로 판정 · 최근 고장. 대시보드 4칸 요약 띠(mgr) |
 | scr-equip | equipment.js · cares.js | mgr (편집 hq) | 검색장비 유지관리 — 장비 대장 22대(v2 이관, 내용연수 · CARES 상태) · 고장·수리 이력(처리 단계 · 원인 · 부품 · 사진) · 가동 분석(가동률 · 다운타임 · 원인 분류) |
@@ -73,13 +74,14 @@ Claude가 할 일(순서대로):
 | 협력 · 비상 (hub-ops) | partners 조업사·협력사 현황 (mgr) · contracts 계약서 관리 (hq) |
 
 권장 개발 순서(DESIGN.md §9-6): ① car · inspection · training · certs → ② access · contracts → ③ 안전 관리 4종 → ④ kc-ra · partners → ⑤ board. (scr-status · scr-equip은 v1.12에서 완료)
+수검 대응 센터(audit, v1.17)는 새 라우트 — 예정 메뉴 inspection(내부 점검 일정) · car(시정조치)와 별개다. car 를 만들 때는 수검 지적사항(`audits[].findings`)을 끌어오거나 링크하는 방식을 검토할 것.
 
 SeMIS v2에 같은 성격의 모듈이 있으면 이식한다(v2 저장소: Mac `~/SeMIS_v2`, 연결 폴더라 `device_bash`로 바로 읽기 가능).
 v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js · equipment.js · passes.js 등.
 
 ## 5. 데이터 · 백엔드
 
-- **SYNC_KEYS(17)**: menus · notices · schedules · assignees · assigneesSeeded · minutes · minuteFolders · levelHistory · safetyBoard · contacts · gcal · chatRooms · vault · regulations · equipment · crisis · fleet (계정 자료 pwOverrides·userOverrides·customUsers는 v1.15에 서버 전용 표로 이관·삭제)
+- **SYNC_KEYS(18)**: menus · notices · schedules · assignees · assigneesSeeded · minutes · minuteFolders · levelHistory · safetyBoard · contacts · gcal · chatRooms · vault · regulations · equipment · crisis · fleet · audits (계정 자료 pwOverrides·userOverrides·customUsers는 v1.15에 서버 전용 표로 이관·삭제)
 - SYNC_KEYS 밖 설정 행: `caresCfg`(CARES Firebase 웹 키 — `SemisSync.fetchKV`로만 읽음, 앱이 쓰지 않음)
 - 신규 컬렉션 추가 시: `freshData()` 기본값 → `normalizeData()` 보정(멱등) → `sync.js` SYNC_KEYS → 테스트 Y01 기대 문자열 갱신 → **서버 권한표 등록**(아래)
 - **서버 보안(v1.15)** — 원본 SQL `tools/sql/semis-logi-security.sql`(1단계) · `tools/sql/semis-logi-lockdown.sql`(2단계 잠금). 실제 적용은 마이그레이션 `semis_logi_security_1~6`(6 = RPC 실행 권한: public `semis_logi_*`는 anon·service_role만, authenticated 차단)
@@ -91,7 +93,7 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
   - 관리자 RPC: `semis_logi_users` · `semis_logi_user_save(p)` · `semis_logi_user_delete` · `semis_logi_set_password`(다른 접속 끊김) · `semis_logi_history` · `semis_logi_history_value` · `semis_logi_security`(접속 중 · 기록) · `semis_logi_end_sessions`. 회의 서명: `semis_logi_sign_submit`(그 회의 한 건만 수정 — signer 세션은 공용 DB 직접 조회 불가)
   - 계정 표는 SQL(서비스 권한)로만 직접 볼 수 있다: `select id, login_id, role, last_login_at from semis_logi_private.accounts`
 - **데이터 사본**: `sessionStorage semisl:data`(탭 단위 — 탭을 닫거나 로그아웃하면 사라짐) · 캐시 주인 `semisl:owner`(다른 계정이 로그인하면 비움) · 읽을 권한이 없는 컬렉션은 로그인 때 기본값으로 비운다. pending 큐 · 강제 push 표시도 sessionStorage. 옛 버전의 `localStorage semisl:data`는 시작할 때 지운다
-- **파일(v1.15)**: 버킷 비공개. 저장값은 표준 주소(`…/object/public/semis-logi-files/경로`) 그대로. `js/fileauth.js`(SemisFileAuth)가 화면의 img · iframe · a 등을 서명 URL(1시간)로 바꿔 끼우고(원래 주소는 `data-sf`), 서명 전 링크는 새 창을 먼저 연 뒤 보낸다. 서명·업로드·목록·삭제는 Edge Function `semis-logi-files`(원본 `tools/edge/semis-logi-files.ts`, verify_jwt false — 세션은 `semis_logi_file_auth()`로 확인). 폴더 등급: 열람 notices·attach·minutes·minutes-sign 1 / schedules·contacts·crisis·regs·regs-diff 2 / 그 밖 3, 올리기 minutes·minutes-sign 2(서명 세션은 minutes-sign만) / 나머지 3. 업로드 경로는 함수가 정한다(무작위 접두사). html·js 형식은 거부, 50MB 제한
+- **파일(v1.15)**: 버킷 비공개. 저장값은 표준 주소(`…/object/public/semis-logi-files/경로`) 그대로. `js/fileauth.js`(SemisFileAuth)가 화면의 img · iframe · a 등을 서명 URL(1시간)로 바꿔 끼우고(원래 주소는 `data-sf`), 서명 전 링크는 새 창을 먼저 연 뒤 보낸다. 서명·업로드·목록·삭제는 Edge Function `semis-logi-files`(원본 `tools/edge/semis-logi-files.ts`, verify_jwt false — 세션은 `semis_logi_file_auth()`로 확인). 폴더 등급: 열람 notices·attach·minutes·minutes-sign 1 / schedules·contacts·crisis·regs·regs-diff·audits 2 / 그 밖 3, 올리기 minutes·minutes-sign 2(서명 세션은 minutes-sign만) / 나머지 3. 업로드 경로는 함수가 정한다(무작위 접두사). html·js 형식은 거부, 50MB 제한
 - **대량 삭제 방어**(sync.js `guardWipe`): 2건 이상 → 0건 push 차단. 정상 전체 삭제는 `SemisSync.confirmWipe(key)`
 - **서버 자동 백업**: 트리거가 모든 변경 직전 값을 `public.semis_store_history`에 90일 보관 → 시스템 설정 › 데이터 관리 › 변경 이력에서 복원
 - 규정 PDF: `semis-logi-files/regs/` (v1.15부터 비공개 — 서명 URL). 2026-09-20 등록 18건(안전관리 16 · DG 2)
@@ -141,6 +143,12 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 - 3D 장면: GPU 없는 PC(소프트웨어 렌더링)·느린 PC(평균 45ms/프레임 초과)·동작 줄이기 설정에서는 정지 화면, WebGL 없으면 사진. 사진이 보이면 대시보드에서 `document.querySelector('#dash-3d').dataset.h3d`로 사유 확인(no-webgl · webgl-context · load · live · static)
 - 2026-09-22 v1.9.0 배포 직후 Mark의 Chrome에서 3D 대신 사진이 보였음 — 같은 Mac의 내장 브라우저에서는 3D 정상(Apple M4 Pro, Metal). 배포 전 요청한 three.js 404가 CDN에 남은 것으로 추정해 v1.9.1에서 주소에 버전을 붙임. 재발 시 위 사유 값과 chrome://gpu의 WebGL 항목 확인
 
+- **수검 대응 센터(v1.17, M1)** — Mark 결정(2026-09-26): 제안안(수검 등록 → 규정 조항별 준비 체크리스트 · 증빙 → 수검 기록 → 지적 조치 추적 → 과거 지적 이력 · 재발 · A4 인쇄 · 대시보드 D-day), 대상은 국토부 · 지방항공청 / 해외 당국 · 화주 / 사내 심사(공항공사 제외)
+  - 데이터 `audits[]` = { id, body(gov|foreign|internal), org, kind, start, end, place, lead, scope, memo, outcome(""|"none"), cancelled, linkCal, noCalMain, files[], checklist[{id,text,ref,owner,note,done,doneAt,doneBy,files[]}], findings[{id,type(car|rec|onsite|obs),ref,text,action,owner,due,status(open|doing|done),doneDate,noCal,files[]}], createdAt/By, updatedAt/By }. 진행 단계는 저장하지 않고 계산(준비 → 수검 중 → 결과 대기 → 조치 중 → 종결 / 취소). 결과 대기 = 수검이 끝났는데 지적도 '지적 없음' 확정도 없는 상태
+  - 권한표 `audits` 2/3(마이그레이션 `semis_logi_security_8_audits`) · 파일 폴더 `audits/` 열람 2 · 올리기 3(Edge Function `semis-logi-files` v2 재배포). 첨부는 저장소에서 지워지지 않는다(시스템 설정 › 저장소에서 미참조 파일 정리)
+  - 일정관리 연동: 수검 기간 `aud_<id>`(보라 · 1주/1일 전 알림) · 지적 기한 `audf_<id>`(주황 · 완료 연동), src `aud:<id>`. `calendar.js` 의 연동 일정 표 `LINKED`(insp_ · aud_ · audf_) 로 옮기기 · 기간 조정 · 완료 · 자동 연기가 원본에 되반영. 일정관리에서 지우면 그 일정만 연동 해제(`noCalMain` / 지적 `noCal`). 수검 폼의 '일정관리에 표시'를 다시 켜면 복구. 저장할 때만 일정을 맞춘다(정규화에서 건드리지 않음 — 접속마다 저장 반복 방지)
+  - 기본 준비 항목(구분별 6~10개)은 코드 `TEMPLATES` — 조항 번호는 넣지 않았다(규정 개정 때마다 틀어지므로 항목에서 직접 입력). 조항 입력칸은 지금까지 쓴 조항을 자동 완성으로 보여 준다
+  - 이번에 함께 고친 것: 회의록 조치 일정 동기화가 일정관리 자동 연기로 밀린 날짜를 되돌려 **접속할 때마다 schedules 저장이 반복**될 수 있던 문제(SeMIS v2.53에서 같은 문제 수정 — minutes.js syncDecisions)
 - **운항 현황(v1.14)** — 스케줄 파일은 쓰지 않는다(Mark 결정 2026-09-25: 스케줄이 매달 바뀌어 손으로 최신화하기 어려움 → 등록 기체 15대의 실시간 입출항만 감시). 관리 항목은 기체 목록(공용 DB `fleet`, 비면 코드 기본 15대)뿐.
   - 데이터 흐름: pg_cron `semis-logi-adsb`(2분) → Edge Function `semis-logi-adsb`(verify_jwt, anon 키) → adsb.lol `/v2/hex/<15개>` 1회 → `semis_logi_adsb`(기체별 마지막 상태 · 비행 경로 20시간 · 4분 간격) 갱신 + 지상↔공중 전환을 `semis_logi_adsb_events`(dep/arr · 공항 · 시각 · 추정 여부, 45일 보관)에 기록. 화면이 부르면 50초 안의 값은 그대로(_meta 행 잠금). 함수 원본 `tools/edge/semis-logi-adsb.ts`(바꾸면 MCP deploy_edge_function으로 재배포)
   - 판정(js/flightcore.js `status`): 비상(7500·7600·7700) · 인천 접근 중(250km 안 · 인천 쪽 ±60° · 강하 -300ft/분 이하 또는 15,000ft 이하, 상승 제외) · 비행 중 · 지상(공항 반경 15km) · 착륙 추정(공항 15km · 3,000ft 이하에서 끊김) · 신호 없음(순항 10,000ft 이상에서 끊겼으면 마지막 방위·속도로 3시간까지 직진 추정 표시) · 수신 기록 없음. 4분 넘게 안 잡히면 신호 없음
@@ -180,4 +188,5 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 | v1.14.0 | 09-25 | **운항 현황** — 에어제타 화물기 15대 ADS-B 실시간 위치(adsb.lol 무료 · Supabase Edge Function 중계 · pg_cron 2분 기록). 대시보드 지도(기체만) + 인천 접근 중 목록 + 최근 인천 도착 · 메뉴 '운항 현황'(홈 허브, 전체 공개): 요약 · 지도(비행 경로 · 신호 없음 직진 추정 · 이름표 겹침 정리) · 인천 입항/출항 · 기체 현황 · 입출항 기록 48시간 · 비상 부호 경고 · 기체 목록 편집(hq, ICAO 자동 채움). 스케줄 파일 미사용(매달 바뀌어 유지 곤란) |
 | v1.15.0 | 09-25 | **서버 보안** — 공개 키만으로 공용 DB·파일 전부를 읽고 고칠 수 있던 구조를 닫음. 서버 로그인(RPC · bcrypt · IP별 시도 제한) → 탭 세션 토큰 · 권한표(key_acl) 기반 RLS(권한 밖 컬렉션은 받지도 못함) · 계정·세션·접속 기록 비공개 스키마 · 파일 버킷 비공개 + Edge Function 서명 URL(js/fileauth.js 자동 변환) · 회의 서명은 그 회의 한 건만(RPC) · 데이터 사본 localStorage → sessionStorage · 변경 알림 Broadcast(이름만) · 서버 시각·작성자 기록 · 설정에 보안 탭(접속 중 · 기록 · 모두 끊기) · CSP · 살균기 template 파싱 · v2 ICS 토큰 제거 · 후속: RPC 실행 권한 정리(anon만) · AI 요약 함수 세션 확인 · 임시 계정·기록 정리 |
 | v1.16.0 | 09-26 | **로그인 자동공격 방어** — reCAPTCHA 대신 보이지 않는 작업증명: 서버 서명 문제(2분 · 1회용)를 로그인 창에서 Web Worker가 미리 풀어 첨부(js/pow.js, v2와 같은 파일) · 전체 실패가 늘면 난이도 자동 상향 · 6자리 회의 서명 코드 실패 급증 시 15분 중지 · 보안 탭 실패 통계 · 로그인 안내 문구(제한 · 중지 · 확인 실패) · CSP worker-src · 라이브 확인(해답 없는 로그인 거부, 로그인 1.6초) 후 임시 계정·기록 삭제 |
+| v1.17.0 | 09-26 | **수검 대응 센터**(M1) — 국토부 · 지방항공청 / 해외 당국 · 화주 / 사내 심사 수검을 준비 → 수검 → 지적 조치 → 종결로 관리. 수검 일정 · 지적사항 탭, 상세(준비 체크리스트 · 증빙 파일 · 지적사항), 재발 조항 표시, 일정관리 양방향 연동, 대시보드 띠 · 메뉴 배지 · 통합 검색 · 390px · A4 인쇄. 서버: 권한표 audits 2/3 · 파일 폴더 audits. 회의록 조치 일정 자동 연기 되돌림 수정 |
 | v1.9.1 | 09-22 | 한글 어절 단위 줄바꿈(전역 keep-all) · 대시보드 하단 시트 칸 수를 시트 폭으로 결정(container query, 1040px↑ 4칸) · 일정 폼 '완료'를 하단 버튼줄로(스크롤 없이 보임) · 오른쪽 설정 패널 압축(1512×825에서 스크롤 없음) · 3D 불러오기 주소에 버전 부여(배포 직후 옛 404 캐시 회피)·실패 사유 기록(`#dash-3d[data-h3d]`) |

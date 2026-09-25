@@ -26,6 +26,7 @@ SeMIS_Logistics/
 ├── js/cares.js         CARES 연동 계층 (Firestore REST 읽기 전용 · 60초 캐시 · 이슬점/결로 판정 · 가동률 계산)
 ├── js/screening.js     화물 보안검색 현황 (검색 라인 배치 · 일일점검 이행 · 검색 환경 · 최근 고장) + 대시보드 요약 띠
 ├── js/equipment.js     검색장비 유지관리 (장비 대장 · 고장·수리 이력 · 가동 분석, SeMIS v2 equipment.js 이식)
+├── js/audit.js         수검 대응 센터 (국토부 · 해외 당국 · 화주 · 사내 심사 — 준비 체크리스트 · 증빙 · 지적 조치 · 재발 · 일정관리 연동) + 대시보드 띠
 ├── js/sync.js          Supabase 공용 DB 실시간 동기화 (semis_logi_store · semis-logi-files)
 ├── docs/module-template.js 신규 모듈 표준 예시 (복사해서 시작)
 ├── tests/run-tests.cjs jsdom 테스트 (npm test)
@@ -197,6 +198,7 @@ Google → SeMIS(공개 캘린더 겹쳐 보기) / SeMIS → Google(ICS 구독 �
 - Supabase 프로젝트 `semis-v2`(서울) 내 **별도 테이블** `public.semis_logi_store`(key/value jsonb) + **별도 버킷** `semis-logi-files`. SeMIS v2 데이터와 완전 분리.
 - **서버 보안(v1.15)**: 로그인은 RPC `semis_logi_login`(서버가 bcrypt로 확인 · 같은 IP 15분 20회 실패 시 15분 제한) → 세션 토큰(64자, 이 탭의 sessionStorage). 모든 요청에 `x-semis-token` 헤더, 서버 RLS가 권한표(`key_acl`)로 컬렉션별 읽기·쓰기를 거른다. 계정·세션·접속 기록은 비공개 스키마 `semis_logi_private`에만.
 - **로그인 자동공격 방어(v1.16)**: reCAPTCHA 대신 보이지 않는 작업증명 — 서버가 서명한 문제(`semis_logi_challenge`, 2분·1회용)를 로그인 창에서 Web Worker가 미리 풀어 로그인에 첨부(`js/pow.js`). 전체 실패가 늘면 난이도 자동 상향, 6자리 회의 서명 코드는 1시간 실패 200회 초과 시 15분 중지. 시스템 설정 → 보안 탭에 실패 통계. SQL `tools/sql/semis-logi-pow.sql`.
+- **수검 대응 센터(v1.17)**: 컬렉션 `audits`(권한표 2/3 — 열람 manager · 편집 hq), 증빙 파일 폴더 `audits/`(열람 2 · 올리기 3). 수검 기간·지적 조치 기한은 일정관리에 `aud_*`·`audf_*`로 올라가고, 일정관리에서 옮기거나 완료하면 원본에 되반영된다(`calendar.js` 연동 일정 표 `LINKED`).
 - 파일: 버킷 `semis-logi-files`는 **비공개**. 저장값은 표준 주소(`…/object/public/semis-logi-files/경로`)이고, 화면에서 `js/fileauth.js`가 Edge Function `semis-logi-files`로 받은 서명 URL(1시간)로 바꿔 끼운다. 업로드도 이 함수가 주는 서명 URL로.
 - 데이터 사본: 이 탭의 sessionStorage(`semisl:data`) — 탭을 닫거나 로그아웃하면 사라진다. 변경분 pending 큐도 탭 세션. 실시간: DB 트리거의 변경 알림(Broadcast `semis-logi-sync`, 컬렉션 이름만) → 그 컬렉션만 다시 읽음(폴링 폴백).
 - 개인정보(연락처 등)는 코드에 시드하지 않고 공용 DB에서만 동기화.

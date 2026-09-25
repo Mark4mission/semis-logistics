@@ -8,7 +8,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.16.0";
+  const VERSION = "1.17.0";
   const APP_NAME = "SeMIS · Logistics";
   /* v1.15: 데이터 캐시는 이 탭의 sessionStorage 에만 둔다(탭을 닫거나 로그아웃하면 사라짐).
      화면 설정(LS_UI)만 localStorage. */
@@ -220,6 +220,7 @@ const SeMIS = (() => {
         "지게차·돌리·ULD 장비 등 지상조업 장비 안전 점검, 운전자 자격, 램프 안전 규칙 준수 현황."),
 
       h("hub-aud", "점검 · 교육", "clipboard"),
+      m("audit", "수검 대응 센터", "🗂️", "audit", "mgr", "hub-aud"),
       p("inspection", "안전보안 점검 일정", "🕵️", "inspection", "mgr", "hub-aud",
         "내부 점검·외부 감사(국토부·공항공사·본사 안전심사) 연간 일정과 결과를 관리하고 일정관리와 연동합니다."),
       p("car", "시정조치 (CAR)", "📋", "car", "hq", "hub-aud",
@@ -323,6 +324,7 @@ const SeMIS = (() => {
       regulations: [],   // 규정 관리 (항공보안 / 안전관리 / 위험물 DG)
       fleet: [],         // 운항 현황 기체 목록 [{reg, hex, type, model}] — 비어 있으면 기본 15대(js/flightcore.js)
       equipment: [],     // 검색장비 대장 (상태·고장·점검은 CARES 실시간 — js/cares.js)
+      audits: [],        // 수검 대응 센터 (v1.17 — js/audit.js)
       chatRooms: []      // (예약) 팀 채팅방
     };
   }
@@ -377,6 +379,15 @@ const SeMIS = (() => {
       DATA.menus.push({ id: "crisis", seq: ct ? (ct.seq || 0) + 0.5 : DATA.menus.reduce((mx, m) => Math.max(mx, m.seq || 0), 0) + 1,
         type: "module", label: "위기대응 담당자", icon: "🧭", module: "crisis", vis: "mgr",
         parent: ct && ct.parent ? ct.parent : (hub ? "hub-ops" : null) });
+    }
+    // v1.17 수검 대응 센터 — 기존 메뉴 데이터에 없으면 점검 · 교육 허브 맨 위(안전보안 점검 일정 바로 위)에 1회 추가
+    if (!DATA.menus.some(m => m.type === "module" && m.module === "audit")) {
+      const ins = DATA.menus.find(m => m.type === "module" && m.module === "inspection");
+      const hub = DATA.menus.find(m => m.id === "hub-aud" && m.type === "group");
+      DATA.menus.push({ id: DATA.menus.some(m => m.id === "audit") ? "audit-" + Date.now().toString(36) : "audit",
+        seq: ins ? (ins.seq || 0) - 0.5 : DATA.menus.reduce((mx, m) => Math.max(mx, m.seq || 0), 0) + 1,
+        type: "module", label: "수검 대응 센터", icon: "🗂️", module: "audit", vis: "mgr",
+        parent: ins && ins.parent ? ins.parent : (hub ? "hub-aud" : null) });
     }
     const dash = DATA.menus.find(m => m.type === "module" && m.module === "dashboard");
     if (dash) { dash.vis = "all"; dash.parent = null; if (dash.seq !== 0) dash.seq = Math.min(0, dash.seq || 0); }
@@ -468,6 +479,8 @@ const SeMIS = (() => {
     });
     // 검색장비 대장 (v1.12) — 배열 보정만. 실데이터는 공용 DB(SeMIS v2 대장 이관분)
     DATA.equipment = (Array.isArray(DATA.equipment) ? DATA.equipment : []).filter(x => x && typeof x === "object" && x.id);
+    // 수검 대응 센터 (v1.17) — 배열 보정만(항목 내부는 모듈이 없는 값을 기본값으로 읽는다)
+    DATA.audits = (Array.isArray(DATA.audits) ? DATA.audits : []).filter(x => x && typeof x === "object" && x.id);
     DATA.equipment.forEach(x => { if (!Array.isArray(x.logs)) x.logs = []; });
     ["reg-sec", "reg-safety", "reg-dg", "scr-status", "scr-equip"].forEach(id => {
       const mn = DATA.menus.find(m => m.type === "module" && m.module === id);
@@ -887,7 +900,7 @@ const SeMIS = (() => {
   const VIEW_WIDTH = {
     schedule: "wide", dashboard: "wide", board: "wide", flight: "wide",
     minutes: "mid", contacts: "mid", crisis: "mid", settings: "mid", vault: "mid",
-    "reg-sec": "mid", "reg-safety": "mid", "reg-dg": "mid", "scr-status": "mid", "scr-equip": "mid"
+    "reg-sec": "mid", "reg-safety": "mid", "reg-dg": "mid", "scr-status": "mid", "scr-equip": "mid", audit: "mid"
   };
   function applyViewWidth(view, route) {
     const r = String(route);
