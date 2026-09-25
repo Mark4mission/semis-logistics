@@ -20,6 +20,7 @@
     notice:   "all",  // 공지사항
     upcoming: "mgr",  // 다가오는 일정
     actions:  "mgr",  // 회의 결정사항 (미완료 · 기한 경과)
+    flight:   "all",  // 운항 현황 — 항공기 위치 지도 + 인천 접근 중 (js/flightops.js)
     screen:   "mgr",  // 화물 보안검색 요약 띠 (CARES — 검색 라인 · 오늘 점검 · 고장 · 환경)
     build:    "hq"    // 모듈 구축 현황 (허브별 운영/전체)
   };
@@ -86,6 +87,11 @@
     if (utilMods.length) rows.push({ id: "", label: "관리", ico: "sliders",
       live: utilMods.filter(m => SeMIS.hasModule(m.module) || !m.planned).length, total: utilMods.length });
     return rows;
+  }
+  /* 운항 현황 지도 — 운항 현황 메뉴를 볼 수 있을 때만(권한·숨김 따름) */
+  function fltVisible() {
+    const mn = (D().menus || []).find(m => m.type === "module" && m.module === "flight");
+    return !!(mn && SeMIS.navVisible(mn) && SeMIS.hasModule("flight") && window.SemisFlight);
   }
   /* 화물 보안검색 요약 띠 — 보안검색 현황 메뉴를 볼 수 있을 때만(권한·숨김 따름) */
   function scrVisible() {
@@ -237,9 +243,11 @@
         </div>
         ${cardVis("status") ? `<div class="dash-top${guest ? " guest" : ""}">${ticketHTML(canWrite)}</div>` : ""}
         ${!guest && cardVis("screen") && window.SemisScreen && scrVisible() ? SemisScreen.dashHTML() : ""}
+        ${cardVis("flight") && fltVisible() ? SemisFlight.dashHTML() : ""}
         ${guest ? `<section class="dash-card">${noticeCol}</section>`
           : `<div class="dash-sheet-wrap"><div class="dash-sheet cols-${[upcomingCard, noticeCol, actionCol, buildCol].filter(Boolean).length}">${upcomingCard}${noticeCol}${actionCol}${buildCol}</div></div>`}`;
       if (window.SemisHero3D && $("#dash-3d")) SemisHero3D.mount($("#dash-3d"));
+      if (window.SemisFlight && $("#dash-flt")) SemisFlight.mountDash();
       if (window.SemisScreen && $("#dash-scr")) SemisScreen.mountDash();
 
       // 공지 리스트

@@ -3,7 +3,7 @@
    실행: npm test  (jsdom 필요: npm install)
    구성: [C] 코어(해시·계정·메뉴·정규화·권한·라우터·예정 모듈)
          [D] 대시보드·공지·현황판  [S] 시스템 설정  [M] 이식 모듈 스모크(일정·회의록·연락망·검색)
-         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [IM] 한글 입력 보호  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
+         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [IM] 한글 입력 보호  [FL] 운항 현황  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
    ═══════════════════════════════════════════════════════ */
 "use strict";
 const fs = require("fs");
@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/crisis.js", "js/sync.js"];
+const FILES = ["js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/crisis.js", "js/flightcore.js", "js/flightops.js", "js/sync.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -350,7 +350,7 @@ function makeFetchStub(server) {
       const sec = rows.find(r => r.dataset.dashHub === "hub-sec");
       eq(sec.querySelector(".br-n").textContent, "2/4", "보안검색 현황·검색장비 운영 / 상용화주·출입 예정");
       const home = rows.find(r => r.dataset.dashHub === "hub-home");
-      eq(home.querySelector(".br-n").textContent, "3/4", "대시보드·일정·회의록 운영 / 현황판 예정");
+      eq(home.querySelector(".br-n").textContent, "4/5", "대시보드·운항 현황·일정·회의록 운영 / 현황판 예정");
     });
     t("D03 무재해 기준일 설정 → D+ 계산", () => {
       q(e, "#btn-edit-zero").click();
@@ -1071,7 +1071,7 @@ function makeFetchStub(server) {
     const e = makeEnv({ fetch });
     const { Sync } = e;
     t("Y01 SYNC_KEYS 구성", () =>
-      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,pwOverrides,userOverrides,customUsers,gcal,chatRooms,vault,regulations,equipment,crisis"));
+      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,pwOverrides,userOverrides,customUsers,gcal,chatRooms,vault,regulations,equipment,crisis,fleet"));
     t("Y02 SYNC_KEYS는 모두 freshData 컬렉션에 존재", () => Sync.SYNC_KEYS.forEach(k => ok(e.S.data[k] !== undefined, k)));
     await ta("Y03 초기 pull: 빈 서버 → 로컬 시드 push (semis_logi_store)", async () => {
       await Sync.init();
@@ -2934,6 +2934,123 @@ function makeFetchStub(server) {
       const eqi = q(e, "#eq-q");
       if (eqi) { eqi.value = "ETDㅇ"; eqi.dispatchEvent(new e.w.Event("input")); ok(q(e, "#eq-q") === eqi, "equipment 입력칸 유지"); }
       eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+  }
+
+  /* ══════════ [FL] 운항 현황 (v1.14) ══════════ */
+  {
+    const e = makeEnv();
+    const Fc = e.w.SemisFlightCore;
+    const NOW = Date.now();
+    const iso = (ms) => new Date(ms).toISOString();
+    t("FL01 기체 기본값 15대 · 등록부호→ICAO 주소 규칙(HL7Nyy · HL8xyz)", () => {
+      eq(Fc.DEFAULT_FLEET.length, 15);
+      ok(Fc.DEFAULT_FLEET.every(f => Fc.hlHex(f.reg) === f.hex), "기본 15대 규칙 일치");
+      eq(Fc.hlHex("HL7421"), "71bc21"); eq(Fc.hlHex("HL7507"), "71bd07"); eq(Fc.hlHex("HL8503"), "71c503"); eq(Fc.hlHex("N123AB"), "");
+      eq(Fc.fnoOf("AIH970"), "KJ970"); eq(Fc.fnoOf("AIH0587"), "KJ587"); eq(Fc.fnoOf("KAL123"), "KAL123");
+    });
+    t("FL02 상태 판정: 인천 접근 · 비행 · 비상 · 지상 · 착륙 추정 · 직진 추정(순항 고도만)", () => {
+      const live = iso(NOW - 20000);
+      eq(Fc.status({ seen_at: live, lat: 36.978, lon: 126.687, alt: 16200, gs: 358, trk: 314.7, vr: -2624 }, NOW).code, "appr");
+      eq(Fc.status({ seen_at: live, lat: 36.978, lon: 126.687, alt: 9000, gs: 300, trk: 150, vr: 2000 }, NOW).code, "air", "인천 반대쪽 상승");
+      eq(Fc.status({ seen_at: live, lat: 45, lon: 160, alt: 35000, gs: 500, trk: 60, vr: 0 }, NOW).code, "air");
+      eq(Fc.status({ seen_at: live, lat: 45, lon: 160, alt: 35000, gs: 500, trk: 60, sqk: "7700", emg: true }, NOW).code, "emg");
+      const g = Fc.status({ seen_at: live, lat: 37.46, lon: 126.44, gnd: true, gnd_since: iso(NOW - 3600000) }, NOW);
+      eq(g.code, "gnd"); eq(g.at, "ICN"); eq(g.label, "인천 지상");
+      const land = Fc.status({ seen_at: iso(NOW - 8 * 60000), lat: 37.45, lon: 126.41, alt: 775, gs: 147, trk: 320 }, NOW);
+      eq(land.code, "gnd"); ok(land.inferred); eq(land.label, "인천 착륙 추정");
+      const dr = Fc.status({ seen_at: iso(NOW - 3600000), lat: 45, lon: 160, alt: 35000, gs: 500, trk: 60 }, NOW);
+      eq(dr.code, "lost"); ok(dr.est && dr.est.lon > 160, "1시간 직진 추정");
+      ok(!Fc.status({ seen_at: iso(NOW - 3600000), lat: 45, lon: 160, alt: 5000, gs: 250, trk: 60 }, NOW).est, "낮은 고도는 추정 안 함");
+      ok(!Fc.status({ seen_at: iso(NOW - 5 * 3600000), lat: 45, lon: 160, alt: 35000, gs: 500, trk: 60 }, NOW).est, "3시간 넘으면 추정 안 함");
+      eq(Fc.status(null, NOW).code, "none");
+    });
+    t("FL03 입출항 기록: 오늘 인천 도착 · 기체 이번 비행 출발지", () => {
+      const ev = [
+        { hex: "71bc21", kind: "arr", apt: "ICN", at: iso(NOW - 600000) },
+        { hex: "71bc21", kind: "dep", apt: "HKG", at: iso(NOW - 4 * 3600000) },
+        { hex: "71be46", kind: "dep", apt: "ICN", at: iso(NOW - 2 * 3600000) }
+      ];
+      eq(Fc.eventsOf(ev, { kind: "arr", apt: "ICN" }).length, 1);
+      eq(Fc.lastDep(ev, "71bc21"), null, "도착 뒤라 출발지 없음");
+      eq(Fc.lastDep(ev, "71be46").apt, "ICN");
+    });
+
+    const AC = [
+      { hex: "71bc21", reg: "HL7421", type: "B744", flight: "AIH970", lat: 37.2, lon: 126.6, alt: 8000, gnd: false, gs: 250, trk: 320, vr: -1200, sqk: "3571", emg: false, seen_at: iso(NOW - 10000) },
+      { hex: "71be46", reg: "HL7646", type: "B744", flight: "AIH587", lat: 45, lon: 150, alt: 33000, gnd: false, gs: 560, trk: 60, vr: 0, sqk: "2143", emg: false, seen_at: iso(NOW - 10000),
+        trail: [[Math.round((NOW - 7200000) / 1000), 37.5, 127, 30000], [Math.round((NOW - 3600000) / 1000), 41, 139, 33000]] },
+      { hex: "71bd07", reg: "HL7507", type: "B763", flight: "AIH388", lat: 37.461, lon: 126.44, alt: null, gnd: true, gs: 0, seen_at: iso(NOW - 30000), gnd_since: iso(NOW - 5400000) }
+    ];
+    const EV = [{ hex: "71bd07", reg: "HL7507", flight: "AIH388", kind: "arr", apt: "ICN", at: iso(NOW - 5400000), inferred: false },
+      { hex: "71be46", reg: "HL7646", flight: "AIH587", kind: "dep", apt: "ICN", at: iso(NOW - 7300000), inferred: false }];
+    const calls = [];
+    e.w.fetch = (url) => {
+      calls.push(String(url));
+      if (String(url).indexOf("semis-logi-adsb") >= 0)
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ now: iso(NOW), fetched_at: iso(NOW - 5000), ac: AC, events: EV }) });
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) });
+    };
+    e.w.print = () => {};
+    loginAs(e, "hq");
+    await ta("FL04 메뉴: 홈 허브 '운항 현황'(전체 공개) · 화면 요약 · 인천 입항/출항 · 기체 15대 · 기록", async () => {
+      const mn = e.S.data.menus.find(m => m.module === "flight");
+      ok(mn, "메뉴"); eq(mn.parent, "hub-home"); eq(mn.vis, "all");
+      go(e, "flight");
+      await new Promise(r => setTimeout(r, 60));
+      ok(calls.some(u => u.indexOf("semis-logi-adsb?trail=1&events=1") >= 0), "경로·기록 포함 조회");
+      ok(q(e, ".page-head [data-print-btn], .page-head .print-btn") || q(e, ".page-head").textContent.includes("Print"), "인쇄 버튼");
+      const stats = qa(e, "#fo-stats .stat").map(x => x.textContent);
+      ok(stats[0].indexOf("2") >= 0, "비행 중 2: " + stats[0]);
+      ok(stats[1].indexOf("1") >= 0, "인천 지상 1");
+      eq(qa(e, "#fo-boardbox .appr-row").length, 1, "인천 접근 1");
+      ok(q(e, "#fo-boardbox .appr-row").textContent.includes("KJ970"));
+      eq(qa(e, "#fo-fleetbox .fo-fleet tbody tr").length, 15);
+      eq(q(e, '#fo-fleetbox [data-fo-row="71be46"] .c-dep').textContent, "인천 " + Fc.kstHM(NOW - 7300000), "HL7646 출발지 = 인천");
+      ok(q(e, "#fo-logbox").textContent.includes("KJ388"), "입출항 기록");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    await ta("FL05 대시보드: 지도 + 인천 접근 중 (일반 사용자 포함) · 메뉴 숨기면 빠짐", async () => {
+      go(e, "dashboard");
+      await new Promise(r => setTimeout(r, 40));
+      ok(q(e, "#dash-flt"), "운항 현황 칸");
+      ok(q(e, "#dflt-map"), "지도");
+      eq(qa(e, "#dash-flt .appr-row").length, 1);
+      ok(q(e, "#dflt-arr").textContent.includes("KJ388"), "최근 인천 도착");
+      loginAs(e, "user"); go(e, "dashboard");
+      ok(q(e, "#dash-flt"), "일반 사용자도 표시");
+      loginAs(e, "hq");
+      const mn = e.S.data.menus.find(m => m.module === "flight");
+      mn.hidden = true; go(e, "dashboard");
+      ok(!q(e, "#dash-flt"), "숨긴 메뉴 → 대시보드에서도 빠짐");
+      delete mn.hidden;
+    });
+    t("FL06 기체 목록 편집(hq): ICAO 자동 채움 · 잘못된 주소 거부 · 저장", () => {
+      go(e, "flight");
+      q(e, "#fo-fleet-edit").click();
+      eq(qa(e, "#fl-list .fl-row").length, 15);
+      q(e, "#fl-add").click();
+      const rows = qa(e, "#fl-list .fl-row");
+      const last = rows[rows.length - 1];
+      last.querySelector(".fl-reg").value = "HL7415";
+      last.querySelector(".fl-reg").dispatchEvent(new e.w.Event("input"));
+      eq(last.querySelector(".fl-hex").value, "71bc15", "자동 채움");
+      last.querySelector(".fl-hex").value = "zz";
+      q(e, "#fl-save").click();
+      ok(!Array.isArray(e.S.data.fleet) || e.S.data.fleet.length === 0, "잘못된 주소는 저장 안 됨");
+      last.querySelector(".fl-hex").value = "71bc15";
+      q(e, "#fl-save").click();
+      eq(e.S.data.fleet.length, 16);
+      eq(e.S.data.fleet[15].hex, "71bc15");
+      go(e, "flight");
+      eq(qa(e, "#fo-fleetbox .fo-fleet tbody tr").length, 16);
+      e.S.data.fleet = []; e.S.saveSilent();
+    });
+    t("FL07 정규화: fleet 배열 보정 · hex 없는 항목 제거", () => {
+      const e7 = makeEnv({ preData: Object.assign({}, e.S.data, { fleet: [{ reg: "HL1" }, { reg: "HL7421", hex: "71bc21" }, null] }) });
+      eq(e7.S.data.fleet.length, 1);
+      const e8 = makeEnv({ preData: Object.assign({}, e.S.data, { fleet: "x" }) });
+      ok(Array.isArray(e8.S.data.fleet) && e8.S.data.fleet.length === 0);
     });
   }
 

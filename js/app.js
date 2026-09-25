@@ -8,7 +8,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.13.1";
+  const VERSION = "1.14.0";
   const APP_NAME = "SeMIS · Logistics";
   const LS_DATA = "semisl:data";
   const LS_UI   = "semisl:ui";
@@ -166,6 +166,7 @@ const SeMIS = (() => {
     refresh: '<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/>',
     down: '<path d="M12 4v11"/><path d="m7.5 11.5 4.5 4.5 4.5-4.5"/><path d="M4.5 19.5h15"/>',
     trash: '<path d="M4.5 7h15"/><path d="M9.5 7V4.8a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1V7"/><path d="M6.5 7l.8 12.3a1 1 0 0 0 1 .95h7.4a1 1 0 0 0 1-.95L17.5 7"/><path d="M10.5 11v5.5M13.5 11v5.5"/>',
+    plane: '<path d="M12 2.8c.9 0 1.4.9 1.4 2v4.7l6.8 4v1.9l-6.8-2v4.1l2.1 1.5v1.6L12 19.8l-3.5.8V19l2.1-1.5v-4.1l-6.8 2v-1.9l6.8-4V4.8c0-1.1.5-2 1.4-2z"/>',
     palette: '<path d="M12 3.5a8.5 8.5 0 1 0 0 17c1.2 0 1.8-.8 1.8-1.7 0-1.3-1-1.5-1-2.6 0-1 .8-1.7 1.8-1.7h2.1a3.8 3.8 0 0 0 3.8-3.8c0-4-3.8-7.2-8.5-7.2z"/><circle cx="7.8" cy="11" r="1"/><circle cx="10.5" cy="7.5" r="1"/><circle cx="15" cy="8" r="1"/>'
   };
   /* 허브 선택용 아이콘 목록 (시스템 설정 → 메뉴 관리) */
@@ -195,6 +196,7 @@ const SeMIS = (() => {
       m("dashboard", "대시보드", "🏠", "dashboard"),
 
       h("hub-home", "홈", "home"),
+      m("flight", "운항 현황", "✈️", "flight", "all", "hub-home"),
       m("schedule", "일정관리", "📅", "schedule", "mgr", "hub-home"),
       m("minutes", "회의록 게시판", "🗒️", "minutes", "mgr", "hub-home"),
       p("board", "안전보안 현황판", "📊", "board", "mgr", "hub-home",
@@ -323,6 +325,7 @@ const SeMIS = (() => {
       crisis: { rows: [] },        // 위기대응 담당자 (명단은 공용 DB만 — 코드 미시드)
       vault: { v: 1, members: [], data: null, personal: {}, updated: "" }, // 암호 관리 (클라이언트 AES-256 암호화)
       regulations: [],   // 규정 관리 (항공보안 / 안전관리 / 위험물 DG)
+      fleet: [],         // 운항 현황 기체 목록 [{reg, hex, type, model}] — 비어 있으면 기본 15대(js/flightcore.js)
       equipment: [],     // 검색장비 대장 (상태·고장·점검은 CARES 실시간 — js/cares.js)
       chatRooms: []      // (예약) 팀 채팅방
     };
@@ -362,6 +365,15 @@ const SeMIS = (() => {
     ensureModuleMenu("dashboard", null, "대시보드", "🏠", "dashboard", "all");
     ensureModuleMenu("vault", null, "암호 관리", "🔐", "vault", "hq");
     ensureModuleMenu("settings", null, "시스템 설정", "⚙️", "settings", "admin");
+    // v1.14 운항 현황 — 기존 메뉴 데이터에 없으면 홈 허브의 일정관리 바로 위에 1회 추가(이후 숨김·이름은 운영자 설정 유지)
+    if (!DATA.menus.some(m => m.type === "module" && m.module === "flight")) {
+      const sc = DATA.menus.find(m => m.type === "module" && m.module === "schedule");
+      const hub = DATA.menus.find(m => m.id === "hub-home" && m.type === "group");
+      DATA.menus.push({ id: DATA.menus.some(m => m.id === "flight") ? "flight-" + Date.now().toString(36) : "flight",
+        seq: sc ? (sc.seq || 0) - 0.5 : DATA.menus.reduce((mx, m) => Math.max(mx, m.seq || 0), 0) + 1,
+        type: "module", label: "운항 현황", icon: "✈️", module: "flight", vis: "all",
+        parent: sc && sc.parent ? sc.parent : (hub ? "hub-home" : null) });
+    }
     // v1.13 위기대응 담당자 — 기존 메뉴 데이터에 없으면 비상연락망 바로 아래에 1회 추가(이후 숨김·이름은 운영자 설정 유지)
     if (!DATA.menus.some(m => m.type === "module" && m.module === "crisis")) {
       const ct = DATA.menus.find(m => m.type === "module" && m.module === "contacts");
@@ -454,6 +466,8 @@ const SeMIS = (() => {
     // 비상연락망
     if (!DATA.contacts || typeof DATA.contacts !== "object" || Array.isArray(DATA.contacts)) DATA.contacts = { sections: [] };
     if (!Array.isArray(DATA.contacts.sections)) DATA.contacts.sections = [];
+    if (!Array.isArray(DATA.fleet)) DATA.fleet = [];
+    DATA.fleet = DATA.fleet.filter(f => f && typeof f === "object" && f.hex);
     if (!DATA.crisis || typeof DATA.crisis !== "object" || Array.isArray(DATA.crisis)) DATA.crisis = { rows: [] };
     if (!Array.isArray(DATA.crisis.rows)) DATA.crisis.rows = [];
     // 규정 관리 — 배열 보정 + 실모듈 전환(구버전 데이터의 planned 플래그 제거)
@@ -810,7 +824,7 @@ const SeMIS = (() => {
 
   /* 라우트별 콘텐츠 폭 — wide(2100px) / mid(1560px) / 기본 1180px */
   const VIEW_WIDTH = {
-    schedule: "wide", dashboard: "wide", board: "wide",
+    schedule: "wide", dashboard: "wide", board: "wide", flight: "wide",
     minutes: "mid", contacts: "mid", crisis: "mid", settings: "mid", vault: "mid",
     "reg-sec": "mid", "reg-safety": "mid", "reg-dg": "mid", "scr-status": "mid", "scr-equip": "mid"
   };

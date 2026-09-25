@@ -6,11 +6,11 @@
 
 | 항목 | 값 |
 |---|---|
-| 현재 버전 | **v1.13.1** (2026-09-23) — 검색칸 한글 입력 깨짐 수정(위기대응 담당자 · 검색장비) |
+| 현재 버전 | **v1.14.0** (2026-09-25) — 운항 현황(에어제타 화물기 15대 ADS-B 실시간 위치 · 인천 접근 · 입출항 기록) |
 | 접속 주소 | https://mark4mission.github.io/semis-logistics/ |
 | 저장소 | GitHub `Mark4mission/semis-logistics` (공개) · Mac `~/SeMIS_Logistics` |
-| 테스트 | `npm test` 255건 전부 통과 (코드·문서에 암호 평문·CARES 키 없음) |
-| 백엔드 | Supabase `mzyuzrxkdcpzxojenwat` — 테이블 `semis_logi_store`, 버킷 `semis-logi-files` |
+| 테스트 | `npm test` 262건 전부 통과 (코드·문서에 암호 평문·CARES 키 없음) |
+| 백엔드 | Supabase `mzyuzrxkdcpzxojenwat` — 테이블 `semis_logi_store`, 버킷 `semis-logi-files` · 운항 현황: Edge Function `semis-logi-adsb` + 테이블 `semis_logi_adsb` · `semis_logi_adsb_events` + pg_cron 2분 |
 
 ## 2. 새 세션 시작
 
@@ -51,6 +51,7 @@ Claude가 할 일(순서대로):
 | 라우트 | 파일 | 권한 | 비고 |
 |---|---|---|---|
 | dashboard | modules.js · hero3d.js | all | 화물 태그 카드(무재해·보안등급) + 3D 장면(에어제타 B747-400F 기수 화물문 탑재) · 하단 4칸(다가오는 일정 · 공지 · 결정사항 · 모듈 구축 현황) |
+| flight | flightcore.js · flightops.js | all (기체 목록 편집 hq) | **운항 현황**(v1.14) — 에어제타 화물기 15대 ADS-B 실시간 위치(adsb.lol 중계). 요약(비행 중 · 인천 지상 · 해외 지상 · 신호 없음 · 오늘 인천 도착/출발) · 지도(Leaflet, 비행 경로 · 이름표 겹침 정리) · 인천 입항(접근 중 · 오늘 도착) / 출항(인천 지상 · 오늘 출발) · 기체 현황 15행 · 입출항 기록 48시간. 대시보드: 지도(기체만) + 인천 접근 중 목록 + 최근 인천 도착 |
 | schedule | calendar.js | mgr | 담당자 다중 지정 · 드래그 이동 · 등록 폼 2단(입력/설정) · 12색 |
 | minutes | minutes.js | mgr | 회의록 + QR 참석 서명 |
 | reg-sec · reg-safety · reg-dg | regulations.js | mgr (편집 hq) | 규정 3종 · PDF 뷰어 · 개정 아이디어 노트 |
@@ -78,7 +79,7 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 
 ## 5. 데이터 · 백엔드
 
-- **SYNC_KEYS(19)**: menus · notices · schedules · assignees · assigneesSeeded · minutes · minuteFolders · levelHistory · safetyBoard · contacts · pwOverrides · userOverrides · customUsers · gcal · chatRooms · vault · regulations · equipment · crisis
+- **SYNC_KEYS(20)**: menus · notices · schedules · assignees · assigneesSeeded · minutes · minuteFolders · levelHistory · safetyBoard · contacts · pwOverrides · userOverrides · customUsers · gcal · chatRooms · vault · regulations · equipment · crisis · fleet
 - SYNC_KEYS 밖 설정 행: `caresCfg`(CARES Firebase 웹 키 — `SemisSync.fetchKV`로만 읽음, 앱이 쓰지 않음)
 - 신규 컬렉션 추가 시: `freshData()` 기본값 → `normalizeData()` 보정(멱등) → `sync.js` SYNC_KEYS → 테스트 Y01 기대 문자열 갱신
 - **대량 삭제 방어**(sync.js `guardWipe`): 2건 이상 → 0건 push 차단. 정상 전체 삭제는 `SemisSync.confirmWipe(key)`
@@ -124,6 +125,16 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 - 3D 장면: GPU 없는 PC(소프트웨어 렌더링)·느린 PC(평균 45ms/프레임 초과)·동작 줄이기 설정에서는 정지 화면, WebGL 없으면 사진. 사진이 보이면 대시보드에서 `document.querySelector('#dash-3d').dataset.h3d`로 사유 확인(no-webgl · webgl-context · load · live · static)
 - 2026-09-22 v1.9.0 배포 직후 Mark의 Chrome에서 3D 대신 사진이 보였음 — 같은 Mac의 내장 브라우저에서는 3D 정상(Apple M4 Pro, Metal). 배포 전 요청한 three.js 404가 CDN에 남은 것으로 추정해 v1.9.1에서 주소에 버전을 붙임. 재발 시 위 사유 값과 chrome://gpu의 WebGL 항목 확인
 
+- **운항 현황(v1.14)** — 스케줄 파일은 쓰지 않는다(Mark 결정 2026-09-25: 스케줄이 매달 바뀌어 손으로 최신화하기 어려움 → 등록 기체 15대의 실시간 입출항만 감시). 관리 항목은 기체 목록(공용 DB `fleet`, 비면 코드 기본 15대)뿐.
+  - 데이터 흐름: pg_cron `semis-logi-adsb`(2분) → Edge Function `semis-logi-adsb`(verify_jwt, anon 키) → adsb.lol `/v2/hex/<15개>` 1회 → `semis_logi_adsb`(기체별 마지막 상태 · 비행 경로 20시간 · 4분 간격) 갱신 + 지상↔공중 전환을 `semis_logi_adsb_events`(dep/arr · 공항 · 시각 · 추정 여부, 45일 보관)에 기록. 화면이 부르면 50초 안의 값은 그대로(_meta 행 잠금). 함수 원본 `tools/edge/semis-logi-adsb.ts`(바꾸면 MCP deploy_edge_function으로 재배포)
+  - 판정(js/flightcore.js `status`): 비상(7500·7600·7700) · 인천 접근 중(250km 안 · 인천 쪽 ±60° · 강하 -300ft/분 이하 또는 15,000ft 이하, 상승 제외) · 비행 중 · 지상(공항 반경 15km) · 착륙 추정(공항 15km · 3,000ft 이하에서 끊김) · 신호 없음(순항 10,000ft 이상에서 끊겼으면 마지막 방위·속도로 3시간까지 직진 추정 표시) · 수신 기록 없음. 4분 넘게 안 잡히면 신호 없음
+  - 입출항 감지(서버): 공중 확정 = 800ft 이상 또는 150kt 이상(활주 중 흔들림 제외). 착륙·이륙 시각은 직전 수신이 20분 안일 때만 그대로, 아니면 '시각 추정'. 공항 근처 3,000ft 이하에서 10분 넘게 끊기면 착륙으로 기록(지상에서 트랜스폰더를 끄는 경우). 같은 기체·종류·공항 15분 안 중복은 건너뜀
+  - 공항 목록 103곳(취항지 + 대체·경유 화물 공항): `js/flightcore.js AIRPORTS` 와 Edge Function `APTS` 가 같아야 함 — 공항을 늘리면 둘 다 고치고 재배포
+  - 한계: ADS-B 지상 수신기 기반이라 태평양·시베리아 등 대양·오지 구간은 몇 시간씩 끊김(직진 추정으로 보완). adsb.lol 은 무료·무보증(ODbL, 출처 표시 — 지도 오른쪽 아래). 실사용 통지를 권장하므로 필요 시 adsb.lol 에 연락. 첫날(2026-09-25)은 대부분 기체가 '수신 기록 없음'으로 시작해 운항하면서 채워진다
+  - 지도: Leaflet 1.9.4 로컬(`assets/vendor/leaflet`, BSD-2) · OpenStreetMap 타일(무료 · 출처 표시 · 소량 사용 조건) 채도 뺀 필터. 태평양 중심(미주 경도 +360). 대시보드 지도는 휠 확대 끔(스크롤 방해), 운항 현황 지도는 켬
+  - 기체 등록부호 → ICAO 주소: HL7Nyy → 71B(8+N)yy, HL8xyz → 71Cxyz (tar1090-db로 15대 확인). 기체 목록 편집에서 자동 채움
+  - 대시보드 순서: 태그 카드 → 화물 보안검색 띠(mgr) → 운항 현황. 메뉴를 숨기면 대시보드 칸도 빠짐
+
 ## 8. 작업 기록
 
 | 버전 | 날짜 | 내용 |
@@ -150,4 +161,5 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 | v1.12.3 | 09-23 | **목록 필터 잔존 버그 수정** — 규정 자료에서 검색어를 켠 채 새 규정을 등록하면 목록에서 걸러져 보이지 않던 문제. 저장한 항목이 현재 검색·필터에 안 걸리면 조건을 자동 해제하고 알린다(규정·검색장비 대장·비상연락망). 규정 화면은 검색 중 '검색 결과 N / 전체 M · 검색 해제' 표시, 빈 결과도 검색 때문임을 안내. 더불어 `pull()` 경합 방어(push 중 도착한 옛 서버 값이 로컬 변경을 덮지 않게) |
 | v1.13.0 | 09-23 | **위기대응 담당자** — 2026년 에어제타 위기대응 담당자 명단(엑셀 7개 시트)을 별도 화면으로. 우리 팀 임무 띠(짙은 판, 정·부 · 전화) · 요약(조직 11 · 팀 27 · 임무 96 · 담당자 78) · 조직 줄(색 점 · 건수, 누르면 필터) · 검색(이름 · 팀 · 업무, 강조) · 보기 4종: 조직별(팀 묶음 표) · 팀별(본부 묶음) · 담당자별(이름 누르면 이동, 정/부 배지) · 매트릭스(팀 × 조직 건수, 칸 누르면 조직별 필터) · 참고(OCC 번호 원터치) · hq 엑셀 반영(대조 후) · 행 편집 · 기본 정보 · 원본 내려받기 · 모바일 행 카드 · 인쇄 |
 | v1.13.1 | 09-23 | **검색칸 한글 입력 깨짐 수정** — 위기대응 담당자 · 검색장비 유지관리(장비 대장 · 고장 이력) 검색칸에서 한글을 치면 글자마다 화면을 새로 그리며 입력칸이 바뀌어 "ㅊㅗㅣㅅㅏㅇ"처럼 자모로 풀리던 문제. 입력칸은 유지하고 나머지만 다시 그림(`ui.repaintKeep`), 조합 중 자모는 검색어에서 제외(`ui.searchValue`). 비상연락망 · 규정 · 암호 관리 · 회의록은 원래 입력칸 밖만 다시 그려 해당 없음(조합 입력 시험으로 확인). 모듈 템플릿도 같은 방식으로 수정 |
+| v1.14.0 | 09-25 | **운항 현황** — 에어제타 화물기 15대 ADS-B 실시간 위치(adsb.lol 무료 · Supabase Edge Function 중계 · pg_cron 2분 기록). 대시보드 지도(기체만) + 인천 접근 중 목록 + 최근 인천 도착 · 메뉴 '운항 현황'(홈 허브, 전체 공개): 요약 · 지도(비행 경로 · 신호 없음 직진 추정 · 이름표 겹침 정리) · 인천 입항/출항 · 기체 현황 · 입출항 기록 48시간 · 비상 부호 경고 · 기체 목록 편집(hq, ICAO 자동 채움). 스케줄 파일 미사용(매달 바뀌어 유지 곤란) |
 | v1.9.1 | 09-22 | 한글 어절 단위 줄바꿈(전역 keep-all) · 대시보드 하단 시트 칸 수를 시트 폭으로 결정(container query, 1040px↑ 4칸) · 일정 폼 '완료'를 하단 버튼줄로(스크롤 없이 보임) · 오른쪽 설정 패널 압축(1512×825에서 스크롤 없음) · 3D 불러오기 주소에 버전 부여(배포 직후 옛 404 캐시 회피)·실패 사유 기록(`#dash-3d[data-h3d]`) |

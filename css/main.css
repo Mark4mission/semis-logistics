@@ -2969,3 +2969,190 @@ a.nb-file, .nb-file > a, .nb-editor img, .notice-html img, .ag-memo img, .cn-ric
 .cr-mxt tbody th[scope="row"], .cr-mxt thead th:first-child { position: sticky; left: 0; z-index: 1; background: var(--surface); }
 .cr-mxt thead th:first-child { z-index: 2; }
 .cr-mxt tr.is-home th[scope="row"] { background: var(--accent-soft); }
+
+/* ══════════════════════════════════════════════════════════════════
+   운항 현황 (v1.14) — 에어제타 화물기 ADS-B 위치 · 인천 접근 · 입출항 기록
+   대시보드 .dash-flt(지도 + 인천 접근 중) · 메뉴 #/flight(.fo-*)
+   지도 Leaflet(assets/vendor/leaflet) — 타일은 채도를 빼 화면 톤에 맞춘다
+   ══════════════════════════════════════════════════════════════════ */
+.dash-flt { margin-bottom: 20px; container-type: inline-size; }
+.dash-flt > .dc-head { padding: 0 4px; margin-bottom: 10px; }
+.dflt-body { display: grid; grid-template-columns: minmax(0, 1fr); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
+.dflt-mapwrap .fo-map { height: 420px; }
+.dflt-side { display: flex; flex-direction: column; min-width: 0; padding: 16px 18px 12px; border-top: 1px solid var(--border); }
+@container (min-width: 860px) {
+  .dflt-body { grid-template-columns: minmax(0, 1fr) minmax(300px, 340px); }
+  .dflt-side { border-top: 0; border-left: 1px solid var(--border); max-height: 420px; overflow-y: auto; }
+}
+.dflt-h { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+.dflt-h h3 { font-size: .92rem; font-weight: 700; }
+.dflt-h b { font-size: 1.35rem; font-weight: 600; color: var(--warning); line-height: 1; }
+
+/* 지도 */
+.fo-mapwrap { position: relative; min-width: 0; isolation: isolate; }
+.fo-map { position: relative; width: 100%; height: 100%; min-height: 280px; background: #dde5e3; z-index: 0; }
+.fo-map-msg { position: absolute; inset: 0; display: grid; place-items: center; font-size: .84rem; color: var(--text-3); }
+.fo-map.is-ready .fo-map-msg { display: none; }
+.fo-map .leaflet-container, .fo-map.leaflet-container { font-family: var(--font); background: #dde5e3; }
+.fo-tiles { filter: grayscale(.92) contrast(.9) brightness(1.07); }
+.fo-map .leaflet-control-attribution { font-size: .66rem; background: rgba(255,255,255,.82); color: var(--text-3); }
+.fo-map .leaflet-control-attribution a { color: var(--text-2); }
+.fo-map .leaflet-bar { border: 1px solid var(--border-strong); box-shadow: 0 2px 6px rgba(14,26,31,.1); border-radius: 9px; overflow: hidden; }
+.fo-map .leaflet-bar a { width: 32px; height: 32px; line-height: 30px; color: var(--text); }
+.fo-fit { position: absolute; top: 10px; right: 10px; z-index: 450; width: 34px; height: 34px; display: grid; place-items: center;
+  border: 1px solid var(--border-strong); border-radius: 9px; background: rgba(255,255,255,.96); color: var(--text-2);
+  box-shadow: 0 2px 6px rgba(14,26,31,.1); transition: color .15s ease, transform .16s var(--ease-out); }
+.fo-fit:hover { color: var(--primary); }
+.fo-fit:active { transform: scale(.94); }
+.fo-legend { position: absolute; left: 10px; bottom: 10px; z-index: 450; display: flex; flex-wrap: wrap; gap: 4px 12px; max-width: calc(100% - 20px);
+  padding: 6px 10px; border-radius: 9px; background: rgba(255,255,255,.94); box-shadow: 0 2px 6px rgba(14,26,31,.1);
+  font-size: .74rem; color: var(--text-2); pointer-events: none; }
+.fo-legend span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.fo-legend b { color: var(--text); font-weight: 600; }
+.fo-legend i { width: 9px; height: 9px; border-radius: 50%; background: var(--primary); }
+.fo-legend [data-tone="appr"] i { background: #d97706; }
+.fo-legend [data-tone="gnd"] i { background: var(--sidebar-bg); border-radius: 3px; }
+.fo-legend [data-tone="lost"] i { background: #fff; box-shadow: inset 0 0 0 1.5px #7b8a90; }
+
+/* 기체 표지 (Leaflet divIcon) */
+.leaflet-marker-icon.fo-mk { background: none; border: 0; }
+.fo-ac { position: absolute; inset: 0; display: grid; place-items: center; color: var(--primary); cursor: pointer; }
+.fo-ac svg { width: 26px; height: 26px; fill: currentColor; stroke: #fff; stroke-width: 1.5px; paint-order: stroke;
+  transform: rotate(var(--r, 0deg)); filter: drop-shadow(0 1px 1.5px rgba(11,31,38,.35)); transition: transform .6s var(--ease-out); }
+.fo-ac[data-tone="appr"] { color: #d97706; }
+.fo-ac[data-tone="emg"] { color: var(--danger); }
+.fo-ac[data-tone="emg"]::after { content: ""; position: absolute; inset: -6px; border-radius: 50%; box-shadow: 0 0 0 2px var(--danger); animation: fo-pulse 1.4s ease-out infinite; }
+@keyframes fo-pulse { from { opacity: .9; transform: scale(.7); } to { opacity: 0; transform: scale(1.5); } }
+.fo-ac.is-est svg { fill: #fff; stroke: #6b7b81; stroke-width: 1.6px; }
+.fo-lb { position: absolute; left: 29px; top: 4px; display: inline-flex; align-items: baseline; gap: 5px; padding: 1px 7px 2px; border-radius: 6px;
+  background: rgba(255,255,255,.95); box-shadow: 0 1px 3px rgba(11,31,38,.2); font-family: var(--mono); font-size: 11.5px; line-height: 1.5;
+  color: var(--text-3); white-space: nowrap; pointer-events: none; }
+.fo-lb b { color: var(--text); font-weight: 600; }
+.fo-mk.lb-l .fo-lb { left: auto; right: 29px; }
+.fo-mk.lb-x .fo-lb { display: none; }
+.fo-ac[data-tone="appr"] + .fo-lb b { color: #9a4a06; }
+.fo-ac.is-est + .fo-lb { background: rgba(255,255,255,.8); }
+.fo-apt { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 0; cursor: pointer; }
+.fo-apt b, .fo-apt i { display: grid; place-items: center; height: 22px; font-family: var(--mono); font-size: 11px; font-style: normal; font-weight: 600; }
+.fo-apt b { padding: 0 6px; border-radius: 6px 0 0 6px; background: var(--sidebar-bg); color: #fff; }
+.fo-apt i { min-width: 20px; padding: 0 5px; border-radius: 0 6px 6px 0; background: #fff; color: var(--text); box-shadow: inset 0 0 0 1.5px var(--sidebar-bg); }
+.fo-apt.is-home b { background: var(--primary); }
+.fo-apt.is-home i { box-shadow: inset 0 0 0 1.5px var(--primary); color: var(--primary-dark); }
+
+/* 팝업 */
+.fo-popup .leaflet-popup-content-wrapper { border-radius: 12px; box-shadow: var(--shadow-md), 0 0 0 1px var(--border); padding: 0; }
+.fo-popup .leaflet-popup-content { margin: 12px 14px 10px; font-family: var(--font); font-size: .84rem; line-height: 1.5; color: var(--text); }
+.fo-popup .leaflet-popup-tip { box-shadow: none; }
+.fo-pop-h { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; padding-right: 14px; }
+.fo-pop-h b { font-size: 1rem; }
+.fo-pop-h span { font-size: .78rem; color: var(--text-3); }
+.fo-pop dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 12px; margin: 0; }
+.fo-pop dt { color: var(--text-3); font-size: .78rem; }
+.fo-pop dd { margin: 0; font-variant-numeric: tabular-nums; }
+.fo-pop dd small { color: var(--text-3); }
+.fo-pop-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.fo-pop-list li { display: grid; grid-template-columns: 62px minmax(0, 1fr) auto; gap: 8px; align-items: baseline; }
+.fo-pop-list span { color: var(--text-2); font-size: .78rem; }
+.fo-pop-list small { color: var(--text-3); font-size: .74rem; white-space: nowrap; }
+
+/* 인천 접근 중 목록 */
+.appr-list { list-style: none; margin: 0; padding: 0; }
+.appr-list li + li { border-top: 1px solid #edf1f0; }
+.appr-row { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 10px 6px; border: 0; border-radius: 8px;
+  background: none; text-align: left; transition: background-color .15s ease; }
+@media (hover: hover) and (pointer: fine) { .appr-row:hover { background: var(--surface-2); } }
+.ar-id { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.ar-id b { font-size: 1rem; font-weight: 600; }
+.ar-id span { font-size: .78rem; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ar-eta { grid-row: span 2; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; }
+.ar-eta b { font-size: 1.12rem; font-weight: 600; color: #9a4a06; line-height: 1.2; }
+.ar-eta small { font-size: .74rem; color: var(--text-3); white-space: nowrap; }
+.ar-sub { display: flex; align-items: center; gap: 4px; font-size: .8rem; color: var(--text-2); min-width: 0; }
+.ar-dn { display: inline-flex; color: #b45309; }
+.fo-none { padding: 10px 2px; font-size: .86rem; color: var(--text-3); }
+.dflt-h2 { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
+.arr-mini { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.arr-mini li { display: grid; grid-template-columns: 48px 64px minmax(0, 1fr) auto; gap: 8px; align-items: baseline; padding: 5px 6px; font-size: .84rem; }
+.arr-mini b { font-weight: 600; }
+.arr-mini span { color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arr-mini small { font-size: .74rem; color: var(--text-3); white-space: nowrap; }
+
+/* 운항 현황 화면 */
+.fo-upd { font-size: .8rem; color: var(--text-3); white-space: nowrap; }
+#view[data-hub] .fo-upd { color: #d4e2e4; }
+.fo-alert { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 18px; padding: 12px 16px; border-radius: var(--radius);
+  background: var(--danger-soft); color: var(--danger); font-size: .9rem; line-height: 1.6; box-shadow: inset 0 0 0 1px #f1c3bd; }
+.fo-alert .ico { margin-top: 3px; }
+.fo-alert.is-soft { background: var(--surface-2); color: var(--text-2); box-shadow: inset 0 0 0 1px var(--border); }
+.fo-mapcard { padding: 0; overflow: hidden; }
+.fo-map-full { height: clamp(380px, 58vh, 640px); }
+.fo-boards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 18px; margin-bottom: 18px; }
+.fo-boards > .card { margin-bottom: 0; min-width: 0; }
+.fo-board .card-title { margin-bottom: 6px; }
+.fo-up { display: inline-flex; transform: rotate(180deg); }
+.fo-sub { display: flex; align-items: baseline; gap: 8px; margin: 16px 0 4px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.fo-board .fo-sub:first-of-type { margin-top: 4px; }
+.fo-sub h3 { font-size: .84rem; font-weight: 600; color: var(--text-2); }
+.fo-sub span { font-size: .84rem; color: var(--text-3); }
+table.fo-tbl { font-size: .88rem; }
+.fo-tbl th, .fo-tbl td { padding: 8px 8px; }
+.fo-tbl tr:hover td { background: none; }
+.fo-t { width: 64px; color: var(--text-2); white-space: nowrap; }
+.fo-note { text-align: right; white-space: nowrap; }
+.fo-cnt { font-size: .8rem; font-weight: 500; color: var(--text-3); }
+.fo-fleet tbody tr { cursor: pointer; }
+.fo-fleet .c-ac b { display: block; }
+.fo-fleet .c-ac small { display: block; font-size: .74rem; color: var(--text-3); white-space: nowrap; }
+.fo-fleet .c-alt, .fo-fleet .c-seen, .fo-fleet .c-dep { white-space: nowrap; font-size: .86rem; }
+.fo-fleet .c-seen { color: var(--text-2); }
+.fo-log td { white-space: nowrap; }
+
+/* 기체 목록 편집 */
+.fl-head, .fl-row { display: grid; grid-template-columns: 100px 96px minmax(0, 1fr) minmax(0, 1fr) 34px; gap: 8px; align-items: center; }
+.fl-head { font-size: .78rem; font-weight: 600; color: var(--text-2); margin: 6px 0; }
+.fl-head span { display: inline-flex; align-items: center; gap: 4px; }
+.fl-list { display: grid; gap: 6px; max-height: 52vh; overflow-y: auto; padding: 2px; }
+.fl-row input, .fl-row select { width: 100%; min-width: 0; height: 38px; padding: 0 9px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); }
+.fl-row .mono { font-family: var(--mono); font-size: .86rem; }
+.fl-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; }
+
+@media (max-width: 640px) {
+  .dflt-mapwrap .fo-map { height: 320px; }
+  .fo-map-full { height: 60vh; min-height: 320px; }
+  .fo-legend { font-size: .7rem; gap: 2px 9px; }
+  .fo-upd { display: none; }
+  /* 기체 현황 · 입출항 기록 → 행 카드 */
+  .fo-fleet thead, .fo-log thead { display: none; }
+  .fo-fleet, .fo-fleet tbody, .fo-log, .fo-log tbody { display: block; }
+  .fo-fleet tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 10px; padding: 12px 6px; border-bottom: 1px solid #edf1f0; }
+  .fo-fleet td { display: block; padding: 0; border: 0; background: none !important; }
+  .fo-fleet .c-ac { grid-column: 1; grid-row: 1; }
+  .fo-fleet .c-ac b, .fo-fleet .c-ac small { display: inline; margin-right: 6px; }
+  .fo-fleet .c-st { grid-column: 2; grid-row: 1; justify-self: end; }
+  .fo-fleet .c-wh { grid-column: 1; grid-row: 2; font-size: .84rem; color: var(--text-2); }
+  .fo-fleet .c-seen { grid-column: 2; grid-row: 2; justify-self: end; font-size: .78rem; }
+  .fo-fleet .c-fno:not(:empty), .fo-fleet .c-alt { grid-column: 1 / -1; font-size: .8rem; color: var(--text-3); }
+  .fo-fleet .c-fno, .fo-fleet .c-dep, .fo-fleet td.is-empty { display: none; }
+  .fo-log tr { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 2px 10px; align-items: center; padding: 10px 4px; border-bottom: 1px solid #edf1f0; }
+  .fo-log td { display: block; padding: 0; border: 0; white-space: normal; }
+  .fo-log td:nth-child(3) { grid-column: 3; }
+  .fo-log td:nth-child(4), .fo-log td:nth-child(5), .fo-log td:nth-child(6) { grid-row: 2; font-size: .8rem; color: var(--text-2); }
+  .fo-log td:nth-child(4) { grid-column: 1; }
+  .fo-log td:nth-child(5) { grid-column: 2; }
+  .fo-log td:nth-child(6) { grid-column: 3; justify-self: end; }
+  .fl-head { display: none; }
+  .fl-row { grid-template-columns: 1fr 1fr 34px; }
+  .fl-row .fl-type, .fl-row .fl-model { grid-row: 2; }
+  .fl-row .fl-type { grid-column: 1; }
+  .fl-row .fl-model { grid-column: 2; }
+  .fl-row .mt-btn { grid-column: 3; grid-row: 1; }
+}
+@media print {
+  .fo-fit, .fo-map .leaflet-control-zoom, .fo-map .leaflet-popup-pane { display: none !important; }
+  .dflt-mapwrap .fo-map, .fo-map-full { height: 95mm !important; min-height: 0; }
+  .dflt-side { max-height: none; overflow: visible; }
+  .dash-flt, .fo-mapcard, .fo-board { break-inside: avoid; }
+  .fo-legend, .fo-lb, .fo-apt b, .fo-apt i, .fo-ac, .fo-alert { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .fo-tiles { filter: grayscale(1) contrast(.9) brightness(1.08); }
+}

@@ -18,7 +18,7 @@
   const REST = SUPA_URL + "/rest/v1/" + TABLE;
   const HEADERS = { apikey: SUPA_KEY, Authorization: "Bearer " + SUPA_KEY, "Content-Type": "application/json" };
 
-  const SYNC_KEYS = ["menus", "notices", "schedules", "assignees", "assigneesSeeded", "minutes", "minuteFolders", "levelHistory", "safetyBoard", "contacts", "pwOverrides", "userOverrides", "customUsers", "gcal", "chatRooms", "vault", "regulations", "equipment", "crisis"];
+  const SYNC_KEYS = ["menus", "notices", "schedules", "assignees", "assigneesSeeded", "minutes", "minuteFolders", "levelHistory", "safetyBoard", "contacts", "pwOverrides", "userOverrides", "customUsers", "gcal", "chatRooms", "vault", "regulations", "equipment", "crisis", "fleet"];
   const LS_PENDING = "semisl:pendingSync";
   const LS_FORCE = "semisl:forcePush";
   const LS_GUARD = "semisl:guardLog";
@@ -462,7 +462,7 @@
   }
 
   window.SemisSync = {
-    init, stop, syncNow, uploadFile, fetchKV,
+    init, stop, syncNow, uploadFile, fetchKV, ANON: SUPA_KEY,
     listFiles, listFolder, deleteFile, countRows, BUCKET, PUBLIC_PREFIX,
     push, pull, applyRemote,
     history, historyValue, restoreHistory,
