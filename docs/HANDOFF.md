@@ -6,10 +6,10 @@
 
 | 항목 | 값 |
 |---|---|
-| 현재 버전 | **v1.15.0** (2026-09-25) — **서버 보안**: 서버 로그인 세션 · 권한별 RLS · 비공개 파일(서명 URL) · 접속 기록 |
+| 현재 버전 | **v1.16.0** (2026-09-26) — **로그인 자동공격 방어**(보이지 않는 작업증명 · 전체 실패 기반 난이도 상향 · 서명 코드 중지) · v1.15 서버 보안 위 |
 | 접속 주소 | https://mark4mission.github.io/semis-logistics/ |
 | 저장소 | GitHub `Mark4mission/semis-logistics` (공개) · Mac `~/SeMIS_Logistics` |
-| 테스트 | `npm test` 281건 전부 통과 (가짜 서버로 로그인·RLS·파일 함수 흉내 · 코드에 해시·토큰 없음) |
+| 테스트 | `npm test` 286건 전부 통과 (가짜 서버로 로그인(작업증명 포함)·RLS·파일 함수 흉내 · 코드에 해시·토큰 없음) |
 | 백엔드 | Supabase `mzyuzrxkdcpzxojenwat` — 테이블 `semis_logi_store`(세션 RLS), **비공개** 버킷 `semis-logi-files`, 비공개 스키마 `semis_logi_private`(계정 · 세션 · 로그인 시도 · 접속 기록 · 권한표), RPC `semis_logi_*`, Edge Function `semis-logi-files`(서명 URL) · 운항 현황: Edge Function `semis-logi-adsb` + 테이블 `semis_logi_adsb` · `semis_logi_adsb_events` + pg_cron 2분 |
 
 ## 2. 새 세션 시작
@@ -83,7 +83,8 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 - SYNC_KEYS 밖 설정 행: `caresCfg`(CARES Firebase 웹 키 — `SemisSync.fetchKV`로만 읽음, 앱이 쓰지 않음)
 - 신규 컬렉션 추가 시: `freshData()` 기본값 → `normalizeData()` 보정(멱등) → `sync.js` SYNC_KEYS → 테스트 Y01 기대 문자열 갱신 → **서버 권한표 등록**(아래)
 - **서버 보안(v1.15)** — 원본 SQL `tools/sql/semis-logi-security.sql`(1단계) · `tools/sql/semis-logi-lockdown.sql`(2단계 잠금). 실제 적용은 마이그레이션 `semis_logi_security_1~6`(6 = RPC 실행 권한: public `semis_logi_*`는 anon·service_role만, authenticated 차단)
-  - 로그인: RPC `semis_logi_login(p_pw, p_ua)` → 서버가 `bcrypt(sha256('SeMISv2::'+암호))`로 확인 → 세션 토큰 64자(원문은 저장 안 함, sha256만). 같은 IP 15분 20회 실패 → 15분 제한. 6자리 숫자는 회의 서명 코드(회의일 ±90일)
+  - **작업증명(v1.16, 마이그레이션 `semis_logi_security_7_pow`, SQL `tools/sql/semis-logi-pow.sql`)**: 로그인 창이 뜨면 `semis_logi_challenge()`(HMAC 서명 {nonce·만료 2분·난이도}, 비밀값은 `semis_logi_private.settings`)를 받아 `js/pow.js` Web Worker가 미리 푼다 → `semis_logi_login(p_pw, p_ua, p_pow)` — 해답 없으면 `pow`, 만료 `pow_expired`, 재사용 `pow_used`(클라이언트가 새 문제로 1회 재시도). 기본 18비트(약 0.2초), 15분 전체 실패 50/150/400 → +2/+4/+6. 6자리 서명 코드는 1시간 실패 200회 초과 시 15분 `sign_paused`. 보안 탭 통계(fail15·fail60·powBits·signPaused). SeMIS v2 v2.53과 같은 파일·방식
+  - 로그인: RPC `semis_logi_login(p_pw, p_ua, p_pow)` → 서버가 `bcrypt(sha256('SeMISv2::'+암호))`로 확인 → 세션 토큰 64자(원문은 저장 안 함, sha256만). 같은 IP 15분 20회 실패 → 15분 제한. 6자리 숫자는 회의 서명 코드(회의일 ±90일)
   - 토큰은 이 탭의 `sessionStorage semisl:tok`, 모든 요청에 `x-semis-token` 헤더. 세션 24시간 무활동 만료(10분마다 `semis_logi_whoami`로 확인·연장) · 최대 30일. 서버가 끊으면 로그인 창만 다시 뜨고, 같은 계정이면 미전송분을 이어서 저장
   - RLS: `semis_logi_store`는 정책 "logi session read/insert/update"만 — `rank_now() >= read_rank(key)` / `write_rank(key)`. 권한표 `semis_logi_private.key_acl`(9 = 앱에서 불가). **새 컬렉션은 여기에 (key, 읽기, 쓰기) 등록**(없으면 2/3). SQL 파일에도 같은 줄(테스트 C05가 대조)
   - 서버가 `updated_at`(서버 시각)·`updated_by`(`계정ID/클라이언트ID`)를 찍는다(트리거 `semis_logi_store_a_stamp`). 변경 알림은 트리거 `semis_logi_store_notify` → Broadcast 채널 `semis-logi-sync`(컬렉션 이름만) → 클라이언트가 그 컬렉션만 GET
@@ -114,7 +115,8 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 ## 7. 미결 · 주의
 
 - **(v1.15 이전 노출) 암호 해시**: v1.14까지 계정 해시(SHA-256, SALT 공개)가 공개 저장소 git 이력과 누구나 읽을 수 있던 공용 DB(`pwOverrides`)에 있었다 → **네 계정 모두 새 암호로 바꿀 것**(시스템 설정 › 사용자/암호, 8자 이상). 특히 `mark3464`는 SeMIS v2와 같은 암호이고 v2 공용 DB(`semis_store.pwOverrides`)는 아직 누구나 읽을 수 있으므로 **Logistics 전용의 다른 암호**를 권장
-- **SeMIS v2도 같은 구조적 노출**(2026-09-25 점검, 미조치 — Logistics 범위 밖): `semis_store`(anon 읽기·쓰기·삭제) · `semis-files` 버킷(공개·목록·삭제 227개/156MB) · `semis_store_history` v2 행(공개) · Edge Function `semis-ics` 토큰이 v2 공개 코드에(v2 일정 전체 ICS) · `semi-chat` 토큰(AI 비용). 같은 방식(세션 RLS·비공개 버킷)으로 v2 적용 필요
+- ~~SeMIS v2도 같은 구조적 노출~~ → **2026-09-26 v2.53.0 배포 + 잠금 완료**(서버 세션·비공개 버킷·ICS/AI 토큰 폐지, 상세는 프로젝트 문서 `claude/semis-v2-security-handoff.md`). 이때 공용 이력 트리거 `public.semis_store_snapshot()`이 BEFORE DELETE에서 NEW(NULL)를 돌려 **행 삭제가 조용히 취소되던 문제**(Logistics 공용)를 고침 — 이제 OLD 반환
+- v1.15 화면을 열어 둔 탭은 로그인(작업증명 없음)이 거부되므로 새로고침 필요(v1.16)
 - Edge Function `semis-logi-ai`(AI 요약, 원본 `tools/edge/semis-logi-ai.ts`): 2026-09-25 고정 토큰 → 로그인 세션 확인(계정 세션 · manager 이상)으로 교체. 호출하는 화면은 아직 없음 — 붙일 때 `x-semis-token` 헤더로 `{ task:"summary", title, text }` 전송(ANTHROPIC_API_KEY는 v2 `semi-chat`과 공유)
 - 운영 확인용 임시 계정(`zz-t-*`)과 그 접속 기록은 2026-09-25 확인 후 삭제 — 보안 탭의 접속 기록은 그 이후 것만 실제. v1.14 화면을 열어 둔 탭은 저장이 거부되므로 새로고침 후 로그인해야 한다
 - CARES Firestore(equipments · repairLogs · inspectionLogs · sensorLogs · sensorThresholds) 공개 읽기 규칙은 CARES 쪽 설정 — Logistics는 읽기만 한다
@@ -177,4 +179,5 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 | v1.13.1 | 09-23 | **검색칸 한글 입력 깨짐 수정** — 위기대응 담당자 · 검색장비 유지관리(장비 대장 · 고장 이력) 검색칸에서 한글을 치면 글자마다 화면을 새로 그리며 입력칸이 바뀌어 "ㅊㅗㅣㅅㅏㅇ"처럼 자모로 풀리던 문제. 입력칸은 유지하고 나머지만 다시 그림(`ui.repaintKeep`), 조합 중 자모는 검색어에서 제외(`ui.searchValue`). 비상연락망 · 규정 · 암호 관리 · 회의록은 원래 입력칸 밖만 다시 그려 해당 없음(조합 입력 시험으로 확인). 모듈 템플릿도 같은 방식으로 수정 |
 | v1.14.0 | 09-25 | **운항 현황** — 에어제타 화물기 15대 ADS-B 실시간 위치(adsb.lol 무료 · Supabase Edge Function 중계 · pg_cron 2분 기록). 대시보드 지도(기체만) + 인천 접근 중 목록 + 최근 인천 도착 · 메뉴 '운항 현황'(홈 허브, 전체 공개): 요약 · 지도(비행 경로 · 신호 없음 직진 추정 · 이름표 겹침 정리) · 인천 입항/출항 · 기체 현황 · 입출항 기록 48시간 · 비상 부호 경고 · 기체 목록 편집(hq, ICAO 자동 채움). 스케줄 파일 미사용(매달 바뀌어 유지 곤란) |
 | v1.15.0 | 09-25 | **서버 보안** — 공개 키만으로 공용 DB·파일 전부를 읽고 고칠 수 있던 구조를 닫음. 서버 로그인(RPC · bcrypt · IP별 시도 제한) → 탭 세션 토큰 · 권한표(key_acl) 기반 RLS(권한 밖 컬렉션은 받지도 못함) · 계정·세션·접속 기록 비공개 스키마 · 파일 버킷 비공개 + Edge Function 서명 URL(js/fileauth.js 자동 변환) · 회의 서명은 그 회의 한 건만(RPC) · 데이터 사본 localStorage → sessionStorage · 변경 알림 Broadcast(이름만) · 서버 시각·작성자 기록 · 설정에 보안 탭(접속 중 · 기록 · 모두 끊기) · CSP · 살균기 template 파싱 · v2 ICS 토큰 제거 · 후속: RPC 실행 권한 정리(anon만) · AI 요약 함수 세션 확인 · 임시 계정·기록 정리 |
+| v1.16.0 | 09-26 | **로그인 자동공격 방어** — reCAPTCHA 대신 보이지 않는 작업증명: 서버 서명 문제(2분 · 1회용)를 로그인 창에서 Web Worker가 미리 풀어 첨부(js/pow.js, v2와 같은 파일) · 전체 실패가 늘면 난이도 자동 상향 · 6자리 회의 서명 코드 실패 급증 시 15분 중지 · 보안 탭 실패 통계 · 로그인 안내 문구(제한 · 중지 · 확인 실패) · CSP worker-src · 라이브 확인(해답 없는 로그인 거부, 로그인 1.6초) 후 임시 계정·기록 삭제 |
 | v1.9.1 | 09-22 | 한글 어절 단위 줄바꿈(전역 keep-all) · 대시보드 하단 시트 칸 수를 시트 폭으로 결정(container query, 1040px↑ 4칸) · 일정 폼 '완료'를 하단 버튼줄로(스크롤 없이 보임) · 오른쪽 설정 패널 압축(1512×825에서 스크롤 없음) · 3D 불러오기 주소에 버전 부여(배포 직후 옛 404 캐시 회피)·실패 사유 기록(`#dash-3d[data-h3d]`) |
