@@ -619,3 +619,19 @@ revoke execute on all functions in schema semis_logi_private from public, anon, 
 grant execute on function semis_logi_private.rank_now()        to anon, authenticated, service_role;
 grant execute on function semis_logi_private.read_rank(text)   to anon, authenticated, service_role;
 grant execute on function semis_logi_private.write_rank(text)  to anon, authenticated, service_role;
+
+/* ─── 공개 RPC 실행 권한 (마이그레이션 semis_logi_security_6_function_grants) ───
+   Logistics RPC는 공개 키(anon)로만 호출한다 — 함수 안에서 세션 토큰을 확인.
+   Supabase Auth(authenticated)는 쓰지 않으므로 막아 둔다. */
+do $$
+declare f record;
+begin
+  for f in select p.oid::regprocedure as sig from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+           where n.nspname = 'public' and p.proname like 'semis\_logi\_%' loop
+    execute format('revoke execute on function %s from public, authenticated', f.sig);
+    execute format('grant execute on function %s to anon, service_role', f.sig);
+  end loop;
+end $$;
+/* 공용 이력 보조 함수는 API로 부를 일이 없다(트리거 · 서버 전용) */
+revoke execute on function public.semis_store_history_prune() from public, anon, authenticated;
+revoke execute on function public.semis_store_snapshot() from public, anon, authenticated;

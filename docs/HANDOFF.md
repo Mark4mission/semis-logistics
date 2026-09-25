@@ -42,7 +42,7 @@ Claude가 할 일(순서대로):
    → 컨테이너 커밋의 tree 해시와 Mac `git rev-parse HEAD^{tree}` 대조
    (Cowork VM의 `device_bash`에서는 git 인증이 없어 push 실패 — 반드시 osascript)
 5. 약 80초 후 내장 브라우저(Claude_Browser)로 `index.html`의 `app.js?v=` 스탬프 확인
-   (컨테이너 Chromium은 github.io 접속 불가)
+   (2026-09-25 확인: 컨테이너 playwright로도 github.io 접속 가능 — supabase.co 비-GET 차단 상태에서만)
 
 ## 4. 모듈 현황
 
@@ -82,7 +82,7 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 - **SYNC_KEYS(17)**: menus · notices · schedules · assignees · assigneesSeeded · minutes · minuteFolders · levelHistory · safetyBoard · contacts · gcal · chatRooms · vault · regulations · equipment · crisis · fleet (계정 자료 pwOverrides·userOverrides·customUsers는 v1.15에 서버 전용 표로 이관·삭제)
 - SYNC_KEYS 밖 설정 행: `caresCfg`(CARES Firebase 웹 키 — `SemisSync.fetchKV`로만 읽음, 앱이 쓰지 않음)
 - 신규 컬렉션 추가 시: `freshData()` 기본값 → `normalizeData()` 보정(멱등) → `sync.js` SYNC_KEYS → 테스트 Y01 기대 문자열 갱신 → **서버 권한표 등록**(아래)
-- **서버 보안(v1.15)** — 원본 SQL `tools/sql/semis-logi-security.sql`(1단계) · `tools/sql/semis-logi-lockdown.sql`(2단계 잠금)
+- **서버 보안(v1.15)** — 원본 SQL `tools/sql/semis-logi-security.sql`(1단계) · `tools/sql/semis-logi-lockdown.sql`(2단계 잠금). 실제 적용은 마이그레이션 `semis_logi_security_1~6`(6 = RPC 실행 권한: public `semis_logi_*`는 anon·service_role만, authenticated 차단)
   - 로그인: RPC `semis_logi_login(p_pw, p_ua)` → 서버가 `bcrypt(sha256('SeMISv2::'+암호))`로 확인 → 세션 토큰 64자(원문은 저장 안 함, sha256만). 같은 IP 15분 20회 실패 → 15분 제한. 6자리 숫자는 회의 서명 코드(회의일 ±90일)
   - 토큰은 이 탭의 `sessionStorage semisl:tok`, 모든 요청에 `x-semis-token` 헤더. 세션 24시간 무활동 만료(10분마다 `semis_logi_whoami`로 확인·연장) · 최대 30일. 서버가 끊으면 로그인 창만 다시 뜨고, 같은 계정이면 미전송분을 이어서 저장
   - RLS: `semis_logi_store`는 정책 "logi session read/insert/update"만 — `rank_now() >= read_rank(key)` / `write_rank(key)`. 권한표 `semis_logi_private.key_acl`(9 = 앱에서 불가). **새 컬렉션은 여기에 (key, 읽기, 쓰기) 등록**(없으면 2/3). SQL 파일에도 같은 줄(테스트 C05가 대조)
@@ -115,7 +115,8 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 
 - **(v1.15 이전 노출) 암호 해시**: v1.14까지 계정 해시(SHA-256, SALT 공개)가 공개 저장소 git 이력과 누구나 읽을 수 있던 공용 DB(`pwOverrides`)에 있었다 → **네 계정 모두 새 암호로 바꿀 것**(시스템 설정 › 사용자/암호, 8자 이상). 특히 `mark3464`는 SeMIS v2와 같은 암호이고 v2 공용 DB(`semis_store.pwOverrides`)는 아직 누구나 읽을 수 있으므로 **Logistics 전용의 다른 암호**를 권장
 - **SeMIS v2도 같은 구조적 노출**(2026-09-25 점검, 미조치 — Logistics 범위 밖): `semis_store`(anon 읽기·쓰기·삭제) · `semis-files` 버킷(공개·목록·삭제 227개/156MB) · `semis_store_history` v2 행(공개) · Edge Function `semis-ics` 토큰이 v2 공개 코드에(v2 일정 전체 ICS) · `semi-chat` 토큰(AI 비용). 같은 방식(세션 RLS·비공개 버킷)으로 v2 적용 필요
-- Edge Function `semis-logi-ai`(AI 요약, 2026-09-21 배포)는 저장소 코드에서 호출하지 않는다 — 고정 토큰 + Origin 확인뿐. 쓰지 않으면 삭제, 쓸 거면 세션 확인(x-semis-token)으로 바꿀 것
+- Edge Function `semis-logi-ai`(AI 요약, 원본 `tools/edge/semis-logi-ai.ts`): 2026-09-25 고정 토큰 → 로그인 세션 확인(계정 세션 · manager 이상)으로 교체. 호출하는 화면은 아직 없음 — 붙일 때 `x-semis-token` 헤더로 `{ task:"summary", title, text }` 전송(ANTHROPIC_API_KEY는 v2 `semi-chat`과 공유)
+- 운영 확인용 임시 계정(`zz-t-*`)과 그 접속 기록은 2026-09-25 확인 후 삭제 — 보안 탭의 접속 기록은 그 이후 것만 실제. v1.14 화면을 열어 둔 탭은 저장이 거부되므로 새로고침 후 로그인해야 한다
 - CARES Firestore(equipments · repairLogs · inspectionLogs · sensorLogs · sensorThresholds) 공개 읽기 규칙은 CARES 쪽 설정 — Logistics는 읽기만 한다
 - 커스텀 도메인 미설정 (추후 `logistics.semis.pe.kr` CNAME 가능)
 - CARES Mobile 배포 주소 링크 미등록
@@ -175,5 +176,5 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 | v1.13.0 | 09-23 | **위기대응 담당자** — 2026년 에어제타 위기대응 담당자 명단(엑셀 7개 시트)을 별도 화면으로. 우리 팀 임무 띠(짙은 판, 정·부 · 전화) · 요약(조직 11 · 팀 27 · 임무 96 · 담당자 78) · 조직 줄(색 점 · 건수, 누르면 필터) · 검색(이름 · 팀 · 업무, 강조) · 보기 4종: 조직별(팀 묶음 표) · 팀별(본부 묶음) · 담당자별(이름 누르면 이동, 정/부 배지) · 매트릭스(팀 × 조직 건수, 칸 누르면 조직별 필터) · 참고(OCC 번호 원터치) · hq 엑셀 반영(대조 후) · 행 편집 · 기본 정보 · 원본 내려받기 · 모바일 행 카드 · 인쇄 |
 | v1.13.1 | 09-23 | **검색칸 한글 입력 깨짐 수정** — 위기대응 담당자 · 검색장비 유지관리(장비 대장 · 고장 이력) 검색칸에서 한글을 치면 글자마다 화면을 새로 그리며 입력칸이 바뀌어 "ㅊㅗㅣㅅㅏㅇ"처럼 자모로 풀리던 문제. 입력칸은 유지하고 나머지만 다시 그림(`ui.repaintKeep`), 조합 중 자모는 검색어에서 제외(`ui.searchValue`). 비상연락망 · 규정 · 암호 관리 · 회의록은 원래 입력칸 밖만 다시 그려 해당 없음(조합 입력 시험으로 확인). 모듈 템플릿도 같은 방식으로 수정 |
 | v1.14.0 | 09-25 | **운항 현황** — 에어제타 화물기 15대 ADS-B 실시간 위치(adsb.lol 무료 · Supabase Edge Function 중계 · pg_cron 2분 기록). 대시보드 지도(기체만) + 인천 접근 중 목록 + 최근 인천 도착 · 메뉴 '운항 현황'(홈 허브, 전체 공개): 요약 · 지도(비행 경로 · 신호 없음 직진 추정 · 이름표 겹침 정리) · 인천 입항/출항 · 기체 현황 · 입출항 기록 48시간 · 비상 부호 경고 · 기체 목록 편집(hq, ICAO 자동 채움). 스케줄 파일 미사용(매달 바뀌어 유지 곤란) |
-| v1.15.0 | 09-25 | **서버 보안** — 공개 키만으로 공용 DB·파일 전부를 읽고 고칠 수 있던 구조를 닫음. 서버 로그인(RPC · bcrypt · IP별 시도 제한) → 탭 세션 토큰 · 권한표(key_acl) 기반 RLS(권한 밖 컬렉션은 받지도 못함) · 계정·세션·접속 기록 비공개 스키마 · 파일 버킷 비공개 + Edge Function 서명 URL(js/fileauth.js 자동 변환) · 회의 서명은 그 회의 한 건만(RPC) · 데이터 사본 localStorage → sessionStorage · 변경 알림 Broadcast(이름만) · 서버 시각·작성자 기록 · 설정에 보안 탭(접속 중 · 기록 · 모두 끊기) · CSP · 살균기 template 파싱 · v2 ICS 토큰 제거 |
+| v1.15.0 | 09-25 | **서버 보안** — 공개 키만으로 공용 DB·파일 전부를 읽고 고칠 수 있던 구조를 닫음. 서버 로그인(RPC · bcrypt · IP별 시도 제한) → 탭 세션 토큰 · 권한표(key_acl) 기반 RLS(권한 밖 컬렉션은 받지도 못함) · 계정·세션·접속 기록 비공개 스키마 · 파일 버킷 비공개 + Edge Function 서명 URL(js/fileauth.js 자동 변환) · 회의 서명은 그 회의 한 건만(RPC) · 데이터 사본 localStorage → sessionStorage · 변경 알림 Broadcast(이름만) · 서버 시각·작성자 기록 · 설정에 보안 탭(접속 중 · 기록 · 모두 끊기) · CSP · 살균기 template 파싱 · v2 ICS 토큰 제거 · 후속: RPC 실행 권한 정리(anon만) · AI 요약 함수 세션 확인 · 임시 계정·기록 정리 |
 | v1.9.1 | 09-22 | 한글 어절 단위 줄바꿈(전역 keep-all) · 대시보드 하단 시트 칸 수를 시트 폭으로 결정(container query, 1040px↑ 4칸) · 일정 폼 '완료'를 하단 버튼줄로(스크롤 없이 보임) · 오른쪽 설정 패널 압축(1512×825에서 스크롤 없음) · 3D 불러오기 주소에 버전 부여(배포 직후 옛 404 캐시 회피)·실패 사유 기록(`#dash-3d[data-h3d]`) |
