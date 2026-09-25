@@ -14,6 +14,9 @@
    2) js/app.js  freshData()에 KEY 기본값, normalizeData()에 배열 보정(멱등)
                  필요 시 VIEW_WIDTH[MOD] = "mid" | "wide"
    3) js/sync.js SYNC_KEYS에 KEY 추가 → tests Y01 기대 문자열 갱신
+      + 서버 권한표에 KEY 등록(읽기·쓰기 등급): semis_logi_private.key_acl — tools/sql/semis-logi-security.sql 에도 같은 줄
+        (등록 안 하면 기본값 읽기 2(manager)·쓰기 3(hq). 테스트 C05가 SQL과 SYNC_KEYS를 대조한다)
+      + 파일을 올리면 Edge Function(tools/edge/semis-logi-files.ts) READ_RANK/WRITE_RANK 에 폴더 추가 후 재배포
    4) index.html <script src="js/<module>.js?v=..."> 추가 → tests FILES 배열에도 추가
    5) npm run bump <ver> → npm test → 배포 (HANDOFF §3)
 

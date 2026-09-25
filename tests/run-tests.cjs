@@ -3,7 +3,7 @@
    실행: npm test  (jsdom 필요: npm install)
    구성: [C] 코어(해시·계정·메뉴·정규화·권한·라우터·예정 모듈)
          [D] 대시보드·공지·현황판  [S] 시스템 설정  [M] 이식 모듈 스모크(일정·회의록·연락망·검색)
-         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [IM] 한글 입력 보호  [FL] 운항 현황  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
+         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [IM] 한글 입력 보호  [FL] 운항 현황  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [SEC] 서버 보안(비공개 파일·살균·CSP)  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
    ═══════════════════════════════════════════════════════ */
 "use strict";
 const fs = require("fs");
@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/crisis.js", "js/flightcore.js", "js/flightops.js", "js/sync.js"];
+const FILES = ["js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/crisis.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/fileauth.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -38,7 +38,7 @@ function makeEnv(opts = {}) {
   const dom = new JSDOM(HTML, { url: "https://logi.test/", runScripts: "outside-only", pretendToBeVisual: true, virtualConsole: vc });
   const w = dom.window;
   w.scrollTo = () => {};
-  if (opts.preData) w.localStorage.setItem("semisl:data", JSON.stringify(opts.preData));
+  if (opts.preData) w.sessionStorage.setItem("semisl:data", JSON.stringify(opts.preData));
   if (opts.fetch) w.fetch = opts.fetch;
   // WebCrypto 폴리필 — jsdom은 crypto.subtle 미구현이라 Node webcrypto 주입 (vault 모듈용)
   try {
@@ -49,22 +49,6 @@ function makeEnv(opts = {}) {
   const S = w.SeMIS;
   if (opts.boot !== false) { S.boot(); if (w.SemisSearch) w.SemisSearch.init(); }
   return { dom, w, S, Sync: w.SemisSync, errors };
-}
-function submitLogin(env, pw) {
-  const { w } = env;
-  w.document.querySelector("#login-pw").value = pw;
-  w.document.querySelector("#login-form").dispatchEvent(new w.Event("submit", { bubbles: true, cancelable: true }));
-}
-function loginAs(env, role) {
-  const { S } = env;
-  const pw = "testpw-" + role + "-9x";
-  if (!S.data.customUsers.some(u => u.id === "t" + role)) {
-    S.data.customUsers.push({ id: "t" + role, name: "T" + role, role, hash: S.pwHash(pw) });
-    S.saveSilent();
-  }
-  submitLogin(env, pw);
-  if (!S.user || S.user.id !== "t" + role) throw new Error("test login failed");
-  return S.user;
 }
 function go(env, route) { env.w.location.hash = "#/" + route; env.S.renderView(); }
 /* 시스템 설정 → 담당자 탭 다시 그리기 */
@@ -77,32 +61,242 @@ const q = (env, sel) => env.w.document.querySelector(sel);
 const qa = (env, sel) => Array.from(env.w.document.querySelectorAll(sel));
 const clickOk = (env) => q(env, "#modal-box [data-act=ok]").click();
 
-function makeFetchStub(server) {
-  const fn = (url, opts = {}) => {
-    const method = opts.method || "GET";
-    fn.calls.push({ url: String(url), method, body: opts.body ? JSON.parse(opts.body) : null });
-    if (server.fail) return Promise.reject(new Error("network down"));
-    if (method === "GET") {
-      if (String(url).indexOf("semis_store_history") >= 0) {
-        const hist = (server.history || []).slice();
-        const m = /[?&]id=eq\.([^&]+)/.exec(String(url));
-        const km = /[?&]key=eq\.([^&]+)/.exec(String(url));
-        let out = hist;
-        if (m) out = hist.filter(h => String(h.id) === decodeURIComponent(m[1]));
-        else if (km) out = hist.filter(h => h.key === decodeURIComponent(km[1]));
-        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(out) });
-      }
-      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(server.rows.slice()) });
-    }
-    if (method === "POST") {
-      const rows = JSON.parse(opts.body);
-      rows.forEach(r => { const i = server.rows.findIndex(x => x.key === r.key); if (i >= 0) server.rows[i] = r; else server.rows.push(r); });
-      return Promise.resolve({ ok: true, status: 201, json: () => Promise.resolve([]) });
-    }
-    return Promise.resolve({ ok: false, status: 405, json: () => Promise.resolve({}) });
+/* ── v1.15 서버 보안: 권한표는 SQL(서버 원본)에서 읽어 테스트와 서버를 맞춘다 ── */
+const SEC_SQL = read("tools/sql/semis-logi-security.sql");
+const ACL = (() => {
+  const m = /insert into semis_logi_private\.key_acl\(key, read_rank, write_rank\) values([\s\S]*?)on conflict/.exec(SEC_SQL);
+  const out = {};
+  if (m) m[1].replace(/\('([^']+)',(\d+),(\d+)\)/g, (x, k, r, w) => { out[k] = [Number(r), Number(w)]; return x; });
+  return out;
+})();
+const RANK = { admin: 4, hq: 3, manager: 2, user: 1, vendor: 1 };
+function signCodeOf(id) { let h = 5381; for (let i = 0; i < id.length; i++) h = ((h * 33) ^ id.charCodeAt(i)) >>> 0; return String(100000 + (h % 900000)); }
+function sessPayload(role, id) {
+  const uid = id || "tester";
+  return { ok: true, kind: "user", rank: RANK[role], acl: ACL, def: [2, 3],
+    user: { id: uid, origId: uid, name: "T" + role, role, vendor: role === "vendor" ? "○○조업" : "", base: false } };
+}
+/* 서버 없이 세션만 세운다(계정별 캐시 정리 없음 — 한 화면에서 권한만 바꿔 보는 테스트용) */
+function loginAs(env, role, opts) {
+  const u = env.S.devSession(sessPayload(role, opts && opts.id), opts && opts.token, { keep: !(opts && opts.fresh) });
+  if (!u || u.role !== role) throw new Error("test login failed");
+  return u;
+}
+function submitLogin(env, pw) {
+  const { w } = env;
+  w.document.querySelector("#login-pw").value = pw;
+  w.document.querySelector("#login-form").dispatchEvent(new w.Event("submit", { bubbles: true, cancelable: true }));
+}
+const tick = (ms) => new Promise(r => setTimeout(r, ms || 0));
+
+/* ── 가짜 서버: RPC(로그인·계정·이력·서명) · REST(RLS 흉내) · 파일 함수 ── */
+function makeServer(opts = {}) {
+  const srv = {
+    rows: (opts.rows || []).map(r => Object.assign({ updated_at: "2026-09-01T00:00:00Z", updated_by: "seed" }, r)),
+    accounts: opts.accounts || [
+      { id: "mark3464", login: "mark3464", name: "시스템관리자", role: "admin", pw: "admin-pw-111", base: true },
+      { id: "cargo-ss", login: "cargo-ss", name: "안전보안파트", role: "hq", pw: "hq-pw-2222", base: true },
+      { id: "cargo-mgr", login: "cargo-mgr", name: "화물팀 관리자", role: "manager", pw: "mgr-pw-3333", base: true },
+      { id: "cargo-user", login: "cargo-user", name: "화물팀 사용자", role: "user", pw: "user-pw-4444", base: true }
+    ],
+    sessions: {}, history: opts.history || [], files: opts.files || {}, audit: [],
+    calls: [], fail: false, fails: 0, puts: []
   };
-  fn.calls = [];
-  return fn;
+  let seq = 0;
+  const newTok = () => (++seq).toString(16).padStart(64, "a");
+  const tokOf = (o) => (o && o.headers && o.headers["x-semis-token"]) || "";
+  const sessOf = (o) => srv.sessions[tokOf(o)] || null;
+  const accOf = (s) => s && s.kind === "user" ? srv.accounts.find(a => a.id === s.acc) : null;
+  const rankOf = (s) => { const a = accOf(s); return a ? RANK[a.role] : -1; };
+  const acl = (k) => ACL[k] || [2, 3];
+  const minutes = () => { const r = srv.rows.find(x => x.key === "minutes"); return r ? r.value : []; };
+  function signView(mid) {
+    const m = minutes().find(x => x.id === mid);
+    if (!m) return null;
+    return { id: m.id, title: m.title || "", date: m.date || "", time: m.time || "", place: m.place || "", folder: m.folder || "",
+      folderName: "", folderIcon: "", attendees: (m.attendees || []).map(a => ({ name: a.name || "", org: a.org || "", role: a.role || "", signed: !!a.sign })) };
+  }
+  function payload(s) {
+    if (s.kind === "signer") return { kind: "signer", user: { id: "__signer__", name: "회의록 참석 서명", role: "signer", signMinuteId: s.minute }, minute: signView(s.minute) };
+    const a = accOf(s);
+    return { kind: "user", rank: RANK[a.role], acl: ACL, def: [2, 3],
+      user: { id: a.login, origId: a.id, name: a.name, role: a.role, vendor: a.vendor || "", base: !!a.base } };
+  }
+  const isAdmin = (o) => rankOf(sessOf(o)) >= 4;
+  const rpc = {
+    semis_logi_login(b) {
+      if (srv.fails >= 20) return { ok: false, error: "locked", wait: 15 };
+      const a = srv.accounts.find(x => x.pw === b.p_pw && !x.disabled);
+      if (a) { const t = newTok(); srv.sessions[t] = { acc: a.id, kind: "user" }; srv.audit.push({ action: "login", actor: a.id }); return Object.assign({ ok: true, token: t }, payload(srv.sessions[t])); }
+      if (/^\d{6}$/.test(String(b.p_pw))) {
+        const m = minutes().find(x => signCodeOf(x.id) === b.p_pw);
+        if (m) { const t = newTok(); srv.sessions[t] = { kind: "signer", minute: m.id }; return Object.assign({ ok: true, token: t }, payload(srv.sessions[t])); }
+      }
+      srv.fails++; srv.audit.push({ action: "login_fail" });
+      return { ok: false, error: "invalid" };
+    },
+    semis_logi_whoami(b, o) { const s = sessOf(o); return s ? Object.assign({ ok: true }, payload(s)) : { ok: false, error: "auth" }; },
+    semis_logi_logout(b, o) { delete srv.sessions[tokOf(o)]; return { ok: true }; },
+    semis_logi_users(b, o) {
+      if (!isAdmin(o)) return { ok: false, error: "forbidden" };
+      return { ok: true, users: srv.accounts.map(a => ({ id: a.login, origId: a.id, name: a.name, role: a.role, vendor: a.vendor || "",
+        base: !!a.base, disabled: false, lastLoginAt: null, sessions: Object.values(srv.sessions).filter(s => s.acc === a.id).length })) };
+    },
+    semis_logi_user_save(b, o) {
+      if (!isAdmin(o)) return { ok: false, error: "forbidden" };
+      const p = b.p || {};
+      if (!/^[A-Za-z0-9_-]{2,20}$/.test(p.id || "")) return { ok: false, error: "bad_id" };
+      if (!p.origId) {
+        if (srv.accounts.some(a => a.login === p.id || a.id === p.id)) return { ok: false, error: "dup_id" };
+        if (!p.pw || p.pw.length < 8) return { ok: false, error: "pw_short" };
+        if (srv.accounts.some(a => a.pw === p.pw)) return { ok: false, error: "pw_in_use" };
+        srv.accounts.push({ id: p.id, login: p.id, name: p.name, role: p.role, vendor: p.vendor || "", pw: p.pw, base: false });
+        return { ok: true };
+      }
+      const a = srv.accounts.find(x => x.id === p.origId);
+      if (!a) return { ok: false, error: "not_found" };
+      a.login = p.id; a.name = p.name; a.role = a.id === "mark3464" ? "admin" : p.role; a.vendor = p.vendor || "";
+      return { ok: true };
+    },
+    semis_logi_user_delete(b, o) {
+      if (!isAdmin(o)) return { ok: false, error: "forbidden" };
+      if (b.p_orig === "mark3464") return { ok: false, error: "protected" };
+      const n = srv.accounts.length;
+      srv.accounts = srv.accounts.filter(a => a.id !== b.p_orig);
+      return n === srv.accounts.length ? { ok: false, error: "not_found" } : { ok: true };
+    },
+    semis_logi_set_password(b, o) {
+      if (!isAdmin(o)) return { ok: false, error: "forbidden" };
+      const a = srv.accounts.find(x => x.id === b.p_orig);
+      if (!a) return { ok: false, error: "not_found" };
+      if (!b.p_new || b.p_new.length < 8) return { ok: false, error: "pw_short" };
+      if (srv.accounts.some(x => x.id !== a.id && x.pw === b.p_new)) return { ok: false, error: "pw_in_use" };
+      a.pw = b.p_new;
+      let ended = 0;
+      Object.keys(srv.sessions).forEach(t => { if (srv.sessions[t].acc === a.id && t !== tokOf(o)) { delete srv.sessions[t]; ended++; } });
+      return { ok: true, ended };
+    },
+    semis_logi_history(b, o) {
+      if (!isAdmin(o)) return { ok: false, error: "forbidden" };
+      return { ok: true, rows: srv.history.filter(h => !b.p_key || h.key === b.p_key).map(h => ({ id: h.id, key: h.key, old_len: h.old_len, new_len: h.new_len, changed_at: h.changed_at, changed_by: h.changed_by })) };
+    },
+    semis_logi_history_value(b, o) {
+      if (!isAdmin(o)) return { ok: false, error: "forbidden" };
+      const h = srv.history.find(x => String(x.id) === String(b.p_id));
+      return h ? { ok: true, row: { id: h.id, key: h.key, old_value: h.old_value } } : { ok: false, error: "not_found" };
+    },
+    semis_logi_security(b, o) {
+      if (!isAdmin(o)) return { ok: false, error: "forbidden" };
+      return { ok: true, events: srv.audit.map(e => ({ at: "2026-09-25T01:00:00Z", actor: e.actor || null, action: e.action, detail: null, ip: "1.2.3.4" })),
+        sessions: Object.keys(srv.sessions).map(t => ({ account: (srv.accounts.find(a => a.id === srv.sessions[t].acc) || {}).login || "signer",
+          name: "", kind: srv.sessions[t].kind, created: "2026-09-25T01:00:00Z", lastSeen: "2026-09-25T01:00:00Z", ip: "1.2.3.4", current: t === tokOf(o) })),
+        locked: [] };
+    },
+    semis_logi_end_sessions(b, o) {
+      if (!isAdmin(o)) return { ok: false, error: "forbidden" };
+      let n = 0; Object.keys(srv.sessions).forEach(t => { if (t !== tokOf(o)) { delete srv.sessions[t]; n++; } });
+      return { ok: true, ended: n };
+    },
+    semis_logi_sign_submit(b, o) {
+      const s = sessOf(o);
+      if (!s || s.kind !== "signer") return { ok: false, error: "auth" };
+      if (!b.p_name || !b.p_org) return { ok: false, error: "required" };
+      const m = minutes().find(x => x.id === s.minute);
+      if (!m) return { ok: false, error: "not_found" };
+      m.attendees = m.attendees || [];
+      let t = (b.p_idx >= 0 && m.attendees[b.p_idx] && m.attendees[b.p_idx].name === b.p_expect) ? b.p_idx : -1;
+      if (t < 0) t = m.attendees.findIndex(a => a.name === b.p_name && (!a.org || a.org === b.p_org));
+      if (t < 0) { m.attendees.push({ name: "", org: "", role: "", note: "", sign: "" }); t = m.attendees.length - 1; }
+      Object.assign(m.attendees[t], { name: b.p_name, org: b.p_org, role: b.p_role || "" });
+      if (b.p_sign !== null && b.p_sign !== undefined) m.attendees[t].sign = b.p_sign;
+      return { ok: true, index: t, minute: signView(m.id) };
+    }
+  };
+  const reply = (status, body) => Promise.resolve({ ok: status >= 200 && status < 300, status,
+    json: () => Promise.resolve(body), headers: { get: () => null } });
+  const FOLDER_READ = { notices: 1, attach: 1, minutes: 1, "minutes-sign": 1, schedules: 2, contacts: 2, crisis: 2, regs: 2, "regs-diff": 2 };
+  const fn = (url, o = {}) => {
+    const u = String(url), method = o.method || "GET";
+    let body = null;
+    try { body = typeof o.body === "string" ? JSON.parse(o.body) : null; } catch (e) { body = null; }
+    srv.calls.push({ url: u, method, body, token: tokOf(o) });
+    if (srv.fail) return Promise.reject(new Error("network down"));
+    let m;
+    if ((m = /\/rest\/v1\/rpc\/([a-z_]+)/.exec(u))) {
+      const f = rpc[m[1]];
+      return f ? reply(200, f(body || {}, o)) : reply(404, {});
+    }
+    if (u.indexOf("/rest/v1/semis_logi_store") >= 0) {
+      const s = sessOf(o), r = rankOf(s);
+      if (method === "GET") {
+        let rows = srv.rows.filter(x => r >= acl(x.key)[0]);
+        const kin = /[?&]key=in\.\(([^)]*)\)/.exec(u);
+        if (kin) { const ks = kin[1].split(",").map(decodeURIComponent); rows = rows.filter(x => ks.indexOf(x.key) >= 0); }
+        const k1 = /[?&]key=eq\.([^&]+)/.exec(u);
+        if (k1) rows = rows.filter(x => x.key === decodeURIComponent(k1[1]));
+        return reply(200, rows.map(x => JSON.parse(JSON.stringify(x))));
+      }
+      if (method === "POST") {
+        const rows = body || [];
+        if (srv.forceDeny || rows.some(x => r < acl(x.key)[1])) return reply(401, { code: "42501", message: "new row violates row-level security policy" });
+        const who = (accOf(s) || {}).login || "anon";
+        rows.forEach(x => {
+          const rec = { key: x.key, value: JSON.parse(JSON.stringify(x.value)), updated_at: new Date().toISOString(),
+            updated_by: who + "/" + String(x.updated_by || "").replace(/^.*\//, "") };
+          const i = srv.rows.findIndex(y => y.key === x.key);
+          if (i >= 0) srv.rows[i] = rec; else srv.rows.push(rec);
+        });
+        return reply(201, []);
+      }
+    }
+    if (u.indexOf("/functions/v1/semis-logi-files") >= 0) {
+      const s = sessOf(o), r = rankOf(s);
+      if (!s) return reply(401, { ok: false, error: "auth" });
+      const b = body || {};
+      const folder = (p) => String(p).split("/")[0];
+      if (b.op === "sign") {
+        const urls = {}, denied = [];
+        (b.paths || []).forEach(p => {
+          const okRead = s.kind === "signer" ? folder(p) === "minutes-sign" : r >= (FOLDER_READ[folder(p)] || 3);
+          if (okRead) urls[p] = "https://mzyuzrxkdcpzxojenwat.supabase.co/storage/v1/object/sign/semis-logi-files/" + p + "?token=T" + (++seq);
+          else denied.push(p);
+        });
+        return reply(200, { ok: true, expires: 3600, urls, denied });
+      }
+      if (b.op === "upload") {
+        const path = b.prefix + "/" + (++seq).toString(36) + "_" + String(b.name || "file").replace(/[^A-Za-z0-9._-]/g, "_");
+        return reply(200, { ok: true, path, url: "https://mzyuzrxkdcpzxojenwat.supabase.co/storage/v1/object/public/semis-logi-files/" + path,
+          upload: "https://mzyuzrxkdcpzxojenwat.supabase.co/storage/v1/object/upload/sign/semis-logi-files/" + path + "?token=U" + seq });
+      }
+      if (b.op === "list") {
+        if (r < 4) return reply(403, { ok: false, error: "forbidden" });
+        return reply(200, { ok: true, files: Object.keys(srv.files).map(p => ({ path: p, name: p.split("/").pop(), folder: folder(p), size: srv.files[p].size || 1, updated: srv.files[p].updated || "2026-09-01T00:00:00Z" })) });
+      }
+      if (b.op === "delete") {
+        if (r < 4) return reply(403, { ok: false, error: "forbidden" });
+        const del = (b.paths || []).filter(p => srv.files[p]);
+        del.forEach(p => delete srv.files[p]);
+        return reply(200, { ok: true, deleted: del });
+      }
+      return reply(400, { ok: false, error: "op" });
+    }
+    if (method === "PUT" && u.indexOf("/object/upload/sign/semis-logi-files/") >= 0) {
+      const p = u.split("/object/upload/sign/semis-logi-files/")[1].split("?")[0];
+      srv.files[p] = { size: 1, updated: new Date().toISOString() };
+      srv.puts.push(p);
+      return reply(200, { Key: "semis-logi-files/" + p });
+    }
+    return reply(404, {});
+  };
+  fn.calls = srv.calls;
+  srv.fetch = fn;
+  srv.loginAs = async (env, pw) => {
+    const d = await env.S.login(pw);
+    if (!d || !d.ok) throw new Error("server login failed: " + JSON.stringify(d));
+    env.S.enterApp();
+    return d;
+  };
+  return srv;
 }
 
 (async function run() {
@@ -112,23 +306,31 @@ function makeFetchStub(server) {
     const e = makeEnv();
     t("C01 sha256 표준 벡터(abc)", () => eq(e.S.sha256("abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"));
     t("C02 pwHash = sha256(SeMISv2::pw) — v2와 동일 SALT(관리자 암호 공유)", () => eq(e.S.pwHash("xyz"), e.S.sha256("SeMISv2:" + ":" + "xyz")));
-    t("C03 기본 계정 4개 (admin/hq/manager/user)", () => {
-      eq(e.S.BASE_USERS.length, 4);
-      eq(e.S.BASE_USERS.map(u => u.role).join(","), "admin,hq,manager,user");
-      eq(e.S.BASE_USERS.map(u => u.id).join(","), "mark3464,cargo-ss,cargo-mgr,cargo-user");
+    t("C03 코드에 계정 해시·암호 없음(서버 전용) — BASE_USERS 제거", () => {
+      eq(e.S.BASE_USERS, undefined);
+      FILES.forEach(f => ok(!/["'][0-9a-f]{64}["']/.test(read(f)), f + ": 64자리 해시 문자열"));
     });
-    t("C04 mark3464 해시 = SeMIS v2 운영 해시(pwOverrides 반영, 동일 암호 접속)", () =>
-      eq(e.S.BASE_USERS[0].hash, "e656cd08712ab870c57a6d483f57f88cae49bcd541ec9bb862e412670c23f389"));
-    t("C05 평문 암호 미보관(64 hex)", () => ok(e.S.BASE_USERS.every(u => /^[0-9a-f]{64}$/.test(u.hash))));
-    t("C06 기본 계정 해시 상호 중복 없음", () => eq(new Set(e.S.BASE_USERS.map(u => u.hash)).size, 4));
-    t("C07 기본 계정 암호 변경(pwOverrides) 후 새 암호로 로그인 · 기존 해시 무효", () => {
-      const e7 = makeEnv();
-      const before = e7.S.BASE_USERS[1].hash;
-      e7.S.data.pwOverrides["cargo-ss"] = e7.S.pwHash("rotated-pw-7");
-      e7.S.saveSilent();
-      submitLogin(e7, "rotated-pw-7");
-      ok(e7.S.user && e7.S.user.id === "cargo-ss", "새 암호 로그인");
-      ok(e7.S.allUsers().find(u => u.id === "cargo-ss").hash !== before, "기존 해시 대체");
+    t("C04 서버 이관 SQL: 기본 계정 4개 · bcrypt · 사용자 정의 계정 포함", () => {
+      ["mark3464", "cargo-ss", "cargo-mgr", "cargo-user"].forEach(id => ok(SEC_SQL.indexOf("('" + id + "'") > 0, id));
+      ok(/extensions\.crypt\([^)]*gen_salt\('bf', 10\)/.test(SEC_SQL), "bcrypt");
+      ok(SEC_SQL.indexOf("key = 'customUsers'") > 0, "customUsers 이관");
+    });
+    t("C05 권한표(ACL): 모든 SYNC_KEYS 포함 · 계정 자료는 읽기·쓰기 불가(9)", () => {
+      e.Sync.SYNC_KEYS.forEach(k => ok(ACL[k], "ACL 누락: " + k));
+      ["pwOverrides", "userOverrides", "customUsers"].forEach(k => { eq(ACL[k][0], 9, k); eq(ACL[k][1], 9, k); });
+      Object.keys(ACL).forEach(k => ok(ACL[k][1] >= ACL[k][0], k + ": 쓰기 등급 ≥ 읽기 등급"));
+      eq(ACL.vault.join(","), "3,3"); eq(ACL.menus.join(","), "1,4"); eq(ACL.minutes.join(","), "1,2");
+    });
+    t("C06 로그인 제한(15분 20회) · 세션 만료(24시간 · 최대 30일) · 서명 코드 ±90일", () => {
+      ok(/v_fail >= 20/.test(SEC_SQL) && /interval '15 minutes'/.test(SEC_SQL));
+      ok(SEC_SQL.indexOf("interval '24 hours'") > 0 && SEC_SQL.indexOf("interval '30 days'") > 0);
+      ok(SEC_SQL.indexOf("interval '90 days'") > 0);
+    });
+    t("C07 세션 기반 RLS 정책 + 변경 알림(컬렉션 이름만)", () => {
+      ok(SEC_SQL.indexOf('create policy "logi session read"') > 0);
+      ok(SEC_SQL.indexOf('create policy "logi session update"') > 0);
+      ok(/realtime\.send\(jsonb_build_object\('key', new\.key, 'by', new\.updated_by, 'at', new\.updated_at\)/.test(SEC_SQL), "값은 보내지 않음");
+      ok(SEC_SQL.indexOf("x-semis-token") > 0);
     });
 
     /* ══════════ [C] 코어 — 메뉴 시드·정규화 ══════════ */
@@ -201,26 +403,34 @@ function makeFetchStub(server) {
       eq(s.start, "2026-01-02"); eq(s.end, "2026-01-02"); eq(s.allDay, true); eq(s.repeat.freq, "none");
       e.S.data.schedules = e.S.data.schedules.filter(x => x.id !== "old1");
     });
-    t("C17 mark3464 보호: role/deleted override 무시", () => {
-      e.S.data.userOverrides.mark3464 = { role: "user", deleted: true, name: "관리자" };
+    t("C17 구버전 캐시의 계정 자료(pwOverrides·userOverrides·customUsers)는 정규화가 버림", () => {
+      e.S.data.pwOverrides = { mark3464: "x" }; e.S.data.userOverrides = { a: {} }; e.S.data.customUsers = [{ id: "z" }];
       e.S.normalizeData();
-      const u = e.S.allUsers().find(x => x.origId === "mark3464");
-      ok(u && u.role === "admin" && u.name === "관리자");
-      delete e.S.data.userOverrides.mark3464;
+      eq(e.S.data.pwOverrides, undefined); eq(e.S.data.userOverrides, undefined); eq(e.S.data.customUsers, undefined);
+      ok(e.Sync.SYNC_KEYS.indexOf("pwOverrides") < 0 && e.Sync.SYNC_KEYS.indexOf("customUsers") < 0);
     });
 
     /* ══════════ [C] 코어 — 인증·권한·라우팅 ══════════ */
-    t("C18 잘못된 암호 거부", () => {
+    const srvC = makeServer({ rows: [{ key: "notices", value: [] }, { key: "contacts", value: { sections: [{ id: "x", title: "비밀 연락처", rows: [] }] } }] });
+    e.w.fetch = srvC.fetch;
+    await ta("C18 잘못된 암호 거부(서버 확인)", async () => {
       submitLogin(e, "no-such-pw-000");
+      await tick(30);
       ok(!e.S.user); ok(q(e, "#login-error").textContent.includes("올바르지"));
+      ok(srvC.calls.some(c => c.url.indexOf("/rpc/semis_logi_login") > 0), "로그인 RPC");
     });
-    t("C19 user 로그인 → 세션(semisl:session)·앱 진입·헤더", () => {
-      const u = loginAs(e, "user");
-      eq(u.role, "user");
-      ok(e.w.sessionStorage.getItem("semisl:session"));
+    await ta("C19 user 로그인 → 세션 토큰(탭 세션)·앱 진입·헤더 · 권한 밖 자료는 받지 않음", async () => {
+      submitLogin(e, "user-pw-4444");
+      await tick(60);
+      ok(e.S.user && e.S.user.role === "user", "user 세션");
+      eq((e.w.sessionStorage.getItem("semisl:tok") || "").length, 64);
+      ok(!e.w.localStorage.getItem("semisl:data"), "localStorage 에 데이터 없음");
       ok(q(e, "#login-overlay").classList.contains("hidden"));
       ok(q(e, "#user-chip").textContent.includes("일반사용자"));
       ok(q(e, "#app-version").textContent === "v" + e.S.VERSION);
+      ok(!JSON.stringify(e.S.data.contacts).includes("비밀 연락처"), "contacts(mgr) 미수신");
+      ok(srvC.calls.filter(c => c.url.indexOf("/rest/v1/semis_logi_store") >= 0).every(c => c.token.length === 64), "모든 요청에 토큰");
+      e.Sync.stop();
     });
     t("C20 user: 사이드바에 mgr/hq 메뉴 미노출 (규정도 mgr)", () => {
       const routes = qa(e, ".nav-item").map(b => b.dataset.route).filter(Boolean);
@@ -280,15 +490,17 @@ function makeFetchStub(server) {
       loginAs(e, "admin");
       go(e, "settings");
       ok(q(e, "#view").textContent.includes("시스템 설정"));
-      eq(qa(e, ".tab").length, 5);   // 메뉴·사용자·담당자·데이터·저장소
+      eq(qa(e, ".tab").length, 6);   // 메뉴·사용자·담당자·데이터·저장소·보안
     });
-    t("C29 로그아웃 → 세션 제거", () => {
+    await ta("C29 로그아웃 → 서버 세션 종료 · 토큰·데이터 사본 제거", async () => {
+      const tok = e.w.sessionStorage.getItem("semisl:tok");
       q(e, "#logout-btn").click();   // jsdom reload는 미구현(무해)
-      ok(!e.S.user); ok(!e.w.sessionStorage.getItem("semisl:session"));
+      await tick(40);
+      ok(!e.S.user); ok(!e.w.sessionStorage.getItem("semisl:tok")); ok(!e.w.sessionStorage.getItem("semisl:data"));
+      ok(srvC.calls.some(c => c.url.indexOf("/rpc/semis_logi_logout") > 0 && c.token === tok), "logout RPC");
     });
     t("C30 vendor: 기본 프리셋은 dashboard만, 사이드바 축소", () => {
-      e.S.data.customUsers.push({ id: "vend", name: "협력사", role: "vendor", vendor: "○○조업", hash: e.S.pwHash("vend-pw-1") });
-      e.S.saveSilent(); submitLogin(e, "vend-pw-1");
+      loginAs(e, "vendor");
       eq(e.S.user.role, "vendor");
       eq(e.S.vendorAccess(e.S.user).routes.join(","), "dashboard");
       eq(e.S.roleRank(), 1); ok(!e.S.canDelete());
@@ -299,34 +511,87 @@ function makeFetchStub(server) {
     t("C31 jsdom 오류 없음(코어 블록)", () => eq(e.errors.length, 0, e.errors.join(" | ")));
   }
 
-  /* ══════════ [C] 세션 복원 · QR 서명 로그인 ══════════ */
+  /* ══════════ [C] 세션 복원 · QR 서명 로그인 (서버) ══════════ */
   {
-    const e = makeEnv({ boot: false });
-    e.S.load();
     const mid = "m-test-1";
-    e.S.data.minutes.push({ id: mid, title: "테스트 회의", date: "2026-09-10", folder: "mf-part", attendees: [], decisions: [], status: "draft", author: "x" });
-    e.S.saveSilent();
+    const today = new Date().toISOString().slice(0, 10);
+    const srvQ = makeServer({ rows: [
+      { key: "minutes", value: [{ id: mid, title: "테스트 회의", date: today, folder: "mf-part",
+        attendees: [{ name: "김참석", org: "안전보안파트", role: "과장", sign: "https://mzyuzrxkdcpzxojenwat.supabase.co/storage/v1/object/public/semis-logi-files/minutes-sign/a.png" }],
+        decisions: [], status: "draft", author: "x", agenda: "비공개 안건" }] },
+      { key: "contacts", value: { sections: [] } }] });
+    const e = makeEnv({ boot: false, fetch: srvQ.fetch });
+    e.S.load();
     const code = e.S.signCodeFor({ id: mid });
-    t("C32 signCodeFor: 6자리 결정적", () => { ok(/^\d{6}$/.test(code)); eq(code, e.S.signCodeFor({ id: mid })); });
-    t("C33 signMinuteFor(code) → 회의록", () => eq(e.S.signMinuteFor(code).id, mid));
+    t("C32 signCodeFor: 6자리 결정적 · 서버 SQL과 같은 규칙", () => {
+      ok(/^\d{6}$/.test(code)); eq(code, e.S.signCodeFor({ id: mid })); eq(code, signCodeOf(mid));
+      ok(SEC_SQL.indexOf("h := ((h * 33) & 4294967295) # ascii(substr(p_id, i, 1));") > 0);
+    });
     t("C34 signUrlFor: 현재 origin + #/sign/코드", () => eq(e.S.signUrlFor({ id: mid }), "https://logi.test/#/sign/" + code));
-    t("C35 QR 코드 로그인 → signer 세션 · 회의록 화면", () => {
+    await ta("C35 QR(#/sign/코드) → signer 세션 · 그 회의만 · 다른 사람 서명 이미지·안건 미수신", async () => {
+      e.w.location.hash = "#/sign/" + code;
       e.S.boot();
-      submitLogin(e, code);
-      ok(e.S.user && e.S.user.role === "signer");
+      await tick(60);
+      ok(e.S.user && e.S.user.role === "signer", "signer");
       eq(e.S.roleRank(), 0);
       ok(q(e, "#hdr-search-wrap").classList.contains("vendor-hide"));
       eq(qa(e, ".nav-item").length, 1);
+      eq(e.S.data.minutes.length, 1);
+      ok(!JSON.stringify(e.S.data.minutes).includes("비공개 안건"), "안건 미수신");
+      ok(!JSON.stringify(e.S.data.minutes).includes("minutes-sign/a.png"), "서명 이미지 미수신");
+      ok(q(e, "#view").textContent.includes("김참석"));
+      ok(!q(e, "#view .cn-sign-thumb"), "썸네일 없음");
+      ok(q(e, "#sec-level-badge").hidden, "보안등급 배지 숨김");
+      ok(!srvQ.calls.some(c => c.url.indexOf("/rest/v1/semis_logi_store") >= 0), "signer는 공용 DB 직접 조회 안 함");
+    });
+    await ta("C36 서명 저장 → 서버 RPC(그 회의 한 건) · 새 참석자 추가", async () => {
+      const ok1 = await e.w.SemisMinutes.saveSignEntry(mid, -1, { name: "이신규", org: "조업사", role: "" },
+        "https://mzyuzrxkdcpzxojenwat.supabase.co/storage/v1/object/public/semis-logi-files/minutes-sign/b.png");
+      eq(ok1, true);
+      const sm = srvQ.rows.find(r => r.key === "minutes").value[0];
+      eq(sm.attendees.length, 2); eq(sm.attendees[1].name, "이신규");
+      eq(e.S.data.minutes[0].attendees.length, 2, "로컬 갱신");
+      ok(srvQ.calls.some(c => c.url.indexOf("/rpc/semis_logi_sign_submit") > 0));
     });
   }
   {
-    const e = makeEnv({ boot: false });
-    e.S.load();
-    e.w.sessionStorage.setItem("semisl:session", JSON.stringify({ uid: "cargo-ss", ts: Date.now() }));
-    t("C36 세션 복원(cargo-ss) → 자동 진입", () => {
+    const srvR = makeServer({ rows: [{ key: "notices", value: [{ id: "n1", title: "서버 공지", body: "", author: "x", pinned: false, created: "2026-09-01T00:00:00Z" }] }] });
+    const e = makeEnv({ boot: false, fetch: srvR.fetch });
+    await ta("C37 새로고침 — 탭의 토큰으로 서버 확인 후 자동 진입", async () => {
+      const d = await e.S.login("hq-pw-2222");
+      ok(d.ok);
       e.S.boot();
+      await tick(80);
       ok(e.S.user && e.S.user.id === "cargo-ss" && e.S.user.role === "hq");
       ok(q(e, "#login-overlay").classList.contains("hidden"));
+      ok(srvR.calls.some(c => c.url.indexOf("/rpc/semis_logi_whoami") > 0));
+      e.Sync.stop();
+    });
+    await ta("C38 서버가 세션을 끊으면 로그인 창을 다시 띄우고, 같은 계정이면 이어서 작업", async () => {
+      Object.keys(srvR.sessions).forEach(t => delete srvR.sessions[t]);
+      e.S.data.notices.push({ id: "n2", title: "끊긴 뒤 작성", body: "", author: "x", pinned: false, created: "2026-09-02T00:00:00Z" });
+      e.S.save();
+      await e.Sync._flush().catch(() => {});
+      await tick(30);
+      ok(!q(e, "#login-overlay").classList.contains("hidden"), "로그인 창");
+      ok(q(e, "#login-error").textContent.includes("만료"));
+      ok(e.Sync.pendingKeys().indexOf("notices") >= 0, "미전송 보관");
+      submitLogin(e, "hq-pw-2222");
+      await tick(120);
+      ok(q(e, "#login-overlay").classList.contains("hidden"));
+      ok(srvR.rows.find(r => r.key === "notices").value.some(n => n.id === "n2"), "다시 로그인 후 저장");
+      e.Sync.stop();
+    });
+    await ta("C39 다른 계정이 로그인하면 이전 계정의 사본을 비움 · 읽을 권한 없는 컬렉션 초기화", async () => {
+      const e2 = makeEnv({ boot: false, fetch: srvR.fetch });
+      e2.w.sessionStorage.setItem("semisl:owner", "user:someone-else");
+      e2.w.sessionStorage.setItem("semisl:data", JSON.stringify({ version: 1, contacts: { sections: [{ id: "s", title: "남은 연락처", rows: [] }] }, vault: { v: 1, members: [{ id: "m1" }], data: { iv: "a", ct: "b" }, personal: {}, updated: "" } }));
+      e2.S.load();
+      const d = await e2.S.login("user-pw-4444");
+      ok(d.ok);
+      ok(!JSON.stringify(e2.S.data.contacts).includes("남은 연락처"));
+      eq(e2.S.data.vault.members.length, 0);
+      eq(e2.w.sessionStorage.getItem("semisl:owner"), "user:cargo-user");
     });
   }
 
@@ -413,8 +678,9 @@ function makeFetchStub(server) {
 
   /* ══════════ [S] 시스템 설정 ══════════ */
   {
-    const e = makeEnv();
-    loginAs(e, "admin");
+    const srvS = makeServer();
+    const e = makeEnv({ fetch: srvS.fetch });
+    await srvS.loginAs(e, "admin-pw-111");
     go(e, "settings");
     t("S01 메뉴 관리 탭: 트리 렌더 · 예정 모듈 배지", () => {
       ok(qa(e, "#menu-tree .menu-tree-item").length >= 30);
@@ -537,32 +803,52 @@ function makeFetchStub(server) {
       eq(mn.hidden, true);
       delete mn.hidden; e.S.saveSilent();
     });
-    t("S08 사용자 추가 · 중복 암호 거부 · 암호 변경 · 삭제", () => {
+    await ta("S08 사용자 추가 · 중복 암호 거부 · 암호 변경 · 삭제 (서버 RPC)", async () => {
+      await tick(30);   // 앞선 go() 의 hashchange 다시 그리기가 끝난 뒤
       qa(e, ".tab").find(x => x.dataset.tab === "users").click();
+      await tick(30);
       q(e, "#btn-add-user").click();
       q(e, "#f-uid").value = "kim"; q(e, "#f-uname").value = "김안전"; q(e, "#f-urole").value = "manager";
-      q(e, "#f-upw").value = "testpw-admin-9x"; q(e, "#f-save").click();   // 로그인 중인 관리자와 동일 암호
+      q(e, "#f-upw").value = "admin-pw-111"; q(e, "#f-save").click();   // 관리자와 같은 암호
+      await tick(30);
       ok(!q(e, "#modal-overlay").classList.contains("hidden"), "중복 암호 거부");
-      q(e, "#f-upw").value = "kim-pw-77"; q(e, "#f-save").click();
-      const u = e.S.allUsers().find(x => x.id === "kim");
-      ok(u && u.role === "manager" && u.hash === e.S.pwHash("kim-pw-77"));
+      q(e, "#f-upw").value = "kim-pw-777"; q(e, "#f-save").click();
+      await tick(40);
+      const a = srvS.accounts.find(x => x.id === "kim");
+      ok(a && a.role === "manager" && a.pw === "kim-pw-777", "계정 추가");
+      ok(!e.S.allUsers().some(u => u.hash || u.pw), "화면 목록에 암호·해시 없음");
       const idx = e.S.allUsers().findIndex(x => x.id === "kim");
       q(e, `[data-pw="${idx}"]`).click();
-      q(e, "#f-pw1").value = "kim-pw-88"; q(e, "#f-pw2").value = "kim-pw-88"; q(e, "#f-save").click();
-      eq(e.S.allUsers().find(x => x.id === "kim").hash, e.S.pwHash("kim-pw-88"));
-      q(e, `[data-del="${idx}"]`).click(); clickOk(e);
-      ok(!e.S.allUsers().some(x => x.id === "kim"));
+      q(e, "#f-pw1").value = "short"; q(e, "#f-pw2").value = "short"; q(e, "#f-save").click();
+      ok(!q(e, "#modal-overlay").classList.contains("hidden"), "8자 미만 거부");
+      q(e, "#f-pw1").value = "kim-pw-888"; q(e, "#f-pw2").value = "kim-pw-888"; q(e, "#f-save").click();
+      await tick(40);
+      eq(srvS.accounts.find(x => x.id === "kim").pw, "kim-pw-888");
+      const idx2 = e.S.allUsers().findIndex(x => x.id === "kim");
+      q(e, `[data-del="${idx2}"]`).click(); clickOk(e);
+      await tick(40);
+      ok(!srvS.accounts.some(x => x.id === "kim"), "삭제");
     });
-    t("S09 기본 계정 수정(userOverrides) · mark3464 권한 잠금", () => {
+    await ta("S09 기본 계정 수정 · mark3464 권한 잠금 · 본인·관리자 삭제 버튼 없음", async () => {
+      await tick(10);
       const users = e.S.allUsers();
       const i = users.findIndex(x => x.origId === "cargo-mgr");
       q(e, `[data-edit="${i}"]`).click();
       q(e, "#f-uname").value = "화물팀 감독자"; q(e, "#f-save").click();
-      eq(e.S.data.userOverrides["cargo-mgr"].name, "화물팀 감독자");
+      await tick(40);
+      eq(srvS.accounts.find(x => x.id === "cargo-mgr").name, "화물팀 감독자");
       const j = e.S.allUsers().findIndex(x => x.origId === "mark3464");
       q(e, `[data-edit="${j}"]`).click();
       ok(q(e, "#f-urole").disabled); e.S.closeModal();
       ok(!q(e, `[data-del="${j}"]`), "관리자 삭제 버튼 없음");
+    });
+    await ta("S09c 보안 탭: 접속 중 세션 · 접속 기록", async () => {
+      qa(e, ".tab").find(x => x.dataset.tab === "security").click();
+      await tick(40);
+      ok(q(e, "#sec-sessions").textContent.includes("이 화면"), "현재 세션 표시");
+      ok(q(e, "#sec-events").textContent.includes("로그인"), "기록");
+      qa(e, ".tab").find(x => x.dataset.tab === "users").click();
+      await tick(30);
     });
     t("S9b 담당자 탭: 목록 렌더 · 추가 · 중복 거부", () => {
       qa(e, ".tab").find(x => x.dataset.tab === "assignees").click();
@@ -986,8 +1272,7 @@ function makeFetchStub(server) {
     });
     t("H15 vendor·signer: 레일 허브 숨김(nav-lite)", () => {
       const e3 = makeEnv();
-      e3.S.data.customUsers.push({ id: "vend2", name: "협력", role: "vendor", vendor: "○○", hash: e3.S.pwHash("vend-pw-2") });
-      e3.S.saveSilent(); submitLogin(e3, "vend-pw-2");
+      loginAs(e3, "vendor");
       ok(q(e3, "#app").classList.contains("nav-lite"));
       eq(qa(e3, "#rail-hubs .rail-btn").length, 0);
       eq(qa(e3, "#tabbar .tab-btn[data-route]").map(b => b.dataset.route).join(","), "dashboard");
@@ -1064,26 +1349,30 @@ function makeFetchStub(server) {
     t("P07 jsdom 오류 없음(인쇄 블록)", () => eq(e.errors.length, 0, e.errors.join(" | ")));
   }
 
-  /* ══════════ [Y] 동기화 ══════════ */
+  /* ══════════ [Y] 동기화 (v1.15 — 로그인 세션 · 권한별 컬렉션) ══════════ */
   {
-    const server = { rows: [], fail: false };
-    const fetch = makeFetchStub(server);
-    const e = makeEnv({ fetch });
+    const server = makeServer();
+    const e = makeEnv({ fetch: server.fetch });
     const { Sync } = e;
-    t("Y01 SYNC_KEYS 구성", () =>
-      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,pwOverrides,userOverrides,customUsers,gcal,chatRooms,vault,regulations,equipment,crisis,fleet"));
+    t("Y01 SYNC_KEYS 구성(계정 자료 제외)", () =>
+      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,chatRooms,vault,regulations,equipment,crisis,fleet"));
     t("Y02 SYNC_KEYS는 모두 freshData 컬렉션에 존재", () => Sync.SYNC_KEYS.forEach(k => ok(e.S.data[k] !== undefined, k)));
-    await ta("Y03 초기 pull: 빈 서버 → 로컬 시드 push (semis_logi_store)", async () => {
-      await Sync.init();
-      ok(fetch.calls.some(c => c.url.indexOf("/rest/v1/semis_logi_store") >= 0));
-      ok(server.rows.some(r => r.key === "menus"));
+    await ta("Y03 로그인 전에는 서버를 부르지 않음 · 로그인 후 초기 pull + 쓰기 권한 있는 컬렉션만 시드", async () => {
+      await Sync.start();
+      eq(server.calls.length, 0, "세션 없음 → 호출 없음");
+      await server.loginAs(e, "hq-pw-2222");
+      await Sync.start();
+      ok(server.calls.some(c => c.url.indexOf("/rest/v1/semis_logi_store") >= 0 && c.token.length === 64));
+      ok(server.rows.some(r => r.key === "notices"), "hq 쓰기 가능 → 시드");
+      ok(!server.rows.some(r => r.key === "menus"), "menus(관리자만 쓰기)는 시드 안 함");
       eq(Sync.status, "online");
     });
-    await ta("Y04 로컬 변경 → 디바운스 push", async () => {
-      loginAs(e, "hq");
+    await ta("Y04 로컬 변경 → 디바운스 push · 서버가 작성자 계정 기록", async () => {
       e.S.data.safetyBoard.since = "2026-01-01"; e.S.save();
       await Sync._flush();
-      eq(server.rows.find(r => r.key === "safetyBoard").value.since, "2026-01-01");
+      const row = server.rows.find(r => r.key === "safetyBoard");
+      eq(row.value.since, "2026-01-01");
+      ok(row.updated_by.indexOf("cargo-ss/") === 0, row.updated_by);
     });
     t("Y05 원격 변경 반영(applyRemote) → 화면 갱신", () => {
       go(e, "dashboard");
@@ -1092,19 +1381,21 @@ function makeFetchStub(server) {
       ok(q(e, "#notice-list").textContent.includes("원격 공지"));
     });
     t("Y06 canon: 키 순서 무관 동일", () => eq(Sync._canon({ b: 1, a: [1, { d: 2, c: 3 }] }), Sync._canon({ a: [1, { c: 3, d: 2 }], b: 1 })));
-    await ta("Y07 오프라인: pending 큐 보관 후 재접속 push", async () => {
+    await ta("Y07 오프라인: pending 큐(탭 세션) 보관 후 재접속 push", async () => {
       server.fail = true;
       e.S.data.notices.push({ id: "off1", title: "오프라인 공지", body: "", author: "x", pinned: false, created: "2026-09-02T00:00:00Z" });
       e.S.save();
       await Sync._flush().catch(() => {});
       eq(Sync.status, "offline");
       ok(Sync.pendingKeys().indexOf("notices") >= 0);
+      ok(e.w.sessionStorage.getItem("semisl:pendingSync"), "sessionStorage");
+      ok(!e.w.localStorage.getItem("semisl:pendingSync"), "localStorage 아님");
       server.fail = false;
       await Sync.syncNow();
       ok(server.rows.find(r => r.key === "notices").value.some(n => n.id === "off1"));
       eq(Sync.pendingKeys().length, 0);
     });
-    t("Y08 uploadFile 경로: semis-logi-files 버킷", () => ok(Sync.PUBLIC_PREFIX.indexOf("/object/public/semis-logi-files/") > 0));
+    t("Y08 파일 저장 주소는 표준(public) 경로 — 열람은 서명 URL", () => ok(Sync.PUBLIC_PREFIX.indexOf("/object/public/semis-logi-files/") > 0));
 
     /* ── 대량 삭제 방어 (2026-09-17 일정 전량 유실 사고 대응) ── */
     await ta("Y09 로컬 배열이 통째로 비면 push 차단 + 직전 상태 복구", async () => {
@@ -1116,7 +1407,7 @@ function makeFetchStub(server) {
       e.S.save(); await Sync._flush();
       eq(server.rows.find(r => r.key === "schedules").value.length, 3);
       const before = Sync.guardEvents().length;
-      e.S.data.schedules = [];              // 저장소 손상·버그 상황 재현
+      e.S.data.schedules = [];
       e.S.save(); await Sync._flush();
       eq(server.rows.find(r => r.key === "schedules").value.length, 3, "서버 데이터 보존");
       eq(e.S.data.schedules.length, 3, "로컬 복구");
@@ -1154,18 +1445,64 @@ function makeFetchStub(server) {
       eq(server.rows.find(r => r.key === "schedules").value.length, 2);
       eq(e.S.data.schedules.length, 2);
     });
-    await ta("Y13 변경 이력 조회 · 되돌리기(restoreHistory)", async () => {
+    await ta("Y13 서버가 쓰기를 거절(권한) → 로컬을 서버 값으로 되돌리고 알림", async () => {
+      server.forceDeny = true;
+      const before = JSON.stringify(e.S.data.safetyBoard);
+      e.S.data.safetyBoard.note = "거절될 변경"; e.S.save();
+      await Sync._flush().catch(() => {});
+      await tick(20);
+      server.forceDeny = false;
+      eq(Sync._canon(e.S.data.safetyBoard), Sync._canon(JSON.parse(before)), "되돌림");
+      eq(Sync.pendingKeys().indexOf("safetyBoard"), -1);
+      ok(q(e, "#toast-wrap").textContent.includes("권한"), "알림");
+    });
+    await ta("Y14 변경 알림(Broadcast) → 그 컬렉션만 다시 읽음 · 내 변경 알림은 무시", async () => {
+      const i = server.rows.findIndex(r => r.key === "notices");
+      server.rows[i] = Object.assign({}, server.rows[i], { value: server.rows[i].value.concat([{ id: "bc1", title: "알림으로 받은 공지", body: "", author: "x", pinned: false, created: "2026-09-03T00:00:00Z" }]) });
+      const n0 = server.calls.length;
+      Sync.onBroadcast({ payload: { key: "notices", by: "cargo-mgr/cOTHER" } });
+      Sync.onBroadcast({ payload: { key: "vault", by: "x/" + Sync.CLIENT_ID } });
+      await tick(500);
+      ok(e.S.data.notices.some(n => n.id === "bc1"), "반영");
+      const gets = server.calls.slice(n0).filter(c => c.method === "GET" && c.url.indexOf("/rest/v1/semis_logi_store") >= 0);
+      eq(gets.length, 1); ok(gets[0].url.indexOf("key=in.(notices)") > 0, gets[0].url);
+    });
+    await ta("Y15 manager: 읽기 권한 밖(vault) 미수신 · 쓰기 권한 밖(notices) 전송 안 함", async () => {
+      const srvM = makeServer({ rows: [{ key: "contacts", value: { sections: [{ id: "c", title: "관리자 연락처", rows: [] }] } },
+        { key: "vault", value: { v: 1, members: [{ id: "m" }], data: null, personal: {}, updated: "" } },
+        { key: "notices", value: [] }, { key: "minutes", value: [] }] });
+      const e2 = makeEnv({ fetch: srvM.fetch });
+      await srvM.loginAs(e2, "mgr-pw-3333");
+      await e2.Sync.start();
+      ok(JSON.stringify(e2.S.data.contacts).includes("관리자 연락처"), "contacts(2) 수신");
+      eq(e2.S.data.vault.members.length, 0, "vault(3) 미수신");
+      ok(!srvM.calls.some(c => c.method === "GET" && c.url.indexOf("vault") > 0), "vault 요청 없음");
+      const n0 = srvM.calls.length;
+      e2.S.data.notices.push({ id: "mg1", title: "관리자 공지", body: "", author: "x", pinned: false, created: "2026-09-04T00:00:00Z" });
+      e2.S.save();
+      await e2.Sync._flush();
+      ok(!srvM.calls.slice(n0).some(c => c.method === "POST"), "notices(쓰기 3) 전송 안 함");
+      e2.Sync.stop();
+    });
+    await ta("Y16 세션이 끊긴 뒤 pull(빈 응답) → 로그인 창", async () => {
+      Object.keys(server.sessions).forEach(t => delete server.sessions[t]);
+      await Sync.pull(false).catch(() => {});
+      await tick(20);
+      ok(!q(e, "#login-overlay").classList.contains("hidden"));
+    });
+    await ta("Y17 변경 이력(관리자 RPC) 조회 · 되돌리기", async () => {
       server.history = [{ id: 11, key: "schedules", old_len: 5, new_len: 0,
-        changed_at: "2026-09-17T07:44:34Z", changed_by: "cmu557qn92utfk3",
+        changed_at: "2026-09-17T07:44:34Z", changed_by: "cargo-ss/cmu557qn92utfk3",
         old_value: [{ id: "r1", title: "복구된 일정", start: "2026-09-10", end: "2026-09-10" }] }];
+      await server.loginAs(e, "admin-pw-111");
       const rows = await Sync.history("schedules", 10);
       eq(rows.length, 1); eq(rows[0].key, "schedules");
-      ok(fetch.calls.some(c => c.url.indexOf("src=eq.semis_logi_store") >= 0), "src 필터");
+      ok(server.calls.some(c => c.url.indexOf("/rpc/semis_logi_history") > 0), "관리자 RPC");
       await Sync.restoreHistory(11);
       eq(e.S.data.schedules[0].title, "복구된 일정");
       eq(server.rows.find(r => r.key === "schedules").value[0].title, "복구된 일정");
     });
-    t("Y14 jsdom 오류 없음(동기화 블록)", () => eq(e.errors.length, 0, e.errors.join(" | ")));
+    t("Y18 jsdom 오류 없음(동기화 블록)", () => eq(e.errors.length, 0, e.errors.join(" | ")));
     Sync.stop();
   }
 
@@ -1308,24 +1645,23 @@ function makeFetchStub(server) {
       ok(qa(e, "#rg-body [data-rg-row]").length > 0, "전체 목록 복귀");
       q(e, "#rg-clear") && ok(q(e, "#rg-clear").hidden, "표시 숨김");
     });
-    t("RG13 pull 경합 방어 — push 직후 도착한 옛 서버 값이 로컬 변경을 덮지 않는다", () => {
-      const e5 = makeEnv({ boot: false });
+    await ta("RG13 pull 경합 방어 — push 직후 도착한 옛 서버 값이 로컬 변경을 덮지 않는다", async () => {
+      const server = makeServer({ rows: [{ key: "regulations", value: [{ id: "old1", scope: "sec", title: "옛 규정", ideas: [] }],
+        updated_at: "2026-09-23T00:00:00Z", updated_by: "other" }] });
+      const e5 = makeEnv({ boot: false, fetch: server.fetch });
       e5.S.load();
-      const server = { rows: [{ key: "regulations", value: [{ id: "old1", scope: "sec", title: "옛 규정", ideas: [] }],
-        updated_at: "2026-09-23T00:00:00Z", updated_by: "other" }] };
-      const fn = makeFetchStub(server);
-      e5.w.fetch = fn;
       e5.S.boot();
+      await server.loginAs(e5, "hq-pw-2222");
       e5.Sync.snapAll();
       // 로컬에서 새 규정 등록(아직 서버 미반영) → pending 은 비어 있지만 dirty 상태
       e5.S.data.regulations = [{ id: "old1", scope: "sec", title: "옛 규정", ideas: [] },
         { id: "new1", scope: "sec", title: "새 규정", ideas: [] }];
       e5.S.saveSilent();
       ok(e5.Sync.dirtyKeys().includes("regulations"), "dirty 감지");
-      return e5.Sync.pull(false).then(() => {
-        const ids = e5.S.data.regulations.map(r => r.id).sort().join(",");
-        eq(ids, "new1,old1", "로컬 변경 보존(병합)");
-      });
+      await e5.Sync.pull(false);
+      const ids = e5.S.data.regulations.map(r => r.id).sort().join(",");
+      eq(ids, "new1,old1", "로컬 변경 보존(병합)");
+      e5.Sync.stop();
     });
     t("RG09 jsdom 오류 없음(규정 블록)", () => eq(e.errors.length, 0, e.errors.join(" | ")));
   }
@@ -3052,6 +3388,111 @@ function makeFetchStub(server) {
       const e8 = makeEnv({ preData: Object.assign({}, e.S.data, { fleet: "x" }) });
       ok(Array.isArray(e8.S.data.fleet) && e8.S.data.fleet.length === 0);
     });
+  }
+
+  /* ══════════ [SEC] v1.15 서버 보안 — 비공개 파일 · 살균 · CSP · 저장소 위생 ══════════ */
+  {
+    const PUBU = "https://mzyuzrxkdcpzxojenwat.supabase.co/storage/v1/object/public/semis-logi-files/";
+    const srvF = makeServer({ rows: [{ key: "notices", value: [{ id: "nf", title: "첨부 공지", body: "", author: "x", pinned: false,
+      created: "2026-09-01T00:00:00Z", bodyHtml: '<p>본문 <img src="' + PUBU + 'notices/a.png" alt="그림"></p>', files: [{ name: "보고서.pdf", url: PUBU + "attach/b.pdf" }] }] }] });
+    const e = makeEnv({ fetch: srvF.fetch });
+    await srvF.loginAs(e, "user-pw-4444");
+    const FA = e.w.SemisFileAuth;
+    await ta("SEC01 화면의 비공개 파일 주소 → 서명 URL(표준 주소는 data-sf에 보관)", async () => {
+      FA.start();
+      await e.Sync.start();
+      go(e, "dashboard");
+      await tick(80);
+      const img = q(e, ".notice-html img");
+      ok(img, "공지 이미지");
+      ok(img.getAttribute("src").indexOf("/object/sign/semis-logi-files/notices/a.png?token=") > 0, img.getAttribute("src"));
+      eq(img.getAttribute("data-sf"), PUBU + "notices/a.png");
+      const a = q(e, "a.nb-file");
+      ok(a && a.getAttribute("href").indexOf("/object/sign/semis-logi-files/attach/b.pdf?token=") > 0, a && a.getAttribute("href"));
+      ok(srvF.calls.some(c => c.url.indexOf("/functions/v1/semis-logi-files") > 0 && c.body && c.body.op === "sign"), "서명 요청");
+    });
+    await ta("SEC02 권한 밖 폴더(regs=mgr)는 서명받지 못함 · 요청 모음 처리", async () => {
+      const u = await FA.resolve(PUBU + "regs/x.pdf");
+      eq(u, PUBU + "regs/x.pdf", "user(1) → regs(2) 거부 시 원래 주소");
+      const u2 = await FA.resolve(PUBU + "attach/c.pdf?download=" + encodeURIComponent("한글.pdf"));
+      ok(u2.indexOf("/object/sign/semis-logi-files/attach/c.pdf?token=") > 0 && u2.indexOf("&download=") > 0, u2);
+    });
+    t("SEC03 canon: 서명 URL → 표준 주소 (저장 전 되돌리기)", () => {
+      const signed = "https://mzyuzrxkdcpzxojenwat.supabase.co/storage/v1/object/sign/semis-logi-files/notices/a.png?token=abc.def-1";
+      eq(FA.canon('<img src="' + signed + '">'), '<img src="' + PUBU + 'notices/a.png">');
+      eq(FA.canon('<a href="' + signed + '&amp;download=x.pdf">'), '<a href="' + PUBU + 'notices/a.png?download=x.pdf">');
+      eq(FA.parse(PUBU + "a/b.png?download=z").path, "a/b.png");
+      eq(FA.parse("https://example.com/x.png"), null);
+    });
+    t("SEC04 살균: 이벤트 속성·javascript:·svg/script 제거 · 서명 흔적(data-sf·임시 그림) 복원", () => {
+      const S = e.w.SemisNotice.sanitizeHtml;
+      const out = S('<img src="x" onerror="alert(1)"><a href="javascript:alert(1)">a</a><a href=" JaVaScRiPt:x">b</a><svg><script>alert(1)</script></svg><iframe srcdoc="x"></iframe><a href="data:text/html,x">c</a>');
+      ok(out.indexOf("onerror") < 0 && out.indexOf("javascript") < 0 && out.toLowerCase().indexOf("javascript") < 0, out);
+      ok(out.indexOf("<svg") < 0 && out.indexOf("<script") < 0 && out.indexOf("<iframe") < 0, out);
+      ok(out.indexOf("data:text/html") < 0, out);
+      const back = S('<img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-sf="' + PUBU + 'notices/a.png" alt="g">');
+      eq(back, '<img src="' + PUBU + 'notices/a.png" alt="g">');
+      ok(read("js/modules.js").indexOf('document.createElement("template")') > 0, "template 파싱(살균 중 이미지 로딩·onerror 없음)");
+    });
+    await ta("SEC05 인쇄용 별도 문서: 표준 주소를 서명 URL로 바꿔 넣음", async () => {
+      const h = await FA.signHtml('<img src="' + PUBU + 'minutes-sign/s.png"><a href="' + PUBU + 'attach/d.pdf?download=a.pdf">x</a>');
+      ok(h.indexOf("/object/sign/semis-logi-files/minutes-sign/s.png?token=") > 0, h);
+      ok(/attach\/d\.pdf\?token=[^"]+&download=a\.pdf/.test(h), h);
+      ok(read("js/minutes.js").indexOf("SemisFileAuth.signHtml(html)") > 0, "회의록 인쇄에 적용");
+    });
+    await ta("SEC06 업로드: 서버가 경로를 정하고 서명 URL로 PUT · 저장값은 표준 주소", async () => {
+      const f = new e.w.File(["abc"], "보고 서.pdf", { type: "application/pdf" });
+      const up = await e.Sync.uploadFile(f, "attach");
+      ok(up.url.indexOf(PUBU + "attach/") === 0, up.url);
+      ok(srvF.puts.some(p => p.indexOf("attach/") === 0), "PUT");
+      const call = srvF.calls.find(c => c.body && c.body.op === "upload");
+      eq(call.body.prefix, "attach"); eq(call.body.size, 3);
+    });
+    t("SEC07 저장소 위생: localStorage 에 데이터·대기열 없음 · 옛 키 정리", () => {
+      ["semisl:data", "semisl:pendingSync", "semisl:forcePush", "semisl:gcalCache"].forEach(k => ok(!e.w.localStorage.getItem(k), k));
+      ok(e.w.sessionStorage.getItem("semisl:data"), "탭 세션 사본");
+      const e2 = makeEnv({ boot: false });
+      e2.w.localStorage.setItem("semisl:data", '{"version":1}');
+      e2.w.localStorage.setItem("semisl:pendingSync", '["x"]');
+      e2.S.boot();
+      ok(!e2.w.localStorage.getItem("semisl:data") && !e2.w.localStorage.getItem("semisl:pendingSync"), "옛 사본 제거");
+    });
+    t("SEC08 CSP · 인라인 스크립트 없음 · 시작 코드는 main.js(마지막)", () => {
+      const html = read("index.html");
+      ok(/http-equiv="Content-Security-Policy" content="script-src 'self' https:\/\/cdn\.jsdelivr\.net\/npm\/@supabase\/supabase-js@2\/dist\/umd\/supabase\.min\.js; object-src 'none'; base-uri 'self'/.test(html), "CSP");
+      ok(!/<script>(?!<\/script>)/.test(html) && !/<script(?![^>]*\bsrc=)[^>]*>/.test(html), "인라인 스크립트");
+      ok(!/\son[a-z]+="/i.test(html.replace(/<meta[^>]*>/g, "")), "인라인 이벤트 속성(html)");
+      FILES.forEach(f => ok(!/\son(click|change|error|load|input|submit|mouse\w+|key\w+)=\\?["']/.test(read(f)), f + ": 인라인 이벤트"));
+      const scripts = Array.from(html.matchAll(/<script src="([^"]+)"/g)).map(m => m[1]);
+      ok(/^js\/main\.js\?v=/.test(scripts[scripts.length - 1]), "main.js 마지막");
+    });
+    t("SEC09 코드에 비밀 토큰 없음 — v2 ICS 구독 토큰·AI 토큰 · 서비스 키", () => {
+      FILES.concat(["index.html", "js/main.js"]).forEach(f => {
+        const c = read(f);
+        ok(c.indexOf("azs-") < 0, f + ": azs- 토큰");
+        ok(c.indexOf("semis-ics") < 0, f + ": v2 ICS");
+        ok(c.indexOf("service_role") < 0, f + ": service_role");
+      });
+    });
+    t("SEC10 파일 함수(tools/edge/semis-logi-files.ts): 코드가 쓰는 업로드 폴더를 모두 규정 · 세션 확인", () => {
+      const fn = read("tools/edge/semis-logi-files.ts");
+      const used = new Set();
+      FILES.forEach(f => { const c = read(f);
+        (c.match(/uploadFile\([^,]+,\s*"([a-z-]+)"\)/g) || []).forEach(m => used.add(/"([a-z-]+)"\)$/.exec(m)[1]));
+        (c.match(/wireRichMedia\([^,]+,\s*"([a-z-]+)"\)/g) || []).forEach(m => used.add(/"([a-z-]+)"\)$/.exec(m)[1])); });
+      ["regs", "regs-diff"].forEach(p => used.add(p));
+      ok(used.size >= 8, Array.from(used).join(","));
+      used.forEach(p => ok(new RegExp('(^|[\\s{,])"?' + p.replace("-", "\\-") + '"?: \\d').test(fn.slice(fn.indexOf("const WRITE_RANK"), fn.indexOf("const DEFAULT_READ"))), "WRITE_RANK: " + p));
+      ok(fn.indexOf("semis_logi_file_auth") > 0 && fn.indexOf("x-semis-token") > 0, "세션 확인");
+      ok(fn.indexOf('s.includes("..")') > 0, "경로 이동 차단");
+    });
+    t("SEC11 비상연락망 원본 이미지 미리 받기·첨부 뷰어 내려받기도 서명 URL 사용", () => {
+      ok(read("js/contacts.js").indexOf("SemisFileAuth.resolve(f.imgUrl)") > 0);
+      ok(read("js/files.js").indexOf("SemisFileAuth.resolve(url)") > 0);
+      ok(/object\\\/\(public\|sign\)/.test(read("js/files.js")), "download= 처리");
+    });
+    t("SEC12 jsdom 오류 없음(보안 블록)", () => eq(e.errors.length, 0, e.errors.join(" | ")));
+    FA.stop(); e.Sync.stop();
   }
 
   /* ══════════ [W] 릴리스 위생 ══════════ */

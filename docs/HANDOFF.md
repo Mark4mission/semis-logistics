@@ -6,11 +6,11 @@
 
 | 항목 | 값 |
 |---|---|
-| 현재 버전 | **v1.14.0** (2026-09-25) — 운항 현황(에어제타 화물기 15대 ADS-B 실시간 위치 · 인천 접근 · 입출항 기록) |
+| 현재 버전 | **v1.15.0** (2026-09-25) — **서버 보안**: 서버 로그인 세션 · 권한별 RLS · 비공개 파일(서명 URL) · 접속 기록 |
 | 접속 주소 | https://mark4mission.github.io/semis-logistics/ |
 | 저장소 | GitHub `Mark4mission/semis-logistics` (공개) · Mac `~/SeMIS_Logistics` |
-| 테스트 | `npm test` 262건 전부 통과 (코드·문서에 암호 평문·CARES 키 없음) |
-| 백엔드 | Supabase `mzyuzrxkdcpzxojenwat` — 테이블 `semis_logi_store`, 버킷 `semis-logi-files` · 운항 현황: Edge Function `semis-logi-adsb` + 테이블 `semis_logi_adsb` · `semis_logi_adsb_events` + pg_cron 2분 |
+| 테스트 | `npm test` 281건 전부 통과 (가짜 서버로 로그인·RLS·파일 함수 흉내 · 코드에 해시·토큰 없음) |
+| 백엔드 | Supabase `mzyuzrxkdcpzxojenwat` — 테이블 `semis_logi_store`(세션 RLS), **비공개** 버킷 `semis-logi-files`, 비공개 스키마 `semis_logi_private`(계정 · 세션 · 로그인 시도 · 접속 기록 · 권한표), RPC `semis_logi_*`, Edge Function `semis-logi-files`(서명 URL) · 운항 현황: Edge Function `semis-logi-adsb` + 테이블 `semis_logi_adsb` · `semis_logi_adsb_events` + pg_cron 2분 |
 
 ## 2. 새 세션 시작
 
@@ -58,7 +58,7 @@ Claude가 할 일(순서대로):
 | crisis | crisis.js | mgr (편집 hq) | **위기대응 담당자**(v1.13) — 회사 위기대응 조직 11곳 × 27팀 × 임무 96건 × 담당자 78명(2026년 명단, 기준 26년 9월). 우리 팀(인천화물팀) 임무 띠 · 조직 줄 필터 · 검색 · 보기 4종(조직별 · 팀별 · 담당자별 · 매트릭스) · 이름 누르면 그 사람 임무 전체 · 비상연락망 동명 1명이면 전화 버튼 · hq: 엑셀 반영(대조 후) · 행 편집 · 기본 정보 · 원본 엑셀 내려받기 |
 | contacts | contacts.js | mgr (편집 hq) | 비상연락망 · 보고체계 (2026-09-22 SeMIS v2 연락망 69건 이관 — 12섹션 78행) · **보고 체계도 탭**(v1.10: 보안사고 20 · 안전사고 18 · 위험물사고 29행, 미리보기 → 전체 화면 뷰어) |
 | vault | vault.js | hq | 암호 관리 (AES-256-GCM, 5분 자동 잠금, 공용/개인용 — 개인용은 본인 키로만 해독) |
-| settings | modules.js | admin | 메뉴(숨기기 포함) · 사용자 · 담당자 · 데이터(변경 이력 복원) · 저장소 |
+| settings | modules.js | admin | 메뉴(숨기기 포함) · 사용자(서버 계정 RPC) · 담당자 · 데이터(변경 이력 복원 — 관리자 RPC) · 저장소(파일 함수) · **보안**(접속 중 · 접속 기록 · 다른 접속 모두 끊기, v1.15) |
 | scr-status | screening.js · cares.js | mgr | 화물 보안검색 현황 — 검색 라인 배치(검색대별 X-ray·ETD · 환적·예비) · 오늘 일일점검 · 장비 × 28일 점검 이행(+주간·월간 최근일) · 센서 3곳 × 지표 + 결로 판정 · 최근 고장. 대시보드 4칸 요약 띠(mgr) |
 | scr-equip | equipment.js · cares.js | mgr (편집 hq) | 검색장비 유지관리 — 장비 대장 22대(v2 이관, 내용연수 · CARES 상태) · 고장·수리 이력(처리 단계 · 원인 · 부품 · 사진) · 가동 분석(가동률 · 다운타임 · 원인 분류) |
 
@@ -79,12 +79,21 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 
 ## 5. 데이터 · 백엔드
 
-- **SYNC_KEYS(20)**: menus · notices · schedules · assignees · assigneesSeeded · minutes · minuteFolders · levelHistory · safetyBoard · contacts · pwOverrides · userOverrides · customUsers · gcal · chatRooms · vault · regulations · equipment · crisis · fleet
+- **SYNC_KEYS(17)**: menus · notices · schedules · assignees · assigneesSeeded · minutes · minuteFolders · levelHistory · safetyBoard · contacts · gcal · chatRooms · vault · regulations · equipment · crisis · fleet (계정 자료 pwOverrides·userOverrides·customUsers는 v1.15에 서버 전용 표로 이관·삭제)
 - SYNC_KEYS 밖 설정 행: `caresCfg`(CARES Firebase 웹 키 — `SemisSync.fetchKV`로만 읽음, 앱이 쓰지 않음)
-- 신규 컬렉션 추가 시: `freshData()` 기본값 → `normalizeData()` 보정(멱등) → `sync.js` SYNC_KEYS → 테스트 Y01 기대 문자열 갱신
+- 신규 컬렉션 추가 시: `freshData()` 기본값 → `normalizeData()` 보정(멱등) → `sync.js` SYNC_KEYS → 테스트 Y01 기대 문자열 갱신 → **서버 권한표 등록**(아래)
+- **서버 보안(v1.15)** — 원본 SQL `tools/sql/semis-logi-security.sql`(1단계) · `tools/sql/semis-logi-lockdown.sql`(2단계 잠금)
+  - 로그인: RPC `semis_logi_login(p_pw, p_ua)` → 서버가 `bcrypt(sha256('SeMISv2::'+암호))`로 확인 → 세션 토큰 64자(원문은 저장 안 함, sha256만). 같은 IP 15분 20회 실패 → 15분 제한. 6자리 숫자는 회의 서명 코드(회의일 ±90일)
+  - 토큰은 이 탭의 `sessionStorage semisl:tok`, 모든 요청에 `x-semis-token` 헤더. 세션 24시간 무활동 만료(10분마다 `semis_logi_whoami`로 확인·연장) · 최대 30일. 서버가 끊으면 로그인 창만 다시 뜨고, 같은 계정이면 미전송분을 이어서 저장
+  - RLS: `semis_logi_store`는 정책 "logi session read/insert/update"만 — `rank_now() >= read_rank(key)` / `write_rank(key)`. 권한표 `semis_logi_private.key_acl`(9 = 앱에서 불가). **새 컬렉션은 여기에 (key, 읽기, 쓰기) 등록**(없으면 2/3). SQL 파일에도 같은 줄(테스트 C05가 대조)
+  - 서버가 `updated_at`(서버 시각)·`updated_by`(`계정ID/클라이언트ID`)를 찍는다(트리거 `semis_logi_store_a_stamp`). 변경 알림은 트리거 `semis_logi_store_notify` → Broadcast 채널 `semis-logi-sync`(컬렉션 이름만) → 클라이언트가 그 컬렉션만 GET
+  - 관리자 RPC: `semis_logi_users` · `semis_logi_user_save(p)` · `semis_logi_user_delete` · `semis_logi_set_password`(다른 접속 끊김) · `semis_logi_history` · `semis_logi_history_value` · `semis_logi_security`(접속 중 · 기록) · `semis_logi_end_sessions`. 회의 서명: `semis_logi_sign_submit`(그 회의 한 건만 수정 — signer 세션은 공용 DB 직접 조회 불가)
+  - 계정 표는 SQL(서비스 권한)로만 직접 볼 수 있다: `select id, login_id, role, last_login_at from semis_logi_private.accounts`
+- **데이터 사본**: `sessionStorage semisl:data`(탭 단위 — 탭을 닫거나 로그아웃하면 사라짐) · 캐시 주인 `semisl:owner`(다른 계정이 로그인하면 비움) · 읽을 권한이 없는 컬렉션은 로그인 때 기본값으로 비운다. pending 큐 · 강제 push 표시도 sessionStorage. 옛 버전의 `localStorage semisl:data`는 시작할 때 지운다
+- **파일(v1.15)**: 버킷 비공개. 저장값은 표준 주소(`…/object/public/semis-logi-files/경로`) 그대로. `js/fileauth.js`(SemisFileAuth)가 화면의 img · iframe · a 등을 서명 URL(1시간)로 바꿔 끼우고(원래 주소는 `data-sf`), 서명 전 링크는 새 창을 먼저 연 뒤 보낸다. 서명·업로드·목록·삭제는 Edge Function `semis-logi-files`(원본 `tools/edge/semis-logi-files.ts`, verify_jwt false — 세션은 `semis_logi_file_auth()`로 확인). 폴더 등급: 열람 notices·attach·minutes·minutes-sign 1 / schedules·contacts·crisis·regs·regs-diff 2 / 그 밖 3, 올리기 minutes·minutes-sign 2(서명 세션은 minutes-sign만) / 나머지 3. 업로드 경로는 함수가 정한다(무작위 접두사). html·js 형식은 거부, 50MB 제한
 - **대량 삭제 방어**(sync.js `guardWipe`): 2건 이상 → 0건 push 차단. 정상 전체 삭제는 `SemisSync.confirmWipe(key)`
 - **서버 자동 백업**: 트리거가 모든 변경 직전 값을 `public.semis_store_history`에 90일 보관 → 시스템 설정 › 데이터 관리 › 변경 이력에서 복원
-- 규정 PDF: `semis-logi-files/regs/` (공개 URL). 2026-09-20 등록 18건(안전관리 16 · DG 2)
+- 규정 PDF: `semis-logi-files/regs/` (v1.15부터 비공개 — 서명 URL). 2026-09-20 등록 18건(안전관리 16 · DG 2)
 - SeMIS v2와 **데이터 완전 분리** — v2는 `semis_store` · `semis-files`
 
 ## 6. 반드시 지킬 규칙
@@ -100,10 +109,14 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 9. **줄바꿈(v1.9.1)**: 본문 전체 `word-break: keep-all`(한글은 어절 단위). 글자 단위로 끊는 `word-break: break-word`는 쓰지 말고 `overflow-wrap: break-word`로. 좁은 칸의 머리글(제목·건수·링크)은 `white-space: nowrap`. 새 화면은 390px에서 가로 넘침이 없는지 확인
 11. **검색 입력칸은 다시 만들지 않는다(v1.13.1)**: 입력 이벤트에서 화면(입력칸 포함)을 통째로 다시 그리면 한글 조합이 끊겨 "ㅊㅗㅣ"처럼 자모로 풀린다. `SeMIS.ui.searchValue(v)`(끝의 조합 중 자모 제거)로 검색어를 만들고, 목록은 입력칸 밖 영역만 바꾸거나 `SeMIS.ui.repaintKeep(box, html, input)`(입력칸과 조상 노드는 그대로, 주변만 교체)을 쓴다. 검증: playwright CDP `Input.imeSetComposition`/`insertText`로 조합 입력 후 입력칸 노드 동일성 확인
 10. **모달 버튼줄**: 저장·취소처럼 자주 누르는 조작(완료 체크 포함)은 스크롤되는 본문이 아니라 하단 `.modal-actions`에 둔다
+12. **서버 보안(v1.15)**: ① 새 컬렉션 → `key_acl` 등록(+SQL 파일) ② 새 파일 폴더 → `tools/edge/semis-logi-files.ts` 등급표 추가 후 재배포 ③ 파일 주소는 표준(public) 주소로 저장하고 화면에 그대로 쓰면 자동 서명된다 — 단, 화면 밖 `new Image()`·`fetch`는 `SemisFileAuth.resolve(url)`, 별도 인쇄 문서(iframe document.write)는 `SemisFileAuth.signHtml(html)`, 편집기 HTML 저장은 `SemisNotice.sanitizeHtml`(서명 흔적 되돌림) ④ CSP(`script-src 'self'` + supabase-js 한 파일): 인라인 `<script>`·`onclick=` 금지, 외부 스크립트 추가 시 index.html CSP 수정 ⑤ 코드·문서에 토큰·해시·명단 금지(테스트 C03·SEC09) ⑥ 브라우저 확인은 로컬(route로 파일 제공) + 공용 DB 비-GET·`semis_logi_sign_submit` 차단 상태에서, 임시 계정은 확인 후 삭제
 
 ## 7. 미결 · 주의
 
-- 기본 계정 초기 암호가 공개 저장소 git 이력에 남아 있으나, 2026-09-21 네 계정 모두 운영 암호로 변경 완료(`pwOverrides` 확인). 코드·테스트에 평문 재유입 금지
+- **(v1.15 이전 노출) 암호 해시**: v1.14까지 계정 해시(SHA-256, SALT 공개)가 공개 저장소 git 이력과 누구나 읽을 수 있던 공용 DB(`pwOverrides`)에 있었다 → **네 계정 모두 새 암호로 바꿀 것**(시스템 설정 › 사용자/암호, 8자 이상). 특히 `mark3464`는 SeMIS v2와 같은 암호이고 v2 공용 DB(`semis_store.pwOverrides`)는 아직 누구나 읽을 수 있으므로 **Logistics 전용의 다른 암호**를 권장
+- **SeMIS v2도 같은 구조적 노출**(2026-09-25 점검, 미조치 — Logistics 범위 밖): `semis_store`(anon 읽기·쓰기·삭제) · `semis-files` 버킷(공개·목록·삭제 227개/156MB) · `semis_store_history` v2 행(공개) · Edge Function `semis-ics` 토큰이 v2 공개 코드에(v2 일정 전체 ICS) · `semi-chat` 토큰(AI 비용). 같은 방식(세션 RLS·비공개 버킷)으로 v2 적용 필요
+- Edge Function `semis-logi-ai`(AI 요약, 2026-09-21 배포)는 저장소 코드에서 호출하지 않는다 — 고정 토큰 + Origin 확인뿐. 쓰지 않으면 삭제, 쓸 거면 세션 확인(x-semis-token)으로 바꿀 것
+- CARES Firestore(equipments · repairLogs · inspectionLogs · sensorLogs · sensorThresholds) 공개 읽기 규칙은 CARES 쪽 설정 — Logistics는 읽기만 한다
 - 커스텀 도메인 미설정 (추후 `logistics.semis.pe.kr` CNAME 가능)
 - CARES Mobile 배포 주소 링크 미등록
 - 연락망 이관(2026-09-22): SeMIS v2 `semis_store.contacts`에서 안전보안실 28 · 국토부 항공보안정책과 8 · 서울지방항공청 보안과 16 · 비상안전기획관실 3 · 대테러센터·국가위기관리센터 4 · 서면보고 이메일 10을 복사(두 시스템은 이후 따로 관리). 이관 직전 값은 `semis_store_history` id 112. 서면보고 섹션의 v2 비고("지점 내 별도 유지…")는 지점 기준 문구라 옮기지 않음
@@ -162,4 +175,5 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 | v1.13.0 | 09-23 | **위기대응 담당자** — 2026년 에어제타 위기대응 담당자 명단(엑셀 7개 시트)을 별도 화면으로. 우리 팀 임무 띠(짙은 판, 정·부 · 전화) · 요약(조직 11 · 팀 27 · 임무 96 · 담당자 78) · 조직 줄(색 점 · 건수, 누르면 필터) · 검색(이름 · 팀 · 업무, 강조) · 보기 4종: 조직별(팀 묶음 표) · 팀별(본부 묶음) · 담당자별(이름 누르면 이동, 정/부 배지) · 매트릭스(팀 × 조직 건수, 칸 누르면 조직별 필터) · 참고(OCC 번호 원터치) · hq 엑셀 반영(대조 후) · 행 편집 · 기본 정보 · 원본 내려받기 · 모바일 행 카드 · 인쇄 |
 | v1.13.1 | 09-23 | **검색칸 한글 입력 깨짐 수정** — 위기대응 담당자 · 검색장비 유지관리(장비 대장 · 고장 이력) 검색칸에서 한글을 치면 글자마다 화면을 새로 그리며 입력칸이 바뀌어 "ㅊㅗㅣㅅㅏㅇ"처럼 자모로 풀리던 문제. 입력칸은 유지하고 나머지만 다시 그림(`ui.repaintKeep`), 조합 중 자모는 검색어에서 제외(`ui.searchValue`). 비상연락망 · 규정 · 암호 관리 · 회의록은 원래 입력칸 밖만 다시 그려 해당 없음(조합 입력 시험으로 확인). 모듈 템플릿도 같은 방식으로 수정 |
 | v1.14.0 | 09-25 | **운항 현황** — 에어제타 화물기 15대 ADS-B 실시간 위치(adsb.lol 무료 · Supabase Edge Function 중계 · pg_cron 2분 기록). 대시보드 지도(기체만) + 인천 접근 중 목록 + 최근 인천 도착 · 메뉴 '운항 현황'(홈 허브, 전체 공개): 요약 · 지도(비행 경로 · 신호 없음 직진 추정 · 이름표 겹침 정리) · 인천 입항/출항 · 기체 현황 · 입출항 기록 48시간 · 비상 부호 경고 · 기체 목록 편집(hq, ICAO 자동 채움). 스케줄 파일 미사용(매달 바뀌어 유지 곤란) |
+| v1.15.0 | 09-25 | **서버 보안** — 공개 키만으로 공용 DB·파일 전부를 읽고 고칠 수 있던 구조를 닫음. 서버 로그인(RPC · bcrypt · IP별 시도 제한) → 탭 세션 토큰 · 권한표(key_acl) 기반 RLS(권한 밖 컬렉션은 받지도 못함) · 계정·세션·접속 기록 비공개 스키마 · 파일 버킷 비공개 + Edge Function 서명 URL(js/fileauth.js 자동 변환) · 회의 서명은 그 회의 한 건만(RPC) · 데이터 사본 localStorage → sessionStorage · 변경 알림 Broadcast(이름만) · 서버 시각·작성자 기록 · 설정에 보안 탭(접속 중 · 기록 · 모두 끊기) · CSP · 살균기 template 파싱 · v2 ICS 토큰 제거 |
 | v1.9.1 | 09-22 | 한글 어절 단위 줄바꿈(전역 keep-all) · 대시보드 하단 시트 칸 수를 시트 폭으로 결정(container query, 1040px↑ 4칸) · 일정 폼 '완료'를 하단 버튼줄로(스크롤 없이 보임) · 오른쪽 설정 패널 압축(1512×825에서 스크롤 없음) · 3D 불러오기 주소에 버전 부여(배포 직후 옛 404 캐시 회피)·실패 사유 기록(`#dash-3d[data-h3d]`) |

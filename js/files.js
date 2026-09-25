@@ -26,7 +26,8 @@
   let list = [], idx = 0, pushed = false, zoom = false;
 
   /* ─────── 파일 정보 ─────── */
-  const urlOf = (el) => el.tagName === "IMG" ? (el.getAttribute("src") || "") : (el.getAttribute("href") || "");
+  /* 비공개 파일은 화면에서 서명 URL로 바뀌어 있다 — 원래(표준) 주소는 data-sf 에 있다 (js/fileauth.js) */
+  const urlOf = (el) => el.getAttribute("data-sf") || (el.tagName === "IMG" ? (el.getAttribute("src") || "") : (el.getAttribute("href") || ""));
   function nameFromUrl(url) {
     try {
       const p = String(url).split(/[?#]/)[0].split("/").pop() || "";
@@ -60,13 +61,14 @@
     a.click();
     a.remove();
   }
-  /* Supabase 공개 URL이면 서버가 원래 이름으로 내려 주도록 ?download= 를 붙인다 */
+  /* Supabase 저장소 URL(표준·서명)이면 서버가 원래 이름으로 내려 주도록 download= 를 붙인다 */
   function downloadHref(url, name) {
-    if (!/\/storage\/v1\/object\/public\//.test(String(url))) return "";
+    if (!/\/storage\/v1\/object\/(public|sign)\//.test(String(url))) return "";
     const u = String(url).split("#")[0];
     return u + (u.indexOf("?") >= 0 ? "&" : "?") + "download=" + encodeURIComponent(name || nameFromUrl(url));
   }
   async function download(url, name) {
+    try { if (window.SemisFileAuth) url = await SemisFileAuth.resolve(url); } catch (e) { /* 원래 주소로 시도 */ }
     const direct = downloadHref(url, name);
     if (direct) { clickLink(direct, name || nameFromUrl(url)); return; }
     if (/^data:/i.test(url)) { clickLink(url, name); return; }

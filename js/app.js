@@ -8,14 +8,21 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.14.0";
+  const VERSION = "1.15.0";
   const APP_NAME = "SeMIS · Logistics";
+  /* v1.15: 데이터 캐시는 이 탭의 sessionStorage 에만 둔다(탭을 닫거나 로그아웃하면 사라짐).
+     화면 설정(LS_UI)만 localStorage. */
   const LS_DATA = "semisl:data";
   const LS_UI   = "semisl:ui";
-  const SS_SESSION = "semisl:session";
-  /* SeMIS v2와 동일한 SALT — 시스템관리자(mark3464)가 같은 암호로 두 시스템에 접속할 수 있도록.
-     (해시만 보관하므로 평문 노출 없음) */
+  const SS_OWNER = "semisl:owner";   // 캐시 주인 — 다른 계정이 로그인하면 캐시를 비운다
+  /* 암호 확인은 서버(RPC semis_logi_login)가 한다. SeMIS v2와 같은 규칙(SHA-256 · SALT)으로
+     만든 값을 서버가 bcrypt로 한 번 더 감싸 보관 — 아래 함수는 규칙 확인(테스트)용으로만 남긴다. */
   const SALT = "SeMISv2:";
+  const store = {
+    get(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } },
+    set(k, v) { try { sessionStorage.setItem(k, v); return true; } catch (e) { return false; } },
+    del(k) { try { sessionStorage.removeItem(k); } catch (e) { /* 무시 */ } }
+  };
 
   /* ─────────── SHA-256 (pure JS, 동기, 어디서나 동작) ─────────── */
   function sha256(str) {
@@ -62,17 +69,9 @@ const SeMIS = (() => {
   }
   const pwHash = (pw) => sha256(SALT + ":" + pw);
 
-  /* ─────────── 기본 사용자 (암호는 해시로만 보관 — 평문 미노출) ─────────── */
-  const BASE_USERS = [
-    { id: "mark3464",   name: "시스템관리자",  role: "admin",
-      hash: "e656cd08712ab870c57a6d483f57f88cae49bcd541ec9bb862e412670c23f389" },
-    { id: "cargo-ss",   name: "안전보안파트",  role: "hq",
-      hash: "540a1c3facaa070d9713f09447a7572762a965d90cd36057c8048fe51a96b838" },
-    { id: "cargo-mgr",  name: "화물팀 관리자", role: "manager",
-      hash: "d7435a8f2a56646e8e50d95c0e3f4ce2b6c74aae4a1fcd656d51fe7a2e5388f7" },
-    { id: "cargo-user", name: "화물팀 사용자", role: "user",
-      hash: "75a172158dc9392f64f2b9fe2aa7c7cd122be590f6255eafb60e45f41a48de17" }
-  ];
+  /* ─────────── 계정 ───────────
+     계정·암호는 서버 전용 표(semis_logi_private.accounts)에만 있다. 코드와 공용 데이터에는 두지 않는다.
+     기본 계정: mark3464(시스템관리자) · cargo-ss(안전보안파트) · cargo-mgr(화물팀 관리자) · cargo-user(화물팀 사용자) */
   const ROLE_LABEL = { admin: "시스템관리자", hq: "안전보안파트", manager: "화물팀 관리자", user: "일반사용자", vendor: "협력업체", signer: "서명 참석자" };
   /* 권한 서열: admin(4) > hq(3) > manager(2) > user(1)
      - admin:   모든 기능 + 시스템 설정
@@ -313,9 +312,6 @@ const SeMIS = (() => {
       levelHistory: [{ id: "lv0", date: new Date().toISOString().slice(0, 10), level: "평시",
         note: "SeMIS · Logistics 개설", by: "시스템", at: new Date().toISOString() }],
       safetyBoard: { since: "", note: "" }, // 무재해 기준일 (대시보드 현황판)
-      pwOverrides: {},   // { baseUserId: hash }
-      userOverrides: {}, // 기본 계정 속성 변경 { baseUserId: { id?, name?, role?, vendor?, deleted? } }
-      customUsers: [],   // [{id, name, role, vendor?, hash}]
       schedules: [],     // 일정관리
       assignees: [],     // 일정 담당자 카테고리 (시스템 설정에서 관리) — normalize가 기본값 시드
       gcal: { enabled: false, calendarId: "", apiKey: "" },
@@ -334,7 +330,7 @@ const SeMIS = (() => {
   let DATA = null;
   function load() {
     try {
-      const raw = localStorage.getItem(LS_DATA);
+      const raw = store.get(LS_DATA);
       if (raw) { DATA = JSON.parse(raw); }
     } catch (e) { DATA = null; }
     if (!DATA) DATA = freshData();
@@ -403,14 +399,8 @@ const SeMIS = (() => {
     });
 
     DATA.notices = Array.isArray(DATA.notices) ? DATA.notices : [];
-    DATA.pwOverrides = DATA.pwOverrides || {};
-    DATA.userOverrides = DATA.userOverrides || {};
-    // 최고관리자(mark3464) 보호: 권한 변경·삭제 불가 (잠금 방지)
-    if (DATA.userOverrides.mark3464) {
-      delete DATA.userOverrides.mark3464.role;
-      delete DATA.userOverrides.mark3464.deleted;
-    }
-    DATA.customUsers = Array.isArray(DATA.customUsers) ? DATA.customUsers : [];
+    // v1.14 이전 캐시에 남은 계정 자료는 버린다(계정은 서버 전용)
+    delete DATA.pwOverrides; delete DATA.userOverrides; delete DATA.customUsers;
     if (!Array.isArray(DATA.chatRooms)) DATA.chatRooms = [];
     if (!Array.isArray(DATA.levelHistory) || !DATA.levelHistory.length) {
       DATA.levelHistory = [{ id: "lv0", date: new Date().toISOString().slice(0, 10), level: "평시",
@@ -515,9 +505,9 @@ const SeMIS = (() => {
   }
   const saveHooks = [];
   function onSave(fn) { saveHooks.push(fn); }
-  function saveSilent() { localStorage.setItem(LS_DATA, JSON.stringify(DATA)); }
+  function saveSilent() { store.set(LS_DATA, JSON.stringify(DATA)); }
   function save() {
-    localStorage.setItem(LS_DATA, JSON.stringify(DATA));
+    store.set(LS_DATA, JSON.stringify(DATA));
     saveHooks.forEach(fn => { try { fn(); } catch (e) { /* sync 오류가 앱을 막지 않도록 */ } });
   }
 
@@ -540,54 +530,100 @@ const SeMIS = (() => {
     setUiState({ navPrefs: all });
   }
 
-  /* ─────────── 인증 ─────────── */
+  /* ─────────── 인증 (v1.15 — 서버 세션) ───────────
+     암호 확인과 권한은 서버가 결정한다(RPC semis_logi_login · semis_logi_whoami).
+     이 앱은 로그인 응답의 사용자 정보만 들고, 데이터 권한은 서버 RLS가 강제한다.
+     토큰·권한 정보는 이 탭의 sessionStorage(SemisSync.auth)에만 있다. */
   let currentUser = null;
+  let accountsCache = [];          // 시스템 설정 › 사용자 탭이 서버에서 받아 둔 목록
+  let relogin = null;              // 세션 만료 뒤 다시 로그인 중 { owner }
+  function allUsers() { return accountsCache.slice(); }
+  function setAccounts(list) { accountsCache = Array.isArray(list) ? list.slice() : []; }
+  const Auth = () => (typeof window !== "undefined" && window.SemisSync && window.SemisSync.auth) || null;
 
-  function allUsers() {
-    const base = BASE_USERS.map(u => {
-      const ov = (DATA.userOverrides || {})[u.id] || {};
-      if (ov.deleted && u.id !== "mark3464") return null;
-      return Object.assign({}, u, {
-        id: ov.id || u.id,
-        name: ov.name || u.name,
-        role: u.id === "mark3464" ? "admin" : (ov.role && ROLE_RANK[ov.role] ? ov.role : u.role),
-        vendor: ov.vendor || "",
-        hash: DATA.pwOverrides[u.id] || u.hash,
-        origId: u.id, base: true
-      });
-    }).filter(Boolean);
-    return base.concat(DATA.customUsers.map(u => Object.assign({}, u, { origId: u.id, base: false })));
+  function userFrom(d) {
+    const u = d && d.user;
+    if (!u) return null;
+    if (d.kind === "signer" || u.role === "signer")
+      return { id: "__signer__", name: u.name || "회의록 참석 서명", role: "signer", signMinuteId: u.signMinuteId || "" };
+    return { id: String(u.id || ""), origId: String(u.origId || u.id || ""), name: String(u.name || u.id || ""),
+             role: ROLE_RANK[u.role] != null && u.role !== "signer" ? u.role : "user", vendor: String(u.vendor || ""), base: !!u.base };
   }
-  function login(pw) {
-    const h = pwHash(pw);
-    const user = allUsers().find(u => u.hash === h);
-    if (!user) return null;
-    currentUser = user;
-    sessionStorage.setItem(SS_SESSION, JSON.stringify({ uid: user.id, ts: Date.now() }));
-    return user;
+  const ownerOf = (u) => u ? (u.role === "signer" ? "signer:" + u.signMinuteId : "user:" + u.origId) : "";
+  /* 다른 계정의 캐시는 쓰지 않는다 · 읽을 권한이 없는 컬렉션은 기본값으로 비운다 */
+  function claimCache(u) {
+    if (!DATA) load();
+    const owner = ownerOf(u);
+    const prev = store.get(SS_OWNER);
+    if (prev && prev !== owner) {
+      DATA = freshData();
+      try { sessionStorage.removeItem("semisl:pendingSync"); sessionStorage.removeItem("semisl:forcePush"); } catch (e) {}
+    }
+    store.set(SS_OWNER, owner);
+    const S = typeof window !== "undefined" ? window.SemisSync : null;
+    if (S && S.SYNC_KEYS) {
+      const fresh = freshData();
+      S.SYNC_KEYS.forEach(k => { if (!S.canRead(k) && fresh[k] !== undefined) DATA[k] = fresh[k]; });
+    }
+    normalizeData();
+    saveSilent();
   }
-  /* 서명 세션 — 회의록별 6자리 숫자 코드(id 기반 결정적 파생, 동기화 충돌 없음) */
+  /* 서명 세션 — 서버가 준 회의 정보(필요한 만큼)만 로컬 회의록 자리에 둔다(서버로 보내지 않음) */
+  function applySignerMinute(m) {
+    if (!m || !m.id) { DATA.minutes = []; saveSilent(); return; }
+    DATA.minutes = [{
+      id: m.id, title: m.title || "", date: m.date || "", time: m.time || "", place: m.place || "", folder: m.folder || "",
+      attendees: (m.attendees || []).map(a => ({ name: a.name || "", org: a.org || "", role: a.role || "", note: "", sign: a.signed ? "signed" : "" })),
+      decisions: []
+    }];
+    if (m.folder && !(DATA.minuteFolders || []).some(f => f && f.id === m.folder))
+      DATA.minuteFolders = (DATA.minuteFolders || []).concat([{ id: m.folder, seq: 99, icon: m.folderIcon || "🗒", name: m.folderName || "회의", desc: "", place: "", chair: "" }]);
+    saveSilent();
+  }
+  function beginSession(d) {
+    const u = userFrom(d);
+    if (!u) return null;
+    currentUser = u;
+    claimCache(u);
+    if (u.role === "signer") applySignerMinute(d.minute);
+    return u;
+  }
+  async function login(pw) {
+    const A = Auth();
+    if (!A) return { ok: false, error: "network" };
+    const d = await A.login(pw);
+    if (!d || !d.ok) return d || { ok: false, error: "invalid" };
+    beginSession(d);
+    return d;
+  }
+  /* 새로고침 — 이 탭의 토큰으로 서버 확인. 네트워크가 안 되면 탭에 남은 정보로 오프라인 진입 */
+  async function restoreSession() {
+    const A = Auth();
+    if (!A || !A.token()) return false;
+    let d = null;
+    try { d = await A.whoami(true); }
+    catch (e) {
+      const s = A.session();
+      if (s && s.user) { beginSession({ kind: s.kind, user: s.user, minute: s.minute }); return true; }
+      return false;
+    }
+    if (!d || !d.ok) { A.clear(); return false; }
+    beginSession(d);
+    return true;
+  }
+  /* 서명 세션에서 서명·정보 저장 — 서버 RPC(해당 회의 한 건만) */
+  async function signSubmit(idx, expect, person, sign) {
+    const S = window.SemisSync;
+    const d = await S.rpc("semis_logi_sign_submit", { p_idx: idx, p_expect: expect == null ? null : String(expect),
+      p_name: person.name, p_org: person.org, p_role: person.role || "", p_sign: sign === undefined ? null : sign });
+    if (d && d.ok && d.minute) applySignerMinute(d.minute);
+    return d || { ok: false, error: "network" };
+  }
   function signCodeFor(m) {
     const id = String((m && m.id) || "");
     let h = 5381;
     for (let i = 0; i < id.length; i++) h = ((h * 33) ^ id.charCodeAt(i)) >>> 0;
     return String(100000 + (h % 900000));
-  }
-  function signMinuteFor(pw) {
-    const code = String(pw || "").trim();
-    if (!/^\d{6}$/.test(code)) return null;
-    const list = (DATA.minutes || []).filter(c => c && signCodeFor(c) === code);
-    if (!list.length) return null;
-    return list.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))[0];
-  }
-  function signLogin(pw) {
-    const mi = signMinuteFor(pw);
-    if (mi) {
-      currentUser = { id: "__signer__", name: "회의록 참석 서명", role: "signer", signMinuteId: mi.id };
-      sessionStorage.setItem(SS_SESSION, JSON.stringify({ uid: "__signer__", signMinuteId: mi.id, ts: Date.now() }));
-      return currentUser;
-    }
-    return null;
   }
   function signCodeFromHash() {
     const mm = /^#\/sign\/(\d{6})$/.exec(String(location.hash || ""));
@@ -605,27 +641,51 @@ const SeMIS = (() => {
     if (base.slice(-1) !== "/") base += "/";
     return base + "#/sign/" + code;
   }
-  function restoreSession() {
+  async function logout() {
     try {
-      const s = JSON.parse(sessionStorage.getItem(SS_SESSION));
-      if (!s) return false;
-      if (s.uid === "__signer__") {
-        const mi = (DATA.minutes || []).find(c => c && c.id === s.signMinuteId);
-        if (!mi) return false;
-        currentUser = { id: "__signer__", name: "회의록 참석 서명", role: "signer", signMinuteId: mi.id };
-        return true;
-      }
-      const user = allUsers().find(u => u.id === s.uid);
-      if (!user) return false;
-      currentUser = user;
-      return true;
-    } catch (e) { return false; }
-  }
-  function logout() {
+      if (window.SemisSync && SemisSync._flush && currentUser && currentUser.role !== "signer")
+        await Promise.race([SemisSync._flush().catch(() => {}), new Promise(r => setTimeout(r, 2500))]);
+    } catch (e) { /* 저장 실패는 무시하고 로그아웃 */ }
+    try { const A = Auth(); if (A) await A.logout(); } catch (e) {}
+    try { if (window.SemisFileAuth) SemisFileAuth.stop(); } catch (e) {}
     currentUser = null;
-    sessionStorage.removeItem(SS_SESSION);
+    store.del(LS_DATA); store.del(SS_OWNER);
     location.hash = "";
     location.reload();
+  }
+  /* 세션 만료(서버가 거절) — 화면은 두고 로그인 창만 다시 띄운다 */
+  function sessionLost() {
+    if (!currentUser || relogin) return;
+    relogin = { owner: ownerOf(currentUser) };
+    const ov = $("#login-overlay");
+    if (ov) ov.classList.remove("hidden");
+    const er = $("#login-error");
+    if (er) er.textContent = "접속이 만료되었습니다. 다시 로그인해 주세요.";
+    const pw = $("#login-pw");
+    if (pw) { pw.value = ""; setTimeout(() => { try { pw.focus(); } catch (e) {} }, 50); }
+  }
+  /* 세션 확인(10분) 결과 — 권한이 바뀌었으면 화면을 다시 그린다 */
+  function sessionUpdated(d) {
+    const u = userFrom(d);
+    if (!u || !currentUser || u.role === "signer") return;
+    if (u.role === currentUser.role && u.name === currentUser.name && u.id === currentUser.id) return;
+    const roleChanged = u.role !== currentUser.role;
+    currentUser = u;
+    if (roleChanged) {
+      claimCache(u);
+      if (window.SemisSync) SemisSync.pull(false).catch(() => {});
+    }
+    try { renderHeader(); renderNav(); renderView(); } catch (e) {}
+  }
+  /* 테스트·개발용 — 서버 없이 세션을 세운다(데이터 권한은 여전히 서버가 결정) */
+  function devSession(d, tok, opts) {
+    const A = Auth();
+    if (A && A._set) A._set(tok || "t".repeat(64), d);
+    let u;
+    if (opts && opts.keep) { u = userFrom(d); currentUser = u; }   // 캐시 정리 없이(테스트에서 계정만 바꿔 볼 때)
+    else u = beginSession(d);
+    if (u) enterApp();
+    return u;
   }
   const isAdmin = () => currentUser && currentUser.role === "admin";
   const roleRank = () => {
@@ -1339,6 +1399,8 @@ const SeMIS = (() => {
   function renderSecBadge() {
     const b = $("#sec-level-badge");
     if (!b) return;
+    b.hidden = !!(currentUser && currentUser.role === "signer");   // 서명 세션은 등급 자료를 받지 않는다
+    if (b.hidden) return;
     const cur = secCurrent();
     const nxt = secNext();
     b.dataset.level = cur.level;
@@ -1357,25 +1419,83 @@ const SeMIS = (() => {
     renderNav();
     renderView();
   }
+  /* 로그인 직후 — 화면 진입 · 동기화 · 파일 주소 변환 시작 */
+  function afterLogin(announce) {
+    enterApp();
+    if (currentUser && currentUser.role !== "signer" && window.SemisSync) SemisSync.start();
+    if (window.SemisFileAuth) SemisFileAuth.start();
+    if (announce && currentUser)
+      toast(currentUser.role === "signer" ? "서명 화면입니다. 본인 이름을 찾아 서명해 주세요." : currentUser.name + "님, 환영합니다.");
+  }
+  function setLoginBusy(on, msg) {
+    const f = $("#login-form");
+    const btn = f && f.querySelector('button[type="submit"]');
+    if (btn) btn.disabled = !!on;
+    if (f) f.classList.toggle("is-busy", !!on);
+    if (msg != null) { const er = $("#login-error"); if (er) er.textContent = msg; }
+  }
+  const LOGIN_MSG = {
+    locked: (d) => "로그인 시도가 많아 " + ((d && d.wait) || 15) + "분 동안 제한됩니다.",
+    network: () => "서버에 연결할 수 없습니다. 네트워크를 확인해 주세요.",
+    invalid: () => "암호가 올바르지 않습니다."
+  };
+  let loginBusy = false;
+  async function onLoginSubmit(e) {
+    e.preventDefault();
+    const pw = $("#login-pw").value;
+    if (!pw || loginBusy) return;
+    loginBusy = true;
+    setLoginBusy(true, "확인 중…");
+    let d;
+    try { d = await login(pw); } catch (err) { d = { ok: false, error: "network" }; }
+    loginBusy = false;
+    setLoginBusy(false, "");
+    if (d && d.ok) {
+      $("#login-pw").value = "";
+      if (relogin) {                                 // 세션 만료 뒤 다시 로그인
+        const same = relogin.owner === ownerOf(currentUser);
+        relogin = null;
+        if (!same) { location.hash = ""; location.reload(); return; }
+        $("#login-overlay").classList.add("hidden");
+        if (window.SemisSync) SemisSync.start();
+        toast("다시 연결되었습니다.");
+        return;
+      }
+      afterLogin(true);
+      return;
+    }
+    const fn = LOGIN_MSG[(d && d.error) || "invalid"] || LOGIN_MSG.invalid;
+    $("#login-error").textContent = fn(d);
+    $("#login-pw").value = "";
+    $("#login-pw").focus();
+  }
+  /* QR 접속(#/sign/코드) — 암호 입력 없이 서명 화면 */
+  function signFromQr(code) {
+    const pwEl = $("#login-pw"), errEl = $("#login-error");
+    if (pwEl) pwEl.value = code;
+    setLoginBusy(true, "회의 정보를 불러오는 중입니다…");
+    login(code).then(d => {
+      setLoginBusy(false);
+      if (d && d.ok) { if (errEl) errEl.textContent = ""; location.hash = ""; afterLogin(true); return; }
+      if (errEl) errEl.textContent = d && d.error === "locked" ? LOGIN_MSG.locked(d) : "회의 정보를 찾지 못했습니다. 진행자에게 문의해 주세요.";
+    }).catch(() => {
+      setLoginBusy(false);
+      if (errEl) errEl.textContent = "서버에 연결할 수 없습니다. 네트워크를 확인한 뒤 [로그인]을 눌러 주세요.";
+    });
+  }
+  /* v1.14 이전 버전이 localStorage 에 남긴 데이터 캐시 · 옛 세션 정리 */
+  function cleanupLegacy() {
+    try {
+      ["semisl:data", "semisl:pendingSync", "semisl:forcePush", "semisl:gcalCache"].forEach(k => localStorage.removeItem(k));
+      sessionStorage.removeItem("semisl:session");
+    } catch (e) { /* 저장소 접근 불가 */ }
+  }
 
   function boot() {
+    cleanupLegacy();
     load();
 
-    $("#login-form").addEventListener("submit", (e) => {
-      e.preventDefault();
-      const pw = $("#login-pw").value;
-      if (!pw) return;
-      const user = login(pw) || signLogin(pw);
-      if (user) {
-        $("#login-error").textContent = "";
-        enterApp();
-        toast(user.role === "signer" ? "서명 화면입니다. 본인 이름을 찾아 서명해 주세요." : user.name + "님, 환영합니다.");
-      } else {
-        $("#login-error").textContent = "암호가 올바르지 않습니다.";
-        $("#login-pw").value = "";
-        $("#login-pw").focus();
-      }
-    });
+    $("#login-form").addEventListener("submit", onLoginSubmit);
     $("#pw-toggle").addEventListener("click", () => {
       const i = $("#login-pw");
       i.type = i.type === "password" ? "text" : "password";
@@ -1405,34 +1525,18 @@ const SeMIS = (() => {
     });
     window.addEventListener("hashchange", () => { if (currentUser) renderView(); });
 
-    if (restoreSession()) { enterApp(); return; }
-
-    /* QR 접속(#/sign/코드) — 암호 입력 없이 바로 서명 화면.
-       첫 접속 기기는 공용 DB 동기화가 끝나야 회의 정보가 생기므로 최대 12초 재시도. */
     const qrCode = signCodeFromHash();
-    if (qrCode) {
-      const pwEl = $("#login-pw"), errEl = $("#login-error");
-      if (pwEl) pwEl.value = qrCode;
-      if (errEl) errEl.textContent = "회의 정보를 불러오는 중입니다…";
-      let tries = 0;
-      const tryIn = () => {
-        const u = signLogin(qrCode);
-        if (u) {
-          if (errEl) errEl.textContent = "";
-          location.hash = "";
-          enterApp();
-          toast("서명 화면입니다. 본인 이름을 찾아 서명해 주세요.");
-          return;
-        }
-        if (++tries >= 16) {
-          if (errEl) errEl.textContent = "회의 정보를 찾지 못했습니다. [로그인]을 눌러 다시 시도해 주세요.";
-          return;
-        }
-        setTimeout(tryIn, 750);
-      };
-      setTimeout(tryIn, 300);
-      return;
+    const A = Auth();
+    if (A && A.token()) {
+      setLoginBusy(true, "접속 확인 중…");
+      return restoreSession().then(ok => {
+        setLoginBusy(false, "");
+        if (ok) { afterLogin(false); return; }
+        if (qrCode) { signFromQr(qrCode); return; }
+        setTimeout(() => $("#login-pw") && $("#login-pw").focus(), 100);
+      });
     }
+    if (qrCode) { signFromQr(qrCode); return; }
     setTimeout(() => $("#login-pw") && $("#login-pw").focus(), 100);
   }
 
@@ -1581,7 +1685,8 @@ const SeMIS = (() => {
     get user() { return currentUser; },
     allUsers, isAdmin, roleRank, canEdit, canDelete, canConfid, canSee, navVisible, menuHidden, canHide,
     VENDOR_ACCESS, vendorAccess, vendorHome,
-    pwHash, sha256, signCodeFor, signMinuteFor, signCodeFromHash, signUrlFor,
+    pwHash, sha256, signCodeFor, signCodeFromHash, signUrlFor, signSubmit,
+    setAccounts, sessionLost, sessionUpdated, devSession, restoreSession, login, enterApp,
     renderNav, renderHeader, renderSecBadge, renderView, renderPlannedView,
     printView, printTitle, attachPrintBtn, markHub,
     icon, ui, ICONS, HUB_ICONS, hubOf, hubOfDeep, hubList, hubEntries, utilEntries, homeHubId,
@@ -1591,7 +1696,7 @@ const SeMIS = (() => {
     $, $$, esc, fmtDate, dsRing, sortedMenus,
     SEC_LEVELS, secCurrent, secNext, levelSorted,
     ROLE_LABEL, ROLE_RANK, VIS_LABEL,
-    BASE_USERS, VERSION, APP_NAME, LS_DATA, LS_UI, SS_SESSION
+    VERSION, APP_NAME, LS_DATA, LS_UI, SS_OWNER
   };
 })();
 

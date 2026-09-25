@@ -1329,9 +1329,10 @@
   }
 
   /* ══════════ 인쇄 공통 — 숨김 iframe 으로 인쇄 대화상자 ══════════ */
-  function printHTML(html, label) {
+  async function printHTML(html, label) {
     try {
       toast((label || "인쇄 문서") + " 준비 중…");
+      if (window.SemisFileAuth) html = await SemisFileAuth.signHtml(html);   // 별도 문서라 화면 자동 변환이 닿지 않는다
       const fr = document.createElement("iframe");
       fr.style.cssText = "position:fixed;right:0;bottom:0;width:2px;height:2px;border:0;visibility:hidden";
       document.body.appendChild(fr);
@@ -1503,7 +1504,7 @@
               </div>
               <div class="cn-sign-act">
                 ${a.sign
-                  ? `<img class="cn-sign-thumb" src="${esc(a.sign)}" alt="서명"><span class="cn-sign-ok">✅ 완료</span><button class="btn btn-ghost btn-sm" data-sign="${i}">다시</button>`
+                  ? `${/^(https:|data:image\/)/.test(a.sign) ? `<img class="cn-sign-thumb" src="${esc(a.sign)}" alt="서명">` : ""}<span class="cn-sign-ok">✅ 완료</span><button class="btn btn-ghost btn-sm" data-sign="${i}">다시</button>`
                   : `<button class="btn btn-primary btn-sm" data-sign="${i}">✍️ 서명하기</button>`}
               </div>
             </div>`).join("") : '<div class="empty">아직 등록된 참석자가 없습니다. 아래 버튼으로 본인 정보를 입력하고 서명해 주세요.</div>'}
@@ -1562,23 +1563,42 @@
     if (saveOnly) saveOnly.onclick = () => {
       const person = collect();
       if (!person) return;
-      saveSignEntry(minuteId, idx, person, null);
-      closeModal(); toast("정보가 저장되었습니다. (기존 서명 유지)"); SeMIS.renderView();
+      Promise.resolve(saveSignEntry(minuteId, idx, person, null)).then(ok => {
+        if (ok === false) return;
+        closeModal(); toast("정보가 저장되었습니다. (기존 서명 유지)"); SeMIS.renderView();
+      });
     };
     $("#mn-sp-go").onclick = () => {
       const person = collect();
       if (!person) return;
       closeModal();
       openSignPad(person, (val) => {
-        saveSignEntry(minuteId, idx, person, val);
-        closeModal(); toast("서명이 저장되었습니다."); SeMIS.renderView();
+        Promise.resolve(saveSignEntry(minuteId, idx, person, val)).then(ok => {
+          if (ok === false) return;
+          closeModal(); toast("서명이 저장되었습니다."); SeMIS.renderView();
+        });
       });
     };
   }
 
   /* 서명·정보 저장 — 실시간 병합분을 덮지 않도록 저장 직전 최신 상태를 다시 조회.
      sign === null 이면 기존 서명 유지(정보만 갱신). idx<0 이면 동명 항목에 병합, 없으면 추가. */
+  const SIGN_ERR = { auth: "서명 시간이 지났습니다. QR을 다시 찍어 주세요.", full: "참석자 정원을 초과했습니다. 진행자에게 문의하세요.",
+    required: "성명과 소속을 입력해 주세요.", too_long: "입력이 너무 깁니다.", bad_sign: "서명 이미지를 저장하지 못했습니다. 다시 서명해 주세요.",
+    not_found: "회의 정보를 찾을 수 없습니다. 진행자에게 문의하세요." };
+  /* 서명 세션 — 서버가 이 회의 한 건만 고친다(회의록 전체를 보내지 않음) */
+  async function signerSave(minuteId, idx, person, sign) {
+    const m = all().find(c => c.id === minuteId);
+    const expect = (idx >= 0 && m && Array.isArray(m.attendees) && m.attendees[idx]) ? m.attendees[idx].name : null;
+    let d;
+    try { d = await SeMIS.signSubmit(idx, expect, person, sign === null || sign === undefined ? null : (sign || "")); }
+    catch (e) { d = { ok: false, error: "network" }; }
+    if (!d || !d.ok) { toast(SIGN_ERR[d && d.error] || "저장하지 못했습니다. 네트워크를 확인한 뒤 다시 시도해 주세요.", true); return false; }
+    if (sign) rememberSigner(person.name);
+    return true;
+  }
   function saveSignEntry(minuteId, idx, person, sign) {
+    if (SeMIS.user && SeMIS.user.role === "signer") return signerSave(minuteId, idx, person, sign);
     const m = all().find(c => c.id === minuteId);
     if (!m) return false;
     if (!Array.isArray(m.attendees)) m.attendees = [];

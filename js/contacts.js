@@ -532,8 +532,10 @@
       stage.innerHTML = `<img class="ctv-img" alt="${esc(f.title || "")} 체계도" src="${esc(f.thumbUrl || f.imgUrl)}">`;
       if (f.thumbUrl && f.thumbUrl !== f.imgUrl) {           // 미리보기로 먼저 띄우고 원본으로 교체
         const full = new Image();
-        full.onload = () => { const img = $(".ctv-img", stage); if (img && vwId === f.id) img.src = f.imgUrl; };
-        full.src = f.imgUrl;
+        full.onload = () => { const img = $(".ctv-img", stage); if (img && vwId === f.id) img.src = full.src; };
+        /* 비공개 파일 — 화면 밖 Image 는 자동 변환이 닿지 않아 서명 URL을 직접 받는다 */
+        if (window.SemisFileAuth) SemisFileAuth.resolve(f.imgUrl).then(u => { full.src = u; });
+        else full.src = f.imgUrl;
       }
     } else {
       stage.innerHTML = `<iframe class="ctv-frame" src="${esc(f.fileUrl)}" title="${esc(f.title || "")} 체계도"></iframe>`;

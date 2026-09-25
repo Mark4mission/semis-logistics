@@ -310,19 +310,25 @@
     }
   });
 
-  /* ───── 공지 HTML 살균 (script/이벤트핸들러/javascript: 제거) ───── */
+  /* ───── 공지 HTML 살균 (script/이벤트핸들러/javascript: 제거) ─────
+     v1.15: <template> 로 파싱해 살균 중에 이미지를 불러오거나 onerror 가 실행되지 않게 하고,
+     비공개 파일의 서명 URL·임시 그림은 표준 주소로 되돌린다(저장·표시 공통). */
   function sanitizeHtml(html) {
-    const box = document.createElement("div");
-    box.innerHTML = String(html || "");
-    box.querySelectorAll("script,style,iframe,object,embed,form,link,meta,base").forEach(x => x.remove());
+    const FA = window.SemisFileAuth;
+    const tpl = document.createElement("template");
+    tpl.innerHTML = FA ? FA.canon(String(html || "")) : String(html || "");
+    const box = tpl.content;
+    box.querySelectorAll("script,style,iframe,object,embed,form,link,meta,base,frame,frameset,svg,math").forEach(x => x.remove());
+    if (FA) FA.canonNode(box);
     box.querySelectorAll("*").forEach(el => {
       Array.from(el.attributes).forEach(a => {
         const nm = a.name.toLowerCase();
-        if (nm.indexOf("on") === 0) el.removeAttribute(a.name);
-        else if ((nm === "href" || nm === "src" || nm === "xlink:href") && /^\s*javascript:/i.test(a.value)) el.removeAttribute(a.name);
+        if (nm.indexOf("on") === 0 || nm === "srcdoc" || nm === "formaction") el.removeAttribute(a.name);
+        else if ((nm === "href" || nm === "src" || nm === "xlink:href" || nm === "action" || nm === "background")
+          && /^\s*(javascript|vbscript|data:text\/html)/i.test(a.value.replace(/[\u0000-\u001f]/g, ""))) el.removeAttribute(a.name);
       });
     });
-    return box.innerHTML;
+    return tpl.innerHTML;
   }
   const HTML_TAG_RE = /<\/?(?:b|i|u|s|strong|em|br|p|div|span|ul|ol|li|table|thead|tbody|tr|td|th|a|img|h[1-6]|blockquote|pre|code|hr|font)\b[^>]*>/i;
   function looksLikeHtml(s) { return HTML_TAG_RE.test(String(s || "")); }
@@ -611,7 +617,7 @@
       root.innerHTML = `
         <div class="page-head">
           <div class="page-title">시스템 설정</div>
-          <div class="page-desc">메뉴 · 사용자 권한 · 데이터 · 저장소 관리</div>
+          <div class="page-desc">메뉴 · 사용자 권한 · 데이터 · 저장소 · 보안</div>
         </div>
         <div class="tabs">
           <button class="tab active" data-tab="menus">메뉴 관리</button>
@@ -619,10 +625,11 @@
           <button class="tab" data-tab="assignees">담당자 관리</button>
           <button class="tab" data-tab="data">데이터 관리</button>
           <button class="tab" data-tab="storage">저장소 관리</button>
+          <button class="tab" data-tab="security">보안</button>
         </div>
         <div id="tab-body"></div>`;
       const tabs = { menus: renderMenuTab, users: renderUserTab, assignees: renderAssigneeTab,
-        data: renderDataTab, storage: renderStorageTab };
+        data: renderDataTab, storage: renderStorageTab, security: renderSecurityTab };
       $$(".tab").forEach(t => t.onclick = () => {
         $$(".tab").forEach(x => x.classList.remove("active"));
         t.classList.add("active");
@@ -886,44 +893,85 @@
     const upd = () => { $("#row-vendor").style.display = sel.value === "vendor" ? "" : "none"; };
     sel.addEventListener("change", upd); upd();
   }
+  /* ═════════════ 사용자 · 암호 (v1.15 — 서버 계정) ═════════════
+     계정·암호는 서버 전용 표에만 있다. 이 화면은 시스템관리자 RPC로 읽고 바꾼다. */
+  const USER_ERR = {
+    forbidden: "시스템관리자만 할 수 있습니다.",
+    bad_id: "계정 ID는 영문·숫자·-·_ 2~20자입니다.",
+    bad_name: "이름을 입력하세요(20자 이내).",
+    bad_role: "권한을 선택하세요.",
+    vendor: "업체명을 입력하세요.",
+    dup_id: "이미 있는 계정 ID입니다.",
+    not_found: "계정을 찾을 수 없습니다.",
+    self_role: "로그인 중인 본인 계정의 권한은 낮출 수 없습니다.",
+    protected: "이 계정은 삭제할 수 없습니다.",
+    pw_short: "암호는 8자 이상이어야 합니다.",
+    pw_long: "암호는 64자 이하로 정해 주세요.",
+    pw_same_as_id: "계정 ID와 같은 암호는 쓸 수 없습니다.",
+    pw_six_digits: "6자리 숫자는 회의 서명 코드와 겹쳐 쓸 수 없습니다.",
+    pw_in_use: "다른 계정이 쓰고 있는 암호입니다.",
+    network: "서버에 연결할 수 없습니다."
+  };
+  const userErr = (d) => USER_ERR[(d && d.error) || "network"] || ("처리하지 못했습니다 (" + ((d && d.error) || "오류") + ")");
+  async function callAdmin(name, args) {
+    try { return (await SemisSync.rpc(name, args || {})) || { ok: false, error: "network" }; }
+    catch (e) { return { ok: false, error: "network" }; }
+  }
+  function fmtStamp(t) {
+    const d = new Date(t);
+    if (!t || isNaN(d)) return String(t || "");
+    const p = (n) => String(n).padStart(2, "0");
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
+  }
+  /* 본인 계정을 바꿨으면 머리글 이름 등을 새로 받는다 */
+  function refreshSelf(origId) {
+    const me = SeMIS.user;
+    if (!me || me.origId !== origId || !window.SemisSync) return;
+    SemisSync.auth.whoami(false).then(d => { if (d && d.ok) SeMIS.sessionUpdated(d); }).catch(() => {});
+  }
   function renderUserTab(box) {
-    const users = SeMIS.allUsers();
     box.innerHTML = `
       <div class="card">
         <div class="card-title">사용자 계정 <span class="spacer"></span>
           <button class="btn btn-primary btn-sm" id="btn-add-user">+ 사용자 추가</button></div>
         <p class="form-hint" style="margin-bottom:12px">
-          <b>암호만 입력</b>해 로그인하므로 사용자마다 암호가 달라야 합니다. 암호는 해시로만 저장됩니다.<br>
-          최고관리자(mark3464)는 잠금 방지를 위해 권한 변경·삭제가 불가합니다.</p>
-        <div class="table-wrap"><table class="tbl">
-          <thead><tr><th>계정</th><th>이름</th><th>권한</th><th style="width:240px">관리</th></tr></thead>
-          <tbody>
-          ${users.map((u, i) => `<tr>
-            <td><b>${esc(u.id)}</b>${u.base ? ' <span style="font-size:.68rem;color:var(--text-3)">기본</span>' : ""}</td>
-            <td>${esc(u.name)}${u.vendor ? ` <span class="badge badge-green">${esc(u.vendor)}</span>` : ""}</td>
-            <td><span class="badge ${ROLE_BADGE[u.role] || "badge-gray"}">${esc(SeMIS.ROLE_LABEL[u.role] || u.role)}</span></td>
-            <td>
-              <button class="btn btn-ghost btn-sm" data-edit="${i}">수정</button>
-              <button class="btn btn-ghost btn-sm" data-pw="${i}">암호 변경</button>
-              ${u.origId === "mark3464" ? "" : `<button class="btn btn-danger btn-sm" data-del="${i}">삭제</button>`}
-            </td></tr>`).join("")}
-          </tbody></table></div>
+          <b>암호만 입력</b>해 로그인하므로 계정마다 암호가 달라야 합니다. 암호는 서버에만 bcrypt로 보관되며, 바꾸면 그 계정의 다른 접속은 끊깁니다.</p>
+        <div id="user-list" class="form-hint">불러오는 중…</div>
       </div>`;
     $("#btn-add-user").onclick = () => userForm();
+    loadUsers();
+  }
+  async function loadUsers() {
+    const el = $("#user-list");
+    if (!el) return;
+    const d = await callAdmin("semis_logi_users");
+    const box = $("#user-list");
+    if (!box) return;
+    if (!d.ok) { box.textContent = userErr(d); return; }
+    const users = Array.isArray(d.users) ? d.users : [];
+    SeMIS.setAccounts(users);
+    box.className = "";
+    box.innerHTML = `<div class="table-wrap"><table class="tbl">
+      <thead><tr><th>계정</th><th>이름</th><th>권한</th><th>최근 로그인</th><th style="width:240px">관리</th></tr></thead>
+      <tbody>${users.map((u, i) => `<tr>
+        <td><b>${esc(u.id)}</b>${u.base ? ' <span style="font-size:.81rem;color:var(--text-3)">기본</span>' : ""}</td>
+        <td>${esc(u.name)}${u.vendor ? ` <span class="badge badge-green">${esc(u.vendor)}</span>` : ""}</td>
+        <td><span class="badge ${ROLE_BADGE[u.role] || "badge-gray"}">${esc(SeMIS.ROLE_LABEL[u.role] || u.role)}</span></td>
+        <td style="white-space:nowrap">${u.lastLoginAt ? esc(fmtStamp(u.lastLoginAt)) : "-"}${Number(u.sessions) ? ` <span class="badge badge-blue">접속 ${esc(String(u.sessions))}</span>` : ""}</td>
+        <td>
+          <button class="btn btn-ghost btn-sm" data-edit="${i}">수정</button>
+          <button class="btn btn-ghost btn-sm" data-pw="${i}">암호 변경</button>
+          ${u.origId === "mark3464" || (SeMIS.user && u.origId === SeMIS.user.origId) ? "" : `<button class="btn btn-danger btn-sm" data-del="${i}">삭제</button>`}
+        </td></tr>`).join("")}
+      </tbody></table></div>`;
     $$("[data-edit]", box).forEach(b => b.onclick = () => editUserForm(users[Number(b.dataset.edit)]));
     $$("[data-pw]", box).forEach(b => b.onclick = () => pwForm(users[Number(b.dataset.pw)]));
     $$("[data-del]", box).forEach(b => b.onclick = () => {
       const u = users[Number(b.dataset.del)];
-      if (SeMIS.user && u.origId === (SeMIS.user.origId || SeMIS.user.id)) {
-        toast("로그인 중인 본인 계정은 삭제할 수 없습니다.", true); return;
-      }
-      confirmModal(`사용자 "${u.id}" (${u.name})을(를) 삭제하시겠습니까?`, () => {
-        if (u.base) {
-          D().userOverrides[u.origId] = Object.assign({}, D().userOverrides[u.origId], { deleted: true });
-        } else {
-          D().customUsers = D().customUsers.filter(x => x.id !== u.origId);
-        }
-        SeMIS.save(); renderUserTab($("#tab-body")); toast("삭제되었습니다.");
+      confirmModal(`사용자 "${u.id}" (${u.name})을(를) 삭제하시겠습니까?`, async () => {
+        const r = await callAdmin("semis_logi_user_delete", { p_orig: u.origId });
+        if (!r.ok) { toast(userErr(r), true); return; }
+        toast("삭제되었습니다."); loadUsers();
       });
     });
   }
@@ -947,53 +995,43 @@
       </div>`);
     wireVendorRow();
     $("#f-cancel").onclick = closeModal;
-    $("#f-save").onclick = () => {
+    $("#f-save").onclick = async () => {
       const id = $("#f-uid").value.trim(), name = $("#f-uname").value.trim();
       const role = lockRole ? "admin" : $("#f-urole").value;
       const vendor = role === "vendor" ? $("#f-uvendor").value.trim() : "";
       if (role === "vendor" && !vendor) { toast("업체명을 입력하세요.", true); return; }
-      if (!/^[A-Za-z0-9_-]{2,20}$/.test(id)) { toast("계정 ID는 영문/숫자 2~20자입니다.", true); return; }
-      if (!name) { toast("이름을 입력하세요.", true); return; }
-      if (SeMIS.allUsers().some(x => x.id === id && x.origId !== u.origId)) { toast("이미 존재하는 계정 ID입니다.", true); return; }
-      if (u.base) {
-        const ov = Object.assign({}, D().userOverrides[u.origId]);
-        ov.id = id; ov.name = name;
-        if (!lockRole) { ov.role = role; ov.vendor = vendor; }
-        D().userOverrides[u.origId] = ov;
-      } else {
-        const cu = D().customUsers.find(x => x.id === u.origId);
-        if (cu) { cu.id = id; cu.name = name; cu.role = role; cu.vendor = vendor; }
-      }
-      SeMIS.save(); closeModal(); renderUserTab($("#tab-body")); toast("계정 정보가 변경되었습니다.");
+      if (!/^[A-Za-z0-9_-]{2,20}$/.test(id)) { toast(USER_ERR.bad_id, true); return; }
+      if (!name) { toast(USER_ERR.bad_name, true); return; }
+      const btn = $("#f-save"); if (btn) btn.disabled = true;
+      const r = await callAdmin("semis_logi_user_save", { p: { origId: u.origId, id, name, role, vendor } });
+      if (btn) btn.disabled = false;
+      if (!r.ok) { toast(userErr(r), true); return; }
+      closeModal(); toast("계정 정보가 변경되었습니다."); loadUsers(); refreshSelf(u.origId);
     };
   }
 
-  function hashInUse(hash, exceptId) {
-    return SeMIS.allUsers().some(u => u.hash === hash && u.id !== exceptId);
-  }
-
   function pwForm(u) {
-    const userId = u.origId || u.id;
     openModal(`
       <h3>암호 변경 — ${esc(u.id)}</h3>
-      <div class="form-row"><label>새 암호</label><input type="password" id="f-pw1" autocomplete="new-password"></div>
-      <div class="form-row"><label>새 암호 확인</label><input type="password" id="f-pw2" autocomplete="new-password"></div>
-      <div class="form-hint">4자 이상. 다른 사용자와 동일한 암호는 사용할 수 없습니다.</div>
+      <div class="form-row"><label>새 암호</label><input type="password" id="f-pw1" autocomplete="new-password" maxlength="64"></div>
+      <div class="form-row"><label>새 암호 확인</label><input type="password" id="f-pw2" autocomplete="new-password" maxlength="64"></div>
+      <div class="form-hint">8자 이상 · 다른 계정과 다른 암호</div>
       <div class="modal-actions">
         <button class="btn btn-ghost" id="f-cancel">취소</button>
         <button class="btn btn-primary" id="f-save">변경</button>
       </div>`);
     $("#f-cancel").onclick = closeModal;
-    $("#f-save").onclick = () => {
+    $("#f-save").onclick = async () => {
       const p1 = $("#f-pw1").value, p2 = $("#f-pw2").value;
-      if (p1.length < 4) { toast("암호는 4자 이상이어야 합니다.", true); return; }
+      if (p1.length < 8) { toast(USER_ERR.pw_short, true); return; }
       if (p1 !== p2) { toast("암호가 일치하지 않습니다.", true); return; }
-      const h = SeMIS.pwHash(p1);
-      if (hashInUse(h, userId)) { toast("다른 사용자가 사용 중인 암호입니다.", true); return; }
-      const cu = D().customUsers.find(x => x.id === userId);
-      if (cu) cu.hash = h;
-      else D().pwOverrides[userId] = h;
-      SeMIS.save(); closeModal(); toast("암호가 변경되었습니다.");
+      const btn = $("#f-save"); if (btn) btn.disabled = true;
+      const r = await callAdmin("semis_logi_set_password", { p_orig: u.origId, p_new: p1 });
+      if (btn) btn.disabled = false;
+      if (!r.ok) { toast(userErr(r), true); return; }
+      closeModal();
+      toast("암호가 변경되었습니다." + (Number(r.ended) ? " (다른 접속 " + r.ended + "건 종료)" : ""));
+      loadUsers();
     };
   }
 
@@ -1009,27 +1047,80 @@
           ${ROLE_OPTS.map(([v, lb]) => `<option value="${v}">${lb}</option>`).join("")}
         </select></div>
       ${vendorRowHTML(null)}
-      <div class="form-row"><label>암호</label><input type="password" id="f-upw" autocomplete="new-password"></div>
+      <div class="form-row"><label>암호</label><input type="password" id="f-upw" autocomplete="new-password" maxlength="64" placeholder="8자 이상"></div>
       <div class="modal-actions">
         <button class="btn btn-ghost" id="f-cancel">취소</button>
         <button class="btn btn-primary" id="f-save">추가</button>
       </div>`);
     wireVendorRow();
     $("#f-cancel").onclick = closeModal;
-    $("#f-save").onclick = () => {
+    $("#f-save").onclick = async () => {
       const id = $("#f-uid").value.trim(), name = $("#f-uname").value.trim(), pw = $("#f-upw").value;
       const role = $("#f-urole").value;
       const vendor = role === "vendor" ? $("#f-uvendor").value.trim() : "";
-      if (!/^[A-Za-z0-9_-]{2,20}$/.test(id)) { toast("계정 ID는 영문/숫자 2~20자입니다.", true); return; }
-      if (SeMIS.allUsers().some(u => u.id === id)) { toast("이미 존재하는 계정입니다.", true); return; }
-      if (!name) { toast("이름을 입력하세요.", true); return; }
+      if (!/^[A-Za-z0-9_-]{2,20}$/.test(id)) { toast(USER_ERR.bad_id, true); return; }
+      if (!name) { toast(USER_ERR.bad_name, true); return; }
       if (role === "vendor" && !vendor) { toast("업체명을 입력하세요.", true); return; }
-      if (pw.length < 4) { toast("암호는 4자 이상이어야 합니다.", true); return; }
-      const h = SeMIS.pwHash(pw);
-      if (hashInUse(h, id)) { toast("다른 사용자가 사용 중인 암호입니다.", true); return; }
-      D().customUsers.push({ id, name, role, vendor, hash: h });
-      SeMIS.save(); closeModal(); renderUserTab($("#tab-body")); toast("사용자가 추가되었습니다.");
+      if (pw.length < 8) { toast(USER_ERR.pw_short, true); return; }
+      const btn = $("#f-save"); if (btn) btn.disabled = true;
+      const r = await callAdmin("semis_logi_user_save", { p: { id, name, role, vendor, pw } });
+      if (btn) btn.disabled = false;
+      if (!r.ok) { toast(userErr(r), true); return; }
+      closeModal(); toast("사용자가 추가되었습니다."); loadUsers();
     };
+  }
+
+  /* ═════════════ 보안 — 접속 중인 세션 · 접속 기록 (시스템관리자) ═════════════ */
+  const SEC_ACTION = {
+    login: "로그인", login_fail: "로그인 실패", login_locked: "로그인 제한", logout: "로그아웃",
+    sign_open: "회의 서명 접속", sign: "회의 서명", sign_info: "서명 정보 수정",
+    pw_change: "암호 변경", user_create: "계정 추가", user_update: "계정 수정", user_delete: "계정 삭제",
+    sessions_end: "접속 일괄 종료"
+  };
+  const SEC_TONE = { login_fail: "badge-amber", login_locked: "badge-red", pw_change: "badge-blue", user_delete: "badge-red", sessions_end: "badge-red" };
+  function renderSecurityTab(box) {
+    box.innerHTML = `
+      <div class="card">
+        <div class="card-title">접속 중 <span class="spacer"></span>
+          <button class="btn btn-ghost btn-sm" id="sec-reload">↻ 새로고침</button>
+          <button class="btn btn-danger btn-sm" id="sec-end">다른 접속 모두 끊기</button></div>
+        <div id="sec-sessions" class="form-hint">불러오는 중…</div>
+      </div>
+      <div class="card">
+        <div class="card-title">접속 기록</div>
+        <p class="form-hint" style="margin-bottom:10px">같은 IP에서 15분 안에 20번 틀리면 15분 동안 로그인이 막힙니다.</p>
+        <div id="sec-events" class="form-hint">불러오는 중…</div>
+      </div>`;
+    $("#sec-reload").onclick = () => loadSecurity();
+    $("#sec-end").onclick = () => confirmModal("지금 이 화면을 뺀 모든 접속을 끊습니다. 계속하시겠습니까?", async () => {
+      const r = await callAdmin("semis_logi_end_sessions");
+      if (!r.ok) { toast(userErr(r), true); return; }
+      toast("접속 " + (Number(r.ended) || 0) + "건을 끊었습니다."); loadSecurity();
+    });
+    loadSecurity();
+  }
+  async function loadSecurity() {
+    const d = await callAdmin("semis_logi_security", { p_limit: 150 });
+    const sb = $("#sec-sessions"), eb = $("#sec-events");
+    if (!sb || !eb) return;
+    if (!d.ok) { sb.textContent = userErr(d); eb.textContent = ""; return; }
+    const sessions = d.sessions || [], events = d.events || [], locked = d.locked || [];
+    sb.className = ""; eb.className = "";
+    sb.innerHTML = (locked.length ? `<div class="badge badge-red" style="margin-bottom:8px">로그인 제한 중 IP ${locked.map(esc).join(", ")}</div>` : "") +
+      (sessions.length ? `<div class="table-wrap"><table class="tbl"><thead><tr><th>계정</th><th>종류</th><th>시작</th><th>최근 확인</th><th>IP</th></tr></thead><tbody>
+        ${sessions.map(s => `<tr><td style="white-space:nowrap"><b>${esc(s.account)}</b> ${esc(s.name || "")}${s.current ? ' <span class="badge badge-green">이 화면</span>' : ""}</td>
+          <td style="white-space:nowrap">${s.kind === "signer" ? "회의 서명" : "로그인"}</td>
+          <td style="white-space:nowrap">${esc(fmtStamp(s.created))}</td>
+          <td style="white-space:nowrap">${esc(fmtStamp(s.lastSeen))}</td>
+          <td class="mono">${esc(s.ip || "")}</td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">접속 중인 세션이 없습니다.</div>');
+    eb.innerHTML = events.length ? `<div class="table-wrap"><table class="tbl"><thead><tr><th style="width:150px">시각</th><th>내용</th><th>계정</th><th>IP</th></tr></thead><tbody>
+      ${events.map(e => {
+        const det = e.detail || {};
+        const extra = det.id ? " · " + det.id : (det.minute ? "" : "");
+        return `<tr><td style="white-space:nowrap">${esc(fmtStamp(e.at))}</td>
+          <td><span class="badge ${SEC_TONE[e.action] || "badge-gray"}">${esc(SEC_ACTION[e.action] || e.action)}</span>${esc(extra)}${det.name ? " · " + esc(det.name) : ""}</td>
+          <td style="white-space:nowrap">${esc(e.actor || "-")}</td><td class="mono">${esc(e.ip || "")}</td></tr>`;
+      }).join("")}</tbody></table></div>` : '<div class="empty">기록이 없습니다.</div>';
   }
 
   /* 일정의 담당자 문자열(", " 구분 다중) → 이름 배열. calendar.js 와 같은 규칙. */
@@ -1169,8 +1260,8 @@
       <div class="card">
         <div class="card-title">💾 백업 / 복원</div>
         <p class="form-hint" style="margin-bottom:12px">
-          모든 데이터는 공용 DB에 실시간 동기화되고, 이 브라우저에도 함께 저장되어 오프라인에서 동작합니다.<br>
-          백업 파일은 비상 복구용으로 가끔 내려받아 두시기 바랍니다.</p>
+          모든 데이터는 공용 DB에 실시간 동기화됩니다. 이 탭에는 로그인한 동안만 사본이 남습니다.<br>
+          백업 파일에는 민감 자료가 들어 있으니 암호가 걸린 저장소에만 보관하세요.</p>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-primary" id="btn-export">⬇ 백업 파일 다운로드</button>
           <label class="btn btn-ghost" style="cursor:pointer">⬆ 백업 파일 복원
@@ -1192,15 +1283,14 @@
         <div class="card-title">🧹 초기화</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-ghost" id="btn-reset-menu">메뉴 기본값으로 재설정</button>
-          <button class="btn btn-danger" id="btn-reset-all">이 브라우저 로컬 데이터 초기화</button>
+          <button class="btn btn-danger" id="btn-reset-all">이 탭의 데이터 사본 초기화</button>
         </div>
         <p class="form-hint" style="margin-top:10px">메뉴 재설정은 공지·일정·사용자는 유지합니다. 로컬 초기화 후에는 공용 DB에서 다시 동기화됩니다.</p>
       </div>
       <div class="card">
         <div class="card-title">🔗 구글 캘린더 연동 <span class="badge badge-gray">일정관리</span></div>
         <p class="form-hint" style="margin-bottom:12px">
-          <b>Google → SeMIS</b> 공개 캘린더를 일정관리에 겹쳐 보기 · <b>SeMIS → Google</b> 구독 주소(ICS) 제공.<br>
-          시스템관리자 전용 설정입니다.</p>
+          <b>Google → SeMIS</b> 공개 캘린더를 일정관리에 겹쳐 봅니다.</p>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <button class="btn btn-primary" id="btn-gcal">🔗 연동 설정 열기</button>
           <span class="form-hint" id="gcal-state"></span>
@@ -1210,9 +1300,9 @@
         <div class="card-title">ℹ️ 시스템 정보</div>
         <table class="tbl">
           <tr><td style="width:140px;color:var(--text-2)">버전</td><td>${esc(SeMIS.APP_NAME)} v${esc(SeMIS.VERSION)}</td></tr>
-          <tr><td style="color:var(--text-2)">저장 방식</td><td>Supabase 공용 DB(semis_logi_store) 실시간 동기화 + localStorage 오프라인 폴백</td></tr>
+          <tr><td style="color:var(--text-2)">저장 방식</td><td>Supabase 공용 DB(semis_logi_store) · 권한별 서버 접근 제어(RLS) · 파일은 비공개 저장소(서명 URL)</td></tr>
           <tr><td style="color:var(--text-2)">동기화</td><td><span id="sysinfo-sync">-</span> <button class="btn btn-ghost btn-sm" id="btn-sync-now" style="margin-left:8px">지금 동기화</button></td></tr>
-          <tr><td style="color:var(--text-2)">인증 방식</td><td>SHA-256 해시 대조 (평문 암호 미저장)</td></tr>
+          <tr><td style="color:var(--text-2)">인증 방식</td><td>서버 확인(bcrypt) · 로그인 세션(탭 단위) · 로그인 시도 제한</td></tr>
           <tr><td style="color:var(--text-2)">관련 시스템</td><td><a href="https://semis.pe.kr/" target="_blank" rel="noopener">SeMIS v2 (항공보안파트) ↗</a></td></tr>
         </table>
       </div>`;
@@ -1235,8 +1325,8 @@
           const obj = JSON.parse(reader.result);
           if (!obj || !Array.isArray(obj.menus)) throw new Error("형식 오류");
           confirmModal("현재 데이터를 백업 파일 내용으로 교체합니다. 공용 DB에도 복원 내용이 반영됩니다. 계속하시겠습니까?", () => {
-            localStorage.setItem(SeMIS.LS_DATA, JSON.stringify(obj));
-            localStorage.setItem("semisl:forcePush", "1");
+            sessionStorage.setItem(SeMIS.LS_DATA, JSON.stringify(obj));
+            sessionStorage.setItem("semisl:forcePush", "1");
             toast("복원되었습니다. 새로고침합니다.");
             setTimeout(() => location.reload(), 700);
           });
@@ -1250,16 +1340,16 @@
     $("#btn-reset-menu").onclick = () =>
       confirmModal("메뉴 구성을 기본값으로 재설정합니다. (공지/일정/사용자는 유지)", () => {
         const cur = D();
-        localStorage.setItem(SeMIS.LS_DATA, JSON.stringify(Object.assign({}, cur, { menus: null })));
+        sessionStorage.setItem(SeMIS.LS_DATA, JSON.stringify(Object.assign({}, cur, { menus: null })));
         SeMIS.load();
         SeMIS.renderNav(); renderDataTab($("#tab-body")); toast("메뉴가 재설정되었습니다.");
       });
     $("#btn-reset-all").onclick = () =>
-      confirmModal("이 브라우저의 로컬 데이터가 초기화됩니다. (공용 DB에 데이터가 있으면 접속 시 다시 동기화됩니다.) 계속하시겠습니까?", () => {
-        localStorage.removeItem(SeMIS.LS_DATA);
+      confirmModal("이 탭의 데이터 사본을 지우고 공용 DB에서 다시 받습니다. 아직 저장되지 않은 변경은 사라집니다. 계속하시겠습니까?", () => {
+        sessionStorage.removeItem(SeMIS.LS_DATA);
+        sessionStorage.removeItem("semisl:pendingSync");
+        sessionStorage.removeItem("semisl:forcePush");
         localStorage.removeItem(SeMIS.LS_UI);
-        localStorage.removeItem("semisl:pendingSync");
-        sessionStorage.removeItem(SeMIS.SS_SESSION);
         location.reload();
       });
 
@@ -1268,8 +1358,8 @@
       const KEYS = (window.SemisSync && SemisSync.SYNC_KEYS) || [];
       const LABEL = { menus: "메뉴", notices: "공지사항", schedules: "일정", assignees: "담당자",
         minutes: "회의록", minuteFolders: "회의록 폴더", levelHistory: "보안등급 이력",
-        safetyBoard: "현황판", contacts: "비상연락망", pwOverrides: "암호", userOverrides: "사용자 설정",
-        customUsers: "추가 사용자", gcal: "구글 캘린더", chatRooms: "대화방", assigneesSeeded: "담당자 시드" };
+        safetyBoard: "현황판", contacts: "비상연락망", gcal: "구글 캘린더", chatRooms: "대화방", assigneesSeeded: "담당자 시드",
+        vault: "암호 관리", regulations: "규정", equipment: "검색장비", crisis: "위기대응 담당자", fleet: "기체 목록" };
       if (sel) sel.innerHTML = '<option value="">전체 컬렉션</option>'
         + KEYS.map(k => `<option value="${esc(k)}">${esc(LABEL[k] || k)} (${esc(k)})</option>`).join("");
       const fmt = (t) => {

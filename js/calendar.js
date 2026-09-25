@@ -417,11 +417,11 @@
   function stopReminders() { if (remTimer) { clearInterval(remTimer); remTimer = null; } }
 
   /* ─────── 구글캘린더 연동 (Google → SeMIS 표시) ─────── */
-  const ICS_URL = "https://mzyuzrxkdcpzxojenwat.supabase.co/functions/v1/semis-ics?t=azs-e8f4c1d97b2a4f60b3519c";
+  /* v1.15: SeMIS v2 일정의 ICS 구독 주소(토큰 포함)가 여기 남아 있어 제거 — Logistics 일정과 무관한 v2 자료였다 */
   const GCOLOR = { "1": "indigo", "2": "green", "3": "purple", "4": "pink", "5": "yellow",
                    "6": "orange", "7": "sky", "8": "gray", "9": "blue", "10": "teal", "11": "red" };
   let gcalEvents = (() => {
-    try { const c = JSON.parse(localStorage.getItem("semisl:gcalCache")); return (c && c.items) || []; }
+    try { const c = JSON.parse(sessionStorage.getItem("semisl:gcalCache")); return (c && c.items) || []; }
     catch (e) { return []; }
   })();
   let gcalAt = 0, gcalLoading = false;
@@ -462,7 +462,7 @@
       .then(j => {
         gcalEvents = (j.items || []).map(mapGcalItem).filter(Boolean);
         gcalAt = Date.now(); gcalLoading = false;
-        try { localStorage.setItem("semisl:gcalCache", JSON.stringify({ at: gcalAt, items: gcalEvents })); } catch (e) {}
+        try { sessionStorage.setItem("semisl:gcalCache", JSON.stringify({ at: gcalAt, items: gcalEvents })); } catch (e) {}
         if (String(location.hash).indexOf("schedule") >= 0) SeMIS.renderView();
         return true;
       })
@@ -1251,23 +1251,10 @@
         <input type="password" id="g-apikey" value="${esc(cfg.apiKey || "")}" placeholder="AIza...">
         <div class="form-hint">발급: console.cloud.google.com → API 및 서비스 → 사용자 인증 정보 → API 키 만들기
         → Google Calendar API 사용 설정. 캘린더가 <b>공개</b> 상태여야 조회됩니다.</div></div>
-      <div class="form-row"><label>SeMIS → Google (구독 주소)</label>
-        <div style="display:flex;gap:6px">
-          <input id="g-ics" value="${esc(ICS_URL)}" readonly style="font-size:.78rem">
-          <button type="button" class="btn btn-ghost btn-sm" id="g-copy">복사</button></div>
-        <div class="form-hint">Google 캘린더 → 설정 → 캘린더 추가 → <b>URL로 추가</b>에 붙여넣으면
-        SeMIS 일정이 구글캘린더에 표시됩니다. (갱신 주기는 Google이 결정, 수 시간 간격)</div></div>
       <div class="modal-actions">
         <button class="btn btn-ghost" id="g-cancel">취소</button>
         <button class="btn btn-primary" id="g-save">저장</button>
       </div>`);
-    $("#g-copy").onclick = () => {
-      const inp = $("#g-ics");
-      inp.select();
-      try { document.execCommand("copy"); toast("복사되었습니다."); } catch (e) {
-        try { navigator.clipboard.writeText(inp.value); toast("복사되었습니다."); } catch (e2) { toast("수동으로 복사해주세요.", true); }
-      }
-    };
     $("#g-cancel").onclick = closeModal;
     $("#g-save").onclick = () => {
       D().gcal = {
@@ -1405,7 +1392,7 @@
     get TEAM() { return team(); },
     REMINDER_DEFS, eventStartMs, eventStartMsFor, dueReminders, checkReminders, startReminders, stopReminders,
     REPEAT_DEFS, isRepeat, occursOn, nextOccurrence, repeatLabel,
-    mapGcalItem, fetchGcal, ICS_URL,
+    mapGcalItem, fetchGcal,
     _setGcalEvents(list) { gcalEvents = list || []; }
   };
 })();

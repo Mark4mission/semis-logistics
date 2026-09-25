@@ -185,7 +185,7 @@ Google → SeMIS(공개 캘린더 겹쳐 보기) / SeMIS → Google(ICS 구독 �
    화면은 `SeMIS.ui.head/stats/search/empty/chip`, 아이콘은 `SeMIS.icon()`. 제목·메뉴에 이모지 금지.
 2. `js/app.js` — `freshData()`에 컬렉션 기본값, `normalizeData()`에 배열 보정(멱등), 필요 시 `VIEW_WIDTH` 폭 티어.
 3. 메뉴 — 기존 예정 메뉴의 module id를 그대로 쓰면 자동 대체(허브 위치도 그대로). 새 라우트면 `defaultMenus()`에서 알맞은 허브(`parent:"hub-*"`)에 넣고 `normalizeData`의 `ensureModuleMenu`.
-4. `js/sync.js` — `SYNC_KEYS`에 컬렉션 키 추가.
+4. `js/sync.js` — `SYNC_KEYS`에 컬렉션 키 추가 **+ 서버 권한표 `semis_logi_private.key_acl`에 (key, 읽기 등급, 쓰기 등급) 등록**(`tools/sql/semis-logi-security.sql`에도 같은 줄 — 테스트 C05가 대조). 파일 폴더를 새로 쓰면 `tools/edge/semis-logi-files.ts`의 READ_RANK/WRITE_RANK에 추가 후 재배포.
 5. `js/search.js` — `register({...})` 프로바이더 추가.
 6. `index.html` — `<script src="js/<module>.js?v=...">` 등록.
 7. `tests/run-tests.cjs` — `FILES`에 추가 + 테스트(Y01 SYNC_KEYS 기대 문자열 갱신).
@@ -195,7 +195,9 @@ Google → SeMIS(공개 캘린더 겹쳐 보기) / SeMIS → Google(ICS 구독 �
 ## 데이터 저장
 
 - Supabase 프로젝트 `semis-v2`(서울) 내 **별도 테이블** `public.semis_logi_store`(key/value jsonb) + **별도 버킷** `semis-logi-files`. SeMIS v2 데이터와 완전 분리.
-- 오프라인 폴백: localStorage(`semisl:data`), 변경분 pending 큐 → 재연결 시 자동 push. Realtime 구독(폴링 폴백).
+- **서버 보안(v1.15)**: 로그인은 RPC `semis_logi_login`(서버가 bcrypt로 확인 · 같은 IP 15분 20회 실패 시 15분 제한) → 세션 토큰(64자, 이 탭의 sessionStorage). 모든 요청에 `x-semis-token` 헤더, 서버 RLS가 권한표(`key_acl`)로 컬렉션별 읽기·쓰기를 거른다. 계정·세션·접속 기록은 비공개 스키마 `semis_logi_private`에만.
+- 파일: 버킷 `semis-logi-files`는 **비공개**. 저장값은 표준 주소(`…/object/public/semis-logi-files/경로`)이고, 화면에서 `js/fileauth.js`가 Edge Function `semis-logi-files`로 받은 서명 URL(1시간)로 바꿔 끼운다. 업로드도 이 함수가 주는 서명 URL로.
+- 데이터 사본: 이 탭의 sessionStorage(`semisl:data`) — 탭을 닫거나 로그아웃하면 사라진다. 변경분 pending 큐도 탭 세션. 실시간: DB 트리거의 변경 알림(Broadcast `semis-logi-sync`, 컬렉션 이름만) → 그 컬렉션만 다시 읽음(폴링 폴백).
 - 개인정보(연락처 등)는 코드에 시드하지 않고 공용 DB에서만 동기화.
 
 ## 개발 · 배포

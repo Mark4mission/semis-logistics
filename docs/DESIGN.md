@@ -39,8 +39,9 @@ SeMIS_Logistics/
 ## 3. 데이터
 
 - **저장소**: Supabase 프로젝트 `semis-v2`(mzyuzrxkdcpzxojenwat, 서울) 안에 **별도 테이블** `public.semis_logi_store`(key, value jsonb, updated_at, updated_by) + **별도 버킷** `semis-logi-files`. SeMIS v2의 `semis_store`와 완전히 분리되어 서로 영향 없음.
-- **동기화**: 컬렉션 단위 KV. 로컬 `localStorage semisl:data` 오프라인 폴백 + pending 큐 + Realtime(폴링 폴백). SeMIS v2 sync.js와 동일 알고리즘.
-- **컬렉션(SYNC_KEYS)**: menus · notices · schedules · assignees · assigneesSeeded · minutes · minuteFolders · levelHistory · safetyBoard · contacts · pwOverrides · userOverrides · customUsers · gcal · chatRooms(예약)
+- **동기화**: 컬렉션 단위 KV. 탭 세션 사본(`sessionStorage semisl:data`) + pending 큐 + 변경 알림(Broadcast, 폴링 폴백). v1.15부터 로그인 세션 토큰(`x-semis-token`)으로 서버 RLS가 권한별로 거른다.
+- **컬렉션(SYNC_KEYS)**: menus · notices · schedules · assignees · assigneesSeeded · minutes · minuteFolders · levelHistory · safetyBoard · contacts · gcal · chatRooms · vault · regulations · equipment · crisis · fleet (계정 자료 pwOverrides·userOverrides·customUsers는 v1.15에 서버 전용 표로 이관)
+- **권한표(서버 `semis_logi_private.key_acl`)**: 읽기/쓰기 등급 — menus 1/4 · notices·levelHistory·safetyBoard·fleet·chatRooms 1/3 · minutes·minuteFolders 1/2 · schedules 2/2 · assignees·assigneesSeeded·gcal 2/4 · contacts·crisis·regulations·equipment 2/3 · caresCfg 2/- · vault 3/3. 표에 없는 키는 2/3.
 - **개인정보 원칙**: 연락처·명단은 코드에 시드하지 않고 공용 DB에서만 동기화 (저장소가 공개 저장소이므로).
 
 ## 4. 계정·권한
@@ -54,8 +55,9 @@ SeMIS_Logistics/
 | vendor (협력업체) | 1/3 | 업체별 허용 라우트 화이트리스트(`VENDOR_ACCESS`) — 초기 비어 있음 |
 | signer (서명 참석자) | 0 | 회의록 QR 서명 전용 세션 |
 
-- 로그인은 **암호만 입력**(암호로 사용자 식별). 암호는 `SHA-256(SALT + ":" + pw)` 해시로만 코드·DB에 보관.
-- 기본 계정: `mark3464`(admin, SeMIS v2와 동일 암호) · `cargo-ss`(hq) · `cargo-mgr`(manager) · `cargo-user`(user). 초기 암호는 별도 전달, 접속 후 변경 권장.
+- 로그인은 **암호만 입력**(암호로 사용자 식별). v1.15부터 서버가 확인한다 — `SHA-256("SeMISv2::"+pw)`를 bcrypt로 한 번 더 감싸 비공개 표 `semis_logi_private.accounts`에만 보관(코드·공용 데이터에 해시 없음). 새 암호는 8자 이상·계정마다 달라야 함.
+- 세션: 24시간 무활동 만료(10분마다 확인·연장) · 최대 30일 · 로그아웃·암호 변경 시 끊김. 회의 서명(QR·6자리)은 회의일 ±90일, 3시간 세션, 그 회의 한 건만.
+- 기본 계정: `mark3464`(admin, SeMIS v2와 동일 암호) · `cargo-ss`(hq) · `cargo-mgr`(manager) · `cargo-user`(user).
 - 메뉴 접근 `vis`: all / mgr(관리자 이상) / hq(파트원 이상) / admin.
 
 ## 5. 메뉴 체계 (초기 시드)
