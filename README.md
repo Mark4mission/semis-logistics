@@ -27,6 +27,7 @@ SeMIS_Logistics/
 ├── js/screening.js     화물 보안검색 현황 (검색 라인 배치 · 일일점검 이행 · 검색 환경 · 최근 고장) + 대시보드 요약 띠
 ├── js/equipment.js     검색장비 유지관리 (장비 대장 · 고장·수리 이력 · 가동 분석, SeMIS v2 equipment.js 이식)
 ├── js/audit.js         수검 대응 센터 (국토부 · 해외 당국 · 화주 · 사내 심사 — 준비 체크리스트 · 증빙 · 지적 조치 · 재발 · 일정관리 연동) + 대시보드 띠
+├── js/loginguard.js    로그인 창 보호 — <head> 에서 먼저 읽혀, 앱 준비 전 제출을 붙잡았다가 이어서 로그인 (v1.17.1, v2와 같은 파일)
 ├── js/sync.js          Supabase 공용 DB 실시간 동기화 (semis_logi_store · semis-logi-files)
 ├── docs/module-template.js 신규 모듈 표준 예시 (복사해서 시작)
 ├── tests/run-tests.cjs jsdom 테스트 (npm test)
@@ -188,7 +189,7 @@ Google → SeMIS(공개 캘린더 겹쳐 보기) / SeMIS → Google(ICS 구독 �
 3. 메뉴 — 기존 예정 메뉴의 module id를 그대로 쓰면 자동 대체(허브 위치도 그대로). 새 라우트면 `defaultMenus()`에서 알맞은 허브(`parent:"hub-*"`)에 넣고 `normalizeData`의 `ensureModuleMenu`.
 4. `js/sync.js` — `SYNC_KEYS`에 컬렉션 키 추가 **+ 서버 권한표 `semis_logi_private.key_acl`에 (key, 읽기 등급, 쓰기 등급) 등록**(`tools/sql/semis-logi-security.sql`에도 같은 줄 — 테스트 C05가 대조). 파일 폴더를 새로 쓰면 `tools/edge/semis-logi-files.ts`의 READ_RANK/WRITE_RANK에 추가 후 재배포.
 5. `js/search.js` — `register({...})` 프로바이더 추가.
-6. `index.html` — `<script src="js/<module>.js?v=...">` 등록.
+6. `index.html` — `<script src="js/<module>.js?v=..." defer>` 등록(본문 스크립트는 모두 `defer`, 테스트 LG01).
 7. `tests/run-tests.cjs` — `FILES`에 추가 + 테스트(Y01 SYNC_KEYS 기대 문자열 갱신).
 8. 화면 확인 — 1440 · 1024 · 390px 세 폭에서 확인(supabase 비-GET 차단 상태).
 9. `npm run bump <ver>` → `npm test` → 배포.

@@ -6,10 +6,10 @@
 
 | 항목 | 값 |
 |---|---|
-| 현재 버전 | **v1.17.0** (2026-09-26) — **수검 대응 센터**(국토부 · 해외 당국 · 화주 · 사내 심사 수검의 준비 · 증빙 · 지적 조치 · 재발 추적) · v1.16 로그인 자동공격 방어 · v1.15 서버 보안 위 |
+| 현재 버전 | **v1.17.1** (2026-09-26) — 로그인 창 보호(앱 준비 전 제출 → 새로고침되던 문제) · v1.17.0 **수검 대응 센터**(국토부 · 해외 당국 · 화주 · 사내 심사 수검의 준비 · 증빙 · 지적 조치 · 재발 추적) · v1.16 로그인 자동공격 방어 · v1.15 서버 보안 위 |
 | 접속 주소 | https://mark4mission.github.io/semis-logistics/ |
 | 저장소 | GitHub `Mark4mission/semis-logistics` (공개) · Mac `~/SeMIS_Logistics` |
-| 테스트 | `npm test` 300건 전부 통과 (가짜 서버로 로그인(작업증명 포함)·RLS·파일 함수 흉내 · 코드에 해시·토큰 없음) |
+| 테스트 | `npm test` 303건 전부 통과 (가짜 서버로 로그인(작업증명 포함)·RLS·파일 함수 흉내 · 코드에 해시·토큰 없음) |
 | 백엔드 | Supabase `mzyuzrxkdcpzxojenwat` — 테이블 `semis_logi_store`(세션 RLS), **비공개** 버킷 `semis-logi-files`, 비공개 스키마 `semis_logi_private`(계정 · 세션 · 로그인 시도 · 접속 기록 · 권한표), RPC `semis_logi_*`, Edge Function `semis-logi-files`(서명 URL) · 운항 현황: Edge Function `semis-logi-adsb` + 테이블 `semis_logi_adsb` · `semis_logi_adsb_events` + pg_cron 2분 |
 
 ## 2. 새 세션 시작
@@ -113,6 +113,7 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 11. **검색 입력칸은 다시 만들지 않는다(v1.13.1)**: 입력 이벤트에서 화면(입력칸 포함)을 통째로 다시 그리면 한글 조합이 끊겨 "ㅊㅗㅣ"처럼 자모로 풀린다. `SeMIS.ui.searchValue(v)`(끝의 조합 중 자모 제거)로 검색어를 만들고, 목록은 입력칸 밖 영역만 바꾸거나 `SeMIS.ui.repaintKeep(box, html, input)`(입력칸과 조상 노드는 그대로, 주변만 교체)을 쓴다. 검증: playwright CDP `Input.imeSetComposition`/`insertText`로 조합 입력 후 입력칸 노드 동일성 확인
 10. **모달 버튼줄**: 저장·취소처럼 자주 누르는 조작(완료 체크 포함)은 스크롤되는 본문이 아니라 하단 `.modal-actions`에 둔다
 12. **서버 보안(v1.15)**: ① 새 컬렉션 → `key_acl` 등록(+SQL 파일) ② 새 파일 폴더 → `tools/edge/semis-logi-files.ts` 등급표 추가 후 재배포 ③ 파일 주소는 표준(public) 주소로 저장하고 화면에 그대로 쓰면 자동 서명된다 — 단, 화면 밖 `new Image()`·`fetch`는 `SemisFileAuth.resolve(url)`, 별도 인쇄 문서(iframe document.write)는 `SemisFileAuth.signHtml(html)`, 편집기 HTML 저장은 `SemisNotice.sanitizeHtml`(서명 흔적 되돌림) ④ CSP(`script-src 'self'` + supabase-js 한 파일): 인라인 `<script>`·`onclick=` 금지, 외부 스크립트 추가 시 index.html CSP 수정 ⑤ 코드·문서에 토큰·해시·명단 금지(테스트 C03·SEC09) ⑥ 브라우저 확인은 로컬(route로 파일 제공) + 공용 DB 비-GET·`semis_logi_sign_submit` 차단 상태에서, 임시 계정은 확인 후 삭제
+13. **스크립트는 `defer`(v1.17.1)**: index.html 본문의 스크립트는 모두 `defer` — CSP `<meta>` 때문에 브라우저 미리 읽기가 멈춰 스크립트를 하나씩 받느라 앱 준비가 수 초 늦었다. `<head>` 에는 `js/loginguard.js`(v2와 같은 파일) 하나만 즉시 실행으로 두고, 앱 준비 전에 누른 로그인은 이 파일이 붙잡았다가 boot 가 이어서 처리한다. 새 모듈 스크립트도 `defer` 로 추가(테스트 LG01)
 
 ## 7. 미결 · 주의
 
@@ -189,4 +190,5 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 | v1.15.0 | 09-25 | **서버 보안** — 공개 키만으로 공용 DB·파일 전부를 읽고 고칠 수 있던 구조를 닫음. 서버 로그인(RPC · bcrypt · IP별 시도 제한) → 탭 세션 토큰 · 권한표(key_acl) 기반 RLS(권한 밖 컬렉션은 받지도 못함) · 계정·세션·접속 기록 비공개 스키마 · 파일 버킷 비공개 + Edge Function 서명 URL(js/fileauth.js 자동 변환) · 회의 서명은 그 회의 한 건만(RPC) · 데이터 사본 localStorage → sessionStorage · 변경 알림 Broadcast(이름만) · 서버 시각·작성자 기록 · 설정에 보안 탭(접속 중 · 기록 · 모두 끊기) · CSP · 살균기 template 파싱 · v2 ICS 토큰 제거 · 후속: RPC 실행 권한 정리(anon만) · AI 요약 함수 세션 확인 · 임시 계정·기록 정리 |
 | v1.16.0 | 09-26 | **로그인 자동공격 방어** — reCAPTCHA 대신 보이지 않는 작업증명: 서버 서명 문제(2분 · 1회용)를 로그인 창에서 Web Worker가 미리 풀어 첨부(js/pow.js, v2와 같은 파일) · 전체 실패가 늘면 난이도 자동 상향 · 6자리 회의 서명 코드 실패 급증 시 15분 중지 · 보안 탭 실패 통계 · 로그인 안내 문구(제한 · 중지 · 확인 실패) · CSP worker-src · 라이브 확인(해답 없는 로그인 거부, 로그인 1.6초) 후 임시 계정·기록 삭제 |
 | v1.17.0 | 09-26 | **수검 대응 센터**(M1) — 국토부 · 지방항공청 / 해외 당국 · 화주 / 사내 심사 수검을 준비 → 수검 → 지적 조치 → 종결로 관리. 수검 일정 · 지적사항 탭, 상세(준비 체크리스트 · 증빙 파일 · 지적사항), 재발 조항 표시, 일정관리 양방향 연동, 대시보드 띠 · 메뉴 배지 · 통합 검색 · 390px · A4 인쇄. 서버: 권한표 audits 2/3 · 파일 폴더 audits. 회의록 조치 일정 자동 연기 되돌림 수정 |
+| v1.17.1 | 09-26 | **로그인 창 보호** — 로그인 창이 뜬 뒤 스크립트가 다 읽힐 때까지(수 초) Enter·로그인을 누르면 폼이 그대로 전송돼 새로고침되고 암호가 지워져 두세 번 눌러야 접속되던 문제. `<head>` 의 `js/loginguard.js` 가 그 제출을 붙잡아 두고 앱이 준비되면 이어서 로그인 · 본문 스크립트 전부 `defer`(병렬 적재) |
 | v1.9.1 | 09-22 | 한글 어절 단위 줄바꿈(전역 keep-all) · 대시보드 하단 시트 칸 수를 시트 폭으로 결정(container query, 1040px↑ 4칸) · 일정 폼 '완료'를 하단 버튼줄로(스크롤 없이 보임) · 오른쪽 설정 패널 압축(1512×825에서 스크롤 없음) · 3D 불러오기 주소에 버전 부여(배포 직후 옛 404 캐시 회피)·실패 사유 기록(`#dash-3d[data-h3d]`) |

@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/crisis.js", "js/audit.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
+const FILES = ["js/loginguard.js", "js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/crisis.js", "js/audit.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -3525,7 +3525,7 @@ function makeServer(opts = {}) {
     });
     t("PW02 파일 등록 · CSP worker-src · pow.js 는 v2 와 같은 계산기", () => {
       const html = read("index.html");
-      ok(/<script src="js\/pow\.js\?v=[\d.]+"><\/script>/.test(html), "index.html pow.js");
+      ok(/<script src="js\/pow\.js\?v=[\d.]+"( defer)?><\/script>/.test(html), "index.html pow.js");
       ok(html.indexOf("js/pow.js") > html.indexOf("js/sync.js"), "sync.js 다음");
       ok(/worker-src 'self'/.test(html), "worker-src");
       ok(read("js/sync.js").indexOf("semis_logi_challenge") > 0 && read("js/sync.js").indexOf("p_pow") > 0, "로그인에 해답 첨부");
@@ -3556,6 +3556,46 @@ function makeServer(opts = {}) {
       const lg = server.calls.filter(c => /semis_logi_login/.test(c.url));
       eq(lg.length, 2, "로그인 요청 2회");
       ok(lg[0].body.p_pow.c !== lg[1].body.p_pow.c, "두 번째는 새 문제");
+      e.Sync.stop(); e.w.close();
+    });
+    t("LG01 로그인 창 보호 — loginguard.js 는 <head> 에서 먼저(즉시 실행), 나머지 스크립트는 defer · 순서 유지", () => {
+      const raw = read("index.html");
+      const head = raw.slice(0, raw.indexOf("</head>")), body = raw.slice(raw.indexOf("<body>"));
+      ok(/<script src="js\/loginguard\.js\?v=[\d.]+"><\/script>/.test(head), "head 에 즉시 실행");
+      eq((head.match(/<script\b/g) || []).length, 1, "head 스크립트는 보호 파일 하나");
+      const tags = body.match(/<script\b[^>]*>/g) || [];
+      ok(tags.length > 20 && tags.every(t2 => / defer>$/.test(t2)), "본문 스크립트 모두 defer");
+      ok(/__semisReady = true/.test(read("js/app.js").slice(read("js/app.js").indexOf("function boot()"))), "boot 에서 준비 표시");
+    });
+    await ta("LG02 앱 준비 전에 누른 로그인 — 새로고침 없이 붙잡아 두었다가 준비되면 그대로 로그인", async () => {
+      const server = makeServer();
+      const e = makeEnv({ fetch: server.fetch, boot: false });
+      q(e, "#login-pw").value = "mgr-pw-3333";
+      const ev = new e.w.Event("submit", { bubbles: true, cancelable: true });
+      q(e, "#login-form").dispatchEvent(ev);
+      ok(ev.defaultPrevented, "브라우저 기본 제출(새로고침) 막음");
+      ok(e.w.__semisLoginQueued === true, "대기");
+      eq(q(e, "#login-error").textContent, "확인 중…");
+      eq(server.calls.filter(c => /semis_logi_login/.test(c.url)).length, 0, "준비 전 서버 호출 없음");
+      e.S.boot();
+      await until(() => e.S.user);
+      ok(e.S.user && e.S.user.origId === "cargo-mgr", "준비되자 로그인");
+      eq(server.calls.filter(c => /semis_logi_login/.test(c.url)).length, 1, "한 번만");
+      ok(!e.w.__semisLoginQueued, "대기 해제");
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("LG03 빈 암호로 누른 제출은 대기하지 않음 · 준비 뒤에는 보호 파일이 관여하지 않음", async () => {
+      const server = makeServer();
+      const e = makeEnv({ fetch: server.fetch, boot: false });
+      const ev = new e.w.Event("submit", { bubbles: true, cancelable: true });
+      q(e, "#login-form").dispatchEvent(ev);
+      ok(ev.defaultPrevented && !e.w.__semisLoginQueued, "빈 암호 — 막기만");
+      e.S.boot();
+      await tick(20);
+      eq(server.calls.filter(c => /semis_logi_login/.test(c.url)).length, 0);
+      submitLogin(e, "hq-pw-2222");
+      await until(() => e.S.user);
+      ok(e.S.user && e.S.user.origId === "cargo-ss", "준비 뒤 일반 로그인");
       e.Sync.stop(); e.w.close();
     });
     await ta("PW05 IP 제한 · 서명 코드 일시 중지 안내", async () => {
