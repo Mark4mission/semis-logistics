@@ -3621,3 +3621,36 @@ button.tr-rbtn { cursor: pointer; }
   .tr-gtbl .c-cell small { color: #333 !important; }
   .tr-due, .tr-duel li { break-inside: avoid; }
 }
+
+/* ═════════ v1.21 SSI 서약 — SeMIS v2 보안서약서 명단 (js/training.js 'SSI 서약' 탭) ═════════ */
+.tr-src { display: inline-block; margin-left: 5px; padding: 0 6px; border-radius: 6px; background: #eef4f3; color: var(--text-3); font-size: .72rem; font-weight: 700; vertical-align: middle; }
+.tr-semis { display: block; margin-top: 4px; font-size: .78rem; color: var(--text-3); }
+.tr-semis.is-warn { color: #8a4b06; }
+.tr-plmiss { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0; font-size: .9rem; }
+.tr-plmiss .tr-semis { display: inline; }
+.tr-plnote { margin: 10px 0 0; font-size: .8rem; color: var(--text-3); }
+.tr-pltbl .c-no { width: 56px; text-align: center; color: var(--text-3); }
+.tr-pltbl .c-date { white-space: nowrap; }
+@media (max-width: 640px) {
+  .tr-pltbl thead { display: none; }
+  .tr-pltbl, .tr-pltbl tbody { display: block; }
+  .tr-pltbl tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 10px; padding: 11px 6px; border-bottom: 1px solid #edf1f0; }
+  .tr-pltbl tbody td { display: block; padding: 0; border: 0; background: none !important; min-width: 0; }
+  .tr-pltbl .c-no { display: none; }
+  .tr-pltbl .c-name { grid-column: 1; grid-row: 1; }
+  .tr-pltbl .c-date { grid-column: 2; grid-row: 1; text-align: right; font-size: .82rem; color: var(--text-3); }
+  .tr-pltbl .c-dept { grid-column: 1; grid-row: 2; font-size: .86rem; color: var(--text-2); }
+  .tr-pltbl .c-pos { grid-column: 1; grid-row: 3; font-size: .84rem; color: var(--text-3); }
+  .tr-pltbl .c-st { grid-column: 2; grid-row: 2 / span 2; align-self: center; }
+}
+@media print {
+  #tr-pllist .toolbar, #tr-plbody { display: none !important; }
+  .tr-plcap { display: flex; justify-content: space-between; gap: 6mm; margin-bottom: 2mm; font-size: 9pt; }
+  .tr-plcap span { color: #444; }
+  .tr-plptbl { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 9pt; }
+  .tr-plptbl th, .tr-plptbl td { border: 1px solid #9aa7a7; padding: 1.4mm 1.8mm; overflow-wrap: break-word; }
+  .tr-plptbl thead { display: table-header-group; }
+  .tr-plptbl thead th { background: #e7eeed !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .tr-plptbl tr { break-inside: avoid; }
+  .tr-plptbl td.c { text-align: center; }
+}

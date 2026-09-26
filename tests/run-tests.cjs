@@ -4341,6 +4341,95 @@ function makeServer(opts = {}) {
       ok(r.some(x => x.group === "보안교육 · 자격 관리"), "검색");
       eq(e.errors.length, 0, e.errors.join(" | "));
     });
+    /* v1.21 SSI 서약 — SeMIS v2 보안서약서 명단 대조 · 조회 탭 */
+    const PLROWS = () => ([
+      { name: "갑일", dept: "영업운송본부 인천화물팀", position: "프로", date: "2026-03-13", state: "valid", n: 2 },
+      { name: "동명", dept: "운항본부", position: "기장", date: "2025-11-24", state: "valid", n: 1 },
+      { name: "동명", dept: "인천화물팀", position: "파트장", date: "2026-01-10", state: "valid", n: 1 },
+      { name: "을이", dept: "정비본부", position: "프로", date: "2025-10-01", state: "left", n: 1 },
+      { name: "외부인", dept: "뉴욕지점", position: "지점장", date: "2025-09-30", state: "valid", n: 1 }
+    ]);
+    t("TR11 SSI 서약 대조: 이름 → SeMIS 서약일 · 동명이인은 소속으로 · 못 가리면 확인 필요 · 입력한 서약일이 더 늦으면 그것 · 퇴직 서약 제외 · 증빙 2.10", () => {
+      loginAs(e, "hq");
+      const P = TR.pledgesState;
+      const ps = data().people;
+      const add = (name, dept, extra) => { const x = Object.assign({ id: "pl-" + name + dept, name, dept, roles: ["SSI 취급자"], left: "", pledge: "", note: "" }, extra || {}); ps.push(x); return x; };
+      const a = ps.find(x => x.name === "갑일") || add("갑일", "인천화물팀");
+      a.roles = Array.from(new Set((a.roles || []).concat(["SSI 취급자"]))); a.pledge = "";
+      const d1 = add("동명", "인천화물팀"), d2 = add("동명", "");
+      const b = add("을이", "인천화물팀");
+      P.rows = null;
+      eq(TR.pledgeInfo(a).date, "", "명단을 받기 전에는 입력값만");
+      P.rows = PLROWS(); P.at = Date.now();
+      eq(TR.pledgeInfo(a).date, "2026-03-13"); eq(TR.pledgeInfo(a).src, "semis");
+      eq(TR.pledgeInfo(d1).date, "2026-01-10", "동명이인 → 소속이 겹치는 한 건");
+      ok(TR.pledgeInfo(d2).ambiguous && !TR.pledgeInfo(d2).date, "소속 없으면 확인 필요");
+      eq(TR.pledgeInfo(b).date, "", "퇴직 · 전출 서약은 유효 아님");
+      b.pledge = "2026-09-01";
+      eq(TR.pledgeInfo(b).date, "2026-09-01"); eq(TR.pledgeInfo(b).src, "manual");
+      a.pledge = "2026-09-20";
+      eq(TR.pledgeInfo(a).date, "2026-09-20", "입력한 서약일이 더 늦으면 그것");
+      a.pledge = "";
+      const n = ps.filter(x => !x.left && (x.roles || []).indexOf("SSI 취급자") >= 0).length;
+      eq(TR.evidence("2.10").text, `SSI 서약 ${n - 1}/${n}명`, "동명이인 미확정 1명만 누락");
+      TR.setState({ tab: "grid", q: "", roleF: "", onlyAct: false }); go(e, "training");
+      ok(/동명이인/.test(q(e, "#tr-body").textContent), "현황 표에 동명이인 표시");
+      d2.dept = "운항본부";
+      eq(TR.evidence("2.10").text, `SSI 서약 ${n}/${n}명`);
+      TR.setState({ tab: "people", pState: "active" }); go(e, "training");
+      ok(/SeMIS/.test(q(e, "#tr-body").textContent), "인원 표에 출처");
+      q(e, `[data-tperson="${a.id}"]`).click();
+      ok(/SeMIS 2026\.03\.13/.test(q(e, "#modal-box").textContent), "인원 창에 SeMIS 서약 정보");
+      e.S.closeModal();
+    });
+    t("TR12 'SSI 서약' 탭: 인천화물팀(명단 대조 + 소속) / 전사 · 유효 / 전체 · 검색 · 누락 목록 · A4 명단(사번 · 서명 없음)", () => {
+      loginAs(e, "hq");
+      TR.pledgesState.rows = PLROWS(); TR.pledgesState.at = Date.now();
+      TR.setState({ tab: "pledges", q: "", plScope: "team", plState: "valid" }); go(e, "training");
+      ok(q(e, '[data-ttab="pledges"]'), "탭");
+      const names = () => qa(e, ".tr-pltbl tbody tr").map(tr => tr.querySelector(".c-name b").textContent);
+      eq(names().join(","), "갑일,동명,동명", "인천화물팀 = 명단 대조 + 소속(퇴직 제외)");
+      q(e, '[data-tseg="plscope"][data-v="all"]').click();
+      eq(names().length, 4, "전사 유효");
+      q(e, '[data-tseg="plstate"][data-v="all"]').click();
+      eq(names().length, 5, "전사 전체");
+      ok(/재서약 1/.test(q(e, ".tr-pltbl").textContent), "재서약 표시");
+      const pr = q(e, ".tr-plprint");
+      ok(pr && pr.classList.contains("print-only") && qa(e, ".tr-plptbl tbody tr").length === 5, "A4 인쇄용 표");
+      ok(/보안서약서 작성자 명단 — 전사/.test(pr.textContent) && !/사번|서명/.test(pr.querySelector("thead").textContent), "사번 · 서명 열 없음");
+      ok(q(e, "[data-print-btn]"), "Print 버튼");
+      const qi = q(e, "#tr-q"); qi.value = "뉴욕"; qi.dispatchEvent(new e.w.Event("input"));
+      eq(names().join(","), "외부인", "소속 검색");
+      ok(q(e, "#tr-q") === qi, "검색칸 유지");
+      TR.setState({ q: "" });
+      TR.pledgesState.rows = null; TR.pledgesState.err = "forbidden"; TR.pledgesState.failAt = Date.now();
+      go(e, "training");
+      ok(q(e, "[data-plretry]"), "불러오기 실패 → 다시 시도");
+      TR.pledgesState.err = ""; TR.pledgesState.rows = PLROWS(); TR.pledgesState.at = Date.now();
+      TR.setState({ tab: "grid" });
+    });
+    await ta("TR13 명단은 로그인 세션 RPC semis_logi_pledges 로만 · 10분 기억 · 실패 후 1분은 다시 부르지 않음 · SQL 참조", async () => {
+      const calls = [];
+      const old = e.w.SemisSync.rpc;
+      let fail = true;
+      e.w.SemisSync.rpc = (name) => { calls.push(name); return Promise.resolve(fail ? { ok: false, error: "forbidden" } : { ok: true, rows: PLROWS() }); };
+      const P = TR.pledgesState;
+      if (P.busy) await P.busy;                       // 앞 화면이 부른 요청(가짜 서버 없음)은 끝내고 시작
+      calls.length = 0;
+      P.rows = null; P.at = 0; P.failAt = 0; P.err = "";
+      eq(await TR.loadPledges(false), false);
+      eq(P.err, "forbidden");
+      eq(await TR.loadPledges(false), false); eq(calls.length, 1, "실패 뒤 1분은 다시 부르지 않음");
+      fail = false;
+      eq(await TR.loadPledges(true), true, "다시 시도(강제)");
+      eq(calls.join(","), "semis_logi_pledges,semis_logi_pledges");
+      eq(P.rows.length, 5); ok(!P.rows.some(r => "empId" in r || "sign" in r), "사번 · 서명 없음");
+      eq(await TR.loadPledges(false), false); eq(calls.length, 2, "10분 기억");
+      e.w.SemisSync.rpc = old;
+      const sql = read("tools/sql/semis-logi-pledges.sql");
+      ok(/semis_logi_private\.rank_now\(\) < 2/.test(sql) && /grant execute on function public\.semis_logi_pledges\(\) to anon, service_role/.test(sql), "SQL 참조 사본");
+      ok(!/'empId'|emp_id\b.*jsonb_build_object|'sign'/.test(sql.slice(sql.indexOf("jsonb_build_object('name'"))), "명단에 사번 · 서명 없음");
+    });
     e.w.close();
   }
 

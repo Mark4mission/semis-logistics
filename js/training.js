@@ -8,6 +8,9 @@
                 + 협력사 교육 확인(업체 · 과정 · 확인일 · 대상/이수 인원 · 결과 파일)
    - 인원: 당사 인원 명부(직무 · 재직/퇴직 · SSI 서약) · 개인별 이수 기록 · 보관 기한(퇴직 후 90일)
    - 과정 관리(hq): 과정 이름 · 초기/정기 · 묶음 · 주기(개월) · 대상 직무
+   - SSI 서약(v1.21): SeMIS v2 보안서약서 명단 조회(RPC semis_logi_pledges — 사람별 최신 서약의 성명 · 소속 · 직위 ·
+     서약일 · 상태만, 사번 · 서명 없음) · 인천화물팀 / 전사 · SSI 취급자 서약 누락 · A4 명단.
+     인원의 SSI 서약은 이 명단과 이름(동명이인은 소속)으로 대조하고, 명단에 없으면 인원에 입력한 서약일(종이 등)을 쓴다.
 
    데이터 DATA.training = {
      courses[{ id, name, fam, kind(초기|정기|수시), cycle(개월, 0 = 기한 없음), roles[], all(전 직원), vendor(협력사 확인용) }] — 비면 코드 기본 과정
@@ -150,7 +153,7 @@
     const ssi = ps.filter(p => rolesOf(p).indexOf("SSI 취급자") >= 0);
     return { people: ps.length, cells: cells.length, ok: n("ok"), soon: n("soon"), exp: n("exp"), none: n("none"),
       valid: cells.length ? Math.round((n("ok") + n("soon")) / cells.length * 100) : null,
-      ssi: ssi.length, ssiMiss: ssi.filter(p => !isISO(p.pledge)).length };
+      ssi: ssi.length, ssiMiss: ssi.filter(p => !pledged(p)).length };
   }
   /* 교육 기록 8항목(자체보안계획 교육기록 보관 항목) — 비어 있는 항목 이름 */
   const EIGHT = [
@@ -167,6 +170,52 @@
     return norm(s.title) || (courseOf(s.cid) || {}).name || "교육";
   }
   function stamp(x) { x.updatedAt = new Date().toISOString(); x.updatedBy = me(); }
+
+  /* ─────── SSI 서약 — SeMIS v2 보안서약서 명단 (v1.21) ───────
+     서버 RPC semis_logi_pledges(manager 이상): 사람별 최신 서약 { name, dept, position, date, state, n } — 사번 · 서명 없음.
+     10분 동안 기억하고, 실패하면 1분 동안 다시 부르지 않는다(화면 다시 그리기와 맞물린 반복 호출 방지). */
+  const PL = { rows: null, at: 0, busy: null, err: "", failAt: 0 };
+  const PL_TTL = 10 * 60000;
+  const PL_STATE = { valid: ["유효", "green"], left: ["퇴직 · 전출", "gray"], void: ["무효", "red"] };
+  function loadPledges(force) {
+    if (!force && PL.rows && Date.now() - PL.at < PL_TTL) return Promise.resolve(false);
+    if (!force && PL.failAt && Date.now() - PL.failAt < 60000) return Promise.resolve(false);
+    if (PL.busy) return PL.busy;
+    const S = typeof window !== "undefined" ? window.SemisSync : null;
+    if (!S || !S.rpc) return Promise.resolve(false);
+    PL.busy = S.rpc("semis_logi_pledges", {}).then(d => {
+      if (!d || !d.ok) throw new Error((d && d.error) || "pledges");
+      PL.rows = (Array.isArray(d.rows) ? d.rows : []).filter(r => r && r.name)
+        .map(r => ({ name: norm(r.name), dept: norm(r.dept), position: norm(r.position), date: isISO(r.date) ? r.date : "",
+                     state: PL_STATE[r.state] ? r.state : "valid", n: Number(r.n) || 1 }));
+      PL.at = Date.now(); PL.err = ""; PL.failAt = 0;
+      return true;
+    }).catch(e => { PL.err = String((e && e.message) || e); PL.failAt = Date.now(); return false; })
+      .finally(() => { PL.busy = null; });
+    return PL.busy;
+  }
+  const nkey = (s) => String(s || "").replace(/\s+/g, "").toLowerCase();
+  const dkey = (s) => String(s || "").replace(/\s+/g, "");
+  /* 인원 ↔ 서약 명단: 이름이 같으면 그 서약, 동명이인이면 소속이 겹치는 한 건만 — 못 가리면 ambiguous */
+  function pledgeMatch(p) {
+    if (!PL.rows || !p) return null;
+    const c = PL.rows.filter(r => nkey(r.name) === nkey(p.name));
+    if (c.length <= 1) return c[0] || null;
+    const d = dkey(p.dept);
+    const b = d ? c.filter(r => { const x = dkey(r.dept); return x && (x.indexOf(d) >= 0 || d.indexOf(x) >= 0); }) : [];
+    return b.length === 1 ? b[0] : { ambiguous: true, n: c.length };
+  }
+  /* 인원의 SSI 서약: SeMIS 명단(유효)과 인원에 입력한 서약일 중 늦은 것 */
+  function pledgeInfo(p) {
+    const m = pledgeMatch(p);
+    const man = p && isISO(p.pledge) ? p.pledge : "";
+    const sd = m && !m.ambiguous && m.state === "valid" ? m.date : "";
+    if (sd && (!man || sd >= man)) return { date: sd, src: "semis", row: m };
+    if (man) return { date: man, src: "manual", row: m && !m.ambiguous ? m : null };
+    return { date: "", src: "", ambiguous: !!(m && m.ambiguous), row: m && !m.ambiguous ? m : null };
+  }
+  const pledged = (p) => !!pledgeInfo(p).date;
+  const isSSI = (p) => rolesOf(p).indexOf("SSI 취급자") >= 0;
 
   /* ─────── 수검 대응 센터 증빙 연결 ───────
      점검 체크리스트 항목 번호 → 이 화면의 실제 기록으로 증빙 여부 판단(없으면 '증빙 없음'). 번호만 쓰고 원문은 쓰지 않는다. */
@@ -188,8 +237,9 @@
       case "1.3": return vend("", "협력사 교육");
       case "1.4": { const own = sessions().filter(s => s.type !== "vendor"); const k = own.filter(s => !missing(s).length).length;
         return { ok: own.length > 0 && k === own.length, text: own.length ? `기록 8항목 완비 ${k}/${own.length}` : "교육 기록 없음" }; }
-      case "2.10": case "2.10.1": { const ps = people().filter(p => active(p, t) && rolesOf(p).indexOf("SSI 취급자") >= 0);
-        const k = ps.filter(p => isISO(p.pledge)).length; return { ok: ps.length > 0 && k === ps.length, text: ps.length ? `SSI 서약 ${k}/${ps.length}명` : "SSI 취급자 등록 없음" }; }
+      case "2.10": case "2.10.1": { const ps = people().filter(p => active(p, t) && isSSI(p));
+        if (ps.length && !PL.rows) loadPledges(false).then(ch => { if (ch && routeNow() === "audit") SeMIS.renderView(); });
+        const k = ps.filter(pledged).length; return { ok: ps.length > 0 && k === ps.length, text: ps.length ? `SSI 서약 ${k}/${ps.length}명` : "SSI 취급자 등록 없음" }; }
       case "3.4": return vend("v-drug", "향정신성 물질 교육");
       case "9.2.1": return vend("v-tsa", "TSA 교육");
       case "8.2": { const v = roleValid("장비 운용자", t), k = vendorRecent("v-screen", t).length;
@@ -201,7 +251,8 @@
 
   /* ─────── 화면 상태 ─────── */
   let tab = "grid", q = "", roleF = "", onlyAct = false, year = "", sType = "all", pState = "active";
-  const TABS = [["grid", "이수 현황"], ["sessions", "교육 기록"], ["people", "인원"]];
+  const TABS = [["grid", "이수 현황"], ["sessions", "교육 기록"], ["people", "인원"], ["pledges", "SSI 서약"]];
+  let plScope = "team", plState = "valid";
   const routeNow = () => (typeof location !== "undefined" ? location.hash.replace(/^#\//, "") : "") || "dashboard";
   const segHTML = (name, items, cur) => `<div class="seg" role="group" aria-label="${esc(name)}">${items.map(([v, lb]) =>
     `<button type="button" class="seg-btn" data-tseg="${esc(name)}" data-v="${esc(v)}" aria-pressed="${String(v) === String(cur)}">${esc(lb)}</button>`).join("")}</div>`;
@@ -222,7 +273,7 @@
     const byP = (p) => g.cells.filter(c => c.p === p);
     const rows = g.ps.filter(p => {
       if (roleF && rolesOf(p).indexOf(roleF) < 0) return false;
-      if (onlyAct && !byP(p).some(c => c.st !== "ok") && !(rolesOf(p).indexOf("SSI 취급자") >= 0 && !isISO(p.pledge))) return false;
+      if (onlyAct && !byP(p).some(c => c.st !== "ok") && !(isSSI(p) && !pledged(p))) return false;
       return !q || hay([p.name, p.dept, rolesOf(p).join(" ")]).indexOf(q.toLowerCase()) >= 0;
     }).sort((a, b) => String(a.name).localeCompare(String(b.name), "ko"));
     const due = g.cells.filter(c => c.st === "exp" || c.st === "soon").sort((a, b) => String(a.exp).localeCompare(String(b.exp)));
@@ -248,6 +299,11 @@
         <div id="tr-gbody">${gridTable(g, rows, ssiCol, canW)}</div>
       </section>`;
   }
+  function ssiCell(p) {
+    const pi = pledgeInfo(p);
+    if (pi.date) return `<span class="tr-cell" data-st="ok" title="${pi.src === "semis" ? "SeMIS 보안서약서 명단" : "인원에 입력한 서약일"}">${ui.chip("서약", "green")}<small class="mono">${esc(ymd2(pi.date))}</small></span>`;
+    return `<span class="tr-cell" data-st="none">${ui.chip(pi.ambiguous ? "동명이인" : "누락", pi.ambiguous ? "amber" : "red")}</span>`;
+  }
   function gridTable(g, rows, ssiCol, canW) {
     if (!g.ps.length) return ui.empty("등록된 인원이 없습니다.", canW ? `<button type="button" class="btn btn-soft btn-sm" data-tgo="people">인원 등록</button>` : "");
     if (!rows.length) return ui.empty("조건에 맞는 인원이 없습니다.");
@@ -259,7 +315,7 @@
         ${g.gs.map(x => { const c = g.cells.find(k => k.p === p && k.g === x);
           return `<td class="c-cell${c ? "" : " is-na"}" data-label="${esc(x.name)}"${c && canW ? ` data-tcell="${esc(p.id)}|${esc(x.fam)}"` : ""}>${cellChip(c)}</td>`; }).join("")}
         ${ssiCol ? `<td class="c-cell${rolesOf(p).indexOf("SSI 취급자") < 0 ? " is-na" : ""}" data-label="SSI 서약">${rolesOf(p).indexOf("SSI 취급자") < 0 ? '<span class="tr-na">-</span>'
-          : isISO(p.pledge) ? `<span class="tr-cell" data-st="ok">${ui.chip("서약", "green")}<small class="mono">${esc(ymd2(p.pledge))}</small></span>` : `<span class="tr-cell" data-st="none">${ui.chip("누락", "red")}</span>`}</td>` : ""}
+          : ssiCell(p)}</td>` : ""}
       </tr>`).join("")}</tbody></table></div>`;
   }
 
@@ -343,13 +399,61 @@
             <td class="c-name"><b>${esc(p.name)}</b><div class="cell-sub">${esc(p.dept || "")}</div></td>
             <td class="c-roles">${rolesOf(p).map(r => `<span class="tr-role">${esc(r)}</span>`).join("") || '<span class="cell-sub">-</span>'}</td>
             <td class="c-last" data-label="최근 이수">${rs.length ? `${esc((courseOf(rs[0].cid) || {}).name || "과정")}<div class="cell-sub mono">${esc(dot(rs[0].date))} · 전체 ${rs.length}건</div>` : '<span class="cell-sub">-</span>'}</td>
-            <td class="c-ssi" data-label="SSI 서약">${isISO(p.pledge) ? `<span class="mono">${esc(dot(p.pledge))}</span>` : rolesOf(p).indexOf("SSI 취급자") >= 0 ? ui.chip("누락", "red") : '<span class="cell-sub">-</span>'}</td>
+            <td class="c-ssi" data-label="SSI 서약">${(pi => pi.date ? `<span class="mono">${esc(dot(pi.date))}</span>${pi.src === "semis" ? '<small class="tr-src">SeMIS</small>' : ""}`
+              : isSSI(p) ? ui.chip(pi.ambiguous ? "동명이인 확인" : "누락", pi.ambiguous ? "amber" : "red") : '<span class="cell-sub">-</span>')(pledgeInfo(p))}</td>
             <td class="c-st">${a ? ui.chip("재직", "green") : leftOver(p, t) ? `${ui.chip("보관 기한 경과", "amber")}<div class="cell-sub mono">${esc(dot(p.left))} 퇴직</div>`
               : `${ui.chip("퇴직", "gray")}<div class="cell-sub mono">보관 ~${esc(dot(addDays(p.left, KEEP_LEFT_DAYS)))}</div>`}</td>
           </tr>`;
         }).join("")}</tbody></table></div>`
         : ui.empty(all.length ? "조건에 맞는 인원이 없습니다." : "등록된 인원이 없습니다.")}</div>
     </section>`;
+  }
+
+  /* ═════════ SSI 서약 (SeMIS v2 보안서약서 명단 조회) ═════════ */
+  function pledgesHTML(canW) {
+    if (!PL.rows) return PL.err
+      ? ui.empty("SeMIS 보안서약서 명단을 불러오지 못했습니다.", '<button type="button" class="btn btn-soft btn-sm" data-plretry="1">다시 시도</button>')
+      : ui.empty("SeMIS 보안서약서 명단을 불러오는 중입니다.");
+    const t = todayISO();
+    const team = people().filter(p => active(p, t));
+    const ssi = team.filter(isSSI);
+    const miss = ssi.filter(p => !pledged(p));
+    const mine = new Set(team.map(p => { const m = pledgeMatch(p); return m && !m.ambiguous ? m : null; }).filter(Boolean));
+    const inTeam = (r) => mine.has(r) || /인천\s*화물/.test(r.dept);
+    const base = PL.rows.filter(r => plScope === "all" || inTeam(r));
+    const rows = base.filter(r => (plState === "all" || r.state === "valid")
+      && (!q || hay([r.name, r.dept, r.position]).indexOf(q.toLowerCase()) >= 0))
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(a.name).localeCompare(String(b.name), "ko"));
+    const valid = PL.rows.filter(r => r.state === "valid").length;
+    const scopeLb = plScope === "all" ? "전사" : "인천화물팀";
+    const who = (p) => canW ? `<button type="button" class="tbl-open" data-tperson="${esc(p.id)}">${esc(p.name)}</button>` : esc(p.name);
+    return ui.stats([
+      { label: "전사 유효 서약자", value: valid, sub: "SeMIS 명단" },
+      { label: "인천화물팀 서약", value: PL.rows.filter(r => inTeam(r) && r.state === "valid").length, sub: "명단 대조 · 소속" },
+      { label: "SSI 취급자 서약", value: ssi.length ? (ssi.length - miss.length) + "/" + ssi.length : "-", tone: miss.length ? "bad" : ssi.length ? "ok" : "muted" },
+      { label: "서약 누락", value: miss.length, sub: "SSI 취급자", tone: miss.length ? "bad" : "ok" }
+    ]) + (miss.length ? `<section class="card tr-due no-print"><div class="tr-sh"><h3>서약 누락 — SSI 취급자</h3><span class="tr-cnt mono">${miss.length}</span></div>
+        <p class="tr-plmiss">${miss.map(p => `<span>${who(p)}${pledgeInfo(p).ambiguous ? ' <small class="tr-semis is-warn">동명이인</small>' : ""}</span>`).join("")}</p></section>` : "")
+      + `<section class="card" id="tr-pllist">
+        <div class="toolbar no-print">
+          ${ui.search("tr-q", "이름 · 소속 · 직위 검색", q)}
+          ${segHTML("plscope", [["team", "인천화물팀"], ["all", "전사"]], plScope)}
+          ${segHTML("plstate", [["valid", "유효"], ["all", "전체"]], plState)}
+        </div>
+        <div id="tr-plbody" class="no-print">${rows.length ? `<div class="table-wrap"><table class="tbl tbl-cap tr-pltbl" style="--cap:1180px">
+          <thead><tr><th class="c-no">번호</th><th>서약일</th><th>성명</th><th>소속</th><th>직위</th><th>상태</th></tr></thead>
+          <tbody>${rows.map((r, i) => `<tr><td class="c-no mono">${i + 1}</td><td class="c-date mono">${esc(dot(r.date))}</td>
+            <td class="c-name"><b>${esc(r.name)}</b>${r.n > 1 ? ` <small class="tr-src" title="서약 ${r.n}회">재서약 ${r.n - 1}</small>` : ""}</td>
+            <td class="c-dept">${esc(r.dept || "-")}</td><td class="c-pos">${esc(r.position || "-")}</td>
+            <td class="c-st">${ui.chip((PL_STATE[r.state] || PL_STATE.valid)[0], (PL_STATE[r.state] || PL_STATE.valid)[1])}</td></tr>`).join("")}</tbody></table></div>`
+          : ui.empty(base.length ? "조건에 맞는 서약이 없습니다." : "서약 기록이 없습니다.")}
+          <p class="tr-plnote">사번 · 서명이 들어간 국토부 제출용 명단은 SeMIS v2 '비밀 취급 / SSI'에서 출력합니다.</p></div>
+        <div class="print-only tr-plprint">
+          <div class="tr-plcap"><b>보안서약서 작성자 명단 — ${esc(scopeLb)}</b><span>기준일 ${esc(dot(t))} · ${rows.length}명${plState === "all" ? " · 상태 전체" : ""}</span></div>
+          <table class="tr-plptbl"><thead><tr><th style="width:9%">번호</th><th style="width:28%">소속</th><th style="width:17%">직위</th><th style="width:18%">성명</th><th style="width:16%">서약일</th><th style="width:12%">상태</th></tr></thead>
+          <tbody>${rows.map((r, i) => `<tr><td class="c">${i + 1}</td><td>${esc(r.dept)}</td><td>${esc(r.position)}</td><td><b>${esc(r.name)}</b></td><td class="c">${esc(dot(r.date))}</td><td class="c">${esc((PL_STATE[r.state] || PL_STATE.valid)[0])}</td></tr>`).join("")}</tbody></table>
+        </div>
+      </section>`;
   }
 
   /* ═════════ 폼 공통 ═════════ */
@@ -416,7 +520,7 @@
         `<label class="ck-rc"><input type="checkbox" value="${esc(r)}" ${rolesOf(v).indexOf(r) >= 0 ? "checked" : ""}><span>${esc(r)}</span></label>`).join("")}</div>
         <input id="tp-role-add" class="tr-roleadd" maxlength="20" autocomplete="off" placeholder="다른 직무 입력 후 Enter"></div>
       <div class="form-grid">
-        ${fld("tp-pledge", "SSI 서약일", `<input type="date" id="tp-pledge" value="${esc(v.pledge)}">`)}
+        ${fld("tp-pledge", "SSI 서약일", `<input type="date" id="tp-pledge" value="${esc(v.pledge)}">${semisLine(x)}`, "SeMIS 보안서약서 명단에 같은 이름의 서약이 있으면 그 서약일을 씁니다. 명단에 없는 서약(종이 등)만 입력합니다.")}
         ${fld("tp-left", "퇴직 · 전출일", `<input type="date" id="tp-left" value="${esc(v.left)}">`, "교육 기록은 퇴직 · 전출 후 " + KEEP_LEFT_DAYS + "일까지 보관합니다.")}
       </div>
       ${fileBox("tpf", "서약서", pf)}
@@ -467,6 +571,13 @@
     if (radd) radd.onclick = () => save(p => recordForm(p.id, "", null));
     $$("[data-rid]").forEach(b => b.onclick = () => save(p => recordForm(p.id, b.dataset.rid, null)));
   }
+  function semisLine(x) {
+    if (!x) return "";
+    const m = pledgeMatch(x);
+    if (!m) return PL.rows ? '<small class="tr-semis">SeMIS 명단에 없음</small>' : "";
+    if (m.ambiguous) return `<small class="tr-semis is-warn">SeMIS 명단에 같은 이름 ${m.n}명 — 소속으로 구분되지 않음</small>`;
+    return `<small class="tr-semis">SeMIS ${esc(dot(m.date))} · ${esc(m.dept || "-")} · ${esc((PL_STATE[m.state] || PL_STATE.valid)[0])}</small>`;
+  }
   /* manager — 읽기 전용 */
   function personView(pid) {
     const x = personOf(pid);
@@ -474,7 +585,7 @@
     const rs = records().filter(r => r.pid === x.id).sort((a, b) => String(b.date).localeCompare(String(a.date)));
     openModal(`<h3>${esc(x.name)} <small class="au-mh">${esc(x.dept || "")}</small></h3>
       <p class="tr-vroles">${rolesOf(x).map(r => `<span class="tr-role">${esc(r)}</span>`).join("") || "-"}</p>
-      <dl class="eqd-grid"><div><dt>SSI 서약</dt><dd>${isISO(x.pledge) ? esc(dot(x.pledge)) : "-"}</dd></div><div><dt>상태</dt><dd>${active(x) ? "재직" : "퇴직 · 전출 " + esc(dot(x.left))}</dd></div></dl>
+      <dl class="eqd-grid"><div><dt>SSI 서약</dt><dd>${(pi => pi.date ? esc(dot(pi.date)) + (pi.src === "semis" ? " (SeMIS)" : "") : "-")(pledgeInfo(x))}</dd></div><div><dt>상태</dt><dd>${active(x) ? "재직" : "퇴직 · 전출 " + esc(dot(x.left))}</dd></div></dl>
       ${filesOf(x.pledgeFiles).length ? `<div class="au-files">${fileChips(x.pledgeFiles)}</div>` : ""}
       <div class="tr-recs"><div class="tr-sh"><h4>이수 기록</h4><span class="tr-cnt mono">${rs.length}</span></div>
         ${rs.length ? `<ul class="tr-rlist">${rs.map(r => { const c = courseOf(r.cid), exp = expireOf(r);
@@ -676,7 +787,7 @@
   }
 
   /* ═════════ 렌더 ═════════ */
-  function bodyHTML(canW) { return tab === "sessions" ? sessionsHTML(canW) : tab === "people" ? peopleHTML(canW) : gridHTML(canW); }
+  function bodyHTML(canW) { return tab === "sessions" ? sessionsHTML(canW) : tab === "people" ? peopleHTML(canW) : tab === "pledges" ? pledgesHTML(canW) : gridHTML(canW); }
   function openCell(key) {
     const [pid, fam] = String(key || "").split("|");
     const g = famOf(fam), p = personOf(pid);
@@ -702,9 +813,11 @@
     const ac = $("#tr-act", box); if (ac) ac.onclick = () => { onlyAct = !onlyAct; paint(); };
     $$("[data-tseg]", box).forEach(b => b.onclick = () => {
       if (b.dataset.tseg === "stype") sType = b.dataset.v; else if (b.dataset.tseg === "pstate") pState = b.dataset.v;
+      else if (b.dataset.tseg === "plscope") plScope = b.dataset.v; else if (b.dataset.tseg === "plstate") plState = b.dataset.v;
       paint();
     });
     $$("[data-tgo]", box).forEach(b => b.onclick = () => { tab = b.dataset.tgo; SeMIS.renderView(); });
+    $$("[data-plretry]", box).forEach(b => b.onclick = () => { b.disabled = true; loadPledges(true).then(() => paint()); });
     $$("[data-tperson]", box).forEach(el => {
       const open = (ev) => { if (ev && ev.target.closest("a")) return; if (ev) ev.stopPropagation(); personForm(el.dataset.tperson); };
       el.onclick = open;
@@ -743,6 +856,8 @@
     const pa = $("#tr-padd", root); if (pa) pa.onclick = () => personForm("");
     const sa = $("#tr-sadd", root); if (sa) sa.onclick = () => sessionForm("", "own");
     wire(root);
+    /* SSI 서약 대조용 명단 — 받아 오면(바뀌었으면) 다시 그린다 */
+    loadPledges(false).then(ch => { if ((ch || (tab === "pledges" && PL.err)) && routeNow() === MOD) paint(); });
   }
 
   SeMIS.registerModule(MOD, {
@@ -761,14 +876,16 @@
 
   window.SemisTraining = {
     DEF_COURSES, ROLES, EIGHT, calcExpire, courses, fams, famStatus, stats, grid, missing, evidence, expireOf,
+    loadPledges, pledgeMatch, pledgeInfo, pledgesState: PL,
     syncSessionRecords, personForm, recordForm, sessionForm, coursesForm, keepOver, leftOver,
     setToday(t) { fixedToday = isISO(t) ? t : ""; },
-    getState() { return { tab, q, roleF, onlyAct, year, sType, pState }; },
+    getState() { return { tab, q, roleF, onlyAct, year, sType, pState, plScope, plState }; },
     setState(o) {
       o = o || {};
       if (o.tab) tab = o.tab; if (o.q !== undefined) q = String(o.q || "");
       if (o.roleF !== undefined) roleF = String(o.roleF || ""); if (o.onlyAct !== undefined) onlyAct = !!o.onlyAct;
       if (o.year !== undefined) year = String(o.year || ""); if (o.sType) sType = o.sType; if (o.pState) pState = o.pState;
+      if (o.plScope) plScope = o.plScope; if (o.plState) plState = o.plState;
     }
   };
 })();
