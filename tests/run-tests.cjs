@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/loginguard.js", "js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/crisis.js", "js/phonebook.js", "js/audit.js", "js/training.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
+const FILES = ["js/loginguard.js", "js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/crisis.js", "js/phonebook.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -342,11 +342,11 @@ function makeServer(opts = {}) {
     });
 
     /* ══════════ [C] 코어 — 메뉴 시드·정규화 ══════════ */
-    t("C08 메뉴 시드: 허브 6개(hub-*) · 예정 모듈 13개 이상 · 링크 5개", () => {
+    t("C08 메뉴 시드: 허브 6개(hub-*) · 예정 모듈 10개 이상 · 링크 5개", () => {
       const m = e.S.data.menus;
       eq(m.filter(x => x.type === "group").map(x => x.id).join(","), "hub-home,hub-sec,hub-saf,hub-aud,hub-ops,hub-doc");
       ok(m.filter(x => x.type === "group").every(g => e.S.ICONS[g.ico]), "허브 아이콘");
-      ok(m.filter(x => x.type === "module" && x.planned).length >= 11, "planned");
+      ok(m.filter(x => x.type === "module" && x.planned).length >= 10, "planned");
       eq(m.filter(x => x.type === "link").length, 5);
     });
     t("C09 실모듈 메뉴(dashboard/schedule/minutes/contacts/settings) 존재 · planned 아님", () => {
@@ -1365,7 +1365,7 @@ function makeServer(opts = {}) {
     const e = makeEnv({ fetch: server.fetch });
     const { Sync } = e;
     t("Y01 SYNC_KEYS 구성(계정 자료 제외)", () =>
-      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,chatRooms,vault,regulations,equipment,crisis,fleet,audits,phonebook,training"));
+      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,chatRooms,vault,regulations,equipment,crisis,fleet,audits,phonebook,training,seclog,seclogCfg"));
     t("Y02 SYNC_KEYS는 모두 freshData 컬렉션에 존재", () => Sync.SYNC_KEYS.forEach(k => ok(e.S.data[k] !== undefined, k)));
     await ta("Y03 로그인 전에는 서버를 부르지 않음 · 로그인 후 초기 pull + 쓰기 권한 있는 컬렉션만 시드", async () => {
       await Sync.start();
@@ -4429,6 +4429,226 @@ function makeServer(opts = {}) {
       const sql = read("tools/sql/semis-logi-pledges.sql");
       ok(/semis_logi_private\.rank_now\(\) < 2/.test(sql) && /grant execute on function public\.semis_logi_pledges\(\) to anon, service_role/.test(sql), "SQL 참조 사본");
       ok(!/'empId'|emp_id\b.*jsonb_build_object|'sign'/.test(sql.slice(sql.indexOf("jsonb_build_object('name'"))), "명단에 사번 · 서명 없음");
+    });
+    e.w.close();
+  }
+
+  /* ══════════ [SL] 보안 기록부 (v1.22) ══════════ */
+  {
+    const e = makeEnv();
+    const SL = e.w.SemisSeclog, A = e.w.SemisAudit;
+    const setv = (sel, v) => { const el = q(e, sel); el.value = v; return el; };
+    const chg = (el) => { el.dispatchEvent(new e.w.Event("change")); return el; };
+    const inp = (el) => { el.dispatchEvent(new e.w.Event("input")); return el; };
+    const recs = () => e.S.data.seclog;
+    /* 시험용 양식 — 점검 항목은 가짜 문구(실제 문구는 공용 DB에만) */
+    const FAKE = [
+      { id: "t-daily", name: "일일 보안점검", kind: "check", cycle: "day", items: [{ id: "i1", text: "시험 항목 A" }, { id: "i2", text: "시험 항목 B" }], evidence: ["2.7", "4.3"] },
+      { id: "t-wd", name: "평일 점검", kind: "check", cycle: "day", days: "weekday", evidence: ["5.3"] },
+      { id: "t-patrol", name: "보안 브리핑 · 순찰", kind: "patrol", cycle: "day", rounds: 3, evidence: ["5.4"] },
+      { id: "t-month", name: "위해물품 월간 점검", kind: "check", cycle: "month", evidence: ["4.2"] },
+      { id: "t-hold", name: "화물칸 보안 점검 (미주행)", kind: "flight", cycle: "event", evidence: ["9.6"] }
+    ];
+    const rec = (tid, date, extra) => Object.assign({ id: "r" + tid + date + Math.random().toString(36).slice(2, 5), tid, date, time: "09:00", by: "점검자", checks: [], result: "ok", note: "", action: "", files: [], rounds: [] }, extra || {});
+    SL.setToday("2026-10-10", "14:30"); A.setToday("2026-10-10");
+
+    t("SL01 메뉴: 예정 '안전보안 점검 일정' → 실모듈 '보안 기록부'(점검 · 교육 허브 · mgr) · 멱등 · 데이터 · 권한표 · 파일 폴더", () => {
+      const mn = e.S.data.menus.find(m => m.type === "module" && m.module === "inspection");
+      ok(mn && !mn.planned && mn.label === "보안 기록부" && mn.vis === "mgr" && mn.parent === "hub-aud");
+      const legacy = e.S.defaultMenus().map(m => m.module === "inspection" ? Object.assign({}, m, { label: "안전보안 점검 일정", icon: "🕵️", planned: true, desc: "x" }) : m);
+      const e2 = makeEnv({ preData: { version: 1, menus: legacy } });
+      const m2 = e2.S.data.menus.find(m => m.module === "inspection");
+      ok(!m2.planned && !m2.desc && m2.label === "보안 기록부" && m2.icon === "📒", "옛 예정 메뉴 전환");
+      eq(e2.S.normalizeData(), false, "멱등");
+      e2.w.close();
+      ok(Array.isArray(e.S.data.seclog) && Array.isArray(e.S.data.seclogCfg.templates), "기본 데이터");
+      eq(ACL.seclog.join(","), "2,2"); eq(ACL.seclogCfg.join(","), "2,3");
+      const edge = read("tools/edge/semis-logi-files.ts");
+      ok(/READ_RANK[\s\S]*seclog: 2[\s\S]*WRITE_RANK[\s\S]*seclog: 2/.test(edge), "파일 폴더 열람 2 · 올리기 2");
+    });
+    t("SL02 코드 양식은 뼈대뿐(점검 항목 없음) · 규정 문구가 코드에 없음", () => {
+      ok(SL.DEF_TEMPLATES.length >= 8 && SL.DEF_TEMPLATES.every(t => !t.items || !t.items.length), "항목 없음");
+      const ev = [].concat.apply([], SL.DEF_TEMPLATES.map(t => t.evidence));
+      ["2.7", "4.1", "4.2", "4.3", "5.3", "5.4", "7.2", "7.6", "9.1.2", "9.4", "9.6"].forEach(n => ok(ev.indexOf(n) >= 0, "번호 " + n));
+      const probe = ["비행", "서류"].join("");
+      ["js/seclog.js", "docs/HANDOFF.md", "README.md"].forEach(f => ok(read(f).indexOf(probe) < 0, f));
+    });
+    t("SL03 주기: 주 · 월 · 분기 · 연 키 · 평일만 · 이름", () => {
+      const T = (c, d) => ({ cycle: c, days: d || "all" });
+      eq(SL.periodOf(T("week"), "2026-10-10"), "W2026-10-05", "월요일 시작");
+      eq(SL.periodOf(T("week"), "2026-10-11"), "W2026-10-05", "일요일은 그 주");
+      eq(SL.periodOf(T("month"), "2026-10-10"), "2026-10"); eq(SL.periodOf(T("quarter"), "2026-10-10"), "2026-Q4"); eq(SL.periodOf(T("year"), "2026-10-10"), "2026");
+      eq(SL.periodsBack(T("day", "weekday"), "2026-10-12", 3).join(","), "2026-10-08,2026-10-09,2026-10-12", "주말 건너뜀");
+      eq(SL.periodsBack(T("quarter"), "2026-02-01", 3).join(","), "2025-Q3,2025-Q4,2026-Q1");
+      eq(SL.periodsBack(T("month"), "2026-01-15", 2).join(","), "2025-12,2026-01");
+      eq(SL.periodLabel(T("quarter"), "2026-Q4"), "2026 4분기"); eq(SL.periodLabel(T("day"), "2026-10-10"), "10.10(토)");
+    });
+    t("SL04 누락: 기록 시작일부터 · 이번 주기는 진행 중 · 평일만 · 순찰 최소 횟수 · 월 주기", () => {
+      e.S.data.seclogCfg = { since: "", templates: JSON.parse(JSON.stringify(FAKE)) };
+      e.S.data.seclog = [];
+      ["01", "02", "03", "04", "06", "07", "08", "09"].forEach(d => recs().push(rec("t-daily", "2026-10-" + d)));
+      recs().push(rec("t-patrol", "2026-10-09", { rounds: [{ t: "09:00" }, { t: "11:00" }, { t: "13:00" }] }));
+      recs().push(rec("t-patrol", "2026-10-08", { rounds: [{ t: "09:00" }, { t: "11:00" }] }));
+      recs().push(rec("t-wd", "2026-10-09"));
+      recs().push(rec("t-month", "2026-10-02"));
+      const tp = (id) => SL.tplOf(id);
+      const d = SL.status(tp("t-daily"));
+      eq(d.missing.map(c => c.k).join(","), "2026-10-05", "빠진 날");
+      ok(!d.cur.done && d.cur.k === "2026-10-10", "오늘은 진행 중(누락 아님)");
+      eq(d.past.length, 9, "10/1 ~ 10/9");
+      const w = SL.status(tp("t-wd"));
+      eq(w.missing.map(c => c.k).join(","), "2026-10-01,2026-10-02,2026-10-05,2026-10-06,2026-10-07,2026-10-08", "평일만(10/3 · 4 주말 제외)");
+      const pt = SL.status(tp("t-patrol"));
+      ok(pt.cells.find(c => c.k === "2026-10-08").part, "2회 → 일부");
+      ok(pt.cells.find(c => c.k === "2026-10-09").done, "3회 → 완료");
+      const mo = SL.status(tp("t-month"));
+      ok(mo.cur.done && !mo.missing.length, "이번 달 기록");
+      e.S.data.seclogCfg.since = "2026-09-01";
+      eq(SL.status(tp("t-month")).missing.map(c => c.k).join(","), "2026-09", "시작일을 앞당기면 9월 누락");
+      e.S.data.seclogCfg.since = "";
+    });
+    t("SL05 체크리스트 증빙(SemisEvidence.inspection) → 수검 대응 센터 상태", () => {
+      const ev = SL.evidence("2.7");
+      eq(ev.text, "일일 보안점검 8/9일"); ok(!ev.ok, "누락 있으면 증빙 부족");
+      eq(A.itemState({ mid: "2.7", docScore: 3, impScore: 3 }), "noev");
+      recs().push(rec("t-daily", "2026-10-05"));
+      ok(SL.evidence("2.7").ok && SL.evidence("2.7").text === "일일 보안점검 9/9일");
+      eq(A.itemState({ mid: "2.7", docScore: 3, impScore: 3 }), "ready");
+      eq(SL.evidence("9.6").text, "화물칸 보안 점검 (미주행) 0건(30일)"); ok(!SL.evidence("9.6").ok);
+      recs().push(rec("t-hold", "2026-10-03", { flight: { no: "KJ271", reg: "HL8505", dest: "LAX" } }));
+      ok(SL.evidence("9.6").ok && /1건/.test(SL.evidence("9.6").text));
+      eq(SL.evidence("5.1"), null, "관계없는 번호");
+      ok(A.routeEv("inspection", "4.2").live, "화면 연결");
+    });
+    t("SL06 기록 입력(manager): 점검 항목 문구째 저장 · 모두 적합 · 이상 → 조치 칸 · 점검자 필수 · 앞날 금지", () => {
+      loginAs(e, "manager");
+      SL.setState({ tab: "today" }); go(e, "inspection");
+      ok(q(e, "#sl-add") && !q(e, "#sl-tpl"), "manager: 기록 가능 · 양식 편집 없음");
+      q(e, '[data-sl-new="t-daily"]').click();
+      eq(qa(e, "#sl-checks li").length, 2, "양식 항목");
+      setv("#sl-by", "");
+      clickOk(e);
+      ok(q(e, "#modal-box #sl-checks"), "점검자 없으면 저장 안 됨");
+      setv("#sl-by", "홍길동");
+      clickOk(e);
+      ok(q(e, "#modal-box #sl-checks"), "결과 안 고르면 저장 안 됨");
+      q(e, "#sl-allok").click();
+      ok(q(e, "#sl-ngbox").classList.contains("hidden"));
+      q(e, '#sl-checks li[data-ci="1"] [data-v="ng"]').click();
+      ok(!q(e, "#sl-ngbox").classList.contains("hidden"), "이상 → 조치 칸");
+      setv("#sl-action", "현장 시정");
+      const before = recs().length;
+      clickOk(e);
+      eq(recs().length, before + 1);
+      const r = recs()[recs().length - 1];
+      eq(r.date, "2026-10-10"); eq(r.time, "14:30"); eq(r.by, "홍길동"); eq(r.result, "ng"); eq(r.action, "현장 시정");
+      eq(JSON.stringify(r.checks), JSON.stringify([{ t: "시험 항목 A", v: "ok" }, { t: "시험 항목 B", v: "ng" }]), "문구째");
+      e.S.data.seclogCfg.templates[0].items[0].text = "바뀐 문구";
+      SL.recordForm("", r.id);
+      ok(q(e, "#sl-checks").textContent.indexOf("시험 항목 A") >= 0, "옛 기록은 그때 문구");
+      setv("#sl-date", "2026-10-11"); clickOk(e);
+      ok(q(e, "#modal-box #sl-date"), "앞날 금지");
+      e.S.closeModal();
+      e.S.data.seclogCfg.templates[0].items[0].text = "시험 항목 A";
+    });
+    t("SL07 순찰 +1: 오늘 기록에 시각을 더한다 · 없으면 새 기록 · 최소 횟수 채우면 완료", () => {
+      loginAs(e, "manager");
+      SL.setState({ tab: "today" }); go(e, "inspection");
+      q(e, '[data-sl-round="t-patrol"]').click();
+      eq(q(e, "#sl-qt").value, "14:30");
+      setv("#sl-qb", "당직자"); clickOk(e);
+      const today = () => recs().find(r => r.tid === "t-patrol" && r.date === "2026-10-10");
+      eq(today().rounds.length, 1);
+      SL.setToday("2026-10-10", "16:30");
+      q(e, '[data-sl-round="t-patrol"]').click(); clickOk(e);
+      SL.setToday("2026-10-10", "12:30");
+      q(e, '[data-sl-round="t-patrol"]').click(); clickOk(e);
+      eq(today().rounds.map(x => x.t).join(","), "12:30,14:30,16:30", "시각 순");
+      ok(SL.status(SL.tplOf("t-patrol")).cur.done, "3회 → 완료");
+      ok(/오늘 3회 \/ 3/.test(q(e, '[data-tid="t-patrol"]').textContent), "카드");
+      const pt = e.S.data.seclogCfg.templates.find(x => x.id === "t-patrol");
+      pt.items = [{ id: "pb", text: "시험 브리핑" }];
+      SL.recordForm("t-patrol", today().id);
+      ok(/시험 브리핑/.test(q(e, "#modal-box").textContent), "순찰 +1 기록을 열면 양식 항목이 보인다");
+      e.S.closeModal(); pt.items = [];
+      SL.setToday("2026-10-10", "14:30");
+    });
+    t("SL08 편별 양식: 편명 필수 · 대문자 · 편 추가 버튼", () => {
+      loginAs(e, "manager");
+      SL.setState({ tab: "today" }); go(e, "inspection");
+      const b = q(e, '[data-sl-new="t-hold"]');
+      ok(b && /편 추가/.test(b.textContent));
+      b.click();
+      setv("#sl-by", "보안요원");
+      clickOk(e);
+      ok(q(e, "#modal-box #sl-fno"), "편명 없으면 저장 안 됨");
+      setv("#sl-fno", "kj272"); setv("#sl-freg", "hl8506"); setv("#sl-fdst", "ord");
+      clickOk(e);
+      const r = recs().filter(x => x.tid === "t-hold").pop();
+      eq(r.flight.no + "/" + r.flight.reg + "/" + r.flight.dest, "KJ272/HL8506/ORD");
+    });
+    t("SL09 기록 현황: 주기 칸 · 누락 → 사후 기록(그날로) · 기록 목록 필터 · 검색칸 유지", () => {
+      loginAs(e, "manager");
+      recs().push(rec("t-wd", "2026-10-08"));
+      SL.setState({ tab: "status" }); go(e, "inspection");
+      const cells = qa(e, '[data-sl-cell^="t-daily|"]');
+      eq(cells.length, 10, "10/1 ~ 10/10");
+      eq(cells[cells.length - 1].dataset.c, "ng", "오늘 이상 있음");
+      const late = q(e, '[data-sl-late="t-wd|2026-10-07"]');
+      ok(late, "누락 버튼");
+      late.click();
+      eq(q(e, "#sl-date").value, "2026-10-07", "사후 기록 날짜");
+      e.S.closeModal();
+      SL.setState({ tab: "list", q: "", fTid: "", fMonth: "", fNG: false }); go(e, "inspection");
+      const n0 = qa(e, "tr[data-slid]").length;
+      ok(n0 >= 10);
+      q(e, "#sl-fng").click();
+      ok(qa(e, "tr[data-slid]").length === 1, "이상만");
+      q(e, "#sl-fng").click();
+      const qi = q(e, "#sl-q"); qi.value = "KJ272"; inp(qi);
+      eq(qa(e, "tr[data-slid]").length, 1, "편명 검색");
+      ok(q(e, "#sl-q") === qi, "검색칸 유지");
+      qi.value = ""; inp(qi);
+      chg(setv("#sl-ftid", "t-patrol"));
+      eq(qa(e, "tr[data-slid]").length, 3, "양식 필터");
+      ok(/순찰 3회/.test(q(e, "tr[data-slid]").textContent));
+      ok(q(e, "[data-print-btn]"), "Print 버튼");
+      SL.setState({ fTid: "" });
+    });
+    t("SL10 점검 양식(hq): 항목 줄 편집 · 기록 있는 양식은 삭제 불가 · 시작일 저장 · user 는 메뉴 없음", () => {
+      loginAs(e, "hq");
+      SL.setState({ tab: "today" }); go(e, "inspection");
+      q(e, "#sl-tpl").click();
+      const rows = qa(e, "#sl-tpls .sl-tpl");
+      eq(rows.length, FAKE.length);
+      ok(!rows[0].querySelector("[data-tdel]"), "기록 있는 양식은 삭제 버튼 없음");
+      rows[0].querySelector('[data-k="items"]').value = "시험 항목 A\n시험 항목 C";
+      q(e, "#sl-tadd").click();
+      const last = qa(e, "#sl-tpls .sl-tpl").pop();
+      last.querySelector('[data-k="name"]').value = "새 양식";
+      last.querySelector('[data-k="evidence"]').value = "2.7, x, 9.1.2";
+      clickOk(e);
+      const c = e.S.data.seclogCfg;
+      eq(c.since, "2026-10-01", "첫 저장 시작일 = 첫 기록일(이미 쌓인 누락을 지우지 않음)");
+      const t0 = c.templates.find(t => t.id === "t-daily");
+      eq(t0.items.map(i => i.text).join("|"), "시험 항목 A|시험 항목 C"); eq(t0.items[0].id, "i1", "같은 문구는 id 유지");
+      eq(c.templates.find(t => t.name === "새 양식").evidence.join(","), "2.7,9.1.2", "번호만");
+      loginAs(e, "user"); go(e, "inspection");
+      ok(!q(e, "#sl-body"), "user 권한 없음");
+      loginAs(e, "manager");
+      eq(String(e.w.SeMIS.data.menus.find(m => m.module === "inspection") && "ok"), "ok");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    t("SL11 메뉴 배지 · 오늘 화면 요약 · 통합 검색", () => {
+      loginAs(e, "manager");
+      SL.setState({ tab: "today" }); go(e, "inspection");
+      const st = q(e, "#sl-body .stat-row").textContent;
+      ok(/이번 주기 미기록/.test(st) && /누락/.test(st));
+      ok(qa(e, ".sl-card").length >= 5, "양식 카드");
+      const badge = e.w.SeMIS.data && SL.missCount();
+      ok(badge >= 1, "누락 수");
+      const r = e.w.SemisSearch.search ? e.w.SemisSearch.search("KJ272") : [];
+      ok(r.some(x => x.group === "보안 기록부"), "검색");
     });
     e.w.close();
   }

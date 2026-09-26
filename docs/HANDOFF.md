@@ -6,10 +6,10 @@
 
 | 항목 | 값 |
 |---|---|
-| 현재 버전 | **v1.21.0** (2026-09-27) — 보안교육 · 자격 관리 **SSI 서약 탭**(SeMIS v2 보안서약서 명단 조회 · 인원 SSI 서약 자동 대조 · 인천화물팀/전사 A4 명단) · v1.20.0 **보안교육 · 자격 관리**(당사 인원 이수 현황 · 교육 기록 8항목 · 협력사 교육 확인 · SSI 서약 · 체크리스트 증빙 자동 판정) · v1.19.0 수검 대응 센터 **점검 체크리스트**(점검관용 CHK-LIST 9영역 70항목 원본 · 문서/시행 0~4점 · N/A · 준비율 · 근거 요지(hq) · 점검관용 A4 인쇄 · 증빙 화면 연결) · v1.18.0 **업무 연락처**(협력 · 비상 허브, 현장 · 협력사 · 유관기관 58건 · 구역 9 · 확인 필요 9) · v1.17.1 로그인 창 보호(앱 준비 전 제출 → 새로고침되던 문제) · v1.17.0 **수검 대응 센터**(국토부 · 해외 당국 · 화주 · 사내 심사 수검의 준비 · 증빙 · 지적 조치 · 재발 추적) · v1.16 로그인 자동공격 방어 · v1.15 서버 보안 위 |
+| 현재 버전 | **v1.22.0** (2026-09-27) — **보안 기록부**(일일 보안점검 · 브리핑/순찰 · ULD 적재 전 확인 · 위해물품 월간 · 정기 · 불시 · 미주행 자체감사/주기 경비/화물칸 점검 · 관리책임자 지정 — 주기별 기록 · 누락 칸 · 사후 기록 · 체크리스트 증빙 자동 판정) · v1.21.0 보안교육 · 자격 관리 **SSI 서약 탭**(SeMIS v2 보안서약서 명단 조회 · 인원 SSI 서약 자동 대조 · 인천화물팀/전사 A4 명단) · v1.20.0 **보안교육 · 자격 관리**(당사 인원 이수 현황 · 교육 기록 8항목 · 협력사 교육 확인 · SSI 서약 · 체크리스트 증빙 자동 판정) · v1.19.0 수검 대응 센터 **점검 체크리스트**(점검관용 CHK-LIST 9영역 70항목 원본 · 문서/시행 0~4점 · N/A · 준비율 · 근거 요지(hq) · 점검관용 A4 인쇄 · 증빙 화면 연결) · v1.18.0 **업무 연락처**(협력 · 비상 허브, 현장 · 협력사 · 유관기관 58건 · 구역 9 · 확인 필요 9) · v1.17.1 로그인 창 보호(앱 준비 전 제출 → 새로고침되던 문제) · v1.17.0 **수검 대응 센터**(국토부 · 해외 당국 · 화주 · 사내 심사 수검의 준비 · 증빙 · 지적 조치 · 재발 추적) · v1.16 로그인 자동공격 방어 · v1.15 서버 보안 위 |
 | 접속 주소 | https://mark4mission.github.io/semis-logistics/ |
 | 저장소 | GitHub `Mark4mission/semis-logistics` (공개) · Mac `~/SeMIS_Logistics` |
-| 테스트 | `npm test` 329건 전부 통과 (가짜 서버로 로그인(작업증명 포함)·RLS·파일 함수 흉내 · 코드에 해시·토큰 없음) |
+| 테스트 | `npm test` 340건 전부 통과 (가짜 서버로 로그인(작업증명 포함)·RLS·파일 함수 흉내 · 코드에 해시·토큰 없음) |
 | 백엔드 | Supabase `mzyuzrxkdcpzxojenwat` — 테이블 `semis_logi_store`(세션 RLS), **비공개** 버킷 `semis-logi-files`, 비공개 스키마 `semis_logi_private`(계정 · 세션 · 로그인 시도 · 접속 기록 · 권한표), RPC `semis_logi_*`, Edge Function `semis-logi-files`(서명 URL) · 운항 현황: Edge Function `semis-logi-adsb` + 테이블 `semis_logi_adsb` · `semis_logi_adsb_events` + pg_cron 2분 |
 
 ## 2. 새 세션 시작
@@ -60,6 +60,7 @@ Claude가 할 일(순서대로):
 | contacts | contacts.js | mgr (편집 hq) | 비상연락망 · 보고체계 (2026-09-22 SeMIS v2 연락망 69건 이관 — 12섹션 78행) · **보고 체계도 탭**(v1.10: 보안사고 20 · 안전사고 18 · 위험물사고 29행, 미리보기 → 전체 화면 뷰어) |
 | vault | vault.js | hq | 암호 관리 (AES-256-GCM, 5분 자동 잠금, 공용/개인용 — 개인용은 본인 키로만 해독) |
 | training | training.js | mgr (편집 hq) | **보안교육 · 자격 관리**(v1.20, 예정 training + certs 통합) — 탭 3개: 이수 현황(당사 재직 인원 × 교육 묶음 표 — 유효 · 임박(60일) · 만료 · 미이수, SSI 서약, 만료 · 임박 목록, 직무 필터 · 조치 필요만) / 교육 기록(당사 실시 = 기록 8항목(명칭 · 일시 · 장소 · 시간 · 교관 · 시간표 · 평가결과 · 참석자 명단/서명) 누락 표시 · 참석자 → 개인 이수 자동 · 협력사 확인 = 업체 · 과정 · 확인일 · 대상/이수 인원 · 결과 파일, 보관 3년 경과 표시) / 인원(직무 · 재직/퇴직 · 퇴직 후 90일 보관 기한 · SSI 서약일 · 서약서 · 개인 이수 기록). 과정 관리(hq): 이름 · 초기/정기 · 묶음 · 주기(개월) · 대상 직무 · 전 직원 · 협력사용. 메뉴 배지(만료 + 임박 + 서약 누락) · 통합 검색 · 390px 카드 · A4 인쇄 · **수검 체크리스트 증빙 판정**(`window.SemisEvidence.training`) · **SSI 서약 탭(v1.21)**: SeMIS v2 보안서약서 명단(RPC `semis_logi_pledges`, 사람별 최신 1건의 성명 · 소속 · 직위 · 서약일 · 상태 · 횟수 — 사번 · 서명 없음) 조회 · 인천화물팀(인원 명단 대조 + 소속 '인천화물') / 전사 · 유효 / 전체 · 검색 · SSI 취급자 서약 누락 목록 · A4 명단(print-only 표). 인원의 SSI 서약 = SeMIS 명단(이름, 동명이인은 소속) 또는 인원에 입력한 서약일 중 늦은 것 |
+| inspection | seclog.js | mgr (양식 hq) | **보안 기록부**(v1.22, 예정 '안전보안 점검 일정' 대체 · 점검 · 교육 허브) — 탭 3개: 오늘(이번 주기 미기록 · 지난 주기 누락 · 오늘 기록 · 이상(30일) 요약 + 양식별 카드: 기록 · 순찰 +1 · 편 추가) / 기록 현황(양식별 주기 칸 띠 — 기록 · 이상 있음 · 일부 · 누락 · 진행 중, 누락 날짜 칩 → 그날로 사후 기록) / 기록 목록(양식 · 기간 · 이상만 · 검색, A4 인쇄). 기록 = 일자 · 시각 · 점검자 · 항목별 적합/이상/해당 없음(항목 문구째 저장) · 이상 → 조치 · 순찰 시각들 · 편명/등록부호/목적지 · 사진/파일. 점검 양식(hq): 이름 · 종류(점검/순찰/편별/문서) · 주기(매일 · 평일 · 매주 · 매월 · 분기 · 연 1회 이상 · 수시) · 항목 · 순찰 최소 횟수 · 증빙 항목 번호 · 사용 여부. 메뉴 배지(이번 주기 미기록 + 이상) · 통합 검색 · 390px · **수검 체크리스트 증빙**(`window.SemisEvidence.inspection`: 2.7 · 4.1 · 4.2 · 4.3 · 5.3 · 5.4 · 7.2 · 7.6 · 9.1.2 · 9.4 · 9.6) |
 | audit | audit.js | mgr (편집 hq) | **수검 대응 센터**(v1.17, M1) — 외부·사내 점검을 받는 쪽의 준비 → 수검 → 지적 조치 → 종결. 구분 3종(국토부 · 지방항공청 / 해외 당국 · 화주 / 사내 심사). 수검 일정 탭(다음 수검 D-day · 준비 진행 · 미결 지적 · 기한 경과 · 올해 수검, 구분 · 진행 필터) · 지적사항 탭(전 수검 지적 한 표, 미결 · 기한 경과 · 완료) · 상세(기본 정보 · 공문/결과 첨부 · **점검 체크리스트(v1.19)**(원본에서 영역 골라 불러오기 · 항목별 문서/시행 점수 0~4 · N/A · 의견 · 증빙 파일/화면 · 상태(준비됨 · 증빙 없음 · 보완 필요 · 미평가) · 영역별 소계 · 평균 · 준비율 · 영역/상태 필터 · 근거 요지(hq) · 점검관용 A4 표) · 지적사항(시정조치 · 개선권고 · 현장시정 · 관찰사항, 조항 · 조치 · 담당 · 기한 · 상태 · 증빙)). 같은 조항이 2개 이상 수검에서 지적되면 '재발'. 일정관리 연동(수검 기간 · 지적 기한). 대시보드 띠(mgr, 60일 안 수검 또는 미결 지적이 있을 때만) · 메뉴 배지(미결 지적) · 통합 검색 · 390px 행 카드 · A4 인쇄 |
 | settings | modules.js | admin | 메뉴(숨기기 포함) · 사용자(서버 계정 RPC) · 담당자 · 데이터(변경 이력 복원 — 관리자 RPC) · 저장소(파일 함수) · **보안**(접속 중 · 접속 기록 · 다른 접속 모두 끊기, v1.15) |
 | scr-status | screening.js · cares.js | mgr | 화물 보안검색 현황 — 검색 라인 배치(검색대별 X-ray·ETD · 환적·예비) · 오늘 일일점검 · 장비 × 28일 점검 이행(+주간·월간 최근일) · 센서 3곳 × 지표 + 결로 판정 · 최근 고장. 대시보드 4칸 요약 띠(mgr) |
@@ -72,7 +73,7 @@ Claude가 할 일(순서대로):
 | 홈 (hub-home) | board 안전보안 현황판 (mgr) |
 | 화물 보안 (hub-sec) | kc-ra 상용화주·RA 관리 (hq) · access 보안구역 출입 관리 (mgr) |
 | 안전 관리 (hub-saf) | daily-safety 일일 안전점검 (mgr) · risk 위험성 평가 (hq) · incident 사고·아차사고 보고 (mgr) · gse 지상조업(GSE) 안전 (mgr) |
-| 점검 · 교육 (hub-aud) | inspection 안전보안 점검 일정 (mgr — 2단계에서 '보안 기록부'로 대체 예정) · car 시정조치 CAR (hq) |
+| 점검 · 교육 (hub-aud) | car 시정조치 CAR (hq) |
 | 협력 · 비상 (hub-ops) | partners 조업사·협력사 현황 (mgr) · contracts 계약서 관리 (hq) |
 
 **현재 개발 순서는 프로젝트 문서 `claude/logistics-checklist-plan.md`(체크리스트 커버리지 순)를 따른다.** 옛 권장 순서(DESIGN.md §9-6): ① car · inspection · training · certs → ② access · contracts → ③ 안전 관리 4종 → ④ kc-ra · partners → ⑤ board. (scr-status · scr-equip은 v1.12에서 완료)
@@ -83,7 +84,7 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 
 ## 5. 데이터 · 백엔드
 
-- **SYNC_KEYS(20)**: menus · notices · schedules · assignees · assigneesSeeded · minutes · minuteFolders · levelHistory · safetyBoard · contacts · gcal · chatRooms · vault · regulations · equipment · crisis · fleet · audits · phonebook · training (계정 자료 pwOverrides·userOverrides·customUsers는 v1.15에 서버 전용 표로 이관·삭제)
+- **SYNC_KEYS(22)**: menus · notices · schedules · assignees · assigneesSeeded · minutes · minuteFolders · levelHistory · safetyBoard · contacts · gcal · chatRooms · vault · regulations · equipment · crisis · fleet · audits · phonebook · training · seclog · seclogCfg (계정 자료 pwOverrides·userOverrides·customUsers는 v1.15에 서버 전용 표로 이관·삭제)
 - SYNC_KEYS 밖 설정 행: `caresCfg`(CARES Firebase 웹 키 — `SemisSync.fetchKV`로만 읽음, 앱이 쓰지 않음) · `auditMaster`(v1.19 수검 체크리스트 원본 — 민감보안정보, 권한표 읽기 3 · 쓰기 9, hq가 상세를 열 때 `fetchKV`로 받아 메모리에만 둠)
 - 신규 컬렉션 추가 시: `freshData()` 기본값 → `normalizeData()` 보정(멱등) → `sync.js` SYNC_KEYS → 테스트 Y01 기대 문자열 갱신 → **서버 권한표 등록**(아래)
 - **서버 보안(v1.15)** — 원본 SQL `tools/sql/semis-logi-security.sql`(1단계) · `tools/sql/semis-logi-lockdown.sql`(2단계 잠금). 실제 적용은 마이그레이션 `semis_logi_security_1~6`(6 = RPC 실행 권한: public `semis_logi_*`는 anon·service_role만, authenticated 차단)
@@ -95,7 +96,7 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
   - 관리자 RPC: `semis_logi_users` · `semis_logi_user_save(p)` · `semis_logi_user_delete` · `semis_logi_set_password`(다른 접속 끊김) · `semis_logi_history` · `semis_logi_history_value` · `semis_logi_security`(접속 중 · 기록) · `semis_logi_end_sessions`. 회의 서명: `semis_logi_sign_submit`(그 회의 한 건만 수정 — signer 세션은 공용 DB 직접 조회 불가)
   - 계정 표는 SQL(서비스 권한)로만 직접 볼 수 있다: `select id, login_id, role, last_login_at from semis_logi_private.accounts`
 - **데이터 사본**: `sessionStorage semisl:data`(탭 단위 — 탭을 닫거나 로그아웃하면 사라짐) · 캐시 주인 `semisl:owner`(다른 계정이 로그인하면 비움) · 읽을 권한이 없는 컬렉션은 로그인 때 기본값으로 비운다. pending 큐 · 강제 push 표시도 sessionStorage. 옛 버전의 `localStorage semisl:data`는 시작할 때 지운다
-- **파일(v1.15)**: 버킷 비공개. 저장값은 표준 주소(`…/object/public/semis-logi-files/경로`) 그대로. `js/fileauth.js`(SemisFileAuth)가 화면의 img · iframe · a 등을 서명 URL(1시간)로 바꿔 끼우고(원래 주소는 `data-sf`), 서명 전 링크는 새 창을 먼저 연 뒤 보낸다. 서명·업로드·목록·삭제는 Edge Function `semis-logi-files`(원본 `tools/edge/semis-logi-files.ts`, verify_jwt false — 세션은 `semis_logi_file_auth()`로 확인). 폴더 등급: 열람 notices·attach·minutes·minutes-sign 1 / schedules·contacts·crisis·regs·regs-diff·audits·training 2 / 그 밖 3, 올리기 minutes·minutes-sign 2(서명 세션은 minutes-sign만) / 나머지 3. 업로드 경로는 함수가 정한다(무작위 접두사). html·js 형식은 거부, 50MB 제한
+- **파일(v1.15)**: 버킷 비공개. 저장값은 표준 주소(`…/object/public/semis-logi-files/경로`) 그대로. `js/fileauth.js`(SemisFileAuth)가 화면의 img · iframe · a 등을 서명 URL(1시간)로 바꿔 끼우고(원래 주소는 `data-sf`), 서명 전 링크는 새 창을 먼저 연 뒤 보낸다. 서명·업로드·목록·삭제는 Edge Function `semis-logi-files`(원본 `tools/edge/semis-logi-files.ts`, verify_jwt false — 세션은 `semis_logi_file_auth()`로 확인). 폴더 등급: 열람 notices·attach·minutes·minutes-sign 1 / schedules·contacts·crisis·regs·regs-diff·audits·training·seclog 2 / 그 밖 3, 올리기 minutes·minutes-sign·seclog 2(서명 세션은 minutes-sign만) / 나머지 3. 업로드 경로는 함수가 정한다(무작위 접두사). html·js 형식은 거부, 50MB 제한
 - **대량 삭제 방어**(sync.js `guardWipe`): 2건 이상 → 0건 push 차단. 정상 전체 삭제는 `SemisSync.confirmWipe(key)`
 - **서버 자동 백업**: 트리거가 모든 변경 직전 값을 `public.semis_store_history`에 90일 보관 → 시스템 설정 › 데이터 관리 › 변경 이력에서 복원
 - 규정 PDF: `semis-logi-files/regs/` (v1.15부터 비공개 — 서명 URL). 2026-09-20 등록 18건(안전관리 16 · DG 2)
@@ -167,7 +168,7 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
   - 불러오기: 상세 '체크리스트 불러오기'(또는 수검 등록 폼 '점검 체크리스트 불러오기') → 영역 선택(기본: 국토부 1~8 · 해외 당국 6 · 7 · 9 · 사내 전체) → text · ref 만 `audits[].checklist` 로 복사(basis는 복사 안 함). 이미 있는 번호는 건너뛰고, 원본 항목은 번호 순 · 직접 추가 항목은 뒤. 사용 흔적 없는 옛 항목(v1.17 기본 문구 등)은 '사용하지 않은 기존 항목 빼기'로 정리
   - 항목 = { id, mid, sec, text, ref, owner, note(의견 · 비고), docScore, impScore(0 시정조치 · 1 개선권고 · 2 현장시정-보완 · 3 적합 · 4 우수 | null), na, files[], links[]? } + 수검에 `chkSecs[{no,title}]` · `chkSrc{title,asOf,ssi}`. 옛 `done` 은 쓰지 않는다
   - 상태: N/A → 미평가(둘 중 하나라도 빈칸) → 보완 필요(3점 미만) → 증빙 없음 → **준비됨**(증빙 있음 + 문서 · 시행 3점 이상). 준비율 = 준비됨 ÷ N/A 제외 항목(목록 · 대시보드 띠도 같은 값)
-  - **증빙 화면 연결(evidence map)**: `js/audit.js EVIDENCE`(화면 → 항목 번호). 연결된 화면이 열린 메뉴(registerModule)이면 '증빙 있음' — 준비 중 메뉴는 점선 칩 '준비 중'. 항목 수정에서 바꾸면 그 수검 항목의 `links[]`가 우선(기본값과 같게 되돌리면 지움 → 코드 기본값을 따름). **새 메뉴를 만들면 EVIDENCE 에 번호를 넣고 ROUTE_NAME 을 정리**할 것. 아직 없는 화면 id: `sec-cases`(보안 처리 대장) · `inspection`(보안 기록부로 대체 예정) · `training`(보안교육 · 자격 관리) · `partners`(협력사 · 보안용역 관리) · `kc-ra`
+  - **증빙 화면 연결(evidence map)**: `js/audit.js EVIDENCE`(화면 → 항목 번호). 연결된 화면이 열린 메뉴(registerModule)이면 '증빙 있음' — 준비 중 메뉴는 점선 칩 '준비 중'. 항목 수정에서 바꾸면 그 수검 항목의 `links[]`가 우선(기본값과 같게 되돌리면 지움 → 코드 기본값을 따름). **새 메뉴를 만들면 EVIDENCE 에 번호를 넣고 ROUTE_NAME 을 정리**할 것. 아직 없는 화면 id: `sec-cases`(보안 처리 대장) · `partners`(협력사 · 보안용역 관리) · `kc-ra`
   - 근거 요지 보기는 hq 이상(원본을 받을 수 있는 권한) — 모달에만 표시, 인쇄 · 수검 기록에 남지 않음
   - A4 인쇄: 화면 목록 대신 점검관용 열(CHK-LIST 항목 · 관련근거 · 문서 · 시행 · N/A · 비고)의 표 + 영역별 소계(합/만점 · 평균 · 준비) + 합계 + 취급 주의 문구(원본 ssi)
   - 이번에 함께 고친 것: 회의록 조치 일정 동기화가 일정관리 자동 연기로 밀린 날짜를 되돌려 **접속할 때마다 schedules 저장이 반복**될 수 있던 문제(SeMIS v2.53에서 같은 문제 수정 — minutes.js syncDecisions)
@@ -184,6 +185,11 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 - **SSI 서약 연동(v1.21, 2026-09-27)** — 보안서약서 원본은 SeMIS v2(비공개 표 `semis_v2_private.pledges`, 모듈 '비밀 취급 / SSI', 작성 화면 `semis.pe.kr/pledge.html`). Logistics는 RPC `semis_logi_pledges`(manager 이상, 참고 사본 `tools/sql/semis-logi-pledges.sql`, 적용은 v2 마이그레이션 `semis_v2_security_14_pledges`)로 **읽기만** 한다. 명단은 메모리에만(10분 기억 · 실패 후 1분 재시도 안 함 — 증빙 판정 · 화면 다시 그리기와 맞물린 반복 호출 방지). 사번 · 서명이 들어간 국토부 제출용 명단은 v2에서 출력
   - 대조 규칙(`pledgeMatch`): 이름(공백 무시)이 같은 서약 1건 → 그 서약 / 2건 이상 → 인원 소속과 서로 포함되는 1건 / 그래도 못 가리면 '동명이인'(누락으로 셈, 현황 · 인원 표에 표시). 상태가 퇴직 · 전출 · 무효인 서약은 유효로 치지 않는다. 인원의 `pledge`(직접 입력)는 명단에 없는 종이 서약 등 — 둘 다 있으면 늦은 날짜
   - 체크리스트 2.10 · 2.10.1 증빙(`SemisEvidence.training`)도 같은 판정. 수검 대응 센터가 먼저 열리면 증빙 판정이 명단을 받아 온 뒤 화면을 한 번 다시 그린다
+- **보안 기록부(v1.22, 2026-09-27)** — 데이터 `seclog` = [{id,tid,date,time,by,checks[{t,v(ok|ng|na|"")}],result(ok|ng),note,action,rounds[{t,by,note}],flight{no,reg,dest},files[],createdAt/By,updatedAt/By}], `seclogCfg` = {since, templates[{id,name,kind(check|patrol|flight|doc),cycle(day|week|month|quarter|year|event),days(all|weekday),items[{id,text}],rounds,photo,evidence[],active,order,note}]}. 권한표 seclog (2,2) · seclogCfg (2,3) — 마이그레이션 `semis_logi_security_11_seclog`. 파일 폴더 `seclog/` 열람 2 · 올리기 2(Edge Function v4)
+  - **코드의 양식 `DEF_TEMPLATES`는 뼈대(이름 · 주기 · 증빙 번호)만** — 점검 항목 문구는 SSI 원본(체크리스트 근거)에서 뽑은 것이라 공용 DB `seclogCfg`에만 둔다(2026-09-27 초기 입력, hq가 점검 양식에서 고침). `seclogCfg.templates`가 비면 뼈대로 돈다. 테스트 SL02가 코드에 규정 문구가 없는지 확인
+  - 기록은 항목 문구째 저장 → 양식 항목을 고쳐도 옛 기록은 그대로. 순찰 +1(오늘 기록에 시각만 더함) 기록을 열면 양식 항목이 채워진다
+  - 누락은 `since`(양식을 처음 저장한 날 = 그때까지의 첫 기록일, 기록이 없으면 그날)부터 셈. 최근 30일 · 13주 · 12개월 · 4분기 · 2년만 칸으로. 이번 주기는 '진행 중'. 평일 양식은 토 · 일만 뺌(공휴일 미반영). 편별 · 수시는 최근 기간 건수만
+  - 체크리스트 증빙(`evidence(번호)`): 번호가 걸린 양식마다 주기 양식은 '기록 k/n일(주 · 개월 · 분기 · 년)'(지난 주기 누락 0이면 충족, 지난 주기가 아직 없으면 이번 주기 기록 여부), 편별 · 문서 · 수시는 최근 건수(편별 30일 · 그 밖 1년, 1건 이상 충족). 걸린 양식이 모두 충족이어야 '증빙 있음'
 
 ## 8. 작업 기록
 
@@ -216,6 +222,7 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 | v1.16.0 | 09-26 | **로그인 자동공격 방어** — reCAPTCHA 대신 보이지 않는 작업증명: 서버 서명 문제(2분 · 1회용)를 로그인 창에서 Web Worker가 미리 풀어 첨부(js/pow.js, v2와 같은 파일) · 전체 실패가 늘면 난이도 자동 상향 · 6자리 회의 서명 코드 실패 급증 시 15분 중지 · 보안 탭 실패 통계 · 로그인 안내 문구(제한 · 중지 · 확인 실패) · CSP worker-src · 라이브 확인(해답 없는 로그인 거부, 로그인 1.6초) 후 임시 계정·기록 삭제 |
 | v1.17.0 | 09-26 | **수검 대응 센터**(M1) — 국토부 · 지방항공청 / 해외 당국 · 화주 / 사내 심사 수검을 준비 → 수검 → 지적 조치 → 종결로 관리. 수검 일정 · 지적사항 탭, 상세(준비 체크리스트 · 증빙 파일 · 지적사항), 재발 조항 표시, 일정관리 양방향 연동, 대시보드 띠 · 메뉴 배지 · 통합 검색 · 390px · A4 인쇄. 서버: 권한표 audits 2/3 · 파일 폴더 audits. 회의록 조치 일정 자동 연기 되돌림 수정 |
 | v1.17.1 | 09-26 | **로그인 창 보호** — 로그인 창이 뜬 뒤 스크립트가 다 읽힐 때까지(수 초) Enter·로그인을 누르면 폼이 그대로 전송돼 새로고침되고 암호가 지워져 두세 번 눌러야 접속되던 문제. `<head>` 의 `js/loginguard.js` 가 그 제출을 붙잡아 두고 앱이 준비되면 이어서 로그인 · 본문 스크립트 전부 `defer`(병렬 적재) |
+| v1.22.0 | 09-27 | **보안 기록부**(2단계-2) — 예정 '안전보안 점검 일정'을 실모듈로. 일일 · 순찰 · ULD · 위해물품 월간 · 정기 · 불시 · 미주행 3종 · 관리책임자 지정 양식(뼈대 코드 · 항목은 DB) · 주기별 기록 현황과 누락 → 사후 기록 · 순찰 +1 · 편별 기록 · 이상 → 조치 · 기록 목록 A4 · 배지 · 검색 · 체크리스트 증빙 11항목 자동 판정. 서버: 권한표 seclog 2/2 · seclogCfg 2/3 · 파일 폴더 seclog. 테스트 SL01~SL11 (340 통과) |
 | v1.21.0 | 09-27 | **SSI 서약 연동** — SeMIS v2 보안서약서 관리(v2.55, 시트 119건 이관 · 작성 화면 이전) 명단을 보안교육 · 자격 관리 'SSI 서약' 탭에서 조회(인천화물팀 / 전사 · 유효 / 전체 · 검색 · 누락 목록 · A4 명단). 인원 SSI 서약 · 체크리스트 2.10/2.10.1 증빙을 명단과 자동 대조(동명이인은 소속으로). 서버 RPC `semis_logi_pledges`(v2 마이그레이션). 테스트 TR11~TR13 (329 통과) |
 | v1.20.0 | 09-26 | **보안교육 · 자격 관리**(2단계-1) — 예정 교육 관리 + 이수증 관리 통합. 이수 현황(인원 × 교육 묶음 유효 · 임박 · 만료 · 미이수, SSI 서약) · 교육 기록(당사 8항목 누락 표시 · 참석자 → 이수 자동 / 협력사 업체별 확인) · 인원(퇴직 후 90일 보관 기한) · 과정 관리 · 배지 · 검색. 수검 체크리스트 증빙을 실제 기록으로 판정(SemisEvidence). 서버: 권한표 training 2/3 · 파일 폴더 training · v2 이수증 4건 이관. 테스트 TR01~TR10 (326 통과) |
 | v1.19.0 | 09-26 | **수검 대응 센터 점검 체크리스트** — 임의 기본 문구(TEMPLATES) 삭제 → 점검관용 CHK-LIST 원본(9영역 70항목, 공용 DB `auditMaster` · 권한표 3/9 · 민감보안정보라 코드에 없음)에서 영역을 골라 불러오기. 항목별 문서/시행 0~4점 · N/A · 의견 · 증빙(파일 · 화면 연결) · 상태, 영역별 소계 · 평균 · 준비율, KPI 필터, 근거 요지(hq), 점검관용 A4 표. 390px(번호를 본문 앞으로, 점수 두 칸 나란히). 테스트 AU03~AU05d · AU15 (316 통과) |

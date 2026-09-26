@@ -8,7 +8,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.21.0";
+  const VERSION = "1.22.0";
   const APP_NAME = "SeMIS · Logistics";
   /* v1.15: 데이터 캐시는 이 탭의 sessionStorage 에만 둔다(탭을 닫거나 로그아웃하면 사라짐).
      화면 설정(LS_UI)만 localStorage. */
@@ -221,8 +221,7 @@ const SeMIS = (() => {
 
       h("hub-aud", "점검 · 교육", "clipboard"),
       m("audit", "수검 대응 센터", "🗂️", "audit", "mgr", "hub-aud"),
-      p("inspection", "안전보안 점검 일정", "🕵️", "inspection", "mgr", "hub-aud",
-        "내부 점검·외부 감사(국토부·공항공사·본사 안전심사) 연간 일정과 결과를 관리하고 일정관리와 연동합니다."),
+      m("inspection", "보안 기록부", "📒", "inspection", "mgr", "hub-aud"),
       p("car", "시정조치 (CAR)", "📋", "car", "hq", "hub-aud",
         "점검·감사에서 나온 부적합을 접수 → 조치중 → 종결 3단계로 추적하고 기한 경과를 에스컬레이션합니다."),
       m("training", "보안교육 · 자격 관리", "🎓", "training", "mgr", "hub-aud"),
@@ -325,6 +324,8 @@ const SeMIS = (() => {
       equipment: [],     // 검색장비 대장 (상태·고장·점검은 CARES 실시간 — js/cares.js)
       audits: [],        // 수검 대응 센터 (v1.17 — js/audit.js)
       training: { courses: [], people: [], records: [], sessions: [] }, // 보안교육 · 자격 관리 (v1.20 — 명부는 공용 DB만)
+      seclog: [],                                   // 보안 기록부 기록 (v1.22 — js/seclog.js)
+      seclogCfg: { since: "", templates: [] },      // 보안 기록부 점검 양식 (비면 코드 뼈대 — 점검 항목은 공용 DB만)
       chatRooms: []      // (예약) 팀 채팅방
     };
   }
@@ -508,6 +509,17 @@ const SeMIS = (() => {
       if (tr) { if (tr.planned) { delete tr.planned; delete tr.desc; } if (tr.label === "안전보안 교육 관리") tr.label = "보안교육 · 자격 관리"; }
       const ci = DATA.menus.findIndex(m => m.type === "module" && m.module === "certs" && m.planned);
       if (ci >= 0) DATA.menus.splice(ci, 1);
+    })();
+    // 보안 기록부 (v1.22) — 구조만 보정 · 예정 메뉴 '안전보안 점검 일정' → 실모듈 '보안 기록부'(운영자가 바꾼 이름은 유지)
+    DATA.seclog = (Array.isArray(DATA.seclog) ? DATA.seclog : []).filter(x => x && typeof x === "object" && x.id);
+    if (!DATA.seclogCfg || typeof DATA.seclogCfg !== "object" || Array.isArray(DATA.seclogCfg)) DATA.seclogCfg = { since: "", templates: [] };
+    if (!Array.isArray(DATA.seclogCfg.templates)) DATA.seclogCfg.templates = [];
+    (() => {
+      const ins = DATA.menus.find(m => m.type === "module" && m.module === "inspection");
+      if (!ins) return;
+      if (ins.planned) { delete ins.planned; delete ins.desc; }
+      if (ins.label === "안전보안 점검 일정") ins.label = "보안 기록부";
+      if (ins.icon === "🕵️") ins.icon = "📒";
     })();
     DATA.equipment.forEach(x => { if (!Array.isArray(x.logs)) x.logs = []; });
     ["reg-sec", "reg-safety", "reg-dg", "scr-status", "scr-equip"].forEach(id => {
@@ -928,7 +940,7 @@ const SeMIS = (() => {
   const VIEW_WIDTH = {
     schedule: "wide", dashboard: "wide", board: "wide", flight: "wide",
     minutes: "mid", contacts: "mid", crisis: "mid", phonebook: "mid", settings: "mid", vault: "mid",
-    "reg-sec": "mid", "reg-safety": "mid", "reg-dg": "mid", "scr-status": "mid", "scr-equip": "mid", audit: "mid"
+    "reg-sec": "mid", "reg-safety": "mid", "reg-dg": "mid", "scr-status": "mid", "scr-equip": "mid", audit: "mid", inspection: "mid"
   };
   function applyViewWidth(view, route) {
     const r = String(route);

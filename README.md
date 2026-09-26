@@ -27,6 +27,7 @@ SeMIS_Logistics/
 ├── js/screening.js     화물 보안검색 현황 (검색 라인 배치 · 일일점검 이행 · 검색 환경 · 최근 고장) + 대시보드 요약 띠
 ├── js/equipment.js     검색장비 유지관리 (장비 대장 · 고장·수리 이력 · 가동 분석, SeMIS v2 equipment.js 이식)
 ├── js/training.js      보안교육 · 자격 관리 (당사 인원 이수 현황 · 교육 기록 8항목 · 협력사 교육 확인 · SSI 서약) + 수검 체크리스트 증빙 판정
+├── js/seclog.js        보안 기록부 (일일 · 순찰 · ULD · 위해물품 · 정기 · 불시 · 미주행 편별 점검 기록 · 누락 표시) + 수검 체크리스트 증빙 판정
 ├── js/audit.js         수검 대응 센터 (국토부 · 해외 당국 · 화주 · 사내 심사 — 점검 체크리스트(점검관용 원본 · 문서/시행 점수 · 증빙) · 지적 조치 · 재발 · 일정관리 연동) + 대시보드 띠
 ├── js/loginguard.js    로그인 창 보호 — <head> 에서 먼저 읽혀, 앱 준비 전 제출을 붙잡았다가 이어서 로그인 (v1.17.1, v2와 같은 파일)
 ├── js/sync.js          Supabase 공용 DB 실시간 동기화 (semis_logi_store · semis-logi-files)

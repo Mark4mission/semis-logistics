@@ -73,6 +73,7 @@ insert into semis_logi_private.key_acl(key, read_rank, write_rank) values
   ('minutes',1,2), ('minuteFolders',1,2),
   ('schedules',2,2), ('assignees',2,4), ('assigneesSeeded',2,4), ('gcal',2,4),
   ('contacts',2,3), ('crisis',2,3), ('regulations',2,3), ('equipment',2,3), ('audits',2,3), ('phonebook',2,3), ('training',2,3), ('caresCfg',2,9),
+  ('seclog',2,2), ('seclogCfg',2,3),   -- 보안 기록부 (v1.22): 기록은 manager 가 남김 · 점검 양식은 hq (마이그레이션 semis_logi_security_11_seclog)
   ('vault',3,3),
   ('auditMaster',3,9),   -- 수검 체크리스트 원본(민감보안정보): hq 열람 · 등록은 SQL(서비스 권한)로만 (마이그레이션 semis_logi_security_9_audit_master)
   ('pwOverrides',9,9), ('userOverrides',9,9), ('customUsers',9,9), ('__hist_probe',9,9)
