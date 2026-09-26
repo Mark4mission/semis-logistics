@@ -1378,7 +1378,8 @@
       const LABEL = { menus: "메뉴", notices: "공지사항", schedules: "일정", assignees: "담당자",
         minutes: "회의록", minuteFolders: "회의록 폴더", levelHistory: "보안등급 이력",
         safetyBoard: "현황판", contacts: "비상연락망", gcal: "구글 캘린더", chatRooms: "대화방", assigneesSeeded: "담당자 시드",
-        vault: "암호 관리", regulations: "규정", equipment: "검색장비", crisis: "위기대응 담당자", fleet: "기체 목록" };
+        vault: "암호 관리", regulations: "규정", equipment: "검색장비", crisis: "위기대응 담당자", fleet: "기체 목록",
+        audits: "수검 대응", phonebook: "업무 연락처" };
       if (sel) sel.innerHTML = '<option value="">전체 컬렉션</option>'
         + KEYS.map(k => `<option value="${esc(k)}">${esc(LABEL[k] || k)} (${esc(k)})</option>`).join("");
       const fmt = (t) => {

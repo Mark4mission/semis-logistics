@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/loginguard.js", "js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/crisis.js", "js/audit.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
+const FILES = ["js/loginguard.js", "js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/crisis.js", "js/phonebook.js", "js/audit.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -1365,7 +1365,7 @@ function makeServer(opts = {}) {
     const e = makeEnv({ fetch: server.fetch });
     const { Sync } = e;
     t("Y01 SYNC_KEYS 구성(계정 자료 제외)", () =>
-      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,chatRooms,vault,regulations,equipment,crisis,fleet,audits"));
+      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,chatRooms,vault,regulations,equipment,crisis,fleet,audits,phonebook"));
     t("Y02 SYNC_KEYS는 모두 freshData 컬렉션에 존재", () => Sync.SYNC_KEYS.forEach(k => ok(e.S.data[k] !== undefined, k)));
     await ta("Y03 로그인 전에는 서버를 부르지 않음 · 로그인 후 초기 pull + 쓰기 권한 있는 컬렉션만 시드", async () => {
       await Sync.start();
@@ -3244,6 +3244,142 @@ function makeServer(opts = {}) {
       ok(e.Sync.SYNC_KEYS.indexOf("crisis") >= 0);
       const c = read("css/main.css");
       ok(c.indexOf(".cr-home") > 0 && c.indexOf(".cr-line") > 0 && c.indexOf(".cr-mxt") > 0);
+    });
+  }
+
+  /* ══════════ [PB] v1.18 업무 연락처 ══════════ */
+  {
+    const e = makeEnv();
+    const PB = e.w.SemisPhonebook;
+    const seed = () => {
+      e.S.data.phonebook = { asOf: "26년 9월", notes: ["참고 하나"],
+        groups: [{ id: "ga", name: "가구역", color: "#d42a1e" }, { id: "gb", name: "나구역", color: "#1f4fd6" }],
+        rows: [
+          { id: "r1", group: "ga", org: "갑사", dept: "검색실", name: "갑일", title: "팀장", duty: "", ext: "0939", office: "", mobile: "010-0000-1111", email: "", note: "", check: false, verify: "" },
+          { id: "r2", group: "ga", org: "갑사", dept: "반입부스", name: "", title: "", duty: "", ext: "0934", office: "", mobile: "", email: "", note: "", check: false, verify: "" },
+          { id: "r3", group: "gb", org: "을사", dept: "교육팀", name: "을일", title: "과장", duty: "교육 관련", ext: "", office: "032-000-2072", mobile: "", email: "a@x.com", note: "", check: true, verify: "철자 확인" },
+          { id: "r4", group: "gb", org: "을사", dept: "", name: "을이", title: "사원", duty: "", ext: "", office: "", mobile: "", email: "b@x.com", note: "비고", check: false, verify: "" }
+        ] };
+      e.S.saveSilent();
+    };
+    t("PB01 메뉴: 협력 · 비상 허브 · 위기대응 담당자 바로 아래 · mgr · 기존 데이터 자동 추가(멱등)", () => {
+      const m = e.S.data.menus.find(x => x.module === "phonebook");
+      ok(m && m.type === "module" && !m.planned); eq(m.parent, "hub-ops"); eq(m.vis, "mgr"); eq(m.label, "업무 연락처");
+      const cr = e.S.data.menus.find(x => x.module === "crisis");
+      ok(m.seq > cr.seq);
+      const nx = e.S.data.menus.filter(x => x.parent === "hub-ops" && x.seq > cr.seq).sort((a, b) => a.seq - b.seq)[0];
+      eq(nx.id, m.id, "위기대응 바로 다음");
+      const old = makeEnv({ preData: { version: 1, menus: e.S.defaultMenus().filter(x => x.id !== "phonebook") } });
+      const m2 = old.S.data.menus.find(x => x.module === "phonebook");
+      const cr2 = old.S.data.menus.find(x => x.module === "crisis");
+      ok(m2 && m2.parent === "hub-ops" && m2.seq > cr2.seq, "기존 메뉴 데이터에 자동 추가");
+      const after = old.S.data.menus.filter(x => x.parent === "hub-ops" && x.seq > cr2.seq).sort((a, b) => a.seq - b.seq)[0];
+      eq(after.id, m2.id, "기존 데이터에서도 위기대응 바로 다음");
+      eq(old.S.normalizeData(), false, "멱등");
+      ok(old.S.data.phonebook && Array.isArray(old.S.data.phonebook.rows) && Array.isArray(old.S.data.phonebook.groups));
+    });
+    t("PB02 번호 정리 · 검색 매칭(번호 하이픈 무시 · 구역명)", () => {
+      eq(PB.fmtPhone("01012340000"), "010-1234-0000"); eq(PB.fmtPhone("7000001"), "032-700-0001");
+      eq(PB.fmtPhone("0327000001"), "032-700-0001"); eq(PB.fmtPhone("032-700-0001"), "032-700-0001"); eq(PB.fmtPhone("0212345678"), "02-1234-5678");
+      eq(PB.telHref("032-700-0002"), "tel:0327000002"); eq(PB.telHref("+1-800-000-0000"), "tel:+18000000000");
+      seed();
+      const r = e.S.data.phonebook.rows;
+      ok(PB.matches(r[0], "00001111"));
+      ok(PB.matches(r[2], "000-2072")); ok(PB.matches(r[1], "가구역")); ok(!PB.matches(r[1], "을사"));
+    });
+    t("PB03 화면(manager): 요약 · 구역 줄 · 구역 카드(색) · 전화/문자/메일/내선 · 확인 필요 · 참고 · 인쇄 · 편집 없음", () => {
+      seed(); loginAs(e, "manager"); go(e, "phonebook");
+      eq(qa(e, ".stat-value").map(x => x.textContent).join(","), "4,2,1 · 2,1");
+      eq(qa(e, ".pb-gbtn").length, 3);
+      eq(qa(e, ".pb-sec").length, 2); ok(qa(e, ".pb-sec")[0].getAttribute("style").indexOf("#d42a1e") >= 0);
+      ok(q(e, ".pb-row[data-row=r1] a[href='tel:01000001111']")); ok(q(e, ".pb-row[data-row=r1] a[href='sms:01000001111']"));
+      ok(q(e, ".pb-row[data-row=r1] [data-copy='0939']")); ok(q(e, ".pb-row[data-row=r3] a[href='mailto:a@x.com']"));
+      ok(q(e, ".pb-row[data-row=r2] b").textContent === "반입부스", "이름 없으면 부서/장소");
+      ok(q(e, ".pb-row.is-check[data-row=r3] .pb-flag")); ok(q(e, ".pb-row[data-row=r3] .pb-verify").textContent.indexOf("철자 확인") >= 0);
+      ok(q(e, ".pb-sec[data-group=gb] .pb-mailall[href='mailto:a@x.com,b@x.com']"), "구역 전체 메일");
+      ok(!q(e, ".pb-sec[data-group=ga] .pb-mailall"));
+      ok(q(e, ".pb-notes").textContent.indexOf("참고 하나") >= 0);
+      ok(q(e, ".page-head").textContent.indexOf("Print") >= 0 && q(e, ".page-head").textContent.indexOf("기준 26년 9월") >= 0);
+      ok(!q(e, "#pb-add") && !q(e, ".pb-edit") && !q(e, "#pb-groups"), "manager 편집 없음");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    t("PB04 필터: 구역 · 확인 필요 · 검색(입력칸 유지) · 조건 해제", () => {
+      q(e, ".pb-gbtn[data-grp=gb]").click();
+      eq(qa(e, ".pb-row").length, 2); ok(q(e, "#pb-clear"));
+      q(e, ".pb-gbtn[data-grp=gb]").click(); eq(qa(e, ".pb-row").length, 4, "다시 누르면 해제");
+      q(e, "#pb-only").click(); eq(qa(e, ".pb-row").length, 1); eq(PB.getState().onlyCheck, true);
+      q(e, "#pb-clear").click(); eq(qa(e, ".pb-row").length, 4);
+      const qi = q(e, "#pb-q"); qi.value = "갑ㅇ"; qi.dispatchEvent(new e.w.Event("input"));
+      ok(q(e, "#pb-q") === qi, "입력칸 유지"); eq(qa(e, ".pb-row").length, 2); ok(q(e, ".pb-row mark"));
+      qi.value = "2072"; qi.dispatchEvent(new e.w.Event("input")); eq(qa(e, ".pb-row").length, 1);
+      qi.value = "없는사람"; qi.dispatchEvent(new e.w.Event("input")); ok(q(e, "#pb-body .empty-state"));
+      qi.value = ""; qi.dispatchEvent(new e.w.Event("input")); eq(qa(e, ".pb-row").length, 4);
+    });
+    t("PB05 보기: 빠른 연락(큰 버튼) · 표(전 항목)", () => {
+      q(e, "[data-view=quick]").click();
+      eq(qa(e, ".pb-tile").length, 4);
+      const t1 = qa(e, ".pb-tile")[0];
+      ok(t1.querySelector(".pb-b.is-call[href='tel:01000001111']") && t1.querySelector("a[href='sms:01000001111']") && t1.querySelector("[data-copy='0939']"));
+      ok(qa(e, ".pb-tile")[2].querySelector(".pb-b.is-call[href='tel:0320002072']"), "휴대폰 없으면 유선");
+      q(e, "[data-view=table]").click();
+      eq(qa(e, ".pb-tbl tbody tr:not(.pb-tgrp)").length, 4); eq(qa(e, ".pb-tgrp").length, 2); eq(qa(e, ".pb-tbl thead th").length, 8);
+      ok(q(e, ".pb-tbl tr.is-check")); ok(q(e, ".pb-tbl").textContent.indexOf("철자 확인") >= 0);
+      PB.setState({ view: "group" });
+    });
+    t("PB06 hq 편집: 추가(같은 구역 뒤 · 번호 정리) · 필수값 · 조건 해제 · 확인 필요 해제 시 메모 비움 · 삭제", () => {
+      loginAs(e, "hq"); go(e, "phonebook");
+      ok(q(e, "#pb-add") && q(e, ".pb-edit") && q(e, "#pb-groups") && q(e, "#pb-meta"));
+      PB.setState({ grp: "gb" }); e.S.renderView();
+      q(e, "#pb-add").click();
+      q(e, "#pb-f-group").value = "ga"; q(e, "#pb-f-name").value = "새일"; clickOk(e);
+      eq(e.S.data.phonebook.rows.length, 4, "연락 수단 없으면 저장 안 함");
+      q(e, "#pb-f-email").value = "잘못"; clickOk(e); eq(e.S.data.phonebook.rows.length, 4, "메일 형식");
+      q(e, "#pb-f-email").value = ""; q(e, "#pb-f-mobile").value = "01012345678"; q(e, "#pb-f-office").value = "7000003"; clickOk(e);
+      const rs = e.S.data.phonebook.rows;
+      eq(rs.length, 5); eq(rs[2].name, "새일", "가구역 마지막 뒤"); eq(rs[2].mobile, "010-1234-5678"); eq(rs[2].office, "032-700-0003");
+      eq(PB.getState().grp, "", "다른 구역에 저장 → 조건 해제");
+      q(e, ".pb-edit[data-edit=r3]").click();
+      ok(q(e, "#pb-f-check").checked); q(e, "#pb-f-check").checked = false; clickOk(e);
+      const r3 = rs.find(x => x.id === "r3"); eq(r3.check, false); eq(r3.verify, "");
+      q(e, `.pb-edit[data-edit='${rs[2].id}']`).click();
+      q(e, "#modal-box [data-act=del]").click(); clickOk(e);
+      eq(e.S.data.phonebook.rows.length, 4);
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    t("PB07 구역 관리: 이름 · 색 · 순서 · 추가 · 연락처 있는 구역 삭제 불가", () => {
+      q(e, "#pb-groups").click();
+      eq(qa(e, ".pb-grow").length, 2);
+      ok(qa(e, ".pb-grow")[0].querySelector(".pb-gdel").disabled);
+      q(e, "#pb-gadd").click(); eq(qa(e, ".pb-grow").length, 3);
+      const n3 = qa(e, ".pb-grow")[2].querySelector(".pb-gname"); n3.value = "다구역"; n3.dispatchEvent(new e.w.Event("input"));
+      qa(e, ".pb-grow")[2].querySelector(".pb-gmv[data-mv='-1']").click();
+      eq(qa(e, ".pb-gname")[1].value, "다구역");
+      const col = qa(e, ".pb-grow")[0].querySelector(".pb-gcol"); col.value = "#178236"; col.dispatchEvent(new e.w.Event("change"));
+      clickOk(e);
+      const gs = e.S.data.phonebook.groups;
+      eq(gs.map(g => g.name).join(","), "가구역,다구역,나구역"); eq(gs[0].color, "#178236");
+      eq(qa(e, ".pb-sec").length, 2, "빈 구역은 카드 없음");
+      q(e, "#pb-groups").click();
+      qa(e, ".pb-grow")[1].querySelector(".pb-gdel").click(); clickOk(e);
+      eq(e.S.data.phonebook.groups.length, 2);
+    });
+    t("PB08 기본 정보 · 빈 화면 · 통합 검색", () => {
+      q(e, "#pb-meta").click(); q(e, "#pb-m-asof").value = "26년 10월"; q(e, "#pb-m-notes").value = "하나\n\n둘"; clickOk(e);
+      eq(e.S.data.phonebook.asOf, "26년 10월"); eq(e.S.data.phonebook.notes.join("|"), "하나|둘");
+      const it = e.w.SemisSearch && e.w.SemisSearch.search ? e.w.SemisSearch.search("을이") : null;
+      if (it) ok(it.some(x => x.group === "업무 연락처"), "검색 결과");
+      e.S.data.phonebook = { groups: [], rows: [] }; e.S.saveSilent(); e.S.renderView();
+      ok(q(e, "#view .empty-state")); ok(q(e, "#pb-add"));
+      q(e, "#pb-add").click(); ok(q(e, "#pb-glist"), "구역이 없으면 구역 관리부터");
+      e.S.closeModal();
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    t("PB09 공개 저장소 위생: phonebook.js에 번호 · 메일 없음 · 동기화 키 · 권한표 2/3 · CSS", () => {
+      const s = read("js/phonebook.js");
+      ok(!/01\d-\d{3,4}-\d{4}/.test(s.replace("010-0000-0000", ""))); ok(!/@asianaairport|@airport\.kr/.test(s));
+      ok(e.Sync.SYNC_KEYS.indexOf("phonebook") >= 0); eq(ACL.phonebook.join(","), "2,3");
+      const c = read("css/main.css"); ok(c.indexOf(".pb-row") > 0 && c.indexOf(".pb-tile") > 0 && c.indexOf(".pb-tbl") > 0);
+      ok(read("index.html").indexOf('js/phonebook.js') > 0);
     });
   }
 

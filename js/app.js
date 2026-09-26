@@ -8,7 +8,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.17.1";
+  const VERSION = "1.18.0";
   const APP_NAME = "SeMIS · Logistics";
   /* v1.15: 데이터 캐시는 이 탭의 sessionStorage 에만 둔다(탭을 닫거나 로그아웃하면 사라짐).
      화면 설정(LS_UI)만 localStorage. */
@@ -233,6 +233,7 @@ const SeMIS = (() => {
       h("hub-ops", "협력 · 비상", "users"),
       Object.assign(m("contacts", "비상연락망 · 보고체계", "☎️", "contacts", "mgr", "hub-ops"), { quick: true }),
       m("crisis", "위기대응 담당자", "🧭", "crisis", "mgr", "hub-ops"),
+      m("phonebook", "업무 연락처", "📇", "phonebook", "mgr", "hub-ops"),
       p("partners", "조업사 · 협력사 현황", "🤝", "partners", "mgr", "hub-ops",
         "조업사·경비·청소·유지보수 업체 담당자, 인원, 보안서약·교육 이수 현황."),
       p("contracts", "계약서 관리", "💼", "contracts", "hq", "hub-ops",
@@ -320,6 +321,7 @@ const SeMIS = (() => {
       minuteFolders: [], // 회의록 폴더 — normalize가 기본 폴더 시드
       contacts: { sections: [] }, // 비상연락망 (실데이터는 공용 DB만 — 코드 미시드)
       crisis: { rows: [] },        // 위기대응 담당자 (명단은 공용 DB만 — 코드 미시드)
+      phonebook: { groups: [], rows: [] }, // 업무 연락처 (v1.18 — 연락처는 공용 DB만, 코드 미시드)
       vault: { v: 1, members: [], data: null, personal: {}, updated: "" }, // 암호 관리 (클라이언트 AES-256 암호화)
       regulations: [],   // 규정 관리 (항공보안 / 안전관리 / 위험물 DG)
       fleet: [],         // 운항 현황 기체 목록 [{reg, hex, type, model}] — 비어 있으면 기본 15대(js/flightcore.js)
@@ -379,6 +381,20 @@ const SeMIS = (() => {
       DATA.menus.push({ id: "crisis", seq: ct ? (ct.seq || 0) + 0.5 : DATA.menus.reduce((mx, m) => Math.max(mx, m.seq || 0), 0) + 1,
         type: "module", label: "위기대응 담당자", icon: "🧭", module: "crisis", vis: "mgr",
         parent: ct && ct.parent ? ct.parent : (hub ? "hub-ops" : null) });
+    }
+    // v1.18 업무 연락처 — 기존 메뉴 데이터에 없으면 위기대응 담당자 바로 아래에 1회 추가(이후 숨김·이름은 운영자 설정 유지)
+    if (!DATA.menus.some(m => m.type === "module" && m.module === "phonebook")) {
+      const cr = DATA.menus.find(m => m.type === "module" && m.module === "crisis")
+        || DATA.menus.find(m => m.type === "module" && m.module === "contacts");
+      const hub = DATA.menus.find(m => m.id === "hub-ops" && m.type === "group");
+      let seq = DATA.menus.reduce((mx, m) => Math.max(mx, m.seq || 0), 0) + 1;
+      if (cr) {   // 바로 다음 메뉴와의 사이
+        const nx = DATA.menus.filter(m => m.parent === cr.parent && (m.seq || 0) > (cr.seq || 0)).map(m => m.seq || 0);
+        seq = nx.length ? ((cr.seq || 0) + Math.min.apply(null, nx)) / 2 : (cr.seq || 0) + 0.5;
+      }
+      DATA.menus.push({ id: DATA.menus.some(m => m.id === "phonebook") ? "phonebook-" + Date.now().toString(36) : "phonebook",
+        seq, type: "module", label: "업무 연락처", icon: "📇", module: "phonebook", vis: "mgr",
+        parent: cr && cr.parent ? cr.parent : (hub ? "hub-ops" : null) });
     }
     // v1.17 수검 대응 센터 — 기존 메뉴 데이터에 없으면 점검 · 교육 허브 맨 위(안전보안 점검 일정 바로 위)에 1회 추가
     if (!DATA.menus.some(m => m.type === "module" && m.module === "audit")) {
@@ -471,6 +487,10 @@ const SeMIS = (() => {
     DATA.fleet = DATA.fleet.filter(f => f && typeof f === "object" && f.hex);
     if (!DATA.crisis || typeof DATA.crisis !== "object" || Array.isArray(DATA.crisis)) DATA.crisis = { rows: [] };
     if (!Array.isArray(DATA.crisis.rows)) DATA.crisis.rows = [];
+    // 업무 연락처 (v1.18) — 구조만 보정
+    if (!DATA.phonebook || typeof DATA.phonebook !== "object" || Array.isArray(DATA.phonebook)) DATA.phonebook = { groups: [], rows: [] };
+    if (!Array.isArray(DATA.phonebook.groups)) DATA.phonebook.groups = [];
+    if (!Array.isArray(DATA.phonebook.rows)) DATA.phonebook.rows = [];
     // 규정 관리 — 배열 보정 + 실모듈 전환(구버전 데이터의 planned 플래그 제거)
     DATA.regulations = (Array.isArray(DATA.regulations) ? DATA.regulations : []).filter(r => r && r.id);
     DATA.regulations.forEach(r => {
@@ -899,7 +919,7 @@ const SeMIS = (() => {
   /* 라우트별 콘텐츠 폭 — wide(2100px) / mid(1560px) / 기본 1180px */
   const VIEW_WIDTH = {
     schedule: "wide", dashboard: "wide", board: "wide", flight: "wide",
-    minutes: "mid", contacts: "mid", crisis: "mid", settings: "mid", vault: "mid",
+    minutes: "mid", contacts: "mid", crisis: "mid", phonebook: "mid", settings: "mid", vault: "mid",
     "reg-sec": "mid", "reg-safety": "mid", "reg-dg": "mid", "scr-status": "mid", "scr-equip": "mid", audit: "mid"
   };
   function applyViewWidth(view, route) {
