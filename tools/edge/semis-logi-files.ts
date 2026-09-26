@@ -21,11 +21,11 @@ const MAX_SIGN = 200;
 /* 폴더별 등급 — 권한 서열 admin 4 · hq 3 · manager 2 · user 1 (공용 DB 권한표와 맞춘다) */
 const READ_RANK: Record<string, number> = {
   notices: 1, attach: 1, minutes: 1, "minutes-sign": 1,
-  schedules: 2, contacts: 2, crisis: 2, regs: 2, "regs-diff": 2, audits: 2
+  schedules: 2, contacts: 2, crisis: 2, regs: 2, "regs-diff": 2, audits: 2, training: 2
 };
 const WRITE_RANK: Record<string, number> = {
   minutes: 2, "minutes-sign": 2,
-  schedules: 3, notices: 3, attach: 3, contacts: 3, crisis: 3, regs: 3, "regs-diff": 3, audits: 3
+  schedules: 3, notices: 3, attach: 3, contacts: 3, crisis: 3, regs: 3, "regs-diff": 3, audits: 3, training: 3
 };
 const DEFAULT_READ = 3, DEFAULT_WRITE = 3;
 const BLOCK_TYPES = /^(text\/html|application\/xhtml\+xml|text\/javascript|application\/(x-)?javascript)/i;

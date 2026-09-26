@@ -6,10 +6,10 @@
 
 | 항목 | 값 |
 |---|---|
-| 현재 버전 | **v1.19.0** (2026-09-26) — 수검 대응 센터 **점검 체크리스트**(점검관용 CHK-LIST 9영역 70항목 원본 · 문서/시행 0~4점 · N/A · 준비율 · 근거 요지(hq) · 점검관용 A4 인쇄 · 증빙 화면 연결) · v1.18.0 **업무 연락처**(협력 · 비상 허브, 현장 · 협력사 · 유관기관 58건 · 구역 9 · 확인 필요 9) · v1.17.1 로그인 창 보호(앱 준비 전 제출 → 새로고침되던 문제) · v1.17.0 **수검 대응 센터**(국토부 · 해외 당국 · 화주 · 사내 심사 수검의 준비 · 증빙 · 지적 조치 · 재발 추적) · v1.16 로그인 자동공격 방어 · v1.15 서버 보안 위 |
+| 현재 버전 | **v1.20.0** (2026-09-26) — **보안교육 · 자격 관리**(당사 인원 이수 현황 · 교육 기록 8항목 · 협력사 교육 확인 · SSI 서약 · 체크리스트 증빙 자동 판정) · v1.19.0 수검 대응 센터 **점검 체크리스트**(점검관용 CHK-LIST 9영역 70항목 원본 · 문서/시행 0~4점 · N/A · 준비율 · 근거 요지(hq) · 점검관용 A4 인쇄 · 증빙 화면 연결) · v1.18.0 **업무 연락처**(협력 · 비상 허브, 현장 · 협력사 · 유관기관 58건 · 구역 9 · 확인 필요 9) · v1.17.1 로그인 창 보호(앱 준비 전 제출 → 새로고침되던 문제) · v1.17.0 **수검 대응 센터**(국토부 · 해외 당국 · 화주 · 사내 심사 수검의 준비 · 증빙 · 지적 조치 · 재발 추적) · v1.16 로그인 자동공격 방어 · v1.15 서버 보안 위 |
 | 접속 주소 | https://mark4mission.github.io/semis-logistics/ |
 | 저장소 | GitHub `Mark4mission/semis-logistics` (공개) · Mac `~/SeMIS_Logistics` |
-| 테스트 | `npm test` 316건 전부 통과 (가짜 서버로 로그인(작업증명 포함)·RLS·파일 함수 흉내 · 코드에 해시·토큰 없음) |
+| 테스트 | `npm test` 326건 전부 통과 (가짜 서버로 로그인(작업증명 포함)·RLS·파일 함수 흉내 · 코드에 해시·토큰 없음) |
 | 백엔드 | Supabase `mzyuzrxkdcpzxojenwat` — 테이블 `semis_logi_store`(세션 RLS), **비공개** 버킷 `semis-logi-files`, 비공개 스키마 `semis_logi_private`(계정 · 세션 · 로그인 시도 · 접속 기록 · 권한표), RPC `semis_logi_*`, Edge Function `semis-logi-files`(서명 URL) · 운항 현황: Edge Function `semis-logi-adsb` + 테이블 `semis_logi_adsb` · `semis_logi_adsb_events` + pg_cron 2분 |
 
 ## 2. 새 세션 시작
@@ -59,22 +59,23 @@ Claude가 할 일(순서대로):
 | phonebook | phonebook.js | mgr (편집 hq) | **업무 연락처**(v1.18) — 현장 · 협력사 · 유관기관 업무 연락처를 구역(색) 9곳 × 58건으로(2026-09-26 전달 목록 정리). 보기 3종(구역별 카드 · 빠른 연락 큰 버튼 · 표) · 구역 줄 필터 · 검색(번호 하이픈 무시) · 전화(tel) · 문자(sms) · 메일(mailto, 구역 전체 메일) · 내선은 눌러 복사 · **확인 필요** 표시(메모) + 필터 · hq 추가/수정/삭제 · 구역 관리(이름 · 색 · 순서) · 기본 정보(기준 시점 · 참고) |
 | contacts | contacts.js | mgr (편집 hq) | 비상연락망 · 보고체계 (2026-09-22 SeMIS v2 연락망 69건 이관 — 12섹션 78행) · **보고 체계도 탭**(v1.10: 보안사고 20 · 안전사고 18 · 위험물사고 29행, 미리보기 → 전체 화면 뷰어) |
 | vault | vault.js | hq | 암호 관리 (AES-256-GCM, 5분 자동 잠금, 공용/개인용 — 개인용은 본인 키로만 해독) |
+| training | training.js | mgr (편집 hq) | **보안교육 · 자격 관리**(v1.20, 예정 training + certs 통합) — 탭 3개: 이수 현황(당사 재직 인원 × 교육 묶음 표 — 유효 · 임박(60일) · 만료 · 미이수, SSI 서약, 만료 · 임박 목록, 직무 필터 · 조치 필요만) / 교육 기록(당사 실시 = 기록 8항목(명칭 · 일시 · 장소 · 시간 · 교관 · 시간표 · 평가결과 · 참석자 명단/서명) 누락 표시 · 참석자 → 개인 이수 자동 · 협력사 확인 = 업체 · 과정 · 확인일 · 대상/이수 인원 · 결과 파일, 보관 3년 경과 표시) / 인원(직무 · 재직/퇴직 · 퇴직 후 90일 보관 기한 · SSI 서약일 · 서약서 · 개인 이수 기록). 과정 관리(hq): 이름 · 초기/정기 · 묶음 · 주기(개월) · 대상 직무 · 전 직원 · 협력사용. 메뉴 배지(만료 + 임박 + 서약 누락) · 통합 검색 · 390px 카드 · A4 인쇄 · **수검 체크리스트 증빙 판정**(`window.SemisEvidence.training`) |
 | audit | audit.js | mgr (편집 hq) | **수검 대응 센터**(v1.17, M1) — 외부·사내 점검을 받는 쪽의 준비 → 수검 → 지적 조치 → 종결. 구분 3종(국토부 · 지방항공청 / 해외 당국 · 화주 / 사내 심사). 수검 일정 탭(다음 수검 D-day · 준비 진행 · 미결 지적 · 기한 경과 · 올해 수검, 구분 · 진행 필터) · 지적사항 탭(전 수검 지적 한 표, 미결 · 기한 경과 · 완료) · 상세(기본 정보 · 공문/결과 첨부 · **점검 체크리스트(v1.19)**(원본에서 영역 골라 불러오기 · 항목별 문서/시행 점수 0~4 · N/A · 의견 · 증빙 파일/화면 · 상태(준비됨 · 증빙 없음 · 보완 필요 · 미평가) · 영역별 소계 · 평균 · 준비율 · 영역/상태 필터 · 근거 요지(hq) · 점검관용 A4 표) · 지적사항(시정조치 · 개선권고 · 현장시정 · 관찰사항, 조항 · 조치 · 담당 · 기한 · 상태 · 증빙)). 같은 조항이 2개 이상 수검에서 지적되면 '재발'. 일정관리 연동(수검 기간 · 지적 기한). 대시보드 띠(mgr, 60일 안 수검 또는 미결 지적이 있을 때만) · 메뉴 배지(미결 지적) · 통합 검색 · 390px 행 카드 · A4 인쇄 |
 | settings | modules.js | admin | 메뉴(숨기기 포함) · 사용자(서버 계정 RPC) · 담당자 · 데이터(변경 이력 복원 — 관리자 RPC) · 저장소(파일 함수) · **보안**(접속 중 · 접속 기록 · 다른 접속 모두 끊기, v1.15) |
 | scr-status | screening.js · cares.js | mgr | 화물 보안검색 현황 — 검색 라인 배치(검색대별 X-ray·ETD · 환적·예비) · 오늘 일일점검 · 장비 × 28일 점검 이행(+주간·월간 최근일) · 센서 3곳 × 지표 + 결로 판정 · 최근 고장. 대시보드 4칸 요약 띠(mgr) |
 | scr-equip | equipment.js · cares.js | mgr (편집 hq) | 검색장비 유지관리 — 장비 대장 22대(v2 이관, 내용연수 · CARES 상태) · 고장·수리 이력(처리 단계 · 원인 · 부품 · 사진) · 가동 분석(가동률 · 다운타임 · 원인 분류) |
 
-**예정 (13)** — `planned:true` 메뉴. 같은 module id로 `registerModule` 하면 자동으로 정식 메뉴가 되고, 허브 패널의 "준비 중인 모듈"에서 빠져 위쪽 목록으로 올라간다.
+**예정 (11)** — `planned:true` 메뉴. 같은 module id로 `registerModule` 하면 자동으로 정식 메뉴가 되고, 허브 패널의 "준비 중인 모듈"에서 빠져 위쪽 목록으로 올라간다.
 
 | 허브 | 라우트 · 메뉴명 (vis) |
 |---|---|
 | 홈 (hub-home) | board 안전보안 현황판 (mgr) |
 | 화물 보안 (hub-sec) | kc-ra 상용화주·RA 관리 (hq) · access 보안구역 출입 관리 (mgr) |
 | 안전 관리 (hub-saf) | daily-safety 일일 안전점검 (mgr) · risk 위험성 평가 (hq) · incident 사고·아차사고 보고 (mgr) · gse 지상조업(GSE) 안전 (mgr) |
-| 점검 · 교육 (hub-aud) | inspection 안전보안 점검 일정 (mgr) · car 시정조치 CAR (hq) · training 안전보안 교육 관리 (mgr) · certs 이수증 관리 (mgr) |
+| 점검 · 교육 (hub-aud) | inspection 안전보안 점검 일정 (mgr — 2단계에서 '보안 기록부'로 대체 예정) · car 시정조치 CAR (hq) |
 | 협력 · 비상 (hub-ops) | partners 조업사·협력사 현황 (mgr) · contracts 계약서 관리 (hq) |
 
-권장 개발 순서(DESIGN.md §9-6): ① car · inspection · training · certs → ② access · contracts → ③ 안전 관리 4종 → ④ kc-ra · partners → ⑤ board. (scr-status · scr-equip은 v1.12에서 완료)
+**현재 개발 순서는 프로젝트 문서 `claude/logistics-checklist-plan.md`(체크리스트 커버리지 순)를 따른다.** 옛 권장 순서(DESIGN.md §9-6): ① car · inspection · training · certs → ② access · contracts → ③ 안전 관리 4종 → ④ kc-ra · partners → ⑤ board. (scr-status · scr-equip은 v1.12에서 완료)
 수검 대응 센터(audit, v1.17)는 새 라우트 — 예정 메뉴 inspection(내부 점검 일정) · car(시정조치)와 별개다. car 를 만들 때는 수검 지적사항(`audits[].findings`)을 끌어오거나 링크하는 방식을 검토할 것.
 
 SeMIS v2에 같은 성격의 모듈이 있으면 이식한다(v2 저장소: Mac `~/SeMIS_v2`, 연결 폴더라 `device_bash`로 바로 읽기 가능).
@@ -82,7 +83,7 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 
 ## 5. 데이터 · 백엔드
 
-- **SYNC_KEYS(19)**: menus · notices · schedules · assignees · assigneesSeeded · minutes · minuteFolders · levelHistory · safetyBoard · contacts · gcal · chatRooms · vault · regulations · equipment · crisis · fleet · audits · phonebook (계정 자료 pwOverrides·userOverrides·customUsers는 v1.15에 서버 전용 표로 이관·삭제)
+- **SYNC_KEYS(20)**: menus · notices · schedules · assignees · assigneesSeeded · minutes · minuteFolders · levelHistory · safetyBoard · contacts · gcal · chatRooms · vault · regulations · equipment · crisis · fleet · audits · phonebook · training (계정 자료 pwOverrides·userOverrides·customUsers는 v1.15에 서버 전용 표로 이관·삭제)
 - SYNC_KEYS 밖 설정 행: `caresCfg`(CARES Firebase 웹 키 — `SemisSync.fetchKV`로만 읽음, 앱이 쓰지 않음) · `auditMaster`(v1.19 수검 체크리스트 원본 — 민감보안정보, 권한표 읽기 3 · 쓰기 9, hq가 상세를 열 때 `fetchKV`로 받아 메모리에만 둠)
 - 신규 컬렉션 추가 시: `freshData()` 기본값 → `normalizeData()` 보정(멱등) → `sync.js` SYNC_KEYS → 테스트 Y01 기대 문자열 갱신 → **서버 권한표 등록**(아래)
 - **서버 보안(v1.15)** — 원본 SQL `tools/sql/semis-logi-security.sql`(1단계) · `tools/sql/semis-logi-lockdown.sql`(2단계 잠금). 실제 적용은 마이그레이션 `semis_logi_security_1~6`(6 = RPC 실행 권한: public `semis_logi_*`는 anon·service_role만, authenticated 차단)
@@ -94,7 +95,7 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
   - 관리자 RPC: `semis_logi_users` · `semis_logi_user_save(p)` · `semis_logi_user_delete` · `semis_logi_set_password`(다른 접속 끊김) · `semis_logi_history` · `semis_logi_history_value` · `semis_logi_security`(접속 중 · 기록) · `semis_logi_end_sessions`. 회의 서명: `semis_logi_sign_submit`(그 회의 한 건만 수정 — signer 세션은 공용 DB 직접 조회 불가)
   - 계정 표는 SQL(서비스 권한)로만 직접 볼 수 있다: `select id, login_id, role, last_login_at from semis_logi_private.accounts`
 - **데이터 사본**: `sessionStorage semisl:data`(탭 단위 — 탭을 닫거나 로그아웃하면 사라짐) · 캐시 주인 `semisl:owner`(다른 계정이 로그인하면 비움) · 읽을 권한이 없는 컬렉션은 로그인 때 기본값으로 비운다. pending 큐 · 강제 push 표시도 sessionStorage. 옛 버전의 `localStorage semisl:data`는 시작할 때 지운다
-- **파일(v1.15)**: 버킷 비공개. 저장값은 표준 주소(`…/object/public/semis-logi-files/경로`) 그대로. `js/fileauth.js`(SemisFileAuth)가 화면의 img · iframe · a 등을 서명 URL(1시간)로 바꿔 끼우고(원래 주소는 `data-sf`), 서명 전 링크는 새 창을 먼저 연 뒤 보낸다. 서명·업로드·목록·삭제는 Edge Function `semis-logi-files`(원본 `tools/edge/semis-logi-files.ts`, verify_jwt false — 세션은 `semis_logi_file_auth()`로 확인). 폴더 등급: 열람 notices·attach·minutes·minutes-sign 1 / schedules·contacts·crisis·regs·regs-diff·audits 2 / 그 밖 3, 올리기 minutes·minutes-sign 2(서명 세션은 minutes-sign만) / 나머지 3. 업로드 경로는 함수가 정한다(무작위 접두사). html·js 형식은 거부, 50MB 제한
+- **파일(v1.15)**: 버킷 비공개. 저장값은 표준 주소(`…/object/public/semis-logi-files/경로`) 그대로. `js/fileauth.js`(SemisFileAuth)가 화면의 img · iframe · a 등을 서명 URL(1시간)로 바꿔 끼우고(원래 주소는 `data-sf`), 서명 전 링크는 새 창을 먼저 연 뒤 보낸다. 서명·업로드·목록·삭제는 Edge Function `semis-logi-files`(원본 `tools/edge/semis-logi-files.ts`, verify_jwt false — 세션은 `semis_logi_file_auth()`로 확인). 폴더 등급: 열람 notices·attach·minutes·minutes-sign 1 / schedules·contacts·crisis·regs·regs-diff·audits·training 2 / 그 밖 3, 올리기 minutes·minutes-sign 2(서명 세션은 minutes-sign만) / 나머지 3. 업로드 경로는 함수가 정한다(무작위 접두사). html·js 형식은 거부, 50MB 제한
 - **대량 삭제 방어**(sync.js `guardWipe`): 2건 이상 → 0건 push 차단. 정상 전체 삭제는 `SemisSync.confirmWipe(key)`
 - **서버 자동 백업**: 트리거가 모든 변경 직전 값을 `public.semis_store_history`에 90일 보관 → 시스템 설정 › 데이터 관리 › 변경 이력에서 복원
 - 규정 PDF: `semis-logi-files/regs/` (v1.15부터 비공개 — 서명 URL). 2026-09-20 등록 18건(안전관리 16 · DG 2)
@@ -154,6 +155,11 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
   - 권한표 `audits` 2/3(마이그레이션 `semis_logi_security_8_audits`) · 파일 폴더 `audits/` 열람 2 · 올리기 3(Edge Function `semis-logi-files` v2 재배포). 첨부는 저장소에서 지워지지 않는다(시스템 설정 › 저장소에서 미참조 파일 정리)
   - 일정관리 연동: 수검 기간 `aud_<id>`(보라 · 1주/1일 전 알림) · 지적 기한 `audf_<id>`(주황 · 완료 연동), src `aud:<id>`. `calendar.js` 의 연동 일정 표 `LINKED`(insp_ · aud_ · audf_) 로 옮기기 · 기간 조정 · 완료 · 자동 연기가 원본에 되반영. 일정관리에서 지우면 그 일정만 연동 해제(`noCalMain` / 지적 `noCal`). 수검 폼의 '일정관리에 표시'를 다시 켜면 복구. 저장할 때만 일정을 맞춘다(정규화에서 건드리지 않음 — 접속마다 저장 반복 방지)
   - ~~기본 준비 항목(코드 `TEMPLATES`)~~ → v1.19에서 삭제, 점검 체크리스트 원본으로 교체(아래)
+- **보안교육 · 자격 관리(v1.20)** — Mark 결정(2026-09-26): 협력사(조업사 · 보안협력사) 교육은 **업체별 확인 기록**(개인 명부는 당사 직원만 — SSOP 17.1.3 · 17.1.9 협력사 자체 관리 · 팀 보안감독자 결과 확인). SeMIS v2 이수증 중 인천화물팀 보안감독자 정기 4건 이관(2026-09-26 SQL, updated_by `v2-certs-import`, 유효기한은 v2 값 그대로 — 3건은 이미 만료 · 1건 10/26 만료) — PDF는 v2 비공개 저장소라 옮기지 못함 → 화면에서 다시 첨부
+  - 데이터 `training` = { courses[](비면 코드 `DEF_COURSES` 14개: 보안책임자 · 감독자 / 보안검색감독자 / ACMR / 화물보안 초기 · 정기, 검색장비 운용, 보안 인지교육(전 직원), 협력사용 4개), people[{id,name,dept,roles[],left,pledge,pledgeFiles[],note}], records[{id,pid,cid,date,expire(빈칸 = 수료일 + 주기 − 1일),hours,score,org,certNo,files[],sessionId,note,src}], sessions[{id,type(own|vendor),cid,title,date,time,hours,place,instructor,evalText,pids[],files{tt,roster,eval},vendor,target,done,note}] }. 권한표 (2,3) 마이그레이션 `semis_logi_security_10_training` · 파일 폴더 `training/` 열람 2 · 올리기 3(Edge Function v3)
+  - 상태: 묶음(초기 · 정기가 같은 fam) 안에서 가장 최근 이수의 유효기한으로 판단. 필요 여부 = 과정 대상 직무 ∩ 인원 직무(또는 전 직원). 기본 주기(감독자 13개월 = v2 이수증 셈, 나머지 12개월 · 장비 운용 0)는 **확인 필요 — 과정 관리에서 고칠 것**. 최소 시간 · 합격 점수는 규정(민감보안정보)이라 코드에 넣지 않았다
+  - 체크리스트 증빙 판정: 1.1(보안감독자 전원 유효) · 9.2(ACMR 전원 유효) · 1.2(1년 안 당사 교육 기록) · 1.3(1년 안 협력사 확인) · 1.4(기록 8항목 완비) · 2.10 · 2.10.1(SSI 취급자 전원 서약) · 3.4(향정신성 물질 교육 확인) · 9.2.1(TSA 교육 확인) · 8.2(장비 운용자 유효 또는 검색요원 확인). audit.js `routeEv` 가 `window.SemisEvidence[route](mid)` 를 부르고, 없으면 화면이 열린 것만으로 증빙 처리(다른 메뉴도 같은 방식으로 붙이면 됨)
+  - 메뉴: 예정 '안전보안 교육 관리' → '보안교육 · 자격 관리'(이름을 바꾸지 않았을 때만), 예정 '이수증 관리(certs)'는 normalizeData가 삭제
 - **점검 체크리스트(v1.19)** — 원본: 「화물 보안점검 CHK-LIST [점검관용] 인천화물팀(ICNKF) · 국내지점」(2026) 9영역 70항목(1 보안교육 4 · 2 항공보안관리 14 · 3 보안용역 5 · 4 위해물품 3 · 5 출입통제 4 · 6 접수·검색 14 · 7 보관·탑재 7 · 8 장비 3 · 9 TSA 16)
   - **민감보안정보(자체보안계획 1.5.4 · SSOP 20.3.3)** → 원문 · 관련근거 · 근거 요지는 공용 DB 행 `auditMaster` 에만. 공개 저장소 코드 · 문서 · 테스트에는 넣지 않는다(테스트는 가짜 원본, AU15가 원문 조각이 없는지 검사)
   - `auditMaster` = { title, source, asOf, ssi, scoreScale[5], importedAt, sections[{ no, title, items[{ no, text, ref(줄바꿈 구분), basis }] }] }. 권한표 (3, 9) — 마이그레이션 `semis_logi_security_9_audit_master`. 2026-09-26 SQL로 등록(updated_by `master-import`, 로컬 파싱본과 md5 대조 일치). 개정판이 오면 docx 표(`tables[3]`)를 다시 파싱해 SQL로 교체(병합행: '■ 근거 본문 요지'=직전 항목 basis, 'N. 제목'=영역, 'COMMENTS' 건너뜀). 2.10 · 2.10.1 은 요지가 비어 있고 2.10.2 의 "[2.10~2.10.2 공통]" 요지를 화면이 함께 보여 준다
@@ -205,6 +211,7 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 | v1.16.0 | 09-26 | **로그인 자동공격 방어** — reCAPTCHA 대신 보이지 않는 작업증명: 서버 서명 문제(2분 · 1회용)를 로그인 창에서 Web Worker가 미리 풀어 첨부(js/pow.js, v2와 같은 파일) · 전체 실패가 늘면 난이도 자동 상향 · 6자리 회의 서명 코드 실패 급증 시 15분 중지 · 보안 탭 실패 통계 · 로그인 안내 문구(제한 · 중지 · 확인 실패) · CSP worker-src · 라이브 확인(해답 없는 로그인 거부, 로그인 1.6초) 후 임시 계정·기록 삭제 |
 | v1.17.0 | 09-26 | **수검 대응 센터**(M1) — 국토부 · 지방항공청 / 해외 당국 · 화주 / 사내 심사 수검을 준비 → 수검 → 지적 조치 → 종결로 관리. 수검 일정 · 지적사항 탭, 상세(준비 체크리스트 · 증빙 파일 · 지적사항), 재발 조항 표시, 일정관리 양방향 연동, 대시보드 띠 · 메뉴 배지 · 통합 검색 · 390px · A4 인쇄. 서버: 권한표 audits 2/3 · 파일 폴더 audits. 회의록 조치 일정 자동 연기 되돌림 수정 |
 | v1.17.1 | 09-26 | **로그인 창 보호** — 로그인 창이 뜬 뒤 스크립트가 다 읽힐 때까지(수 초) Enter·로그인을 누르면 폼이 그대로 전송돼 새로고침되고 암호가 지워져 두세 번 눌러야 접속되던 문제. `<head>` 의 `js/loginguard.js` 가 그 제출을 붙잡아 두고 앱이 준비되면 이어서 로그인 · 본문 스크립트 전부 `defer`(병렬 적재) |
+| v1.20.0 | 09-26 | **보안교육 · 자격 관리**(2단계-1) — 예정 교육 관리 + 이수증 관리 통합. 이수 현황(인원 × 교육 묶음 유효 · 임박 · 만료 · 미이수, SSI 서약) · 교육 기록(당사 8항목 누락 표시 · 참석자 → 이수 자동 / 협력사 업체별 확인) · 인원(퇴직 후 90일 보관 기한) · 과정 관리 · 배지 · 검색. 수검 체크리스트 증빙을 실제 기록으로 판정(SemisEvidence). 서버: 권한표 training 2/3 · 파일 폴더 training · v2 이수증 4건 이관. 테스트 TR01~TR10 (326 통과) |
 | v1.19.0 | 09-26 | **수검 대응 센터 점검 체크리스트** — 임의 기본 문구(TEMPLATES) 삭제 → 점검관용 CHK-LIST 원본(9영역 70항목, 공용 DB `auditMaster` · 권한표 3/9 · 민감보안정보라 코드에 없음)에서 영역을 골라 불러오기. 항목별 문서/시행 0~4점 · N/A · 의견 · 증빙(파일 · 화면 연결) · 상태, 영역별 소계 · 평균 · 준비율, KPI 필터, 근거 요지(hq), 점검관용 A4 표. 390px(번호를 본문 앞으로, 점수 두 칸 나란히). 테스트 AU03~AU05d · AU15 (316 통과) |
 | v1.18.0 | 09-26 | **업무 연락처** — 협력 · 비상 허브 '위기대응 담당자' 아래 새 메뉴(mgr, 편집 hq). 전달받은 업무 연락처 목록을 구역 9곳(보안 · 검색 현장 / 항공사 보안 / 인천공항공사 / AAP 화물서비스1팀 · 2팀 / AAP 교육 · 업무 · 장비 / 정비 · 조업 · 케이터링 / 차량 · 버스 / 장비 · 시설 업체) 58건으로 정리해 공용 DB 등록. 구역별 카드(색 띠) · 빠른 연락(전화 · 문자 · 메일 큰 버튼) · 표 보기, 확인 필요 표시 · 필터, 구역 관리. 테스트 PB01~PB09 (312 통과) |
 | v1.9.1 | 09-22 | 한글 어절 단위 줄바꿈(전역 keep-all) · 대시보드 하단 시트 칸 수를 시트 폭으로 결정(container query, 1040px↑ 4칸) · 일정 폼 '완료'를 하단 버튼줄로(스크롤 없이 보임) · 오른쪽 설정 패널 압축(1512×825에서 스크롤 없음) · 3D 불러오기 주소에 버전 부여(배포 직후 옛 404 캐시 회피)·실패 사유 기록(`#dash-3d[data-h3d]`) |

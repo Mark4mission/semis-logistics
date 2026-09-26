@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/loginguard.js", "js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/crisis.js", "js/phonebook.js", "js/audit.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
+const FILES = ["js/loginguard.js", "js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/crisis.js", "js/phonebook.js", "js/audit.js", "js/training.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -346,7 +346,7 @@ function makeServer(opts = {}) {
       const m = e.S.data.menus;
       eq(m.filter(x => x.type === "group").map(x => x.id).join(","), "hub-home,hub-sec,hub-saf,hub-aud,hub-ops,hub-doc");
       ok(m.filter(x => x.type === "group").every(g => e.S.ICONS[g.ico]), "허브 아이콘");
-      ok(m.filter(x => x.type === "module" && x.planned).length >= 13, "planned");
+      ok(m.filter(x => x.type === "module" && x.planned).length >= 11, "planned");
       eq(m.filter(x => x.type === "link").length, 5);
     });
     t("C09 실모듈 메뉴(dashboard/schedule/minutes/contacts/settings) 존재 · planned 아님", () => {
@@ -469,7 +469,7 @@ function makeServer(opts = {}) {
       eq(e.S.roleRank(), 3); ok(e.S.canSee({ vis: "hq" })); ok(!e.S.canSee({ vis: "admin" })); ok(e.S.canEdit()); ok(e.S.canDelete()); ok(e.S.canConfid());
     });
     t("C25 hq: 사이드바 예정 태그 표시 · 예정 모듈 클릭 시 안내", () => {
-      ok(qa(e, ".nav-item.planned .nav-tag").length >= 13);
+      ok(qa(e, ".nav-item.planned .nav-tag").length >= 11);
       go(e, "car");
       ok(q(e, "#view").textContent.includes("시정조치"));
       ok(q(e, "#view .badge").textContent.includes("준비 중"));
@@ -1365,7 +1365,7 @@ function makeServer(opts = {}) {
     const e = makeEnv({ fetch: server.fetch });
     const { Sync } = e;
     t("Y01 SYNC_KEYS 구성(계정 자료 제외)", () =>
-      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,chatRooms,vault,regulations,equipment,crisis,fleet,audits,phonebook"));
+      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,chatRooms,vault,regulations,equipment,crisis,fleet,audits,phonebook,training"));
     t("Y02 SYNC_KEYS는 모두 freshData 컬렉션에 존재", () => Sync.SYNC_KEYS.forEach(k => ok(e.S.data[k] !== undefined, k)));
     await ta("Y03 로그인 전에는 서버를 부르지 않음 · 로그인 후 초기 pull + 쓰기 권한 있는 컬렉션만 시드", async () => {
       await Sync.start();
@@ -3874,7 +3874,8 @@ function makeServer(opts = {}) {
       ok(q(e, `.ck-row[data-cid="${cOf("2.8").id}"] [data-ck-go="audit"]`), "증빙 화면 버튼");
       pick("1.1", "doc", 4); pick("1.1", "imp", 3);
       eq(q(e, `.ck-row[data-cid="${cOf("1.1").id}"]`).dataset.st, "noev");
-      ok(q(e, `.ck-row[data-cid="${cOf("1.1").id}"] .ck-link.is-plan`).textContent.indexOf("보안교육 · 자격 관리") >= 0, "준비 중 화면");
+      const l11 = q(e, `.ck-row[data-cid="${cOf("1.1").id}"] .ck-link.is-warn`);
+      ok(l11 && l11.textContent.indexOf("보안교육 · 자격 관리") >= 0 && l11.textContent.indexOf("보안감독자 등록 없음") >= 0, "열린 화면이지만 실제 기록 없음 → 증빙 없음");
       pick("2.10", "doc", 1); pick("2.10", "imp", 3);
       eq(cOf("2.10").docScore, 1);
       q(e, `[data-na="${cOf("1.2").id}"]`).click();
@@ -4136,6 +4137,209 @@ function makeServer(opts = {}) {
       /* 원문 조각이 코드 · 테스트에 들어가지 않았는지 — 실제 체크리스트 첫 항목의 관련근거 */
       const probe = ["자체보안계획", "13.3.4/13.3.5"].join(" ");
       ["js/audit.js", "tests/run-tests.cjs", "docs/HANDOFF.md", "README.md"].forEach(f => ok(read(f).indexOf(probe) < 0, f));
+    });
+    e.w.close();
+  }
+
+  /* ══════════ [TR] 보안교육 · 자격 관리 (v1.20) ══════════ */
+  {
+    const e = makeEnv();
+    const TR = e.w.SemisTraining, A = e.w.SemisAudit;
+    const setv = (sel, v) => { const el = q(e, sel); el.value = v; return el; };
+    const chg = (el) => { el.dispatchEvent(new e.w.Event("change")); return el; };
+    const data = () => e.S.data.training;
+    TR.setToday("2026-10-01"); A.setToday("2026-10-01");
+    t("TR01 메뉴: 점검 · 교육 허브 실메뉴 · 옛 예정 메뉴(교육 관리 · 이수증 관리) 자동 전환(멱등)", () => {
+      const m = e.S.data.menus.find(x => x.module === "training");
+      ok(m && !m.planned && m.parent === "hub-aud" && m.vis === "mgr"); eq(m.label, "보안교육 · 자격 관리");
+      ok(!e.S.data.menus.some(x => x.module === "certs"), "이수증 관리 메뉴 없음");
+      const old = e.S.defaultMenus().map(x => x.module === "training" ? Object.assign({}, x, { label: "안전보안 교육 관리", planned: true, desc: "x" }) : x);
+      old.push({ id: "certs", seq: 99, type: "module", label: "이수증 관리", icon: "c", module: "certs", vis: "mgr", parent: "hub-aud", planned: true, desc: "y" });
+      const o = makeEnv({ preData: { version: 1, menus: old } });
+      const m2 = o.S.data.menus.find(x => x.module === "training");
+      ok(!m2.planned && !m2.desc && m2.label === "보안교육 · 자격 관리", "옛 예정 메뉴 → 실메뉴");
+      ok(!o.S.data.menus.some(x => x.module === "certs"), "이수증 관리 예정 메뉴 제거");
+      eq(o.S.normalizeData(), false, "멱등");
+      const renamed = e.S.defaultMenus().map(x => x.module === "training" ? Object.assign({}, x, { label: "우리 교육", planned: true }) : x);
+      const o2 = makeEnv({ preData: { version: 1, menus: renamed } });
+      eq(o2.S.data.menus.find(x => x.module === "training").label, "우리 교육", "운영자가 바꾼 이름 유지");
+      o.w.close(); o2.w.close();
+    });
+    t("TR02 데이터 · 권한표 · 파일 폴더 · 유효기한 셈", () => {
+      ok(data() && Array.isArray(data().people) && Array.isArray(data().sessions));
+      e.S.data.training = []; e.S.normalizeData(); ok(!Array.isArray(e.S.data.training) && Array.isArray(e.S.data.training.records), "구조 보정");
+      eq(ACL.training.join(","), "2,3");
+      const edge = read("tools/edge/semis-logi-files.ts");
+      ok(/READ_RANK[\s\S]*?training: 2[\s\S]*?WRITE_RANK[\s\S]*?training: 3/.test(edge), "training 폴더: 열람 2 · 올리기 3");
+      eq(TR.calcExpire("2025-04-25", 13), "2026-05-24"); eq(TR.calcExpire("2026-01-31", 1), "2026-02-27");
+      eq(TR.calcExpire("2026-03-01", 12), "2027-02-28"); eq(TR.calcExpire("2026-03-01", 0), "");
+      ok(TR.DEF_COURSES.some(c => c.vendor) && TR.DEF_COURSES.every(c => c.id && c.fam && c.name));
+    });
+    t("TR03 hq 인원 등록 → 이수 현황(미이수 · SSI 서약 누락) · 메뉴 배지 · 인쇄 버튼", () => {
+      loginAs(e, "hq"); go(e, "training");
+      eq(q(e, "#view").getAttribute("data-hub"), "hub-aud");
+      ok(q(e, "#view .page-head [data-print-btn]"), "인쇄");
+      ok(q(e, "#tr-grid .empty-state"), "인원 없음");
+      q(e, "#tr-padd").click();
+      setv("#tp-name", "갑일");
+      qa(e, "#tp-roles input").forEach(i => { if (i.value === "보안감독자" || i.value === "SSI 취급자") i.checked = true; });
+      const ra = setv("#tp-role-add", "야간 당직");
+      ra.dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      ok(qa(e, "#tp-roles input").some(i => i.value === "야간 당직" && i.checked), "직무 직접 추가");
+      clickOk(e);
+      eq(data().people.length, 1);
+      const p = data().people[0];
+      eq(p.roles.join(","), "보안감독자,SSI 취급자,야간 당직"); eq(p.dept, "인천화물팀");
+      const st = TR.stats();
+      eq(st.people + "|" + st.cells + "|" + st.none + "|" + st.ssiMiss, "1|2|2|1", "보안감독자 묶음 + 인지교육(전 직원)");
+      eq(qa(e, ".tr-gtbl tbody tr").length, 1);
+      ok(q(e, ".tr-gtbl thead").textContent.indexOf("보안책임자 · 감독자") >= 0 && q(e, ".tr-gtbl thead").textContent.indexOf("SSI 서약") >= 0);
+      eq(qa(e, ".tr-gtbl .tr-cell[data-st=none]").length, 3, "미이수 2 + 서약 누락 1");
+      e.S.renderNav();
+      const nb = q(e, ".nav-item[data-route='training'] .nav-meta");
+      if (nb) eq(nb.textContent, "1", "배지 = 만료 · 임박 · 서약 누락");
+    });
+    t("TR04 칸 누르기 → 이수 등록(초기 과정 · 유효기한 자동) · 정기 이후 · 만료 · 임박", () => {
+      const p = data().people[0];
+      q(e, `[data-tcell="${p.id}|sup"]`).click();
+      eq(q(e, "#tr-c").value, "c-sup-i", "기록 없으면 초기");
+      chg(setv("#tr-d", "2025-09-01"));
+      eq(q(e, "#tr-e").value, "2026-09-30", "13개월 − 1일");
+      setv("#tr-o", "교육원"); clickOk(e);
+      eq(data().records.length, 1);
+      eq(data().records[0].expire, "", "계산값과 같으면 저장 안 함(주기를 바꾸면 따라감)");
+      const c1 = TR.famStatus(p, TR.fams(false).find(g => g.fam === "sup"));
+      eq(c1.st + " " + c1.exp, "exp 2026-09-30");
+      ok(q(e, ".tr-due").textContent.indexOf("갑일") >= 0, "만료 목록");
+      q(e, `[data-tcell="${p.id}|sup"]`).click();
+      eq(q(e, "#tr-c").value, "c-sup-r", "기록 있으면 정기");
+      chg(setv("#tr-d", "2025-10-20"));
+      eq(q(e, "#tr-e").value, "2026-11-19");
+      clickOk(e);
+      const c2 = TR.famStatus(p, TR.fams(false).find(g => g.fam === "sup"));
+      eq(c2.st + " " + c2.d, "soon 49", "가장 최근 이수 기준 · 60일 이내 임박");
+      TR.setToday("2026-09-01");
+      eq(TR.famStatus(p, TR.fams(false).find(g => g.fam === "sup")).st, "ok");
+      TR.setToday("2026-10-01");
+      const rid = data().records[1].id;
+      q(e, `[data-tperson="${p.id}"]`).click();
+      ok(q(e, `[data-rid="${rid}"]`), "인원 창에 이수 기록");
+      q(e, `[data-rid="${rid}"]`).click();
+      setv("#tr-e", "2026-12-31"); q(e, "#tr-e").dispatchEvent(new e.w.Event("input"));
+      chg(setv("#tr-d", "2025-10-21"));
+      eq(q(e, "#tr-e").value, "2026-12-31", "직접 고친 기한은 유지");
+      clickOk(e);
+      eq(data().records[1].expire, "2026-12-31");
+      ok(q(e, "#tp-name"), "저장 후 인원 창으로 복귀");
+      e.S.closeModal();
+    });
+    t("TR05 당사 교육 기록: 8항목 누락 표시 · 참석자 → 이수 기록 자동 · 빼면 지움 · 삭제 연동", () => {
+      data().people.push({ id: "tp2", name: "을일", dept: "인천화물팀", roles: ["ACMR"] });
+      TR.setState({ tab: "sessions" }); go(e, "training");
+      q(e, "#tr-sadd").click();
+      eq(q(e, "#ts-c").value + "|" + q(e, "#ts-title").value, "|", "기본은 기타(과정 없음)");
+      chg(setv("#ts-c", "c-acmr-r"));
+      eq(q(e, "#ts-title").value, "ACMR 정기", "과정을 고르면 교육명 채움");
+      setv("#ts-date", "2026-09-10"); setv("#ts-hours", "4"); setv("#ts-place", "교육장");
+      qa(e, "#ts-pids input").forEach(i => { i.checked = true; });
+      clickOk(e);
+      const s = data().sessions[0];
+      eq(s.type, "own"); eq(s.pids.length, 2);
+      eq(TR.missing(s).join(","), "일시,교관,시간표,평가결과,참석자 명단 · 서명");
+      const auto = data().records.filter(r => r.sessionId === s.id);
+      eq(auto.length, 2); ok(auto.every(r => r.cid === "c-acmr-r" && r.date === "2026-09-10" && r.hours === 4));
+      ok(q(e, ".tr-stbl tbody tr").textContent.indexOf("누락 5") >= 0);
+      eq(TR.evidence("9.2").text, "ACMR 1/1명 유효", "교육 기록으로 만든 이수");
+      q(e, `tr[data-sid="${s.id}"]`).click();
+      qa(e, "#ts-pids input").forEach(i => { if (i.value === "tp2") i.checked = false; });
+      setv("#ts-time", "09:00~13:00"); setv("#ts-inst", "병일"); setv("#ts-eval", "전원 합격");
+      clickOk(e);
+      eq(data().records.filter(r => r.sessionId === s.id).length, 1, "빠진 참석자 기록 삭제");
+      eq(TR.missing(s).join(","), "시간표,참석자 명단 · 서명");
+      s.files.tt = [{ name: "tt.pdf", url: "u1" }]; s.files.roster = [{ name: "sign.pdf", url: "u2" }];
+      eq(TR.missing(s).length, 0);
+      const n0 = data().records.length;
+      q(e, `tr[data-sid="${s.id}"]`).click();
+      q(e, "#modal-box [data-act=del]").click(); clickOk(e);
+      eq(data().sessions.length, 0); eq(data().records.length, n0 - 1, "연결된 이수 기록도 삭제");
+    });
+    t("TR06 협력사 교육 확인: 업체 필수 · 과정 · 인원 · 1년 안 확인 → 체크리스트 증빙(1.3 · 3.4 · 9.2.1)", () => {
+      q(e, "#tr-sadd").click();
+      q(e, "[data-tseg=stypeform][data-v=vendor]").click();
+      ok(q(e, "#ts-vendor"), "협력사 폼");
+      setv("#ts-date", "2026-08-01"); clickOk(e);
+      ok(q(e, "#ts-vendor"), "업체 없으면 저장 안 함");
+      setv("#ts-vendor", "가나보안"); setv("#ts-c", "v-drug"); setv("#ts-target", "20"); setv("#ts-done", "19");
+      clickOk(e);
+      const s = data().sessions.find(x => x.type === "vendor");
+      eq(s.vendor + "|" + s.cid + "|" + s.target + "|" + s.done, "가나보안|v-drug|20|19");
+      ok(q(e, `tr[data-sid="${s.id}"]`).textContent.indexOf("19/20") >= 0);
+      eq(JSON.stringify(TR.evidence("3.4")), JSON.stringify({ ok: true, text: "향정신성 물질 교육 확인 1건(1년)" }));
+      eq(TR.evidence("9.2.1").ok, false); eq(TR.evidence("1.3").ok, true);
+      TR.setToday("2027-09-01");
+      eq(TR.evidence("3.4").ok, false, "1년 지나면 다시 필요");
+      TR.setToday("2026-10-01");
+    });
+    t("TR07 체크리스트 증빙: 보안감독자 유효 · SSI 서약 · 기록 8항목 — 수검 대응 센터 상태에 반영", () => {
+      const p = data().people[0];
+      eq(TR.evidence("1.1").text, "보안감독자 1/1명 유효");
+      ok(TR.evidence("1.1").ok);
+      eq(A.itemState({ mid: "1.1", docScore: 3, impScore: 3 }), "ready", "열린 화면 + 실제 기록 → 증빙");
+      eq(TR.evidence("2.10.1").text, "SSI 서약 0/1명"); eq(A.itemState({ mid: "2.10.1", docScore: 3, impScore: 3 }), "noev");
+      p.pledge = "2026-09-02";
+      eq(A.itemState({ mid: "2.10.1", docScore: 3, impScore: 3 }), "ready");
+      eq(TR.evidence("9.2").text, "ACMR 0/1명 유효", "교육 기록을 지우면 이수도 빠짐");
+      eq(TR.evidence("1.4").text, "교육 기록 없음");
+      const ev = A.routeEv("training", "1.1");
+      ok(ev.live && ev.ok && ev.text === "보안감독자 1/1명 유효");
+      eq(TR.evidence("5.1"), null, "관계없는 번호");
+    });
+    t("TR08 인원: 퇴직 → 현황에서 빠짐 · 보관 기한(퇴직 후 90일) · 경과 표시", () => {
+      const p2 = data().people.find(x => x.id === "tp2");
+      p2.left = "2026-05-01";
+      TR.setState({ tab: "people", pState: "left" }); go(e, "training");
+      eq(qa(e, ".tr-ptbl tbody tr").length, 1);
+      ok(q(e, ".tr-ptbl tbody tr").textContent.indexOf("보관 기한 경과") >= 0, "5/1 + 90일 < 10/1");
+      p2.left = "2026-09-20"; go(e, "training");
+      ok(q(e, ".tr-ptbl tbody tr").textContent.indexOf("보관 ~2026.12.19") >= 0);
+      eq(TR.stats().people, 1, "현황은 재직만");
+      TR.setState({ pState: "active" });
+    });
+    t("TR09 과정 관리(hq): 주기 변경 → 계산 기한 반영 · 과정 추가 · 쓰지 않은 과정만 삭제", () => {
+      TR.setState({ tab: "grid" }); go(e, "training");
+      q(e, "#tr-courses").click();
+      const rows = qa(e, "#tc-rows tr");
+      eq(rows.length, TR.DEF_COURSES.length);
+      const supI = rows.find(r => r.querySelector("[data-k=name]").value === "보안책임자 · 감독자 초기");
+      ok(!supI.querySelector("[data-cdel]"), "쓰는 과정은 삭제 버튼 없음");
+      supI.querySelector("[data-k=cycle]").value = "24";
+      q(e, "#tc-add").click();
+      const last = qa(e, "#tc-rows tr").pop();
+      last.querySelector("[data-k=name]").value = "위험물 보안 인지"; last.querySelector("[data-k=roles]").value = "화물보안 요원, ACMR";
+      clickOk(e);
+      eq(data().courses.length, TR.DEF_COURSES.length + 1);
+      const nc = data().courses[data().courses.length - 1];
+      eq(nc.roles.join(","), "화물보안 요원,ACMR"); ok(nc.fam, "묶음 자동");
+      eq(TR.expireOf(data().records[0]), "2027-08-31", "초기 과정 주기 24개월");
+      ok(q(e, ".tr-gtbl thead").textContent.indexOf("위험물 보안 인지") < 0, "필요한 재직 인원이 없으면 열 없음");
+      data().people[0].roles.push("ACMR"); go(e, "training");
+      ok(q(e, ".tr-gtbl thead").textContent.indexOf("위험물 보안 인지") >= 0 && q(e, ".tr-gtbl thead").textContent.indexOf("ACMR") >= 0, "새 과정 묶음 열");
+      data().people[0].roles.pop();
+    });
+    t("TR10 manager 열람 전용 · user 메뉴 없음 · 통합 검색", () => {
+      loginAs(e, "manager"); TR.setState({ tab: "grid" }); go(e, "training");
+      ok(!q(e, "#tr-sadd") && !q(e, "#tr-padd") && !q(e, "#tr-courses") && !q(e, "[data-tcell]"));
+      q(e, "[data-tperson]").click();
+      ok(q(e, "#modal-box .tr-rlist") && !q(e, "#modal-box input"), "읽기 전용 인원 창");
+      e.S.closeModal();
+      TR.setState({ tab: "sessions" }); go(e, "training");
+      ok(q(e, "tr[data-sid]") && !q(e, "tr[data-sid].is-click"));
+      loginAs(e, "user"); go(e, "training");
+      ok(!q(e, "#tr-body"), "권한 없음");
+      loginAs(e, "hq");
+      const r = e.w.SemisSearch.search ? e.w.SemisSearch.search("갑일") : [];
+      ok(r.some(x => x.group === "보안교육 · 자격 관리"), "검색");
+      eq(e.errors.length, 0, e.errors.join(" | "));
     });
     e.w.close();
   }

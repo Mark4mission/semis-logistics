@@ -3540,3 +3540,84 @@ button.ck-link:active { transform: scale(.97); }
   .au-psec, .au-ptot { break-after: avoid; }
   .au-pssi { margin-top: 2mm; font-size: 7.8pt; color: #7a1c14; }
 }
+.ck-link small { font-size: .74rem; font-weight: 500; color: var(--primary-dark); opacity: .85; }
+.ck-link small::before { content: "·"; margin-right: 5px; }
+.ck-link.is-warn { border-color: #f0d49c; background: var(--accent-soft); color: #8a4b06; }
+.ck-link.is-warn small { color: #8a4b06; }
+
+/* ═════════ v1.20 보안교육 · 자격 관리 (js/training.js) ═════════ */
+.tr-sh { display: flex; align-items: center; gap: 8px 10px; margin-bottom: 8px; }
+.tr-sh h3, .tr-sh h4 { margin: 0; font-size: 1rem; font-weight: 700; }
+.tr-sh h4 { font-size: .92rem; }
+.tr-sh .spacer { flex: 1; }
+.tr-cnt { font-size: .84rem; color: var(--text-3); }
+.tr-due { margin-bottom: 16px; }
+.tr-duel { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); gap: 6px 14px; }
+.tr-duel li { display: grid; grid-template-columns: 62px minmax(0, auto) minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 7px 10px; border: 1px solid #edf1f0; border-radius: 9px; font-size: .86rem; }
+.tr-duel li.is-click { cursor: pointer; }
+@media (hover: hover) and (pointer: fine) { .tr-duel li.is-click:hover { border-color: var(--primary); } }
+.tr-dd { font-weight: 700; font-size: .84rem; }
+.tr-dd[data-st="exp"] { color: var(--danger); }
+.tr-dd[data-st="soon"] { color: var(--accent-dark); }
+.tr-dg { min-width: 0; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tr-de { font-size: .78rem; color: var(--text-3); }
+.tr-role { display: inline-block; margin: 0 4px 3px 0; padding: 0 7px; border-radius: 5px; background: #eef2f1; color: var(--text-2); font-size: .76rem; font-weight: 600; line-height: 1.7; white-space: nowrap; }
+.tr-gtbl .c-cell { white-space: nowrap; }
+.tr-gtbl tbody td[data-tcell] { cursor: pointer; }
+.tr-cell { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 1px; }
+.tr-cell small { font-size: .74rem; color: var(--text-3); }
+.tr-cell[data-st="exp"] small { color: var(--danger); font-weight: 600; }
+.tr-cell[data-st="soon"] small { color: var(--accent-dark); font-weight: 600; }
+.tr-na { color: #b9c4c1; }
+.tr-stbl .c-date, .tr-stbl .c-n, .tr-stbl .c-kind { white-space: nowrap; }
+.tr-stbl .c-name { min-width: 240px; }
+.tr-miss { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.tr-miss small { font-size: .74rem; color: var(--text-3); }
+.tr-ptbl .c-st, .tr-ptbl .c-ssi { white-space: nowrap; }
+.tr-stbl tbody tr.is-click, .tr-ptbl tbody tr.is-click { cursor: pointer; }
+.tr-roleadd { margin-top: 8px; width: 100%; max-width: 280px; min-height: 36px; padding: 0 11px; border: 1.5px solid var(--border-strong); border-radius: var(--radius-sm); font-size: .86rem; }
+.tr-recs { margin: 16px 0 4px; padding-top: 12px; border-top: 1px solid #edf1f0; }
+.tr-rlist { list-style: none; margin: 0; padding: 0; }
+.tr-rlist li { border-bottom: 1px solid #f0f3f2; }
+.tr-rlist li:last-child { border-bottom: 0; }
+.tr-rbtn { display: grid; grid-template-columns: 92px minmax(0, 1fr) auto auto; align-items: center; gap: 10px; width: 100%; padding: 9px 4px; border: 0; background: none; text-align: left; font-size: .88rem; color: var(--text); }
+button.tr-rbtn { cursor: pointer; }
+@media (hover: hover) and (pointer: fine) { button.tr-rbtn:hover { background: var(--primary-soft); } }
+.tr-rbtn small { color: var(--text-3); font-size: .78rem; }
+.tr-vroles { margin: 0 0 10px; }
+.tr-ctbl input[type="text"], .tr-ctbl input:not([type]), .tr-ctbl input[type="number"], .tr-ctbl select { width: 100%; min-width: 0; min-height: 34px; padding: 0 8px; border: 1px solid var(--border-strong); border-radius: 8px; font-size: .84rem; background: var(--surface); }
+.tr-ctbl input[type="number"] { width: 72px; }
+.tr-ctbl td { padding: 6px; }
+.tr-ctbl td.c { text-align: center; }
+.tr-ctbl input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--primary); }
+.tr-ctbl td:first-child { min-width: 190px; }
+.tr-ctbl select { min-width: 74px; padding-right: 22px; }
+.tr-ctbl td:nth-child(3) input { min-width: 80px; }
+.tr-ctbl td:nth-child(5) { min-width: 170px; }
+#modal-box > .seg { margin: 0 0 14px; }
+@media (max-width: 767px) {
+  .tr-duel li { grid-template-columns: 56px minmax(0, 1fr) auto; }
+  .tr-duel li .tr-dg { grid-column: 2 / -1; grid-row: 2; }
+  .tr-gtbl thead, .tr-stbl thead, .tr-ptbl thead { display: none; }
+  .tr-gtbl, .tr-gtbl tbody, .tr-stbl, .tr-stbl tbody, .tr-ptbl, .tr-ptbl tbody { display: block; }
+  .tr-gtbl tbody tr, .tr-stbl tbody tr, .tr-ptbl tbody tr { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px 10px; padding: 12px 8px; border-bottom: 1px solid #edf1f0; }
+  .tr-gtbl tbody td, .tr-stbl tbody td, .tr-ptbl tbody td { display: block; padding: 0; border: 0; background: none !important; min-width: 0; }
+  .tr-gtbl .c-name, .tr-ptbl .c-name, .tr-stbl .c-name { flex: 1 1 60%; }
+  .tr-gtbl .c-roles, .tr-ptbl .c-roles { flex: 1 1 100%; order: 2; }
+  .tr-gtbl .c-cell { order: 3; display: inline-flex !important; align-items: center; gap: 6px; padding: 4px 8px !important; border: 1px solid #edf1f0 !important; border-radius: 8px; }
+  .tr-gtbl .c-cell::before { content: attr(data-label); font-size: .74rem; font-weight: 600; color: var(--text-3); }
+  .tr-gtbl .c-cell .tr-cell { flex-direction: row; align-items: center; gap: 5px; }
+  .tr-stbl .c-date { order: 0; flex: 1 1 100%; }
+  .tr-stbl .c-rec, .tr-stbl .c-kind, .tr-stbl .c-n { order: 3; }
+  .tr-gtbl .c-cell.is-na { display: none !important; }
+  .tr-ptbl .c-last, .tr-ptbl .c-ssi { order: 3; flex: 1 1 100%; font-size: .84rem; }
+  .tr-ptbl .c-last .cell-sub { display: inline; margin-left: 6px; }
+  .tr-ptbl .c-last::before, .tr-ptbl .c-ssi::before { content: attr(data-label); display: inline-block; width: 64px; font-size: .74rem; font-weight: 600; color: var(--text-3); }
+  .tr-ptbl .c-st { order: 1; }
+  .tr-rbtn { grid-template-columns: 84px minmax(0, 1fr) auto; }
+  .tr-rbtn small { grid-column: 2 / -1; }
+}
+@media print {
+  .tr-gtbl .c-cell small { color: #333 !important; }
+  .tr-due, .tr-duel li { break-inside: avoid; }
+}

@@ -134,7 +134,7 @@
   })();
   /* 연결 화면 이름 — 준비 중인 메뉴는 앞으로 열릴 이름으로 */
   const ROUTE_NAME = {
-    dashboard: "보안등급 이력", audit: "수검 지적 관리", training: "보안교육 · 자격 관리", inspection: "보안 기록부",
+    dashboard: "보안등급 이력", audit: "수검 지적 관리", inspection: "보안 기록부",
     partners: "협력사 · 보안용역 관리", "sec-cases": "보안 처리 대장", "kc-ra": "상용화주 · RA 관리"
   };
   const routeLive = (r) => !!(SeMIS.hasModule && SeMIS.hasModule(r));
@@ -153,7 +153,17 @@
   }
   const sc = (v) => (Number.isInteger(v) && v >= 0 && v <= 4 ? v : null);
   const linksOf = (c) => (c && Array.isArray(c.links) ? c.links : (c && c.mid && DEF_LINKS[c.mid]) || []).filter(r => typeof r === "string" && r);
-  const hasEvidence = (c) => filesOf(c).length > 0 || linksOf(c).some(routeLive);
+  /* 연결 화면의 증빙 판단 — 화면이 window.SemisEvidence[route](mid) 를 내놓으면 실제 기록으로({ ok, text }),
+     없으면 화면이 열려 있는 것만으로 증빙으로 본다 */
+  function routeEv(r, mid) {
+    const live = routeLive(r);
+    const fn = live && typeof window !== "undefined" && window.SemisEvidence ? window.SemisEvidence[r] : null;
+    if (typeof fn === "function") {
+      try { const v = fn(mid); if (v && typeof v === "object") return { ok: !!v.ok, text: norm(v.text), live }; } catch (e) { /* 판단 실패 → 화면 기준 */ }
+    }
+    return { ok: live, text: "", live };
+  }
+  const hasEvidence = (c) => filesOf(c).length > 0 || linksOf(c).some(r => routeEv(r, c && c.mid).ok);
   /* 항목 상태 — N/A · 미평가(문서·시행 중 하나라도 비었음) · 보완 필요(3점 미만) · 증빙 없음 · 준비됨 */
   function itemState(c) {
     if (!c) return "todo";
@@ -558,9 +568,10 @@
       <option value="">-</option>${SCORES.map((s, i) => `<option value="${i}" ${v === i ? "selected" : ""}>${i} ${esc(s)}</option>`).join("")}</select></label>`;
   }
   function linkChips(c) {
-    return linksOf(c).map(r => routeLive(r)
-      ? `<button type="button" class="ck-link" data-ck-go="${esc(r)}">${icon("forward", 13)}<span>${esc(routeLabel(r))}</span></button>`
-      : `<span class="ck-link is-plan"><span>${esc(routeLabel(r))}</span><small>준비 중</small></span>`).join("");
+    return linksOf(c).map(r => { const ev = routeEv(r, c.mid);
+      return ev.live
+        ? `<button type="button" class="ck-link${ev.ok ? "" : " is-warn"}" data-ck-go="${esc(r)}">${icon("forward", 13)}<span>${esc(routeLabel(r))}</span>${ev.text ? `<small>${esc(ev.text)}</small>` : ""}</button>`
+        : `<span class="ck-link is-plan"><span>${esc(routeLabel(r))}</span><small>준비 중</small></span>`; }).join("");
   }
   function ckRow(c, canW, canB) {
     const st = CST[itemState(c)];
@@ -597,7 +608,8 @@
     const t = tally(checksOf(a).filter(Boolean)), pr = prep(a);
     const src = a.chkSrc || {};
     const sub = (s) => `문서 ${s.dSum}/${s.dN * 4} · 시행 ${s.iSum}/${s.iN * 4} · 평균 ${avgTxt(s.dAvg)} / ${avgTxt(s.iAvg)} · 준비 ${s.ready}/${s.ap}`;
-    const remark = (c) => [c.note ? esc(c.note) : "", filesOf(c).length ? "첨부 " + filesOf(c).length : "", linksOf(c).filter(routeLive).map(r => esc(routeLabel(r))).join(", ")]
+    const remark = (c) => [c.note ? esc(c.note) : "", filesOf(c).length ? "첨부 " + filesOf(c).length : "",
+      linksOf(c).filter(routeLive).map(r => { const ev = routeEv(r, c.mid); return esc(routeLabel(r) + (ev.text ? " — " + ev.text : "")); }).join(", ")]
       .filter(Boolean).join("<br>");
     return `<div class="print-only au-print">
       <div class="au-pcap"><b>${esc(src.title || "점검 체크리스트")}${src.asOf ? " (" + esc(src.asOf) + ")" : ""}</b>
@@ -1207,7 +1219,7 @@
     BODIES, FTYPES, FSTAT, PH, SCORES, EVIDENCE, PRESET, CST,
     phase, dday, ddayText, prep, repeatCount, overdueF, nextAudit, allFindings, auditTitle,
     syncCalendar, syncFromSchedule, unlinkBySchedule, dropCalendar, uploadInto,
-    itemState, linksOf, tally, groupsOf, applyChecklist, loadForm, loadMaster, basisOf, basisView, cmpMid, unusedItem,
+    itemState, linksOf, routeEv, tally, groupsOf, applyChecklist, loadForm, loadMaster, basisOf, basisView, cmpMid, unusedItem,
     setMaster(m) { master = validMaster(m) ? m : null; masterErr = ""; masterWait = null; },
     dashHTML, mountDash, dashData, open: openAudit, form: auditForm, checkForm, findingForm,
     setToday(t) { fixedToday = isISO(t) ? t : ""; },

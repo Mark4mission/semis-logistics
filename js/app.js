@@ -8,7 +8,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.19.0";
+  const VERSION = "1.20.0";
   const APP_NAME = "SeMIS · Logistics";
   /* v1.15: 데이터 캐시는 이 탭의 sessionStorage 에만 둔다(탭을 닫거나 로그아웃하면 사라짐).
      화면 설정(LS_UI)만 localStorage. */
@@ -225,10 +225,7 @@ const SeMIS = (() => {
         "내부 점검·외부 감사(국토부·공항공사·본사 안전심사) 연간 일정과 결과를 관리하고 일정관리와 연동합니다."),
       p("car", "시정조치 (CAR)", "📋", "car", "hq", "hub-aud",
         "점검·감사에서 나온 부적합을 접수 → 조치중 → 종결 3단계로 추적하고 기한 경과를 에스컬레이션합니다."),
-      p("training", "안전보안 교육 관리", "🎓", "training", "mgr", "hub-aud",
-        "보안교육(초기·정기)·안전교육(TBM·특별교육)·위험물 교육 계획과 실시 이력, 대상자별 이수 현황."),
-      p("certs", "이수증 관리", "🎖", "certs", "mgr", "hub-aud",
-        "교육 이수증·자격증(보안검색요원·위험물 취급자·지게차 등) 등록과 만료 도래 알림."),
+      m("training", "보안교육 · 자격 관리", "🎓", "training", "mgr", "hub-aud"),
 
       h("hub-ops", "협력 · 비상", "users"),
       Object.assign(m("contacts", "비상연락망 · 보고체계", "☎️", "contacts", "mgr", "hub-ops"), { quick: true }),
@@ -327,6 +324,7 @@ const SeMIS = (() => {
       fleet: [],         // 운항 현황 기체 목록 [{reg, hex, type, model}] — 비어 있으면 기본 15대(js/flightcore.js)
       equipment: [],     // 검색장비 대장 (상태·고장·점검은 CARES 실시간 — js/cares.js)
       audits: [],        // 수검 대응 센터 (v1.17 — js/audit.js)
+      training: { courses: [], people: [], records: [], sessions: [] }, // 보안교육 · 자격 관리 (v1.20 — 명부는 공용 DB만)
       chatRooms: []      // (예약) 팀 채팅방
     };
   }
@@ -501,6 +499,16 @@ const SeMIS = (() => {
     DATA.equipment = (Array.isArray(DATA.equipment) ? DATA.equipment : []).filter(x => x && typeof x === "object" && x.id);
     // 수검 대응 센터 (v1.17) — 배열 보정만(항목 내부는 모듈이 없는 값을 기본값으로 읽는다)
     DATA.audits = (Array.isArray(DATA.audits) ? DATA.audits : []).filter(x => x && typeof x === "object" && x.id);
+    // 보안교육 · 자격 관리 (v1.20) — 구조만 보정
+    if (!DATA.training || typeof DATA.training !== "object" || Array.isArray(DATA.training)) DATA.training = { courses: [], people: [], records: [], sessions: [] };
+    ["courses", "people", "records", "sessions"].forEach(k => { if (!Array.isArray(DATA.training[k])) DATA.training[k] = []; });
+    // v1.20 예정 메뉴 '안전보안 교육 관리' → 실모듈 '보안교육 · 자격 관리', '이수증 관리(certs)'는 합쳐져 빠진다(운영자가 바꾼 이름은 유지)
+    (() => {
+      const tr = DATA.menus.find(m => m.type === "module" && m.module === "training");
+      if (tr) { if (tr.planned) { delete tr.planned; delete tr.desc; } if (tr.label === "안전보안 교육 관리") tr.label = "보안교육 · 자격 관리"; }
+      const ci = DATA.menus.findIndex(m => m.type === "module" && m.module === "certs" && m.planned);
+      if (ci >= 0) DATA.menus.splice(ci, 1);
+    })();
     DATA.equipment.forEach(x => { if (!Array.isArray(x.logs)) x.logs = []; });
     ["reg-sec", "reg-safety", "reg-dg", "scr-status", "scr-equip"].forEach(id => {
       const mn = DATA.menus.find(m => m.type === "module" && m.module === id);

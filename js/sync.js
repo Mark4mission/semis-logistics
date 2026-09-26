@@ -24,7 +24,7 @@
   const FN_FILES = SUPA_URL + "/functions/v1/semis-logi-files";
   const CHANNEL = "semis-logi-sync";
 
-  const SYNC_KEYS = ["menus", "notices", "schedules", "assignees", "assigneesSeeded", "minutes", "minuteFolders", "levelHistory", "safetyBoard", "contacts", "gcal", "chatRooms", "vault", "regulations", "equipment", "crisis", "fleet", "audits", "phonebook"];
+  const SYNC_KEYS = ["menus", "notices", "schedules", "assignees", "assigneesSeeded", "minutes", "minuteFolders", "levelHistory", "safetyBoard", "contacts", "gcal", "chatRooms", "vault", "regulations", "equipment", "crisis", "fleet", "audits", "phonebook", "training"];
   /* 탭 세션 저장소 — 로그인 토큰 · 권한 · 미전송 목록은 탭을 닫으면 사라진다 */
   const SS_TOKEN = "semisl:tok";
   const SS_ME = "semisl:me";
