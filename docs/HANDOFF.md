@@ -6,10 +6,10 @@
 
 | 항목 | 값 |
 |---|---|
-| 현재 버전 | **v1.17.1** (2026-09-26) — 로그인 창 보호(앱 준비 전 제출 → 새로고침되던 문제) · v1.17.0 **수검 대응 센터**(국토부 · 해외 당국 · 화주 · 사내 심사 수검의 준비 · 증빙 · 지적 조치 · 재발 추적) · v1.16 로그인 자동공격 방어 · v1.15 서버 보안 위 |
+| 현재 버전 | **v1.18.0** (2026-09-26) — **업무 연락처**(협력 · 비상 허브, 현장 · 협력사 · 유관기관 58건 · 구역 9 · 확인 필요 9) · v1.17.1 로그인 창 보호(앱 준비 전 제출 → 새로고침되던 문제) · v1.17.0 **수검 대응 센터**(국토부 · 해외 당국 · 화주 · 사내 심사 수검의 준비 · 증빙 · 지적 조치 · 재발 추적) · v1.16 로그인 자동공격 방어 · v1.15 서버 보안 위 |
 | 접속 주소 | https://mark4mission.github.io/semis-logistics/ |
 | 저장소 | GitHub `Mark4mission/semis-logistics` (공개) · Mac `~/SeMIS_Logistics` |
-| 테스트 | `npm test` 303건 전부 통과 (가짜 서버로 로그인(작업증명 포함)·RLS·파일 함수 흉내 · 코드에 해시·토큰 없음) |
+| 테스트 | `npm test` 312건 전부 통과 (가짜 서버로 로그인(작업증명 포함)·RLS·파일 함수 흉내 · 코드에 해시·토큰 없음) |
 | 백엔드 | Supabase `mzyuzrxkdcpzxojenwat` — 테이블 `semis_logi_store`(세션 RLS), **비공개** 버킷 `semis-logi-files`, 비공개 스키마 `semis_logi_private`(계정 · 세션 · 로그인 시도 · 접속 기록 · 권한표), RPC `semis_logi_*`, Edge Function `semis-logi-files`(서명 URL) · 운항 현황: Edge Function `semis-logi-adsb` + 테이블 `semis_logi_adsb` · `semis_logi_adsb_events` + pg_cron 2분 |
 
 ## 2. 새 세션 시작
@@ -56,6 +56,7 @@ Claude가 할 일(순서대로):
 | minutes | minutes.js | mgr | 회의록 + QR 참석 서명 |
 | reg-sec · reg-safety · reg-dg | regulations.js | mgr (편집 hq) | 규정 3종 · PDF 뷰어 · 개정 아이디어 노트 |
 | crisis | crisis.js | mgr (편집 hq) | **위기대응 담당자**(v1.13) — 회사 위기대응 조직 11곳 × 27팀 × 임무 96건 × 담당자 78명(2026년 명단, 기준 26년 9월). 우리 팀(인천화물팀) 임무 띠 · 조직 줄 필터 · 검색 · 보기 4종(조직별 · 팀별 · 담당자별 · 매트릭스) · 이름 누르면 그 사람 임무 전체 · 비상연락망 동명 1명이면 전화 버튼 · hq: 엑셀 반영(대조 후) · 행 편집 · 기본 정보 · 원본 엑셀 내려받기 |
+| phonebook | phonebook.js | mgr (편집 hq) | **업무 연락처**(v1.18) — 현장 · 협력사 · 유관기관 업무 연락처를 구역(색) 9곳 × 58건으로(2026-09-26 전달 목록 정리). 보기 3종(구역별 카드 · 빠른 연락 큰 버튼 · 표) · 구역 줄 필터 · 검색(번호 하이픈 무시) · 전화(tel) · 문자(sms) · 메일(mailto, 구역 전체 메일) · 내선은 눌러 복사 · **확인 필요** 표시(메모) + 필터 · hq 추가/수정/삭제 · 구역 관리(이름 · 색 · 순서) · 기본 정보(기준 시점 · 참고) |
 | contacts | contacts.js | mgr (편집 hq) | 비상연락망 · 보고체계 (2026-09-22 SeMIS v2 연락망 69건 이관 — 12섹션 78행) · **보고 체계도 탭**(v1.10: 보안사고 20 · 안전사고 18 · 위험물사고 29행, 미리보기 → 전체 화면 뷰어) |
 | vault | vault.js | hq | 암호 관리 (AES-256-GCM, 5분 자동 잠금, 공용/개인용 — 개인용은 본인 키로만 해독) |
 | audit | audit.js | mgr (편집 hq) | **수검 대응 센터**(v1.17, M1) — 외부·사내 점검을 받는 쪽의 준비 → 수검 → 지적 조치 → 종결. 구분 3종(국토부 · 지방항공청 / 해외 당국 · 화주 / 사내 심사). 수검 일정 탭(다음 수검 D-day · 준비 진행 · 미결 지적 · 기한 경과 · 올해 수검, 구분 · 진행 필터) · 지적사항 탭(전 수검 지적 한 표, 미결 · 기한 경과 · 완료) · 상세(기본 정보 · 공문/결과 첨부 · 준비 체크리스트(구분별 기본 항목 · 근거 조항 · 담당 · 증빙 파일 · 제자리 완료 체크) · 지적사항(시정조치 · 개선권고 · 현장시정 · 관찰사항, 조항 · 조치 · 담당 · 기한 · 상태 · 증빙)). 같은 조항이 2개 이상 수검에서 지적되면 '재발'. 일정관리 연동(수검 기간 · 지적 기한). 대시보드 띠(mgr, 60일 안 수검 또는 미결 지적이 있을 때만) · 메뉴 배지(미결 지적) · 통합 검색 · 390px 행 카드 · A4 인쇄 |
@@ -81,7 +82,7 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 
 ## 5. 데이터 · 백엔드
 
-- **SYNC_KEYS(18)**: menus · notices · schedules · assignees · assigneesSeeded · minutes · minuteFolders · levelHistory · safetyBoard · contacts · gcal · chatRooms · vault · regulations · equipment · crisis · fleet · audits (계정 자료 pwOverrides·userOverrides·customUsers는 v1.15에 서버 전용 표로 이관·삭제)
+- **SYNC_KEYS(19)**: menus · notices · schedules · assignees · assigneesSeeded · minutes · minuteFolders · levelHistory · safetyBoard · contacts · gcal · chatRooms · vault · regulations · equipment · crisis · fleet · audits · phonebook (계정 자료 pwOverrides·userOverrides·customUsers는 v1.15에 서버 전용 표로 이관·삭제)
 - SYNC_KEYS 밖 설정 행: `caresCfg`(CARES Firebase 웹 키 — `SemisSync.fetchKV`로만 읽음, 앱이 쓰지 않음)
 - 신규 컬렉션 추가 시: `freshData()` 기본값 → `normalizeData()` 보정(멱등) → `sync.js` SYNC_KEYS → 테스트 Y01 기대 문자열 갱신 → **서버 권한표 등록**(아래)
 - **서버 보안(v1.15)** — 원본 SQL `tools/sql/semis-logi-security.sql`(1단계) · `tools/sql/semis-logi-lockdown.sql`(2단계 잠금). 실제 적용은 마이그레이션 `semis_logi_security_1~6`(6 = RPC 실행 권한: public `semis_logi_*`는 anon·service_role만, authenticated 차단)
@@ -144,6 +145,10 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 - 3D 장면: GPU 없는 PC(소프트웨어 렌더링)·느린 PC(평균 45ms/프레임 초과)·동작 줄이기 설정에서는 정지 화면, WebGL 없으면 사진. 사진이 보이면 대시보드에서 `document.querySelector('#dash-3d').dataset.h3d`로 사유 확인(no-webgl · webgl-context · load · live · static)
 - 2026-09-22 v1.9.0 배포 직후 Mark의 Chrome에서 3D 대신 사진이 보였음 — 같은 Mac의 내장 브라우저에서는 3D 정상(Apple M4 Pro, Metal). 배포 전 요청한 three.js 404가 CDN에 남은 것으로 추정해 v1.9.1에서 주소에 버전을 붙임. 재발 시 위 사유 값과 chrome://gpu의 WebGL 항목 확인
 
+- **업무 연락처(v1.18)** — 데이터 `phonebook` = { asOf, notes[], groups[{id, name, color}], rows[{ id, group, org, dept, name, title, duty, ext(내선), office(유선), mobile, email, note, check(확인 필요), verify(확인할 내용) }] }. 이름이 없으면 부서 · 장소(예: 반입부스)가 제목
+  - 권한표 `phonebook` 2/3(마이그레이션 `semis_logi_security_9_phonebook`). 명단은 공용 DB에만(2026-09-26 SQL로 58행 등록, updated_by `phonebook-import`) — 코드 · 테스트에 실제 번호 없음(테스트 PB09가 확인)
+  - 정리 원칙(Mark 결정): 원문 최대 보존 + 불확실한 것은 '확인 필요'. 중복(장윤석 · 정준성 · 신민수 · 조규호 · 이병수)은 한 사람으로 합침, 7자리 번호는 032 보충. 확인 필요 9건: G5 명칭 · 한선웅 소속 · 김혜림 소속 · 강동성 담당(탑재 OP/수출OP) · 최용원 메일(yongon2ap/yongonzap) · 심윤수 소속 · 이정임/이정인 · 김정원 소속 · 김재혁(치량(VIP) 744-2081과 합침)
+  - 입력 번호 정리(`fmtPhone`): 하이픈 없이 적은 번호만 010-0000-0000 · 032-000-0000 모양으로(7자리는 032 보충). 구역 삭제는 연락처가 없는 구역만
 - **수검 대응 센터(v1.17, M1)** — Mark 결정(2026-09-26): 제안안(수검 등록 → 규정 조항별 준비 체크리스트 · 증빙 → 수검 기록 → 지적 조치 추적 → 과거 지적 이력 · 재발 · A4 인쇄 · 대시보드 D-day), 대상은 국토부 · 지방항공청 / 해외 당국 · 화주 / 사내 심사(공항공사 제외)
   - 데이터 `audits[]` = { id, body(gov|foreign|internal), org, kind, start, end, place, lead, scope, memo, outcome(""|"none"), cancelled, linkCal, noCalMain, files[], checklist[{id,text,ref,owner,note,done,doneAt,doneBy,files[]}], findings[{id,type(car|rec|onsite|obs),ref,text,action,owner,due,status(open|doing|done),doneDate,noCal,files[]}], createdAt/By, updatedAt/By }. 진행 단계는 저장하지 않고 계산(준비 → 수검 중 → 결과 대기 → 조치 중 → 종결 / 취소). 결과 대기 = 수검이 끝났는데 지적도 '지적 없음' 확정도 없는 상태
   - 권한표 `audits` 2/3(마이그레이션 `semis_logi_security_8_audits`) · 파일 폴더 `audits/` 열람 2 · 올리기 3(Edge Function `semis-logi-files` v2 재배포). 첨부는 저장소에서 지워지지 않는다(시스템 설정 › 저장소에서 미참조 파일 정리)
@@ -191,4 +196,5 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 | v1.16.0 | 09-26 | **로그인 자동공격 방어** — reCAPTCHA 대신 보이지 않는 작업증명: 서버 서명 문제(2분 · 1회용)를 로그인 창에서 Web Worker가 미리 풀어 첨부(js/pow.js, v2와 같은 파일) · 전체 실패가 늘면 난이도 자동 상향 · 6자리 회의 서명 코드 실패 급증 시 15분 중지 · 보안 탭 실패 통계 · 로그인 안내 문구(제한 · 중지 · 확인 실패) · CSP worker-src · 라이브 확인(해답 없는 로그인 거부, 로그인 1.6초) 후 임시 계정·기록 삭제 |
 | v1.17.0 | 09-26 | **수검 대응 센터**(M1) — 국토부 · 지방항공청 / 해외 당국 · 화주 / 사내 심사 수검을 준비 → 수검 → 지적 조치 → 종결로 관리. 수검 일정 · 지적사항 탭, 상세(준비 체크리스트 · 증빙 파일 · 지적사항), 재발 조항 표시, 일정관리 양방향 연동, 대시보드 띠 · 메뉴 배지 · 통합 검색 · 390px · A4 인쇄. 서버: 권한표 audits 2/3 · 파일 폴더 audits. 회의록 조치 일정 자동 연기 되돌림 수정 |
 | v1.17.1 | 09-26 | **로그인 창 보호** — 로그인 창이 뜬 뒤 스크립트가 다 읽힐 때까지(수 초) Enter·로그인을 누르면 폼이 그대로 전송돼 새로고침되고 암호가 지워져 두세 번 눌러야 접속되던 문제. `<head>` 의 `js/loginguard.js` 가 그 제출을 붙잡아 두고 앱이 준비되면 이어서 로그인 · 본문 스크립트 전부 `defer`(병렬 적재) |
+| v1.18.0 | 09-26 | **업무 연락처** — 협력 · 비상 허브 '위기대응 담당자' 아래 새 메뉴(mgr, 편집 hq). 전달받은 업무 연락처 목록을 구역 9곳(보안 · 검색 현장 / 항공사 보안 / 인천공항공사 / AAP 화물서비스1팀 · 2팀 / AAP 교육 · 업무 · 장비 / 정비 · 조업 · 케이터링 / 차량 · 버스 / 장비 · 시설 업체) 58건으로 정리해 공용 DB 등록. 구역별 카드(색 띠) · 빠른 연락(전화 · 문자 · 메일 큰 버튼) · 표 보기, 확인 필요 표시 · 필터, 구역 관리. 테스트 PB01~PB09 (312 통과) |
 | v1.9.1 | 09-22 | 한글 어절 단위 줄바꿈(전역 keep-all) · 대시보드 하단 시트 칸 수를 시트 폭으로 결정(container query, 1040px↑ 4칸) · 일정 폼 '완료'를 하단 버튼줄로(스크롤 없이 보임) · 오른쪽 설정 패널 압축(1512×825에서 스크롤 없음) · 3D 불러오기 주소에 버전 부여(배포 직후 옛 404 캐시 회피)·실패 사유 기록(`#dash-3d[data-h3d]`) |

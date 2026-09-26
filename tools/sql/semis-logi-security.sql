@@ -72,7 +72,7 @@ insert into semis_logi_private.key_acl(key, read_rank, write_rank) values
   ('menus',1,4), ('notices',1,3), ('levelHistory',1,3), ('safetyBoard',1,3), ('fleet',1,3), ('chatRooms',1,3),
   ('minutes',1,2), ('minuteFolders',1,2),
   ('schedules',2,2), ('assignees',2,4), ('assigneesSeeded',2,4), ('gcal',2,4),
-  ('contacts',2,3), ('crisis',2,3), ('regulations',2,3), ('equipment',2,3), ('audits',2,3), ('caresCfg',2,9),
+  ('contacts',2,3), ('crisis',2,3), ('regulations',2,3), ('equipment',2,3), ('audits',2,3), ('phonebook',2,3), ('caresCfg',2,9),
   ('vault',3,3),
   ('pwOverrides',9,9), ('userOverrides',9,9), ('customUsers',9,9), ('__hist_probe',9,9)
 on conflict (key) do update set read_rank = excluded.read_rank, write_rank = excluded.write_rank;
