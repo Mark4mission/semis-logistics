@@ -3758,6 +3758,19 @@ function makeServer(opts = {}) {
     const Cal = e.w.SemisCalendar;
     const setv = (sel, v) => { const el = q(e, sel); el.value = v; return el; };
     const sched = (id) => (e.S.data.schedules || []).find(s => s && s.id === id);
+    const until = async (fn, n) => { for (let i = 0; i < (n || 300) && !fn(); i++) await tick(5); return fn(); };
+    /* 시험용 가짜 원본 — 실제 체크리스트(민감보안정보)는 공용 DB에만 있고 저장소에는 넣지 않는다 */
+    const FAKE_MASTER = { title: "시험용 CHK-LIST", asOf: "2099", ssi: "시험 취급 문구", scoreScale: ["a", "b", "c", "d", "e"], sections: [
+      { no: "1", title: "가 영역", items: [
+        { no: "1.1", text: "가 항목 하나", ref: "규정 1.1\n절차 2", basis: "요지 하나\n■ 확인 요령\n① 첫째\n※ 주의" },
+        { no: "1.2", text: "가 항목 둘", ref: "규정 1.2", basis: "요지 둘" }] },
+      { no: "2", title: "나 영역", items: [
+        { no: "2.10.2", text: "나 공통 c", ref: "공통 규정", basis: "[2.10~2.10.2 공통] 공통 요지" },
+        { no: "2.8", text: "나 항목 지적 관리", ref: "규정 2.8", basis: "요지 2.8" },
+        { no: "2.10", text: "나 공통 a", ref: "공통 규정", basis: "" },
+        { no: "2.10.1", text: "나 공통 b", ref: "공통 규정", basis: "" }] },
+      { no: "9", title: "다 영역", items: [{ no: "9.1", text: "다 항목\n- 세부 하나", ref: "규정 9.1", basis: "요지 9" }] }
+    ] };
     A.setToday("2026-10-01");
     t("AU01 메뉴: 점검 · 교육 허브 맨 위(점검 일정 위) · mgr · 기존 데이터 자동 추가(멱등)", () => {
       const m = e.S.data.menus.find(x => x.module === "audit");
@@ -3788,12 +3801,27 @@ function makeServer(opts = {}) {
       a.findings[0].status = "done"; eq(A.phase(a, "2026-10-12"), "closed");
       a.cancelled = true; eq(A.phase(a, "2026-10-12"), "cancel");
       eq(A.phase({ id: "y", start: "" }), "plan", "일정 미정");
-      eq(A.prep({ checklist: [{ done: true }, { done: false }, { done: true }] }).pct, 67);
+      /* 준비율 = 준비됨(증빙 + 문서 · 시행 3점 이상) ÷ N/A 제외 항목 */
+      const pr = A.prep({ checklist: [
+        { docScore: 3, impScore: 4, files: [{ url: "u" }] },          // 준비됨
+        { docScore: 2, impScore: 3, files: [{ url: "u" }] },          // 보완 필요
+        { na: true },                                                // 제외
+        { docScore: 3, impScore: 3 },                                // 증빙 없음
+        { docScore: 4 }                                              // 미평가
+      ] });
+      eq(pr.done + "/" + pr.total + " " + pr.pct, "1/4 25");
+      eq(A.prep({ checklist: [{ done: true }] }).done, 0, "옛 완료 체크는 준비로 보지 않음");
+      eq(["ready", "low", "na", "noev", "todo"].join(), [{ docScore: 3, impScore: 4, files: [{}] }, { docScore: 0, impScore: 4 }, { na: true, docScore: 1 },
+        { docScore: 3, impScore: 3 }, { impScore: 3 }].map(A.itemState).join());
+      eq(A.itemState({ mid: "2.8", docScore: 3, impScore: 3 }), "ready", "열린 화면(수검 대응 센터)이 증빙으로 연결된 항목");
+      eq(A.itemState({ mid: "1.1", docScore: 3, impScore: 3 }), "noev", "준비 중인 화면만 연결 → 증빙 없음");
+      ok(A.cmpMid("6.10", "6.9") > 0 && A.cmpMid("2.10.1", "2.10") > 0 && A.cmpMid("2.2.1", "2.3") < 0, "번호 순서");
     });
     let aid = "";
-    t("AU04 hq 등록: 기본 준비 항목 · 상세로 이동 · 일정관리 수검 일정 · 인쇄 버튼", () => {
+    await ta("AU04 hq 등록 → 체크리스트 불러오기(구분별 기본 영역) · 상세 · 일정관리 · 인쇄 버튼", async () => {
       e.S.data.audits = [{ id: "old1", body: "gov", org: "서울지방항공청", kind: "정기점검", start: "2025-10-14", end: "",
         findings: [{ id: "of1", type: "car", ref: "자체보안계획 7.3", text: "검색 기록 서명 누락", status: "done", doneDate: "2025-11-01" }] }];
+      A.setMaster(FAKE_MASTER);
       loginAs(e, "hq"); go(e, "audit");
       ok(q(e, ".page-head").textContent.indexOf("Print") >= 0, "인쇄 버튼");
       eq(qa(e, "tr[data-aud]").length, 0, "기본 필터 = 진행 중(종결 제외)");
@@ -3802,42 +3830,147 @@ function makeServer(opts = {}) {
       setv("#af-start", "2026-10-21"); setv("#af-end", "2026-10-20");
       setv("#af-place", "인천 화물터미널");
       ok(q(e, "#af-tpl").checked && q(e, "#af-cal").checked);
+      eq(q(e, "#af-tpl").parentNode.textContent.trim(), "점검 체크리스트 불러오기");
       clickOk(e);
       eq(e.S.data.audits.length, 2);
       const a = e.S.data.audits[1]; aid = a.id;
       eq(a.start, "2026-10-20"); eq(a.end, "2026-10-21", "시작 > 종료 → 서로 바꿈");
-      eq(a.checklist.length, A.TEMPLATES.gov.length);
+      eq(a.checklist.length, 0, "임의 기본 문구 없음");
       eq(A.getState().sel, aid, "등록하면 상세로");
+      await until(() => qa(e, ".cl-sec").length === 3);
+      const secs = qa(e, ".cl-sec input");
+      eq(secs.map(i => i.value + (i.checked ? "+" : "-")).join(","), "1+,2+,9-", "국토부 = 1~8 영역 기본");
+      eq(q(e, "#modal-box [data-act=ok]").textContent, "6개 불러오기");
+      secs[2].checked = true; secs[2].dispatchEvent(new e.w.Event("change"));
+      eq(q(e, "#modal-box [data-act=ok]").textContent, "7개 불러오기");
+      secs[2].checked = false; secs[2].dispatchEvent(new e.w.Event("change"));
+      clickOk(e);
+      eq(a.checklist.map(c => c.mid).join(","), "1.1,1.2,2.8,2.10,2.10.1,2.10.2", "번호 순");
+      eq(a.chkSecs.map(x => x.no + x.title).join(","), "1가 영역,2나 영역");
+      eq(a.chkSrc.title, "시험용 CHK-LIST");
+      ok(a.checklist.every(c => c.basis === undefined), "근거 요지는 수검에 복사하지 않음");
+      eq(a.checklist[0].ref, "규정 1.1\n절차 2");
       eq(q(e, ".au-title").textContent, "서울지방항공청 정기점검");
       ok(q(e, ".au-ddchip").textContent === "D-19");
+      eq(qa(e, ".ck-grp").length, 2); eq(qa(e, ".ck-row").length, 6);
       const s = sched("aud_" + aid);
       ok(s, "수검 일정"); eq(s.title, "[수검] 서울지방항공청 정기점검"); eq(s.start + "~" + s.end, "2026-10-20~2026-10-21");
       eq(s.color, "purple"); eq(s.src, "aud:" + aid); ok(s.reminders.indexOf("1w") >= 0);
       eq(e.errors.length, 0, e.errors.join(" | "));
     });
-    t("AU05 준비 체크리스트: 제자리 토글(완료자 기록) · 항목 추가 · 수정 · 삭제", () => {
+    t("AU05 점수 · N/A · 상태 · 영역 소계 · 필터 — 제자리 저장(초점 유지)", () => {
       const a = e.S.data.audits.find(x => x.id === aid);
-      q(e, "[data-ck]").click();
-      ok(a.checklist[0].done && a.checklist[0].doneBy === "Thq" && a.checklist[0].doneAt);
-      eq(q(e, "#au-checks .au-cnt").textContent, "1/" + A.TEMPLATES.gov.length);
-      ok(q(e, "[data-ck]").getAttribute("aria-pressed") === "true");
-      q(e, "[data-ck]").click();
-      ok(!a.checklist[0].done && !a.checklist[0].doneBy);
-      q(e, "#au-ck-add").click();
-      setv("#ac-text", "  현장 사진   준비 "); setv("#ac-ref", "자체보안계획 7.3");
-      q(e, "#ac-done").checked = true;
+      const cOf = (mid) => a.checklist.find(c => c.mid === mid);
+      const pick = (mid, kind, v) => {
+        const el = q(e, `select[data-sc="${kind}"][data-cid="${cOf(mid).id}"]`);
+        el.value = String(v); el.dispatchEvent(new e.w.Event("change"));
+      };
+      pick("2.8", "doc", 3);
+      eq(cOf("2.8").docScore, 3);
+      eq(e.w.document.activeElement, q(e, `select[data-sc="doc"][data-cid="${cOf("2.8").id}"]`), "초점 유지");
+      eq(q(e, `.ck-row[data-cid="${cOf("2.8").id}"]`).dataset.st, "todo", "시행 미평가");
+      pick("2.8", "imp", 4);
+      eq(q(e, `.ck-row[data-cid="${cOf("2.8").id}"]`).dataset.st, "ready", "연결된 열린 화면 = 증빙");
+      ok(q(e, `.ck-row[data-cid="${cOf("2.8").id}"] [data-ck-go="audit"]`), "증빙 화면 버튼");
+      pick("1.1", "doc", 4); pick("1.1", "imp", 3);
+      eq(q(e, `.ck-row[data-cid="${cOf("1.1").id}"]`).dataset.st, "noev");
+      ok(q(e, `.ck-row[data-cid="${cOf("1.1").id}"] .ck-link.is-plan`).textContent.indexOf("보안교육 · 자격 관리") >= 0, "준비 중 화면");
+      pick("2.10", "doc", 1); pick("2.10", "imp", 3);
+      eq(cOf("2.10").docScore, 1);
+      q(e, `[data-na="${cOf("1.2").id}"]`).click();
+      ok(cOf("1.2").na);
+      eq(A.prep(a).done + "/" + A.prep(a).total, "1/5", "N/A 제외");
+      eq(q(e, "#au-checks .au-cnt").textContent, "1/5");
+      const k = qa(e, ".ck-kpi b").map(x => x.textContent);
+      eq(k.slice(0, 6).join("|"), "20%|3/5|2.7|3.3|1|1", "준비율 · 평가 · 평균 · 보완 필요 · 증빙 없음");
+      const g1 = q(e, '.ck-grp[data-sec="1"] .ck-gsum').textContent.replace(/\s+/g, "");
+      eq(g1, "준비0/1·문서4.0·시행3.0");
+      q(e, '[data-ckst="low"]').click();
+      eq(qa(e, ".ck-row").length, 1); eq(qa(e, ".ck-row")[0].dataset.cid, cOf("2.10").id);
+      q(e, '[data-ckst="low"]').click();
+      eq(qa(e, ".ck-row").length, 6, "다시 누르면 해제");
+      setv("#ck-sec", "1").dispatchEvent(new e.w.Event("change"));
+      eq(qa(e, ".ck-row").length, 2);
+      setv("#ck-st", "open").dispatchEvent(new e.w.Event("change"));
+      eq(qa(e, ".ck-row").length, 1, "1영역 미준비(1.1 증빙 없음) — N/A 제외");
+      q(e, "#ck-clear").click();
+      eq(qa(e, ".ck-row").length, 6);
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    t("AU05b 항목 수정: 원본 문구 고정 · 의견 · 증빙 화면 연결(기본값과 같으면 저장 안 함) · 직접 항목 추가 · 삭제", () => {
+      const a = e.S.data.audits.find(x => x.id === aid);
+      const c = a.checklist.find(x => x.mid === "1.1");
+      q(e, `[data-ck-edit="${c.id}"]`).click();
+      ok(!q(e, "#ac-text") && q(e, ".ck-fixed").textContent.indexOf("가 항목 하나") >= 0, "원본 문구는 고칠 수 없음");
+      eq(q(e, "#ac-doc").value + q(e, "#ac-imp").value, "43");
+      const box = (r) => q(e, `#ac-links input[value="${r}"]`);
+      ok(box("training").checked && !box("contacts").checked, "기본 연결");
+      box("training").checked = false; box("contacts").checked = true;
+      setv("#ac-owner", "갑일"); setv("#ac-note", "교육 대장 사본 준비");
       clickOk(e);
-      const c = a.checklist[a.checklist.length - 1];
-      eq(c.text, "현장 사진 준비"); eq(c.ref, "자체보안계획 7.3"); ok(c.done && c.doneBy === "Thq");
-      q(e, `[data-ck-edit='${c.id}']`).click();
-      setv("#ac-owner", "갑일"); clickOk(e);
-      eq(a.checklist[a.checklist.length - 1].owner, "갑일");
-      q(e, `[data-ck-edit='${c.id}']`).click();
+      eq(c.links.join(), "contacts"); eq(c.owner, "갑일"); eq(c.note, "교육 대장 사본 준비");
+      eq(A.itemState(c), "ready", "열린 화면 연결 → 증빙");
+      ok(q(e, `.ck-row[data-cid="${c.id}"]`).textContent.indexOf("교육 대장 사본 준비") >= 0);
+      q(e, `[data-ck-edit="${c.id}"]`).click();
+      box("training").checked = true; box("contacts").checked = false;
+      clickOk(e);
+      eq(c.links, undefined, "기본값으로 되돌림 → 메뉴가 열리면 자동 반영");
+      q(e, "#au-ck-add").click();
+      clickOk(e);
+      ok(q(e, "#modal-box #ac-text"), "항목 없으면 저장 안 함");
+      setv("#ac-text", "  현장 사진   준비 "); setv("#ac-ref", "절차 7.3"); setv("#ac-doc", "3"); setv("#ac-imp", "3");
+      clickOk(e);
+      const m = a.checklist[a.checklist.length - 1];
+      eq(m.text, "현장 사진 준비"); eq(m.ref, "절차 7.3"); ok(!m.mid);
+      eq(A.itemState(m), "noev", "직접 항목은 연결 없음");
+      ok(q(e, '.ck-grp[data-sec="etc"]').textContent.indexOf("추가 항목") >= 0);
+      q(e, `[data-ck-edit="${m.id}"]`).click();
       q(e, "#modal-box [data-act=del]").click();
-      eq(a.checklist.length, A.TEMPLATES.gov.length);
-      q(e, "#au-ck-add").click(); clickOk(e);
-      eq(a.checklist.length, A.TEMPLATES.gov.length, "항목 없으면 저장 안 함");
+      eq(a.checklist.length, 6);
+    });
+    await ta("AU05c 근거 요지(hq): 원본에서만 · '[a~b 공통]' 요지 · 인쇄 표(점검관용 열 · 소계 · N/A)", async () => {
+      const a = e.S.data.audits.find(x => x.id === aid);
+      q(e, '[data-basis="1.1"]').click();
+      await until(() => q(e, ".bs-body"));
+      ok(q(e, ".bs-body").textContent.indexOf("요지 하나") >= 0);
+      eq(q(e, ".bs-body h5").textContent, "확인 요령");
+      ok(q(e, ".bs-body .bs-note"), "※ 줄");
       e.S.closeModal();
+      q(e, '[data-basis="2.10"]').click();
+      await until(() => q(e, ".bs-body"));
+      ok(q(e, ".bs-body").textContent.indexOf("공통 요지") >= 0, "공통 요지");
+      e.S.closeModal();
+      eq(qa(e, ".au-ptbl thead th").map(x => x.textContent).join("|"), "CHK-LIST 항목|관련근거|문서|시행|N/A|비고");
+      const rows = qa(e, ".au-ptbl tbody tr");
+      eq(rows.length, 2 + 6 + 1, "영역 2 + 항목 6 + 합계");
+      ok(rows[0].textContent.indexOf("1. 가 영역") >= 0 && rows[0].textContent.indexOf("문서 4/4") >= 0, "영역 소계");
+      const r12 = rows.find(r => r.textContent.indexOf("가 항목 둘") >= 0);
+      eq(r12.querySelectorAll("td")[4].textContent, "✓", "N/A");
+      ok(q(e, ".au-pssi").textContent.indexOf("시험 취급 문구") >= 0);
+      ok(q(e, ".au-print").classList.contains("print-only") && q(e, ".ck-list").classList.contains("no-print"));
+      eq(a.checklist.length, 6);
+    });
+    await ta("AU05d 다시 불러오기: 불러온 영역 표시 · 없는 영역만 추가 · 사용 안 한 옛 항목 빼기", async () => {
+      const a = e.S.data.audits.find(x => x.id === aid);
+      a.checklist.push({ id: "legacy1", text: "옛 기본 문구", ref: "", owner: "", note: "", done: false, files: [] });
+      a.checklist.push({ id: "legacy2", text: "쓴 항목", note: "메모 있음", files: [] });
+      e.S.renderView();
+      q(e, "#au-load").click();
+      await until(() => qa(e, ".cl-sec").length === 3);
+      const secs = qa(e, ".cl-sec input");
+      ok(secs[0].disabled && secs[1].disabled && !secs[2].checked, "불러온 영역 · 국토부 기본에 9 없음");
+      eq(q(e, ".cl-sec.is-have .cl-n").textContent, "불러옴");
+      ok(q(e, "#modal-box [data-act=ok]").disabled);
+      ok(q(e, "#cl-drop").checked && q(e, ".cl-drop").textContent.indexOf("1개") >= 0);
+      secs[2].checked = true; secs[2].dispatchEvent(new e.w.Event("change"));
+      clickOk(e);
+      eq(a.checklist.map(c => c.mid || c.id).join(","), "1.1,1.2,2.8,2.10,2.10.1,2.10.2,9.1,legacy2", "번호 순 + 직접 항목 뒤 · 안 쓴 항목 빠짐");
+      eq(a.chkSecs.length, 3);
+      const r91 = a.checklist.find(c => c.mid === "9.1");
+      eq(r91.text, "다 항목\n- 세부 하나", "줄바꿈 유지");
+      a.checklist = a.checklist.filter(c => c.id !== "legacy2" && c.mid !== "9.1");
+      a.chkSecs = a.chkSecs.filter(x => x.no !== "9");
+      e.S.renderView();
     });
     let fid = "";
     t("AU06 지적사항: 이전 지적 안내 · 재발 표시 · 조치 중 단계 · 조치 기한 일정 · 메뉴 배지", () => {
@@ -3920,7 +4053,11 @@ function makeServer(opts = {}) {
       loginAs(e, "manager");
       A.setState({ sel: aid }); go(e, "audit");
       ok(q(e, ".au-title"), "상세 열람");
-      ok(!q(e, "#au-edit") && !q(e, "button[data-ck]") && !q(e, "#au-f-add") && !q(e, "#au-ck-add") && !q(e, "[data-ck-edit]"));
+      ok(!q(e, "#au-edit") && !q(e, "#au-f-add") && !q(e, "#au-ck-add") && !q(e, "[data-ck-edit]"));
+      ok(!q(e, "select[data-sc]") && !q(e, "[data-na]") && !q(e, "#au-load"), "점수 · N/A 입력 없음");
+      ok(!q(e, "[data-basis]"), "근거 요지는 hq 이상만");
+      ok(qa(e, "span.ck-sc").length >= 2 && q(e, "span.ck-sc b"), "점수는 읽기 전용 표시");
+      ok(qa(e, ".ck-row").length >= 6, "체크리스트 열람");
       ok(!q(e, "tr[data-fnd].is-click"));
       A.setState({ sel: "" }); go(e, "audit");
       ok(!q(e, "#au-add"));
@@ -3981,6 +4118,24 @@ function makeServer(opts = {}) {
       rec.decisions[0].due = "2026-09-30";
       M.syncDecisions(rec);
       eq(s.start + "~" + s.end, "2026-09-30~2026-09-30", "기한을 더 뒤로 바꾸면 그 날짜로");
+    });
+    await ta("AU15 체크리스트 원본(auditMaster): 권한표 읽기 hq · 앱 쓰기 불가 · 동기화 제외 · hq만 받음 · 저장소에 원문 없음", async () => {
+      eq(ACL.auditMaster.join(","), "3,9");
+      ok(e.Sync.SYNC_KEYS.indexOf("auditMaster") < 0, "앱은 읽기만(동기화 대상 아님)");
+      const srv = makeServer({ rows: [{ key: "auditMaster", value: FAKE_MASTER }] });
+      const e2 = makeEnv({ fetch: srv.fetch });
+      await srv.loginAs(e2, "hq-pw-2222");
+      const m = await e2.w.SemisAudit.loadMaster(true);
+      ok(m && m.sections.length === 3 && m.title === "시험용 CHK-LIST", "hq 수신");
+      ok(!e2.w.sessionStorage.getItem("semisl:data") || e2.w.sessionStorage.getItem("semisl:data").indexOf("시험용 CHK-LIST") < 0, "탭 사본에 남기지 않음(메모리만)");
+      e2.w.close();
+      const e3 = makeEnv({ fetch: srv.fetch });
+      await srv.loginAs(e3, "mgr-pw-3333");
+      eq(await e3.w.SemisAudit.loadMaster(true), null, "manager는 받지 못함");
+      e3.w.close();
+      /* 원문 조각이 코드 · 테스트에 들어가지 않았는지 — 실제 체크리스트 첫 항목의 관련근거 */
+      const probe = ["자체보안계획", "13.3.4/13.3.5"].join(" ");
+      ["js/audit.js", "tests/run-tests.cjs", "docs/HANDOFF.md", "README.md"].forEach(f => ok(read(f).indexOf(probe) < 0, f));
     });
     e.w.close();
   }

@@ -3410,3 +3410,133 @@ button.au-ck:active { transform: scale(.94); }
   .pb-sec, .pb-sechead, .pb-dot, .pb-tile, .pb-row.is-check, .pb-flag, .pb-tgrp th, .pb-tbl td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .pb-b:not(.is-ext) { display: none; }
 }
+
+/* ═════════ v1.19 수검 대응 센터 — 점검 체크리스트 (점검관용 양식: 문서 · 시행 0~4 · N/A) ═════════ */
+.ck-src { margin: -2px 0 12px; font-size: .82rem; color: var(--text-3); }
+.ck-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px; margin-bottom: 12px; }
+.ck-kpi { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; padding: 9px 12px; border: 1px solid var(--border);
+  border-radius: 10px; background: var(--surface); text-align: left; color: var(--text); transition: border-color .12s ease, background-color .12s ease, transform .16s var(--ease-out); }
+.ck-kpi[disabled] { cursor: default; }
+button.ck-kpi:not([disabled]):active { transform: scale(.98); }
+.ck-kpi-l { font-size: .76rem; font-weight: 600; color: var(--text-3); white-space: nowrap; }
+.ck-kpi b { font-size: 1.12rem; font-weight: 700; line-height: 1.25; }
+.ck-kpi small { font-size: .74rem; color: var(--text-3); }
+.ck-kpi.t-bad b { color: var(--danger); }
+.ck-kpi.t-warn b { color: var(--accent-dark); }
+.ck-kpi.t-ok b { color: var(--success); }
+.ck-kpi[aria-pressed="true"] { border-color: var(--primary); background: var(--primary-soft); }
+@media (hover: hover) and (pointer: fine) { button.ck-kpi:not([disabled]):hover { border-color: var(--border-strong); } }
+.ck-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 4px 0 10px; border-bottom: 1px solid #edf1f0; }
+.ck-f { display: inline-flex; align-items: center; gap: 7px; font-size: .82rem; font-weight: 600; color: var(--text-2); }
+.ck-f select { min-height: 34px; max-width: 260px; padding: 0 30px 0 10px; border: 1px solid var(--border); border-radius: 8px; background-color: var(--surface); font-size: .86rem; }
+.ck-shown { font-size: .8rem; color: var(--text-3); }
+/* 영역 */
+.ck-grp { padding-top: 14px; }
+.ck-gh { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 8px 12px; border-radius: 9px; background: var(--surface-2); border: 1px solid #e8eeec; }
+.ck-gh h4 { margin: 0; font-size: .92rem; font-weight: 700; flex: 1 1 auto; min-width: 0; }
+.ck-gsum { font-size: .8rem; color: var(--text-2); white-space: nowrap; }
+.ck-gsum b { color: var(--text); font-weight: 700; }
+.ck-gh .au-bar { width: 80px; }
+.ck-rows { list-style: none; margin: 0; padding: 0; }
+/* 항목 */
+.ck-row { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 4px 10px; padding: 12px 4px 12px 2px; border-bottom: 1px solid #edf1f0; }
+.ck-row:last-child { border-bottom: 0; }
+.ck-no { padding-top: 2px; font-size: .82rem; font-weight: 600; color: var(--primary-dark); }
+.ck-main { min-width: 0; }
+.ck-head { display: flex; align-items: flex-start; gap: 10px; }
+.ck-t { flex: 1; min-width: 0; font-size: .93rem; white-space: pre-line; overflow-wrap: break-word; }
+.ck-state { flex: none; }
+.ck-refs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.ck-refs .au-ref { font-weight: 500; }
+.ck-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 8px; }
+.ck-ctl .spacer { flex: 1; }
+.ck-sc { display: inline-flex; align-items: center; gap: 0; height: 32px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); overflow: hidden; }
+.ck-sc-k { display: inline-flex; align-items: center; height: 100%; padding: 0 8px; font-size: .76rem; font-weight: 700; color: var(--text-3); background: var(--surface-2); border-right: 1px solid var(--border); }
+.ck-sc select { height: 100%; min-width: 118px; padding: 0 26px 0 8px; border: 0; background-color: transparent; font-size: .84rem; font-weight: 600; cursor: pointer; }
+.ck-sc select:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+span.ck-sc b { padding: 0 4px 0 9px; font-size: .9rem; }
+span.ck-sc small { padding-right: 9px; font-size: .76rem; color: var(--text-2); }
+.ck-sc[data-v="0"] { border-color: #e7b4ae; background: var(--danger-soft); }
+.ck-sc[data-v="1"], .ck-sc[data-v="2"] { border-color: #f0d49c; background: var(--accent-soft); }
+.ck-sc[data-v="3"] { border-color: #b7dcc7; background: var(--success-soft); }
+.ck-sc[data-v="4"] { border-color: #b9cfee; background: var(--info-soft); }
+.ck-sc[data-v="0"] select, .ck-sc[data-v="0"] b { color: var(--danger); }
+.ck-sc[data-v="1"] select, .ck-sc[data-v="2"] select, .ck-sc[data-v="1"] b, .ck-sc[data-v="2"] b { color: #8a4b06; }
+.ck-sc[data-v="3"] select, .ck-sc[data-v="3"] b { color: var(--success); }
+.ck-sc[data-v="4"] select, .ck-sc[data-v="4"] b { color: var(--info); }
+.ck-sc.is-na { opacity: .55; }
+.ck-na { height: 32px; padding: 0 11px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); font-size: .8rem; font-weight: 700; color: var(--text-3);
+  transition: background-color .12s ease, border-color .12s ease, transform .16s var(--ease-out); }
+.ck-na:active { transform: scale(.96); }
+.ck-na[aria-pressed="true"] { background: #53636a; border-color: #53636a; color: #fff; }
+@media (hover: hover) and (pointer: fine) { .ck-na[aria-pressed="false"]:hover { border-color: var(--border-strong); color: var(--text); } }
+.ck-row[data-st="na"] .ck-t { color: var(--text-3); }
+.ck-meta { margin-top: 6px; font-size: .82rem; color: var(--text-2); }
+.ck-note { white-space: pre-line; }
+.ck-ev { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 7px; }
+.ck-link { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 0 10px; border: 1px solid #cfe3de; border-radius: 7px; background: var(--primary-soft);
+  color: var(--primary-dark); font-size: .8rem; font-weight: 600; white-space: nowrap; }
+button.ck-link:active { transform: scale(.97); }
+@media (hover: hover) and (pointer: fine) { button.ck-link:hover { border-color: var(--primary); } }
+.ck-link.is-plan { border-style: dashed; border-color: var(--border-strong); background: var(--surface); color: var(--text-3); font-weight: 500; }
+.ck-link.is-plan small { font-size: .72rem; color: var(--text-3); }
+.ck-link.is-plan small::before { content: "·"; margin-right: 5px; }
+/* 항목 수정 · 불러오기 · 근거 요지 */
+.ck-fixed { padding: 10px 12px; margin-bottom: 12px; border-radius: 9px; background: var(--surface-2); border: 1px solid #e8eeec; }
+.ck-rchoose { display: flex; flex-wrap: wrap; gap: 6px; }
+.ck-rchoose .ck-rc { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; margin: 0; padding: 0 11px; border: 1px solid var(--border); border-radius: 8px;
+  font-size: .82rem; font-weight: 500; color: var(--text-2); cursor: pointer; }
+.ck-rchoose .ck-rc input { flex: none; width: 15px; height: 15px; margin: 0; padding: 0; border: 0; accent-color: var(--primary); }
+.ck-rchoose .ck-rc small { font-size: .72rem; color: var(--text-3); }
+.ck-rchoose .ck-rc:has(input:checked) { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-dark); font-weight: 600; }
+.cl-src { margin: 0 0 10px; font-size: .88rem; }
+.cl-secs { display: grid; gap: 6px; margin-bottom: 12px; }
+.cl-sec { display: grid; grid-template-columns: 18px 26px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 42px; padding: 0 12px;
+  border: 1px solid var(--border); border-radius: 9px; font-size: .88rem; cursor: pointer; }
+.cl-sec input { width: 17px; height: 17px; accent-color: var(--primary); }
+.cl-sec:has(input:checked) { border-color: var(--primary); background: var(--primary-soft); }
+.cl-sec.is-have { cursor: default; color: var(--text-3); background: var(--surface-2); }
+.cl-no { font-weight: 700; color: var(--primary-dark); }
+.cl-st { min-width: 0; }
+.cl-n { font-size: .78rem; color: var(--text-3); white-space: nowrap; }
+.bs-ssi { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 6px; background: var(--danger-soft); color: var(--danger); font-size: .72rem; font-weight: 700; vertical-align: middle; }
+.bs-t { margin: 0 0 6px; font-weight: 600; white-space: pre-line; }
+.bs-body { margin-top: 12px; padding: 12px 14px; border-radius: 10px; background: var(--surface-2); border: 1px solid #e8eeec; font-size: .88rem; line-height: 1.65; max-height: 56vh; overflow: auto; }
+.bs-body p { margin: 0 0 6px; overflow-wrap: break-word; }
+.bs-body h5 { margin: 12px 0 6px; font-size: .84rem; font-weight: 700; color: var(--primary-dark); }
+.bs-body .bs-li { padding-left: 4px; }
+.bs-body .bs-note { color: var(--accent-dark); font-size: .84rem; }
+.ck-no-m { display: none; }
+@media (max-width: 767px) {
+  .ck-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  .ck-kpi { padding: 7px 8px; }
+  .ck-kpi-l { font-size: .72rem; }
+  .ck-kpi b { font-size: 1rem; }
+  .ck-row { grid-template-columns: minmax(0, 1fr); padding: 12px 0; }
+  .ck-no { display: none; }
+  .ck-no-m { display: inline; margin-right: 7px; font-size: .8rem; font-weight: 700; color: var(--primary-dark); }
+  .ck-sc { flex: 1 1 calc(50% - 4px); min-width: 0; }
+  .ck-sc select { flex: 1; min-width: 0; width: auto; padding-right: 22px; font-size: .8rem; }
+  .ck-sc-k { padding: 0 7px; }
+  .ck-gh .au-bar { display: none; }
+  .ck-f select { max-width: 200px; }
+}
+/* A4 — 점검관용 양식 */
+@media print {
+  .ck-list, .ck-kpis, .ck-bar, .ck-src { display: none !important; }
+  .au-print { margin-top: 2mm; }
+  .au-pcap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2mm 6mm; margin-bottom: 2mm; font-size: 8.6pt; }
+  .au-pcap span { color: #444; }
+  .au-ptbl { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 8.4pt; line-height: 1.4; }
+  .au-ptbl th, .au-ptbl td { border: 1px solid #9aa7a7; padding: 1.2mm 1.6mm; vertical-align: top; overflow-wrap: break-word; }
+  .au-ptbl thead th { background: #e7eeed !important; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .au-ptbl thead { display: table-header-group; }
+  .au-ptbl td.c { text-align: center; vertical-align: middle; font-weight: 700; }
+  .au-pt { white-space: pre-line; }
+  .au-pr { font-size: 7.6pt; color: #333; }
+  .au-pn { font-size: 7.6pt; color: #333; white-space: pre-line; }
+  .au-psec td, .au-ptot td { background: #f1f5f4 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .au-psec td span, .au-ptot td span { float: right; font-size: 7.8pt; color: #333; }
+  .au-psec, .au-ptot { break-after: avoid; }
+  .au-pssi { margin-top: 2mm; font-size: 7.8pt; color: #7a1c14; }
+}

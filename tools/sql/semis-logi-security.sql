@@ -74,6 +74,7 @@ insert into semis_logi_private.key_acl(key, read_rank, write_rank) values
   ('schedules',2,2), ('assignees',2,4), ('assigneesSeeded',2,4), ('gcal',2,4),
   ('contacts',2,3), ('crisis',2,3), ('regulations',2,3), ('equipment',2,3), ('audits',2,3), ('phonebook',2,3), ('caresCfg',2,9),
   ('vault',3,3),
+  ('auditMaster',3,9),   -- 수검 체크리스트 원본(민감보안정보): hq 열람 · 등록은 SQL(서비스 권한)로만 (마이그레이션 semis_logi_security_9_audit_master)
   ('pwOverrides',9,9), ('userOverrides',9,9), ('customUsers',9,9), ('__hist_probe',9,9)
 on conflict (key) do update set read_rank = excluded.read_rank, write_rank = excluded.write_rank;
 
