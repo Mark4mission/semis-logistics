@@ -22,6 +22,7 @@
   const REST = SUPA_URL + "/rest/v1/" + TABLE;
   const RPC = SUPA_URL + "/rest/v1/rpc/";
   const FN_FILES = SUPA_URL + "/functions/v1/semis-logi-files";
+  const FN_FAV = SUPA_URL + "/functions/v1/semis-logi-favicon";
   const CHANNEL = "semis-logi-sync";
 
   const SYNC_KEYS = ["menus", "notices", "schedules", "assignees", "assigneesSeeded", "minutes", "minuteFolders", "levelHistory", "safetyBoard", "contacts", "gcal", "chatRooms", "vault", "regulations", "equipment", "crisis", "fleet", "audits", "phonebook", "training", "seclog", "seclogCfg"];
@@ -536,6 +537,27 @@
     return true;
   }
 
+  /* v1.23 사이트 파비콘 — Edge Function semis-logi-favicon(시스템관리자)이 사이트의 아이콘 이미지를 찾아
+     { data: "data:<형식>;base64,…", type, src } 로 돌려준다. 화면은 이를 64px PNG로 줄여 메뉴에 저장한다. */
+  async function favicon(url) {
+    if (typeof fetch === "undefined") throw new Error("offline");
+    if (!token) { const e = new Error("auth"); e.status = 401; throw e; }
+    const res = await fetch(FN_FAV, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-semis-token": token },
+      body: JSON.stringify({ url: String(url || "") })
+    });
+    let d = null;
+    try { d = await res.json(); } catch (e) { d = null; }
+    if (res.status === 401) checkSession();
+    if (!res.ok || !d || d.ok === false || typeof d.data !== "string") {
+      const e = new Error("favicon " + ((d && d.error) || res.status));
+      e.status = res.status; e.code = (d && d.error) || "";
+      throw e;
+    }
+    return { data: d.data, type: String(d.type || ""), src: String(d.src || "") };
+  }
+
   /* 테이블 행 수 (Content-Range 헤더) — 실패해도 화면은 계속 동작 */
   async function countRows(table) {
     if (typeof fetch === "undefined") return null;
@@ -623,7 +645,7 @@
 
   window.SemisSync = {
     start, init: start, stop, syncNow, uploadFile, fetchKV, ANON: SUPA_KEY, URL: SUPA_URL,
-    listFiles, deleteFile, signFiles, filesCall, countRows, BUCKET, PUBLIC_PREFIX, FN_FILES,
+    listFiles, deleteFile, signFiles, filesCall, countRows, BUCKET, PUBLIC_PREFIX, FN_FILES, favicon, FN_FAV,
     push, pull, applyRemote, onBroadcast,
     history, historyValue, restoreHistory,
     confirmWipe, guardEvents, guardWipe, GUARD_MIN,

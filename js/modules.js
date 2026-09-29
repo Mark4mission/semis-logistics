@@ -663,7 +663,7 @@
 
     const row = (m, depth) => `
       <div class="menu-tree-item ${depth ? "is-child" : ""}${depth > 1 ? " is-sub" : ""}${m.hidden ? " is-hidden" : ""}" data-id="${esc(m.id)}">
-        <span class="mt-ico">${m.type === "group" ? SeMIS.icon(m.ico, 18) : esc(m.icon || "▪")}</span>
+        <span class="mt-ico">${m.type === "group" ? SeMIS.icon(m.ico, 18) : m.type === "link" ? SeMIS.linkIconHTML(m, "mt-lki") : esc(m.icon || "▪")}</span>
         <span class="mt-label">${esc(m.label)}
           ${m.hidden ? '<span class="badge badge-gray mt-type">숨김</span>' : ""}
           ${m.quick ? '<span class="badge badge-amber mt-type">고정</span>' : ""}</span>
@@ -740,22 +740,28 @@
     SeMIS.save(); SeMIS.renderNav(); renderMenuTab($("#tab-body"));
   }
 
-  function menuForm(id) {
+  /* 메뉴 추가·수정 폼 — 시스템 설정 › 메뉴 관리와 바로가기 화면(js/shortcuts.js)이 함께 쓴다.
+     opts.type "link" → 유형 선택 없이 링크(바로가기) 폼 · opts.parent → 소속 미리 선택 · opts.after(menu) → 저장 뒤 호출 */
+  function menuForm(id, opts) {
+    opts = opts || {};
     const m = id ? D().menus.find(x => x.id === id) : null;
     const groups = SeMIS.sortedMenus().filter(x => x.type === "group");
     const sets = SeMIS.sortedMenus().filter(x => x.type === "link" && x.open === "group" && (!m || x.id !== m.id));
     const isCore = m && m.type === "module";
+    const lockLink = !m && opts.type === "link";
     const type = m ? m.type : "link";
+    const parentSel = m ? m.parent : (opts.parent || null);
+    const SC = window.SemisShortcuts;
     openModal(`
-      <h3>${m ? "메뉴 수정" : "메뉴 추가"}</h3>
-      ${m ? "" : `<div class="form-row"><label>유형</label>
+      <h3>${m ? (m.type === "link" ? "바로가기 수정" : "메뉴 수정") : (lockLink ? "바로가기 추가" : "메뉴 추가")}</h3>
+      ${m || lockLink ? "" : `<div class="form-row"><label>유형</label>
         <select id="f-type">
           <option value="link">외부 링크 (웹주소 등록)</option>
           <option value="group">허브 (업무 묶음)</option>
           <option value="planned">예정 모듈 (준비 중 안내 화면)</option>
         </select></div>`}
       <div class="form-row"><label>이름</label><input id="f-label" value="${esc(m ? m.label : "")}" maxlength="40" placeholder="메뉴 이름"></div>
-      <div class="form-row" id="row-icon" ${type === "group" ? 'style="display:none"' : ""}>
+      <div class="form-row" id="row-icon" ${type === "group" || (type === "link" && SC) ? 'style="display:none"' : ""}>
         <label>아이콘 (검색·관리 화면용 이모지)</label><input id="f-icon" value="${esc(m ? m.icon || "" : "🔗")}" maxlength="4"></div>
       <div class="form-row" id="row-ico" ${type === "group" ? "" : 'style="display:none"'}>
         <label>허브 아이콘</label>
@@ -764,6 +770,7 @@
       <div class="form-row" id="row-url" ${type !== "link" ? 'style="display:none"' : ""}>
         <label>웹주소 (URL)</label><input id="f-url" value="${esc(m && m.url ? m.url : "")}" placeholder="https://...">
         <div class="form-hint">기존 구글 문서/시트/사이트 등 외부 주소를 그대로 연결합니다.</div></div>
+      ${SC ? `<div class="form-row" id="row-lki" ${type === "link" ? "" : 'style="display:none"'}>${SC.pickerHTML(m)}</div>` : ""}
       <div class="form-row" id="row-open" ${type !== "link" ? 'style="display:none"' : ""}>
         <label>열기 방식</label>
         <select id="f-open">
@@ -781,8 +788,8 @@
         <label>소속 (허브 · 링크 묶음)</label>
         <select id="f-parent">
           <option value="">(허브 없음 · 아이콘 줄 아래 관리)</option>
-          ${groups.map(g => `<option value="${esc(g.id)}" ${m && m.parent === g.id ? "selected" : ""}>${esc(g.label)}</option>`).join("")}
-          ${sets.map(g => `<option value="${esc(g.id)}" ${m && m.parent === g.id ? "selected" : ""}>⊞ ${esc(g.label)} (링크 묶음)</option>`).join("")}
+          ${groups.map(g => `<option value="${esc(g.id)}" ${parentSel === g.id ? "selected" : ""}>${esc(g.label)}</option>`).join("")}
+          ${sets.map(g => `<option value="${esc(g.id)}" ${parentSel === g.id ? "selected" : ""}>⊞ ${esc(g.label)} (링크 묶음)</option>`).join("")}
         </select>
         <div class="form-hint">링크 묶음을 고르면 사이드바에는 나오지 않고 그 묶음 화면 안의 카드로만 표시됩니다.</div></div>
       <div class="form-row" id="row-vis" ${type === "group" ? 'style="display:none"' : ""}>
@@ -815,16 +822,19 @@
       $("#row-parent").style.display = t === "group" ? "none" : "";
       $("#row-vis").style.display = t === "group" ? "none" : "";
       $("#row-quick").style.display = t === "group" ? "none" : "";
-      $("#row-icon").style.display = t === "group" ? "none" : "";
+      $("#row-icon").style.display = t === "group" || (t === "link" && SC) ? "none" : "";
       $("#row-ico").style.display = t === "group" ? "" : "none";
+      if ($("#row-lki")) $("#row-lki").style.display = t === "link" ? "" : "none";
     };
+    if (SC && $("#row-lki")) SC.pickerWire($("#row-lki"));
     $("#f-cancel").onclick = closeModal;
     const hiddenVal = () => !!($("#f-hidden") && $("#f-hidden").checked);
     const applyHidden = (obj) => { if (hiddenVal() && SeMIS.canHide(obj)) obj.hidden = true; else delete obj.hidden; return obj; };
     $("#f-save").onclick = () => {
+      let saved = null;
       const label = $("#f-label").value.trim();
       if (!label) { toast("이름을 입력하세요.", true); return; }
-      const t = m ? m.type : typeSel.value;
+      const t = m ? m.type : (typeSel ? typeSel.value : "link");
       const icon = $("#f-icon") ? $("#f-icon").value.trim() : "";
       if (t === "link") {
         const url = $("#f-url").value.trim();
@@ -841,9 +851,17 @@
           const pp = D().menus.find(x => x.id === par);
           if (pp && pp.type === "link" && pp.parent) { toast("링크 묶음은 두 단계까지만 지원합니다.", true); return; }
         }
-        if (m) applyHidden(Object.assign(m, { label, icon, url, open, parent: par, vis: $("#f-vis").value, quick: $("#f-quick").checked }));
-        else D().menus.push(applyHidden({ id: uid("mn"), seq: nextSeq(), type: "link", label, icon, url, open,
-          parent: par, vis: $("#f-vis").value, quick: $("#f-quick").checked }));
+        if (SC && SC.busy()) { toast("사이트 아이콘을 가져오는 중입니다. 잠시 뒤 저장하세요.", true); return; }
+        const lkIcon = SC ? (m ? m.icon || "🔗" : "🔗") : icon;
+        let obj;
+        if (m) obj = applyHidden(Object.assign(m, { label, icon: lkIcon, url, open, parent: par, vis: $("#f-vis").value, quick: $("#f-quick").checked }));
+        else {
+          obj = applyHidden({ id: uid("mn"), seq: nextSeq(), type: "link", label, icon: lkIcon, url, open,
+            parent: par, vis: $("#f-vis").value, quick: $("#f-quick").checked });
+          D().menus.push(obj);
+        }
+        if (SC) SC.applyIcon(obj, SC.pickerRead());
+        saved = obj;
       } else if (t === "group") {
         const pick = document.querySelector('#modal-box input[name="f-ico"]:checked');
         const ico = pick ? pick.value : "folder";
@@ -863,9 +881,13 @@
         if (m.module === "dashboard") { m.vis = "all"; m.parent = null; }
         if (m.module === "settings") { m.vis = "admin"; m.parent = null; }
       }
-      SeMIS.save(); closeModal(); SeMIS.renderNav(); renderMenuTab($("#tab-body")); toast("저장되었습니다.");
+      SeMIS.save(); closeModal(); SeMIS.renderNav();
+      if (opts.after) opts.after(saved || m);
+      else if ($("#tab-body") && $("#menu-tree")) renderMenuTab($("#tab-body"));
+      toast("저장되었습니다.");
     };
   }
+  SeMIS.menuForm = menuForm;
   function nextSeq() {
     return D().menus.reduce((mx, m) => Math.max(mx, m.seq || 0), 0) + 1;
   }

@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/loginguard.js", "js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/crisis.js", "js/phonebook.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
+const FILES = ["js/loginguard.js", "js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/crisis.js", "js/phonebook.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -623,7 +623,7 @@ function makeServer(opts = {}) {
       const sec = rows.find(r => r.dataset.dashHub === "hub-sec");
       eq(sec.querySelector(".br-n").textContent, "2/4", "보안검색 현황·검색장비 운영 / 상용화주·출입 예정");
       const home = rows.find(r => r.dataset.dashHub === "hub-home");
-      eq(home.querySelector(".br-n").textContent, "4/5", "대시보드·운항 현황·일정·회의록 운영 / 현황판 예정");
+      eq(home.querySelector(".br-n").textContent, "5/6", "대시보드·운항 현황·일정·회의록·바로가기 운영 / 현황판 예정");
     });
     t("D03 무재해 기준일 설정 → D+ 계산", () => {
       q(e, "#btn-edit-zero").click();
@@ -4649,6 +4649,227 @@ function makeServer(opts = {}) {
       ok(badge >= 1, "누락 수");
       const r = e.w.SemisSearch.search ? e.w.SemisSearch.search("KJ272") : [];
       ok(r.some(x => x.group === "보안 기록부"), "검색");
+    });
+    e.w.close();
+  }
+
+  /* ══════════ [SC] 바로가기 (v1.23) — 링크 아이콘 · 전체 화면 · 편집 · 사이트 아이콘 ══════════ */
+  {
+    const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+    const e = makeEnv();
+    const L = (id, seq, label, extra) => Object.assign({ id, seq, type: "link", label, url: "https://example.org/" + id, open: "tab", vis: "all", parent: "hub-home", icon: "🔗" }, extra || {});
+    e.S.data.menus.push(
+      L("sc-a", 80, "가 시스템", { fav: PNG }),
+      L("sc-b", 81, "나 시스템", { ico: "box", tone: "blue" }),
+      L("sc-c", 82, "다 시스템", { icon: "✈️" }),
+      L("sc-h", 83, "숨김 시스템", { hidden: true }),
+      L("sc-set", 84, "묶음", { open: "group", url: "" }),
+      L("sc-k1", 85, "묶음 하위", { parent: "sc-set" }));
+    e.S.saveSilent();
+    loginAs(e, "admin");
+    const SC = e.w.SemisShortcuts;
+
+    t("SC01 링크 아이콘 우선순위 — 사이트 아이콘 > 선 아이콘 > 이모지 > 기본, 잘못된 값은 무시", () => {
+      const h = (m) => e.S.linkIconHTML(m, "x");
+      ok(/lki-img/.test(h({ type: "link", fav: PNG, ico: "box", icon: "✈️" })), "fav 우선");
+      ok(/lki-ico t-blue/.test(h({ type: "link", ico: "box", tone: "blue", icon: "✈️" })), "선 아이콘");
+      ok(/lki-ico t-teal/.test(h({ type: "link", ico: "box", tone: "nope" })), "모르는 색은 청록");
+      ok(/lki-emo/.test(h({ type: "link", icon: "✈️" })), "이모지");
+      ok(/lki-ico/.test(h({ type: "link", icon: "🔗" })) && !/lki-emo/.test(h({ type: "link", icon: "🔗" })), "옛 기본 이모지는 선 아이콘");
+      ok(!/lki-img/.test(h({ type: "link", fav: "data:image/svg+xml;base64,PHN2Zz4=" })), "SVG data URL 거부");
+      ok(!/lki-img/.test(h({ type: "link", fav: "https://x.org/a.png" })), "외부 주소 거부");
+      ok(!e.S.favOk("data:image/png;base64," + "A".repeat(70000)), "크기 제한");
+      ok(!/<img[^>]*"[^"]*"[^>]*onerror/.test(h({ type: "link", fav: PNG + '" onerror="x' })), "따옴표 삽입 거부");
+      ok(e.S.LINK_ICONS.every(k => e.S.ICONS[k]), "선 아이콘 키 모두 존재");
+    });
+
+    t("SC02 바로가기 메뉴 — 기본 메뉴에 있고, 옛 데이터에는 회의록 아래 1회 추가(멱등)", () => {
+      ok(e.S.defaultMenus().some(m => m.module === "shortcuts" && m.parent === "hub-home" && m.vis === "all"));
+      const e2 = makeEnv();
+      e2.S.data.menus = e2.S.defaultMenus().filter(m => m.module !== "shortcuts");
+      e2.S.normalizeData();
+      const sc = e2.S.data.menus.filter(m => m.module === "shortcuts");
+      eq(sc.length, 1);
+      const mi = e2.S.data.menus.find(m => m.module === "minutes");
+      ok(sc[0].seq > mi.seq && sc[0].parent === mi.parent, "회의록 바로 아래");
+      const before = JSON.stringify(e2.S.data.menus);
+      e2.S.normalizeData();
+      eq(JSON.stringify(e2.S.data.menus), before, "두 번째 정규화 무변경");
+      e2.w.close();
+    });
+
+    t("SC03 허브 패널 '바로가기' — 링크마다 아이콘, 전체 보기 · 추가(관리자) 버튼", () => {
+      e.S.renderNav();
+      const blk = q(e, '.hub[data-hub="hub-home"] .hub-links');
+      ok(blk, "홈 허브 바로가기 블록");
+      ok(blk.querySelector('a.nav-item[href="https://example.org/sc-a"] .nav-lki.lki-img'), "사이트 아이콘");
+      ok(blk.querySelector('a.nav-item[href="https://example.org/sc-b"] .nav-lki.t-blue'), "선 아이콘");
+      ok(blk.querySelector('.nav-set[data-route="links/sc-set"] .nav-lki'), "묶음도 아이콘");
+      ok(!Array.from(blk.querySelectorAll(".nav-item")).some(a => a.textContent.includes("숨김 시스템")), "숨김 제외");
+      ok(blk.querySelector('[data-go="shortcuts"]') && blk.querySelector('[data-sc-add="hub-home"]'));
+      loginAs(e, "user"); e.S.renderNav();
+      const b2 = q(e, '.hub[data-hub="hub-home"] .hub-links');
+      ok(b2.querySelector('[data-go="shortcuts"]') && !b2.querySelector("[data-sc-add]"), "일반 사용자는 추가 버튼 없음");
+      loginAs(e, "admin"); e.S.renderNav();
+    });
+
+    t("SC04 바로가기 화면 — 허브별 카드, 숨김 · 묶음 하위 제외, 인쇄 버튼", () => {
+      go(e, "shortcuts");
+      eq(q(e, "#view .page-title").textContent.trim(), "바로가기");
+      ok(q(e, "#view .page-head [data-print-btn]"), "인쇄");
+      const home = q(e, '#sc-body .sc-sec[data-sec="hub-home"]');
+      ok(home, "홈 칸");
+      const titles = Array.from(home.querySelectorAll(".lk-t")).map(x => x.textContent);
+      ok(titles.includes("가 시스템") && titles.includes("다 시스템") && titles.includes("묶음"));
+      ok(!titles.includes("숨김 시스템") && !titles.includes("묶음 하위"), titles.join(","));
+      ok(home.querySelector('a.lk-card[href="https://example.org/sc-a"] .lki-img'), "새 탭 카드 + 아이콘");
+      ok(home.querySelector('button.lk-card[data-go="links/sc-set"]'), "묶음 카드");
+      ok(!q(e, "#sc-body [data-sc-edit]"), "보기 모드는 편집 없음");
+      ok(q(e, "#view").classList.contains("view-mid"));
+    });
+
+    t("SC05 편집 모드 — 수정 카드 · 순서 · 삭제 · 추가 칸 · 숨김 표시 · 묶음 하위 칸 · 빈 허브 한 줄", () => {
+      q(e, "#sc-edit").click();
+      ok(q(e, "#sc-edit").getAttribute("aria-pressed") === "true");
+      ok(q(e, '#sc-body button.lk-card.is-edit[data-sc-edit="sc-a"]'), "수정 카드");
+      ok(q(e, '#sc-body [data-sc-move="sc-a"][data-dir="1"]') && q(e, '#sc-body [data-sc-del="sc-a"]'));
+      const hid = q(e, '#sc-body [data-sc-edit="sc-h"]');
+      ok(hid && hid.classList.contains("is-dim") && hid.textContent.includes("숨김"), "숨김 링크도 보인다");
+      const sub = q(e, '#sc-body .sc-sec.is-sub[data-sec="sc-set"]');
+      ok(sub && sub.querySelector('[data-sc-edit="sc-k1"]') && sub.querySelector('[data-sc-add="sc-set"]'), "묶음 하위 칸");
+      ok(q(e, '#sc-body .sc-more [data-sc-add="hub-saf"]'), "빈 허브는 한 줄 버튼");
+      ok(q(e, "#view .page-head [data-print-btn]"), "다시 그려도 인쇄 버튼 유지");
+    });
+
+    t("SC06 추가 폼 — 유형 선택 없이 링크, 소속 미리 선택, 선 아이콘 + 색 저장, 허브 패널에 반영", () => {
+      q(e, '#sc-body [data-sc-add="hub-home"]').click();
+      ok(!q(e, "#f-type"), "유형 선택 없음");
+      eq(q(e, "#modal-box h3").textContent, "바로가기 추가");
+      eq(q(e, "#f-parent").value, "hub-home");
+      ok(q(e, "#row-lki") && q(e, "#row-lki").style.display !== "none" && q(e, "#row-icon").style.display === "none");
+      q(e, "#f-label").value = "라 시스템"; q(e, "#f-url").value = "https://example.org/ra";
+      q(e, '[data-lkp-mode="ico"]').click();
+      ok(!q(e, '[data-lkp-pane="ico"]').hidden && q(e, '[data-lkp-pane="fav"]').hidden);
+      const r = q(e, '#row-lki input[name="lkp-ico"][value="truck"]'); r.checked = true; r.dispatchEvent(new e.w.Event("change"));
+      const tn = q(e, '#row-lki input[name="lkp-tone"][value="rose"]'); tn.checked = true; tn.dispatchEvent(new e.w.Event("change"));
+      ok(q(e, "#lkp-prev .t-rose"), "미리보기");
+      q(e, "#f-save").click();
+      const m = e.S.data.menus.find(x => x.label === "라 시스템");
+      ok(m && m.type === "link" && m.parent === "hub-home" && m.open === "tab" && m.ico === "truck" && m.tone === "rose" && !m.fav, JSON.stringify(m));
+      ok(q(e, '.hub[data-hub="hub-home"] a.nav-item[href="https://example.org/ra"] .t-rose'), "허브 패널");
+      ok(q(e, '#sc-body [data-sc-edit="' + m.id + '"]'), "편집 화면에 바로 나타남");
+    });
+
+    t("SC07 수정 폼 — 현재 아이콘 종류가 선택되고, 이모지로 바꾸면 사이트 아이콘 · 선 아이콘 필드를 지운다", () => {
+      q(e, '#sc-body [data-sc-edit="sc-a"]').click();
+      eq(q(e, "#modal-box h3").textContent, "바로가기 수정");
+      eq(q(e, '[data-lkp-mode="fav"]').getAttribute("aria-pressed"), "true");
+      ok(q(e, "#lkp-prev .lki-img"), "현재 사이트 아이콘 미리보기");
+      q(e, '[data-lkp-mode="emoji"]').click();
+      q(e, "#lkp-emoji").value = "📦"; q(e, "#lkp-emoji").dispatchEvent(new e.w.Event("input"));
+      q(e, "#f-save").click();
+      const m = e.S.data.menus.find(x => x.id === "sc-a");
+      ok(!m.fav && !m.ico && m.icon === "📦", JSON.stringify(m));
+      const o = { icon: "🔗", ico: "box", tone: "blue" };
+      SC.applyIcon(o, { mode: "fav", fav: PNG });
+      ok(o.fav === PNG && !o.ico && !o.tone && o.icon === "🔗", "사이트 아이콘으로 바꾸면 선 아이콘 제거 · 이모지 보존");
+      SC.applyIcon(o, { mode: "fav", fav: "" });
+      ok(!o.fav && !o.ico, "이미지 없이 저장하면 기본 아이콘");
+    });
+
+    t("SC08 순서 이동(같은 소속 링크끼리) · 삭제(묶음은 하위까지)", () => {
+      const order = () => e.S.sortedMenus().filter(m => m.type === "link" && m.parent === "hub-home").map(m => m.id);
+      const before = order();
+      const i = before.indexOf("sc-b");
+      q(e, '#sc-body [data-sc-move="sc-b"][data-dir="-1"]').click();
+      const after = order();
+      eq(after.indexOf("sc-b"), i - 1, after.join(","));
+      q(e, '#sc-body [data-sc-move="sc-b"][data-dir="1"]').click();
+      eq(order().join(","), before.join(","), "되돌림");
+      q(e, '#sc-body [data-sc-del="sc-set"]').click();
+      ok(q(e, "#modal-box").textContent.includes("하위 링크 1개"));
+      clickOk(e);
+      ok(!e.S.data.menus.some(m => m.id === "sc-set" || m.id === "sc-k1"), "묶음 + 하위 삭제");
+      ok(!q(e, '#sc-body [data-sec="sc-set"]'));
+    });
+
+    t("SC09 검색 — 이름 · 주소 · 상위 이름, 입력칸은 그대로", () => {
+      const inp = q(e, "#sc-q");
+      inp.value = "example.org/sc-c"; inp.dispatchEvent(new e.w.Event("input"));
+      eq(qa(e, "#sc-body .lk-card").length, 1);
+      ok(q(e, "#sc-q") === inp, "입력칸 유지");
+      inp.value = ""; inp.dispatchEvent(new e.w.Event("input"));
+      ok(qa(e, "#sc-body .lk-card").length > 3);
+    });
+
+    t("SC10 권한 — 일반 · 파트 계정은 편집 버튼이 없고 편집 모드도 풀린다", () => {
+      loginAs(e, "hq"); go(e, "shortcuts");
+      ok(!q(e, "#sc-edit") && !q(e, "#sc-new") && !q(e, "#sc-body [data-sc-edit]"));
+      SC.add("hub-home"); ok(q(e, "#modal-overlay").classList.contains("hidden"), "추가 폼 안 열림");
+      loginAs(e, "admin"); go(e, "shortcuts");
+      eq(q(e, "#sc-edit").getAttribute("aria-pressed"), "false");
+    });
+
+    t("SC11 시스템 설정 — 링크 행에 아이콘, 링크 폼에 아이콘 칸 · 예정 모듈은 이모지 칸", () => {
+      renderSettings(e, "menus");
+      ok(q(e, '#menu-tree [data-id="sc-b"] .mt-lki.t-blue'));
+      q(e, "#btn-add-menu").click();
+      ok(q(e, "#f-type") && q(e, "#row-lki").style.display !== "none" && q(e, "#row-icon").style.display === "none");
+      q(e, "#f-type").value = "planned"; q(e, "#f-type").dispatchEvent(new e.w.Event("change"));
+      ok(q(e, "#row-lki").style.display === "none" && q(e, "#row-icon").style.display !== "none");
+      e.S.closeModal();
+    });
+
+    t("SC12 링크 묶음 화면 '편집' → 바로가기 편집 모드로 그 묶음 칸", () => {
+      e.S.data.menus.push(L("sc-set2", 90, "묶음2", { open: "group", url: "" }), L("sc-k2", 91, "하위2", { parent: "sc-set2" }));
+      go(e, "links/sc-set2");
+      const b = q(e, '#view .page-head [data-sc-manage="sc-set2"]');
+      ok(b, "편집 버튼");
+      b.click();
+      eq(e.w.location.hash, "#/shortcuts");
+      e.S.renderView();
+      eq(q(e, "#sc-edit").getAttribute("aria-pressed"), "true");
+      ok(q(e, '#sc-body .sc-sec.is-sub[data-sec="sc-set2"] [data-sc-edit="sc-k2"]'));
+      loginAs(e, "hq"); go(e, "links/sc-set2");
+      ok(!q(e, "[data-sc-manage]"), "관리자만");
+      loginAs(e, "admin");
+    });
+
+    await ta("SC13 사이트 아이콘 호출 — Edge Function 주소 · 세션 헤더 · 오류 코드", async () => {
+      const calls = [];
+      const e3 = makeEnv({ fetch: async (url, o) => {
+        calls.push({ url: String(url), o });
+        const body = JSON.parse(o.body);
+        if (/nope/.test(body.url)) return { ok: true, status: 200, json: async () => ({ ok: false, error: "not_found" }) };
+        return { ok: true, status: 200, json: async () => ({ ok: true, data: PNG, type: "image/png", src: "https://x.org/f.png" }) };
+      } });
+      loginAs(e3, "admin", { token: "b".repeat(64) });
+      const r = await e3.w.SemisSync.favicon("https://example.org/");
+      eq(r.data, PNG);
+      const c = calls.find(x => /semis-logi-favicon/.test(x.url));
+      ok(c && c.o.method === "POST" && c.o.headers["x-semis-token"] === "b".repeat(64), "세션 헤더");
+      let err = null;
+      try { await e3.w.SemisSync.favicon("https://nope.org/"); } catch (x) { err = x; }
+      ok(err && err.code === "not_found", "오류 코드");
+      e3.w.close();
+    });
+
+    t("SC14 일괄 대상 — 사이트 아이콘 · 선 아이콘 · 사내망 · 주소 없는 링크 제외", () => {
+      e.S.data.menus.push(L("sc-in", 95, "사내", { url: "http://10.1.2.3/x" }));
+      const ids = SC.bulkTargets().map(m => m.id);
+      ok(ids.includes("sc-c") && !ids.includes("sc-b") && !ids.includes("sc-in") && !ids.includes("sc-set2"), ids.join(","));
+      ok(!ids.includes("ref-semis") || !e.S.data.menus.find(m => m.id === "ref-semis").fav);
+    });
+
+    t("SC15 Edge Function 원본 — 관리자 세션 · 사설망 차단 · 첫 바이트 판정 · 비밀값 없음", () => {
+      const f = read("tools/edge/semis-logi-favicon.ts");
+      ok(/semis_logi_file_auth/.test(f) && /rank \|\| 0\) < 4/.test(f), "관리자 세션");
+      ok(/privateV4/.test(f) && /resolveDns/.test(f) && /redirect: "manual"/.test(f), "SSRF 방어");
+      ok(/function sniff/.test(f) && /IMG_MAX/.test(f) && /PAGE_MAX/.test(f));
+      ok(!/eyJ[A-Za-z0-9_-]{20,}/.test(f) && !/service_role/i.test(f), "키 없음");
+      const c = read("css/main.css");
+      ok(c.indexOf(".lki.lki-img") > 0 && c.indexOf(".sc-add") > 0 && c.indexOf(".lkp-tone") > 0);
+      eq(e.errors.length, 0, e.errors.join(" | "));
     });
     e.w.close();
   }

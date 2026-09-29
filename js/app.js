@@ -8,7 +8,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.22.0";
+  const VERSION = "1.23.0";
   const APP_NAME = "SeMIS · Logistics";
   /* v1.15: 데이터 캐시는 이 탭의 sessionStorage 에만 둔다(탭을 닫거나 로그아웃하면 사라짐).
      화면 설정(LS_UI)만 localStorage. */
@@ -168,8 +168,46 @@ const SeMIS = (() => {
     plane: '<path d="M12 2.8c.9 0 1.4.9 1.4 2v4.7l6.8 4v1.9l-6.8-2v4.1l2.1 1.5v1.6L12 19.8l-3.5.8V19l2.1-1.5v-4.1l-6.8 2v-1.9l6.8-4V4.8c0-1.1.5-2 1.4-2z"/>',
     palette: '<path d="M12 3.5a8.5 8.5 0 1 0 0 17c1.2 0 1.8-.8 1.8-1.7 0-1.3-1-1.5-1-2.6 0-1 .8-1.7 1.8-1.7h2.1a3.8 3.8 0 0 0 3.8-3.8c0-4-3.8-7.2-8.5-7.2z"/><circle cx="7.8" cy="11" r="1"/><circle cx="10.5" cy="7.5" r="1"/><circle cx="15" cy="8" r="1"/>'
   };
+  /* v1.23 바로가기 아이콘 — 링크 메뉴에서 고르는 선 아이콘 */
+  Object.assign(ICONS, {
+    globe: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17"/><path d="M12 3.5c2.4 2.4 3.6 5.2 3.6 8.5s-1.2 6.1-3.6 8.5c-2.4-2.4-3.6-5.2-3.6-8.5S9.6 5.9 12 3.5z"/>',
+    monitor: '<rect x="3" y="4" width="18" height="12.5" rx="2"/><path d="M8.5 20.5h7M12 16.5v4"/>',
+    box: '<path d="M3.5 7.5 12 3.5l8.5 4v9L12 20.5l-8.5-4z"/><path d="M3.5 7.5 12 11.5l8.5-4"/><path d="M12 11.5v9"/><path d="m7.8 5.5 8.4 4"/>',
+    truck: '<path d="M2.5 6.5h11v9h-11z"/><path d="M13.5 9.5h4l3 3.2v2.8h-7"/><circle cx="6.5" cy="17.5" r="1.8"/><circle cx="16.5" cy="17.5" r="1.8"/>',
+    building: '<path d="M4 20.5V5a1.5 1.5 0 0 1 1.5-1.5h8A1.5 1.5 0 0 1 15 5v15.5"/><path d="M15 9.5h3.5A1.5 1.5 0 0 1 20 11v9.5"/><path d="M2.5 20.5h19"/><path d="M8 7.5h3M8 11h3M8 14.5h3"/>',
+    shield: '<path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.2 7.5 9.5 4.3-1.3 7.5-4.9 7.5-9.5V6z"/><path d="m9 12 2 2 4-4"/>',
+    chart: '<path d="M4 4v16h16"/><path d="M8 16v-4M12 16V8M16 16v-6"/>',
+    database: '<ellipse cx="12" cy="6" rx="7.5" ry="2.8"/><path d="M4.5 6v12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8V6"/><path d="M4.5 12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8"/>',
+    mail: '<rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="m3.5 7 8.5 6 8.5-6"/>',
+    shirt: '<path d="M8.5 3.5 4 6l-1.5 4.5 3 1.2v8.8h13v-8.8l3-1.2L20 6l-4.5-2.5c-.6 1.6-1.9 2.5-3.5 2.5s-2.9-.9-3.5-2.5z"/>',
+    star: '<path d="m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/>',
+    clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+    map: '<path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.4"/>',
+    wrench: '<path d="M15.2 4.3a4.5 4.5 0 0 0-5.6 5.9L3.8 16a2 2 0 0 0 2.8 2.8l5.8-5.8a4.5 4.5 0 0 0 5.9-5.6l-2.6 2.6-2.5-.6-.6-2.5z"/>',
+    edit: '<path d="M4.5 19.5 5 16 15.5 5.5a2.1 2.1 0 0 1 3 3L8 19z"/><path d="m13.5 7.5 3 3"/>',
+    chevl: '<path d="m15 6-6 6 6 6"/>',
+    image: '<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="m4 18 5-5 3.5 3.5L15 14l5 4.5"/>'
+  });
   /* 허브 선택용 아이콘 목록 (시스템 설정 → 메뉴 관리) */
   const HUB_ICONS = ["home", "scan", "hardhat", "clipboard", "users", "book", "folder", "calendar", "notes", "alert", "link", "doc"];
+  /* v1.23 바로가기(링크 메뉴) 아이콘 — 우선순위: 사이트 아이콘(fav, 64px PNG data URL) → 선 아이콘(ico + tone) → 이모지(icon) → 기본 */
+  const LINK_ICONS = ["link", "globe", "monitor", "plane", "box", "truck", "building", "shield", "scan", "xray", "etd", "chart",
+    "database", "doc", "folder", "book", "calendar", "clock", "mail", "phone", "users", "user", "shirt", "star", "map", "wrench",
+    "car", "bell", "lock", "alert"];
+  const LINK_TONES = ["teal", "blue", "indigo", "violet", "rose", "amber", "green", "slate"];
+  const FAV_RE = /^data:image\/(png|webp|jpeg|gif);base64,[A-Za-z0-9+/]+={0,2}$/;
+  const FAV_MAX = 60000;
+  function favOk(s) { return typeof s === "string" && s.length <= FAV_MAX && FAV_RE.test(s); }
+  function linkIconHTML(m, cls) {
+    const c = "lki" + (cls ? " " + cls : "");
+    if (m && favOk(m.fav)) return '<span class="' + c + ' lki-img"><img src="' + esc(m.fav) + '" alt="" decoding="async"></span>';
+    if (m && m.ico && ICONS[m.ico]) {
+      const tone = LINK_TONES.indexOf(m.tone) >= 0 ? m.tone : "teal";
+      return '<span class="' + c + ' lki-ico t-' + tone + '">' + icon(m.ico, 20) + '</span>';
+    }
+    if (m && m.icon && m.icon !== "🔗") return '<span class="' + c + ' lki-emo">' + esc(m.icon) + '</span>';
+    return '<span class="' + c + ' lki-ico t-teal">' + icon(m && m.type === "link" && m.open === "group" ? "folder" : "link", 20) + '</span>';
+  }
   function icon(name, size) {
     const d = ICONS[name] || ICONS.folder;
     const z = size || 20;
@@ -198,6 +236,7 @@ const SeMIS = (() => {
       m("flight", "운항 현황", "✈️", "flight", "all", "hub-home"),
       m("schedule", "일정관리", "📅", "schedule", "mgr", "hub-home"),
       m("minutes", "회의록 게시판", "🗒️", "minutes", "mgr", "hub-home"),
+      m("shortcuts", "바로가기", "🔗", "shortcuts", "all", "hub-home"),
       p("board", "안전보안 현황판", "📊", "board", "mgr", "hub-home",
         "무재해 경과일·점검 완료율·미결 시정조치·교육 이수율 등 파트 핵심 지표를 한 화면에 모은 현황판. 각 업무 모듈이 쌓이면 자동 집계로 전환합니다."),
 
@@ -403,6 +442,19 @@ const SeMIS = (() => {
         seq: ins ? (ins.seq || 0) - 0.5 : DATA.menus.reduce((mx, m) => Math.max(mx, m.seq || 0), 0) + 1,
         type: "module", label: "수검 대응 센터", icon: "🗂️", module: "audit", vis: "mgr",
         parent: ins && ins.parent ? ins.parent : (hub ? "hub-aud" : null) });
+    }
+    // v1.23 바로가기 — 기존 메뉴 데이터에 없으면 홈 허브의 회의록 게시판 바로 아래에 1회 추가(이후 숨김·이름은 운영자 설정 유지)
+    if (!DATA.menus.some(m => m.type === "module" && m.module === "shortcuts")) {
+      const mi = DATA.menus.find(m => m.type === "module" && m.module === "minutes");
+      const hub = DATA.menus.find(m => m.id === "hub-home" && m.type === "group");
+      let seq = DATA.menus.reduce((mx, m) => Math.max(mx, m.seq || 0), 0) + 1;
+      if (mi) {
+        const nx = DATA.menus.filter(m => m.parent === mi.parent && (m.seq || 0) > (mi.seq || 0)).map(m => m.seq || 0);
+        seq = nx.length ? ((mi.seq || 0) + Math.min.apply(null, nx)) / 2 : (mi.seq || 0) + 0.5;
+      }
+      DATA.menus.push({ id: DATA.menus.some(m => m.id === "shortcuts") ? "shortcuts-" + Date.now().toString(36) : "shortcuts",
+        seq, type: "module", label: "바로가기", icon: "🔗", module: "shortcuts", vis: "all",
+        parent: mi && mi.parent ? mi.parent : (hub ? "hub-home" : null) });
     }
     const dash = DATA.menus.find(m => m.type === "module" && m.module === "dashboard");
     if (dash) { dash.vis = "all"; dash.parent = null; if (dash.seq !== 0) dash.seq = Math.min(0, dash.seq || 0); }
@@ -940,7 +992,7 @@ const SeMIS = (() => {
   const VIEW_WIDTH = {
     schedule: "wide", dashboard: "wide", board: "wide", flight: "wide",
     minutes: "mid", contacts: "mid", crisis: "mid", phonebook: "mid", settings: "mid", vault: "mid",
-    "reg-sec": "mid", "reg-safety": "mid", "reg-dg": "mid", "scr-status": "mid", "scr-equip": "mid", audit: "mid", inspection: "mid"
+    "reg-sec": "mid", "reg-safety": "mid", "reg-dg": "mid", "scr-status": "mid", "scr-equip": "mid", audit: "mid", inspection: "mid", shortcuts: "mid"
   };
   function applyViewWidth(view, route) {
     const r = String(route);
@@ -1099,18 +1151,20 @@ const SeMIS = (() => {
     if (/^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(h)) return true;
     return h === "localhost" || h.indexOf(".") < 0;
   }
-  function linkCardHTML(m) {
+  /* 링크 카드 — opts.edit 이면 누르면 수정 폼(data-sc-edit)을 여는 편집용 카드 */
+  function linkCardHTML(m, opts) {
+    opts = opts || {};
     const mode = isLinkGroup(m) ? "group" : m.open === "frame" ? "frame" : "tab";
-    const kids = mode === "group" ? linkChildren(m.id).length : 0;
-    const ico = m.icon ? '<span class="lk-emo">' + esc(m.icon) + '</span>'
-      : icon(mode === "group" ? "folder" : "link", 20);
+    const kids = mode === "group" ? (opts.edit ? DATA.menus.filter(c => c && c.type === "link" && c.parent === m.id).length : linkChildren(m.id).length) : 0;
     const meta = (isIntranet(m.url) ? "사내망 · " : "") + (hostOf(m.url) || "주소 없음");
-    const tag = mode === "group" ? "링크 모음" + (kids ? " " + kids : "") : mode === "frame" ? "내부 화면" : "새 탭";
-    const body = '<span class="lk-ico">' + ico + '</span>' +
+    const tag = opts.tag || (mode === "group" ? "링크 모음" + (kids ? " " + kids : "") : mode === "frame" ? "내부 화면" : "새 탭");
+    const body = linkIconHTML(m, "lk-ico") +
       '<span class="lk-b"><span class="lk-t">' + esc(m.label) + '</span>' +
-      '<span class="lk-s">' + esc(meta) + '</span></span>' +
+      '<span class="lk-s">' + esc(opts.sub || meta) + '</span></span>' +
       '<span class="lk-tag">' + esc(tag) + '</span>' +
-      '<span class="lk-go">' + icon(mode === "tab" ? "external" : "chevron", 16) + '</span>';
+      '<span class="lk-go">' + icon(opts.edit ? "edit" : mode === "tab" ? "external" : "chevron", 16) + '</span>';
+    if (opts.edit) return '<button type="button" class="lk-card is-edit' + (opts.dim ? " is-dim" : "") + '" data-sc-edit="' + esc(m.id) +
+      '" aria-label="' + esc(m.label + " 수정") + '">' + body + '</button>';
     if (mode === "tab") return '<a class="lk-card" href="' + esc(m.url) + '" target="_blank" rel="noopener" title="' + esc(m.url) + '">' + body + '</a>';
     return '<button type="button" class="lk-card" data-go="' + esc((mode === "group" ? "links/" : "embed/") + m.id) + '">' + body + '</button>';
   }
@@ -1122,9 +1176,11 @@ const SeMIS = (() => {
       return;
     }
     const kids = linkChildren(mn.id);
-    const actions = mn.url
+    const actions = (isAdmin() && modules.shortcuts
+      ? '<button type="button" class="btn btn-ghost btn-sm" data-sc-manage="' + esc(mn.id) + '">' + icon("edit", 16) + '<span>편집</span></button>' : "") +
+      (mn.url
       ? '<a class="btn btn-soft btn-sm" href="' + esc(mn.url) + '" target="_blank" rel="noopener">' +
-        icon("external", 16) + '<span>전체 열기</span></a>' : "";
+        icon("external", 16) + '<span>전체 열기</span></a>' : "");
     root.innerHTML = ui.head({
       title: mn.label,
       meta: kids.length ? kids.length + "개 링크" : "",
@@ -1137,6 +1193,9 @@ const SeMIS = (() => {
       + (kids.some(k => isIntranet(k.url))
         ? '<p class="lk-note">' + icon("info", 15) + '<span>사내망 주소는 회사 네트워크(사내 PC)에서만 열립니다.</span></p>' : "");
     $$("[data-go]", root).forEach(el => el.onclick = () => navigate(el.dataset.go));
+    $$("[data-sc-manage]", root).forEach(el => el.onclick = () => {
+      if (window.SemisShortcuts) window.SemisShortcuts.manage(el.dataset.scManage);
+    });
   }
 
   /* ═════════════ 허브 내비게이션 (v1.8) ═════════════
@@ -1210,17 +1269,17 @@ const SeMIS = (() => {
     if (isLinkGroup(m)) {
       const kn = linkChildren(m.id).length;
       return '<button type="button" class="nav-item nav-link nav-set" data-route="links/' + esc(m.id) + '" title="' + esc(m.label) + ' (링크 모음)">' +
-        '<span class="nav-lbl">' + esc(m.label) + '</span>' +
+        linkIconHTML(m, "nav-lki") + '<span class="nav-lbl">' + esc(m.label) + '</span>' +
         (kn ? '<span class="nav-meta">' + kn + '</span>' : "") +
         '<span class="ext-mark">' + icon("chevron", 15) + '</span></button>';
     }
     if (m.type === "link" && m.open !== "frame") {
       return '<a class="nav-item nav-link" href="' + esc(m.url) + '" target="_blank" rel="noopener" title="' + esc(m.label) + '">' +
-        '<span class="nav-lbl">' + esc(m.label) + '</span><span class="ext-mark">' + icon("external", 15) + '</span></a>';
+        linkIconHTML(m, "nav-lki") + '<span class="nav-lbl">' + esc(m.label) + '</span><span class="ext-mark">' + icon("external", 15) + '</span></a>';
     }
     if (m.type === "link") {
       return '<button type="button" class="nav-item nav-link" data-route="embed/' + esc(m.id) + '" title="' + esc(m.label) + '">' +
-        '<span class="nav-lbl">' + esc(m.label) + '</span><span class="ext-mark">' + icon("panel", 15) + '</span></button>';
+        linkIconHTML(m, "nav-lki") + '<span class="nav-lbl">' + esc(m.label) + '</span><span class="ext-mark">' + icon("panel", 15) + '</span></button>';
     }
     if (isPlannedMenu(m)) {
       return '<button type="button" class="nav-item planned" data-route="' + esc(m.module) + '" title="' + esc(m.label) + ' (준비 중)">' +
@@ -1257,7 +1316,16 @@ const SeMIS = (() => {
       '<button type="button" class="hub-block-t hub-toggle" data-toggle-planned="' + esc(g.id) + '" aria-expanded="' + (open ? "true" : "false") + '">' +
       '<span>준비 중인 모듈</span><b class="soon-n">' + planned.length + '</b><span class="chev">' + icon("chevdown", 15) + '</span></button>' +
       '<div class="planned-list">' + planned.map(navItemHTML).join("") + '</div></div>';
-    if (links.length) h += '<div class="hub-block hub-links"><div class="hub-block-t">바로가기</div>' + links.map(navItemHTML).join("") + '</div>';
+    /* v1.23 바로가기 블록 — 전체 화면(#/shortcuts)으로 가는 버튼, 시스템관리자는 이 허브에 바로 추가 */
+    const scMenu = modules.shortcuts ? menuForModule("shortcuts") : null;
+    const scOk = !!scMenu && canSee(scMenu);
+    const addOk = scOk && isAdmin();
+    if (links.length || (addOk && g.id === homeHubId())) {
+      h += '<div class="hub-block hub-links"><div class="hub-block-t"><span class="hb-t">바로가기</span>' +
+        (scOk ? '<button type="button" class="hb-act" data-go="shortcuts" title="바로가기 전체" aria-label="바로가기 전체">' + icon("grid", 15) + '</button>' : "") +
+        (addOk ? '<button type="button" class="hb-act" data-sc-add="' + esc(g.id) + '" title="바로가기 추가" aria-label="' + esc(g.label) + '에 바로가기 추가">' + icon("plus", 16) + '</button>' : "") +
+        '</div>' + links.map(navItemHTML).join("") + '</div>';
+    }
     return h + '</section>';
   }
 
@@ -1312,6 +1380,9 @@ const SeMIS = (() => {
 
     $$("[data-route]", box).forEach(el => { el.onclick = () => navigate(el.dataset.route); });
     $$("[data-go]", box).forEach(el => { el.onclick = () => navigate(el.dataset.go); });
+    $$("[data-sc-add]", box).forEach(el => {
+      el.onclick = () => { closeOverlays(); if (window.SemisShortcuts) window.SemisShortcuts.add(el.dataset.scAdd); };
+    });
     $$("[data-toggle-planned]", box).forEach(b => {
       b.onclick = () => {
         const blk = b.closest(".hub-planned");
@@ -1766,6 +1837,7 @@ const SeMIS = (() => {
     printView, printTitle, attachPrintBtn, markHub,
     icon, ui, ICONS, HUB_ICONS, hubOf, hubOfDeep, hubList, hubEntries, utilEntries, homeHubId,
     isLinkGroup, linkChildren, isIntranet, hostOf, openHub, togglePanel, openSheet,
+    LINK_ICONS, LINK_TONES, favOk, linkIconHTML, linkCardHTML, menuForModule,
     closeSidebar, closeOverlays, migrateHubs,
     openModal, closeModal, confirmModal, toast,
     $, $$, esc, fmtDate, dsRing, sortedMenus,
