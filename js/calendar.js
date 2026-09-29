@@ -334,9 +334,13 @@
     if (n) SeMIS.save();
     return n;
   }
-  /* 편집 권한이 있는 접속자만 데이터를 갱신 (열람 전용 계정은 공용 데이터 변경 금지) */
+  /* 편집 권한이 있는 접속자만 데이터를 갱신 (열람 전용 계정은 공용 데이터 변경 금지)
+     v1.24: 잠자기에서 막 깨어나 아직 서버 값을 다시 받지 못한 화면은 미룬다(옛 데이터로 저장하지 않게) */
   function autoRollIfAllowed() {
-    try { return SeMIS.canEdit() ? runAutoRoll() : 0; } catch (e) { return 0; }
+    try {
+      if (window.SemisSync && typeof SemisSync.isStale === "function" && SemisSync.isStale()) return 0;
+      return SeMIS.canEdit() ? runAutoRoll() : 0;
+    } catch (e) { return 0; }
   }
 
   /* ─────── 리마인더 ─────── */
@@ -396,8 +400,13 @@
     });
     return out;
   }
+  let remLast = 0;
   function checkReminders() {
-    autoRollIfAllowed();                                     // v2.37: 자동 연기/연장 (날짜 변경도 자동 반영)
+    /* v1.24: 1분 주기가 몇 분씩 밀렸으면(절전 · 잠자기 탭에서 깨어남) 이번 회차의 자동 연기는 건너뛴다 —
+       동기화가 서버 값을 다시 받은 뒤 다음 회차에 처리 */
+    const now = Date.now(), woke = remLast && now - remLast > 150000;
+    remLast = now;
+    if (!woke) autoRollIfAllowed();                          // v2.37: 자동 연기/연장 (날짜 변경도 자동 반영)
     dueReminders().forEach(d => {
       const when = d.occStart + (d.event.allDay ? " (종일)" : " " + (d.event.time || ""));
       try { toast("⏰ " + d.label + " 알림: " + d.event.title + " — " + when); } catch (e) {}

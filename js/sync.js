@@ -10,6 +10,9 @@
      해당 컬렉션만 다시 읽는다. 알림을 못 받으면 30초 폴링.
    - 파일: 비공개 버킷 — Edge Function semis-logi-files 가 서명 URL을 발급한다.
    - 오프라인: 이 탭의 sessionStorage 캐시로 동작, 변경분은 pending 큐에 두었다가 재접속 시 push
+   - 저장 충돌 방지(v1.24): 저장할 때 마지막으로 받은 서버 시각(base_at)을 함께 보낸다. 그 사이 서버 값이
+     바뀌었으면 서버가 거절(409)하고, 이 탭은 서버 값을 다시 받아 3-way 병합(항목·필드 단위) 후 다시 저장한다.
+     잠자기에서 깨어난 옛 화면이 서버의 새 데이터를 통째로 덮어쓰던 문제(2026-09-29 일정 61→26건) 대응.
    ═══════════════════════════════════════════════════════ */
 "use strict";
 
@@ -41,9 +44,18 @@
   const RETRY_MS = 30000;
   const POLL_MS = 30000;
   const BEAT_MS = 10 * 60 * 1000;      // 세션 확인·연장
+  const NET_TIMEOUT_MS = 20000;        // 데이터 요청 시간 제한(응답 없는 요청이 동기화 줄을 막지 않게)
+  const WAKE_TICK_MS = 15000;          // 잠자기 감지 주기
+  const WAKE_GAP_MS = 180000;          // 이보다 오래 타이머가 멈췄으면 잠자기에서 깨어난 것으로 본다(숨긴 탭 타이머 지연 1분보다 길게)
+  const CONFLICT_RETRY = 3;
 
   let status = "init";            // init | online | syncing | offline
   let snapshots = {};             // key → canonical JSON (마지막 동기화 시점)
+  /* v1.24 저장 기준: key → 서버 행의 updated_at("" = 서버에 행 없음, undefined = 모름 → 먼저 받아 온다)
+     baseOK[key] = snapshots[key] 가 실제 서버 값(병합 기준으로 쓸 수 있음)인지 */
+  let serverAt = {};
+  let baseOK = {};
+  let stale = false;              // 잠자기·탭 숨김에서 막 돌아와 아직 서버와 맞추지 못한 상태
   let pushTimer = null, retryTimer = null, pollTimer = null, beatTimer = null;
   let realtimeClient = null, realtimeOn = false, channel = null;
   let hooked = false, lostFired = false;
@@ -117,10 +129,124 @@
   }
 
   /* ─── 스냅샷 / 변경 감지 ─── */
-  function snapAll() { SYNC_KEYS.forEach(k => { snapshots[k] = canon(D()[k]); }); }
+  /* 이 탭의 값을 기준으로 삼는다(서버 값이 아님 → 병합 기준으로는 쓰지 않는다) */
+  function snapAll() { SYNC_KEYS.forEach(k => { snapshots[k] = canon(D()[k]); }); baseOK = {}; }
   function dirtyKeys() { return SYNC_KEYS.filter(k => canon(D()[k]) !== snapshots[k]); }
+  function markBase(key, value, at) {
+    snapshots[key] = typeof value === "string" ? value : canon(value);
+    baseOK[key] = true;
+    if (at !== undefined) serverAt[key] = at;
+  }
+  function baseOf(key) {
+    if (!baseOK[key] || typeof snapshots[key] !== "string") return undefined;
+    try { return JSON.parse(snapshots[key]); } catch (e) { return undefined; }
+  }
+
+  /* ─── 3-way 병합 (v1.24) ───
+     base = 마지막으로 서버와 맞춘 값, local = 이 탭의 값, remote = 지금 서버 값.
+     서로 다른 곳을 고쳤으면 양쪽을 모두 살리고, 같은 곳을 다르게 고쳤으면 이 탭(local)이 이긴다.
+     - id 가 있는 객체 배열: 항목 단위(추가 · 삭제 · 수정) — 한쪽이 지운 항목을 다른 쪽이 고쳤으면 남긴다
+     - 원시값 배열: 값 집합(추가 · 삭제)   - 길이가 같은 id 없는 객체 배열: 자리별
+     - 객체: 키 단위로 다시 병합        - 그 밖에 양쪽이 다르게 바뀐 값: 이 탭 값
+     base 를 모르면(undefined) 합집합(겹치면 이 탭 우선) — 옛 mergeById 와 같은 결과 */
+  const ATOMIC = { vault: true };           // 암호화 묶음 — 쪼개어 섞지 않는다
+  const same = (a, b) => canon(a) === canon(b);
+  const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+  function idList(a) {
+    if (!Array.isArray(a)) return false;
+    const seen = {};
+    for (let i = 0; i < a.length; i++) {
+      const x = a[i];
+      if (!isObj(x) || x.id === undefined || x.id === null || x.id === "") return false;
+      const k = "#" + String(x.id);
+      if (seen[k]) return false;
+      seen[k] = true;
+    }
+    return true;
+  }
+  const primList = (a) => Array.isArray(a) && a.every(x => x === null || typeof x !== "object");
+  function mergeIds(base, local, remote) {
+    const map = (a) => { const m = new Map(); a.forEach(x => m.set(String(x.id), x)); return m; };
+    const bm = map(base), lm = map(local), rm = map(remote);
+    const out = new Map();
+    const all = [];
+    const seen = new Set();
+    [local, remote, base].forEach(a => a.forEach(x => { const id = String(x.id); if (!seen.has(id)) { seen.add(id); all.push(id); } }));
+    all.forEach(id => {
+      const v = merge3(bm.get(id), lm.get(id), rm.get(id));
+      if (v !== undefined) out.set(id, v);
+    });
+    /* 순서: 이 탭이 순서를 바꾸지 않았으면 서버 순서, 바꿨으면 이 탭 순서 — 다른 쪽에만 있는 항목은
+       그쪽에서 바로 뒤에 오던 항목 앞에(뒤에 아무것도 없으면 맨 끝에) */
+    const common = (a, other) => a.map(x => String(x.id)).filter(id => other.has(id));
+    const localMoved = common(local, bm).join("\u0001") !== common(base, lm).join("\u0001");
+    const primary = localMoved ? local : remote, secondary = localMoved ? remote : local;
+    const order = primary.map(x => String(x.id)).filter(id => out.has(id));
+    const placed = new Set(order);
+    let next = null;
+    for (let i = secondary.length - 1; i >= 0; i--) {
+      const id = String(secondary[i].id);
+      if (!out.has(id)) continue;
+      if (!placed.has(id)) { order.splice(next === null ? order.length : order.indexOf(next), 0, id); placed.add(id); }
+      next = id;
+    }
+    return order.map(id => out.get(id));
+  }
+  function mergeSet(base, local, remote) {
+    const kb = new Set((base || []).map(canon)), kl = new Set(local.map(canon));
+    const removed = new Set(Array.from(kb).filter(k => !kl.has(k)));
+    const out = remote.filter(x => !removed.has(canon(x)));
+    const have = new Set(out.map(canon));
+    local.forEach(x => { const k = canon(x); if (!kb.has(k) && !have.has(k)) { out.push(x); have.add(k); } });
+    return out;
+  }
+  function mergeObj(base, local, remote) {
+    const out = {};
+    const keys = [];
+    const seen = {};
+    [local, remote, base || {}].forEach(o => Object.keys(o).forEach(k => { if (!seen[k]) { seen[k] = true; keys.push(k); } }));
+    keys.forEach(k => {
+      const v = merge3(base ? base[k] : undefined, local[k], remote[k]);
+      if (v !== undefined) out[k] = v;
+    });
+    return out;
+  }
+  function merge3(base, local, remote) {
+    if (same(local, remote)) return local;
+    if (base !== undefined) {
+      if (same(local, base)) return remote;       // 이 탭은 안 바꿈 → 서버 값
+      if (same(remote, base)) return local;       // 서버는 안 바꿈 → 이 탭 값
+    }
+    if (local === undefined) return remote;       // 이 탭은 지웠고 서버는 고침 → 남긴다
+    if (remote === undefined) return local;       // 서버는 지웠고 이 탭은 고침 → 남긴다
+    if (idList(local) && idList(remote) && (base === undefined || idList(base)))
+      return mergeIds(base || [], local, remote);
+    if (primList(local) && primList(remote) && (base === undefined || primList(base)))
+      return mergeSet(base, local, remote);
+    if (Array.isArray(local) && Array.isArray(remote) && Array.isArray(base)
+        && local.length === remote.length && base.length === local.length)
+      return local.map((x, i) => { const v = merge3(base[i], x, remote[i]); return v === undefined ? null : v; });
+    if (isObj(local) && isObj(remote) && (base === undefined || isObj(base)))
+      return mergeObj(base, local, remote);
+    return local;
+  }
+  function mergeKey(key, base, local, remote) {
+    if (ATOMIC[key]) {
+      if (same(local, remote)) return local;
+      if (base !== undefined && same(local, base)) return remote;
+      return local;
+    }
+    return merge3(base, local, remote);
+  }
 
   /* ─── RPC · REST ─── */
+  /* 응답 없는 요청이 동기화 줄을 막지 않도록 시간 제한 */
+  function fetchT(url, o) {
+    if (typeof AbortController === "undefined") return fetch(url, o);
+    const ac = new AbortController();
+    const tm = setTimeout(() => { try { ac.abort(); } catch (e) {} }, NET_TIMEOUT_MS);
+    return fetch(url, Object.assign({}, o, { signal: ac.signal })).finally(() => clearTimeout(tm));
+  }
   async function rpc(name, args) {
     if (typeof fetch === "undefined") throw new Error("offline");
     const res = await fetch(RPC + name, { method: "POST", headers: hdr(), body: JSON.stringify(args || {}) });
@@ -130,17 +256,27 @@
   async function restGet(keys) {
     let url = REST + "?select=key,value,updated_at,updated_by";
     if (keys && keys.length) url += "&key=in.(" + keys.map(encodeURIComponent).join(",") + ")";
-    const res = await fetch(url, { headers: hdr() });
+    const res = await fetchT(url, { headers: hdr() });
     if (!res.ok) throw httpErr("GET", res);
     return res.json();
   }
+  /* 저장 — 행마다 base_at(마지막으로 받은 서버 시각)을 보낸다. 서버 값이 그 사이 바뀌었으면 409(conflict) */
   async function restUpsert(rows) {
-    const res = await fetch(REST + "?on_conflict=key", {
+    const res = await fetchT(REST + "?on_conflict=key&select=key,updated_at", {
       method: "POST",
-      headers: hdr({ Prefer: "resolution=merge-duplicates,return=minimal" }),
+      headers: hdr({ Prefer: "resolution=merge-duplicates,return=representation" }),
       body: JSON.stringify(rows)
     });
-    if (!res.ok) throw httpErr("POST", res);
+    if (!res.ok) {
+      const e = httpErr("POST", res);
+      let d = null;
+      try { d = await res.json(); } catch (x) { d = null; }
+      if (res.status === 409 || (d && (d.message === "semis_conflict" || d.code === "PT409"))) e.conflict = true;
+      throw e;
+    }
+    let out = null;
+    try { out = await res.json(); } catch (x) { out = null; }
+    return Array.isArray(out) ? out : [];
   }
 
   /* ─── 로그인 · 확인 · 로그아웃 ─── */
@@ -267,15 +403,39 @@
     rerender();
   }
 
+  /* ─── 동기화 줄: push · pull 을 한 번에 하나씩(서로 끼어들어 기준 시각이 엇갈리지 않게) ─── */
+  let chain = Promise.resolve();
+  function serial(fn) {
+    const p = chain.then(fn, fn);
+    chain = p.catch(() => {});
+    return p;
+  }
+
   /* ─── push: 로컬 변경분 → 서버 (쓰기 권한이 있는 컬렉션만) ─── */
-  async function push(keys, opts) {
+  function push(keys, opts) { return serial(() => pushNow(keys, opts)); }
+  async function pushNow(keys, opts) {
     if (!sess || sess.kind !== "user" || !token) return;
+    const o = opts || {};
     let targets = Array.from(new Set((keys || []).concat(dirtyKeys(), pendingKeys())))
       .filter(k => SYNC_KEYS.includes(k) && canWrite(k));
     const dropped = pendingKeys().filter(k => !canWrite(k));
     if (dropped.length) setPending(pendingKeys().filter(k => canWrite(k)));
     if (!targets.length) return;
-    if (!(opts && opts.allowWipe)) {
+    /* 서버 기준을 모르는 컬렉션(탭을 새로 열었거나 다시 로그인한 직후) → 먼저 받아 병합한 뒤 저장 */
+    const unknown = targets.filter(k => serverAt[k] === undefined);
+    if (unknown.length) {
+      targets = targets.filter(k => serverAt[k] !== undefined);
+      try { await pullNow(false, unknown, o.depth || 0); }
+      catch (e) { setStatus("offline"); scheduleRetry(); throw e; }
+    }
+    /* 이미 서버와 같은 것은 보내지 않는다(서버에 행이 없으면 만들고, 강제 복원이면 모두) */
+    const same0 = targets.filter(k => !o.all && serverAt[k] !== "" && canon(D()[k]) === snapshots[k] && baseOK[k]);
+    if (same0.length) {
+      targets = targets.filter(k => same0.indexOf(k) < 0);
+      setPending(pendingKeys().filter(k => same0.indexOf(k) < 0));
+    }
+    if (!targets.length) { if (status === "syncing") setStatus("online"); return; }
+    if (!o.allowWipe) {
       const blocked = guardWipe(targets);
       if (blocked.length) {
         const bk = blocked.map(b => b.key);
@@ -291,13 +451,36 @@
     }
     targets.forEach(k => { delete wipeOK[k]; });
     setStatus("syncing");
-    const rows = targets.map(k => ({ key: k, value: D()[k], updated_by: CLIENT_ID }));
+    const sent = {};
+    const rows = targets.map(k => {
+      sent[k] = canon(D()[k]);
+      return { key: k, value: D()[k], updated_by: CLIENT_ID, base_at: serverAt[k] || null };
+    });
     try {
-      await restUpsert(rows);
-      targets.forEach(k => { snapshots[k] = canon(D()[k]); });
-      setPending([]);
+      const back = await restUpsert(rows);
+      const atOf = {};
+      back.forEach(r => { if (r && r.key) atOf[r.key] = String(r.updated_at || ""); });
+      targets.forEach(k => {
+        snapshots[k] = sent[k];
+        baseOK[k] = true;
+        serverAt[k] = atOf[k] || undefined;          // 응답에 시각이 없으면 다음 저장 전에 다시 받는다
+      });
+      /* 보내는 동안 또 바뀐 것은 pending 에 남긴다 */
+      setPending(pendingKeys().filter(k => targets.indexOf(k) < 0 || canon(D()[k]) !== sent[k]));
       setStatus("online");
     } catch (e) {
+      if (e && e.conflict) {
+        /* 그 사이 다른 화면이 저장함 → 서버 값을 받아 병합 후 다시 저장 */
+        setPending(targets.concat(pendingKeys()));
+        const depth = (o.depth || 0) + 1;
+        if (depth <= CONFLICT_RETRY) {
+          try { await pullNow(false, targets, depth); return; }
+          catch (x) { setStatus("offline"); scheduleRetry(); throw x; }
+        }
+        setStatus("offline");
+        scheduleRetry();
+        throw e;
+      }
       if (e && (e.status === 401 || e.status === 403)) {
         setPending(targets.concat(pendingKeys()));
         if (await checkSession()) throw e;          // 세션 만료 — 다시 로그인하면 이어서 저장
@@ -314,14 +497,13 @@
   }
 
   /* ─── pull: 서버 → 로컬 (onlyKeys 가 있으면 그 컬렉션만) ─── */
-  async function pull(initial, onlyKeys) {
+  function pull(initial, onlyKeys) { return serial(() => pullNow(initial, onlyKeys, 0)); }
+  async function pullNow(initial, onlyKeys, depth) {
     if (!sess || sess.kind !== "user" || !token) return false;
     const readable = readKeys();
     const want = onlyKeys ? onlyKeys.filter(k => readable.indexOf(k) >= 0) : readable;
     if (!want.length) return false;
-    /* GET 이전의 pending·dirty 를 함께 기억한다 — GET 이 도는 동안 push 가 끝나
-       pending 이 비면, 아직 서버에 반영되지 않은 로컬 변경을 서버의 옛 값으로
-       덮어써 "저장한 항목이 사라졌다가 새로고침하면 다시 보이는" 일이 생긴다. */
+    /* GET 이전의 pending·dirty 를 함께 기억한다 — GET 이 도는 동안의 변경도 병합 대상으로 */
     const before = Array.from(new Set(pendingKeys().concat(dirtyKeys())));
     let rows;
     try { rows = await restGet(onlyKeys ? want : null); }
@@ -338,19 +520,23 @@
     rows.forEach(row => {
       present[row.key] = true;
       const remote = canon(row.value);
-      if (force && canWrite(row.key)) return; // 강제 push 모드(백업 복원)면 로컬 우선
+      const at = String(row.updated_at || "");
+      if (force && canWrite(row.key)) { serverAt[row.key] = at; return; } // 강제 push 모드(백업 복원)면 로컬 우선
       if (pend.includes(row.key)) {
-        // 로컬 미전송 변경 + 서버 데이터 공존 → id 기준 병합(로컬 우선) 후 push
-        const merged = mergeById(row.value, D()[row.key]);
-        if (merged) { D()[row.key] = merged; changed = true; }
+        /* 로컬 미전송 변경 + 서버 데이터 → 3-way 병합(기준을 모르면 합집합 · 로컬 우선) 후 push */
+        const merged = mergeKey(row.key, baseOf(row.key), D()[row.key], row.value);
+        if (canon(merged) !== canon(D()[row.key])) { D()[row.key] = merged; changed = true; }
+        markBase(row.key, remote, at);
         return;
       }
       if (remote !== canon(D()[row.key])) {
         D()[row.key] = row.value;
         changed = true;
       }
-      snapshots[row.key] = remote;
+      markBase(row.key, remote, at);
     });
+    want.forEach(k => { if (!present[k]) serverAt[k] = ""; });            // 서버에 아직 행이 없음
+    if (!onlyKeys) { stale = false; lastFullPull = Date.now(); }
     // 서버 데이터 반영 후 정규화 — 구버전 서버 데이터가 로컬 마이그레이션(신규 메뉴/필드)을
     // 되돌리지 않도록 보정하고, 보정분은 dirty로 잡혀 서버에 push됨(쓰기 권한이 있을 때만)
     try { if (SeMIS.normalizeData && SeMIS.normalizeData()) changed = true; } catch (e) {}
@@ -362,29 +548,20 @@
       SeMIS.saveSilent();
       rerender();
     }
-    if (toPush.length) await push(toPush, { allowWipe: !!force });
+    if (toPush.length) await pushNow(toPush, { allowWipe: !!force, all: !!force, depth: depth || 0 });
     if (force) ss.del(SS_FORCE);
     setStatus("online");
     try { if (window.SemisFileAuth) SemisFileAuth.warm(); } catch (e) {}
     return changed;
   }
 
-  /* ─── id 기준 병합: 서버에만 있는 항목 + 로컬 항목(로컬 우선) ─── */
-  function mergeById(serverVal, localVal) {
-    if (!Array.isArray(serverVal) || !Array.isArray(localVal)) return null;
-    if (!serverVal.every(x => x && x.id) || !localVal.every(x => x && x.id)) return null;
-    const localIds = new Set(localVal.map(x => x.id));
-    const merged = serverVal.filter(x => !localIds.has(x.id)).concat(localVal);
-    return merged;
-  }
-
   /* ─── 원격 변경 반영 ─── */
   function applyRemote(key, value) {
     if (!SYNC_KEYS.includes(key)) return false;
     const remote = canon(value);
-    if (remote === canon(D()[key])) { snapshots[key] = remote; return false; }
+    if (remote === canon(D()[key])) { markBase(key, remote); return false; }
     D()[key] = value;
-    snapshots[key] = remote;
+    markBase(key, remote);
     // 원격 반영 후 정규화 — 보정이 생기면 디바운스 push로 서버에 반영 (idempotent라 루프 없음)
     try { if (SeMIS.normalizeData && SeMIS.normalizeData()) queuePush(); } catch (e) {}
     SeMIS.saveSilent();
@@ -434,7 +611,11 @@
       channel = realtimeClient.channel(CHANNEL)
         .on("broadcast", { event: "change" }, onBroadcast)
         .subscribe((st) => {
-          if (st === "SUBSCRIBED") { realtimeOn = true; stopPolling(); setStatus("online"); }
+          if (st === "SUBSCRIBED") {
+            realtimeOn = true; stopPolling(); setStatus("online");
+            /* 다시 연결됨 — 끊겨 있던 동안의 변경 알림은 오지 않으므로 한 번 다시 받는다 */
+            if (Date.now() - lastFullPull > 10000) pull(false).catch(() => {});
+          }
           else if (st === "CHANNEL_ERROR" || st === "TIMED_OUT" || st === "CLOSED") {
             realtimeOn = false; startPolling();
           }
@@ -465,6 +646,39 @@
     }, BEAT_MS);
   }
   function stopBeat() { if (beatTimer) { clearInterval(beatTimer); beatTimer = null; } }
+
+  /* ─── 잠자기 · 탭 숨김에서 돌아옴 (v1.24) ───
+     절전 · 브라우저 잠자기 탭(Edge) · 휴대폰 화면 꺼짐 동안에는 타이머와 실시간 연결이 멈춰 다른 사람의 변경을
+     받지 못한다. 돌아오면 먼저 서버 값을 다시 받는다. 그 전에 일어난 자동 변경(일정 자동 연기 등)은
+     서버의 기준 시각 확인에 걸려 덮어쓰지 못하고, 받아 온 값과 병합된 뒤 저장된다. */
+  let lastTick = Date.now(), wakeTimer = null, hiddenAt = 0, lastFullPull = 0, wakeHooked = false;
+  function onWake() {
+    if (!sess || sess.kind !== "user" || !token || lostFired) return;
+    stale = true;
+    setStatus("syncing");
+    pull(false).then(() => { if (!realtimeOn) subscribe(); })
+      .catch(() => { setStatus("offline"); scheduleRetry(); });
+  }
+  function startWake() {
+    lastTick = Date.now();
+    if (!wakeTimer) {
+      wakeTimer = setInterval(() => {
+        const now = Date.now(), gap = now - lastTick;
+        lastTick = now;
+        if (gap > WAKE_GAP_MS) onWake();       // 타이머가 오래 멈췄다 = 잠자기에서 깨어남
+      }, WAKE_TICK_MS);
+    }
+    if (wakeHooked || typeof document === "undefined") return;
+    wakeHooked = true;
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") { hiddenAt = Date.now(); return; }
+      const was = hiddenAt; hiddenAt = 0;
+      if (was && Date.now() - was > WAKE_GAP_MS) onWake();
+    });
+    document.addEventListener("resume", () => onWake());                      // 얼렸던 탭이 풀림(Page Lifecycle)
+    window.addEventListener("pageshow", (ev) => { if (ev && ev.persisted) onWake(); });   // 뒤로 가기 캐시
+  }
+  function stopWake() { if (wakeTimer) { clearInterval(wakeTimer); wakeTimer = null; } }
 
   /* ─── 재시도 ─── */
   function scheduleRetry() {
@@ -609,6 +823,8 @@
     if (!realtimeOn) subscribe();
     return status;
   }
+  /* 잠자기에서 막 돌아와 아직 서버 값을 다시 받지 못했는가 — 자동 변경(일정 자동 연기 등)은 이때 미룬다 */
+  function isStale() { return stale; }
 
   /* ─── 시작 (로그인·세션 확인 뒤 app.js 가 부른다) ─── */
   function start() {
@@ -616,6 +832,8 @@
     if (typeof fetch === "undefined") { setStatus("offline"); return Promise.resolve(); }
     if (!sess || sess.kind !== "user" || !token) return Promise.resolve();
     lostFired = false;
+    /* 이 탭에서 이미 서버와 맞춘 컬렉션은 기준(서버 값 · 시각)을 그대로 두고, 처음이면 이 탭 값으로 시작 */
+    SYNC_KEYS.forEach(k => { if (!baseOK[k]) snapshots[k] = canon(D()[k]); });
     if (!hooked) {
       hooked = true;
       SeMIS.onSave(queuePush);
@@ -626,16 +844,16 @@
         window.addEventListener("offline", () => setStatus("offline"));
       }
     }
-    snapAll();
     setStatus("init");
     startBeat();
+    startWake();
     return pull(true)
       .then(() => subscribe())
       .catch(() => { setStatus("offline"); scheduleRetry(); });
   }
 
   function stop() { // 로그아웃·테스트 정리
-    stopPolling(); stopBeat();
+    stopPolling(); stopBeat(); stopWake();
     if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
     if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
     if (remoteTimer) { clearTimeout(remoteTimer); remoteTimer = null; remoteKeys.clear(); }
@@ -649,7 +867,8 @@
     push, pull, applyRemote, onBroadcast,
     history, historyValue, restoreHistory,
     confirmWipe, guardEvents, guardWipe, GUARD_MIN,
-    dirtyKeys, pendingKeys, snapAll,
+    dirtyKeys, pendingKeys, snapAll, merge3, isStale,
+    _serverAt: (k) => serverAt[k], _wake: onWake,
     rpc, canRead, canWrite, readKeys, writeKeys,
     auth: { login, whoami, logout, check: checkSession, prepare,
             token: () => token, session: () => sess, clear: clearAuth,

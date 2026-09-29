@@ -247,14 +247,23 @@ function makeServer(opts = {}) {
       if (method === "POST") {
         const rows = body || [];
         if (srv.forceDeny || rows.some(x => r < acl(x.key)[1])) return reply(401, { code: "42501", message: "new row violates row-level security policy" });
+        /* v1.24 저장 충돌 방지(서버 트리거 semis_logi_private.check_base 흉내): 계정 세션이 기존 행을 고칠 때
+           base_at 이 지금 행의 updated_at 과 다르면(없으면 포함) 문장 전체 거절 — 409 PT409 semis_conflict */
+        if (!srv.noBaseCheck && s && s.kind === "user") {
+          const bad = rows.find(x => { const cur = srv.rows.find(y => y.key === x.key); return cur && String(x.base_at || "") !== String(cur.updated_at); });
+          if (bad) { srv.conflicts = (srv.conflicts || 0) + 1; return reply(409, { code: "PT409", message: "semis_conflict", details: bad.key, hint: "reload" }); }
+        }
         const who = (accOf(s) || {}).login || "anon";
+        const out = [];
         rows.forEach(x => {
-          const rec = { key: x.key, value: JSON.parse(JSON.stringify(x.value)), updated_at: new Date().toISOString(),
+          srv.clock = Math.max((srv.clock || 0) + 1, Date.now());
+          const rec = { key: x.key, value: JSON.parse(JSON.stringify(x.value)), updated_at: new Date(srv.clock).toISOString(),
             updated_by: who + "/" + String(x.updated_by || "").replace(/^.*\//, "") };
           const i = srv.rows.findIndex(y => y.key === x.key);
           if (i >= 0) srv.rows[i] = rec; else srv.rows.push(rec);
+          out.push({ key: rec.key, updated_at: rec.updated_at });
         });
-        return reply(201, []);
+        return reply(201, /select=/.test(u) ? out : []);
       }
     }
     if (u.indexOf("/functions/v1/semis-logi-files") >= 0) {
@@ -1514,6 +1523,141 @@ function makeServer(opts = {}) {
     });
     t("Y18 jsdom 오류 없음(동기화 블록)", () => eq(e.errors.length, 0, e.errors.join(" | ")));
     Sync.stop();
+  }
+
+  /* ══════════ [YC] 저장 충돌 방지 (v1.24 — 2026-09-29 잠자기 탭이 일정 61건을 26건으로 덮어쓴 사고) ══════════ */
+  {
+    const sch = (id, o) => Object.assign({ id, title: "일정 " + id, start: "2026-09-28", end: "2026-09-28", allDay: true, done: false,
+      memo: "", priv: false, owner: "", color: "blue", repeat: { freq: "none", until: "" }, doneDates: [], undoneDates: [], reminders: [] }, o || {});
+    const e0 = makeEnv({ boot: false });
+    const m3 = e0.Sync.merge3;
+    const C = e0.Sync._canon;
+
+    t("YC01 병합: 서로 다른 항목 추가 · 삭제 · 수정은 모두 살림", () => {
+      const base = [{ id: "a", t: 1 }, { id: "b", t: 1 }, { id: "c", t: 1 }];
+      const local = [{ id: "a", t: 2 }, { id: "b", t: 1 }, { id: "c", t: 1 }, { id: "L", t: 1 }];      // a 수정 · L 추가
+      const remote = [{ id: "a", t: 1 }, { id: "c", t: 9 }, { id: "R", t: 1 }];                       // b 삭제 · c 수정 · R 추가
+      const out = m3(base, local, remote);
+      eq(out.map(x => x.id + x.t).join(","), "a2,c9,R1,L1");
+    });
+    t("YC02 병합: 한쪽이 지운 항목을 다른 쪽이 고쳤으면 남긴다(데이터 보존)", () => {
+      const base = [{ id: "a", t: 1 }, { id: "b", t: 1 }];
+      eq(C(m3(base, [{ id: "b", t: 1 }], [{ id: "a", t: 5 }, { id: "b", t: 1 }])), C([{ id: "a", t: 5 }, { id: "b", t: 1 }]), "이 탭 삭제 vs 서버 수정");
+      eq(C(m3(base, [{ id: "a", t: 7 }, { id: "b", t: 1 }], [{ id: "b", t: 1 }])), C([{ id: "a", t: 7 }, { id: "b", t: 1 }]), "서버 삭제 vs 이 탭 수정");
+      eq(C(m3(base, [{ id: "b", t: 1 }], [{ id: "b", t: 1 }])), C([{ id: "b", t: 1 }]), "양쪽 삭제");
+    });
+    t("YC03 병합: 같은 항목의 다른 칸은 칸별로 · 같은 칸이면 이 탭 우선", () => {
+      const b = { id: "x", title: "T", memo: "", start: "2026-09-28", done: false, doneDates: ["2026-09-01"] };
+      const l = Object.assign({}, b, { start: "2026-09-29", doneDates: ["2026-09-01", "2026-09-29"] });
+      const r = Object.assign({}, b, { memo: "보완", start: "2026-09-30", doneDates: [] });
+      const out = m3([b], [l], [r])[0];
+      eq(out.memo, "보완"); eq(out.start, "2026-09-29", "같은 칸 → 이 탭");
+      eq(out.doneDates.join(","), "2026-09-29", "값 집합: 서버 삭제 + 이 탭 추가");
+    });
+    t("YC04 병합: 기준을 모르면 합집합(겹치면 이 탭 우선) · 객체 키 단위 · 순서 유지", () => {
+      eq(m3(undefined, [{ id: "a", t: 2 }], [{ id: "a", t: 1 }, { id: "b", t: 1 }]).map(x => x.id + x.t).join(","), "a2,b1");
+      const o = m3({ rows: [{ id: "1" }], asOf: "9월" }, { rows: [{ id: "1" }, { id: "2" }], asOf: "9월" }, { rows: [{ id: "1" }], asOf: "10월" });
+      eq(o.asOf, "10월"); eq(o.rows.length, 2);
+      const base = ["a", "b", "c"].map(id => ({ id }));
+      eq(m3(base, [{ id: "c" }, { id: "a" }, { id: "b" }], base.concat([{ id: "d" }])).map(x => x.id).join(""), "cabd", "이 탭이 순서를 바꿈 → 이 탭 순서 + 서버 추가분");
+      eq(m3(base, base.concat([{ id: "L" }]), [{ id: "b" }, { id: "a" }, { id: "c" }]).map(x => x.id).join(""), "bacL", "서버가 순서를 바꿈 → 서버 순서 + 이 탭 추가분");
+    });
+
+    const server = makeServer({ rows: [{ key: "schedules", value: [sch("s1"), sch("s2", { autoDefer: true, end: "2026-09-27", start: "2026-09-27" }), sch("s3")] }] });
+    const A = makeEnv({ fetch: server.fetch });                  // 9/28 오전에 열어 두고 잠든 탭
+    const B = makeEnv({ fetch: server.fetch });                  // 계속 쓰던 탭
+    await ta("YC05 잠든 탭 재현: 다른 탭이 30건 추가 · 메모 보완 뒤, 잠든 탭의 자동 연기 저장이 덮어쓰지 못하고 병합됨", async () => {
+      await server.loginAs(A, "hq-pw-2222"); await A.Sync.start();
+      await server.loginAs(B, "admin-pw-111"); await B.Sync.start();
+      eq(A.S.data.schedules.length, 3);
+      for (let i = 0; i < 30; i++) B.S.data.schedules.push(sch("n" + i, { start: "2026-10-01", end: "2026-10-01" }));
+      B.S.data.schedules[0].memo = "[보완 2026-09-28 · 부서함 문서]";
+      B.S.save(); await B.Sync._flush();
+      eq(server.rows.find(r => r.key === "schedules").value.length, 33);
+      /* A 는 알림을 못 받은 상태(잠자기) — 깨어나 자동 연기가 먼저 돈다 */
+      const c0 = server.conflicts || 0;
+      eq(A.w.SemisCalendar.runAutoRoll("2026-09-29"), 1, "자동 연기 1건");
+      await A.Sync._flush();
+      ok((server.conflicts || 0) > c0, "서버가 옛 기준의 저장을 거절(409)");
+      const v = server.rows.find(r => r.key === "schedules").value;
+      eq(v.length, 33, "일정 수 유지(26건으로 줄던 사고 재현 방지)");
+      eq(v.find(x => x.id === "s1").memo, "[보완 2026-09-28 · 부서함 문서]", "다른 탭의 메모 보완 유지");
+      eq(v.find(x => x.id === "s2").end, "2026-09-29", "잠든 탭의 자동 연기도 반영");
+      eq(A.S.data.schedules.length, 33, "잠든 탭 화면도 최신으로");
+      eq(A.Sync.pendingKeys().length, 0);
+    });
+    await ta("YC06 저장 요청에 base_at(마지막으로 받은 서버 시각)을 보내고 응답 시각으로 갱신", async () => {
+      await B.Sync.pull(false);                               // 알림 대신 직접 받음(A 의 병합 저장 반영)
+      const n0 = server.calls.length;
+      B.S.data.schedules[1].title = "고친 제목"; B.S.save(); await B.Sync._flush();
+      const post = server.calls.slice(n0).filter(c => c.method === "POST" && c.url.indexOf("/rest/v1/semis_logi_store") >= 0);
+      eq(post.length, 1, "충돌 없는 저장은 한 번에");
+      ok(/select=key,updated_at/.test(post[0].url), "응답에 시각 요청");
+      const row = post[0].body.find(x => x.key === "schedules");
+      ok(row && row.base_at, "base_at 전송");
+      eq(B.Sync._serverAt("schedules"), server.rows.find(r => r.key === "schedules").updated_at, "새 기준 시각");
+    });
+    await ta("YC07 서버에서 지워진 항목을 옛 탭이 되살리지 않음(다시 로그인해도 기준 유지)", async () => {
+      await A.Sync.pull(false);
+      B.S.data.schedules = B.S.data.schedules.filter(x => x.id !== "n5"); B.S.save(); await B.Sync._flush();
+      A.S.data.schedules.find(x => x.id === "n7").title = "A가 고침"; A.S.save();
+      await A.Sync.start();                                   // 세션 만료 뒤 다시 로그인한 것과 같은 경로
+      await A.Sync._flush();
+      const v = server.rows.find(r => r.key === "schedules").value;
+      ok(!v.some(x => x.id === "n5"), "지운 항목 부활 없음");
+      eq(v.find(x => x.id === "n7").title, "A가 고침");
+      eq(v.find(x => x.id === "n1").title, B.S.data.schedules.find(x => x.id === "n1").title);
+    });
+    await ta("YC08 잠자기에서 깨어나면 서버 값을 다시 받기 전까지 자동 연기를 미룸", async () => {
+      let release;
+      const hold = new Promise(r => { release = r; });
+      const f0 = server.fetch;
+      A.w.fetch = (u, o) => (o && o.method && o.method !== "GET") ? f0(u, o) : hold.then(() => f0(u, o));
+      A.Sync._wake();
+      ok(A.Sync.isStale(), "깨어난 직후 = 오래된 화면");
+      A.S.data.schedules.push(sch("late", { autoDefer: true, start: "2026-09-20", end: "2026-09-20" }));
+      eq(A.w.SemisCalendar.autoRollIfAllowed(), 0, "자동 연기 보류");
+      release(); await tick(30); A.w.fetch = f0;
+      ok(!A.Sync.isStale(), "다시 받은 뒤 해제");
+      A.S.data.schedules = A.S.data.schedules.filter(x => x.id !== "late");
+    });
+    await ta("YC09 충돌이 계속되면 3번까지만 다시 시도하고 오프라인 표시(무한 반복 없음)", async () => {
+      const f0 = server.fetch;
+      let posts = 0;
+      A.w.fetch = (u, o) => {
+        if (o && o.method === "POST" && String(u).indexOf("/rest/v1/semis_logi_store") >= 0) {
+          posts++; return Promise.resolve({ ok: false, status: 409, json: () => Promise.resolve({ code: "PT409", message: "semis_conflict" }), headers: { get: () => null } });
+        }
+        return f0(u, o);
+      };
+      A.S.data.schedules[0].title = "계속 충돌"; A.S.save();
+      await A.Sync._flush().catch(() => {});
+      A.w.fetch = f0;
+      eq(posts, 4, "처음 1 + 다시 3");
+      eq(A.Sync.status, "offline");
+      ok(A.Sync.pendingKeys().indexOf("schedules") >= 0, "보내지 못한 변경은 남김");
+      await A.Sync.syncNow();
+      eq(server.rows.find(r => r.key === "schedules").value[0].title, "계속 충돌", "재연결 후 저장");
+    });
+    await ta("YC10 이미 서버와 같은 컬렉션은 다시 보내지 않음(불필요한 변경 이력 방지)", async () => {
+      const n0 = server.calls.length;
+      await A.Sync.push(["schedules", "notices"]);
+      ok(!server.calls.slice(n0).some(c => c.method === "POST"), "POST 없음");
+    });
+    t("YC11 암호 관리(vault)는 쪼개어 섞지 않음 — 양쪽이 바뀌면 이 탭 값 통째로", () => {
+      const src = read("js/sync.js");
+      ok(/ATOMIC = \{ vault: true \}/.test(src));
+    });
+    t("YC12 서버 SQL: base_at 열 · check_base 트리거(계정 세션만 · 409 PT409) · 마이그레이션 이름", () => {
+      const sql = read("tools/sql/semis-logi-conflict.sql");
+      ok(/add column if not exists base_at timestamptz/.test(sql), "열");
+      ok(/errcode = 'PT409'/.test(sql) && /semis_conflict/.test(sql), "409");
+      ok(/c\.kind = 'user'/.test(sql), "계정 세션만(서명·SQL 제외)");
+      ok(/before update on public\.semis_logi_store/.test(sql), "트리거");
+      ok(/new\.base_at := null/.test(sql), "기준 시각은 저장하지 않음");
+    });
+    t("YC13 jsdom 오류 없음(충돌 방지 블록)", () => { eq(A.errors.length, 0, A.errors.join(" | ")); eq(B.errors.length, 0, B.errors.join(" | ")); });
+    A.Sync.stop(); B.Sync.stop();
   }
 
   /* ══════════ [RG] 규정 관리 (항공보안 / 안전관리 / 위험물 DG) ══════════ */
