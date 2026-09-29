@@ -27,7 +27,7 @@
   const todayISO = () => C().todayKey();
 
   const TYPES = ["X-Ray", "ETD(폭발물흔적)", "WTMD(문형)", "HHMD(휴대용)", "CCTV", "기타"];
-  const TYPE_LIFE = { "X-Ray": 10, "ETD(폭발물흔적)": 5, "WTMD(문형)": 10, "HHMD(휴대용)": 4, "CCTV": 0, "기타": 0 };
+  const TYPE_LIFE = { "X-Ray": 10, "ETD(폭발물흔적)": 5, "WTMD(문형)": 10, "HHMD(휴대용)": 2, "CCTV": 0, "기타": 0 };
   const STATUSES = ["정상", "점검필요", "고장", "수리중", "폐기"];
   const ST_TONE = { "정상": "green", "주의": "amber", "점검필요": "amber", "고장": "red", "수리중": "blue", "폐기": "gray" };
   const LOG_KINDS = ["점검", "고장", "수리", "기타"];
@@ -270,7 +270,7 @@
         ${f("e-installed", "도입 · 설치일", `<input type="date" id="e-installed" value="${esc(v.installed || "")}">`, "내용연수 기산일입니다.")}
         ${f("e-mfg", "제조일", `<input type="date" id="e-mfg" value="${esc(v.mfgDate || "")}">`, "도입 · 설치일이 비어 있을 때만 기산일로 씁니다.")}
         ${f("e-life", "내용연수 (년)", `<input type="number" id="e-life" min="0" max="30" value="${esc(v.lifeYears != null ? v.lifeYears : "")}" placeholder="유형 기본값">`,
-          "비우면 유형 기본값을 씁니다 — X-Ray 10년 · ETD 5년 · WTMD 10년 · HHMD 4년.")}
+          "비우면 유형 기본값을 씁니다 — X-Ray 10년 · ETD 5년 · WTMD 10년 · HHMD 2년.")}
         ${f("e-repdue", "교체 예정일", `<input type="date" id="e-repdue" value="${esc(v.replaceDue || "")}">`, "비우면 도입 · 설치일 + 내용연수로 계산합니다. 연장 승인 등 규칙과 다를 때만 지정하세요.")}
         ${conf ? f("e-price", "구입가 (원)", `<input type="number" id="e-price" min="0" value="${esc(v.price != null ? v.price : "")}">`) : ""}
         ${f("e-cert", "인증", `<input id="e-cert" value="${esc(v.cert || "")}" maxlength="120" placeholder="예: TSA, STAC, KIAST">`)}

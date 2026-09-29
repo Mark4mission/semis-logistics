@@ -2837,18 +2837,19 @@ function makeServer(opts = {}) {
       const Eq = e.w.SemisEquip;
       eq(Eq.effStatus(e.S.data.equipment[1]), "수리중", "CARES in_repair");
       eq(Eq.effStatus(e.S.data.equipment[0]), "정상");
-      ok(Eq.isLifeDue(e.S.data.equipment[2]), "HHMD 4년 — 1년 이내");
+      ok(Eq.isLifeDue(e.S.data.equipment[2]), "HHMD 2년 — 만료");
       eq(Eq.ledgerStats().total, 3, "폐기 제외"); eq(Eq.ledgerStats().linked, 2);
       const extra = qa(e, ".eq-tbl tr[data-cares-only]");
       eq(extra.length, 6, "대장에 없는 CARES 장비 6");
     });
-    t("EQ01 내용연수: 도입일 + 유형 연수(X-ray 10 · ETD 5 · WTMD 10 · HHMD 4) · 도입일 우선 · 직접 지정 표시", () => {
+    t("EQ01 내용연수: 도입일 + 유형 연수(X-ray 10 · ETD 5 · WTMD 10 · HHMD 2) · 도입일 우선 · 직접 지정 표시", () => {
       const Eq = e.w.SemisEquip;
       eq(Eq.ruleDue({ type: "X-Ray", installed: "2024-01-07" }), "2034-01-07");
       eq(Eq.ruleDue({ type: "ETD(폭발물흔적)", installed: "2023-01-01" }), "2028-01-01");
       eq(Eq.ruleDue({ type: "WTMD(문형)", installed: "2023-05-22" }), "2033-05-22");
-      eq(Eq.ruleDue({ type: "HHMD(휴대용)", installed: "2025-04-30" }), "2029-04-30");
-      eq(Eq.ruleDue({ type: "HHMD(휴대용)", installed: "2024-02-29" }), "2028-02-29", "윤일");
+      eq(Eq.ruleDue({ type: "HHMD(휴대용)", installed: "2025-04-30" }), "2027-04-30");
+      eq(Eq.TYPE_LIFE["HHMD(휴대용)"], 2);
+      eq(Eq.ruleDue({ type: "HHMD(휴대용)", installed: "2024-02-29" }), "2026-02-28", "윤일 → 2월 말");
       eq(Eq.ruleDue({ type: "ETD(폭발물흔적)", installed: "2023-02-28", lifeYears: 7 }), "2030-02-28", "개별 연수");
       eq(Eq.lifeBase({ installed: "2024-01-10", mfgDate: "2023-06-01" }), "2024-01-10", "도입일 우선");
       eq(Eq.lifeBase({ installed: "", mfgDate: "2023-06-01" }), "2023-06-01", "도입일 없으면 제조일");
