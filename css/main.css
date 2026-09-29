@@ -3051,10 +3051,15 @@ a.nb-file, .nb-file > a, .nb-editor img, .notice-html img, .ag-memo img, .cn-ric
 .fo-pop dt { color: var(--text-3); font-size: .78rem; }
 .fo-pop dd { margin: 0; font-variant-numeric: tabular-nums; }
 .fo-pop dd small { color: var(--text-3); }
-.fo-pop-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
-.fo-pop-list li { display: grid; grid-template-columns: 62px minmax(0, 1fr) auto; gap: 8px; align-items: baseline; }
-.fo-pop-list span { color: var(--text-2); font-size: .78rem; }
-.fo-pop-list small { color: var(--text-3); font-size: .74rem; white-space: nowrap; }
+/* 공항 묶음 정보창(v1.24.1) — 기체마다 두 줄. 줄바꿈 없이 재어 Leaflet 이 폭을 잡게 한다(글자 단위로 세로로 쪼개지던 문제) */
+.fo-pop-list { list-style: none; margin: 0; padding: 0; max-height: 280px; overflow-y: auto; }
+.fo-pop-list li { padding: 7px 0; border-top: 1px solid var(--border); }
+.fo-pop-list li:first-child { border-top: 0; padding-top: 2px; }
+.fo-pop-list .pl-1 { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.fo-pop-list .pl-1 b { font-size: .92rem; }
+.fo-pop-list .pl-1 span { color: var(--text-2); font-size: .81rem; }
+.fo-pop-list .pl-1 .badge { margin-left: auto; }
+.fo-pop-list .pl-2 { margin-top: 2px; color: var(--text-3); font-size: .81rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 /* 인천 접근 중 목록 */
 .appr-list { list-style: none; margin: 0; padding: 0; }
@@ -3100,6 +3105,12 @@ table.fo-tbl { font-size: .88rem; }
 .fo-tbl tr:hover td { background: none; }
 .fo-t { width: 64px; color: var(--text-2); white-space: nowrap; }
 .fo-note { text-align: right; white-space: nowrap; }
+.fo-tbl thead th { font-size: .81rem; font-weight: 600; color: var(--text-3); }
+.fo-fn { white-space: nowrap; }
+.fo-fn > b, .fo-fn > span { display: block; }
+.fo-fn small { display: block; margin-top: 1px; font-size: .81rem; color: var(--text-3); }
+.fo-oth { color: var(--text-2); }
+.fo-oth.is-empty { color: var(--text-3); }
 .fo-cnt { font-size: .8rem; font-weight: 500; color: var(--text-3); }
 .fo-fleet tbody tr { cursor: pointer; }
 .fo-fleet .c-ac b { display: block; }

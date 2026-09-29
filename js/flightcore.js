@@ -84,9 +84,10 @@
   }
   const normHex = (h) => String(h || "").toLowerCase().replace(/[^0-9a-f]/g, "");
 
-  /* 콜사인 AIH970 → 편명 KJ970 */
+  /* 콜사인 AIH970 → 편명 KJ970. 트랜스폰더가 편명을 비워 보내면 "@@@@@@@@" 같은 값이 와서 — 영문 · 숫자만 인정 */
   const fnoOf = (cs) => {
     const s = String(cs || "").trim().toUpperCase();
+    if (!/^[A-Z0-9]{2,8}$/.test(s)) return "";
     const m = /^AIH0*(\d{1,4})([A-Z]?)$/.exec(s);
     return m ? "KJ" + m[1] + m[2] : s;
   };
@@ -104,6 +105,22 @@
     const h = Math.floor(m / 60);
     if (h < 24) return h + "시간" + (m % 60 && h < 6 ? " " + (m % 60) + "분" : "") + " 전";
     return Math.floor(h / 24) + "일 전";
+  }
+  /* 오늘이면 시:분, 어제면 "어제 시:분", 그 전이면 "월.일 시:분" (v1.24.1 — 지난 도착 시각이 오늘처럼 보이던 문제) */
+  function kstWhen(ms, now) {
+    if (!Number.isFinite(ms)) return "";
+    const d0 = kstDayStart(now || Date.now());
+    if (ms >= d0) return kstHM(ms);
+    if (ms >= d0 - 86400000) return "어제 " + kstHM(ms);
+    return kstISO(ms).slice(5).replace("-", ".") + " " + kstHM(ms);
+  }
+  /* 걸린 시간 — "35분" · "8시간 5분" · "2일 3시간" */
+  function dur(ms) {
+    const m = Math.max(0, Math.round(ms / 60000));
+    if (m < 60) return m + "분";
+    const h = Math.floor(m / 60);
+    if (h < 48) return h + "시간" + (m % 60 ? " " + (m % 60) + "분" : "");
+    return Math.floor(h / 24) + "일 " + (h % 24) + "시간";
   }
   const until = (ms, now) => {
     const m = Math.max(0, Math.round((ms - (now || Date.now())) / 60000));
@@ -204,10 +221,22 @@
     return d;
   }
 
+  /* 출발 기록의 도착지 — 같은 기체의 그다음 도착 기록(24시간 안) */
+  function nextArr(events, hex, t) {
+    const list = eventsOf(events, { hex, kind: "arr", since: t + 1 });
+    const a = list.length ? list[list.length - 1] : null;
+    return a && Date.parse(a.at) - t <= 24 * 3600000 ? a : null;
+  }
+  /* 도착 기록의 출발지 — 같은 기체의 바로 앞 출발 기록(24시간 안) */
+  function prevDep(events, hex, t) {
+    const d = eventsOf(events, { hex, kind: "dep" }).find(e => Date.parse(e.at) < t);
+    return d && t - Date.parse(d.at) <= 24 * 3600000 ? d : null;
+  }
+
   const api = {
     HOME, AIRPORTS, AC_TYPES, DEFAULT_FLEET, EMG, LIVE_MS, APPR_KM, DR_MAX_MS,
-    apt, aptName, hlHex, normHex, fnoOf, kstISO, kstHM, kstDayStart, ago, until,
-    dist, bearing, destPoint, angDiff, nearestApt, dir8, status, eventsOf, lastDep
+    apt, aptName, hlHex, normHex, fnoOf, kstISO, kstHM, kstDayStart, kstWhen, dur, ago, until,
+    dist, bearing, destPoint, angDiff, nearestApt, dir8, status, eventsOf, lastDep, nextArr, prevDep
   };
   if (typeof window !== "undefined") window.SemisFlightCore = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;

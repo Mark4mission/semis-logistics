@@ -1,4 +1,4 @@
-/* SeMIS · Logistics — Supabase Edge Function "semis-logi-adsb" (v1.14)
+/* SeMIS · Logistics — Supabase Edge Function "semis-logi-adsb" (v1.14 · v1.24.1 편명 보정)
    에어제타 기체의 ADS-B 위치를 adsb.lol(무료 · ODbL)에서 받아 public.semis_logi_adsb 에 마지막 상태로 보관하고,
    지상↔공중 전환을 입출항 기록(public.semis_logi_adsb_events)으로 남긴다. 스케줄 자료는 쓰지 않는다.
    - adsb.lol 은 브라우저 직접 호출(CORS)을 막아 두어 이 함수가 중계한다.
@@ -37,6 +37,8 @@ const iso = (ms: number) => new Date(ms).toISOString();
 const r4 = (v: number) => Math.round(v * 1e4) / 1e4;
 /* 응답에 빠진 값(콜사인 · 속도 등이 잠깐 안 올 때) — 기존 행이 있으면 그대로 두고(undefined → 필드 제외), 없으면 null */
 const keep = (p: unknown) => (p ? undefined : null);
+/* 콜사인 — 트랜스폰더가 비워 보내면 "@@@@@@@@" 같은 값이 온다. 영문 · 숫자 2~8자만 인정 */
+const flOk = (v: unknown) => typeof v === "string" && /^[A-Z0-9]{2,8}$/.test(v.trim().toUpperCase());
 function distKm(a1: number, o1: number, a2: number, o2: number) {
   const r = Math.PI / 180, dp = (a2 - a1) * r, dl = (o2 - o1) * r;
   const h = Math.sin(dp / 2) ** 2 + Math.cos(a1 * r) * Math.cos(a2 * r) * Math.sin(dl / 2) ** 2;
@@ -82,6 +84,7 @@ async function refresh(): Promise<string> {
     const rows: Row[] = [];
     const events: Row[] = [];
     const seenHex = new Set<string>();
+    const airFlight: { hex: string; flight: string }[] = [];
     for (const a of (j.ac || [])) {
       const hex = String(a.hex || "").toLowerCase().replace(/^~/, "");
       if (hexes.indexOf(hex) < 0) continue;
@@ -97,7 +100,7 @@ async function refresh(): Promise<string> {
       const gnd = a.alt_baro === "ground" ? true : airSure ? false : (p ? !!p.gnd : false);
       const prevSeen = p?.seen_at ? Date.parse(p.seen_at as string) : 0;
       const recent = !!prevSeen && seenMs - prevSeen < RECENT;
-      const flight = a.flight ? String(a.flight).trim() : (p?.flight as string) || null;
+      const flight = flOk(a.flight) ? String(a.flight).trim().toUpperCase() : (flOk(p?.flight) ? (p!.flight as string) : null);
       const reg = a.r || (p?.reg as string) || null;
       let trail: number[][] = Array.isArray(p?.trail) ? (p!.trail as number[][]) : [];
       let gndSince = (p?.gnd_since as string) || null, airSince = (p?.air_since as string) || null;
@@ -117,6 +120,7 @@ async function refresh(): Promise<string> {
             at: iso(seenMs), inferred: !recent || !!p.gnd_inferred });
         }
         gndSince = null;
+        if (flOk(a.flight)) airFlight.push({ hex, flight: String(a.flight).trim().toUpperCase() });
       }
       if (!gnd && pos && posMs) {
         const ts = Math.round(posMs / 1000);
@@ -163,6 +167,19 @@ async function refresh(): Promise<string> {
       if (fresh.length) {
         const { error } = await db.from("semis_logi_adsb_events").insert(fresh);
         if (error) throw new Error("events " + error.message);
+      }
+    }
+    /* 출발 기록의 편명 보정 — 이륙 순간에는 트랜스폰더가 직전(도착) 편의 콜사인을 그대로 보내는 일이 있다
+       (2026-09-29 HL7421: 인천 출발이 도착 편 AIH281 로 기록, 실제는 AIH967). 공중에서 받은 지금 콜사인이
+       그 기체의 가장 최근 기록(3시간 안의 출발)과 다르면 지금 콜사인으로 고친다. */
+    if (airFlight.length) {
+      const { data: recent } = await db.from("semis_logi_adsb_events").select("id,hex,kind,flight,at")
+        .in("hex", airFlight.map(x => x.hex)).gte("at", iso(now - 3 * 3600_000)).order("at", { ascending: false });
+      for (const x of airFlight) {
+        const last = ((recent || []) as Row[]).find(d => d.hex === x.hex);
+        if (last && last.kind === "dep" && last.flight !== x.flight) {
+          await db.from("semis_logi_adsb_events").update({ flight: x.flight }).eq("id", last.id as number);
+        }
       }
     }
     if (new Date(now).getUTCMinutes() < 2) {

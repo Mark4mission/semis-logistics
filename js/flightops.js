@@ -150,16 +150,37 @@
     const st = it.st, r = it.row || {};
     const rows = [
       ["상태", esc(st.label) + (st.code === "lost" ? " · " + esc(F.ago(st.seen)) : "")],
-      it.dep ? ["출발", esc((F.aptName(it.dep.apt) || "공항 미상") + " " + F.kstHM(Date.parse(it.dep.at))) + (it.dep.inferred ? " (추정)" : "")] : null,
+      it.dep ? ["출발", esc((F.aptName(it.dep.apt) || "공항 미상") + " " + F.kstWhen(Date.parse(it.dep.at))) + (it.dep.inferred ? " (추정)" : "")] : null,
       st.code !== "gnd" && r.alt != null ? ["고도", esc(altTxt(r)) + (r.vr != null && Math.abs(r.vr) >= 300 ? ` <small>${r.vr > 0 ? "상승" : "강하"} ${esc(nf(Math.abs(Math.round(r.vr))))} ft/분</small>` : "")] : null,
       st.code !== "gnd" && r.gs != null ? ["속도", esc(gsTxt(r))] : null,
       st.code === "appr" ? ["인천까지", esc(nf(Math.round(st.dHome)) + " km · 도착 예상 " + F.kstHM(st.eta))] : null,
-      st.code === "gnd" && st.since ? ["도착", esc(F.kstHM(st.since))] : null,
+      st.code === "gnd" && st.since ? ["도착", esc(F.kstWhen(st.since) + " · " + F.dur(Date.now() - st.since) + " 지상")] : null,
       r.sqk ? ["스쿽", esc(r.sqk)] : null,
       st.seen ? ["수신", esc(F.kstHM(st.seen) + " · " + F.ago(st.seen))] : null
     ].filter(Boolean);
     return `<div class="fo-pop"><div class="fo-pop-h"><b class="mono">${esc(it.fno || it.f.reg)}</b><span>${esc(it.f.reg)} · ${esc(typeName(it))}</span></div>
       <dl>${rows.map(x => `<dt>${x[0]}</dt><dd>${x[1]}</dd>`).join("")}</dl></div>`;
+  }
+  /* 지상 기체 한 줄 상태 — 방금 도착(30분 안) · 지상 이동 중(수신 중 · 5kt 이상) · 주기 중 · 마지막 수신 */
+  function gndState(it, now) {
+    const st = it.st, r = it.row || {};
+    now = now || Date.now();
+    if (st.since && now - st.since < 30 * 60000) return { t: "방금 도착", tone: "blue" };
+    if (st.live && (Number(r.gs) || 0) >= 5) return { t: "지상 이동 중", tone: "amber" };
+    if (st.live) return { t: "주기 중", tone: "gray" };
+    return { t: F.ago(st.seen, now) + " 수신", tone: "gray" };
+  }
+  /* 공항 묶음(지상 여러 대) 정보창 — 기체마다 두 줄: 등록부호 · 기종 / 도착 편 · 시각 · 지상 시간 · 상태 */
+  function aptPopHTML(g) {
+    const now = Date.now();
+    const rows = g.list.slice().sort((a, b) => (a.st.since || 0) - (b.st.since || 0)).map(it => {
+      const st = it.st, gs = gndState(it, now);
+      const sub = [it.fno ? it.fno + " 도착" : "", st.since ? F.kstWhen(st.since, now) : "", st.since ? F.dur(now - st.since) + " 지상" : ""].filter(Boolean).join(" · ");
+      return `<li><div class="pl-1"><b class="mono">${esc(it.f.reg)}</b><span>${esc(typeName(it))}</span>${ui.chip(gs.t, gs.tone)}</div>
+        <div class="pl-2">${esc(sub || "도착 시각 미상")}</div></li>`;
+    }).join("");
+    return `<div class="fo-pop fo-pop-apt"><div class="fo-pop-h"><b>${esc(g.at ? F.aptName(g.at) : "지상")}</b><span>지상 ${g.list.length}대</span></div>
+      <ul class="fo-pop-list">${rows}</ul></div>`;
   }
   function acIcon(L, it, pos, opts) {
     const st = it.st, r = it.row || {};
@@ -231,9 +252,7 @@
       const html = `<span class="fo-apt${isHome ? " is-home" : ""}"><b>${esc(g.at || "지상")}</b><i>${g.list.length}</i></span>`;
       const mk = L.marker(at, { icon: L.divIcon({ className: "fo-mk", iconSize: [54, 26], iconAnchor: [27, 13], html }), keyboard: true,
         title: (g.at ? F.aptName(g.at) : "지상") + " " + g.list.length + "대", zIndexOffset: -100 })
-        .bindPopup(`<div class="fo-pop"><div class="fo-pop-h"><b>${esc(g.at ? F.aptName(g.at) : "지상")}</b><span>지상 ${g.list.length}대</span></div>
-          <ul class="fo-pop-list">${g.list.map(it => `<li><b class="mono">${esc(it.f.reg)}</b><span>${esc(typeName(it))}</span><small>${esc(it.st.since ? F.kstHM(it.st.since) + " 도착" : F.ago(it.st.seen) + " 수신")}</small></li>`).join("")}</ul></div>`,
-          { className: "fo-popup", maxWidth: 300 }).addTo(layer);
+        .bindPopup(aptPopHTML(g), { className: "fo-popup", minWidth: 250, maxWidth: 320 }).addTo(layer);
       g.list.forEach(it => { m.marks[it.f.hex] = mk; });
       pts.push(at);
     });
@@ -314,7 +333,7 @@
     return `<div class="dflt-h dflt-h2"><h3>최근 인천 도착</h3></div><ul class="arr-mini">${list.map(e => {
       const t = Date.parse(e.at);
       const it = md.items.find(x => F.normHex(x.f.hex) === F.normHex(e.hex));
-      return `<li><b class="mono">${esc(F.kstHM(t))}</b><span class="mono">${esc(e.flight ? F.fnoOf(e.flight) : "—")}</span><span>${esc(e.reg || (it ? it.f.reg : ""))}</span><small>${esc(F.ago(t, md.now))}</small></li>`;
+      return `<li><b class="mono">${esc(F.kstHM(t))}</b><span class="mono">${esc(F.fnoOf(e.flight) || "—")}</span><span>${esc(e.reg || (it ? it.f.reg : ""))}</span><small>${esc(F.ago(t, md.now))}</small></li>`;
     }).join("")}</ul>`;
   }
 
@@ -369,7 +388,7 @@
     const arr = F.eventsOf(state.events, { kind: "arr", apt: F.HOME, since: day0 });
     const dep = F.eventsOf(state.events, { kind: "dep", apt: F.HOME, since: day0 });
     const flying = md.air.length + md.appr.length + md.emg.length;
-    const evSub = (e) => (e ? F.kstHM(Date.parse(e.at)) + " " + (e.flight ? F.fnoOf(e.flight) : e.reg || "") : "");
+    const evSub = (e) => (e ? F.kstHM(Date.parse(e.at)) + " " + (F.fnoOf(e.flight) || e.reg || "") : "");
     return ui.stats([
       { label: "비행 중", value: flying, sub: md.appr.length ? "인천 접근 " + md.appr.length : "" },
       { label: "인천 지상", value: md.gndHome.length },
@@ -386,25 +405,44 @@
       `<b>${esc(it.fno || it.f.reg)} · ${esc(it.f.reg)}</b> ${esc(it.st.label)} — ${esc(whereTxt(it))}`).join("<br>")}</div></div>`;
     return `<div class="fo-alert is-soft">${icon("alert", 18)}<div>위치 서버에 연결하지 못했습니다. <button type="button" class="link-btn" data-fo-retry>다시 시도</button></div></div>`;
   }
-  function evRow(e, showApt) {
+  /* 오늘 도착 · 출발 한 줄 — 시각 · 편명(기체) · 상대 공항(도착이면 출발지, 출발이면 도착지 · 비행 상태) */
+  function evRow(e, md) {
     const t = Date.parse(e.at);
-    const it = model().items.find(x => F.normHex(x.f.hex) === F.normHex(e.hex));
+    const it = md.items.find(x => F.normHex(x.f.hex) === F.normHex(e.hex));
+    const reg = e.reg || (it ? it.f.reg : "");
+    /* 앞뒤 기록이 같은 편이어야 짝으로 본다 — 편명이 다르거나 같은 공항으로 돌아온 것이면 중간 공항(수신 없는 지역)을 놓친 것 */
+    const fa = F.fnoOf(e.flight);
+    const pair = (x) => x && x.apt && x.apt !== e.apt && !(fa && F.fnoOf(x.flight) && F.fnoOf(x.flight) !== fa);
+    let other = "";
+    if (e.kind === "arr") {
+      const d = F.prevDep(state.events, e.hex, t);
+      other = d ? (pair(d) ? F.aptName(d.apt) + " 출발" : "출발지 미상") : "";
+    } else {
+      const a = F.nextArr(state.events, e.hex, t);
+      if (a) other = pair(a) ? F.aptName(a.apt) + " " + F.kstHM(Date.parse(a.at)) + " 도착"
+        : a.apt === e.apt ? "행선 미상 · " + F.kstHM(Date.parse(a.at)) + " " + F.aptName(a.apt) + " 복귀" : "행선 미상";
+      else if (it && it.dep && it.dep.at === e.at && ["air", "appr", "emg", "lost"].indexOf(it.st.code) >= 0)
+        other = it.st.code === "lost" ? "신호 없음 · " + F.kstHM(it.st.seen) + " 수신" : it.st.label;
+    }
     return `<tr><td class="mono fo-t">${esc(F.kstHM(t))}</td>
-      <td><b class="mono">${esc(e.flight ? F.fnoOf(e.flight) : "—")}</b></td>
-      <td class="mono">${esc(e.reg || (it ? it.f.reg : ""))}</td>
-      ${showApt ? `<td>${esc(e.apt ? F.aptName(e.apt) : "공항 미상")}</td>` : ""}
+      <td class="fo-fn"><b class="mono">${esc(F.fnoOf(e.flight) || "—")}</b><small class="mono">${esc(reg)}</small></td>
+      <td class="fo-oth${other ? "" : " is-empty"}">${esc(other || "—")}</td>
       <td class="fo-note">${e.inferred ? ui.chip("시각 추정", "gray") : ""}</td></tr>`;
   }
   function boardsHTML(md) {
     const day0 = F.kstDayStart(md.now);
     const arr = F.eventsOf(state.events, { kind: "arr", apt: F.HOME, since: day0 });
     const dep = F.eventsOf(state.events, { kind: "dep", apt: F.HOME, since: day0 });
-    const waitRows = md.gndHome.slice().sort((a, b) => (a.st.since || 0) - (b.st.since || 0)).map(it => `<tr>
-        <td class="mono fo-t">${esc(it.st.since ? F.kstHM(it.st.since) : "—")}</td>
-        <td><b class="mono">${esc(it.f.reg)}</b></td><td>${esc(typeName(it))}</td>
-        <td class="fo-note">${it.st.live ? "" : ui.chip(F.ago(it.st.seen) + " 수신", "gray")}</td></tr>`).join("");
-    const evTable = (list, empty) => list.length
-      ? `<table class="tbl fo-tbl"><tbody>${list.map(e => evRow(e, false)).join("")}</tbody></table>`
+    /* 출항 대기 = 인천에 서 있는 기체(스케줄을 쓰지 않으므로 다음 편은 모름). 도착 시각은 날짜까지, 지상 시간 · 상태를 함께 */
+    const waitRows = md.gndHome.slice().sort((a, b) => (a.st.since || 0) - (b.st.since || 0)).map(it => {
+      const st = it.st, gs = gndState(it, md.now);
+      return `<tr>
+        <td class="fo-fn"><b class="mono">${esc(it.f.reg)}</b><small>${esc(typeName(it))}</small></td>
+        <td class="fo-fn"><span class="mono">${esc(st.since ? F.kstWhen(st.since, md.now) : "—")}</span><small>${esc([it.fno, st.since ? F.dur(md.now - st.since) + " 지상" : ""].filter(Boolean).join(" · "))}</small></td>
+        <td class="fo-note">${ui.chip(gs.t, gs.tone)}</td></tr>`;
+    }).join("");
+    const evTable = (list, empty, head) => list.length
+      ? `<table class="tbl fo-tbl"><thead><tr><th>시각</th><th>편명</th><th>${esc(head)}</th><th></th></tr></thead><tbody>${list.map(e => evRow(e, md)).join("")}</tbody></table>`
       : `<p class="fo-none">${esc(empty)}</p>`;
     return `<div class="fo-boards">
       <section class="card fo-board" aria-label="인천 입항">
@@ -412,14 +450,14 @@
         <div class="fo-sub"><h3>접근 중</h3><span class="mono">${md.appr.length}</span></div>
         ${apprListHTML(md)}
         <div class="fo-sub"><h3>오늘 도착</h3><span class="mono">${state.events ? arr.length : "-"}</span></div>
-        ${state.events ? evTable(arr, "오늘 도착 기록이 없습니다.") : '<p class="fo-none">불러오는 중</p>'}
+        ${state.events ? evTable(arr, "오늘 도착 기록이 없습니다.", "출발지") : '<p class="fo-none">불러오는 중</p>'}
       </section>
       <section class="card fo-board" aria-label="인천 출항">
         <h2 class="card-title"><span class="fo-up">${icon("down", 18)}</span><span>인천 출항</span></h2>
-        <div class="fo-sub"><h3>인천 지상</h3><span class="mono">${md.gndHome.length}</span></div>
-        ${waitRows ? `<table class="tbl fo-tbl"><thead><tr><th>도착</th><th>기체</th><th>기종</th><th></th></tr></thead><tbody>${waitRows}</tbody></table>` : '<p class="fo-none">인천에 서 있는 항공기가 없습니다.</p>'}
+        <div class="fo-sub"><h3>출항 대기 · 인천 지상</h3><span class="mono">${md.gndHome.length}</span></div>
+        ${waitRows ? `<table class="tbl fo-tbl"><thead><tr><th>기체</th><th>인천 도착</th><th>상태</th></tr></thead><tbody>${waitRows}</tbody></table>` : '<p class="fo-none">인천에 서 있는 항공기가 없습니다.</p>'}
         <div class="fo-sub"><h3>오늘 출발</h3><span class="mono">${state.events ? dep.length : "-"}</span></div>
-        ${state.events ? evTable(dep, "오늘 출발 기록이 없습니다.") : '<p class="fo-none">불러오는 중</p>'}
+        ${state.events ? evTable(dep, "오늘 출발 기록이 없습니다.", "행선") : '<p class="fo-none">불러오는 중</p>'}
       </section>
     </div>`;
   }
@@ -439,7 +477,7 @@
             <td class="c-fno mono${it.fno ? "" : " is-empty"}">${esc(it.fno || "—")}</td>
             <td class="c-wh${whereTxt(it) ? "" : " is-empty"}">${esc(whereTxt(it) || "—")}</td>
             <td class="c-alt mono${fly ? "" : " is-empty"}">${fly ? esc([altTxt(r), gsTxt(r)].filter(Boolean).join(" · ")) : "—"}</td>
-            <td class="c-dep">${it.dep && (fly || st.code === "lost") ? esc((it.dep.apt ? F.aptName(it.dep.apt) : "공항 미상") + " " + F.kstHM(Date.parse(it.dep.at))) : "—"}</td>
+            <td class="c-dep">${it.dep && (fly || st.code === "lost") ? esc((it.dep.apt ? F.aptName(it.dep.apt) : "공항 미상") + " " + F.kstWhen(Date.parse(it.dep.at), md.now)) : "—"}</td>
             <td class="c-seen${st.seen ? "" : " is-empty"}">${st.seen ? esc(F.ago(st.seen, md.now)) : "—"}</td></tr>`;
         }).join("")}</tbody></table></div>
     </section>`;
@@ -455,7 +493,7 @@
           return `<tr><td class="mono fo-t">${esc(F.kstISO(t).slice(5).replace("-", ".") + " " + F.kstHM(t))}</td>
             <td>${e.kind === "arr" ? ui.chip("도착", "blue") : ui.chip("출발", "green")}</td>
             <td>${esc(e.apt ? F.aptName(e.apt) + " (" + e.apt + ")" : "공항 미상")}</td>
-            <td class="mono">${esc(e.flight ? F.fnoOf(e.flight) : "—")}</td>
+            <td class="mono">${esc(F.fnoOf(e.flight) || "—")}</td>
             <td class="mono">${esc(e.reg || "")}</td>
             <td class="fo-note">${e.inferred ? ui.chip("시각 추정", "gray") : ""}</td></tr>`;
         }).join("")}</tbody></table></div>` : '<p class="fo-none">최근 48시간 입출항 기록이 없습니다.</p>'}
@@ -601,5 +639,5 @@
     items: () => fleet().map(f => ({ title: f.reg, sub: (F.AC_TYPES[f.type] || f.type) + " · " + (f.model || ""), route: MOD }))
   });
 
-  window.SemisFlight = { dashHTML, mountDash, paintDash, load, model, state, refresh, fleet };
+  window.SemisFlight = { dashHTML, mountDash, paintDash, load, model, state, refresh, fleet, aptPopHTML, gndState };
 })();

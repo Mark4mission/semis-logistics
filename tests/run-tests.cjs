@@ -3672,6 +3672,60 @@ function makeServer(opts = {}) {
       eq(qa(e, "#fo-fleetbox .fo-fleet tbody tr").length, 16);
       e.S.data.fleet = []; e.S.saveSilent();
     });
+    await ta("FL08 인천 출항: '출항 대기 · 인천 지상'(도착 날짜 · 지상 시간 · 상태) · 오늘 출발의 행선 · 오늘 도착의 출발지", async () => {
+      const Y = Fc.kstDayStart(NOW) - 3 * 3600000;                  // 어제 21시(한국)
+      AC.push({ hex: "71be45", reg: "HL7645", type: "B744", flight: "@@@@@@@@", lat: 37.423, lon: 126.494, alt: null, gnd: true, gs: 9, seen_at: iso(Y + 1800000), gnd_since: iso(Y) });
+      EV.push({ hex: "71bc21", reg: "HL7421", flight: "AIH967", kind: "dep", apt: "ICN", at: iso(NOW - 3 * 3600000), inferred: false },
+        { hex: "71bc21", reg: "HL7421", flight: "AIH967", kind: "arr", apt: "HKG", at: iso(NOW - 3600000), inferred: false },
+        { hex: "71bd07", reg: "HL7507", flight: "AIH387", kind: "dep", apt: "HAN", at: iso(NOW - 9 * 3600000), inferred: false });
+      loginAs(e, "hq");
+      go(e, "flight");
+      await e.w.SemisFlight.refresh(true);
+      const board = qa(e, "#fo-boardbox .fo-board")[1];
+      ok(board.textContent.includes("출항 대기 · 인천 지상"), "소제목");
+      const wait = Array.from(board.querySelectorAll("table")[0].querySelectorAll("tbody tr")).map(r => r.textContent.replace(/\s+/g, " "));
+      eq(wait.length, 2, "인천 지상 2대");
+      ok(wait[0].includes("HL7645") && wait[0].includes("어제 21:00"), "지난 도착은 날짜 표시: " + wait[0]);
+      ok(!/@@/.test(board.textContent), "빈 콜사인(@@@@@@@@) 숨김");
+      ok(wait[1].includes("HL7507") && wait[1].includes("1시간 30분 지상") && wait[1].includes("주기 중"), wait[1]);
+      const dep = board.querySelectorAll("table")[1].textContent.replace(/\s+/g, " ");
+      ok(dep.includes("KJ967") && dep.includes("홍콩 " + Fc.kstHM(NOW - 3600000) + " 도착"), "출발의 행선: " + dep);
+      ok(dep.includes("KJ587") && dep.includes("비행 중"), "아직 도착 기록 없는 출발 = 지금 상태");
+      const arr = qa(e, "#fo-boardbox .fo-board")[0].querySelectorAll("table")[0].textContent.replace(/\s+/g, " ");
+      ok(arr.includes("KJ388") && arr.includes("출발지 미상"), "편명이 다른 앞 출발(KJ387)은 짝이 아님: " + arr);
+      /* 같은 편이면 출발지 · 인천을 떠났다 인천으로 돌아온 편(중간 공항 수신 없음)은 행선 미상 */
+      EV.find(x => x.flight === "AIH387").flight = "AIH388";
+      EV.push({ hex: "71c338", reg: "HL8338", flight: "AIH927", kind: "dep", apt: "ICN", at: iso(NOW - 4 * 3600000), inferred: false },
+        { hex: "71c338", reg: "HL8338", flight: "AIH928", kind: "arr", apt: "ICN", at: iso(NOW - 40 * 60000), inferred: true });
+      await e.w.SemisFlight.refresh(true);
+      const b0 = qa(e, "#fo-boardbox .fo-board");
+      const arr2 = b0[0].querySelectorAll("table")[0].textContent.replace(/\s+/g, " ");
+      ok(arr2.includes("하노이 출발"), "같은 편 → 출발지: " + arr2);
+      ok(/KJ928\s*HL8338\s*출발지 미상/.test(arr2), "왕복 편 도착 → 출발지 미상: " + arr2);
+      const dep2 = b0[1].querySelectorAll("table")[1].textContent.replace(/\s+/g, " ");
+      ok(dep2.includes("행선 미상 · " + Fc.kstHM(NOW - 40 * 60000) + " 인천 복귀"), "왕복 편 출발 → 행선 미상: " + dep2);
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    t("FL09 공항 묶음 정보창: 기체마다 두 줄(등록부호 · 기종 · 상태 / 편명 · 도착 · 지상 시간) · 줄바꿈 없는 폭", () => {
+      const md = e.w.SemisFlight.model();
+      const g = { at: "ICN", list: md.gndHome };
+      const box = e.w.document.createElement("div");
+      box.innerHTML = e.w.SemisFlight.aptPopHTML(g);
+      eq(box.querySelectorAll(".fo-pop-list li").length, 2);
+      const li = box.querySelectorAll(".fo-pop-list li")[1];
+      ok(li.querySelector(".pl-1 b").textContent === "HL7507" && li.querySelector(".pl-1").textContent.includes("B767-300F"));
+      ok(li.querySelector(".pl-2").textContent.includes("KJ388 도착"), li.querySelector(".pl-2").textContent);
+      ok(box.querySelector(".fo-pop-h").textContent.includes("지상 2대"));
+      const css = read("css/main.css");
+      ok(/\.fo-pop-list \.pl-1 \{[^}]*white-space: nowrap/.test(css) && /\.fo-pop-list \.pl-2 \{[^}]*white-space: nowrap/.test(css), "줄바꿈 없음");
+      ok(/bindPopup\(aptPopHTML\(g\), \{ className: "fo-popup", minWidth: 250/.test(read("js/flightops.js")), "최소 폭");
+      eq(Fc.fnoOf("@@@@@@@@"), ""); eq(Fc.kstWhen(Fc.kstDayStart(NOW) - 3600000, NOW), "어제 23:00");
+    });
+    t("FL10 서버 함수: 출발 기록 편명 보정(이륙 때 직전 편 콜사인) · 빈 콜사인 거름", () => {
+      const fn = read("tools/edge/semis-logi-adsb.ts");
+      ok(/const flOk = /.test(fn) && /airFlight\.push/.test(fn), "공중 콜사인 수집");
+      ok(/last\.kind === "dep" && last\.flight !== x\.flight/.test(fn), "최근 출발 기록 보정");
+    });
     t("FL07 정규화: fleet 배열 보정 · hex 없는 항목 제거", () => {
       const e7 = makeEnv({ preData: Object.assign({}, e.S.data, { fleet: [{ reg: "HL1" }, { reg: "HL7421", hex: "71bc21" }, null] }) });
       eq(e7.S.data.fleet.length, 1);
