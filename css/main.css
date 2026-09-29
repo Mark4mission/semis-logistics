@@ -2572,6 +2572,7 @@ button.dscr-cell { transition: background-color .15s ease; }
 .eq-tbl tbody tr[data-eq], .eq-tbl tbody tr[data-cares-only], .rp-tbl tbody tr[data-repair-row] { cursor: pointer; }
 .eq-tbl tr.is-disposed td { color: var(--text-3); }
 .eq-tbl tr.is-disposed .tbl-open { color: var(--text-3); text-decoration: line-through; }
+.eq-custom { font-family: inherit; font-weight: 600; color: #8a4b06; }
 .cell-sn { font-size: .82rem; color: var(--text-2); white-space: nowrap; }
 .cell-n { font-size: .86rem; color: var(--text); }
 .m-only { display: none; }

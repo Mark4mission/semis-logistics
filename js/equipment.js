@@ -9,7 +9,7 @@
 
    데이터
    - DATA.equipment = [{ id, type, name, serial, location, vendor, installed, mfgDate, lifeYears,
-       replaceDue, price, cert, status, logs[{id,date,kind,text,by}], note }]  (v2 스키마 그대로)
+       replaceDue(직접 지정 — 비면 도입일 + 내용연수), price, cert, status, logs[{id,date,kind,text,by}], note }]  (v2 스키마 그대로)
      2026-09-22 SeMIS v2 대장 22대를 복사(이후 두 시스템은 따로 관리)
    - 장비 상태·고장·점검의 마스터는 CARES — 여기서는 읽기만(수정은 CARES에서)
    - 구입가는 대외비(canConfid) — hq 이상만 보이고 입력
@@ -50,13 +50,16 @@
     return t.toISOString().slice(0, 10);
   }
   const daysLeft = (d) => d ? Math.round((new Date(d) - new Date(todayISO())) / 86400000) : null;
-  const lifeBase = (x) => x.mfgDate || x.installed || "";
+  /* 기산일 = 도입(설치)일 — 비었을 때만 제조일 (v1.24.2, Mark 기준: 2024-01 도입 X-ray → 2034-01) */
+  const lifeBase = (x) => x.installed || x.mfgDate || "";
   const lifeYearsOf = (x) => (x.lifeYears != null && x.lifeYears !== "") ? Number(x.lifeYears) : (TYPE_LIFE[x.type] || 0);
-  function replaceDue(x) {
-    if (x.replaceDue) return x.replaceDue;
+  /* 규칙 날짜(기산일 + 내용연수) — 교체 예정일을 직접 지정했으면 그 날짜가 우선 */
+  function ruleDue(x) {
     const b = lifeBase(x), y = lifeYearsOf(x);
     return b && y ? addMonths(b, y * 12) : "";
   }
+  const replaceDue = (x) => x.replaceDue || ruleDue(x);
+  const isCustomDue = (x) => !!x.replaceDue && x.replaceDue !== ruleDue(x);
   const isLifeDue = (x) => x.status !== "폐기" && !!replaceDue(x) && daysLeft(replaceDue(x)) <= 365;
   function lifeChip(x) {
     if (x.status === "폐기") return "";
@@ -148,7 +151,7 @@
         <td class="mono cell-sn c-sn">${esc(x.serial || "-")}</td>
         <td class="col-ext c-ven">${esc(x.vendor || "-")}</td>
         <td class="mono c-base">${esc(lifeBase(x) || "-")}</td>
-        <td class="c-life">${lifeChip(x)}${lifeYearsOf(x) ? `<div class="cell-sub mono">${lifeYearsOf(x)}년 · ${esc(replaceDue(x))}</div>` : ""}</td>
+        <td class="c-life">${lifeChip(x)}${lifeYearsOf(x) ? `<div class="cell-sub mono">${lifeYearsOf(x)}년 · ${esc(replaceDue(x))}${isCustomDue(x) ? ' <span class="eq-custom">지정</span>' : ""}</div>` : ""}</td>
         <td class="c-rep">${nRep ? `<span class="cell-n mono"><span class="m-only">고장 </span>${nRep}건</span>` : '<span class="cell-sub">-</span>'}${(x.logs || []).length ? `<div class="cell-sub">메모 ${(x.logs || []).length}</div>` : ""}</td>
         <td class="c-st">${ui.chip(st, ST_TONE[st] || "gray")}</td>
       </tr>`;
@@ -198,7 +201,7 @@
         ${row("설치 위치", esc(x.location || "-"))}
         ${row("제작 · 유지보수", esc(x.vendor || "-"))}
         ${row("제조 · 설치", `<span class="mono">${esc(x.mfgDate || "-")} · ${esc(x.installed || "-")}</span>`)}
-        ${row("내용연수", `${lifeYearsOf(x) || "-"}년 · <span class="mono">${esc(replaceDue(x) || "-")}</span> ${lifeChip(x)}`)}
+        ${row("내용연수", `${lifeYearsOf(x) || "-"}년 · <span class="mono">${esc(replaceDue(x) || "-")}</span> ${lifeChip(x)}${isCustomDue(x) ? `<div class="cell-sub">교체 예정일 직접 지정 · 규칙 날짜 <span class="mono">${esc(ruleDue(x) || "-")}</span></div>` : ""}`)}
         ${conf && x.price != null && x.price !== "" ? row("구입가", `<span class="mono">${esc(Number(x.price).toLocaleString("ko-KR"))}</span>원`) : ""}
         ${row("인증", esc(x.cert || ""))}
         ${row("비고", esc(x.note || ""))}
@@ -264,11 +267,11 @@
           "CARES에 같은 S/N의 장비가 있으면 상태·배치·고장·점검 이력이 자동으로 연결됩니다.")}
         ${f("e-location", "설치 위치", `<input id="e-location" value="${esc(v.location || "")}" maxlength="60">`)}
         ${f("e-vendor", "제작 · 유지보수 업체", `<input id="e-vendor" value="${esc(v.vendor || "")}" maxlength="60" placeholder="예: 라피스캔 / 인씨스">`)}
-        ${f("e-mfg", "제조일", `<input type="date" id="e-mfg" value="${esc(v.mfgDate || "")}">`, "내용연수 기산일입니다. 비우면 설치일부터 계산합니다.")}
-        ${f("e-installed", "설치 · 취득일", `<input type="date" id="e-installed" value="${esc(v.installed || "")}">`)}
+        ${f("e-installed", "도입 · 설치일", `<input type="date" id="e-installed" value="${esc(v.installed || "")}">`, "내용연수 기산일입니다.")}
+        ${f("e-mfg", "제조일", `<input type="date" id="e-mfg" value="${esc(v.mfgDate || "")}">`, "도입 · 설치일이 비어 있을 때만 기산일로 씁니다.")}
         ${f("e-life", "내용연수 (년)", `<input type="number" id="e-life" min="0" max="30" value="${esc(v.lifeYears != null ? v.lifeYears : "")}" placeholder="유형 기본값">`,
           "비우면 유형 기본값을 씁니다 — X-Ray 10년 · ETD 5년 · WTMD 10년 · HHMD 4년.")}
-        ${f("e-repdue", "교체 예정일", `<input type="date" id="e-repdue" value="${esc(v.replaceDue || "")}">`, "지정하면 내용연수 계산 대신 이 날짜를 씁니다.")}
+        ${f("e-repdue", "교체 예정일", `<input type="date" id="e-repdue" value="${esc(v.replaceDue || "")}">`, "비우면 도입 · 설치일 + 내용연수로 계산합니다. 연장 승인 등 규칙과 다를 때만 지정하세요.")}
         ${conf ? f("e-price", "구입가 (원)", `<input type="number" id="e-price" min="0" value="${esc(v.price != null ? v.price : "")}">`) : ""}
         ${f("e-cert", "인증", `<input id="e-cert" value="${esc(v.cert || "")}" maxlength="120" placeholder="예: TSA, STAC, KIAST">`)}
       </div>
@@ -325,6 +328,7 @@
         price: !conf ? (x && x.price != null ? x.price : null) : ($("#e-price").value === "" ? null : Math.max(0, Number($("#e-price").value) || 0)),
         cert: $("#e-cert").value.trim(), status: $("#e-status").value, logs: clean, note: $("#e-note").value.trim()
       };
+      if (rec.replaceDue && rec.replaceDue === ruleDue(rec)) rec.replaceDue = "";   // 규칙과 같은 날짜는 저장하지 않음(도입일을 고치면 따라가게)
       if (!Array.isArray(D().equipment)) D().equipment = [];
       let saved;
       if (x) { Object.assign(x, rec); saved = x; }
@@ -631,7 +635,7 @@
   });
 
   window.SemisEquip = {
-    TYPES, TYPE_LIFE, addMonths, lifeBase, lifeYearsOf, replaceDue, isLifeDue, effStatus, unitOf, ledgerStats, filtered,
+    TYPES, TYPE_LIFE, addMonths, lifeBase, lifeYearsOf, ruleDue, replaceDue, isCustomDue, isLifeDue, effStatus, unitOf, ledgerStats, filtered,
     setTab(t, opts) { if (["list", "repairs", "analysis"].indexOf(t) >= 0) tab = t; if (opts && opts.year) rYear = String(opts.year); },
     setFilter(k, s) { if (k) kindF = k; if (s) stF = s; }, setQuery(q) { query = String(q || ""); },
     openUnit(caresId) {

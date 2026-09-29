@@ -2842,6 +2842,43 @@ function makeServer(opts = {}) {
       const extra = qa(e, ".eq-tbl tr[data-cares-only]");
       eq(extra.length, 6, "대장에 없는 CARES 장비 6");
     });
+    t("EQ01 내용연수: 도입일 + 유형 연수(X-ray 10 · ETD 5 · WTMD 10 · HHMD 4) · 도입일 우선 · 직접 지정 표시", () => {
+      const Eq = e.w.SemisEquip;
+      eq(Eq.ruleDue({ type: "X-Ray", installed: "2024-01-07" }), "2034-01-07");
+      eq(Eq.ruleDue({ type: "ETD(폭발물흔적)", installed: "2023-01-01" }), "2028-01-01");
+      eq(Eq.ruleDue({ type: "WTMD(문형)", installed: "2023-05-22" }), "2033-05-22");
+      eq(Eq.ruleDue({ type: "HHMD(휴대용)", installed: "2025-04-30" }), "2029-04-30");
+      eq(Eq.ruleDue({ type: "HHMD(휴대용)", installed: "2024-02-29" }), "2028-02-29", "윤일");
+      eq(Eq.ruleDue({ type: "ETD(폭발물흔적)", installed: "2023-02-28", lifeYears: 7 }), "2030-02-28", "개별 연수");
+      eq(Eq.lifeBase({ installed: "2024-01-10", mfgDate: "2023-06-01" }), "2024-01-10", "도입일 우선");
+      eq(Eq.lifeBase({ installed: "", mfgDate: "2023-06-01" }), "2023-06-01", "도입일 없으면 제조일");
+      const w = { type: "WTMD(문형)", installed: "2023-05-22", replaceDue: "2034-05-22" };
+      eq(Eq.replaceDue(w), "2034-05-22"); ok(Eq.isCustomDue(w), "규칙과 다른 지정");
+      ok(!Eq.isCustomDue({ type: "WTMD(문형)", installed: "2023-05-22", replaceDue: "2033-05-22" }), "규칙과 같으면 지정 아님");
+      ok(!Eq.isCustomDue({ type: "WTMD(문형)", installed: "2023-05-22", replaceDue: "" }));
+      const e7 = makeEnv();
+      loginAs(e7, "hq");
+      e7.S.data.equipment = [
+        { id: "w1", type: "WTMD(문형)", name: "문형 A", serial: "W-A", installed: "2023-05-22", mfgDate: "", lifeYears: null, replaceDue: "2034-05-22", status: "정상", logs: [] },
+        { id: "w2", type: "WTMD(문형)", name: "문형 B", serial: "W-B", installed: "2023-05-22", mfgDate: "", lifeYears: null, replaceDue: "2033-05-22", status: "정상", logs: [] }
+      ];
+      e7.S.saveSilent();
+      go(e7, "scr-equip");
+      const life = (id) => q(e7, '.eq-tbl tr[data-eq="' + id + '"] .c-life').textContent;
+      ok(life("w1").includes("2034-05-22") && life("w1").includes("지정"), "지정 표시");
+      ok(life("w2").includes("2033-05-22") && !life("w2").includes("지정"));
+      e7.w.SemisEquip.form("w2");
+      const labels = qa(e7, "#modal-box label").map(l => l.textContent);
+      ok(labels.findIndex(t2 => t2.startsWith("도입 · 설치일")) >= 0 && labels.findIndex(t2 => t2.startsWith("도입 · 설치일")) < labels.findIndex(t2 => t2.startsWith("제조일")), "도입일 먼저");
+      q(e7, "#e-save").click();
+      eq(e7.S.data.equipment.find(x => x.id === "w2").replaceDue, "", "규칙과 같은 날짜는 저장하지 않음");
+      e7.w.SemisEquip.form("w1");
+      q(e7, "#e-save").click();
+      eq(e7.S.data.equipment.find(x => x.id === "w1").replaceDue, "2034-05-22", "직접 지정은 유지");
+      e7.w.SemisEquip.form("w1");
+      q(e7, "#e-repdue").value = ""; q(e7, "#e-save").click();
+      eq(e7.w.SemisEquip.replaceDue(e7.S.data.equipment.find(x => x.id === "w1")), "2033-05-22", "지정 해제 → 규칙 날짜");
+    });
     t("SC12b 검색·필터가 걸린 채 장비를 등록해도 목록에 보인다 (조건 자동 해제)", () => {
       const e6 = makeEnv();
       loginAs(e6, "hq");
