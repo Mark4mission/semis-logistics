@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/loginguard.js", "js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/crisis.js", "js/phonebook.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
+const FILES = ["js/loginguard.js", "js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/crisis.js", "js/serp.js", "js/phonebook.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -1374,7 +1374,7 @@ function makeServer(opts = {}) {
     const e = makeEnv({ fetch: server.fetch });
     const { Sync } = e;
     t("Y01 SYNC_KEYS 구성(계정 자료 제외)", () =>
-      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,chatRooms,vault,regulations,equipment,crisis,fleet,audits,phonebook,training,seclog,seclogCfg"));
+      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,chatRooms,vault,regulations,equipment,crisis,fleet,audits,phonebook,training,seclog,seclogCfg,serp,serpRuns"));
     t("Y02 SYNC_KEYS는 모두 freshData 컬렉션에 존재", () => Sync.SYNC_KEYS.forEach(k => ok(e.S.data[k] !== undefined, k)));
     await ta("Y03 로그인 전에는 서버를 부르지 않음 · 로그인 후 초기 pull + 쓰기 권한 있는 컬렉션만 시드", async () => {
       await Sync.start();
@@ -3334,7 +3334,7 @@ function makeServer(opts = {}) {
       const home = q(e, ".cr-home");
       ok(home && home.textContent.indexOf("인천화물팀") >= 0 && home.textContent.indexOf("유해 송환 지원") >= 0);
       ok(q(e, ".cr-home .cr-tel"), "연락망에 한 명뿐인 이름 → 전화");
-      eq(qa(e, ".stat-value").map(x => x.textContent).join(","), "3,3,6,6");
+      eq(qa(e, ".stat-value").map(x => x.textContent).join(","), "3,3,6,6,5");
       eq(qa(e, ".cr-orgbtn").length, 4);
       eq(qa(e, "#cr-body .cr-sec").length, 3);
       eq(qa(e, "#cr-body .cr-sec")[0].dataset.org, "초동조치센터", "조직 순서");
@@ -3426,6 +3426,315 @@ function makeServer(opts = {}) {
       ok(e.Sync.SYNC_KEYS.indexOf("crisis") >= 0);
       const c = read("css/main.css");
       ok(c.indexOf(".cr-home") > 0 && c.indexOf(".cr-line") > 0 && c.indexOf(".cr-mxt") > 0);
+    });
+    t("CR11 연락처: 번호 찾는 순서(이 화면 → 비상연락망 동명 1명 → 업무 연락처) · 번호 없음 통계 · '+ 번호'(hq)", () => {
+      e.S.data.crisis.people = {};
+      e.S.data.phonebook = { groups: [{ id: "g", name: "가" }], rows: [{ id: "p1", group: "g", name: "정일", mobile: "010-0000-7777" }] };
+      e.S.saveSilent(); CR.setState({ view: "org", org: "", query: "", noNum: false }); e.S.renderView();
+      eq(CR.contactOf("정일").src, "phonebook", "업무 연락처 보조");
+      eq(CR.contactOf("갑일"), null, "비상연락망 동명이인이면 업무 연락처로 넘어가지 않음");
+      const before = CR.missing().length;
+      ok(qa(e, ".stat-value").slice(-1)[0].textContent === String(before));
+      ok(q(e, ".cr-addnum[data-pc]"), "hq: 번호 없는 이름 옆 + 번호");
+      loginAs(e, "manager"); e.S.renderView();
+      ok(!q(e, ".cr-addnum") && !q(e, "#cr-bulk") && !q(e, ".cr-pedit"), "manager 편집 없음");
+      loginAs(e, "hq"); e.S.renderView();
+    });
+    t("CR12 한 사람 편집: 번호 저장(정리) · 이 화면 번호 우선 · 이름 바꾸면 모든 임무 반영 · 입력 지우기", () => {
+      const name = q(e, ".cr-addnum[data-pc]").dataset.pc;
+      q(e, `.cr-addnum[data-pc='${name}']`).click();
+      q(e, "#cr-c-mobile").value = "잘못된번호"; clickOk(e);
+      ok(q(e, "#cr-c-mobile"), "형식 오류면 닫히지 않음");
+      q(e, "#cr-c-mobile").value = "01012345678"; clickOk(e);
+      eq(e.S.data.crisis.people[name].mobile, "010-1234-5678");
+      eq(CR.contactOf(name).src, "crisis");
+      ok(qa(e, ".cr-p").some(p => p.querySelector(`[data-person='${name}']`) && p.querySelector(".cr-tel[href='tel:01012345678']")), "전화 버튼으로 바뀜");
+      const n0 = e.S.data.crisis.rows.filter(r => r.main === name || r.sub === name).length;
+      CR.editPerson(name);
+      ok(qa(e, "#modal-box [data-medit]").length === n0, "맡은 임무 목록 · 수정 링크");
+      q(e, "#cr-c-name").value = name + "수"; clickOk(e);
+      eq(e.S.data.crisis.rows.filter(r => r.main === name + "수" || r.sub === name + "수").length, n0);
+      ok(!e.S.data.crisis.people[name] && e.S.data.crisis.people[name + "수"], "번호도 새 이름으로");
+      CR.editPerson(name + "수");
+      q(e, "#modal-box [data-act=clear]").click();
+      ok(!e.S.data.crisis.people[name + "수"]);
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    t("CR13 번호 없음 필터 · 일괄 입력(바뀐 칸만 · Enter 다음 칸) · 담당자 카드 편집 버튼", () => {
+      q(e, "#cr-nonum").click();
+      eq(CR.getState().noNum, true); eq(q(e, "#cr-body").dataset.mode, "person");
+      const miss = CR.missing().length;
+      eq(qa(e, ".cr-person").length, miss); ok(qa(e, ".cr-person").every(c => c.classList.contains("no-num")));
+      ok(q(e, ".cr-pedit[data-pc]"));
+      q(e, "#cr-bulk").click();
+      eq(qa(e, "#modal-box [data-bn]").length, miss);
+      const ins = qa(e, "#modal-box .cr-btbl input");
+      ins[0].focus(); ins[0].dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      ok(e.w.document.activeElement === ins[1], "Enter → 다음 칸");
+      ins[0].value = "0212345678"; ins[3].value = "7001234";
+      clickOk(e);
+      const ppl = e.S.data.crisis.people;
+      eq(Object.keys(ppl).length, 2);
+      ok(Object.values(ppl).some(v => v.mobile === "02-1234-5678") && Object.values(ppl).some(v => v.office === "032-700-1234"));
+      eq(CR.missing().length, miss - 2);
+      q(e, "#cr-bulk").click(); q(e, "#modal-box [data-bmode=all]").click();
+      ok(qa(e, "#modal-box [data-bn]").length > miss - 2, "전체 보기");
+      e.S.closeModal();
+      q(e, "#cr-clear").click(); eq(CR.getState().noNum, false);
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+  }
+
+  /* ══════════ [SP] v1.25 팀위기대응계획 SERP ══════════ */
+  {
+    const e = makeEnv();
+    const SP = e.w.SemisSerp;
+    const plan = () => ({
+      title: "테스트 계획", docNo: "T-001", dept: "가팀", rev: "제1차 개정", revDate: "2026-09-23", firstDate: "2025-08-01",
+      occ: { team: "통제팀 (OCC)", phone: "02-0000-0001", who: "당직" },
+      sections: [{ id: "s1", no: "3.1.3", tab: "init", title: "원칙 하나", body: "첫 문단\n둘째 문단" }, { id: "s2", no: "3.2", tab: "init", title: "대외", body: "본문" },
+        { id: "s3", no: "2.1", tab: "org", title: "구성", body: "본문" }, { id: "s4", no: "5.1", tab: "forms", title: "자료", body: "본문" }],
+      serc: { within: 30, consider: ["통신", "시설"], online: "온라인 단서 문장", place: "", equip: "", channel: "" },
+      roles: [
+        { id: "leader", no: 1, name: "리더 직책", en: "Leader", who: "팀장", duties: ["지휘"], checklist: ["가동", "소집"] },
+        { id: "sup", no: 2, name: "총괄 직책", en: "Sup", who: "선임", duties: ["실무"], checklist: ["설치"] },
+        { id: "cargo", no: 3, name: "화물 직책", en: "Cargo", who: "실무자", duties: ["화물"], checklist: ["자료"] }],
+      people: [
+        { id: "p1", role: "leader", name: "갑장", grade: "부장", office: "032-000-0100", mobile: "010-0000-0100", email: "a@x.com", place: "센터", duties: ["지휘"], note: "" },
+        { id: "p2", role: "sup", name: "을총", grade: "", office: "", mobile: "010-0000-0200", email: "", place: "센터", duties: [], note: "겸임 가능" },
+        { id: "p3", role: "cargo", name: "병화", grade: "", office: "", mobile: "", email: "", place: "", duties: [], note: "" }],
+      chart: { ext: [{ id: "ce1", org: "공항 통합운영센터", phone: "032-000-0300, 0301" }], hq: [{ id: "ch1", org: "통제팀", phone: "02-0000-0001" }] },
+      timeline: [
+        { id: "t1", min: 10, text: "통제팀 통보", sub: "", who: "최초 인지자", roles: ["first", "leader"], act: "occ" },
+        { id: "t2", min: 10, text: "비상소집", sub: "", who: "팀장", roles: ["leader"], act: "recall" },
+        { id: "t3", min: 30, text: "SERC 개설", sub: "", who: "총괄", roles: ["sup"], act: "serc" },
+        { id: "t4", min: 60, text: "화주 통보", sub: "", who: "화물", roles: ["cargo"], act: "" }],
+      notify: [{ id: "kind", label: "사고 종류", hint: "", opts: ["Fire", "기타"] }, { id: "when", label: "사고 일시", hint: "", start: true },
+        { id: "reporter", label: "보고 일시, 보고자", hint: "", auto: true }],
+      overview: { leader: "갑장", staff: "9", vendor: "90", mandatory: [{ id: "om1", org: "관계기관", phone: "044-000-0000", items: "" }], nearby: [{ id: "on1", org: "옆팀", phone: "02-0000-0002", support: "" }] },
+      mgmt: [{ id: "m1", item: "비상연락망", cycle: "연 1회 이상", req: "인력 변동", checked: "2024-01-01" }],
+      facilities: [{ id: "f1", kind: "승무원 보호", name: "비밀호텔", phone: "032-000-0400", note: "", conf: true }],
+      agencies: [{ id: "a1", grp: "병원", org: "가병원", phone: "032-000-0500", note: "응급" }, { id: "a2", grp: "대사관", org: "나대사관", phone: "+82-2-000-0600", note: "" }],
+      docs: ["NOTOC", "Cargo manifest"], revs: [{ id: "r0", no: "제정", date: "2025-08-01", clauses: "제정", reason: "신규" },
+        { id: "r1", no: "제1차", date: "2026-09-23", clauses: "3.5.1", reason: "온라인", purpose: ["목적"], changes: [{ clause: "3.5.1", title: "장소", before: "가\n나", after: "가\n나\n다 새 문단" }] }],
+      gaps: ["확인 하나"], images: [{ id: "i1", title: "격자지도", url: "https://x.test/a.webp", thumb: "https://x.test/a-t.webp" }]
+    });
+    const seed = () => {
+      e.S.data.serp = plan(); e.S.data.serpRuns = [];
+      e.S.data.contacts = { sections: [{ id: "cs-team", type: "people", title: "가팀", rows: [{ id: "c1", name: "직접행", mobile: "010-0000-0999" }] }] };
+      e.S.saveSilent();
+    };
+    t("SP01 메뉴: 협력 · 비상 허브 · 비상연락망 바로 위 · mgr · 기존 데이터 자동 추가(멱등) · 구조 보정", () => {
+      const m = e.S.data.menus.find(x => x.module === "serp");
+      ok(m && m.type === "module" && !m.planned); eq(m.parent, "hub-ops"); eq(m.vis, "mgr");
+      const ct = e.S.data.menus.find(x => x.module === "contacts");
+      ok(m.seq < ct.seq);
+      const old = makeEnv({ preData: { version: 1, menus: e.S.defaultMenus().filter(x => x.id !== "serp") } });
+      const m2 = old.S.data.menus.find(x => x.module === "serp"), ct2 = old.S.data.menus.find(x => x.module === "contacts");
+      const hub = old.S.data.menus.find(x => x.id === "hub-ops");
+      ok(m2 && m2.parent === "hub-ops" && m2.seq < ct2.seq && m2.seq > hub.seq, "기존 메뉴 데이터: 비상연락망 바로 위");
+      const firstInHub = old.S.data.menus.filter(x => x.parent === "hub-ops").sort((a, b) => a.seq - b.seq)[0];
+      eq(firstInHub.id, m2.id);
+      eq(old.S.normalizeData(), false, "멱등");
+      ok(old.S.data.serp && !Array.isArray(old.S.data.serp) && Array.isArray(old.S.data.serpRuns));
+      ok(e.Sync.SYNC_KEYS.indexOf("serp") >= 0 && e.Sync.SYNC_KEYS.indexOf("serpRuns") >= 0);
+      eq(ACL.serp.join(","), "2,3"); eq(ACL.serpRuns.join(","), "2,2");
+    });
+    t("SP02 초동대응: 비상 띠(OCC · 공항 · 대응/훈련 시작) · 3.1 안 원칙 · SERC 온라인 단서 · 초동조치 단계 · 역할 필터 · 인쇄", () => {
+      seed(); loginAs(e, "manager"); go(e, "serp");
+      ok(q(e, ".sp-quick .sp-qbtn.is-occ[href='tel:0200000001']"));
+      ok(q(e, ".sp-quick a[href='tel:0320000300']"), "공항 통합운영센터(여러 번호는 첫 번호)");
+      ok(q(e, "[data-run-start=real]") && q(e, "[data-run-start=drill]"));
+      ok(q(e, ".sp-occ [data-sec=s1]"), "3.1.x 원칙은 3.1 카드 안");
+      ok(q(e, ".sp-grid3 [data-sec=s2]"));
+      ok(q(e, ".sp-online").textContent.indexOf("온라인 단서 문장") >= 0 && q(e, ".sp-online .sp-rev"));
+      eq(qa(e, ".sp-ph").length, 3); eq(qa(e, ".sp-ti").length, 4);
+      q(e, "[data-role-f=cargo]").click(); eq(qa(e, ".sp-ti").length, 1);
+      q(e, "[data-role-f='']").click();
+      ok(q(e, ".page-head").textContent.indexOf("Print") >= 0);
+      ok(!q(e, ".sp-ed"), "manager 편집 없음");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    t("SP03 조직 · 연락망: 도식(팀장 · 총괄 · 역할 칸 · 기관) · 역할 카드 · 번호 없음 표시 / 연락처: 그룹 · 대외비 · 검색(입력칸 유지)", () => {
+      q(e, "[data-stab=org]").click();
+      ok(q(e, ".sp-chead").textContent.indexOf("갑장") >= 0);
+      ok(q(e, ".sp-csup").textContent.indexOf("을총") >= 0);
+      eq(qa(e, ".sp-ccol").length, 1, "리더 · 총괄 외 역할 칸");
+      eq(qa(e, ".sp-role").length, 3);
+      ok(q(e, ".sp-role[data-role=cargo] .sp-pc").textContent.indexOf("병화") >= 0);
+      ok(q(e, ".sp-ccol .sp-miss"), "번호 없음");
+      ok(q(e, ".sp-pc .is-note").textContent.indexOf("겸임 가능") >= 0);
+      q(e, "[data-stab=contacts]").click();
+      ok(qa(e, ".sp-cg").length >= 5);
+      ok(q(e, ".sp-cr.is-conf") && q(e, ".sp-cr.is-conf").textContent.indexOf("대외비") >= 0);
+      ok(q(e, ".sp-tmore"), "추가 번호 표기");
+      const qi = q(e, "#sp-cq"); qi.value = "0500"; qi.dispatchEvent(new e.w.Event("input"));
+      ok(q(e, "#sp-cq") === qi, "입력칸 유지"); eq(qa(e, ".sp-cr").length, 1);
+      qi.value = "없는기관"; qi.dispatchEvent(new e.w.Event("input")); ok(q(e, "#sp-cbody .empty-state"));
+      qi.value = ""; qi.dispatchEvent(new e.w.Event("input"));
+      ok(q(e, ".sp-img img"), "이미지 미리보기");
+    });
+    t("SP04 체크리스트 · 양식 / 문서 · 개정: 역할별 표 · 사고자료 대장 · 개정 신구 대비(새 문단 강조) · 관리 기준 경과 · 확인 필요는 hq만", () => {
+      q(e, "[data-stab=forms]").click();
+      eq(qa(e, ".sp-ckc").length, 3); eq(qa(e, ".sp-ckc[data-ck-role=leader] tbody tr:not(.sp-blank)").length, 2);
+      ok(q(e, ".sp-ledger thead").textContent.indexOf("제출방법") >= 0);
+      eq(qa(e, ".sp-docs li").length, 2);
+      q(e, "[data-stab=doc]").click();
+      eq(qa(e, ".sp-revs tbody tr").length, 2);
+      eq(qa(e, ".sp-a .sp-new").length, 1); ok(q(e, ".sp-a .sp-new").textContent.indexOf("새 문단") >= 0);
+      ok(q(e, ".sp-mgmt tr.is-due"), "1년 경과");
+      ok(!q(e, ".sp-gaps"), "manager: 확인 필요 숨김");
+      loginAs(e, "hq"); e.S.renderView();
+      ok(q(e, ".sp-gaps") && q(e, "[data-mgmt=m1]"));
+      q(e, "[data-mgmt=m1]").click();
+      ok(e.S.data.serp.mgmt[0].checked !== "2024-01-01");
+      ok(!q(e, ".sp-mgmt tr.is-due"));
+      loginAs(e, "manager"); e.S.renderView();
+    });
+    t("SP05 대응 시작(훈련): 사본 · 대응 화면 · 경과 시계 · 메뉴 배지 · 대시보드 띠 · 두 번째 시작은 진행 중 열기", () => {
+      SP.setState({ tab: "init", runSel: "" }); e.S.renderView();
+      q(e, "[data-run-start=drill]").click();
+      q(e, "#sp-s-title").value = "도상훈련"; q(e, "#sp-s-place").value = "램프";
+      const t0 = new Date(Date.now() - 15 * 60000), p2 = (n) => String(n).padStart(2, "0");
+      q(e, "#sp-s-at").value = t0.getFullYear() + "-" + p2(t0.getMonth() + 1) + "-" + p2(t0.getDate()) + "T" + p2(t0.getHours()) + ":" + p2(t0.getMinutes());
+      clickOk(e);
+      const runs = e.S.data.serpRuns;
+      eq(runs.length, 1); eq(runs[0].kind, "drill"); eq(runs[0].items.length, 4); eq(runs[0].cks.length, 3); eq(runs[0].log.length, 1);
+      ok(q(e, ".sp-status.is-drill") && q(e, ".sp-status [data-sp-t0]"), "대응 화면");
+      ok(q(e, ".sp-clock").textContent.indexOf("T+") === 0, "경과 시계");
+      eq(qa(e, ".sp-ri.is-late").length, 2, "10분 항목 기한 경과");
+      ok(q(e, ".sp-pp.is-late"), "단계 띠 경과 표시");
+      eq(SP.activeRun().id, runs[0].id);
+      ok(qa(e, ".nav-meta").some(x => x.textContent === "대응 중"), "메뉴 배지: " + qa(e, ".nav-meta").map(x => x.textContent).join("/"));
+      go(e, "dashboard"); ok(q(e, "#dash-serp.is-drill"), "대시보드 띠");
+      q(e, "#dash-serp [data-dserp]").click();
+      eq(SP.getState().runSel, runs[0].id);
+      SP.setState({ runSel: "" }); e.S.renderView();
+      ok(q(e, ".sp-live.is-drill"), "계획 화면 위 대응 중 띠");
+      SP.startForm("real");
+      eq(e.S.data.serpRuns.length, 1, "진행 중이면 새로 시작하지 않음"); eq(SP.getState().runSel, runs[0].id);
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    t("SP06 초동조치 체크: 시각 · 기록자 · 기한 후 완료 · 수정/취소 · 역할별 체크리스트", () => {
+      const r = e.S.data.serpRuns[0];
+      e.w.localStorage.setItem("semisl:serp-by", "기록이");
+      q(e, "[data-tl=t1]").click();
+      ok(r.tl.t1 && r.tl.t1.by === "기록이");
+      ok(q(e, ".sp-ri[data-item=t1] .sp-slow"), "10분 지나 완료 → 기한 후 완료");
+      q(e, "[data-tl=t1]").click();
+      q(e, "#sp-d-note").value = "구두 통보"; clickOk(e);
+      eq(e.S.data.serpRuns[0].tl.t1.note, "구두 통보");
+      q(e, "[data-tl=t1]").click(); q(e, "#modal-box [data-act=undo]").click();
+      ok(!e.S.data.serpRuns[0].tl.t1);
+      q(e, "[data-rtab=ck]").click();
+      eq(qa(e, "[data-ck]").length, 4);
+      q(e, "[data-ck='leader:1']").click();
+      ok(e.S.data.serpRuns[0].ck["leader:1"].at);
+      ok(q(e, "[data-rtab=ck] .sp-tn").textContent === "1/4");
+    });
+    t("SP07 SERC 온라인 개설 · 비상소집 문자 · 통보 양식(선택 · 발생 시각 · 미리보기 · 문자 · 통보 완료 → OCC 항목 완료)", () => {
+      q(e, "[data-rtab=tl]").click();
+      q(e, ".sp-st-s [data-act=serc]").click();
+      q(e, "#modal-box [data-m=online]").click(); eq(q(e, "#sp-sc-lbl").textContent, "대체 통신 채널");
+      q(e, "#sp-sc-place").value = "메신저방"; clickOk(e);
+      let r = e.S.data.serpRuns[0];
+      eq(r.serc.mode, "online"); ok(r.tl.t3 && r.tl.t3.note.indexOf("온라인") === 0);
+      ok(q(e, ".sp-st-s").textContent.indexOf("온라인 개설") >= 0);
+      q(e, ".sp-calls [data-act=recall]").click();
+      ok(q(e, "#sp-rc-msg").value.indexOf("온라인 위기대응센터(메신저방)") > 0, "소집 문자에 SERC");
+      eq(q(e, "#sp-rc-sms").getAttribute("href").split("?")[0], "sms:01000000100,01000000200", "번호 있는 인원만");
+      qa(e, "#modal-box [data-rc]")[1].checked = false; qa(e, "#modal-box [data-rc]")[1].dispatchEvent(new e.w.Event("change"));
+      eq(q(e, "#sp-rc-sms").getAttribute("href").split("?")[0], "sms:01000000100");
+      clickOk(e);
+      r = e.S.data.serpRuns[0]; ok(r.tl.t2 && r.tl.t2.note === "1명 소집");
+      q(e, "[data-rtab=notify]").click();
+      q(e, "[data-nf-opt=kind][data-v=Fire]").click();
+      eq(e.S.data.serpRuns[0].notify.f.kind, "Fire");
+      q(e, "[data-nf-start=when]").click();
+      ok(/경 \(한국시각\)$/.test(e.S.data.serpRuns[0].notify.f.when));
+      const inp = q(e, "#sp-nf-reporter"); inp.value = "임시"; inp.dispatchEvent(new e.w.Event("input"));
+      ok(q(e, "#sp-npre").textContent.indexOf("3) 보고 일시, 보고자: 임시") >= 0, "입력 중 미리보기");
+      ok(decodeURIComponent(q(e, "#sp-nsms").getAttribute("href")).indexOf("1) 사고 종류: Fire") > 0);
+      inp.dispatchEvent(new e.w.Event("change"));
+      eq(e.S.data.serpRuns[0].notify.f.reporter, "임시");
+      q(e, "[data-notify-sent]").click(); clickOk(e);
+      r = e.S.data.serpRuns[0];
+      eq(r.notify.sent.length, 1); ok(r.tl.t1 && r.tl.t1.at, "통제팀 통보 → OCC 항목 완료");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    t("SP08 상황 기록 · 사고자료 대장(필수값 · 본사 보고) · 종료 · 결과 보고(인쇄 전용) · 삭제는 hq", () => {
+      q(e, "[data-rtab=log]").click();
+      q(e, "#sp-log-add").click(); const n0 = e.S.data.serpRuns[0].log.length;
+      q(e, "#sp-log").value = "소방대 도착"; q(e, "#sp-log-add").click();
+      eq(e.S.data.serpRuns[0].log.length, n0 + 1);
+      ok(q(e, ".sp-log").textContent.indexOf("소방대 도착") >= 0);
+      q(e, "[data-rtab=subs]").click();
+      q(e, "#sp-sub-add").click(); clickOk(e); ok(q(e, "#sp-sb-doc"), "필수값 없으면 닫히지 않음");
+      q(e, "#sp-sb-doc").value = "NOTOC"; q(e, "#sp-sb-agency").value = "조사기관"; q(e, "#sp-sb-hq").checked = true; clickOk(e);
+      eq(e.S.data.serpRuns[0].subs.length, 1); ok(q(e, ".sp-ledger tbody").textContent.indexOf("보고") >= 0);
+      ok(!q(e, "#sp-rdel"), "manager 삭제 없음");
+      q(e, "#sp-end").click(); clickOk(e);
+      const r = e.S.data.serpRuns[0];
+      ok(r.end); eq(SP.activeRun(), null);
+      ok(q(e, ".sp-status.is-end")); ok(!q(e, ".sp-calls"));
+      const rep = q(e, ".sp-report");
+      ok(rep && rep.classList.contains("print-only"));
+      ok(rep.textContent.indexOf("SERP 훈련 결과") >= 0 && rep.textContent.indexOf("NOTOC") >= 0 && rep.textContent.indexOf("소방대 도착") >= 0);
+      go(e, "dashboard"); ok(!q(e, "#dash-serp"), "종료 후 대시보드 띠 없음");
+      go(e, "serp"); SP.setState({ runSel: "", tab: "runs" }); e.S.renderView();
+      eq(qa(e, ".sp-runs tbody tr").length, 1);
+      loginAs(e, "hq"); SP.setState({ runSel: r.id }); e.S.renderView();
+      ok(q(e, "#sp-reopen") && q(e, "#sp-rdel"));
+      q(e, "#sp-rdel").click(); clickOk(e);
+      eq(e.S.data.serpRuns.length, 0);
+    });
+    t("SP09 hq 편집: 인원 추가 · 수정(번호 정리) → 비상연락망 '가팀' 섹션 동기화(직접 넣은 행 유지) · 삭제", () => {
+      SP.setState({ runSel: "", tab: "org" }); e.S.renderView();
+      q(e, "[data-person-add=cargo]").click();
+      q(e, "#sp-p-name").value = "정화"; q(e, "#sp-p-mobile").value = "01000000300"; clickOk(e);
+      const ps = e.S.data.serp.people;
+      eq(ps.length, 4); eq(ps[3].name, "정화"); eq(ps[3].mobile, "010-0000-0300"); eq(ps[3].role, "cargo");
+      const rows = e.S.data.contacts.sections[0].rows;
+      eq(rows.length, 5); eq(rows[0].name, "갑장"); eq(rows[0].role, "팀장"); eq(rows[4].name, "직접행", "직접 넣은 행은 뒤에 유지");
+      ok(rows[3].serp && rows[3].duty === "SERP 화물 직책");
+      q(e, "[data-person-edit=p3]").click(); q(e, "#sp-p-email").value = "잘못"; clickOk(e);
+      ok(q(e, "#sp-p-email"), "메일 형식");
+      q(e, "#sp-p-email").value = ""; q(e, "#sp-p-mobile").value = "01000000301"; clickOk(e);
+      eq(e.S.data.contacts.sections[0].rows.find(x => x.serp === "p3").mobile, "010-0000-0301");
+      q(e, "[data-person-edit=p3]").click(); q(e, "#modal-box [data-act=del]").click(); clickOk(e);
+      eq(e.S.data.serp.people.length, 3); ok(!e.S.data.contacts.sections[0].rows.some(x => x.serp === "p3"));
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    t("SP10 hq 편집: 초동조치 줄 편집(형식 · 기존 id 유지) · 연락처 추가/수정 · 역할 · 체크리스트 · 통합 검색", () => {
+      SP.setState({ tab: "init" }); e.S.renderView();
+      q(e, "#sp-tl-edit").click();
+      const ta2 = q(e, "#sp-tlf"); ok(ta2.value.split("\n")[0].indexOf("10 | 통제팀 통보") === 0);
+      ta2.value += "\n잘못된 줄"; clickOk(e); ok(q(e, "#sp-tlf"), "형식 오류면 닫히지 않음");
+      q(e, "#sp-tlf").value = ta2.value.replace("\n잘못된 줄", "") + "\n120 | 새 조치 | | 인적 | hum | facility";
+      clickOk(e);
+      const tl = e.S.data.serp.timeline;
+      eq(tl.length, 5); eq(tl[0].id, "t1", "기존 id 유지"); eq(tl[4].act, "facility"); eq(tl[4].roles.join(","), "hum");
+      SP.setState({ tab: "contacts" }); e.S.renderView();
+      q(e, "[data-c-add]").click(); q(e, "#sp-c-grp").value = "병원"; q(e, "#sp-c-org").value = "다병원"; q(e, "#sp-c-phone").value = "0320000700"; clickOk(e);
+      const ag = e.S.data.serp.agencies; eq(ag.length, 3); eq(ag[1].org, "다병원", "같은 분류 뒤"); eq(ag[1].phone, "032-000-0700");
+      q(e, "[data-c-edit='fac:f1']").click(); ok(q(e, "#sp-c-conf").checked); q(e, "#sp-c-phone").value = "0320000401"; clickOk(e);
+      eq(e.S.data.serp.facilities[0].phone, "032-000-0401");
+      SP.setState({ tab: "forms" }); e.S.renderView();
+      q(e, "[data-ck-edit=cargo]").click(); q(e, "#sp-lf").value = "자료\n\n추가 항목"; clickOk(e);
+      eq(e.S.data.serp.roles[2].checklist.join("|"), "자료|추가 항목");
+      const it = e.w.SemisSearch && e.w.SemisSearch.search ? e.w.SemisSearch.search("다병원") : null;
+      if (it) ok(it.some(x => x.group === "팀위기대응계획"), "통합 검색");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    t("SP11 빈 계획 · 권한(user 접근 불가) · 공개 저장소 위생(serp.js에 번호 · 이름 · 원문 없음) · CSS · 스크립트", () => {
+      e.S.data.serp = {}; e.S.saveSilent(); loginAs(e, "manager"); go(e, "serp");
+      ok(q(e, "#view .empty-state")); ok(!q(e, "[data-run-start]"));
+      const src = read("js/serp.js");
+      ok(!/0\d{1,2}-\d{3,4}-\d{4}/.test(src), "전화번호 없음"); ok(!/@airzeta/.test(src), "메일 없음");
+      ["임병찬", "옥정훈", "골든튤립", "하워드존슨", "ICNKF"].forEach(w => ok(src.indexOf(w) < 0, "원문 · 명단: " + w));
+      const c = read("css/main.css"); ok(c.indexOf(".sp-status") > 0 && c.indexOf(".sp-chk") > 0 && c.indexOf(".dash-serp") > 0);
+      ok(read("index.html").indexOf('src="js/serp.js') > 0);
+      loginAs(e, "user"); go(e, "serp"); ok(!q(e, ".sp-tabs"), "user 는 대시보드로");
     });
   }
 
