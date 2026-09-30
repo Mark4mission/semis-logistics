@@ -8,7 +8,7 @@
    - 일일점검 이행: 장비 × 최근 28일 (점검 · 미점검 · 고장/수리) + 주간·월간 최근일
    - 검색 환경: 센서 3곳 × 지표 표 (CARES 기기별 임계치) + 지점 간 결로 판정
    - 최근 고장·수리 5건 → 검색장비 유지관리 › 고장·수리 이력
-   대시보드에는 같은 데이터를 4칸 요약 띠(dashHTML · mountDash)로 보여 준다.
+   대시보드: 메인에는 검색 환경 띠(dashHTML), 화물보안 대시보드에는 검색 라인 · 오늘 점검 · 장비 고장 띠(opsHTML) — v1.28
    ═══════════════════════════════════════════════════════ */
 "use strict";
 
@@ -28,6 +28,7 @@
     if (s.err) return "CARES 연동 불가";
     return s.ts ? "CARES · " + C().hm(s.ts) + " 갱신" : "CARES";
   }
+  const LV = { safe: ["결로 위험 낮음", "green"], watch: ["결로 주의", "amber"], danger: ["결로 발생 조건", "red"], unknown: ["판정 불가", "gray"] };
   const dot = (state) => `<i class="st-dot" data-state="${esc(state)}" aria-hidden="true"></i>`;
   function todayInsp(idx, u) {
     const o = idx[u.id];
@@ -196,7 +197,6 @@
         const over = r.over.indexOf(mt.key) >= 0;
         return `<td class="mono${over ? " over" : ""}" title="${esc(r.name + " " + mt.label + " 기준 " + thTxt(r.id, mt.key))}">${esc(fmtN(v, mt.dec))}${over ? '<span class="sr-only"> 기준 초과</span>' : ""}</td>`;
       }).join("")}</tr>`).join("");
-    const LV = { safe: ["결로 위험 낮음", "green"], watch: ["결로 주의", "amber"], danger: ["결로 발생 조건", "red"], unknown: ["판정 불가", "gray"] };
     return `<section class="card scr-env" aria-label="검색 환경">
       <h2 class="card-title">검색 환경<span class="spacer"></span><span class="dc-meta">센서 3분 주기</span></h2>
       <div class="table-wrap"><table class="tbl env-tbl">
@@ -303,13 +303,15 @@
     ensureTimer();
   }
 
-  /* ═════════ 대시보드 요약 띠 ═════════ */
-  function monthBars() {
+  /* ═════════ 대시보드 띠 ═════════
+     v1.28: 메인 대시보드에는 검색 환경(센서 3곳 + 결로 판정)만 남기고, 검색 라인 · 오늘 일일점검 · 장비 고장은
+     화물보안 대시보드(sec-dash)의 '화물 보안검색' 띠로 옮겼다. 같은 칸 조각을 두 곳이 나눠 쓴다. */
+  function monthBars(n) {
     const K = C();
     const now = K.todayKey();
     const y = Number(now.slice(0, 4)), mo = Number(now.slice(5, 7));
     const out = [];
-    for (let i = 5; i >= 0; i--) {
+    for (let i = (n || 6) - 1; i >= 0; i--) {
       let yy = y, mm = mo - i;
       while (mm <= 0) { mm += 12; yy--; }
       const key = yy + "-" + String(mm).padStart(2, "0");
@@ -317,11 +319,8 @@
     }
     return out;
   }
-  function dashInner(s) {
+  function cellLanes(m) {
     const K = C();
-    if (!s.ts && !s.err) return `<div class="dscr-cells is-wait" aria-hidden="true">${"<div class=\"dscr-cell\"><i class=\"sk\"></i><i class=\"sk sk-2\"></i></div>".repeat(4)}</div>`;
-    if (s.err && !s.equips.length) return `<div class="dscr-err">CARES에 연결하지 못했습니다.<button type="button" class="link-btn" data-dscr-retry>다시 시도</button></div>`;
-    const m = summary(s);
     const lanes = m.xr.slice().sort((a, b) => (a.no || 99) - (b.no || 99));
     const placed = {};
     const laneRows = lanes.map(x => {
@@ -332,42 +331,93 @@
     }).join("");
     const rest = m.etd.filter(e => !placed[e.id]);
     const restTxt = rest.map(e => `<span class="ml-e" data-state="${esc(e.state)}" title="${esc(e.label + " · " + placeOf(e))}">${esc(e.short)}</span><small>${esc(placeOf(e))}</small>`).join("");
-    const bars = monthBars();
-    const bmax = Math.max(1, ...bars.map(b => b.n));
-    const lastR = K.state.repairs.slice().sort((a, b) => (b.reportedAtMs || 0) - (a.reportedAtMs || 0))[0];
-    const lastU = lastR ? K.unitById(lastR.equipmentId) : null;
-    const cond = K.condensation(m.rows);
-    return `<div class="dscr-cells">
-      <button type="button" class="dscr-cell" data-dgo="scr-status" aria-label="검색 라인 배치 보기">
+    return `<button type="button" class="dscr-cell" data-dgo="scr-status" aria-label="검색 라인 배치 보기">
         <span class="dscr-h">검색 라인</span>
         <span class="ml">${laneRows}${rest.length ? `<span class="ml-rest">${restTxt}</span>` : ""}</span>
-      </button>
-      <button type="button" class="dscr-cell" data-dgo="scr-status" aria-label="일일점검 현황 보기">
+      </button>`;
+  }
+  function cellInsp(m) {
+    const K = C();
+    return `<button type="button" class="dscr-cell" data-dgo="scr-status" aria-label="일일점검 현황 보기">
         <span class="dscr-h">오늘 일일점검</span>
         <span class="dscr-n mono"><b>${m.done.length}</b>/${m.us.length}</span>
         <span class="ins-dots">${m.us.map(u => `<span class="ins-dot${todayInsp(m.idx, u) ? " on" : ""}" title="${esc(u.label + (todayInsp(m.idx, u) ? " 점검 완료" : " 미점검"))}">${esc(u.short)}</span>`).join("")}</span>
         <span class="dscr-sub">${m.lastIns ? "최근 " + esc(K.hm(m.lastIns.inspectedAtMs) + " · " + (m.lastIns.inspector || "")) : "오늘 기록 없음"}</span>
-      </button>
-      <button type="button" class="dscr-cell" data-dgo="scr-equip" data-dtab="repairs" aria-label="고장·수리 이력 보기">
+      </button>`;
+  }
+  function cellFaults(m) {
+    const K = C();
+    if (K.failed && K.failed("repairs")) return `<button type="button" class="dscr-cell" data-dgo="scr-equip" data-dtab="repairs" aria-label="고장·수리 이력 보기">
+        <span class="dscr-h">장비 고장<span class="dscr-hm">최근 6개월</span></span>
+        <span class="dscr-sub"><b class="warn">고장 기록을 불러오지 못했습니다</b> · 새로고침으로 다시 읽기</span>
+      </button>`;
+    const bars = monthBars(6);
+    const bmax = Math.max(1, ...bars.map(b => b.n));
+    const lastR = K.state.repairs.slice().sort((a, b) => (b.reportedAtMs || 0) - (a.reportedAtMs || 0))[0];
+    const lastU = lastR ? K.unitById(lastR.equipmentId) : null;
+    return `<button type="button" class="dscr-cell" data-dgo="scr-equip" data-dtab="repairs" aria-label="고장·수리 이력 보기">
         <span class="dscr-h">장비 고장<span class="dscr-hm">최근 6개월</span></span>
         <span class="mb" role="img" aria-label="${esc("월별 고장 신고 " + bars.map(b => b.label + " " + b.n + "건").join(", "))}">${bars.map(b => `<span class="mb-c" title="${esc(b.label + " " + b.n + "건")}">
           <span class="mb-v mono">${b.n || ""}</span><span class="mb-bar"><i style="height:${Math.round(b.n / bmax * 100)}%"></i></span><span class="mb-l">${esc(b.label)}</span></span>`).join("")}</span>
         <span class="dscr-sub">${m.active.length ? `<b class="bad">진행 중 ${m.active.length}건</b>` : "진행 중 없음"}${lastR ? " · 최근 " + esc(K.mdk(K.dayKey(lastR.reportedAtMs)) + " " + (lastU ? lastU.label : (lastR.equipmentName || ""))) : ""}</span>
-      </button>
-      <button type="button" class="dscr-cell" data-dgo="scr-status" aria-label="검색 환경 보기">
-        <span class="dscr-h">검색 환경</span>
-        <span class="env-mini">${m.rows.map(r => `<span class="em-row">${dot(r.offline ? "off" : r.over.length ? "warn" : "ok")}<span class="em-n">${esc(r.name)}</span>
-          <span class="em-v mono">${r.offline ? "오프라인" : esc(fmtN(r.vals.temp, 1) + "℃ · " + fmtN(r.vals.humidity, 0) + "%")}</span></span>`).join("")}</span>
-        <span class="dscr-sub">${cond.level === "danger" ? '<b class="bad">결로 발생 조건</b> · ' : cond.level === "watch" ? '<b class="warn">결로 주의</b> · ' : ""}${cond.margin != null ? "결로 여유 " + esc(fmtN(cond.margin, 1)) + "℃" : "결로 판정 불가"}${m.over ? ` · <b class="warn">기준 초과 ${m.over}</b>` : ""}</span>
-      </button>
-    </div>`;
+      </button>`;
   }
+  /* 검색 환경 — 센서 지점마다 한 칸(온도 · 습도 · 이슬점 · 기준 초과) + 결로 판정 칸 */
+  function cellSensor(r) {
+    const K = C();
+    const overTxt = r.over.map(k => {
+      const mt = K.METRICS.find(x => x.key === k);
+      return mt ? mt.label + " " + fmtN(r.vals[k], mt.dec) : k;
+    });
+    return `<button type="button" class="dscr-cell env-cell" data-dgo="scr-status" aria-label="${esc(r.name + " 검색 환경 보기")}">
+        <span class="dscr-h"><span class="env-h">${dot(r.offline ? "off" : r.over.length ? "warn" : "ok")}${esc(r.name)}</span><span class="dscr-hm mono">${r.offline ? "오프라인" : esc(K.hm(r.at))}</span></span>
+        ${r.offline ? '<span class="env-big off">수신 없음</span>'
+          : `<span class="env-big mono"><b>${esc(fmtN(r.vals.temp, 1))}</b>℃<span class="env-rh"><b>${esc(fmtN(r.vals.humidity, 0))}</b>%</span></span>
+        <span class="env-dp">이슬점 <b class="mono">${esc(fmtN(r.vals.dewPoint, 1))}℃</b></span>`}
+        <span class="dscr-sub">${r.offline ? esc(r.role) : overTxt.length ? `<b class="warn">기준 초과 · ${esc(overTxt.join(" · "))}</b>` : "모든 지표 기준 이내"}</span>
+      </button>`;
+  }
+  function cellCond(m) {
+    const K = C();
+    const cond = K.condensation(m.rows);
+    return `<button type="button" class="dscr-cell env-cell" data-dgo="scr-status" data-level="${esc(cond.level)}" aria-label="결로 판정 보기">
+        <span class="dscr-h">결로 판정</span>
+        <span class="env-cond-lv">${ui.chip(LV[cond.level][0], LV[cond.level][1])}</span>
+        <span class="dscr-n mono">${cond.margin != null ? `<b>${esc(fmtN(cond.margin, 1))}</b>℃ 여유` : "-"}</span>
+        <span class="dscr-sub">${esc(cond.text)}</span>
+      </button>`;
+  }
+  const waitCells = (n) => `<div class="dscr-cells c${n} is-wait" aria-hidden="true">${"<div class=\"dscr-cell\"><i class=\"sk\"></i><i class=\"sk sk-2\"></i></div>".repeat(n)}</div>`;
+  function stripInner(s, kind) {
+    const n = kind === "env" ? 4 : 3;
+    if (!s.ts && !s.err) return waitCells(n);
+    if (s.err && !s.equips.length) return `<div class="dscr-err">CARES에 연결하지 못했습니다.<button type="button" class="link-btn" data-dscr-retry>다시 시도</button></div>`;
+    const m = summary(s);
+    if (kind === "env") {
+      const rows = m.rows.slice(0, 3);
+      return `<div class="dscr-cells c4">${rows.map(cellSensor).join("")}${cellCond(m)}</div>`;
+    }
+    return `<div class="dscr-cells c3">${cellLanes(m)}${cellInsp(m)}${cellFaults(m)}</div>`;
+  }
+  const dashInner = (s) => stripInner(s, "env");
+  /* 메인 대시보드 — 검색 환경 띠 */
   function dashHTML() {
     const s = C().state;
-    return `<section class="dash-scr" id="dash-scr" aria-label="화물 보안검색">
-      <div class="dc-head"><h2>화물 보안검색</h2><span class="dc-meta" id="dscr-meta">${esc(metaText(s))}</span>
+    const sd = SeMIS.menuForModule && SeMIS.menuForModule("sec-dash");
+    const sdOk = !!(sd && SeMIS.navVisible(sd) && SeMIS.hasModule("sec-dash"));
+    return `<section class="dash-scr" id="dash-scr" aria-label="검색 환경">
+      <div class="dc-head"><h2>검색 환경</h2><span class="dc-meta" id="dscr-meta">${esc(metaText(s))}</span>
+        <span class="spacer"></span>${sdOk ? '<button type="button" class="link-btn" data-dgo="sec-dash">화물보안</button>' : ""}<button type="button" class="link-btn" data-dgo="scr-status">현황</button></div>
+      <div class="dscr-body" id="dscr-body">${stripInner(s, "env")}</div>
+    </section>`;
+  }
+  /* 화물보안 대시보드 — 화물 보안검색 띠(검색 라인 · 오늘 일일점검 · 장비 고장) */
+  function opsHTML() {
+    const s = C().state;
+    return `<section class="dash-scr sd-scr" id="sd-scr" aria-label="화물 보안검색">
+      <div class="dc-head"><h2>화물 보안검색</h2><span class="dc-meta" id="sdscr-meta">${esc(metaText(s))}</span>
         <span class="spacer"></span><button type="button" class="link-btn" data-dgo="scr-status">현황</button><button type="button" class="link-btn" data-dgo="scr-equip">검색장비</button></div>
-      <div id="dscr-body">${dashInner(s)}</div>
+      <div class="dscr-body" id="sdscr-body">${stripInner(s, "ops")}</div>
     </section>`;
   }
   function wireDash(box) {
@@ -379,22 +429,24 @@
     if (rt) rt.onclick = () => refresh(true);
   }
   function paintDash() {
-    const box = document.getElementById("dash-scr");
-    if (!box) return;
     const s = C().state;
-    $("#dscr-body", box).innerHTML = dashInner(s);
-    $("#dscr-meta", box).textContent = metaText(s);
-    wireDash(box);
+    [["dash-scr", "dscr", "env"], ["sd-scr", "sdscr", "ops"]].forEach(([id, pre, kind]) => {
+      const box = document.getElementById(id);
+      if (!box) return;
+      $("#" + pre + "-body", box).innerHTML = stripInner(s, kind);
+      $("#" + pre + "-meta", box).textContent = metaText(s);
+      wireDash(box);
+    });
   }
   function mountDash() {
-    const box = document.getElementById("dash-scr");
-    if (!box) return;
-    wireDash(box);
+    const boxes = ["dash-scr", "sd-scr"].map(id => document.getElementById(id)).filter(Boolean);
+    if (!boxes.length) return;
+    boxes.forEach(wireDash);
     const v = C().state.ver;
     C().load({ parts: DASH_PARTS }).then(st2 => { if (st2.ver !== v) paintDash(); });
     ensureTimer();
   }
 
   SeMIS.registerModule(MOD, { title: TITLE, render });
-  window.SemisScreen = { dashHTML, mountDash, paintDash, summary, monthBars, refresh };
+  window.SemisScreen = { dashHTML, opsHTML, mountDash, paintDash, summary, monthBars, refresh, dashInner, metaText, todayInsp };
 })();

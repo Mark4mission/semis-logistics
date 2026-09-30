@@ -21,7 +21,7 @@
     upcoming: "mgr",  // 다가오는 일정
     actions:  "mgr",  // 회의 결정사항 (미완료 · 기한 경과)
     flight:   "all",  // 운항 현황 — 항공기 위치 지도 + 인천 접근 중 (js/flightops.js)
-    screen:   "mgr",  // 화물 보안검색 요약 띠 (CARES — 검색 라인 · 오늘 점검 · 고장 · 환경)
+    screen:   "mgr",  // 검색 환경 띠 (CARES 센서 3곳 + 결로 판정) — v1.28 검색 라인 · 오늘 점검 · 고장은 화물보안 대시보드로
     serp:     "mgr",  // 위기대응 띠 — SERP 대응(실제 · 훈련) 진행 중일 때만 (js/serp.js)
     threat:   "mgr",  // 위협전화 응대 띠 — 응대(실제 · 훈련) 진행 중일 때만 (js/threat.js)
     audit:    "mgr",  // 수검 대응 띠 — 60일 안의 수검 D-day · 준비율 · 미결 지적 (js/audit.js, 해당 없으면 숨김)
@@ -111,7 +111,7 @@
     const mn = (D().menus || []).find(m => m.type === "module" && m.module === "threat");
     return !!(mn && SeMIS.navVisible(mn) && SeMIS.hasModule("threat") && window.SemisThreat);
   }
-  /* 화물 보안검색 요약 띠 — 보안검색 현황 메뉴를 볼 수 있을 때만(권한·숨김 따름) */
+  /* 검색 환경 띠 — 보안검색 현황 메뉴를 볼 수 있을 때만(권한·숨김 따름) */
   function scrVisible() {
     const mn = (D().menus || []).find(m => m.type === "module" && m.module === "scr-status");
     return !!(mn && SeMIS.navVisible(mn) && SeMIS.hasModule("scr-status"));

@@ -9,7 +9,9 @@
      (deployLogs · locationStates는 로그인 전용이라 쓰지 않는다 — 배치는 equipments.location)
    - Firebase 웹 키는 코드(공개 저장소)에 두지 않고 공용 DB(semis_logi_store "caresCfg")에서 읽는다.
    - repairLogs의 사진(data URL)은 수 MB라 목록 조회에서 제외(select 투영), 상세에서만 1건씩 불러온다.
-   - 묶음별 캐시(live 60초 · repairs 10분 · history 15분) · 화면 여러 곳이 동시에 불러도 요청은 한 번.
+   - 묶음별 캐시(live 60초 · repairs 10분 · history 15분 · env 5분) · 화면 여러 곳이 동시에 불러도 요청은 한 번.
+   - v1.28 화물보안 대시보드: 점검 조회 12주(주별 이행률) · 환경센서 24시간 추이(env — 이 브라우저에 24시간치를
+     쌓아 두고 마지막 수신 이후만 새로 읽는다: 처음 한 번 약 1,440건, 이후 몇 건).
    ═══════════════════════════════════════════════════════ */
 "use strict";
 
@@ -18,8 +20,11 @@
   const FS_DOCS = "https://firestore.googleapis.com/v1/projects/" + PROJECT + "/databases/(default)/documents";
   const CARES_URL = "https://airzeta-security-system.web.app";
   const KEY_CACHE = "semisl:caresKey";
+  const ENV_CACHE = "semisl:caresEnv";   // v1.28 환경센서 24시간 기록(측정값뿐 — 이 브라우저에만)
+  const ENV_HOURS = 24;
+  const ENV_PAGE = 1600;
   const TTL_MS = 60000;
-  const INSP_DAYS = 45;              // 일일점검 조회 구간(28일 표 + 장비 상세 최근 점검)
+  const INSP_DAYS = 84;              // 일일점검 조회 구간(28일 표 · 장비 상세 최근 점검 · v1.28 대시보드 주별 이행률 12주)
   const OFFLINE_MS = 8 * 60 * 1000;  // 센서 3분 주기 × 2회 미수신 + 여유 (CARES와 동일)
   const DAY = 86400000;
   const KST = 9 * 3600000;
@@ -101,12 +106,14 @@
      읽기량(Firestore 문서 읽기)을 줄이려고 세 묶음으로 나눠 따로 갱신한다.
      - live    (60초):  장비(상태·배치) · 센서 최신값 · 오늘 점검          ≈ 35건
      - repairs (10분):  고장·수리 전체(투영) · 센서 임계치                 ≈ 40건
-     - history (15분):  최근 45일 점검 · 정기점검(주간·월간…) 최근 기록     ≈ 450건 — 화면에 들어올 때만
+     - history (15분):  최근 12주 점검 · 정기점검(주간·월간…) 최근 기록     ≈ 800건 — 화면에 들어올 때만
+     - env     (5분):   환경센서 24시간(이 브라우저에 쌓아 두고 마지막 수신 이후만) — 화물보안 대시보드만
      자동 새로고침(5분)은 live만 강제로, repairs는 유효기간이 지났을 때만 다시 읽는다. */
-  const st = { ts: 0, ver: 0, err: null, loading: false, parts: { live: 0, repairs: 0, history: 0 },
-    equips: [], repairs: [], inspections: [], todayIns: [], periodic: [], sensors: {}, thresholds: {}, errs: {} };
-  const TTL = { live: TTL_MS, repairs: 10 * 60000, history: 15 * 60000 };
-  const ALL_PARTS = ["live", "repairs", "history"];
+  const st = { ts: 0, ver: 0, err: null, loading: false, parts: { live: 0, repairs: 0, history: 0, env: 0 },
+    equips: [], repairs: [], inspections: [], todayIns: [], periodic: [], sensors: {}, thresholds: {}, env: [], errs: {} };
+  const TTL = { live: TTL_MS, repairs: 10 * 60000, history: 15 * 60000, env: 5 * 60000 };
+  const ALL_PARTS = ["live", "repairs", "history"];   // env 는 따로 요청할 때만(load({ parts: ["env"] }))
+  const KNOWN_PARTS = ALL_PARTS.concat(["env"]);
   const inflight = {};
   const listeners = [];
   const why = (r) => r.status === "rejected" ? ((r.reason && r.reason.message) || "실패") : null;
@@ -142,6 +149,8 @@
         if (val(res[0])) st.repairs = val(res[0]);
         if (val(res[1])) { const th = {}; val(res[1]).forEach(d => { th[d.id] = d; }); st.thresholds = th; }
         st.errs.repairs = why(res[0]);
+      } else if (p === "env") {
+        await fetchEnv();
       } else {
         const res = await Promise.allSettled([
           inspQuery(Date.now() - INSP_DAYS * DAY, 1000),
@@ -157,8 +166,19 @@
       }
     } catch (e) {
       if (p === "live") st.err = (e && e.message) || "연동 실패";
+      if (p === "env") st.errs.env = (e && e.message) || "연동 실패";
     }
     st.parts[p] = Date.now();
+    /* v1.28 실패한 묶음은 유효기간을 기다리지 않고 30초 뒤 다시 읽을 수 있게 */
+    const failed = p === "live" ? st.err : p === "repairs" ? st.errs.repairs : p === "history" ? st.errs.inspections : st.errs.env;
+    if (failed) st.parts[p] = Date.now() - TTL[p] + 30000;
+  }
+  /* 묶음을 읽었지만 실패해 쓸 자료가 없음 — 화면은 0건 대신 '불러오지 못함'을 보여야 한다 */
+  function failed(p) {
+    if (p === "repairs") return !!st.errs.repairs && !st.repairs.length;
+    if (p === "history") return !!st.errs.inspections && !st.inspections.length;
+    if (p === "env") return !!st.errs.env && !st.env.length;
+    return !!st.err && !st.equips.length;
   }
   const stale = (p) => !st.parts[p] || Date.now() - st.parts[p] >= TTL[p];
   /* load()            세 묶음 모두(유효기간 안이면 그대로)
@@ -167,7 +187,7 @@
   function load(opts) {
     if (opts === true) opts = { force: true };
     opts = opts || {};
-    const parts = opts.parts || ALL_PARTS;
+    const parts = (opts.parts || ALL_PARTS).filter(p => KNOWN_PARTS.indexOf(p) >= 0);
     const force = opts.force === true ? parts : (opts.force || []);
     if (!F()) { st.err = "오프라인"; return Promise.resolve(st); }
     const jobs = parts.map(p => {
@@ -179,7 +199,7 @@
     if (!jobs.length) return Promise.resolve(st);
     st.loading = true;
     return Promise.all(jobs).then(() => {
-      st.loading = ALL_PARTS.some(p => inflight[p]);
+      st.loading = KNOWN_PARTS.some(p => inflight[p]);
       st.ver++;
       listeners.slice().forEach(fn => { try { fn(st); } catch (e) { /* 화면 쪽 오류가 다른 구독을 막지 않도록 */ } });
       return st;
@@ -312,32 +332,7 @@
   /* 연도별 장비 가동 통계 — 가동률은 KPI 산식(정상 가동일 ÷ 기간 일수), 다운타임은 신고→복귀 시간 */
   function yearStats(year, now) {
     now = now || Date.now();
-    const from = dayStartMs(year + "-01-01");
-    const end = Math.min(dayStartMs((year + 1) + "-01-01"), now);
-    return units().map(u => {
-      let start = from;
-      const led = u.ledger;
-      const inst = led && (led.installed || led.mfgDate);
-      if (inst && /^\d{4}-\d{2}-\d{2}$/.test(inst)) start = Math.max(start, dayStartMs(inst));
-      const days = end > start ? Math.ceil((end - start) / DAY) : 0;
-      const dd = Object.keys(downDays(u.id, start, end)).length;
-      let downMs = 0, n = 0, fixed = 0, fixMs = 0;
-      const causes = {};
-      st.repairs.forEach(r => {
-        if (r.equipmentId !== u.id) return;
-        const sp = spanOf(r, end);
-        const a = Math.max(sp[0], start), b = Math.min(sp[1], end);
-        if (b > a) downMs += b - a;
-        if (r.reportedAtMs >= start && r.reportedAtMs < end) {
-          n++;
-          const c = CAUSE[r.causeCategory] ? r.causeCategory : "other";
-          causes[c] = (causes[c] || 0) + 1;
-          if (r.resolvedAtMs) { fixed++; fixMs += r.resolvedAtMs - r.reportedAtMs; }
-        }
-      });
-      return { unit: u, days, downDays: dd, avail: days ? (days - dd) / days : null, downMs, count: n,
-        mttrMs: fixed ? fixMs / fixed : null, causes };
-    });
+    return rangeStats(dayStartMs(year + "-01-01"), Math.min(dayStartMs((year + 1) + "-01-01"), now));
   }
   function repairYears() {
     const ys = {};
@@ -422,6 +417,88 @@
     return { level: "safe", margin, wet, cold, text: head };
   }
 
+  /* ─────── 환경센서 24시간 (v1.28) ───────
+     한 줄 = [기기, 시각(ms), 온도, 습도, CO₂, PM2.5, PM10, TVOC, HCHO] — 이 브라우저(localStorage)에 24시간치만.
+     다시 읽을 때는 마지막 수신 시각 이후만 요청한다(Firestore 문서 읽기 절약). */
+  const ENV_FIELDS = ["deviceId", "timestamp", "online", "temp", "humidity", "co2", "pm25", "pm10", "tvoc", "hcho"];
+  const ENV_KEYS = ["temp", "humidity", "co2", "pm25", "pm10", "tvoc", "hcho"];
+  const numOrNull = (v) => typeof v === "number" && isFinite(v) ? v : null;
+  function envRead() {
+    try {
+      const j = JSON.parse(localStorage.getItem(ENV_CACHE) || "null");
+      return j && j.v === 1 && Array.isArray(j.rows) ? j.rows.filter(r => Array.isArray(r) && r.length === 9 && typeof r[1] === "number") : [];
+    } catch (e) { return []; }
+  }
+  function envWrite(rows) {
+    try { localStorage.setItem(ENV_CACHE, JSON.stringify({ v: 1, rows })); } catch (e) { /* 저장 불가(용량·차단) — 이번 화면만 */ }
+  }
+  const envObj = (r) => ({ d: r[0], t: r[1], temp: r[2], humidity: r[3], co2: r[4], pm25: r[5], pm10: r[6], tvoc: r[7], hcho: r[8] });
+  async function fetchEnv() {
+    const now = Date.now();
+    const from = now - ENV_HOURS * 3600000;
+    const seen = {};
+    const rows = (st.env.length ? st.env.map(o => [o.d, o.t].concat(ENV_KEYS.map(k => o[k]))) : envRead()).filter(r => r[1] >= from);
+    rows.forEach(r => { seen[r[0] + "|" + r[1]] = 1; });
+    let since = rows.reduce((m, r) => Math.max(m, r[1]), from);
+    for (let page = 0; page < 3; page++) {
+      const got = await fsQuery({ select: sel(ENV_FIELDS), from: [{ collectionId: "sensorLogs" }],
+        where: { fieldFilter: { field: { fieldPath: "timestamp" }, op: "GREATER_THAN", value: { timestampValue: new Date(since).toISOString() } } },
+        orderBy: [{ field: { fieldPath: "timestamp" }, direction: "ASCENDING" }], limit: ENV_PAGE });
+      got.forEach(g => {
+        const t = g.timestamp ? Date.parse(g.timestamp) : 0;
+        if (!t || t < from || g.online === false) return;
+        const d = g.deviceId || DEVICE_ORDER[0];
+        if (seen[d + "|" + t]) return;
+        seen[d + "|" + t] = 1;
+        rows.push([d, t].concat(ENV_KEYS.map(k => numOrNull(g[k]))));
+      });
+      const last = got.reduce((m, g) => Math.max(m, g.timestamp ? Date.parse(g.timestamp) || 0 : 0), 0);
+      if (got.length < ENV_PAGE || !(last > since)) break;
+      since = last;
+    }
+    rows.sort((a, b) => a[1] - b[1]);
+    envWrite(rows);
+    st.env = rows.map(envObj);
+    st.errs.env = null;
+  }
+  /* 기기별 24시간 시계열 { id: [{ t, temp, humidity, dewPoint, … }] } */
+  function envSeries() {
+    const out = {};
+    st.env.forEach(o => {
+      (out[o.d] = out[o.d] || []).push(Object.assign({}, o, { dewPoint: dewPoint(o.temp, o.humidity) }));
+    });
+    return out;
+  }
+
+  /* ─────── 기간 가동 통계 (v1.28) — yearStats 와 같은 산식을 임의 기간 [from, to) 로 ─────── */
+  function rangeStats(from, to) {
+    to = Math.min(to || Date.now(), Date.now());
+    return units().map(u => {
+      let start = from;
+      const led = u.ledger;
+      const inst = led && (led.installed || led.mfgDate);
+      if (inst && /^\d{4}-\d{2}-\d{2}$/.test(inst)) start = Math.max(start, dayStartMs(inst));
+      const days = to > start ? Math.ceil((to - start) / DAY) : 0;
+      const dd = Object.keys(downDays(u.id, start, to)).length;
+      let downMs = 0, n = 0, fixed = 0, fixMs = 0;
+      const causes = {};
+      st.repairs.forEach(r => {
+        if (r.equipmentId !== u.id) return;
+        const sp = spanOf(r, to);
+        const a = Math.max(sp[0], start), b = Math.min(sp[1], to);
+        if (b > a) downMs += b - a;
+        if (r.reportedAtMs >= start && r.reportedAtMs < to) {
+          n++;
+          const c = CAUSE[r.causeCategory] ? r.causeCategory : "other";
+          causes[c] = (causes[c] || 0) + 1;
+          if (r.resolvedAtMs) { fixed++; fixMs += r.resolvedAtMs - r.reportedAtMs; }
+        }
+      });
+      return { unit: u, from: start, days, downDays: dd, avail: days ? (days - dd) / days : null, downMs, count: n,
+        mttrMs: fixed ? fixMs / fixed : null, fixed, fixMs, causes };
+    });
+  }
+
   /* 상세 모달용 — 고장 1건의 사진(data URL) */
   async function repairPhotos(id) {
     const d = await fsGet("repairLogs/" + encodeURIComponent(id), ["reportPhotos", "repairPhotos"]);
@@ -430,12 +507,12 @@
   }
 
   window.SemisCares = {
-    CARES_URL, load, onLoad, fresh, has, allInspections, get state() { return st; },
+    CARES_URL, load, onLoad, fresh, has, failed, allInspections, get state() { return st; },
     units, unitById, stateLabel, stateTone, repairStatus, RS_META, CAUSE, INS_TYPE, KIND_LABEL, kindOf, laneOf, normSN, ledgerBySN,
-    inspIndex, badCount, cautionCount, yearStats, repairYears, downDays, spanOf,
-    DEVICES, DEVICE_ORDER, METRICS, thFor, dewPoint, exceed, isOffline, sensorRows, condensation, repairPhotos,
+    inspIndex, badCount, cautionCount, yearStats, rangeStats, repairYears, downDays, spanOf,
+    DEVICES, DEVICE_ORDER, METRICS, thFor, dewPoint, exceed, isOffline, sensorRows, condensation, repairPhotos, envSeries, ENV_CACHE,
     dayKey, todayKey, dayStartMs, lastDays, hm, mdk, fmtMs, fmtDur,
-    _setFetch(fn) { fetchImpl = fn; }, _reset() { st.ts = 0; st.err = null; st.loading = false; st.parts = { live: 0, repairs: 0, history: 0 }; st.errs = {};
-      st.equips = []; st.repairs = []; st.inspections = []; st.todayIns = []; st.periodic = []; st.sensors = {}; st.thresholds = {}; apiKey = null; }
+    _setFetch(fn) { fetchImpl = fn; }, _reset() { st.ts = 0; st.err = null; st.loading = false; st.parts = { live: 0, repairs: 0, history: 0, env: 0 }; st.errs = {};
+      st.equips = []; st.repairs = []; st.inspections = []; st.todayIns = []; st.periodic = []; st.sensors = {}; st.thresholds = {}; st.env = []; apiKey = null; }
   };
 })();
