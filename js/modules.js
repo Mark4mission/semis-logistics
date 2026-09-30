@@ -7,7 +7,7 @@
 (() => {
   const { $, $$, esc, fmtDate, toast, openModal, closeModal, confirmModal } = SeMIS;
   const D = () => SeMIS.data;
-  const todayISO = () => new Date().toISOString().slice(0, 10);
+  const todayISO = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };   // v1.29: 현지 날짜(UTC로 자르면 오전 9시 전엔 어제가 됨)
   const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
   /* ════════════════ 대시보드 (v1.8 — Terminal Calm) ════════════════
@@ -184,6 +184,76 @@
       }));
   }
 
+  /* ═════ v1.29 '오늘' — 지금 챙길 것만 한 장에(행을 누르면 그 화면) ═════
+     순찰(오늘 상태 · 확인 대기) · 오늘 일정(완료 제외) · 인천 접근(운항 현황 자료가 오면 채움) · 회의 결정 미완료 */
+  const menuOk = (mod) => {
+    const mn = (D().menus || []).find(m => m.type === "module" && m.module === mod);
+    return !!(mn && SeMIS.navVisible(mn) && SeMIS.hasModule(mod));
+  };
+  function todayRow(o) {
+    return `<button type="button" class="td-row${o.tone ? " tone-" + o.tone : ""}" data-go="${esc(o.go)}"${o.id ? ` id="${esc(o.id)}"` : ""}>
+      <span class="td-ico t-${esc(o.color || "teal")}" aria-hidden="true">${ico(o.icon, 19)}</span>
+      <span class="td-body"><b class="td-t">${esc(o.title)}</b><span class="td-s">${o.sub || ""}</span></span>
+      ${o.val != null && o.val !== "" ? `<span class="td-v">${o.val}</span>` : ""}
+      <span class="td-chev" aria-hidden="true">${ico("chevron", 16)}</span>
+    </button>`;
+  }
+  function todayHTML(upcoming, actions, late) {
+    const t = todayISO();
+    const rows = [];
+    if (window.SemisPatrol && menuOk("daily-safety")) {
+      const P = window.SemisPatrol;
+      let st = "todo", r = null, wait = 0;
+      try { r = P.dayOf(t); st = P.stOf(t); wait = P.pending(t).wait.filter(d => d !== t).length; } catch (e) { /* 순찰 자료 없음 */ }
+      const LBL = { done: ["확인 완료", "green"], wait: ["확인 대기", "amber"], prog: ["작성 중", "blue"], todo: ["미작성", "gray"], off: ["휴무 · 당직", "gray"] };
+      const slot = (k, nm) => { const x = r && r[k]; return x && x.name ? nm + " " + esc(x.name) + (x.t ? " " + esc(x.t) : "") : nm + " —"; };
+      const sub = st === "off" ? "당직 " + esc((r && r.off && r.off.name) || "—") : slot("am", "오전") + " · " + slot("pm", "오후");
+      const lb = LBL[st] || LBL.todo;
+      rows.push(todayRow({ go: "daily-safety", icon: "patrol", color: "teal", title: "순찰일지",
+        sub: sub + (wait ? ` · <em>확인 대기 ${wait}일</em>` : ""), val: `<span class="badge badge-${lb[1]}">${esc(lb[0])}</span>` }));
+    }
+    if (menuOk("schedule")) {
+      const tod = upcoming.filter(s => !s.done && String(s.start) <= t && String(s.end || s.start) >= t);
+      rows.push(todayRow({ go: "schedule", icon: "calendar", color: "blue", title: "오늘 일정",
+        sub: tod.length ? tod.slice(0, 2).map(s => esc(s.title)).join(" · ") + (tod.length > 2 ? " 외 " + (tod.length - 2) : "") : "예정 없음",
+        val: `<b class="mono">${tod.length}</b>` }));
+    }
+    if (fltVisible()) rows.push(todayRow({ go: "flight", id: "td-flt", icon: "plane", color: "amber", title: "인천 접근",
+      sub: "불러오는 중", val: '<b class="mono">·</b>' }));
+    if (actions.length) rows.push(todayRow({ go: "minutes", icon: "notes", color: late ? "rose" : "slate", title: "회의 결정사항",
+      sub: "미완료 " + actions.length + (late ? " · <em>기한 경과 " + late + "</em>" : ""), val: `<b class="mono">${actions.length}</b>`, tone: late ? "bad" : "" }));
+    if (!rows.length) return "";
+    const d = new Date();
+    return `<section class="today-card" aria-label="오늘">
+      <div class="td-head"><h2>오늘</h2><span class="dc-meta mono">${esc(md(t))} ${WEEK[d.getDay()]}</span></div>
+      <div class="td-list">${rows.join("")}</div>
+    </section>`;
+  }
+  /* 인천 접근 행 — 운항 현황 자료가 도착하면 채운다 */
+  function paintTodayFlight() {
+    if (typeof document === "undefined" || !document) return;
+    const el = document.getElementById("td-flt");
+    const FL = window.SemisFlight, FC = window.SemisFlightCore;
+    if (!el || !FL || !FC) return;
+    let md0 = null;
+    try { md0 = FL.model(); } catch (e) { return; }
+    const sub = el.querySelector(".td-s"), val = el.querySelector(".td-v");
+    if (FL.state && FL.state.err && !(FL.state.ac || []).length) { sub.textContent = "위치 서버 연결 안 됨"; val.innerHTML = '<b class="mono">-</b>'; return; }
+    const a = md0.appr;
+    if (a.length) {
+      const f = a[0];
+      sub.textContent = (f.fno || f.f.reg) + " " + FC.kstHM(f.st.eta) + " 도착 예정" + (a.length > 1 ? " 외 " + (a.length - 1) : "");
+    } else {
+      const day0 = FC.kstDayStart(md0.now);
+      const ev = FL.state && FL.state.events;
+      const arr = ev ? FC.eventsOf(ev, { kind: "arr", apt: FC.HOME, since: day0 }).length : null;
+      const dep = ev ? FC.eventsOf(ev, { kind: "dep", apt: FC.HOME, since: day0 }).length : null;
+      sub.textContent = "접근 중 없음" + (arr != null ? " · 오늘 도착 " + arr + " · 출발 " + dep : "");
+    }
+    val.innerHTML = '<b class="mono">' + a.length + "</b>";
+    el.classList.toggle("tone-warn", a.length > 0);
+  }
+
   SeMIS.registerModule("dashboard", {
     title: "대시보드",
     render(root) {
@@ -192,8 +262,9 @@
       const rank = SeMIS.roleRank();
       const notices = d.notices.slice().sort((a, b) =>
         (b.pinned - a.pinned) || String(b.created).localeCompare(String(a.created)));
-      const upcoming = upcomingList();
-      const wk = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+      const upcomingAll = upcomingList();
+      const upcoming = upcomingAll.filter(s => !s.done);   // v1.29: 끝낸 일정은 빼고
+      const wk = (() => { const d = new Date(Date.now() + 7 * 86400000); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); })();
       const soon = upcoming.filter(s => String(s.start) <= wk).length;
       const upShow = upcoming.slice(0, 4);
       const actions = rank >= 2 ? openActions() : [];
@@ -241,17 +312,19 @@
         </section>` : "";
       const build = cardVis("build") ? buildStatus() : [];
       const bLive = build.reduce((n, r) => n + r.live, 0), bTot = build.reduce((n, r) => n + r.total, 0);
-      const buildCol = build.length ? `<section class="sheet-col" aria-label="모듈 구축 현황">
-          <div class="dc-head"><h2>모듈 구축 현황</h2><span class="spacer"></span><span class="dc-meta mono"><b>${bLive}</b> / ${bTot}</span></div>
+      /* v1.29: 개발 진행 현황은 업무 정보가 아니므로 맨 아래 접힌 줄로 */
+      const buildCol = build.length ? `<details class="dash-build" aria-label="모듈 구축 현황">
+          <summary><span>모듈 구축 현황</span><span class="dc-meta mono"><b>${bLive}</b> / ${bTot}</span></summary>
           <div class="build-list" id="dash-build">${build.map(r => `
             <button type="button" class="build-row" ${r.id ? `data-dash-hub="${esc(r.id)}"` : ""}>
               <span class="br-l">${esc(r.label)}</span>
               <span class="br-bar"><i style="width:${r.total ? Math.round(r.live / r.total * 100) : 0}%"></i></span>
               <span class="br-n mono">${r.live}/${r.total}</span>
             </button>`).join("")}</div>
-        </section>` : "";
+        </details>` : "";
 
       const guest = rank < 2;
+      const todayCard = guest ? "" : todayHTML(upcoming, actions, late);
       root.innerHTML = `
         <div class="page-head">
           <div class="page-title">대시보드</div>
@@ -259,16 +332,22 @@
           <span class="spacer"></span>
           ${acts ? `<div class="head-acts">${acts}</div>` : ""}
         </div>
-        ${cardVis("status") ? `<div class="dash-top${guest ? " guest" : ""}">${ticketHTML(canWrite)}</div>` : ""}
+        ${cardVis("status") || todayCard ? `<div class="dash-top${guest ? " guest" : ""}${todayCard ? " has-today" : ""}">${cardVis("status") ? ticketHTML(canWrite) : ""}${todayCard}</div>` : ""}
         ${!guest && cardVis("threat") && threatVisible() ? SemisThreat.dashHTML() : ""}
         ${!guest && cardVis("serp") && serpVisible() ? SemisSerp.dashHTML() : ""}
         ${!guest && cardVis("screen") && window.SemisScreen && scrVisible() ? SemisScreen.dashHTML() : ""}
         ${!guest && cardVis("audit") && audVisible() ? SemisAudit.dashHTML() : ""}
         ${cardVis("flight") && fltVisible() ? SemisFlight.dashHTML() : ""}
         ${guest ? `<section class="dash-card">${noticeCol}</section>`
-          : `<div class="dash-sheet-wrap"><div class="dash-sheet cols-${[upcomingCard, noticeCol, actionCol, buildCol].filter(Boolean).length}">${upcomingCard}${noticeCol}${actionCol}${buildCol}</div></div>`}`;
+          : `<div class="dash-sheet-wrap"><div class="dash-sheet cols-${[upcomingCard, noticeCol, actionCol].filter(Boolean).length}">${upcomingCard}${noticeCol}${actionCol}</div></div>${buildCol}`}`;
       if (window.SemisHero3D && $("#dash-3d")) SemisHero3D.mount($("#dash-3d"));
       if (window.SemisFlight && $("#dash-flt")) SemisFlight.mountDash();
+      if (window.SemisFlight && $("#td-flt")) {
+        const st0 = SemisFlight.state;
+        if (st0 && st0.ts) paintTodayFlight();
+        SemisFlight.load({ events: true }).then(paintTodayFlight).catch(() => {});
+      }
+      $$(".today-card [data-go]", root).forEach(el => el.onclick = () => SeMIS.navigate(el.dataset.go));
       if (window.SemisScreen && $("#dash-scr")) SemisScreen.mountDash();
       if (window.SemisAudit && $("#dash-aud")) SemisAudit.mountDash();
       if (window.SemisSerp && $("#dash-serp")) SemisSerp.mountDash();

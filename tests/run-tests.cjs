@@ -636,7 +636,8 @@ function makeServer(opts = {}) {
     });
     t("D03 무재해 기준일 설정 → D+ 계산", () => {
       q(e, "#btn-edit-zero").click();
-      const since = new Date(Date.now() - 10 * 86400000).toISOString().slice(0, 10);
+      const d10 = new Date(Date.now() - 10 * 86400000);   // v1.29: 오늘 = 현지 날짜
+      const since = d10.getFullYear() + "-" + String(d10.getMonth() + 1).padStart(2, "0") + "-" + String(d10.getDate()).padStart(2, "0");
       q(e, "#f-since").value = since; q(e, "#f-znote").value = "테스트";
       q(e, "#f-save").click();
       eq(e.S.data.safetyBoard.since, since);
@@ -1224,8 +1225,8 @@ function makeServer(opts = {}) {
       ok(pins.some(x => x.includes("비상연락망")), "연락망");
       ok(pins.some(x => x.includes("SeMIS v2")), "링크");
     });
-    t("H10 모바일 하단 탭: 권한에 맞춰 표시 · 규정 탭은 허브 첫 운영 모듈 · 전체 → 시트", () => {
-      eq(qa(e, "#tabbar .tab-btn[data-route]").map(b => b.dataset.route).join(","), "dashboard,schedule,contacts,reg-sec");
+    t("H10 모바일 하단 탭(v1.29 홈 · 일정 · 순찰 · 운항): 권한에 맞춰 표시 · 전체 → 시트", () => {
+      eq(qa(e, "#tabbar .tab-btn[data-route]").map(b => b.dataset.route).join(","), "dashboard,schedule,daily-safety,flight");
       ok(q(e, "#tabbar .tab-all"));
       q(e, "#tabbar .tab-all").click();
       ok(q(e, "#app").classList.contains("sheet-open"));
@@ -1234,7 +1235,7 @@ function makeServer(opts = {}) {
       ok(!q(e, "#app").classList.contains("sheet-open"), "이동 시 닫힘");
       ok(q(e, '#tabbar [data-route="schedule"]').classList.contains("active"));
       const e2 = makeEnv(); loginAs(e2, "user");
-      eq(qa(e2, "#tabbar .tab-btn[data-route]").map(b => b.dataset.route).join(","), "dashboard", "일반사용자");
+      eq(qa(e2, "#tabbar .tab-btn[data-route]").map(b => b.dataset.route).join(","), "dashboard,flight", "일반사용자(운항 현황은 전체 공개)");
     });
     t("H11 패널 접기(데스크톱) · 태블릿 떠 있는 패널", () => {
       Object.defineProperty(e.w, "innerWidth", { value: 1440, configurable: true });
@@ -2171,12 +2172,14 @@ function makeServer(opts = {}) {
       go(e, "dashboard"); ok(!q(e, "#view").hasAttribute("data-hub"));
       go(e, "vault"); ok(!q(e, "#view").hasAttribute("data-hub"));
     });
-    t("V08 대시보드: 화물 태그 카드에 3D 자리 · jsdom(WebGL 없음)은 사진 대체 · 하단 4칸", () => {
+    t("V08 대시보드: 화물 태그 카드에 3D 자리 · jsdom(WebGL 없음)은 사진 대체 · 하단 3칸(v1.29 모듈 구축 현황은 맨 아래 접힌 줄)", () => {
       go(e, "dashboard");
       const st = q(e, ".ticket .tk-main #dash-3d.tk-stage");
       ok(st, "3D 자리"); ok(st.classList.contains("no-print"));
       ok(st.classList.contains("h3d-fallback"), "WebGL 없으면 사진");
-      ok(q(e, ".dash-sheet.cols-4 #upcoming-box"), "다가오는 일정은 하단 시트 첫 칸");
+      ok(q(e, ".dash-sheet.cols-3 #upcoming-box"), "다가오는 일정은 하단 시트 첫 칸");
+      ok(q(e, "details.dash-build #dash-build"), "모듈 구축 현황은 접힌 줄");
+      ok(q(e, ".dash-top.has-today > .ticket + .today-card"), "3D 카드 옆 '오늘'");
       eq(e.errors.length, 0, e.errors.join(" | "));
     });
     t("V09 자산: 사진 13장(webp) · three.js 로컬 사본 · CSS가 참조하는 이미지가 모두 존재", () => {
@@ -2230,7 +2233,7 @@ function makeServer(opts = {}) {
     t("V15 (v1.9.1) 대시보드 하단 시트: 칸 수를 시트 폭(container query)으로 결정 · 머리글 줄바꿈 없음", () => {
       const css = read("css/main.css");
       ok(/\.dash-sheet-wrap \{ container-type: inline-size; \}/.test(css), "쿼리 컨테이너는 시트 바깥 wrap");
-      go(e, "dashboard"); ok(q(e, ".dash-sheet-wrap > .dash-sheet.cols-4"), "시트를 감싼 컨테이너");
+      go(e, "dashboard"); ok(q(e, ".dash-sheet-wrap > .dash-sheet.cols-3"), "시트를 감싼 컨테이너");
       ok(/@container \(min-width: 1040px\)[\s\S]*\.dash-sheet\.cols-4 \{ grid-template-columns: 1\.35fr 1fr 1fr 1fr; \}/.test(css));
       ok(/\.dc-head h2, \.dc-head \.dc-meta, \.dc-head \.link-btn \{ white-space: nowrap; \}/.test(css));
     });
@@ -3131,7 +3134,7 @@ function makeServer(opts = {}) {
       ok(wk[11].etdN[1] > 0 && wk[11].etdN[0] >= 3, "IONAB 5호기 이틀에 한 번");
       ok(wk[0].xray == null && wk[0].etd == null, "점검 기록이 시작되기 전 주는 비움");
       const i28 = SD.inspect28();
-      eq(i28.n, 7 + 27 + 13); eq(i28.hours[6], 40, "06시대"); eq(i28.who[0].name, "최정희"); eq(i28.who[0].n, 40);
+      eq(i28.n, 7 + 27 + 13); eq(i28.hours[6], 40 + INSP.filter(r => K.hm(r.inspectedAtMs).slice(0, 2) === "06").length, "06시대(오늘 점검이 06시대에 들면 더함)"); eq(i28.who[0].name, "최정희"); eq(i28.who[0].n, 40);
       const an = SD.anomalies(5);
       eq(an.bad, 1); eq(an.total, 2); eq(an.list[0].c.itemName, "동작", "최근 순");
       const r28 = SD.rate28();
@@ -6277,6 +6280,114 @@ function makeServer(opts = {}) {
       ok(!q(e, "[data-pt-take-am]") && !q(e, ".page-head [data-pt-bulk]"), "user 기록 없음");
     });
     e.w.close();
+  }
+
+  /* ══════════ [CM] v1.29 화면 정돈 "Calm" — 모바일 우선 ══════════ */
+  {
+    const e = makeEnv();
+    loginAs(e, "admin");
+    const setW = (w) => Object.defineProperty(e.w, "innerWidth", { value: w, configurable: true });
+    const iso = (d) => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    const today = iso(new Date());
+    t("CM01 머리말 정돈: 주 버튼 하나만 두고 나머지는 ph-hide + 더보기(…) · PC에서도 표시만(숨김은 CSS가 모바일에서만)", () => {
+      setW(390); go(e, "schedule"); e.S.tidyView();
+      const head = q(e, "#view .page-head");
+      const main = q(e, "#cal-add");
+      ok(main && !main.classList.contains("ph-hide"), "주 버튼은 그대로");
+      ok(q(e, "#view .page-head [data-print-btn]").classList.contains("ph-hide"), "Print는 더보기로");
+      ok(head.querySelector(":scope > .ph-more.no-print"), "더보기 버튼");
+      e.S.tidyView(); eq(qa(e, "#view .page-head .ph-more").length, 1, "멱등");
+    });
+    t("CM02 더보기 → 액션 시트: 숨긴 버튼 목록 · 누르면 원래 버튼 동작(Print → 인쇄 머리말)", () => {
+      let printed = 0; e.w.print = () => { printed++; };
+      q(e, "#view .ph-more").click();
+      const items = qa(e, "#asheet .asheet-item").map(b => b.textContent.trim());
+      ok(items.indexOf("Print") >= 0, items.join(","));
+      eq(q(e, "#asheet .asheet-t").textContent, "안전보안 일정관리");
+      qa(e, "#asheet .asheet-item").find(b => b.textContent.trim() === "Print").click();
+      ok(q(e, "#view #print-head"), "원래 Print 버튼 동작(인쇄 머리말)");
+      ok(!q(e, "#asheet.on"), "시트 닫힘");
+    });
+    t("CM03 액션 시트 닫기(취소 · 배경 · Esc)", () => {
+      e.S.actionSheet([{ label: "가", run: () => {} }], { title: "t" });
+      ok(q(e, "#asheet"));
+      q(e, "#asheet .asheet-cancel").click();
+      ok(!q(e, "#asheet.on"), "닫힘 시작");
+    });
+    t("CM04 표 이름표: 머리글 → data-label · 제목 칸 data-role=title · 빈 칸 td-nil · 행 병합 표 제외", () => {
+      const box = e.w.document.createElement("div");
+      box.innerHTML = '<table class="tbl"><thead><tr><th>분류</th><th>회의일</th><th>제목</th><th>첨부</th><th></th></tr></thead><tbody>' +
+        '<tr><td>교육</td><td>2026-09-21</td><td><b>위기대응 정기교육 훈련</b></td><td>-</td><td><button>✏️</button></td></tr></tbody></table>';
+      ok(e.S.labelTable(box.firstChild));
+      const tds = box.querySelectorAll("tbody td");
+      eq(tds[0].getAttribute("data-label"), "분류"); eq(tds[2].getAttribute("data-role"), "title");
+      ok(tds[3].classList.contains("td-nil"), "빈 칸"); ok(tds[4].classList.contains("td-act"), "조작 칸");
+      box.innerHTML = '<table><thead><tr><th>a</th><th>b</th><th>c</th></tr></thead><tbody><tr><td rowspan="2">x</td><td>1</td><td>2</td></tr><tr><td>3</td><td>4</td></tr></tbody></table>';
+      ok(!e.S.labelTable(box.firstChild), "행 병합 표는 그대로");
+    });
+    t("CM05 일정관리 모바일: 월 달력(색 점) + 고른 날 목록 · 날짜 누르면 목록 교체 · 목록 보기 · PC는 기존 달력", () => {
+      e.S.data.schedules = [
+        { id: "cm1", title: "모바일 점검", start: today, end: today, allDay: true, color: "red" },
+        { id: "cm2", title: "모바일 회의", start: today, end: today, allDay: false, time: "14:00", color: "blue", done: true }];
+      setW(390); e.w.SemisCalendar.setAnchor(today); go(e, "schedule");
+      ok(q(e, ".calm-grid"), "월 달력"); ok(!q(e, ".cal-gridwrap"), "막대 달력 없음");
+      const cell = q(e, '.calm-day[data-mday="' + today + '"]');
+      ok(cell.classList.contains("today") && cell.classList.contains("sel"));
+      eq(cell.querySelectorAll(".calm-dots i").length, 1, "끝낸 일정은 점에서 뺌(남은 일정이 있으면)");
+      ok(q(e, ".calm-agenda").textContent.includes("모바일 점검"));
+      const other = qa(e, ".calm-day:not(.other)").find(b => b.dataset.mday !== today);
+      other.click();
+      eq(q(e, ".calm-agenda").dataset.day, other.dataset.mday, "고른 날");
+      q(e, '[data-mview="list"]').click();
+      ok(q(e, ".calm.is-list") && q(e, ".calm-lday"), "목록 보기");
+      q(e, '[data-mview="month"]').click();
+      setW(1024); go(e, "schedule"); ok(q(e, ".cal-gridwrap") && !q(e, ".calm"), "PC는 그대로");
+    });
+    t("CM06 대시보드 '오늘': 순찰 · 오늘 일정(끝낸 일정 제외) · 인천 접근 행 · 누르면 이동 · 일반 사용자는 없음", () => {
+      setW(1024); go(e, "dashboard");
+      const rows = qa(e, ".today-card .td-row").map(r => r.dataset.go);
+      ok(rows.indexOf("daily-safety") >= 0 && rows.indexOf("schedule") >= 0, rows.join(","));
+      const sc = qa(e, ".today-card .td-row").find(r => r.dataset.go === "schedule");
+      ok(sc.textContent.includes("모바일 점검") && !sc.textContent.includes("모바일 회의"), "끝낸 일정 제외");
+      ok(!q(e, "#upcoming-box").textContent.includes("모바일 회의"), "다가오는 일정도 끝낸 일정 제외");
+      sc.click(); eq(e.w.location.hash, "#/schedule");
+      const e2 = makeEnv(); loginAs(e2, "user"); go(e2, "dashboard");
+      ok(!q(e2, ".today-card"), "user 없음"); e2.w.close();
+    });
+    t("CM07 하단 탭 아이콘 · 모바일 CSS는 화면 한정(인쇄 폭이 max-width 조건에 걸리지 않게)", () => {
+      ok(q(e, '#tabbar [data-route="daily-safety"] svg') && q(e, '#tabbar [data-route="flight"] svg'));
+      const css = read("css/main.css"), k = css.indexOf('v1.29 "Calm"');
+      ok(k > 0);
+      const tail = css.slice(k);
+      ok(!/@media \(max-width: 767px\)/.test(tail), "v1.29 모바일 규칙은 screen 한정");
+      ok(/@media screen and \(max-width: 767px\)[\s\S]*table\.tbl-stack/.test(tail), "표 정돈 규칙");
+      ok(/#view\[data-hub\] \.page-head::before, #view\[data-hub\] \.page-head::after \{ display: none; \}/.test(tail), "모바일 사진 머리말 제거");
+    });
+    t("CM08 순찰일지 모바일: 점검 항목은 접어 두고(이상 없을 때) PC는 늘 펼침", () => {
+      setW(390); go(e, "daily-safety");
+      const fd = q(e, ".pt-chkfold");
+      if (fd) ok(!fd.open, "모바일 접힘");
+      setW(1024); go(e, "daily-safety");
+      const fd2 = q(e, ".pt-chkfold");
+      if (fd2) ok(fd2.open, "PC 펼침");
+    });
+    t("CM09 오늘 날짜는 현지 기준(UTC 자르기 금지) — 대시보드 · 보안등급 · 회의록", () => {
+      ["js/modules.js", "js/minutes.js"].forEach(f => ok(!/todayISO = \(\) => new Date\(\)\.toISOString\(\)\.slice\(0, 10\)|todayStr = \(\) => new Date\(\)\.toISOString\(\)\.slice\(0, 10\)/.test(read(f)), f));
+      ok(!/const todayStr = \(\) => new Date\(\)\.toISOString\(\)/.test(read("js/app.js")), "app.js");
+      eq(e.w.SemisDashFx && typeof e.w.SemisDashFx.zeroDays, "function");
+    });
+    t("CM10 허브 패널 바로가기: 5개까지 보이고 나머지는 '더 보기'", () => {
+      setW(1440);
+      const hub = e.S.homeHubId();
+      for (let i = 0; i < 7; i++) e.S.data.menus.push({ id: "cmlk" + i, type: "link", label: "링크" + i, url: "https://example.com/" + i, parent: hub, seq: 90 + i, vis: "all" });
+      e.S.renderNav();
+      const blk = q(e, '#nav-menu .hub[data-hub="' + hub + '"] .hub-links');
+      ok(blk && qa(e, '#nav-menu .hub[data-hub="' + hub + '"] .hub-links .lk-x').length >= 2);
+      const tg = blk.querySelector("[data-lk-all]");
+      tg.click(); ok(blk.classList.contains("all")); eq(tg.getAttribute("aria-expanded"), "true");
+      e.S.data.menus = e.S.data.menus.filter(m => !/^cmlk/.test(m.id)); e.S.renderNav();
+    });
+    go(e, "vault");   // 대시보드의 비동기 적재(CARES · 운항)가 닫힌 창을 건드리지 않게 창은 열어 둔다(끝에서 process.exit)
   }
 
   /* ══════════ [W] 릴리스 위생 ══════════ */

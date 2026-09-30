@@ -492,6 +492,9 @@
   let fAssignee = ui().calAssignee || "";
   let fHideDone = !!ui().calHideDone;
   let fullscreen = false; // 전체화면(넓게 보기) 모드 — 세션 내 임시 상태
+  /* v1.29 모바일(<768px): iOS 캘린더식 — 월 달력은 색 점, 고른 날의 일정은 아래 목록. 보기는 '월 · 목록' 둘 */
+  let mView = ui().calMView === "list" ? "list" : "month";
+  let mSel = "";
 
   // 전체화면: Esc 로 해제. 단, 모달(일정 등록/수정 등)이 열려 있으면 모달 닫기가 우선.
   // 캡처 단계에서 처리하여 app.js 의 모달 Esc 핸들러보다 먼저 판단.
@@ -1291,12 +1294,135 @@
   }
 
   /* ─────── 모듈 렌더 ─────── */
+  /* ─────── 모바일 달력 (v1.29) ─────── */
+  function mEvRow(e, dayIso, canWrite) {
+    if (!e.id && e.gcalId) {
+      return `<button type="button" class="calm-ev" data-gcal="${esc(e.gcalId)}" style="--evf:#1a73e8">
+        <span class="calm-bar" aria-hidden="true"></span>
+        <span class="calm-when">${e.allDay || !e.time ? "종일" : esc(e.time)}</span>
+        <span class="calm-body"><b>${esc(e.title)}</b><small>Google 캘린더</small></span></button>`;
+    }
+    const multi = (e.end || e.start) !== e.start;
+    const when = !e.allDay && e.time ? esc(e.time) + (e.timeEnd ? `<small>${esc(e.timeEnd)}</small>` : "") : (multi ? "기간" : "종일");
+    const sub = [multi ? md(e.start) + " – " + md(e.end) : "", e.assignee ? String(e.assignee) : ""].filter(Boolean).join(" · ");
+    return `<div class="calm-ev ev-${esc(pickColor(e.color))}${e.done ? " done" : ""}" data-ev="${esc(e.id)}" data-from="${esc(dayIso)}" data-occ="${esc(e.start)}" role="button" tabindex="0">
+      <span class="calm-bar" aria-hidden="true"></span>
+      <span class="calm-when">${when}</span>
+      <span class="calm-body"><b>${esc(e.title)}</b>${sub ? `<small>${esc(sub)}</small>` : ""}</span>
+      ${canWrite ? `<span class="calm-chk">${checkHTML(e, canWrite, e.start)}</span>` : (e.done ? '<span class="calm-chk"><span class="chip-check done">✓</span></span>' : "")}
+    </div>`;
+  }
+  const md = (iso) => { const d = fromISO(iso); return (d.getMonth() + 1) + "." + d.getDate(); };
+  const dayLabel = (iso) => { const d = fromISO(iso); return (d.getMonth() + 1) + "월 " + d.getDate() + "일 " + dowName(iso) + "요일"; };
+  function mMonthHTML(canWrite) {
+    const first = anchor.slice(0, 8) + "01";
+    const ym = anchor.slice(0, 7);
+    const today = todayISO();
+    if (!mSel || mSel.slice(0, 7) !== ym) mSel = today.slice(0, 7) === ym ? today : first;
+    const gs = startOfWeek(first);
+    const last = addDays(addDays(first, 32).slice(0, 8) + "01", -1);
+    const n = diffDays(gs, last) + 1;
+    const weeks = Math.ceil(n / 7);
+    let cells = "";
+    for (let i = 0; i < weeks * 7; i++) {
+      const iso = addDays(gs, i);
+      const other = iso.slice(0, 7) !== ym;
+      const evs = other ? [] : eventsOnDay(iso);
+      const open = evs.filter(e => !e.done);
+      const dots = (open.length ? open : evs).slice(0, 3).map(e => `<i class="${e.gcalId && !e.id ? "ev-gcal" : "ev-" + esc(pickColor(e.color))}"></i>`).join("");
+      const dw = fromISO(iso).getDay();
+      cells += `<button type="button" class="calm-day${other ? " other" : ""}${iso === today ? " today" : ""}${iso === mSel ? " sel" : ""}${dw === 0 ? " sun" : dw === 6 ? " sat" : ""}"
+        data-mday="${iso}"${other ? ' tabindex="-1" aria-hidden="true"' : ""} aria-label="${esc(dayLabel(iso))} 일정 ${evs.length}건">
+        <span class="calm-n">${fromISO(iso).getDate()}</span><span class="calm-dots">${dots}${evs.length > 3 ? "<em>+</em>" : ""}</span></button>`;
+    }
+    const evs = eventsOnDay(mSel);
+    return `<div class="calm-grid">${DOW.map((d, i) => `<span class="calm-dow${i === 0 ? " sun" : i === 6 ? " sat" : ""}">${d}</span>`).join("")}${cells}</div>
+      <div class="calm-agenda" data-day="${esc(mSel)}">
+        <div class="calm-agh"><b>${esc(dayLabel(mSel))}</b>${mSel === today ? '<span class="badge badge-blue">오늘</span>' : ""}<span class="spacer"></span>
+          ${canWrite ? `<button type="button" class="calm-add" data-madd="${esc(mSel)}" aria-label="이 날짜에 일정 등록">${SeMIS.icon("plus", 18)}</button>` : ""}</div>
+        ${evs.length ? evs.map(e => mEvRow(e, mSel, canWrite)).join("") : '<p class="calm-none">일정 없음</p>'}
+      </div>`;
+  }
+  function mListHTML(canWrite) {
+    const today = todayISO();
+    const from = anchor.slice(0, 7) === today.slice(0, 7) ? today : anchor.slice(0, 8) + "01";
+    let html = "", cnt = 0;
+    for (let i = 0; i < 62 && cnt < 80; i++) {
+      const iso = addDays(from, i);
+      const evs = eventsOnDay(iso);
+      if (!evs.length) continue;
+      cnt += evs.length;
+      html += `<div class="calm-agenda calm-lday" data-day="${iso}"><div class="calm-agh"><b>${esc(dayLabel(iso))}</b>${iso === today ? '<span class="badge badge-blue">오늘</span>' : ""}</div>
+        ${evs.map(e => mEvRow(e, iso, canWrite)).join("")}</div>`;
+    }
+    return html || '<p class="calm-none">앞으로 두 달 안에 일정이 없습니다.</p>';
+  }
+  function mobileHTML(canWrite, assignees) {
+    const a = fromISO(anchor);
+    return `<div class="calm${mView === "list" ? " is-list" : ""}">
+      <div class="calm-top">
+        <button type="button" class="icon-btn" id="calm-prev" aria-label="이전 달">${SeMIS.icon("chevl", 20)}</button>
+        <b class="calm-title" id="cal-title">${a.getFullYear()}년 ${a.getMonth() + 1}월</b>
+        <button type="button" class="icon-btn" id="calm-next" aria-label="다음 달">${SeMIS.icon("chevron", 20)}</button>
+        <span class="spacer"></span>
+        <button type="button" class="calm-today" id="cal-today">오늘</button>
+        <div class="seg calm-seg" role="tablist">
+          <button type="button" role="tab" class="${mView === "month" ? "on" : ""}" data-mview="month" aria-selected="${mView === "month"}">월</button>
+          <button type="button" role="tab" class="${mView === "list" ? "on" : ""}" data-mview="list" aria-selected="${mView === "list"}">목록</button>
+        </div>
+      </div>
+      <div class="calm-filter">
+        <button class="cal-fchip${!fAssignee ? " active" : ""}" data-assignee="">전체</button>
+        ${assignees.map(x => `<button class="cal-fchip${fAssignee === x ? " active" : ""}" data-assignee="${esc(x)}">${esc(x)}</button>`).join("")}
+        <button class="cal-fchip${fHideDone ? " active" : ""}" id="cal-hidedone">완료 숨기기</button>
+      </div>
+      <div id="cal-body">${mView === "list" ? mListHTML(canWrite) : mMonthHTML(canWrite)}</div>
+    </div>`;
+  }
+
+  function renderMobile(root, canWrite, assignees) {
+    root.innerHTML = `
+      <div class="page-head">
+        <div class="page-title">안전보안 일정관리</div>
+        <span class="spacer"></span>
+        ${canWrite ? '<button class="btn btn-primary" id="cal-add">+ 일정 등록</button>' : ""}
+      </div>
+      <div class="card cal-card cal-card-m">${mobileHTML(canWrite, assignees)}</div>`;
+    const body = $("#cal-body");
+    const go = (dir) => { const d = fromISO(anchor); d.setDate(1); d.setMonth(d.getMonth() + dir); anchor = toISO(d); mSel = ""; SeMIS.renderView(); };
+    $("#calm-prev").onclick = () => go(-1);
+    $("#calm-next").onclick = () => go(1);
+    $("#cal-today").onclick = () => { anchor = todayISO(); mSel = anchor; SeMIS.renderView(); };
+    $$("[data-mview]", root).forEach(b => b.onclick = () => { mView = b.dataset.mview; setUi({ calMView: mView }); SeMIS.renderView(); });
+    if (canWrite) $("#cal-add").onclick = () => eventForm(null, mView === "month" && mSel ? mSel : todayISO());
+    $$(".cal-fchip[data-assignee]", root).forEach(b => b.onclick = () => { setFilter(b.dataset.assignee, undefined); SeMIS.renderView(); });
+    $("#cal-hidedone").onclick = () => { setFilter(undefined, !fHideDone); SeMIS.renderView(); };
+    renderMobileWire(body, canWrite);
+    fetchGcal(false);
+  }
+  function renderMobileWire(body, canWrite) {
+    $$("[data-mday]", body).forEach(b => b.onclick = () => {
+      mSel = b.dataset.mday;
+      body.innerHTML = mMonthHTML(canWrite);      // 고른 날만 바꿔 다시 그림(스크롤 위치 유지)
+      renderMobileWire(body, canWrite);
+    });
+    $$("[data-madd]", body).forEach(b => b.onclick = () => eventForm(null, b.dataset.madd));
+    $$("[data-donetoggle]", body).forEach(el => el.onclick = (ev) => { ev.stopPropagation(); askDoneScope(el.dataset.donetoggle, el.dataset.occ); });
+    const open = (el) => canWrite ? eventForm(el.dataset.ev, null, el.dataset.occ) : eventDetail(el.dataset.ev, el.dataset.occ);
+    $$("[data-ev]", body).forEach(el => {
+      el.onclick = (ev) => { if (ev.target.closest("[data-donetoggle]")) return; open(el); };
+      el.onkeydown = (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); open(el); } };
+    });
+    $$("[data-gcal]", body).forEach(el => el.onclick = () => gcalDetail(el.dataset.gcal));
+  }
+
   SeMIS.registerModule("schedule", {
     title: "일정관리",
     render(root) {
       const canWrite = SeMIS.canEdit();
       autoRollIfAllowed();                                   // v2.37: 화면 진입 시 자동 연기/연장 보정
       const assignees = assigneeList();
+      if (SeMIS.isMobile && SeMIS.isMobile()) { renderMobile(root, canWrite, assignees); return; }
       root.innerHTML = `
         <div class="page-head">
           <div class="page-title">안전보안 일정관리</div>

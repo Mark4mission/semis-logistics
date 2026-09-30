@@ -1185,8 +1185,8 @@
           <span class="da-dd mono">${esc(ddayText(d.nx))}</span>
           <span class="da-t"><b>${esc(auditTitle(d.nx))}</b><small class="mono">${esc(range(d.nx))}${pr.total ? " · 준비 " + pr.done + "/" + pr.total : ""}</small></span>
           ${pr.total ? bar(pr.pct) : ""}</button>` : ""}
-        <button type="button" class="da-f${d.late ? " bad" : ""}" data-dau-f>
-          <span>미결 지적 <b class="mono">${d.open}</b></span><span>기한 경과 <b class="mono">${d.late}</b></span></button>
+        ${d.open || d.late || !d.nx ? `<button type="button" class="da-f${d.late ? " bad" : ""}" data-dau-f>
+          <span>미결 지적 <b class="mono">${d.open}</b></span><span>기한 경과 <b class="mono">${d.late}</b></span></button>` : ""}
       </div>
     </section>`;
   }

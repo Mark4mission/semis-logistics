@@ -429,6 +429,7 @@
     if (rt) rt.onclick = () => refresh(true);
   }
   function paintDash() {
+    if (typeof document === "undefined" || !document) return;   // 창이 닫힌 뒤 늦게 도착한 응답
     const s = C().state;
     [["dash-scr", "dscr", "env"], ["sd-scr", "sdscr", "ops"]].forEach(([id, pre, kind]) => {
       const box = document.getElementById(id);

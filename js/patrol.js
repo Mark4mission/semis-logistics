@@ -610,6 +610,7 @@
 
   /* ═════════ 화면 상태 ═════════ */
   let tab = "day", curDate = "", curMonth = "";
+  let chkOpen = false;   // v1.29 모바일: 점검 항목 목록 펼침(이상 항목이 있으면 늘 펼침)
   const TABS = [["day", "일지 작성"], ["month", "월별 일지"], ["people", "순찰자 · 서명"]];
   const selDate = () => { if (!isISO(curDate) || curDate > todayISO()) curDate = todayISO(); return curDate; };
   const selMonth = () => { if (!isYM(curMonth)) curMonth = selDate().slice(0, 7); return curMonth; };
@@ -678,11 +679,13 @@
       <div class="pt-ch"><h2 class="card-title">점검사항</h2>
         ${nItems ? `<span class="pt-chksum" data-ng="${ng.length ? 1 : 0}">${ng.length ? "이상 " + ng.length : "전 항목 이상 없음"}</span>` : ""}
         <span class="spacer"></span>${ng.length && w && !lock ? `<button type="button" class="btn btn-ghost btn-sm" id="pt-ngclear">모두 이상 없음</button>` : ""}</div>
+      ${nItems ? `<details class="pt-chkfold"${!(SeMIS.isMobile && SeMIS.isMobile()) || ng.length || chkOpen ? " open" : ""}>
+        <summary>${icon("chevdown", 15)}<span>항목 ${nItems}개 · 이상 있는 항목만 눌러 표시</span></summary>` : ""}
       ${nItems ? secs.map(s => s.items.length ? `<div class="pt-csg"><div class="pt-csg-h">${esc(s.name)}</div><ul class="pt-items">${s.items.map(it => {
           const on = ng.some(n => n.id === it.id);
           return `<li><button type="button" class="pt-item" data-ngt="${esc(it.id)}" aria-pressed="${on}" ${w && !lock ? "" : "disabled"}>
             <span class="pt-item-t">${esc(it.text)}</span><span class="pt-item-v">${on ? "이상" : "이상 없음"}</span></button></li>`;
-        }).join("")}</ul></div>` : "").join("")
+        }).join("")}</ul></div>` : "").join("") + "</details>"
         : ui.empty("점검사항이 없습니다.", SeMIS.canEdit() ? `<button type="button" class="btn btn-primary btn-sm" data-pt-cfg="1">${icon("sliders", 15)}<span>양식에서 넣기</span></button>` : "")}
     </section>`;
     return nav
@@ -960,6 +963,7 @@
     const iso = selDate();
     $$("[data-pttab]", root).forEach(b => b.onclick = () => { tab = b.dataset.pttab; paint(); });
     const pb = $("#pt-print", root); if (pb) pb.onclick = printMenu;
+    const fd = $(".pt-chkfold", root); if (fd) fd.addEventListener("toggle", () => { chkOpen = fd.open; });
     const cb = $("#pt-cfg", root); if (cb) cb.onclick = cfgForm;
     $$("[data-pt-cfg]", root).forEach(b => b.onclick = cfgForm);
     $$("[data-pt-bulk]", root).forEach(b => b.onclick = () => { const v = b.dataset.ptBulk; const k = v.indexOf("|"); if (k > 0) bulkConfirm(v.slice(0, k), v.slice(k + 1)); else bulkConfirm("", ""); });

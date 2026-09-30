@@ -441,8 +441,8 @@
         <td class="fo-fn"><span class="mono">${esc(st.since ? F.kstWhen(st.since, md.now) : "—")}</span><small>${esc([it.fno, st.since ? F.dur(md.now - st.since) + " 지상" : ""].filter(Boolean).join(" · "))}</small></td>
         <td class="fo-note">${ui.chip(gs.t, gs.tone)}</td></tr>`;
     }).join("");
-    const evTable = (list, empty, head) => list.length
-      ? `<table class="tbl fo-tbl"><thead><tr><th>시각</th><th>편명</th><th>${esc(head)}</th><th></th></tr></thead><tbody>${list.map(e => evRow(e, md)).join("")}</tbody></table>`
+    const evTable = (list, empty, head, key) => list.length
+      ? `<table class="tbl fo-tbl" data-fold="${key}"><thead><tr><th>시각</th><th>편명</th><th>${esc(head)}</th><th></th></tr></thead><tbody>${list.map(e => evRow(e, md)).join("")}</tbody></table>`
       : `<p class="fo-none">${esc(empty)}</p>`;
     return `<div class="fo-boards">
       <section class="card fo-board" aria-label="인천 입항">
@@ -450,14 +450,14 @@
         <div class="fo-sub"><h3>접근 중</h3><span class="mono">${md.appr.length}</span></div>
         ${apprListHTML(md)}
         <div class="fo-sub"><h3>오늘 도착</h3><span class="mono">${state.events ? arr.length : "-"}</span></div>
-        ${state.events ? evTable(arr, "오늘 도착 기록이 없습니다.", "출발지") : '<p class="fo-none">불러오는 중</p>'}
+        ${state.events ? evTable(arr, "오늘 도착 기록이 없습니다.", "출발지", "arr") : '<p class="fo-none">불러오는 중</p>'}
       </section>
       <section class="card fo-board" aria-label="인천 출항">
         <h2 class="card-title"><span class="fo-up">${icon("down", 18)}</span><span>인천 출항</span></h2>
         <div class="fo-sub"><h3>출항 대기 · 인천 지상</h3><span class="mono">${md.gndHome.length}</span></div>
-        ${waitRows ? `<table class="tbl fo-tbl"><thead><tr><th>기체</th><th>인천 도착</th><th>상태</th></tr></thead><tbody>${waitRows}</tbody></table>` : '<p class="fo-none">인천에 서 있는 항공기가 없습니다.</p>'}
+        ${waitRows ? `<table class="tbl fo-tbl" data-fold="wait"><thead><tr><th>기체</th><th>인천 도착</th><th>상태</th></tr></thead><tbody>${waitRows}</tbody></table>` : '<p class="fo-none">인천에 서 있는 항공기가 없습니다.</p>'}
         <div class="fo-sub"><h3>오늘 출발</h3><span class="mono">${state.events ? dep.length : "-"}</span></div>
-        ${state.events ? evTable(dep, "오늘 출발 기록이 없습니다.", "행선") : '<p class="fo-none">불러오는 중</p>'}
+        ${state.events ? evTable(dep, "오늘 출발 기록이 없습니다.", "행선", "dep") : '<p class="fo-none">불러오는 중</p>'}
       </section>
     </div>`;
   }
@@ -466,7 +466,7 @@
     const list = md.items.slice().sort((a, b) => (order[a.st.code] - order[b.st.code]) || a.f.reg.localeCompare(b.f.reg));
     return `<section class="card" aria-label="기체 현황">
       <h2 class="card-title">${icon("grid", 18)}<span>기체 현황</span><span class="spacer"></span><span class="fo-cnt mono">${md.items.length}대</span></h2>
-      <div class="table-wrap"><table class="tbl fo-fleet">
+      <div class="table-wrap"><table class="tbl fo-fleet" data-fold="fleet">
         <thead><tr><th>기체</th><th>상태</th><th>편명</th><th>위치</th><th>고도 · 속도</th><th>출발</th><th>수신</th></tr></thead>
         <tbody>${list.map(it => {
           const st = it.st, r = it.row || {};
@@ -486,7 +486,7 @@
     const list = F.eventsOf(state.events, { since: Date.now() - 48 * 3600000 });
     return `<section class="card" aria-label="입출항 기록">
       <h2 class="card-title">${icon("clipboard", 18)}<span>입출항 기록</span><span class="spacer"></span><span class="fo-cnt">최근 48시간</span></h2>
-      ${!state.events ? '<p class="fo-none">불러오는 중</p>' : list.length ? `<div class="table-wrap"><table class="tbl fo-log">
+      ${!state.events ? '<p class="fo-none">불러오는 중</p>' : list.length ? `<div class="table-wrap"><table class="tbl fo-log" data-fold="log">
         <thead><tr><th>일시</th><th>구분</th><th>공항</th><th>편명</th><th>기체</th><th></th></tr></thead>
         <tbody>${list.map(e => {
           const t = Date.parse(e.at);
@@ -499,6 +499,28 @@
         }).join("")}</tbody></table></div>` : '<p class="fo-none">최근 48시간 입출항 기록이 없습니다.</p>'}
     </section>`;
   }
+  /* v1.29 모바일: 긴 목록은 앞의 몇 줄만 — '더 보기'로 펼친 상태는 1분 갱신 뒤에도 유지 */
+  const unfold = {};
+  const FOLD_N = { arr: 4, dep: 4, wait: 4, fleet: 5, log: 5 };
+  function foldLists(root) {
+    const mob = SeMIS.isMobile && SeMIS.isMobile();
+    $$("table[data-fold]", root).forEach(t => {
+      const key = t.dataset.fold, n = FOLD_N[key] || 5;
+      const rows = t.tBodies[0] ? t.tBodies[0].rows.length : 0;
+      const host = t.closest(".table-wrap") || t;
+      const old = host.nextElementSibling && host.nextElementSibling.classList.contains("fo-more") ? host.nextElementSibling : null;
+      if (old) old.remove();
+      const fold = mob && rows > n && !unfold[key];
+      t.classList.toggle("fo-folded", fold);
+      if (t.tBodies[0]) Array.from(t.tBodies[0].rows).forEach((tr, i) => tr.classList.toggle("fo-x", i >= n));
+      if (!mob || rows <= n) return;
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "fo-more";
+      b.textContent = fold ? (rows - n) + "건 더 보기" : "접기";
+      b.onclick = () => { unfold[key] = !unfold[key]; foldLists(root); };
+      host.parentNode.insertBefore(b, host.nextSibling);
+    });
+  }
   function paintPage() {
     const root = document.getElementById("fo-page");
     if (!root) return;
@@ -510,6 +532,7 @@
     $("#fo-fleetbox", root).innerHTML = fleetHTML(md);
     $("#fo-logbox", root).innerHTML = logHTML();
     wireCommon(root, "full");
+    foldLists(root);
     $$("[data-fo-row]", root).forEach(tr => tr.onclick = () => {
       const mp = document.getElementById("fo-map");
       if (mp && mp.scrollIntoView) mp.scrollIntoView({ behavior: "smooth", block: "center" });

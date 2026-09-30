@@ -135,7 +135,7 @@
   }
 
   const nl2br = (s) => esc(String(s || "")).replace(/\n/g, "<br>");
-  const todayStr = () => new Date().toISOString().slice(0, 10);
+  const todayStr = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
 
   /* 리치 텍스트 — 공지 에디터 인프라 재사용 (council과 동일 규약) */
   const sanitize = (h) => (window.SemisNotice ? window.SemisNotice.sanitizeHtml(h) : esc(h));
@@ -358,7 +358,7 @@
             ? `${att}명<div class="mn-signpill${signed && signed === att ? " ok" : (signed ? " part" : "")}">✍ ${signed}/${att}</div>`
             : '<span style="color:var(--text-3)">-</span>'}</td>
           <td>${canWrite()
-            ? `<button class="btn btn-ghost btn-sm mn-signbtn" data-mn-sign="${esc(x.id)}" title="QR 서명 화면 띄우기">✍️ QR</button>`
+            ? `<button class="btn btn-ghost btn-sm mn-signbtn" data-mn-sign="${esc(x.id)}" title="QR 서명 화면 띄우기">${SeMIS.icon("edit", 14)}<span>QR</span></button>`
             : "-"}</td>
           <td style="font-size:.82rem">${dec.length
             ? `${dec.length}건${openN ? `<div style="font-size:.72rem;color:var(--warning)">미완 ${openN}</div>` : '<div style="font-size:.72rem;color:var(--success)">완료</div>'}`
@@ -522,7 +522,7 @@
         <div class="page-head">
           <div class="page-title">회의록 게시판</div>
           <span class="spacer"></span>
-          ${canManageFolders() ? '<button class="btn btn-ghost" id="mn-folders">🗂 폴더 관리</button>' : ""}
+          ${canManageFolders() ? '<button class="btn btn-ghost" id="mn-folders">' + SeMIS.icon("folder", 16) + '<span>폴더 관리</span></button>' : ""}
           ${canWrite() ? '<button class="btn btn-primary" id="mn-add">+ 새 회의록</button>' : ""}
           <div class="page-desc">회의마다 빈 회의록을 열어 바로 기록 — 폴더 분류 · 참석자 QR 서명 · A4 인쇄
             ${rank() >= 3 ? "" : " · <b>본인이 참석한 회의</b>만 표시됩니다 (계정 이름 또는 이 기기의 QR 서명 이력으로 확인)"}</div>
@@ -537,7 +537,7 @@
 
         <div class="mn-wrap">
           <aside class="mn-side">
-            <div class="mn-side-h">🗂 분류 폴더</div>
+            <div class="mn-side-h">분류 폴더</div>
             <button class="mn-fitem${view.folder ? "" : " active"}" data-fid="">
               <span class="mn-fi-ico">📚</span><span class="mn-fi-name">전체 회의록</span><span class="mn-fi-n">${vis.length}</span></button>
             ${fs.map(f => `<button class="mn-fitem${view.folder === f.id ? " active" : ""}" data-fid="${esc(f.id)}" title="${esc(f.desc || f.name)}">
@@ -549,11 +549,11 @@
           <section class="mn-main card">
             <div class="mn-toolbar">
               <div class="mn-tabs">
-                <button class="mn-tab${view.tab === "list" ? " active" : ""}" data-mn-tab="list">📄 회의록 목록</button>
-                <button class="mn-tab${view.tab === "act" ? " active" : ""}" data-mn-tab="act">✅ 결정사항 추적${s.open ? ` <span class="mn-tab-n">${s.open}</span>` : ""}</button>
+                <button class="mn-tab${view.tab === "list" ? " active" : ""}" data-mn-tab="list">회의록 목록</button>
+                <button class="mn-tab${view.tab === "act" ? " active" : ""}" data-mn-tab="act">결정사항 추적${s.open ? ` <span class="mn-tab-n">${s.open}</span>` : ""}</button>
               </div>
               <span class="spacer"></span>
-              <div class="mn-search"><span class="mn-search-ico">🔍</span>
+              <div class="mn-search"><span class="mn-search-ico">${SeMIS.icon("search", 15)}</span>
                 <input id="mn-q" type="search" value="${esc(view.q)}" placeholder="제목 · 본문 · 참석자 · 결정사항 · 태그 검색" aria-label="회의록 검색"></div>
               <select id="mn-year" aria-label="연도 필터"><option value="">전체 연도</option>
                 ${years().map(y => `<option value="${esc(y)}"${view.year === y ? " selected" : ""}>${esc(y)}년</option>`).join("")}</select>
@@ -1382,7 +1382,7 @@
     const x = all().find(c => c.id === id);
     if (!x || !canSeeRec(x)) return;
     const att = x.attendees || [], dec = x.decisions || [];
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayStr();
     const P = (s) => esc(String(s || "")).replace(/\n/g, "<br>");
     const textSec = (title, html, text) => {
       const inner = html ? sanitize(html) : (text ? P(text) : "");
