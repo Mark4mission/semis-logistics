@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/loginguard.js", "js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/crisis.js", "js/serp.js", "js/phonebook.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
+const FILES = ["js/loginguard.js", "js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -1374,7 +1374,7 @@ function makeServer(opts = {}) {
     const e = makeEnv({ fetch: server.fetch });
     const { Sync } = e;
     t("Y01 SYNC_KEYS 구성(계정 자료 제외)", () =>
-      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,chatRooms,vault,regulations,equipment,crisis,fleet,audits,phonebook,training,seclog,seclogCfg,serp,serpRuns"));
+      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,chatRooms,vault,regulations,equipment,crisis,fleet,audits,phonebook,training,seclog,seclogCfg,serp,serpRuns,threat,threatRuns,threatChecks"));
     t("Y02 SYNC_KEYS는 모두 freshData 컬렉션에 존재", () => Sync.SYNC_KEYS.forEach(k => ok(e.S.data[k] !== undefined, k)));
     await ta("Y03 로그인 전에는 서버를 부르지 않음 · 로그인 후 초기 pull + 쓰기 권한 있는 컬렉션만 시드", async () => {
       await Sync.start();
@@ -3529,7 +3529,7 @@ function makeServer(opts = {}) {
       ok(m && m.type === "module" && !m.planned); eq(m.parent, "hub-ops"); eq(m.vis, "mgr");
       const ct = e.S.data.menus.find(x => x.module === "contacts");
       ok(m.seq < ct.seq);
-      const old = makeEnv({ preData: { version: 1, menus: e.S.defaultMenus().filter(x => x.id !== "serp") } });
+      const old = makeEnv({ preData: { version: 1, menus: e.S.defaultMenus().filter(x => x.id !== "serp" && x.id !== "threat") } });   // v1.25 이전 데이터(v1.26 위협전화도 없음)
       const m2 = old.S.data.menus.find(x => x.module === "serp"), ct2 = old.S.data.menus.find(x => x.module === "contacts");
       const hub = old.S.data.menus.find(x => x.id === "hub-ops");
       ok(m2 && m2.parent === "hub-ops" && m2.seq < ct2.seq && m2.seq > hub.seq, "기존 메뉴 데이터: 비상연락망 바로 위");
@@ -3735,6 +3735,277 @@ function makeServer(opts = {}) {
       const c = read("css/main.css"); ok(c.indexOf(".sp-status") > 0 && c.indexOf(".sp-chk") > 0 && c.indexOf(".dash-serp") > 0);
       ok(read("index.html").indexOf('src="js/serp.js') > 0);
       loginAs(e, "user"); go(e, "serp"); ok(!q(e, ".sp-tabs"), "user 는 대시보드로");
+    });
+  }
+
+  /* ══════════ [TC] v1.26 테러 위협전화 대응 ══════════ */
+  {
+    const e = makeEnv();
+    const TC = e.w.SemisThreat;
+    const plan = () => ({
+      title: "위협전화 대응", dept: "가팀", docRef: "가 절차 14 · 첨부 9", asOf: "2026-04-27", trigger: "협박 전화 접수 시",
+      quick: [{ label: "가파트장", num: "032-000-0800" }, { label: "가상황실", num: "032-000-3907" }],
+      cardTitle: "대응 및 보고절차", cardEn: "Threat Form", cardFoot: "※ 전화기 옆 비치",
+      steps: [
+        { id: "s1", no: "1", ko: "번호 확인", en: "Check ID", phase: "call", subs: [] },
+        { id: "s2", no: "2", ko: "주변에 알림", en: "Signal", phase: "call", subs: [], after: { ko: "팀장에게 보고", en: "Report" } },
+        { id: "s3", no: "3", ko: "통화 유지", en: "Keep", phase: "call", subs: [{ id: "u1", ko: "녹음", en: "Rec" }, { id: "u2", ko: "질문", en: "Ask" }], after: { ko: "양식 전달", en: "" } },
+        { id: "s4", no: "4", ko: "보고", en: "Report", phase: "report", subs: [{ id: "u1", ko: "상황실 보고", en: "" }] }],
+      tips: ["침착하게", "경청"],
+      chain: [
+        { id: "c1", to: "팀장", from: "접수자", when: "즉시", how: "유선", basis: "STEP 2", phones: [{ label: "팀장", num: "032-000-0700" }] },
+        { id: "c2", to: "상황실", from: "팀장", when: "즉시", how: "전화", basis: "STEP 4", phones: [{ label: "가상황실", num: "032-000-3907" }], flow: "보안" },
+        { id: "c3", to: "후속 보고", from: "팀장", how: "문서", basis: "", phones: [] },
+        { id: "c4", to: "미국 센터", us: true, when: "즉시", how: "유선", basis: "14.3", phones: [{ label: "OUT", num: "+1-000-000-0001" }] }],
+      tsoc: { no: "14.3", title: "미주 편", note: "즉시 유선", airline: "가항공", phones: [{ label: "OUT", num: "+1-000-000-0001" }],
+        items: [{ ko: "항공사", en: "Airline", key: "airline" }, { ko: "편명", en: "Flight", key: "flight" }, { ko: "구간", en: "Route", key: "route" },
+          { ko: "위치", en: "Position", key: "pos" }, { ko: "내용", en: "Threat", key: "threat" }, { ko: "출처", en: "Source", key: "src" }] },
+      cmd: { no: "14.2.2", order: ["가순위", "나순위", "다순위"], place: "파트장 자리" },
+      sections: [{ id: "x1", no: "14.1", title: "기준", body: "첫 문단\n둘째 문단" }, { id: "x2", no: "14.2.1", title: "응대 방법", body: "본문", link: "phones" }],
+      rec: { url: "https://rec.test", idRule: "내선번호", idEx: "예: 000", who: "파트장", note: "공유 제한", vaultTitle: "녹취 열람 테스트" },
+      phones: [{ id: "p1", grp: "post", label: "팀장", num: "032-000-0700", note: "" }, { id: "p2", grp: "post", label: "파트장", num: "032-000-0800", note: "" },
+        { id: "p3", grp: "line", label: "업무 전화", num: "032-000-0821", note: "컬러링" }],
+      form: { title: "위협 보고양식", foot: "즉시 제공", tips: ["침착하게"], secs: [
+        { id: "fh", title: "", mode: "head", fields: [{ id: "recv", label: "접수자", kind: "text", auto: "recv" }, { id: "at", label: "일시", kind: "text", auto: "start" }] },
+        { id: "fn", title: "", mode: "note", fields: [{ id: "threat", label: "위협내용", kind: "long", short: "위협 내용" }] },
+        { id: "fw", title: "어디에 있습니까?", mode: "ask", fields: [{ id: "place", label: "위치", kind: "one", opts: ["터미널", "화물지역", "기타"], other: "기타", short: "위치" },
+          { id: "flight", label: "편명", kind: "text" }, { id: "dep", label: "출발지", kind: "text" }, { id: "arr", label: "도착지", kind: "text" }, { id: "knows", label: "잘 알았는가?", kind: "yn" }] },
+        { id: "fv", title: "음성특성", mode: "obs", group: "배경 정보", fields: [{ id: "voice", label: "", kind: "multi", opts: ["높은", "저음의", "기타"], other: "기타" }] }] },
+      gaps: ["확인 하나"], checkCycle: ""
+    });
+    const seed = () => { e.S.data.threat = plan(); e.S.data.threatRuns = []; e.S.data.threatChecks = []; e.S.saveSilent(); };
+    const inputEv = (el, v) => { el.value = v; el.dispatchEvent(new e.w.Event("input")); el.dispatchEvent(new e.w.Event("change")); };
+    t("TC01 메뉴: 협력 · 비상 허브 · SERP 바로 아래 · mgr · 기존 데이터 자동 추가(멱등) · 동기화 키 · 권한표", () => {
+      const m = e.S.data.menus.find(x => x.module === "threat");
+      ok(m && m.type === "module" && !m.planned); eq(m.parent, "hub-ops"); eq(m.vis, "mgr");
+      const sp = e.S.data.menus.find(x => x.module === "serp"), ct = e.S.data.menus.find(x => x.module === "contacts");
+      ok(sp.seq < m.seq && m.seq < ct.seq, "SERP 와 비상연락망 사이");
+      const old = makeEnv({ preData: { version: 1, menus: e.S.defaultMenus().filter(x => x.id !== "threat") } });
+      const m2 = old.S.data.menus.find(x => x.module === "threat"), sp2 = old.S.data.menus.find(x => x.module === "serp"), ct2 = old.S.data.menus.find(x => x.module === "contacts");
+      ok(m2 && m2.parent === "hub-ops" && sp2.seq < m2.seq && m2.seq < ct2.seq, "v1.25 데이터: SERP 바로 아래");
+      eq(old.S.normalizeData(), false, "멱등");
+      ok(old.S.data.threat && !Array.isArray(old.S.data.threat) && Array.isArray(old.S.data.threatRuns) && Array.isArray(old.S.data.threatChecks));
+      ["threat", "threatRuns", "threatChecks"].forEach(k => ok(e.Sync.SYNC_KEYS.indexOf(k) >= 0, k));
+      eq(ACL.threat.join(","), "2,3"); eq(ACL.threatRuns.join(","), "2,2"); eq(ACL.threatChecks.join(","), "2,2");
+      ok(/threat: 2,?\s*\n?\s*\}/.test(read("tools/edge/semis-logi-files.ts")) || /seclog: 2, threat: 2/.test(read("tools/edge/semis-logi-files.ts")), "파일 폴더 threat 열람 2");
+      ok(/"minutes-sign": 2, seclog: 2, threat: 2/.test(read("tools/edge/semis-logi-files.ts")), "파일 폴더 threat 올리기 2");
+    });
+    t("TC02 응대 가이드: 상단 띠(바로 걸기 · 응대/훈련 시작) · STEP 4개(보고 단계 표시) · 응대 요령 · 보고 순서(미주 편 · 체계도) · TSOC · 인쇄", () => {
+      seed(); loginAs(e, "manager"); go(e, "threat");
+      ok(q(e, ".tc-quick a[href='tel:0320000800']") && q(e, ".tc-quick a[href='tel:0320003907']"));
+      ok(q(e, "[data-tc-start=real]") && q(e, "[data-tc-start=drill]"));
+      eq(qa(e, ".tc-step").length, 4); ok(q(e, ".tc-step[data-step=s4]").classList.contains("is-report"));
+      eq(qa(e, ".tc-step[data-step=s3] .tc-subs li").length, 2); ok(q(e, ".tc-step[data-step=s2] .tc-after"));
+      eq(qa(e, ".tc-tips li").length, 2);
+      eq(qa(e, ".tc-ci").length, 4); ok(q(e, ".tc-ci[data-chain=c4]").classList.contains("is-us"));
+      ok(q(e, ".tc-ci[data-chain=c2] [data-flow-open='보안']"), "보고 체계도 연결");
+      ok(q(e, ".tc-tsoc a[href='tel:+10000000001']"), "국제 번호");
+      eq(qa(e, ".tc-tsoci li").length, 6);
+      ok(q(e, ".page-head").textContent.indexOf("Print") >= 0);
+      ok(!q(e, ".sp-ed") && !q(e, "#tc-step-add"), "manager 편집 없음");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    t("TC03 관리 절차: 원문 절 · 녹음 전화 보기 → 탭 이동 · TSOC · 임시 통제반 순서 · 원문 확인 필요는 hq만", () => {
+      q(e, "[data-ttab=proc]").click();
+      eq(qa(e, ".tc-sec").length, 2); eq(qa(e, ".tc-sec[data-sec=x1] .sp-body p").length, 2);
+      eq(qa(e, ".tc-cmd li").length, 3); ok(q(e, ".tc-cmdc").textContent.indexOf("파트장 자리") >= 0);
+      ok(q(e, ".tc-proc .tc-tsoc"));
+      ok(!q(e, ".tc-gaps"), "manager 숨김");
+      loginAs(e, "hq"); e.S.renderView(); ok(q(e, ".tc-gaps") && q(e, "[data-sec-edit=x1]"));
+      loginAs(e, "manager"); e.S.renderView();
+      q(e, ".tc-sec[data-sec=x2] [data-ttab=phones]").click();
+      eq(TC.getState().tab, "phones"); ok(q(e, ".tc-phones"));
+    });
+    t("TC04 녹음 전화: 녹취 열람(암호 없음) · 자리 표 · 업무 전화 · 미점검 → 점검 기록(모두 정상 · 이상 1) · 상태 · 탭 배지 · 수정 · 주기 경과", () => {
+      ok(q(e, ".tc-rec a[href='https://rec.test']")); ok(q(e, ".tc-rec").textContent.indexOf("암호 관리") >= 0);
+      ok(!q(e, "#tc-vault"), "manager: 암호 관리 버튼 없음");
+      eq(qa(e, ".tc-ptbl tbody tr").length, 2); eq(qa(e, ".tc-ln").length, 1);
+      eq(qa(e, ".tc-ck.is-none").length, 6);
+      q(e, "#tc-chk-add").click();
+      q(e, "#modal-box [data-all=rec]").click();
+      q(e, "#modal-box [data-cr=p1][data-ck=form][data-v=ok]").click();
+      q(e, "#modal-box [data-cr=p3][data-ck=form][data-v=ng]").click();
+      q(e, "#tc-c-note").value = "p3 양식 없음"; clickOk(e);
+      const c = e.S.data.threatChecks;
+      eq(c.length, 1); eq(c[0].rows.p1.rec, "ok"); eq(c[0].rows.p3.form, "ng"); ok(!c[0].rows.p2.form, "고르지 않은 칸은 비움");
+      eq(TC.lastCheck("p3", "form").v, "ng"); eq(TC.phonesStat().ng, 1);
+      eq(qa(e, ".tc-ck.is-ng").length, 1); eq(qa(e, ".tc-ck.is-none").length, 1, "p2 양식 비치만 미점검");
+      ok(q(e, "[data-ttab=phones]").textContent.indexOf("이상 1") >= 0, "탭 배지");
+      q(e, "[data-chk-edit]").click(); q(e, "#modal-box [data-cr=p3][data-ck=form][data-v=ok]").click(); clickOk(e);
+      eq(e.S.data.threatChecks.length, 1); eq(TC.phonesStat().ng, 0);
+      const d = new Date(Date.now() - 70 * 86400000).toISOString().slice(0, 10);
+      e.S.data.threatChecks[0].date = d; e.S.data.threat.checkCycle = 1; e.S.renderView();
+      ok(q(e, ".tc-ck.is-due"), "주기 경과 표시");
+      e.S.data.threat.checkCycle = ""; e.S.renderView();
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    t("TC05 보고양식: 종이 모양 미리보기 · 비치용 A4(가로 · 절차 + 양식 + 번호) · 빈 양식(세로)", () => {
+      q(e, "[data-ttab=form]").click();
+      ok(q(e, ".tc-paper .tcf")); eq(qa(e, ".tc-paper .tcf-s").length, 4); ok(q(e, ".tc-paper .tcf-g").textContent === "배경 정보");
+      eq(qa(e, ".tc-paper .tcf-o").length, 3 + 2 + 3, "선택지(yn 포함)");
+      q(e, "#tc-print-card").click();
+      let h = TC.lastPrint();
+      ok(/size: A4 landscape/.test(h), "가로");
+      ok(h.indexOf("STEP 4") > 0 && h.indexOf("대응 및 보고절차") > 0 && h.indexOf("032-000-3907") > 0 && h.indexOf("위협 보고양식") > 0);
+      ok(h.indexOf("후속 보고") < 0, "번호 없는 보고처는 비상연락처에서 제외");
+      q(e, "#tc-print-blank").click();
+      h = TC.lastPrint(); ok(/size: A4 portrait/.test(h) && h.indexOf('class="blank"') > 0);
+    });
+    t("TC06 응대 시작(실제): 묻지 않고 바로 · 사본 · 응대 화면 · 경과 시계 · 메뉴 배지 · 대시보드 띠 · 두 번째 시작은 진행 중 열기", () => {
+      e.w.localStorage.setItem("semisl:threat-by", "홍접수");
+      TC.setState({ tab: "guide", runSel: "" }); e.S.renderView();
+      q(e, "[data-tc-start=real]").click();
+      const r = e.S.data.threatRuns;
+      eq(r.length, 1); eq(r[0].kind, "real"); eq(r[0].recv.name, "홍접수");
+      eq(r[0].steps.length, 4); eq(r[0].form.length, 4); eq(r[0].chain.length, 4); eq(r[0].log.length, 1);
+      ok(q(e, ".tc-status [data-tc-t0]") && q(e, ".sp-clock").textContent.indexOf("T+") === 0);
+      eq(qa(e, "[data-st]").length, 6, "STEP 1 · 2 + 전달 · 3 세부 2 + 전달 (보고 단계 제외)");
+      ok(qa(e, ".nav-meta").some(x => x.textContent === "응대 중"), "메뉴 배지");
+      go(e, "dashboard"); ok(q(e, "#dash-threat"), "대시보드 띠");
+      q(e, "#dash-threat [data-dthreat]").click(); eq(TC.getState().runSel, r[0].id);
+      TC.setState({ runSel: "" }); e.S.renderView(); ok(q(e, ".tc-live"), "가이드 위 응대 중 띠");
+      TC.startRun("drill"); eq(e.S.data.threatRuns.length, 1, "진행 중이면 새로 시작하지 않음");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    t("TC07 통화 중: STEP 체크(시각 · 기록자 · 수정/취소) · 접수 정보(번호 정리) · 수단 · 녹음 · 답(글 · 하나 · 여럿 · 기타 · 예/아니오) · 입력칸 유지", () => {
+      q(e, "[data-st=s1]").click();
+      let r = e.S.data.threatRuns[0]; ok(r.st.s1 && r.st.s1.by === "홍접수");
+      q(e, "[data-st='s2:after']").click(); ok(e.S.data.threatRuns[0].st["s2:after"]);
+      q(e, "[data-st=s1]").click(); q(e, "#tc-d-note").value = "표시 없음"; clickOk(e);
+      eq(e.S.data.threatRuns[0].st.s1.note, "표시 없음");
+      q(e, "[data-st=s1]").click(); q(e, "#modal-box [data-act=undo]").click(); ok(!e.S.data.threatRuns[0].st.s1);
+      inputEv(q(e, "#tc-line"), "0320000821"); eq(e.S.data.threatRuns[0].line, "032-000-0821");
+      inputEv(q(e, "#tc-dept"), "수출파트"); eq(e.w.localStorage.getItem("semisl:threat-dept"), "수출파트");
+      q(e, "[data-rec='예']").click(); eq(e.S.data.threatRuns[0].rec, "예");
+      q(e, "[data-ch='메일']").click(); eq(e.S.data.threatRuns[0].channel, "메일");
+      const ta = q(e, "#tc-a-threat");
+      inputEv(ta, "화물기에 폭발물을 설치했다");
+      eq(e.S.data.threatRuns[0].ans.threat, "화물기에 폭발물을 설치했다"); ok(q(e, "#tc-a-threat") === ta, "글 입력은 다시 그리지 않음");
+      q(e, "[data-opt=place][data-v=화물지역]").click(); eq(e.S.data.threatRuns[0].ans.place, "화물지역");
+      q(e, "[data-opt=place][data-v=화물지역]").click(); ok(!e.S.data.threatRuns[0].ans.place, "다시 누르면 해제");
+      q(e, "[data-opt=place][data-v=기타]").click(); ok(q(e, "#tc-a-place-etc"), "기타 → 내용 칸");
+      inputEv(q(e, "#tc-a-place-etc"), "정비고");
+      r = e.S.data.threatRuns[0]; eq(r.ans["place:etc"], "정비고");
+      eq(TC.ansText(r, r.form[2].fields[0]), "기타 (정비고)");
+      q(e, "[data-opt=voice][data-v=높은]").click(); q(e, "[data-opt=voice][data-v=저음의]").click();
+      eq(e.S.data.threatRuns[0].ans.voice.join(","), "높은,저음의");
+      q(e, "[data-opt=voice][data-v=높은]").click(); eq(e.S.data.threatRuns[0].ans.voice.join(","), "저음의");
+      q(e, "[data-opt=knows][data-v=예]").click(); eq(e.S.data.threatRuns[0].ans.knows, "예");
+      inputEv(q(e, "#tc-a-flight"), "KJ000"); inputEv(q(e, "#tc-a-dep"), "ICN"); inputEv(q(e, "#tc-a-arr"), "ANC");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    t("TC08 통화 종료 → 보고 · 전파: 완료 시각 · 미주 편 → TSOC(자동 채움) · 보고 문자(복사 · 문자) · 임시 통제반(순위 · 기록) · 체계도 열기", () => {
+      q(e, "#tc-callend").click();
+      eq(TC.getState().runTab, "report"); ok(e.S.data.threatRuns[0].callEnd);
+      eq(qa(e, ".tc-rci").length, 3, "미주 편 항목은 숨김");
+      q(e, "[data-rep=c1]").click(); ok(e.S.data.threatRuns[0].rep.c1.at);
+      q(e, "#tc-us").checked = true; q(e, "#tc-us").dispatchEvent(new e.w.Event("change"));
+      eq(qa(e, ".tc-rci").length, 4); ok(q(e, ".tc-rtsoc"));
+      const pos = q(e, "#tc-tsoc-pos"); pos.value = "태평양 상공"; pos.dispatchEvent(new e.w.Event("input"));
+      const tt = q(e, "#tc-tsoc-pre").textContent;
+      ok(tt.indexOf("Airline (항공사): 가항공") >= 0 && tt.indexOf("Flight (편명): KJ000") >= 0 && tt.indexOf("ICN → ANC") >= 0 && tt.indexOf("태평양 상공") >= 0, tt);
+      pos.dispatchEvent(new e.w.Event("change")); eq(e.S.data.threatRuns[0].tsoc.pos, "태평양 상공");
+      const msg = q(e, "#tc-msg-pre").textContent;
+      ok(msg.indexOf("[테러 위협전화 접수] 가팀") === 0 && msg.indexOf("- 위협 내용: 화물기에 폭발물을 설치했다") > 0 && msg.indexOf("- 위치: 기타 (정비고)") > 0, msg);
+      ok(msg.indexOf("음성특성") < 0 && msg.indexOf("저음의") < 0, "관찰 항목은 문자에서 뺌");
+      ok(decodeURIComponent(q(e, "#tc-msg-sms").getAttribute("href")).indexOf("수신 032-000-0821") > 0);
+      q(e, "#tc-cmd-save").click(); ok(!e.S.data.threatRuns[0].cmd.at, "통제반장 없으면 기록 안 함");
+      q(e, "[data-cmd-rank='1']").click(); eq(e.S.data.threatRuns[0].cmd.rank, 1);
+      q(e, "#tc-cmd-lead").value = "을선임"; q(e, "#tc-cmd-lead").dispatchEvent(new e.w.Event("input"));
+      q(e, "#tc-cmd-save").click();
+      const c = e.S.data.threatRuns[0].cmd; eq(c.lead, "을선임"); eq(c.place, "파트장 자리", "비우면 규정 장소"); ok(c.at);
+      ok(q(e, "#tc-msg-pre").textContent.indexOf("임시 통제반: 을선임 · 파트장 자리") > 0);
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    t("TC09 기록 · 첨부 · 결과 → 응대 종료 · A4 보고서(인쇄 전용, 고른 선택지 동그라미) · 접수 기록 목록 · 다시 열기/삭제는 hq", () => {
+      q(e, "[data-rtab=log]").click();
+      const n0 = e.S.data.threatRuns[0].log.length;
+      q(e, "#tc-log").value = "수색 요청"; q(e, "#tc-log-add").click(); eq(e.S.data.threatRuns[0].log.length, n0 + 1);
+      inputEv(q(e, "#tc-result"), "특이사항 없음, 상황 종료");
+      eq(e.S.data.threatRuns[0].result, "특이사항 없음, 상황 종료");
+      ok(!q(e, "#tc-rdel"), "manager 삭제 없음");
+      q(e, "#tc-end").click(); clickOk(e);
+      const r = e.S.data.threatRuns[0];
+      ok(r.end); eq(TC.activeRun(), null); ok(q(e, ".tc-status.is-end"));
+      const rep = q(e, ".tc-report");
+      ok(rep && rep.classList.contains("print-only"));
+      ok(rep.textContent.indexOf("테러 위협전화 접수 보고") >= 0 && rep.textContent.indexOf("수색 요청") >= 0 && rep.textContent.indexOf("을선임") >= 0);
+      ok(qa(e, ".tc-report .tcf-o.is-on").length >= 3, "고른 선택지 표시");
+      ok(rep.textContent.indexOf("정비고") >= 0 && rep.textContent.indexOf("[TSOC]") >= 0);
+      go(e, "dashboard"); ok(!q(e, "#dash-threat"), "종료 후 띠 없음");
+      go(e, "threat"); TC.setState({ runSel: "", tab: "runs" }); e.S.renderView();
+      eq(qa(e, ".tc-runs tbody tr").length, 1); ok(q(e, ".tc-runs").textContent.indexOf("화물기에 폭발물") >= 0);
+      q(e, ".tc-runs tbody tr").click(); eq(TC.getState().runSel, r.id);
+      loginAs(e, "hq"); e.S.renderView();
+      ok(q(e, "#tc-reopen") && q(e, "#tc-rdel"));
+      q(e, "#tc-reopen").click(); ok(!e.S.data.threatRuns[0].end);
+      q(e, "#tc-rdel").click(); clickOk(e); eq(e.S.data.threatRuns.length, 0);
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    t("TC10 hq 편집: STEP(세부 id 유지) · 보고처(순서 · 번호 정리) · 녹음 전화(번호로 id 유지) · 양식(줄 형식 · 오류) · 절 · 요령 · 녹취 주소 확인", () => {
+      TC.setState({ tab: "guide", runSel: "" }); e.S.renderView();
+      q(e, "[data-step-edit=s3]").click();
+      eq(q(e, "#tc-s-subs").value, "녹음 | Rec\n질문 | Ask");
+      q(e, "#tc-s-subs").value = "녹음 | Rec\n질문 | Ask\n되풀이"; clickOk(e);
+      const s3 = e.S.data.threat.steps[2]; eq(s3.subs.length, 3); eq(s3.subs[0].id, "u1"); eq(s3.subs[2].ko, "되풀이");
+      q(e, "#tc-chain-add").click(); q(e, "#tc-c-to").value = "새 기관"; q(e, "#tc-c-ph").value = "대표 | 0320001234"; q(e, "#tc-c-pos").value = "1"; clickOk(e);
+      const ch = e.S.data.threat.chain; eq(ch.length, 5); eq(ch[1].to, "새 기관"); eq(ch[1].phones[0].num, "032-000-1234");
+      q(e, "[data-chain-edit=c3]").click(); q(e, "#modal-box [data-act=del]").click(); clickOk(e); eq(e.S.data.threat.chain.length, 4);
+      q(e, "#tc-tips-edit").click(); q(e, "#tc-lf").value = "하나\n\n둘\n셋"; clickOk(e); eq(e.S.data.threat.tips.join("|"), "하나|둘|셋");
+      TC.setState({ tab: "phones" }); e.S.renderView();
+      q(e, "#tc-phones-edit").click();
+      ok(q(e, "#tc-p-list").value.split("\n")[0] === "자리 | 팀장 | 032-000-0700");
+      q(e, "#tc-p-list").value = "자리 | 팀장실 | 0320000700\n업무 | 업무 전화 | 032-000-0821 | 컬러링\n업무 | | 032-000-0822"; clickOk(e);
+      const ps = e.S.data.threat.phones; eq(ps.length, 3); eq(ps[0].id, "p1"); eq(ps[0].label, "팀장실"); eq(ps[1].id, "p3"); eq(ps[2].grp, "line"); ok(ps[2].id !== "p2");
+      q(e, "#tc-rec-edit").click(); q(e, "#tc-r-url").value = "rec.test"; clickOk(e); ok(q(e, "#tc-r-url"), "https 아니면 막음");
+      q(e, "#tc-r-url").value = "https://rec2.test"; clickOk(e); eq(e.S.data.threat.rec.url, "https://rec2.test");
+      TC.setState({ tab: "form" }); e.S.renderView();
+      q(e, "#tc-form-edit").click();
+      const txt = q(e, "#tc-fe").value;
+      ok(txt.indexOf("## 어디에 있습니까? | ask") >= 0 && txt.indexOf("place | 위치 | one | 터미널, 화물지역, 기타 | 기타 | 위치") >= 0, txt);
+      q(e, "#tc-fe").value = txt + "\nbad id | x | text"; clickOk(e); ok(q(e, "#tc-fe"), "형식 오류면 닫히지 않음");
+      q(e, "#tc-fe").value = txt + "\nextra | 추가 항목 | text"; clickOk(e);
+      const fs = e.S.data.threat.form.secs; eq(fs.length, 4); eq(fs[2].id, "fw", "섹션 id 유지"); eq(fs[3].fields[1].id, "extra"); eq(fs[0].fields[0].auto, "recv");
+      const back = TC.parseForm(TC.formText(), fs); eq(JSON.stringify(back.secs), JSON.stringify(fs), "왕복 동일");
+      TC.setState({ tab: "proc" }); e.S.renderView();
+      q(e, "#tc-sec-add").click(); q(e, "#tc-e-title").value = "새 절"; q(e, "#tc-e-body").value = "가\n\n나"; clickOk(e);
+      eq(e.S.data.threat.sections.length, 3); eq(e.S.data.threat.sections[2].body, "가\n나");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    await ta("TC11 녹취 암호: 암호 관리로 요청(암호 없이) → 해제 후 채운 추가 폼(비밀번호 빈칸) · 같은 제목이 있으면 검색", async () => {
+      const e = makeEnv(), TC = e.w.SemisThreat, VT = e.w.SemisVault;   // 새 환경(암호화 폴리필은 환경마다)
+      e.S.data.threat = plan(); e.S.data.threat.rec.url = "https://rec2.test"; e.S.saveSilent();
+      loginAs(e, "hq");
+      await VT.setup("테스터", "master-pw-9");
+      TC.setState({ tab: "phones", runSel: "" }); go(e, "threat");
+      q(e, "#tc-vault").click();
+      await tick(20);
+      if (!VT.isUnlocked()) { await VT.unlock(e.S.data.vault.members[0].id, "master-pw-9"); e.S.renderView(); }
+      await tick(20);
+      ok(q(e, "#v-title"), "추가 폼 열림"); eq(q(e, "#v-title").value, "녹취 열람 테스트"); eq(q(e, "#v-url").value, "https://rec2.test"); eq(q(e, "#v-pw").value, "");
+      ok(!q(e, "#v-del"), "새 항목");
+      e.S.closeModal();
+      await VT.addEntryForTest({ category: "웹사이트", title: "녹취 열람 테스트", account: "x", pw: "p", url: "", note: "" });
+      VT.request({ title: "녹취 열람 테스트" }); e.S.renderView(); await tick(20);
+      ok(!q(e, "#v-title"), "같은 제목 → 폼 대신 검색"); eq(q(e, "#vault-search").value, "녹취 열람 테스트");
+      VT.lock();
+    });
+    t("TC12 빈 계획 · 권한(user 불가) · 증빙(2.9) · 통합 검색 · 공개 저장소 위생(threat.js에 번호 · 원문 없음) · CSS · 스크립트", () => {
+      loginAs(e, "manager");
+      ok(e.w.SemisEvidence.threat().ok, "절차 등록 → 증빙");
+      const it = e.w.SemisSearch.search("새 기관");
+      ok(it.some(x => x.group === "테러 위협전화 대응"), "통합 검색");
+      e.S.data.threat = {}; e.S.saveSilent(); go(e, "threat");
+      ok(q(e, "#view .empty-state")); ok(!q(e, "[data-tc-start]"));
+      eq(e.w.SemisEvidence.threat().ok, false);
+      const src = read("js/threat.js");
+      ok(!/0\d{1,2}-\d{3,4}-\d{4}/.test(src), "전화번호 없음"); ok(!/@air/.test(src), "메일 없음"); ok(!/brecording|skbroadband/i.test(src), "녹취 사이트 없음");
+      ok(!/\+\d{1,3}-\d{3}-\d{3}-\d{4}/.test(src), "국제 번호 없음");
+      ["ICNKF", "PCC", "CSM", "텔레피아", "컬러링"].forEach(w => ok(src.indexOf(w) < 0, "원문 용어: " + w));
+      const c = read("css/main.css"); ok(c.indexOf(".tc-step") > 0 && c.indexOf(".tcf-o.is-on") > 0 && c.indexOf(".tc-callg") > 0);
+      ok(read("index.html").indexOf('src="js/threat.js') > 0);
+      ok(/threat: \["2\.9"\]/.test(read("js/audit.js")), "수검 증빙 연결");
+      loginAs(e, "user"); go(e, "threat"); ok(!q(e, ".tc-tabs"), "user 는 대시보드로");
     });
   }
 

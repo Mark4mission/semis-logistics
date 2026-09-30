@@ -76,6 +76,7 @@
   }
 
   /* ─────── 해제 세션 (메모리 전용 — 어디에도 직렬화 금지) ─────── */
+  let pendingReq = null;  // 다른 화면이 요청한 항목 { pre, at } — 해제되면 찾아 보여 주거나 채운 추가 폼을 연다(10분 유효)
   let rawKey = null;      // Uint8Array(32) vaultKey — 공용 항목용
   let pKey = null;        // Uint8Array(32) 개인 키 — 해제한 멤버의 개인용 항목 전용
   let entries = null;     // 복호화된 공용 항목
@@ -254,12 +255,13 @@
   const lastMemberId = () => { try { return localStorage.getItem(LS_LAST) || ""; } catch (e) { return ""; } };
 
   /* ─────── 항목 편집 폼 ─────── */
-  function entryForm(id) {
+  function entryForm(id, pre) {
     const loc = id ? locate(id) : null;
-    const x = loc ? loc.en : null;
+    const x = loc ? loc.en : (pre ? { category: CATS.indexOf(pre.category) >= 0 ? pre.category : CATS[0], title: pre.title || "",
+      account: pre.account || "", pw: "", url: pre.url || "", note: pre.note || "", _pre: true } : null);
     const curScope = loc ? loc.scope : "shared";
     openModal(`
-      <h3>${x ? "항목 수정" : "항목 추가"} <span class="badge badge-gray">암호 관리</span></h3>
+      <h3>${loc ? "항목 수정" : "항목 추가"} <span class="badge badge-gray">암호 관리</span></h3>
       <div class="form-row"><label>구분</label>
         <div class="v-seg" role="radiogroup" aria-label="구분">
           <label class="v-seg-opt"><input type="radio" name="v-scope" value="shared" ${curScope === "shared" ? "checked" : ""}><span>👥 공용</span></label>
@@ -285,7 +287,7 @@
         <input id="v-url" value="${esc(x ? x.url || "" : "")}" maxlength="300" placeholder="https://..."></div>
       <div class="form-row"><label>비고</label><input id="v-note" value="${esc(x ? x.note || "" : "")}" maxlength="200"></div>
       <div class="modal-actions">
-        ${x ? '<button class="btn btn-danger" id="v-del" style="margin-right:auto">삭제</button>' : ""}
+        ${loc ? '<button class="btn btn-danger" id="v-del" style="margin-right:auto">삭제</button>' : ""}
         <button class="btn btn-ghost" id="v-cancel">취소</button>
         <button class="btn btn-primary" id="v-save">저장</button>
       </div>`);
@@ -295,7 +297,7 @@
       $("#v-scope-hint").textContent = r.value === "personal"
         ? "본인만 열람 · 다른 멤버에게 보이지 않습니다." : "멤버 전원이 열람합니다.";
     });
-    if (x) $("#v-del").onclick = () =>
+    if (loc) $("#v-del").onclick = () =>
       confirmModal(`항목 "${x.title}"을(를) 삭제하시겠습니까?`, async () => {
         if (!isUnlocked()) return;
         const l = locate(x.id);
@@ -318,7 +320,7 @@
       const scope = sel && sel.value === "personal" ? "personal" : "shared";
       if (scope === "personal" && !pKey) { toast("개인 키를 준비하지 못했습니다. 다시 잠금 해제해 주세요.", true); return; }
       const target = scope === "personal" ? mine : entries;
-      if (x) {
+      if (loc) {
         Object.assign(x, rec);
         if (curScope !== scope) {             // 공용 ↔ 개인용 이동
           const l = locate(x.id);
@@ -616,6 +618,20 @@
         $("#vault-body").innerHTML = unlockedBody(); wire();
       };
       $("#vault-add").onclick = () => entryForm(null);
+      if (pendingReq) {   // 다른 화면에서 온 요청(예: 위협전화 녹취 열람) — 같은 제목이 있으면 검색, 없으면 채운 추가 폼(비밀번호만 입력)
+        const pr = Date.now() - pendingReq.at < 10 * 60 * 1000 ? pendingReq.pre : null;
+        pendingReq = null;
+        if (pr) setTimeout(() => {
+          if (!isUnlocked() || !$("#vault-search")) return;
+          if (allItems().some(it => it.en.title === pr.title)) {
+            query = pr.title; $("#vault-search").value = query;
+            $("#vault-body").innerHTML = unlockedBody(); wire();
+          } else {
+            entryForm(null, pr);
+            const pw = $("#v-pw"); if (pw) try { pw.focus(); } catch (e) { /* jsdom */ }
+          }
+        }, 0);
+      }
       $("#vault-extend").onclick = () => { extend(); toast("🕐 잠금 시간이 5분 연장되었습니다."); };
       $("#vault-members").onclick = membersModal;
       $("#vault-lock").onclick = () => { lock(); SeMIS.renderView(); };
@@ -635,6 +651,9 @@
   window.SemisVault = {
     CATS, AUTO_LOCK_MS, PBKDF2_ITER,
     isUnlocked, lock, extend, setup, unlock, addMember, removeMember, changeMemberPw,
+    /* 다른 화면이 항목을 요청 — 암호는 넘기지 않는다(제목 · 주소 · 계정 · 비고만) */
+    request: (pre) => { pendingReq = pre && pre.title ? { pre: { title: String(pre.title), url: String(pre.url || ""), account: String(pre.account || ""),
+      note: String(pre.note || ""), category: String(pre.category || "") }, at: Date.now() } : null; },
     entryCount: () => (entries ? entries.length + (mine ? mine.length : 0) : null),
     sharedCount: () => (entries ? entries.length : null),
     personalCount: () => (mine ? mine.length : null),

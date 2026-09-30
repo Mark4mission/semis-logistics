@@ -8,7 +8,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.25.0";
+  const VERSION = "1.26.0";
   const APP_NAME = "SeMIS · Logistics";
   /* v1.15: 데이터 캐시는 이 탭의 sessionStorage 에만 둔다(탭을 닫거나 로그아웃하면 사라짐).
      화면 설정(LS_UI)만 localStorage. */
@@ -267,6 +267,7 @@ const SeMIS = (() => {
 
       h("hub-ops", "협력 · 비상", "users"),
       m("serp", "팀위기대응계획 (SERP)", "🛟", "serp", "mgr", "hub-ops"),
+      m("threat", "테러 위협전화 대응", "📞", "threat", "mgr", "hub-ops"),
       Object.assign(m("contacts", "비상연락망 · 보고체계", "☎️", "contacts", "mgr", "hub-ops"), { quick: true }),
       m("crisis", "위기대응 담당자", "🧭", "crisis", "mgr", "hub-ops"),
       m("phonebook", "업무 연락처", "📇", "phonebook", "mgr", "hub-ops"),
@@ -360,6 +361,9 @@ const SeMIS = (() => {
       phonebook: { groups: [], rows: [] }, // 업무 연락처 (v1.18 — 연락처는 공용 DB만, 코드 미시드)
       serp: {},          // 팀위기대응계획 (v1.25 — 계획 원문 · 명단은 공용 DB만, 코드 미시드)
       serpRuns: [],      // SERP 대응 기록 (실제 · 훈련)
+      threat: {},        // 테러 위협전화 대응 (v1.26 — 절차 원문 · 번호는 공용 DB만, 코드 미시드)
+      threatRuns: [],    // 위협전화 접수 기록 (실제 · 훈련)
+      threatChecks: [],  // 녹음 전화 점검 기록
       vault: { v: 1, members: [], data: null, personal: {}, updated: "" }, // 암호 관리 (클라이언트 AES-256 암호화)
       regulations: [],   // 규정 관리 (항공보안 / 안전관리 / 위험물 DG)
       fleet: [],         // 운항 현황 기체 목록 [{reg, hex, type, model}] — 비어 있으면 기본 15대(js/flightcore.js)
@@ -437,6 +441,26 @@ const SeMIS = (() => {
       DATA.menus.push({ id: DATA.menus.some(m => m.id === "serp") ? "serp-" + Date.now().toString(36) : "serp",
         seq, type: "module", label: "팀위기대응계획 (SERP)", icon: "🛟", module: "serp", vis: "mgr",
         parent: ct && ct.parent ? ct.parent : (hub ? "hub-ops" : null) });
+    }
+    // v1.26 테러 위협전화 대응 — 기존 메뉴 데이터에 없으면 팀위기대응계획 바로 아래(없으면 비상연락망 바로 위)에 1회 추가(이후 숨김·이름은 운영자 설정 유지)
+    if (!DATA.menus.some(m => m.type === "module" && m.module === "threat")) {
+      const sp = DATA.menus.find(m => m.type === "module" && m.module === "serp");
+      const ct = DATA.menus.find(m => m.type === "module" && m.module === "contacts");
+      const hub = DATA.menus.find(m => m.id === "hub-ops" && m.type === "group");
+      const ref = sp || ct;
+      let seq = DATA.menus.reduce((mx, m) => Math.max(mx, m.seq || 0), 0) + 1;
+      if (sp) {          // 바로 다음 메뉴와의 사이
+        const nx = DATA.menus.filter(m => m.parent === sp.parent && (m.seq || 0) > (sp.seq || 0)).map(m => m.seq || 0);
+        seq = nx.length ? ((sp.seq || 0) + Math.min.apply(null, nx)) / 2 : (sp.seq || 0) + 0.5;
+      } else if (ct) {   // 바로 앞 메뉴(없으면 허브)와의 사이
+        const pv = DATA.menus.filter(m => m.parent === ct.parent && m.id !== ct.id && (m.seq || 0) < (ct.seq || 0)).map(m => m.seq || 0);
+        const grp = DATA.menus.find(m => m.id === ct.parent);
+        const lo = pv.length ? Math.max.apply(null, pv) : (grp ? (grp.seq || 0) : (ct.seq || 0) - 1);
+        seq = (lo + (ct.seq || 0)) / 2;
+      }
+      DATA.menus.push({ id: DATA.menus.some(m => m.id === "threat") ? "threat-" + Date.now().toString(36) : "threat",
+        seq, type: "module", label: "테러 위협전화 대응", icon: "📞", module: "threat", vis: "mgr",
+        parent: ref && ref.parent ? ref.parent : (hub ? "hub-ops" : null) });
     }
     // v1.18 업무 연락처 — 기존 메뉴 데이터에 없으면 위기대응 담당자 바로 아래에 1회 추가(이후 숨김·이름은 운영자 설정 유지)
     if (!DATA.menus.some(m => m.type === "module" && m.module === "phonebook")) {
@@ -563,6 +587,10 @@ const SeMIS = (() => {
     // 팀위기대응계획 (v1.25) — 구조만 보정(내용은 모듈이 없는 값을 기본값으로 읽는다)
     if (!DATA.serp || typeof DATA.serp !== "object" || Array.isArray(DATA.serp)) DATA.serp = {};
     DATA.serpRuns = (Array.isArray(DATA.serpRuns) ? DATA.serpRuns : []).filter(x => x && typeof x === "object" && x.id);
+    // 테러 위협전화 대응 (v1.26) — 구조만 보정
+    if (!DATA.threat || typeof DATA.threat !== "object" || Array.isArray(DATA.threat)) DATA.threat = {};
+    DATA.threatRuns = (Array.isArray(DATA.threatRuns) ? DATA.threatRuns : []).filter(x => x && typeof x === "object" && x.id);
+    DATA.threatChecks = (Array.isArray(DATA.threatChecks) ? DATA.threatChecks : []).filter(x => x && typeof x === "object" && x.id);
     // 규정 관리 — 배열 보정 + 실모듈 전환(구버전 데이터의 planned 플래그 제거)
     DATA.regulations = (Array.isArray(DATA.regulations) ? DATA.regulations : []).filter(r => r && r.id);
     DATA.regulations.forEach(r => {
@@ -1012,7 +1040,7 @@ const SeMIS = (() => {
   /* 라우트별 콘텐츠 폭 — wide(2100px) / mid(1560px) / 기본 1180px */
   const VIEW_WIDTH = {
     schedule: "wide", dashboard: "wide", board: "wide", flight: "wide",
-    minutes: "mid", contacts: "mid", crisis: "mid", serp: "mid", phonebook: "mid", settings: "mid", vault: "mid",
+    minutes: "mid", contacts: "mid", crisis: "mid", serp: "mid", threat: "mid", phonebook: "mid", settings: "mid", vault: "mid",
     "reg-sec": "mid", "reg-safety": "mid", "reg-dg": "mid", "scr-status": "mid", "scr-equip": "mid", audit: "mid", inspection: "mid", shortcuts: "mid"
   };
   function applyViewWidth(view, route) {

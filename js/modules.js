@@ -23,6 +23,7 @@
     flight:   "all",  // 운항 현황 — 항공기 위치 지도 + 인천 접근 중 (js/flightops.js)
     screen:   "mgr",  // 화물 보안검색 요약 띠 (CARES — 검색 라인 · 오늘 점검 · 고장 · 환경)
     serp:     "mgr",  // 위기대응 띠 — SERP 대응(실제 · 훈련) 진행 중일 때만 (js/serp.js)
+    threat:   "mgr",  // 위협전화 응대 띠 — 응대(실제 · 훈련) 진행 중일 때만 (js/threat.js)
     audit:    "mgr",  // 수검 대응 띠 — 60일 안의 수검 D-day · 준비율 · 미결 지적 (js/audit.js, 해당 없으면 숨김)
     build:    "hq"    // 모듈 구축 현황 (허브별 운영/전체)
   };
@@ -104,6 +105,11 @@
   function serpVisible() {
     const mn = (D().menus || []).find(m => m.type === "module" && m.module === "serp");
     return !!(mn && SeMIS.navVisible(mn) && SeMIS.hasModule("serp") && window.SemisSerp);
+  }
+  /* 위협전화 응대 띠 — 테러 위협전화 대응 메뉴를 볼 수 있을 때만(권한·숨김 따름) */
+  function threatVisible() {
+    const mn = (D().menus || []).find(m => m.type === "module" && m.module === "threat");
+    return !!(mn && SeMIS.navVisible(mn) && SeMIS.hasModule("threat") && window.SemisThreat);
   }
   /* 화물 보안검색 요약 띠 — 보안검색 현황 메뉴를 볼 수 있을 때만(권한·숨김 따름) */
   function scrVisible() {
@@ -254,6 +260,7 @@
           ${acts ? `<div class="head-acts">${acts}</div>` : ""}
         </div>
         ${cardVis("status") ? `<div class="dash-top${guest ? " guest" : ""}">${ticketHTML(canWrite)}</div>` : ""}
+        ${!guest && cardVis("threat") && threatVisible() ? SemisThreat.dashHTML() : ""}
         ${!guest && cardVis("serp") && serpVisible() ? SemisSerp.dashHTML() : ""}
         ${!guest && cardVis("screen") && window.SemisScreen && scrVisible() ? SemisScreen.dashHTML() : ""}
         ${!guest && cardVis("audit") && audVisible() ? SemisAudit.dashHTML() : ""}
@@ -265,6 +272,7 @@
       if (window.SemisScreen && $("#dash-scr")) SemisScreen.mountDash();
       if (window.SemisAudit && $("#dash-aud")) SemisAudit.mountDash();
       if (window.SemisSerp && $("#dash-serp")) SemisSerp.mountDash();
+      if (window.SemisThreat && $("#dash-threat")) SemisThreat.mountDash();
 
       // 공지 리스트
       const nl = $("#notice-list");
