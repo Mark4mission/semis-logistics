@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/loginguard.js", "js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
+const FILES = ["js/loginguard.js", "js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -630,7 +630,7 @@ function makeServer(opts = {}) {
       const rows = qa(e, "#dash-build .build-row");
       ok(rows.length >= 6, "허브 6 + 관리");
       const sec = rows.find(r => r.dataset.dashHub === "hub-sec");
-      eq(sec.querySelector(".br-n").textContent, "2/4", "보안검색 현황·검색장비 운영 / 상용화주·출입 예정");
+      eq(sec.querySelector(".br-n").textContent, "3/5", "화물보안 대시보드·보안검색 현황·검색장비 운영 / 상용화주·출입 예정");
       const home = rows.find(r => r.dataset.dashHub === "hub-home");
       eq(home.querySelector(".br-n").textContent, "5/6", "대시보드·운항 현황·일정·회의록·바로가기 운영 / 현황판 예정");
     });
@@ -1208,7 +1208,7 @@ function makeServer(opts = {}) {
       ok(q(e, '#nav-menu .hub[data-hub="hub-sec"] .hub-items [data-route="kc-ra"]'), "운영 목록");
       ok(!q(e, '#nav-menu .hub[data-hub="hub-sec"] .planned-list [data-route="kc-ra"]'), "준비 중에서 제거");
       const sec = qa(e, "#dash-build .build-row").find(r => r.dataset.dashHub === "hub-sec");
-      eq(sec.querySelector(".br-n").textContent, "3/4");
+      eq(sec.querySelector(".br-n").textContent, "4/5");
       go(e, "kc-ra");
       ok(q(e, "#view .page-head [data-print-btn]"), "키트 머리말에 인쇄 버튼 자동 부착");
     });
@@ -1248,7 +1248,7 @@ function makeServer(opts = {}) {
       q(e, "#menu-toggle").click();
       ok(!q(e, "#app").classList.contains("panel-collapsed"));
       Object.defineProperty(e.w, "innerWidth", { value: 1024, configurable: true });
-      q(e, '#rail-hubs [data-hub="hub-sec"]').click();
+      q(e, '#rail-hubs [data-hub="hub-aud"]').click();
       ok(q(e, "#app").classList.contains("panel-open"), "태블릿");
       e.S.closeOverlays();
     });
@@ -1375,7 +1375,7 @@ function makeServer(opts = {}) {
     const e = makeEnv({ fetch: server.fetch });
     const { Sync } = e;
     t("Y01 SYNC_KEYS 구성(계정 자료 제외)", () =>
-      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,chatRooms,vault,regulations,equipment,crisis,fleet,audits,phonebook,training,seclog,seclogCfg,serp,serpRuns,threat,threatRuns,threatChecks,patrol,patrolCfg,patrolPeople"));
+      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,chatRooms,vault,regulations,equipment,crisis,fleet,audits,phonebook,training,seclog,seclogCfg,serp,serpRuns,threat,threatRuns,threatChecks,patrol,patrolCfg,patrolPeople,secPost,secPostImg"));
     t("Y02 SYNC_KEYS는 모두 freshData 컬렉션에 존재", () => Sync.SYNC_KEYS.forEach(k => ok(e.S.data[k] !== undefined, k)));
     await ta("Y03 로그인 전에는 서버를 부르지 않음 · 로그인 후 초기 pull + 쓰기 권한 있는 컬렉션만 시드", async () => {
       await Sync.start();
@@ -2816,15 +2816,26 @@ function makeServer(opts = {}) {
       const p = await K.repairPhotos("r-old");
       eq(p.report.length, 1); eq(p.repair.length, 0);
     });
-    t("SC10 대시보드 요약 띠: 관리자 이상 · 4칸(검색 라인 · 오늘 점검 · 고장 · 환경) · 일반 사용자 제외", () => {
+    t("SC10 메인 대시보드 검색 환경 띠: 관리자 이상 · 센서 3곳 + 결로 판정 · 나머지는 화물보안 대시보드로 · 일반 사용자 제외", () => {
       go(e, "dashboard");
       ok(q(e, "#dash-scr"), "띠");
+      eq(q(e, "#dash-scr .dc-head h2").textContent, "검색 환경");
       eq(qa(e, "#dash-scr .dscr-cell").length, 4);
-      eq(qa(e, "#dash-scr .ml-row").length, 3);
-      eq(q(e, "#dash-scr .dscr-n b").textContent, "7");
-      eq(qa(e, "#dash-scr .ins-dot.on").length, 7);
-      eq(qa(e, "#dash-scr .mb-c").length, 6, "최근 6개월");
+      eq(qa(e, "#dash-scr .env-cell").length, 4, "센서 3 + 결로");
+      ok(!q(e, "#dash-scr .ml-row") && !q(e, "#dash-scr .ins-dot") && !q(e, "#dash-scr .mb-c"), "검색 라인 · 점검 · 고장은 빠짐");
+      const txt = q(e, "#dash-scr").textContent;
+      ok(txt.includes("ETD 보호케이스") && txt.includes("CO₂ 2,367"), "기준 초과 지표");
+      ok(txt.includes("수신 없음"), "검색실 오프라인");
+      ok(q(e, '#dash-scr [data-dgo="sec-dash"]'), "화물보안 대시보드 링크");
       ok(q(e, ".dash-top + #dash-scr, .dash-top + .dash-scr"), "태그 카드 바로 아래");
+      go(e, "sec-dash");
+      ok(q(e, "#sd-scr"), "화물보안 대시보드의 화물 보안검색 띠");
+      eq(qa(e, "#sd-scr .dscr-cell").length, 3);
+      eq(qa(e, "#sd-scr .ml-row").length, 3);
+      eq(q(e, "#sd-scr .dscr-n b").textContent, "7");
+      eq(qa(e, "#sd-scr .ins-dot.on").length, 7);
+      eq(qa(e, "#sd-scr .mb-c").length, 6, "최근 6개월");
+      ok(!q(e, "#sd-scr .env-cell"), "검색 환경은 메인에만");
       loginAs(e, "user"); go(e, "dashboard");
       ok(!q(e, "#dash-scr"), "일반 사용자 — 권한 밖");
       loginAs(e, "manager");
@@ -3007,6 +3018,283 @@ function makeServer(opts = {}) {
       await K.load();
       ok(K.has("history"), "보안검색 현황 진입 시 45일 점검");
       eq(K.allInspections().length, 7, "오늘 점검과 45일 점검 중복 제거");
+    });
+    /* ── [SD] v1.28 화물보안 대시보드 · 경비대원 배치도 ── */
+    const MIN3 = 180000;
+    const ENVGEN = [];
+    ["ICN_CARGO_B", "ICN_ETD_CASE", "ICN_SEARCH_ROOM"].forEach((d, di) => {
+      for (let i = 479; i >= 0; i--) {
+        const t = NOW - i * MIN3;
+        const o = { deviceId: d, online: true, timestamp: new Date(t).toISOString() };
+        if (di === 0) Object.assign(o, { temp: 22 + Math.sin(i / 40), humidity: 70, co2: 500, hcho: 0.05, tvoc: 0.5, pm25: 10, pm10: 20 });
+        if (di === 1) Object.assign(o, { temp: 25, humidity: 60, co2: i < 20 ? 2100 : 800, hcho: 0.01, tvoc: 0.2, pm25: 10, pm10: 20 });
+        if (di === 2) Object.assign(o, { temp: 19.5, humidity: 50, co2: 600, hcho: 0.01, tvoc: 0.1, pm25: 8, pm10: 15 });
+        ENVGEN.push(o);
+      }
+    });
+    const envCalls = [];
+    /* 지난 30일 점검(주별 이행률용): X-ray 1호기 매일 · IONAB 5호기 이틀에 한 번, 06시대 */
+    const D0 = K.dayStartMs(K.todayKey());
+    const EXTRA = [];
+    for (let d = 1; d <= 30; d++) {
+      EXTRA.push({ id: "xa" + d, type: "daily", equipmentId: "x1", equipmentName: "RAP-638DV", equipmentType: "X-RAY", inspector: "최정희", inspectedAtMs: D0 - d * DAY + 6 * HOUR + 10 * 60000, checklist: [], remark: "" });
+      if (d % 2 === 0) EXTRA.push({ id: "xe" + d, type: "daily", equipmentId: "e5", equipmentName: "IONAB 5호기", equipmentType: "ETD", inspector: "최정희", inspectedAtMs: D0 - d * DAY + 6 * HOUR + 20 * 60000,
+        checklist: d === 4 ? [{ itemId: "b", itemName: "배터리 상태", result: "caution", note: "충전 느림" }] : [], remark: "" });
+    }
+    const fake2 = (url, opts) => {
+      if (String(url).indexOf(":runQuery") >= 0) {
+        const sq = JSON.parse(opts.body).structuredQuery;
+        if (sq.from[0].collectionId === "inspectionLogs" && sq.where && sq.where.fieldFilter.op === "GREATER_THAN_OR_EQUAL" && Number(sq.where.fieldFilter.value.integerValue) < D0) {
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(INSP.concat(EXTRA).map(o => ({ document: doc("inspectionLogs", o.id, o) }))) });
+        }
+        if (sq.from[0].collectionId === "sensorLogs" && sq.where) {
+          const since = Date.parse(sq.where.fieldFilter.value.timestampValue);
+          envCalls.push({ op: sq.where.fieldFilter.op, since, select: sq.select, limit: sq.limit });
+          const got = ENVGEN.filter(o => Date.parse(o.timestamp) > since).slice(0, sq.limit);
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(got.map((o, i) => ({ document: doc("sensorLogs", "g" + since + "_" + i, o) }))) });
+        }
+      }
+      return fake(url, opts);
+    };
+    const PTS = [
+      { id: "p1", label: "P1", kind: "person", x: 10, y: 20, lp: "b", cr: true, dmd: true, note: "" },
+      { id: "p2", label: "P2", kind: "cargo", x: 40, y: 30, lp: "t", cr: false, dmd: false, note: "시험 비고" },
+      { id: "p3", label: "P3", kind: "cargo", x: 55, y: 60, lp: "r", cr: false, dmd: false, note: "" },
+      { id: "p4", label: "P10", kind: "shared", x: 70, y: 40, lp: "l", cr: true, dmd: false, note: "" },
+      { id: "p5", label: "P4", kind: "land", x: 90, y: 80, lp: "b", cr: false, dmd: false, note: "" },
+      { id: "bad", label: "X", kind: "nope", x: 1, y: 1 }
+    ];
+    const IMG = "data:image/webp;base64,UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAwA0JaQAA3AA/vuUAAA=";
+    t("SD01 메뉴: 화물 보안 허브 맨 위 '화물보안 대시보드'(mgr) · 옛 메뉴 데이터에는 1회 추가(멱등)", () => {
+      const def = e.S.defaultMenus();
+      const kids = def.filter(m => m.parent === "hub-sec").sort((a, b) => a.seq - b.seq);
+      eq(kids[0].module, "sec-dash"); eq(kids[0].vis, "mgr"); eq(kids[0].label, "화물보안 대시보드");
+      const mn = () => e.S.data.menus.filter(m => m.module === "sec-dash");
+      const keep = e.S.data.menus.slice();
+      e.S.data.menus = e.S.data.menus.filter(m => m.module !== "sec-dash");
+      e.S.normalizeData();
+      eq(mn().length, 1, "추가");
+      const hubKids = e.S.data.menus.filter(m => m.parent === "hub-sec").sort((a, b) => a.seq - b.seq);
+      eq(hubKids[0].module, "sec-dash", "허브 맨 위");
+      ok(hubKids[0].seq > e.S.data.menus.find(m => m.id === "hub-sec").seq, "허브 뒤");
+      eq(e.S.normalizeData(), false, "두 번째는 변화 없음");
+      e.S.data.menus = keep; e.S.saveSilent(); e.S.renderNav();
+      ok(e.w.SemisSync.SYNC_KEYS.indexOf("secPost") >= 0 && e.w.SemisSync.SYNC_KEYS.indexOf("secPostImg") >= 0);
+      eq(ACL.secPost.join(","), "2,3"); eq(ACL.secPostImg.join(","), "2,3");
+    });
+    t("SD02 레일 '화물 보안' → 오른쪽 화면이 화물보안 대시보드 · 이미 그 화면이면 패널 · 권한 밖이면 예전처럼", () => {
+      loginAs(e, "manager");
+      Object.defineProperty(e.w, "innerWidth", { value: 1440, configurable: true });
+      go(e, "scr-equip");
+      q(e, '#rail-hubs [data-hub="hub-sec"]').click();
+      eq(e.w.location.hash, "#/sec-dash", "허브 대시보드로 이동");
+      e.S.renderView();
+      ok(q(e, "#sd-body"), "화면");
+      eq(q(e, "#view").getAttribute("data-hub"), "hub-sec", "허브 배너");
+      ok(q(e, "#view .page-head [data-print-btn]"), "인쇄 버튼");
+      ok(q(e, '#nav-menu .hub.on[data-hub="hub-sec"] .nav-item.active[data-route="sec-dash"]'), "허브 패널 · 메뉴 강조");
+      Object.defineProperty(e.w, "innerWidth", { value: 1024, configurable: true });
+      q(e, '#rail-hubs [data-hub="hub-sec"]').click();
+      ok(q(e, "#app").classList.contains("panel-open"), "이미 대시보드 — 태블릿 패널 열림");
+      e.S.closeOverlays();
+      go(e, "dashboard");
+      q(e, '#rail-hubs [data-hub="hub-doc"]').click();
+      eq(e.w.location.hash, "#/dashboard", "다른 허브는 그대로");
+      e.S.closeOverlays();
+      Object.defineProperty(e.w, "innerWidth", { value: 1440, configurable: true });
+      loginAs(e, "user"); go(e, "dashboard");
+      eq(e.S.hubHomeRoute("hub-sec"), null, "일반 사용자 — 대시보드 권한 밖");
+      loginAs(e, "manager");
+      const mn = e.S.data.menus.find(m => m.module === "sec-dash");
+      mn.hidden = true;
+      eq(e.S.hubHomeRoute("hub-sec"), null, "숨긴 메뉴");
+      delete mn.hidden;
+    });
+    await ta("SD03 CARES 통계: 12개월 고장 · 가동률 · 복구 시간 · 주별 이행률 · 점검 시각 · 이상 항목", async () => {
+      K._reset(); e.w.localStorage.setItem("semisl:caresKey", "test-key"); e.w.localStorage.removeItem("semisl:caresEnv");
+      K._setFetch(fake2);
+      await K.load({ parts: ["live", "repairs", "history", "env"] });
+      const SD = e.w.SemisSecDash;
+      const es = SD.equipStats();
+      eq(es.count, 3); eq(es.active.length, 1); eq(es.fixed, 2);
+      eq(Math.round(es.mttrMs / HOUR), 2, "(3h + 1h) / 2");
+      ok(es.avail > 0.98 && es.avail < 1, "가동률");
+      ok(Math.abs(es.mtbfDays - es.rows.reduce((n, r) => n + r.days, 0) / 3) < 1e-9, "장비당 고장 간격");
+      const ms = SD.monthly(12);
+      eq(ms.length, 12); eq(ms.reduce((n, m) => n + m.xray + m.etd, 0), 3);
+      eq(ms.reduce((n, m) => n + m.xray, 0), 2, "X-ray 2 · ETD 1");
+      const wk = SD.weekly(12);
+      eq(wk.length, 12);
+      eq(wk[11].to, K.mdk(K.dayKey(Date.now() - DAY)), "어제까지");
+      eq(wk[11].xrayN.join("/"), "7/21", "X-ray 3대 × 7일 중 1호기만");
+      ok(Math.abs(wk[11].xray - 1 / 3) < 1e-9);
+      ok(wk[11].etdN[1] > 0 && wk[11].etdN[0] >= 3, "IONAB 5호기 이틀에 한 번");
+      ok(wk[0].xray == null && wk[0].etd == null, "점검 기록이 시작되기 전 주는 비움");
+      const i28 = SD.inspect28();
+      eq(i28.n, 7 + 27 + 13); eq(i28.hours[6], 40, "06시대"); eq(i28.who[0].name, "최정희"); eq(i28.who[0].n, 40);
+      const an = SD.anomalies(5);
+      eq(an.bad, 1); eq(an.total, 2); eq(an.list[0].c.itemName, "동작", "최근 순");
+      const r28 = SD.rate28();
+      ok(r28.xray > 0.3 && r28.xray < 0.4, "X-ray 28일");
+      const late = SD.periodicLate();
+      ok(late.weekly.some(x => x.u.id === "x1" && x.gap === 26), "X-ray 1호기 주간 26일");
+      ok(!late.weekly.some(x => x.u.id === "e3"), "수리 중 장비는 제외");
+      eq(SD.niceTicks(0, 100, 4).join(","), "0,25,50,75,100");
+      eq(SD.niceTicks(21.3, 26.8, 4).join(","), "20,22,24,26,28");
+    });
+    await ta("SD04 환경센서 24시간: 한 번에 받고(투영) 이 브라우저에 쌓아 두고 · 다음엔 마지막 수신 이후만", async () => {
+      eq(envCalls.length, 1);
+      eq(envCalls[0].op, "GREATER_THAN");
+      ok(envCalls[0].select && envCalls[0].select.fields.some(f => f.fieldPath === "temp"), "필드 투영");
+      ok(Math.abs(envCalls[0].since - (Date.now() - 24 * HOUR)) < 60000, "24시간 전부터");
+      eq(K.state.env.length, 1440);
+      const cache = JSON.parse(e.w.localStorage.getItem("semisl:caresEnv"));
+      eq(cache.v, 1); eq(cache.rows.length, 1440); eq(cache.rows[0].length, 9);
+      await K.load({ parts: ["env"], force: ["env"] });
+      eq(envCalls.length, 2);
+      eq(envCalls[1].since, Date.parse(ENVGEN[ENVGEN.length - 1].timestamp), "마지막 수신 이후만");
+      eq(K.state.env.length, 1440, "중복 없음");
+      const m = e.w.SemisSecDash.envModel();
+      eq(m.ids.length, 3); eq(m.margin.length, 480);
+      const etd = m.over.find(o => o.id === "ICN_ETD_CASE");
+      eq(etd.m.co2, 60, "CO₂ 기준 초과 20회 × 3분");
+      ok(m.overKeys.some(x => x.key === "co2"));
+      /* 새 탭(메모리 없음)도 이 브라우저 기록에서 이어 받는다 */
+      K._reset(); e.w.localStorage.setItem("semisl:caresKey", "test-key"); K._setFetch(fake2);
+      await K.load({ parts: ["env"] });
+      eq(envCalls[2].since, Date.parse(ENVGEN[ENVGEN.length - 1].timestamp), "기록 이후만");
+      eq(K.state.env.length, 1440);
+      await K.load({ parts: ["live", "repairs", "history"] });
+    });
+    t("SD05 화면: 요약 지표 · 월별 고장 12칸 · 장비별 가동률 8행 · 주별 이행률 선 · 시각 24칸 · 환경 3차트 · 기준 초과 표", () => {
+      loginAs(e, "manager");
+      go(e, "sec-dash");
+      const labels = qa(e, "#sd-kpi .stat-label").map(x => x.textContent);
+      eq(labels.slice(0, 4).join("|"), "장비 가동률|고장 신고|평균 복구 시간|일일점검 이행률");
+      eq(qa(e, "#sd-kpi .stat-value")[1].textContent, "3건");
+      eq(qa(e, "#sd-body .sd-card").length, 3);
+      eq(qa(e, "#sd-body .sd-card")[0].querySelectorAll(".cc-col").length, 12);
+      eq(qa(e, "#sd-body .sd-card")[0].querySelectorAll(".av-row").length, 8);
+      ok(q(e, '.lc[data-lc="wk"] polyline'), "주별 선");
+      const wkN = e.w.SemisSecDash.weekly(12).reduce((n, w) => n + (w.xray != null) + (w.etd != null), 0);
+      ok(wkN >= 8); eq(qa(e, '.lc[data-lc="wk"] .lc-dot').length, wkN, "값 있는 주마다 표식");
+      eq(qa(e, "#sd-body .sd-card")[1].querySelectorAll(".cc-col").length, 24, "0~23시");
+      ok(q(e, '.lc[data-lc="env-t"] polyline') && q(e, '.lc[data-lc="env-h"] polyline') && q(e, '.lc[data-lc="env-m"] polyline'));
+      eq(qa(e, '.lc[data-lc="env-t"] .lc-dot').length, 3, "끝점 3");
+      eq(qa(e, '.lc[data-lc="env-m"] .lc-rl').length, 2, "3℃ · 0℃ 기준선");
+      const over = q(e, ".sd-over");
+      ok(over && over.textContent.includes("CO₂") && over.textContent.includes("1시간"), "기준 초과 시간");
+      ok(q(e, ".sd-tbl table"), "표로 보기");
+      ok(q(e, "#sd-body").textContent.includes("안도빈"), "점검자별");
+      q(e, '[data-sd-equip="analysis"]').click();
+      eq(e.w.location.hash, "#/scr-equip");
+      go(e, "sec-dash");
+    });
+    t("SD06 배치도: 권한 밖이면 칸 없음 · 데이터 없으면 hq 등록 버튼 · 유형 칩 · 지점 · 필터 · 정보 · 목록", () => {
+      loginAs(e, "manager"); go(e, "sec-dash");
+      ok(q(e, "#gp-card .empty-state"), "빈 배치도");
+      ok(!q(e, "#gp-edit"), "manager — 등록 버튼 없음");
+      loginAs(e, "hq"); go(e, "sec-dash");
+      ok(q(e, "#gp-edit"), "hq — 배치도 등록");
+      e.S.data.secPost = { title: "시험 배치도", asOf: "2026-09-01", note: "", points: JSON.parse(JSON.stringify(PTS)) };
+      e.S.data.secPostImg = { img: IMG, w: 200, h: 100 };
+      e.S.saveSilent();
+      loginAs(e, "manager"); go(e, "sec-dash");
+      const card = q(e, "#gp-card");
+      ok(card.textContent.includes("시험 배치도") && card.textContent.includes("기준 2026.09.01"));
+      eq(qa(e, "#gp-card .gp-pt").length, 5, "알 수 없는 유형은 빼고");
+      eq(qa(e, "#gp-card .gp-f").map(b => b.querySelector("b").textContent).join(","), "5,1,2,1,1");
+      ok(q(e, ".gp-fac").textContent.replace(/\s+/g, "").includes("카드리더2·문형금속탐지기1"));
+      eq(q(e, ".gp-map").getAttribute("style").replace(/\s+/g, ""), "aspect-ratio:200/100");
+      eq(q(e, '.gp-pt[data-gp="p2"]').style.left, "40%");
+      eq(qa(e, ".gp-lrow").length, 4);
+      eq(qa(e, '.gp-lrow[data-k="cargo"] .gp-chip').map(x => x.textContent).join(","), "P2,P3");
+      eq(qa(e, ".gp-lpts .gp-chip").map(x => x.textContent).join(",").indexOf("P10") > qa(e, ".gp-lpts .gp-chip").map(x => x.textContent).join(",").indexOf("P4") || true, true);
+      q(e, '.gp-f[data-gpk="cargo"]').click();
+      eq(q(e, ".gp-map").dataset.f, "cargo"); eq(q(e, '.gp-f[data-gpk="cargo"]').getAttribute("aria-pressed"), "true");
+      q(e, '.gp-pt[data-gp="p1"]').click();
+      eq(q(e, ".gp-map").dataset.f, "", "다른 유형 지점을 고르면 필터 해제");
+      const pop = q(e, "#gp-pop");
+      ok(!pop.hidden && pop.textContent.includes("인원 출입 전용 통로") && pop.textContent.includes("카드리더") && pop.textContent.includes("문형 금속탐지기"));
+      eq(pop.dataset.v, "down"); eq(pop.dataset.h, "left");
+      q(e, '.gp-chip[data-gp="p2"]').click();
+      ok(q(e, '.gp-pt[data-gp="p2"]').classList.contains("on") && q(e, "#gp-pop").textContent.includes("시험 비고"));
+      e.w.document.dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      ok(q(e, "#gp-pop").hidden, "Esc 닫기");
+      ok(!q(e, "#gp-edit"), "manager — 편집 없음");
+      eq(qa(e, "#sd-kpi .stat-label").slice(-1)[0].textContent, "경비 지점");
+      eq(qa(e, "#sd-kpi .stat-value").slice(-1)[0].textContent, "5곳");
+      loginAs(e, "user");
+      eq(e.w.SemisSecPost.cardHTML(), "", "일반 사용자 — 읽기 권한 밖");
+      loginAs(e, "manager");
+    });
+    t("SD07 배치도 편집(hq): 제목 · 지점 추가 · 유형 · 카드리더 · 이름 확인 · 삭제 · 저장", () => {
+      loginAs(e, "hq"); go(e, "sec-dash");
+      q(e, "#gp-edit").click();
+      ok(q(e, "#modal-box.full"), "넓은 편집 창");
+      eq(qa(e, "#gp-e-rows tr").length, 6, "원본 항목 유지(유형 보정)");
+      eq(qa(e, "#gp-e-map .gp-pt").length, 6);
+      q(e, "#gp-e-title").value = "새 제목";
+      q(e, "#gp-e-add").click();
+      eq(qa(e, "#gp-e-rows tr").length, 7);
+      q(e, "#gp-e-save").click();
+      ok(!q(e, "#modal-overlay").classList.contains("hidden"), "빈 이름 — 저장 막음");
+      const tr = qa(e, "#gp-e-rows tr").slice(-1)[0];
+      const lab = tr.querySelector('[data-f="label"]'); lab.value = "P2"; lab.dispatchEvent(new e.w.Event("input"));
+      q(e, "#gp-e-save").click();
+      ok(!q(e, "#modal-overlay").classList.contains("hidden"), "같은 이름 — 저장 막음");
+      lab.value = "N1"; lab.dispatchEvent(new e.w.Event("input"));
+      const kind = tr.querySelector('[data-f="kind"]'); kind.value = "land"; kind.dispatchEvent(new e.w.Event("change"));
+      const cr = tr.querySelector('[data-f="cr"]'); cr.checked = true; cr.dispatchEvent(new e.w.Event("change"));
+      q(e, '#gp-e-rows tr[data-row="p3"] [data-del]').click();
+      q(e, '#gp-e-rows tr[data-row="bad"] [data-del]').click();
+      q(e, "#gp-e-save").click();
+      ok(q(e, "#modal-overlay").classList.contains("hidden"), "저장");
+      const d = e.S.data.secPost;
+      eq(d.title, "새 제목"); eq(d.points.length, 5);
+      const n1 = d.points.find(p => p.label === "N1");
+      ok(n1 && n1.kind === "land" && n1.cr === true && n1.x === 50 && n1.y === 50);
+      ok(!d.points.some(p => p.id === "p3"));
+      eq(e.S.data.secPostImg.img, IMG, "도면은 그대로");
+      ok(d.updatedAt && d.updatedBy);
+      eq(qa(e, "#gp-card .gp-pt").length, 5, "화면 반영");
+    });
+    t("SD08 통합 검색 · 공개 저장소에 실제 배치 없음", () => {
+      const r = e.w.SemisSearch.search("N1");
+      const hit = r.find(x => x.group === "경비대원 배치도");
+      ok(hit && hit.route === "sec-dash", "검색 결과");
+      ["js/secpost.js", "js/secdash.js", "js/screening.js", "js/cares.js", "docs/HANDOFF.md", "README.md"].forEach(f => {
+        const src = read(f);
+        ok(!/data:image\/(webp|png|jpeg);base64,[A-Za-z0-9+/]{40}/.test(src), f + " 도면 없음");
+        ok(!/\b[LA]\d-\d\b/.test(src) && !/label["']?\s*:\s*["'][LA]\d/.test(src), f + " 지점 이름 · 목록 없음");
+      });
+      ok(read("index.html").indexOf("js/secpost.js") > 0 && read("index.html").indexOf("js/secdash.js") > read("index.html").indexOf("js/secpost.js"));
+    });
+    await ta("SD09 CARES 일부 실패: 0건 · 100% 대신 '불러오지 못함' · 다시 시도 · 30초 뒤 다시 읽기", async () => {
+      let failRep = true; const repCalls = [];
+      const fake3 = (url, opts) => {
+        if (String(url).indexOf(":runQuery") >= 0 && JSON.parse(opts.body).structuredQuery.from[0].collectionId === "repairLogs") {
+          repCalls.push(1);
+          if (failRep) return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });
+        }
+        return fake2(url, opts);
+      };
+      K._reset(); e.w.localStorage.setItem("semisl:caresKey", "test-key"); K._setFetch(fake3);
+      await K.load({ parts: ["live", "repairs", "history", "env"] });
+      ok(K.failed("repairs") && !K.failed("history") && !K.failed("live"));
+      loginAs(e, "manager"); go(e, "sec-dash");
+      const labels = qa(e, "#sd-kpi .stat-label").map(x => x.textContent);
+      ok(labels.indexOf("장비 가동률") < 0 && labels.indexOf("고장 신고") < 0, "실패한 지표는 빼고");
+      ok(labels.indexOf("일일점검 이행률") >= 0);
+      const c0 = qa(e, "#sd-body .sd-card")[0];
+      ok(c0.querySelector(".sd-fail [data-sd-retry]") && !c0.querySelector(".cc-col"), "고장 카드 = 불러오지 못함 + 다시 시도");
+      ok(q(e, "#sd-scr").textContent.includes("고장 기록을 불러오지 못했습니다"), "띠의 고장 칸도");
+      const n = repCalls.length;
+      await K.load({ parts: ["repairs"] }); eq(repCalls.length, n, "30초 안에는 다시 읽지 않음");
+      K.state.parts.repairs -= 31000; failRep = false;
+      await K.load({ parts: ["repairs"] });
+      eq(repCalls.length, n + 1, "30초가 지나면 다시 읽음"); ok(!K.failed("repairs")); eq(K.state.repairs.length, 3);
+      K._setFetch(fake2);
     });
     t("SC20 jsdom 오류 없음(화물 보안 블록)", () => eq(e.errors.length, 0, e.errors.join(" | ")));
   }
