@@ -5833,19 +5833,33 @@ function makeServer(opts = {}) {
       q(e, "#pt-ngclear").click(); clickOk(e);
       eq(day("2026-09-30").ng.length, 0);
     });
-    t("PT08 휴무 · 당직: 순찰 없음 → 당직근무자 · 인쇄 확인 칸 · 순찰 기록이 있으면 불가 · 해제", () => {
+    t("PT08 휴무 · 당직: 당직근무자 이름 + 그때 서명(명단 등록 없음) · 인쇄 확인 칸 · 이름 바꾸면 다시 서명 · 순찰 기록이 있으면 불가 · 해제", () => {
       seed(); loginAs(e, "manager"); P.setState({ curDate: "2026-09-26" }); go(e, "daily-safety");
+      const nPeople = e.S.data.patrolPeople.length;
       q(e, "[data-pt-off]").click();
+      ok(q(e, "#modal-box [data-act=ok]").textContent.indexOf("서명하고 저장") >= 0 && !q(e, "#pt-dl-off option[value='순찰갑']"), "명단 이름을 권하지 않음");
+      clickOk(e); ok(q(e, "#pt-offn") && !q(e, "#pt-pad"), "이름 필수");
       q(e, "#pt-offn").value = "당직자"; clickOk(e);
+      ok(q(e, "#pt-pad") && q(e, "#modal-box h3").textContent.indexOf("당직자 서명") >= 0, "서명 패드");
+      q(e, "#modal-box [data-act=cancel]").click(); eq(q(e, "#pt-offn").value, "당직자", "취소하면 입력 유지"); ok(!day("2026-09-26") || !day("2026-09-26").off, "서명 전에는 저장 안 함");
+      clickOk(e); P._padCommit(SIG(8));
       const r = day("2026-09-26");
-      eq(r.off.name, "당직자"); eq(P.stOf("2026-09-26", "2026-09-30"), "off");
-      ok(q(e, ".pt-offcard") && q(e, ".pt-offcard").textContent.indexOf("당직자") >= 0 && !q(e, "[data-pt-take-am]"), "휴무 카드");
+      eq(r.off.name, "당직자"); eq(r.off.sign, SIG(8)); eq(P.stOf("2026-09-26", "2026-09-30"), "off");
+      eq(e.S.data.patrolPeople.length, nPeople, "명단에 추가하지 않음");
+      ok(q(e, ".pt-offcard") && q(e, ".pt-offcard").textContent.indexOf("당직자") >= 0 && q(e, ".pt-offcard img.pt-sig") && !q(e, "[data-pt-take-am]"), "휴무 카드 · 서명");
       const html = P.sheetHTML(P.sheetOf("2026-09-26"));
-      ok(/<td class="sv" rowspan="2"><div class="duty">당직근무자<br>당직자<\/div><\/td>/.test(html), "확인 칸에 당직근무자");
+      ok(/<td class="sv" rowspan="2"><div class="duty"><span>당직근무자<\/span><b>당직자<\/b><img src="[^"]*sig8\.png" alt="" style="max-height:[\d.]+mm"><\/div><\/td>/.test(html), "확인 칸에 당직근무자 · 이름 · 서명");
+      P.setState({ tab: "month", curMonth: "2026-09" }); go(e, "daily-safety");
+      ok(q(e, "tbody[data-pt-open='2026-09-26'] .pt-tduty img"), "월별 표 서명"); P.setState({ tab: "day", curDate: "2026-09-26" });
+      P.offForm("2026-09-26"); ok(q(e, "#modal-box [data-act=redo]")); clickOk(e); ok(!q(e, "#pt-pad") && !q(e, "#pt-offn"), "바뀐 것 없으면 그대로 닫힘");
+      P.offForm("2026-09-26"); q(e, "#pt-offn").value = "당직자2"; clickOk(e); ok(q(e, "#pt-pad"), "이름 바꾸면 다시 서명"); P._padCommit(SIG(9));
+      eq(day("2026-09-26").off.name, "당직자2"); eq(day("2026-09-26").off.sign, SIG(9));
       P.takeSlot("2026-09-26", "am", "p1");
       ok(day("2026-09-26").am && !day("2026-09-26").off, "순찰을 기록하면 휴무 해제");
       P.offForm("2026-09-26"); ok(!q(e, "#pt-offn"), "순찰 기록 있는 날은 휴무 불가");
-      day("2026-09-26").am = null; P.offForm("2026-09-26"); q(e, "#pt-offn").value = "당직자2"; clickOk(e);
+      day("2026-09-26").am = null; e.S.data.patrol.find(x => x.date === "2026-09-26").off = { name: "옛기록" };
+      P.offForm("2026-09-26"); ok(q(e, "#modal-box [data-act=ok]").textContent.indexOf("서명하고 저장") >= 0, "서명 없는 옛 기록은 서명 받기");
+      q(e, "#modal-box [data-act=cancel]").click();
       P.offForm("2026-09-26"); q(e, "#modal-box [data-act=del]").click();
       ok(!day("2026-09-26").off, "해제");
     });
@@ -5937,6 +5951,15 @@ function makeServer(opts = {}) {
       ok(!P.people().some(p => p.id === "p1") && P.roleList("am").every(p => p.id !== "p1"), "사용 안 함 → 기록 화면에서 빠짐");
       P.personForm(np.id); q(e, "#modal-box [data-act=del]").click(); clickOk(e);
       ok(!P.personOf(np.id), "hq 삭제");
+      loginAs(e, "admin"); P.setState({ tab: "people" }); go(e, "daily-safety");
+      ok(qa(e, "[data-pt-sign]").some(b => b.textContent.trim() === "서명 재등록") && !q(e, "#view").textContent.includes("다시 등록"), "문구: 서명 재등록");
+      const before = JSON.stringify(e.S.data.patrol);
+      P.personForm("p1"); ok(q(e, "#modal-box [data-act=del]"), "시스템관리자: 기록 있는 사람도 삭제");
+      q(e, "#modal-box [data-act=del]").click(); ok(q(e, "#modal-box").textContent.indexOf("그대로 남습니다") >= 0); clickOk(e);
+      ok(!P.personOf("p1"), "삭제됨"); eq(JSON.stringify(e.S.data.patrol), before, "기록 · 서명 그대로");
+      const doc = P.printDocHTML([P.sheetOf("2026-09-02")]); ok(doc.indexOf("순찰갑") >= 0 && doc.indexOf("sig9.png") >= 0, "인쇄에도 남음");
+      P.setState({ tab: "day", curDate: "2026-09-02" }); go(e, "daily-safety");
+      ok(q(e, ".pt-slot[data-slot=am]").textContent.indexOf("순찰갑") >= 0, "기록 화면 표시");
     });
     t("PT13 양식(hq): 제목 · 표기 · 시작일 · 구분 · 점검사항 줄 편집(같은 문구는 id 유지) · manager 버튼 없음", () => {
       seed(); loginAs(e, "manager"); go(e, "daily-safety"); ok(!q(e, "#pt-cfg"), "manager 양식 버튼 없음");

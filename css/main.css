@@ -4533,7 +4533,7 @@ button.tr-rbtn { cursor: pointer; }
 .pt-pchip.is-add { border-style: dashed; color: var(--text-2); font-weight: 500; padding: 0 12px; }
 .pt-nosig { display: inline-flex; color: var(--accent-dark); }
 .pt-none { color: var(--text-3); font-size: .86rem; }
-.pt-offb { display: flex; align-items: baseline; gap: 10px; }
+.pt-offb { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
 .pt-offb span { color: var(--text-2); font-weight: 600; }
 .pt-offb b { font-size: 1.28rem; }
 .pt-offact { margin-top: auto; }
@@ -4596,6 +4596,8 @@ button.tr-rbtn { cursor: pointer; }
 .pt-tday[data-st="none"] { cursor: default; color: var(--text-3); }
 .pt-tduty { font-size: .84rem; line-height: 1.35; }
 .pt-tduty span { display: block; color: var(--text-3); font-size: .74rem; }
+.pt-tduty b { display: block; }
+.pt-tduty .pt-tsig { margin-top: 2px; }
 /* 순찰자 · 서명 */
 .pt-ptools { display: flex; justify-content: flex-end; margin-bottom: 12px; }
 .pt-pgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 12px; }
@@ -4606,7 +4608,7 @@ button.tr-rbtn { cursor: pointer; }
 .pt-pc-sig { display: flex; align-items: center; justify-content: center; height: 96px; border: 1px dashed var(--border-strong); border-radius: 10px; background: #fbfcfc; }
 .pt-sig-lg { display: block; max-width: 92%; max-height: 84px; object-fit: contain; }
 .pt-pc-f { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.pt-pc-f .spacer { flex: 1; }
+.pt-pc-mv { display: inline-flex; gap: 2px; margin-left: auto; }
 /* 서명 패드 · 폼 */
 .pt-padsub { margin: -8px 0 10px; color: var(--text-2); font-size: .86rem; }
 .pt-padwrap { position: relative; display: flex; justify-content: center; }

@@ -5,7 +5,7 @@
    하루 기록 = 오전 순찰자 · 서명 / 오후 순찰자 · 서명 / 특이사항 / 이상 항목 → 보안감독자 확인 서명으로 끝.
    - 서명: 사람마다 한 번 그려 등록 → 이름만 누르면 서명 칸에 들어간다(그 자리에서 다시 그릴 수도 있음).
    - 점검사항: 기본은 전 항목 이상 없음. 이상 있는 항목만 눌러 표시하면 특이사항에 함께 인쇄된다.
-   - 휴무 · 당직: 순찰이 없는 날은 당직근무자 이름만 남긴다(종이의 '당직근무자 ○○○'처럼 확인 칸에 인쇄).
+   - 휴무 · 당직: 순찰이 없는 날은 당직근무자가 이름과 서명을 그때그때 남긴다(명단 등록 없음, 확인 칸에 '당직근무자 · 이름 · 서명' 인쇄).
    - 보안감독자 확인이 끝난 날은 잠긴다(고치려면 확인 취소).
    - 인쇄: 종이 양식과 같은 A4 세로 — 1~5 · 6~10 · … · 26~말일 한 장씩(31일은 26~31 여섯 줄).
 
@@ -13,7 +13,7 @@
    데이터
      patrolCfg    = { title, asOf, since, secs[{ id, name, items[{ id, text }] }] }   — 점검사항 문구는 공용 DB에만(코드는 구분 뼈대)
      patrolPeople = [{ id, name, roles[](patrol · sup), sign(서명 이미지 주소), signAt, active, order }]  — 명단은 공용 DB에만
-     patrol       = [{ id, date, am, pm, sup, off{ name, at, by }, note, ng[{ id, sec, t, note }], createdAt/By, updatedAt/By }]
+     patrol       = [{ id, date, am, pm, sup, off{ name, sign, at, by }, note, ng[{ id, sec, t, note }], createdAt/By, updatedAt/By }]
                     am · pm · sup = { pid, name, sign, t(순찰 시각, 확인은 없음), at, by } — 서명 주소는 그때 것을 그대로 남긴다
    권한: 열람 · 기록 · 순찰자 등록 mgr(권한표 patrol 2/2 · patrolPeople 2/2) · 양식 hq(patrolCfg 2/3).
    파일: 비공개 버킷 patrol/ 폴더(서명 이미지, 열람 2 · 올리기 2).
@@ -391,32 +391,47 @@
       touch(rr); SeMIS.save(); closeModal(); paint(); toast("저장했습니다.");
     };
   }
-  /* 휴무 · 당직 — 순찰이 없는 날 당직근무자만 남긴다 */
-  function offForm(iso) {
+  /* 휴무 · 당직 — 순찰이 없는 날 당직근무자가 이름과 서명을 남긴다(명단에 등록하지 않음, 서명은 매번 새로) */
+  function offForm(iso, st) {
     if (!canW()) return;
     const bm = blockMsg(iso);
     if (bm) { toast(bm, true); return; }
     const r = dayOf(iso);
     if (hasPatrol(r)) { toast("순찰 기록이 있는 날입니다.", true); return; }
-    const cur = r && r.off ? norm(r.off.name) : "";
-    const names = Array.from(new Set(days().map(x => x.off && norm(x.off.name)).filter(Boolean).concat(people().map(p => p.name)))).slice(0, 40);
+    const cur = r && r.off && norm(r.off.name) ? r.off : null;
+    st = st || { name: cur ? norm(cur.name) : "" };
+    const hasSig = !!(cur && signOk(cur.sign));
+    const names = Array.from(new Set(days().map(x => x.off && norm(x.off.name)).filter(Boolean))).slice(0, 40);
     openModal(`<h3>순찰 없음 · 휴무 <small class="au-mh">${esc(dot(iso))} (${WD[dow(iso)]})</small></h3>
-      <div class="form-row"><label for="pt-offn">당직근무자</label><input id="pt-offn" value="${esc(cur)}" maxlength="30" autocomplete="off" list="pt-dl-off"></div>
+      <div class="form-row"><label for="pt-offn">당직근무자</label><input id="pt-offn" value="${esc(st.name)}" maxlength="30" autocomplete="off" list="pt-dl-off"></div>
       <datalist id="pt-dl-off">${names.map(n => `<option value="${esc(n)}">`).join("")}</datalist>
+      ${cur ? `<div class="form-row"><label>서명</label><div class="pt-fsig">${hasSig ? signImg(cur.sign, "pt-sig-lg") : '<span class="pt-none">서명 없음</span>'}</div></div>` : ""}
       <div class="modal-actions">
         ${cur ? '<button type="button" class="btn btn-danger" data-act="del">해제</button><span class="spacer" style="flex:1"></span>' : ""}
         <button type="button" class="btn btn-ghost" data-act="cancel">취소</button>
-        <button type="button" class="btn btn-primary" data-act="ok">저장</button>
+        ${hasSig ? '<button type="button" class="btn btn-ghost" data-act="redo">다시 서명</button>' : ""}
+        <button type="button" class="btn btn-primary" data-act="ok">${hasSig ? "저장" : "서명하고 저장"}</button>
       </div>`);
     $("#modal-box [data-act=cancel]").onclick = closeModal;
     const del = $("#modal-box [data-act=del]");
     if (del) del.onclick = () => { const rr = dayOf(iso); if (rr) { rr.off = null; touch(rr); SeMIS.save(); } closeModal(); paint(); toast("해제했습니다."); };
-    $("#modal-box [data-act=ok]").onclick = () => {
-      const n = norm($("#pt-offn").value);
-      if (!n) { toast("당직근무자를 입력하세요.", true); $("#pt-offn").focus(); return; }
+    const sign = (n) => signPad({ title: n + " 서명", sub: "당직근무자 · " + dot(iso), onCancel: () => offForm(iso, { name: n }) }, (url) => {
       const rr = ensureDay(iso);
-      rr.off = { name: n, at: nowISO(), by: me() };
+      rr.off = { name: n, sign: url, at: nowISO(), by: me() };
       touch(rr); SeMIS.save(); closeModal(); paint(); toast("저장했습니다.");
+    });
+    const nameOf = () => {
+      const n = norm($("#pt-offn").value);
+      if (!n) { toast("당직근무자를 입력하세요.", true); $("#pt-offn").focus(); return ""; }
+      return n;
+    };
+    const redo = $("#modal-box [data-act=redo]");
+    if (redo) redo.onclick = () => { const n = nameOf(); if (n) sign(n); };
+    $("#modal-box [data-act=ok]").onclick = () => {
+      const n = nameOf();
+      if (!n) return;
+      if (hasSig && n === norm(cur.name)) { closeModal(); return; }   // 바뀐 것 없음
+      sign(n);                                                        // 새 기록이거나 이름이 바뀌면 서명을 새로
     };
   }
   /* 보안감독자 일괄 확인 — 확인 대기인 날을 한 번에 */
@@ -507,13 +522,13 @@
         <label class="pt-chk"><input type="checkbox" id="pt-rs" ${hasRole(v, "sup") ? "checked" : ""}> 보안감독자</label></div></div>
       ${x ? `<label class="pt-chk"><input type="checkbox" id="pt-pa" ${v.active !== false ? "checked" : ""}> 사용</label>` : ""}
       <div class="modal-actions">
-        ${x && !used && SeMIS.canEdit() ? '<button type="button" class="btn btn-danger" data-act="del">삭제</button><span class="spacer" style="flex:1"></span>' : ""}
+        ${x && (SeMIS.isAdmin() || (!used && SeMIS.canEdit())) ? '<button type="button" class="btn btn-danger" data-act="del">삭제</button><span class="spacer" style="flex:1"></span>' : ""}
         <button type="button" class="btn btn-ghost" data-act="cancel">취소</button>
         <button type="button" class="btn btn-primary" data-act="ok">저장</button>
       </div>`);
     $("#modal-box [data-act=cancel]").onclick = closeModal;
     const del = $("#modal-box [data-act=del]");
-    if (del) del.onclick = () => confirmModal(`${x.name}을(를) 명단에서 삭제합니다.`, () => {
+    if (del) del.onclick = () => confirmModal(`${x.name}을(를) 명단에서 삭제합니다.${used ? " 이미 남긴 순찰 · 확인 기록과 서명은 그대로 남습니다." : ""}`, () => {
       D()[PPL] = pplList().filter(p => p.id !== x.id); SeMIS.save(); paint(); toast("삭제했습니다.");
     });
     $("#modal-box [data-act=ok]").onclick = () => {
@@ -536,7 +551,7 @@
     if (!canW()) return;
     const p = personOf(id);
     if (!p) return;
-    signPad({ title: p.name + " 서명 " + (signOk(p.sign) ? "다시 등록" : "등록"), sub: "이미 남긴 기록의 서명은 바뀌지 않습니다." }, (url) => {
+    signPad({ title: p.name + " 서명 " + (signOk(p.sign) ? "재등록" : "등록"), sub: "이미 남긴 기록의 서명은 바뀌지 않습니다." }, (url) => {
       p.sign = url; p.signAt = nowISO(); SeMIS.save(); closeModal(); paint(); toast("서명을 등록했습니다.");
     });
   }
@@ -643,7 +658,7 @@
     const off = isOff(r);
     const slots = off
       ? `<section class="pt-slot pt-offcard"><div class="pt-slot-h"><span class="pt-slot-t">순찰 없음 · 휴무</span></div>
-          <div class="pt-offb"><span>당직근무자</span><b>${esc(r.off.name)}</b></div>
+          <div class="pt-offb"><span>당직근무자</span><b>${esc(r.off.name)}</b>${signImg(r.off.sign) || '<span class="pt-none">서명 없음</span>'}</div>
           ${w ? `<div class="pt-offact"><button type="button" class="btn btn-ghost btn-sm" data-pt-off="1">${icon("edit", 15)}<span>변경 · 해제</span></button></div>` : ""}</section>`
       : slotCard(iso, "am", r) + slotCard(iso, "pm", r);
     const supCard = off ? `<section class="pt-slot is-sup"><div class="pt-slot-h"><span class="pt-slot-t">보안감독자 확인</span></div><p class="pt-none">휴무일은 당직근무자 기록으로 끝납니다.</p></section>` : slotCard(iso, "sup", r);
@@ -703,7 +718,7 @@
         <thead><tr><th>일자</th><th>오전순찰자</th><th>서명</th><th>오후순찰자</th><th>서명</th><th>보안감독자 확인</th></tr></thead>
         ${ds.map((d, i) => {
           const r = dayOf(d), s = sts[i], lines = noteLines(r);
-          const sup = isOff(r) ? `<div class="pt-tduty"><span>당직근무자</span><b>${esc(r.off.name)}</b></div>`
+          const sup = isOff(r) ? `<div class="pt-tduty"><span>당직근무자</span><b>${esc(r.off.name)}</b>${signImg(r.off.sign, "pt-tsig")}</div>`
             : slotOk(r && r.sup) ? (signImg(r.sup.sign, "pt-tsup") || `<span class="pt-tn">${esc(r.sup.name)}</span>`) : stChip(s);
           return `<tbody class="pt-tday" data-st="${s}" data-pt-open="${d}" tabindex="${d > t0 ? -1 : 0}">
             <tr class="pt-r1"><th scope="row" class="pt-td">${Number(d.slice(8, 10))}일<small>${WD[dow(d)]}</small></th>
@@ -744,10 +759,10 @@
       <div class="pt-pc-h"><b>${esc(p.name)}</b>${hasRole(p, "patrol") ? ui.chip("순찰자", "blue") : ""}${hasRole(p, "sup") ? ui.chip("보안감독자", "green") : ""}${p.active === false ? ui.chip("사용 안 함", "gray") : ""}</div>
       <div class="pt-pc-sig">${signImg(p.sign, "pt-sig-lg") || `<span class="pt-none">서명 미등록</span>`}</div>
       ${p.signAt ? `<div class="pt-pc-at cell-sub">등록 ${esc(dot(String(p.signAt).slice(0, 10)))}</div>` : ""}
-      ${w ? `<div class="pt-pc-f"><button type="button" class="btn ${signOk(p.sign) ? "btn-ghost" : "btn-primary"} btn-sm" data-pt-sign="${esc(p.id)}">${icon("edit", 15)}<span>${signOk(p.sign) ? "서명 다시 등록" : "서명 등록"}</span></button>
-        <button type="button" class="btn btn-ghost btn-sm" data-pt-pedit="${esc(p.id)}">수정</button><span class="spacer"></span>
+      ${w ? `<div class="pt-pc-f"><button type="button" class="btn ${signOk(p.sign) ? "btn-ghost" : "btn-primary"} btn-sm" data-pt-sign="${esc(p.id)}">${icon("edit", 15)}<span>${signOk(p.sign) ? "서명 재등록" : "서명 등록"}</span></button>
+        <button type="button" class="btn btn-ghost btn-sm" data-pt-pedit="${esc(p.id)}">수정</button><span class="pt-pc-mv">
         <button type="button" class="mt-btn" data-pt-pmv="${esc(p.id)}|-1" title="이름 단추 순서 앞으로" aria-label="이름 단추 순서 앞으로" ${i ? "" : "disabled"}>${icon("chevl", 14)}</button>
-        <button type="button" class="mt-btn" data-pt-pmv="${esc(p.id)}|1" title="이름 단추 순서 뒤로" aria-label="이름 단추 순서 뒤로" ${i < all.length - 1 ? "" : "disabled"}>${icon("chevron", 14)}</button></div>` : ""}
+        <button type="button" class="mt-btn" data-pt-pmv="${esc(p.id)}|1" title="이름 단추 순서 뒤로" aria-label="이름 단추 순서 뒤로" ${i < all.length - 1 ? "" : "disabled"}>${icon("chevron", 14)}</button></span></div>` : ""}
     </section>`;
     return `<section class="card">${w ? `<div class="pt-ptools"><button type="button" class="btn btn-primary btn-sm" data-pt-addp="list">${icon("plus", 15)}<span>사람 추가</span></button></div>` : ""}
       ${all.length ? `<div class="pt-pgrid">${all.map(card).join("")}</div>` : ui.empty("등록된 순찰자가 없습니다.")}</section>`;
@@ -781,7 +796,9 @@
   .top .sp div { overflow-wrap: anywhere; }
   .top .sp .ng { font-weight: 600; }
   .top .sv img { display: block; margin: 0 auto; max-width: 92%; object-fit: contain; }
-  .top .duty { font-size: 11pt; line-height: 1.5; }
+  .top .duty { display: flex; flex-direction: column; align-items: center; gap: .3mm; font-size: 11pt; line-height: 1.3; }
+  .top .duty span { font-size: 10pt; }
+  .top .duty b { font-weight: 500; }
   .gap { height: 2mm; flex: none; }
   .ckw { position: relative; }
   .ck { border: 1.6pt solid #111; }
@@ -826,7 +843,7 @@
       const am = slotOf(r, "am"), pm = slotOf(r, "pm"), sup = slotOf(r, "sup");
       const lines = r ? noteLines(r) : [];
       const f = lines.length ? fitPt(lines, specH, 138) : 10.5;
-      const sv = r && isOff(r) ? `<div class="duty">당직근무자<br>${esc(r.off.name)}</div>`
+      const sv = r && isOff(r) ? `<div class="duty"><span>당직근무자</span><b>${esc(r.off.name)}</b>${signOk(r.off.sign) ? `<img src="${esc(r.off.sign)}" alt="" style="max-height:${Math.max(5, supMax - 8).toFixed(1)}mm">` : ""}</div>`
         : sup ? (signOk(sup.sign) ? `<img src="${esc(sup.sign)}" alt="" style="max-height:${supMax.toFixed(1)}mm">` : `<div class="duty">${esc(sup.name)}</div>`) : "";
       const nm = (s) => s ? esc(s.name) : "";
       const sg = (s) => s && signOk(s.sign) ? `<img src="${esc(s.sign)}" alt="">` : "";
