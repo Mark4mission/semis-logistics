@@ -3,7 +3,7 @@
    실행: npm test  (jsdom 필요: npm install)
    구성: [C] 코어(해시·계정·메뉴·정규화·권한·라우터·예정 모듈)
          [D] 대시보드·공지·현황판  [S] 시스템 설정  [M] 이식 모듈 스모크(일정·회의록·연락망·검색)
-         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [IM] 한글 입력 보호  [FL] 운항 현황  [AU] 수검 대응 센터  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [SEC] 서버 보안(비공개 파일·살균·CSP)  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
+         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [IM] 한글 입력 보호  [FL] 운항 현황  [AU] 수검 대응 센터  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [SEC] 서버 보안(비공개 파일·살균·CSP)  [PT] 순찰일지  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
    ═══════════════════════════════════════════════════════ */
 "use strict";
 const fs = require("fs");
@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/loginguard.js", "js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
+const FILES = ["js/loginguard.js", "js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -355,7 +355,7 @@ function makeServer(opts = {}) {
       const m = e.S.data.menus;
       eq(m.filter(x => x.type === "group").map(x => x.id).join(","), "hub-home,hub-sec,hub-saf,hub-aud,hub-ops,hub-doc");
       ok(m.filter(x => x.type === "group").every(g => e.S.ICONS[g.ico]), "허브 아이콘");
-      ok(m.filter(x => x.type === "module" && x.planned).length >= 10, "planned");
+      ok(m.filter(x => x.type === "module" && x.planned).length >= 9, "planned");
       eq(m.filter(x => x.type === "link").length, 5);
     });
     t("C09 실모듈 메뉴(dashboard/schedule/minutes/contacts/settings) 존재 · planned 아님", () => {
@@ -478,7 +478,7 @@ function makeServer(opts = {}) {
       eq(e.S.roleRank(), 3); ok(e.S.canSee({ vis: "hq" })); ok(!e.S.canSee({ vis: "admin" })); ok(e.S.canEdit()); ok(e.S.canDelete()); ok(e.S.canConfid());
     });
     t("C25 hq: 사이드바 예정 태그 표시 · 예정 모듈 클릭 시 안내", () => {
-      ok(qa(e, ".nav-item.planned .nav-tag").length >= 11);
+      ok(qa(e, ".nav-item.planned .nav-tag").length >= 10);
       go(e, "car");
       ok(q(e, "#view").textContent.includes("시정조치"));
       ok(q(e, "#view .badge").textContent.includes("준비 중"));
@@ -1190,16 +1190,17 @@ function makeServer(opts = {}) {
       ok(q(e, '#rail-util [data-route="settings"]').classList.contains("active"));
       ok(q(e, "#crumbs").textContent.includes("관리"));
     });
-    t("H06 준비 중 블록: 운영 메뉴 없는 허브는 펼침 · 토글 상태는 계정별 저장", () => {
+    t("H06 준비 중 블록: 운영 메뉴가 있는 허브는 접힘 · 토글 상태는 계정별 저장", () => {
       const blk = () => q(e, '#nav-menu .hub[data-hub="hub-saf"] .hub-planned');
-      ok(blk().classList.contains("open"), "안전 관리 — 기본 펼침");
+      ok(!blk().classList.contains("open"), "안전 관리 — v1.27부터 운영 메뉴(순찰일지) 있어 기본 접힘");
       ok(!q(e, '#nav-menu .hub[data-hub="hub-sec"] .hub-planned').classList.contains("open"), "화물 보안 — v1.12부터 운영 메뉴 있어 기본 접힘");
       ok(!q(e, '#nav-menu .hub[data-hub="hub-ops"] .hub-planned').classList.contains("open"), "협력·비상 — 운영 메뉴 있어 기본 접힘");
       q(e, '[data-toggle-planned="hub-saf"]').click();
-      ok(!blk().classList.contains("open"));
+      ok(blk().classList.contains("open"));
       e.S.renderNav();
-      ok(!blk().classList.contains("open"), "재렌더 후 유지");
+      ok(blk().classList.contains("open"), "재렌더 후 유지");
       q(e, '[data-toggle-planned="hub-saf"]').click();
+      ok(!blk().classList.contains("open"));
     });
     t("H07 모듈 등록 → 준비 중 블록에서 운영 목록으로 · 구축 현황 증가", () => {
       e.S.registerModule("kc-ra", { title: "RA", render(root) { root.innerHTML = e.S.ui.head({ title: "상용화주 · RA 관리" }); } });
@@ -1374,7 +1375,7 @@ function makeServer(opts = {}) {
     const e = makeEnv({ fetch: server.fetch });
     const { Sync } = e;
     t("Y01 SYNC_KEYS 구성(계정 자료 제외)", () =>
-      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,chatRooms,vault,regulations,equipment,crisis,fleet,audits,phonebook,training,seclog,seclogCfg,serp,serpRuns,threat,threatRuns,threatChecks"));
+      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,chatRooms,vault,regulations,equipment,crisis,fleet,audits,phonebook,training,seclog,seclogCfg,serp,serpRuns,threat,threatRuns,threatChecks,patrol,patrolCfg,patrolPeople"));
     t("Y02 SYNC_KEYS는 모두 freshData 컬렉션에 존재", () => Sync.SYNC_KEYS.forEach(k => ok(e.S.data[k] !== undefined, k)));
     await ta("Y03 로그인 전에는 서버를 부르지 않음 · 로그인 후 초기 pull + 쓰기 권한 있는 컬렉션만 시드", async () => {
       await Sync.start();
@@ -5686,6 +5687,283 @@ function makeServer(opts = {}) {
       const c = read("css/main.css");
       ok(c.indexOf(".lki.lki-img") > 0 && c.indexOf(".sc-add") > 0 && c.indexOf(".lkp-tone") > 0);
       eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    e.w.close();
+  }
+
+  /* ══════════ [PT] 일일 보안 · 안전 순찰일지 (v1.27) ══════════ */
+  {
+    const e = makeEnv();
+    const P = e.w.SemisPatrol;
+    const SIG = (n) => "https://mzyuzrxkdcpzxojenwat.supabase.co/storage/v1/object/public/semis-logi-files/patrol/sig" + n + ".png";
+    /* 시험용 양식 · 명단 — 실제 점검사항 문구 · 이름은 공용 DB에만 */
+    const CFG = { title: "Daily 순찰일지 시험", asOf: "As of 01JAN'26", since: "2026-09-01", secs: [
+      { id: "sec", name: "보안", items: [{ id: "a1", text: "시험 보안 항목 A" }, { id: "a2", text: "시험 보안 항목 B" }] },
+      { id: "dg", name: "위험물", items: [{ id: "b1", text: "시험 위험물 항목" }] },
+      { id: "saf", name: "안전", items: [{ id: "c1", text: "시험 안전 항목 C" }, { id: "c2", text: "시험 안전 항목 D" }] }] };
+    const seed = () => {
+      e.S.data.patrolCfg = JSON.parse(JSON.stringify(CFG));
+      e.S.data.patrolPeople = [
+        { id: "p1", name: "순찰갑", roles: ["patrol"], sign: SIG(1), active: true, order: 1 },
+        { id: "p2", name: "순찰을", roles: ["patrol"], sign: "", active: true, order: 2 },
+        { id: "p3", name: "감독병", roles: ["patrol", "sup"], sign: SIG(3), active: true, order: 3 }];
+      e.S.data.patrol = [];
+      P.setState({ tab: "day", curDate: "2026-09-30", curMonth: "" });
+    };
+    const day = (d) => P.dayOf(d);
+    const slot = (name, t) => ({ pid: name === "순찰갑" ? "p1" : name === "감독병" ? "p3" : "p2", name, sign: SIG(9), t: t || "", at: "2026-09-01T00:00:00Z", by: "t" });
+    const rec = (d, o) => Object.assign({ id: "r" + d, date: d, am: null, pm: null, sup: null, off: null, note: "", ng: [], createdAt: "2026-09-01T00:00:00Z" }, o || {});
+    P.setToday("2026-09-30", "09:40");
+
+    t("PT01 메뉴: 예정 '일일 안전점검' → 실모듈(안전 관리 허브 · mgr) · 옛 데이터 전환(멱등) · 데이터 · 동기화 키 · 권한표 · 파일 폴더", () => {
+      const m = e.S.data.menus.find(x => x.module === "daily-safety");
+      ok(m && m.type === "module" && !m.planned && !m.desc); eq(m.parent, "hub-saf"); eq(m.vis, "mgr"); eq(m.label, "일일 보안 · 안전 순찰일지");
+      const legacy = e.S.defaultMenus().map(x => x.module === "daily-safety" ? Object.assign({}, x, { label: "일일 안전점검", icon: "✅", planned: true, desc: "x" }) : x);
+      const e2 = makeEnv({ preData: { version: 1, menus: legacy } });
+      const m2 = e2.S.data.menus.find(x => x.module === "daily-safety");
+      ok(!m2.planned && !m2.desc && m2.label === "일일 보안 · 안전 순찰일지" && m2.icon === "📝", "옛 예정 메뉴 전환");
+      eq(e2.S.normalizeData(), false, "멱등");
+      const e3 = makeEnv({ preData: { version: 1, menus: legacy.map(x => x.module === "daily-safety" ? Object.assign({}, x, { label: "순찰일지(현장)" }) : x) } });
+      eq(e3.S.data.menus.find(x => x.module === "daily-safety").label, "순찰일지(현장)", "운영자가 바꾼 이름 유지");
+      e2.w.close(); e3.w.close();
+      ok(Array.isArray(e.S.data.patrol) && Array.isArray(e.S.data.patrolPeople) && e.S.data.patrolCfg && !Array.isArray(e.S.data.patrolCfg), "기본 데이터");
+      ["patrol", "patrolCfg", "patrolPeople"].forEach(k => ok(e.Sync.SYNC_KEYS.indexOf(k) >= 0, k));
+      eq(ACL.patrol.join(","), "2,2"); eq(ACL.patrolCfg.join(","), "2,3"); eq(ACL.patrolPeople.join(","), "2,2");
+      const edge = read("tools/edge/semis-logi-files.ts");
+      ok(/READ_RANK[\s\S]*patrol: 2[\s\S]*WRITE_RANK[\s\S]*patrol: 2/.test(edge), "파일 폴더 patrol 열람 2 · 올리기 2");
+      ok(/<script src="js\/patrol\.js\?v=[\d.]+" defer><\/script>/.test(read("index.html")), "defer 스크립트");
+    });
+    t("PT02 코드에는 구분 뼈대뿐(점검사항 · 명단 없음) · 공개 저장소 위생", () => {
+      eq(P.DEF_CFG.secs.map(s => s.name).join(","), "보안,위험물,안전");
+      ok(P.DEF_CFG.secs.every(s => !s.items), "항목 없음");
+      e.S.data.patrolCfg = {}; eq(P.cfg().secs.length, 3); eq(P.cfg().title, "Daily 보안/안전 순찰일지"); eq(P.cfg().asOf, "As of 01AUG'25");
+      const probes = [["보안검색", "완료표식"].join(" "), ["격리", "구분"].join(""), ["고소", "작업자"].join("")];
+      ["js/patrol.js", "docs/HANDOFF.md", "README.md", "js/app.js"].forEach(f => probes.forEach(pr => ok(read(f).indexOf(pr) < 0, f + ": " + pr)));
+      ["js/patrol.js", "js/app.js"].forEach(f => ok(read(f).indexOf(["김", "홍석"].join("")) < 0 && read(f).indexOf(["옥", "정훈"].join("")) < 0, f + ": 명단"));
+      ok(!/["'][0-9a-f]{64}["']/.test(read("js/patrol.js")), "해시 없음");
+    });
+    t("PT03 5일 묶음: 1~5 · … · 26~말일(31일은 여섯 줄) · 2월 · 월별 장 수", () => {
+      const s = (d) => { const x = P.sheetOf(d); return x.from + "~" + x.to + "/" + x.n; };
+      eq(s("2026-09-03"), "2026-09-01~2026-09-05/5"); eq(s("2026-09-10"), "2026-09-06~2026-09-10/5");
+      eq(s("2026-09-28"), "2026-09-26~2026-09-30/5"); eq(s("2026-10-31"), "2026-10-26~2026-10-31/6");
+      eq(s("2027-02-27"), "2027-02-26~2027-02-28/3"); eq(s("2028-02-29"), "2028-02-26~2028-02-29/4");
+      eq(P.sheetsOf("2026-09").length, 6); eq(P.sheetsOf("2026-10").length, 6); eq(P.sheetsOf("2027-02").length, 6);
+      eq(P.sheetsOf("2026-10")[5].n, 6);
+    });
+    t("PT04 상태: 확인 완료 · 확인 대기 · 작성 중 · 미작성 · 기록 없음 · 휴무 · 시작 전 · 앞날 · 대기 목록", () => {
+      seed();
+      e.S.data.patrol = [
+        rec("2026-09-25", { am: slot("순찰갑"), pm: slot("순찰갑"), sup: slot("감독병") }),
+        rec("2026-09-26", { off: { name: "당직자" } }),
+        rec("2026-09-28", { am: slot("순찰갑") }),
+        rec("2026-09-29", { am: slot("순찰갑"), pm: slot("순찰을") }),
+        rec("2026-09-30", { am: slot("순찰갑") })];
+      const st = (d) => P.stOf(d, "2026-09-30");
+      eq(st("2026-09-25"), "done"); eq(st("2026-09-26"), "off"); eq(st("2026-09-27"), "miss"); eq(st("2026-09-28"), "wait");
+      eq(st("2026-09-29"), "wait"); eq(st("2026-09-30"), "prog"); eq(st("2026-10-01"), "none"); eq(st("2026-08-31"), "none", "시작일 전");
+      e.S.data.patrol.push(rec("2026-10-01", {})); eq(st("2026-10-01"), "none");
+      e.S.data.patrol.pop();
+      const pd = P.pending("2026-09-30");
+      eq(pd.wait.join(","), "2026-09-28,2026-09-29"); ok(pd.miss.indexOf("2026-09-27") >= 0 && pd.miss.indexOf("2026-09-25") < 0);
+      e.S.data.patrol.find(r => r.date === "2026-09-30").pm = slot("순찰을");
+      eq(st("2026-09-30"), "wait", "오늘 오전 · 오후 다 있으면 확인 대기");
+      e.S.data.patrolCfg.since = ""; eq(P.since(), "2026-09-25", "시작일 없으면 첫 기록일");
+    });
+    t("PT05 기록: 이름 누르면 등록 서명으로 바로 기록 · 확인 서명 → 잠김 · 확인 취소", () => {
+      seed(); loginAs(e, "manager"); go(e, "daily-safety");
+      ok(q(e, "#view .page-head [data-print-btn]"), "머리말 Print"); eq(qa(e, "#view [data-print-btn]").length, 1, "코어가 따로 붙이지 않음");
+      eq(qa(e, "[data-pt-take-am]").length, 3, "순찰자 3명"); eq(qa(e, "[data-pt-take-sup]").length, 0, "순찰 전에는 확인 칸 없음");
+      q(e, "[data-pt-take-am='p1']").click();
+      const r = day("2026-09-30");
+      ok(r && r.am.name === "순찰갑" && r.am.sign === SIG(1) && r.am.t === "09:40", "오전 기록");
+      ok(q(e, ".pt-slot[data-slot=am].is-on img.pt-sig"), "서명 표시");
+      q(e, "[data-pt-take-sup='p3']").click();
+      ok(q(e, "#modal-box").textContent.indexOf("오후 순찰 기록이 없습니다") >= 0, "오후 없음 경고"); q(e, "#modal-box [data-act=cancel]").click();
+      P.setToday("2026-09-30", "15:10");
+      q(e, "[data-pt-take-pm='p3']").click();
+      eq(day("2026-09-30").pm.t, "15:10");
+      q(e, "[data-pt-take-sup='p3']").click();
+      const d = day("2026-09-30");
+      ok(d.sup && d.sup.name === "감독병" && d.sup.sign === SIG(3) && !("t" in d.sup), "확인 서명");
+      eq(P.stOf("2026-09-30"), "done"); ok(P.locked(d));
+      ok(q(e, "#pt-note").readOnly && qa(e, "[data-ngt]").every(b => b.disabled), "확인 후 잠김");
+      ok(!q(e, ".pt-slot[data-slot=am] [data-pt-edit]"), "잠긴 순찰 칸은 고칠 수 없음");
+      P.takeSlot("2026-09-30", "am", "p2"); eq(day("2026-09-30").am.name, "순찰갑", "잠긴 날 순찰 변경 막음");
+      q(e, "[data-pt-edit=sup]").click(); q(e, "#modal-box [data-act=del]").click(); clickOk(e);
+      ok(!day("2026-09-30").sup && !P.locked(day("2026-09-30")), "확인 취소 → 다시 열림");
+      ok(!q(e, "#pt-note").readOnly);
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    t("PT06 서명 미등록 사람: 누르면 서명 등록 패드 → 저장하면 등록 + 기록 · 칸 고치기(사람 · 시각 · 다시 서명)", () => {
+      seed(); loginAs(e, "manager"); go(e, "daily-safety");
+      q(e, "[data-pt-take-am='p2']").click();
+      ok(q(e, "#pt-pad") && q(e, "#modal-box h3").textContent.indexOf("순찰을 서명 등록") >= 0, "등록 패드");
+      P._padCommit(SIG(2));
+      eq(P.personOf("p2").sign, SIG(2), "등록 서명"); ok(P.personOf("p2").signAt);
+      eq(day("2026-09-30").am.sign, SIG(2));
+      q(e, "[data-pt-edit=am]").click();
+      q(e, "#pt-ft").value = "08:55";
+      q(e, "#pt-fpeople [data-fp='p1']").click();
+      eq(q(e, "#pt-ft").value, "08:55", "시각 유지");
+      q(e, "#pt-fredo").click(); ok(q(e, "#pt-padreg") && q(e, "#pt-padreg").checked, "등록 서명도 바꾸기(기본 켬)");
+      q(e, "#pt-padreg").checked = false;
+      P._padCommit(SIG(7), { register: false });
+      clickOk(e);
+      const a = day("2026-09-30").am;
+      ok(a.name === "순찰갑" && a.pid === "p1" && a.t === "08:55" && a.sign === SIG(7), "칸 수정");
+      eq(P.personOf("p1").sign, SIG(1), "등록 서명은 그대로");
+      q(e, "[data-pt-edit=am]").click(); q(e, "#modal-box [data-act=del]").click(); clickOk(e);
+      ok(!day("2026-09-30").am, "비우기");
+      P.takeSlot("2026-10-01", "am", "p1"); ok(!P.dayOf("2026-10-01"), "앞날 기록 막음");
+    });
+    t("PT07 이상 항목: 눌러 표시(문구 사본) · 내용 입력 · 특이사항 저장 · 인쇄 줄 · 모두 이상 없음", () => {
+      seed(); loginAs(e, "manager"); go(e, "daily-safety");
+      eq(qa(e, "[data-ngt]").length, 5); ok(q(e, ".pt-chksum").textContent.indexOf("전 항목 이상 없음") >= 0);
+      q(e, "[data-ngt=b1]").click();
+      let r = day("2026-09-30");
+      eq(r.ng.length, 1); eq(r.ng[0].t, "시험 위험물 항목"); eq(r.ng[0].sec, "위험물");
+      eq(q(e, "[data-ngt=b1]").getAttribute("aria-pressed"), "true");
+      const ni = q(e, "#pt-ngn-b1"); ni.value = "라벨 떨어짐 — 재부착"; ni.dispatchEvent(new e.w.Event("change"));
+      const note = q(e, "#pt-note"); note.value = "  반입시설 점검 실시  \n\n\n 둘째 줄 "; note.dispatchEvent(new e.w.Event("change"));
+      r = day("2026-09-30");
+      eq(r.note, "반입시설 점검 실시\n\n둘째 줄"); eq(r.ng[0].note, "라벨 떨어짐 — 재부착");
+      eq(P.noteLines(r).join("|"), "반입시설 점검 실시||둘째 줄|※ [위험물] 시험 위험물 항목 — 라벨 떨어짐 — 재부착");
+      e.S.data.patrolCfg.secs[1].items[0].text = "바뀐 문구"; eq(day("2026-09-30").ng[0].t, "시험 위험물 항목", "기록은 그때 문구");
+      go(e, "daily-safety");
+      q(e, "#pt-ngclear").click(); clickOk(e);
+      eq(day("2026-09-30").ng.length, 0);
+    });
+    t("PT08 휴무 · 당직: 순찰 없음 → 당직근무자 · 인쇄 확인 칸 · 순찰 기록이 있으면 불가 · 해제", () => {
+      seed(); loginAs(e, "manager"); P.setState({ curDate: "2026-09-26" }); go(e, "daily-safety");
+      q(e, "[data-pt-off]").click();
+      q(e, "#pt-offn").value = "당직자"; clickOk(e);
+      const r = day("2026-09-26");
+      eq(r.off.name, "당직자"); eq(P.stOf("2026-09-26", "2026-09-30"), "off");
+      ok(q(e, ".pt-offcard") && q(e, ".pt-offcard").textContent.indexOf("당직자") >= 0 && !q(e, "[data-pt-take-am]"), "휴무 카드");
+      const html = P.sheetHTML(P.sheetOf("2026-09-26"));
+      ok(/<td class="sv" rowspan="2"><div class="duty">당직근무자<br>당직자<\/div><\/td>/.test(html), "확인 칸에 당직근무자");
+      P.takeSlot("2026-09-26", "am", "p1");
+      ok(day("2026-09-26").am && !day("2026-09-26").off, "순찰을 기록하면 휴무 해제");
+      P.offForm("2026-09-26"); ok(!q(e, "#pt-offn"), "순찰 기록 있는 날은 휴무 불가");
+      day("2026-09-26").am = null; P.offForm("2026-09-26"); q(e, "#pt-offn").value = "당직자2"; clickOk(e);
+      P.offForm("2026-09-26"); q(e, "#modal-box [data-act=del]").click();
+      ok(!day("2026-09-26").off, "해제");
+    });
+    t("PT09 일괄 확인: 대기 날짜 목록 · 확인자 고르기 · 고른 날만 확인 · 서명 미등록이면 등록 후", () => {
+      seed(); loginAs(e, "manager");
+      e.S.data.patrol = ["2026-09-26", "2026-09-27", "2026-09-28"].map(d => rec(d, { am: slot("순찰갑"), pm: slot("순찰을") }));
+      e.S.data.patrol.push(rec("2026-09-29", { am: slot("순찰갑") }));
+      e.w.localStorage.removeItem("semisl:patrolMe");
+      go(e, "daily-safety");
+      ok(q(e, ".page-head [data-pt-bulk]").textContent.indexOf("4") >= 0, "머리말 일괄 확인 4");
+      q(e, ".page-head [data-pt-bulk]").click();
+      eq(qa(e, "[data-bd]").length, 4); ok(q(e, ".pt-blist").textContent.indexOf("오후 없음") >= 0);
+      clickOk(e); ok(q(e, "[data-bd]"), "확인자 없으면 진행 안 됨");
+      q(e, "#pt-bpeople [data-bp='p3']").click();
+      const c = q(e, "[data-bd='2026-09-27']"); c.checked = false; c.dispatchEvent(new e.w.Event("change"));
+      clickOk(e);
+      ok(day("2026-09-26").sup && day("2026-09-28").sup && day("2026-09-29").sup && !day("2026-09-27").sup, "고른 날만");
+      eq(day("2026-09-26").sup.sign, SIG(3));
+      e.S.data.patrolPeople.find(p => p.id === "p3").sign = "";
+      P.bulkConfirm("2026-09-27", "2026-09-27"); q(e, "#pt-bpeople [data-bp='p3']").click(); clickOk(e);
+      ok(q(e, "#pt-pad"), "서명 등록 패드"); P._padCommit(SIG(33));
+      eq(day("2026-09-27").sup.sign, SIG(33)); eq(P.personOf("p3").sign, SIG(33));
+      eq(P.pending("2026-09-30").wait.length, 0);
+    });
+    t("PT10 인쇄: 종이 양식 구조(제목 · 월 · 6열 · 5일 × 2줄 · 확인 칸 합침 · 구분 · ▶ 점검사항 · 로고 · As of) · A4 여백 0 · 31일 · 빈 양식", () => {
+      seed();
+      e.S.data.patrol = [rec("2026-09-02", { am: slot("순찰갑"), pm: slot("순찰갑"), sup: slot("감독병"), note: "반입시설 보안성 평가 실시" }),
+        rec("2026-09-05", { off: { name: "당직자" } })];
+      const doc = P.printDocHTML([P.sheetOf("2026-09-02")]);
+      const d = new e.w.DOMParser().parseFromString(doc, "text/html");
+      eq(d.querySelectorAll(".sheet").length, 1);
+      eq(d.querySelector(".ttl").textContent, "Daily 순찰일지 시험"); eq(d.querySelector(".ym").textContent, "2026년 9월");
+      eq(Array.from(d.querySelectorAll(".top thead th")).map(x => x.textContent).join("|"), "일자|오전순찰자|서명|오후순찰자|서명|보안감독자 확인");
+      eq(d.querySelectorAll(".top tbody.day").length, 5); eq(Array.from(d.querySelectorAll(".top .d")).map(x => x.textContent).join(","), "1일,2일,3일,4일,5일");
+      eq(d.querySelectorAll(".top .l").length, 5); eq(d.querySelectorAll(".top td.sv[rowspan='2']").length, 5); eq(d.querySelectorAll(".top td.sp[colspan='4']").length, 5);
+      const b2 = d.querySelectorAll(".top tbody.day")[1];
+      eq(b2.querySelectorAll(".nm")[0].textContent, "순찰갑"); ok(b2.querySelector(".sg img") && b2.querySelector(".sv img"), "서명 이미지");
+      eq(b2.querySelector(".sp").textContent, "반입시설 보안성 평가 실시");
+      ok(d.querySelectorAll(".top tbody.day")[4].querySelector(".sv").textContent.indexOf("당직근무자") >= 0);
+      eq(Array.from(d.querySelectorAll(".ck thead th")).map(x => x.textContent).join("|"), "구분|점검사항");
+      eq(Array.from(d.querySelectorAll(".ck td.sec")).map(x => x.textContent + x.getAttribute("rowspan")).join(","), "보안2,위험물1,안전2");
+      eq(d.querySelectorAll(".ck td.it").length, 5); eq(d.querySelector(".ck td.it").textContent, "시험 보안 항목 A");
+      ok(d.querySelector(".lgw svg.lg") && d.querySelector(".asof").textContent === "As of 01JAN'26", "로고 · 양식 표기");
+      ok(/@page \{ size: A4 portrait; margin: 0; \}/.test(doc) && /\.sheet \{[^}]*width: 210mm; height: 296\.6mm/.test(doc), "A4 한 장");
+      ok(/\.it::before \{[^}]*clip-path: polygon/.test(doc) && /td\.it \{[^}]*border-left: 2\.6pt double/.test(doc), "▶ 표시 · 이중선");
+      const oct = new e.w.DOMParser().parseFromString(P.printDocHTML(P.sheetsOf("2026-10")), "text/html");
+      eq(oct.querySelectorAll(".sheet").length, 6); eq(oct.querySelectorAll(".sheet")[5].querySelectorAll("tbody.day").length, 6, "26~31 여섯 줄");
+      const feb = new e.w.DOMParser().parseFromString(P.printDocHTML([P.sheetOf("2027-02-27")]), "text/html");
+      eq(Array.from(feb.querySelectorAll(".top .d")).map(x => x.textContent).join(","), "26일,27일,28일,,", "모자라는 줄은 빈 칸");
+      const blank = new e.w.DOMParser().parseFromString(P.printDocHTML([P.sheetOf("2026-09-02")], { blank: true }), "text/html");
+      ok(!blank.querySelector(".top .nm").textContent && !blank.querySelector(".top img") && blank.querySelectorAll(".ck td.it").length === 5, "빈 양식");
+      const long = Array.from({ length: 12 }, (x, i) => "긴 특이사항 줄 " + i + " — 반입 화물 확인과 조치 내용을 자세히 적은 문장");
+      ok(P.fitPt(long, 18.7, 138) < P.fitPt(["짧은 줄"], 18.7, 138), "긴 글은 글자 줄임");
+      eq(P.fitPt(["짧은 줄"], 18.7, 138), 10.5);
+    });
+    t("PT11 월별 일지: 장 카드 6 · 요약 · 대기 장 일괄 확인 · 날짜 누르면 작성 화면 · 390px 카드 CSS", () => {
+      seed(); loginAs(e, "manager");
+      e.S.data.patrol = [rec("2026-09-02", { am: slot("순찰갑"), pm: slot("순찰갑"), sup: slot("감독병") }), rec("2026-09-03", { am: slot("순찰갑"), pm: slot("순찰을") })];
+      P.setState({ tab: "month", curMonth: "2026-09" }); go(e, "daily-safety");
+      eq(qa(e, ".pt-sheet").length, 6); eq(qa(e, ".pt-sheet")[0].querySelectorAll("tbody.pt-tday").length, 5);
+      ok(qa(e, ".pt-sheet")[0].querySelector("[data-pt-bulk='2026-09-01|2026-09-05']"), "장별 일괄 확인");
+      ok(q(e, ".stat-row").textContent.indexOf("확인 대기") >= 0);
+      ok(q(e, "[data-pt-mon='1']").disabled, "다음 달(앞날) 막음");
+      q(e, "tbody[data-pt-open='2026-09-03']").click();
+      eq(P.getState().tab, "day"); eq(P.getState().curDate, "2026-09-03");
+      ok(q(e, "#pt-date").value === "2026-09-03" && q(e, ".pt-dchip[aria-current]").textContent.indexOf("3") >= 0);
+      const c = read("css/main.css");
+      ok(/@media \(max-width: 640px\) \{[\s\S]*\.pt-stbl tr\.pt-r1 \{ display: grid;/.test(c), "390px 카드");
+      ok(/\.pt-pad \{[^}]*touch-action: none/.test(c), "서명 칸 스크롤 막음");
+    });
+    t("PT12 순찰자 · 서명: 목록 · 사람 추가(역할 · 같은 이름 막음) · 순서 · 서명 등록 · 삭제는 hq · 기록 있는 사람 삭제 불가", () => {
+      seed(); loginAs(e, "manager"); P.setState({ tab: "people" }); go(e, "daily-safety");
+      eq(qa(e, ".pt-pcard").length, 3); ok(q(e, ".pt-pcard").textContent.indexOf("순찰자") >= 0);
+      q(e, "[data-pt-addp=list]").click();
+      q(e, "#pt-pn").value = "순찰갑"; clickOk(e); ok(q(e, "#pt-pn"), "같은 이름 막음");
+      q(e, "#pt-pn").value = "새사람"; q(e, "#pt-rp").checked = false; clickOk(e); ok(q(e, "#pt-pn"), "역할 필수");
+      q(e, "#pt-rs").checked = true; clickOk(e);
+      const np = P.peopleAll().find(p => p.name === "새사람");
+      ok(np && np.roles.join() === "sup" && !np.sign); eq(P.roleList("sup").map(p => p.name).join(","), "감독병,새사람");
+      q(e, "[data-pt-pmv='" + np.id + "|-1']").click();
+      eq(P.peopleAll().map(p => p.name).join(","), "순찰갑,순찰을,새사람,감독병");
+      q(e, "[data-pt-sign='" + np.id + "']").click(); P._padCommit(SIG(5));
+      eq(P.personOf(np.id).sign, SIG(5));
+      q(e, "[data-pt-pedit='" + np.id + "']").click(); ok(!q(e, "#modal-box [data-act=del]"), "manager 삭제 없음"); q(e, "#modal-box [data-act=cancel]").click();
+      loginAs(e, "hq"); go(e, "daily-safety");
+      e.S.data.patrol = [rec("2026-09-02", { am: slot("순찰갑") })];
+      P.personForm("p1"); ok(!q(e, "#modal-box [data-act=del]"), "기록 있는 사람은 삭제 대신 사용 안 함");
+      q(e, "#pt-pa").checked = false; clickOk(e);
+      ok(!P.people().some(p => p.id === "p1") && P.roleList("am").every(p => p.id !== "p1"), "사용 안 함 → 기록 화면에서 빠짐");
+      P.personForm(np.id); q(e, "#modal-box [data-act=del]").click(); clickOk(e);
+      ok(!P.personOf(np.id), "hq 삭제");
+    });
+    t("PT13 양식(hq): 제목 · 표기 · 시작일 · 구분 · 점검사항 줄 편집(같은 문구는 id 유지) · manager 버튼 없음", () => {
+      seed(); loginAs(e, "manager"); go(e, "daily-safety"); ok(!q(e, "#pt-cfg"), "manager 양식 버튼 없음");
+      loginAs(e, "hq"); go(e, "daily-safety"); q(e, "#pt-cfg").click();
+      eq(qa(e, "#pt-csecs .pt-csec").length, 3);
+      q(e, "#pt-ct").value = "새 제목"; q(e, "#pt-ca").value = ""; q(e, "#pt-cs").value = "2026-09-10";
+      const ta = qa(e, "#pt-csecs [data-k=items]")[0]; ta.value = "시험 보안 항목 A\n새 항목 E";
+      q(e, "#pt-cadd").click(); qa(e, "#pt-csecs [data-k=name]")[3].value = "기타"; qa(e, "#pt-csecs [data-k=items]")[3].value = "기타 항목";
+      clickOk(e);
+      const c = P.cfg();
+      eq(c.title, "새 제목"); eq(c.asOf, ""); eq(c.since, "2026-09-10");
+      eq(c.secs.map(s => s.name).join(","), "보안,위험물,안전,기타");
+      eq(c.secs[0].items[0].id, "a1", "같은 문구 id 유지"); eq(c.secs[0].items[1].text, "새 항목 E");
+      ok(P.printDocHTML([P.sheetOf("2026-09-10")]).indexOf('class="asof"') < 0, "표기 비우면 인쇄 안 함");
+    });
+    t("PT14 같은 날 기록 둘(두 기기 동시 첫 기록) → 하나로 합침 · 배지 · 통합 검색 · 쓰기 권한(user · vendor 없음)", () => {
+      seed(); loginAs(e, "manager");
+      e.S.data.patrol = [rec("2026-09-29", { id: "x1", createdAt: "2026-09-29T00:00:01Z", am: slot("순찰갑"), note: "갑 메모" }),
+        rec("2026-09-29", { id: "x2", createdAt: "2026-09-29T00:00:05Z", pm: slot("순찰을"), note: "을 메모", ng: [{ id: "a1", sec: "보안", t: "시험 보안 항목 A", note: "" }] })];
+      go(e, "daily-safety");
+      const rs = e.S.data.patrol.filter(r => r.date === "2026-09-29");
+      eq(rs.length, 1); eq(rs[0].id, "x1"); ok(rs[0].am && rs[0].pm && rs[0].ng.length === 1); eq(rs[0].note, "갑 메모\n을 메모");
+      e.S.renderNav();
+      ok(q(e, '#nav-menu [data-route="daily-safety"]') && q(e, '#nav-menu [data-route="daily-safety"]').textContent.match(/\d/), "메뉴 배지");
+      ok(e.w.SemisSearch.search("을 메모").some(h => h.group === "일일 보안 · 안전 순찰일지"), "통합 검색");
+      loginAs(e, "user"); go(e, "daily-safety");
+      ok(!q(e, "[data-pt-take-am]") && !q(e, ".page-head [data-pt-bulk]"), "user 기록 없음");
     });
     e.w.close();
   }

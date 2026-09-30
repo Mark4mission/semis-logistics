@@ -8,7 +8,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.26.0";
+  const VERSION = "1.27.0";
   const APP_NAME = "SeMIS · Logistics";
   /* v1.15: 데이터 캐시는 이 탭의 sessionStorage 에만 둔다(탭을 닫거나 로그아웃하면 사라짐).
      화면 설정(LS_UI)만 localStorage. */
@@ -249,8 +249,7 @@ const SeMIS = (() => {
         "화물터미널 보호구역 출입증·차량 출입·임시 출입 현황과 만료 도래 알림을 관리합니다."),
 
       h("hub-saf", "안전 관리", "hardhat"),
-      p("daily-safety", "일일 안전점검", "✅", "daily-safety", "mgr", "hub-saf",
-        "작업장·장비·통로·소방 등 일일 안전점검표를 전산으로 작성하고 미비점을 조치 이력과 함께 관리합니다."),
+      m("daily-safety", "일일 보안 · 안전 순찰일지", "📝", "daily-safety", "mgr", "hub-saf"),
       p("risk", "위험성 평가", "⚠️", "risk", "hq", "hub-saf",
         "작업별 유해·위험요인 발굴, 5×5 위험도 평가, 감소 대책과 재평가 이력을 관리합니다."),
       p("incident", "사고 · 아차사고 보고", "🚨", "incident", "mgr", "hub-saf",
@@ -372,6 +371,9 @@ const SeMIS = (() => {
       training: { courses: [], people: [], records: [], sessions: [] }, // 보안교육 · 자격 관리 (v1.20 — 명부는 공용 DB만)
       seclog: [],                                   // 보안 기록부 기록 (v1.22 — js/seclog.js)
       seclogCfg: { since: "", templates: [] },      // 보안 기록부 점검 양식 (비면 코드 뼈대 — 점검 항목은 공용 DB만)
+      patrol: [],        // 일일 보안 · 안전 순찰일지 하루 기록 (v1.27 — js/patrol.js)
+      patrolCfg: {},     // 순찰일지 양식 (점검사항 문구는 공용 DB만 — 코드는 구분 뼈대)
+      patrolPeople: [],  // 순찰자 · 보안감독자와 등록 서명 (명단은 공용 DB만)
       chatRooms: []      // (예약) 팀 채팅방
     };
   }
@@ -621,6 +623,17 @@ const SeMIS = (() => {
       if (ins.planned) { delete ins.planned; delete ins.desc; }
       if (ins.label === "안전보안 점검 일정") ins.label = "보안 기록부";
       if (ins.icon === "🕵️") ins.icon = "📒";
+    })();
+    // 일일 보안 · 안전 순찰일지 (v1.27) — 구조만 보정 · 예정 메뉴 '일일 안전점검' → 실모듈(운영자가 바꾼 이름은 유지)
+    DATA.patrol = (Array.isArray(DATA.patrol) ? DATA.patrol : []).filter(x => x && typeof x === "object" && x.id);
+    if (!DATA.patrolCfg || typeof DATA.patrolCfg !== "object" || Array.isArray(DATA.patrolCfg)) DATA.patrolCfg = {};
+    DATA.patrolPeople = (Array.isArray(DATA.patrolPeople) ? DATA.patrolPeople : []).filter(x => x && typeof x === "object" && x.id);
+    (() => {
+      const ds = DATA.menus.find(m => m.type === "module" && m.module === "daily-safety");
+      if (!ds) return;
+      if (ds.planned) { delete ds.planned; delete ds.desc; }
+      if (ds.label === "일일 안전점검") ds.label = "일일 보안 · 안전 순찰일지";
+      if (ds.icon === "✅") ds.icon = "📝";
     })();
     DATA.equipment.forEach(x => { if (!Array.isArray(x.logs)) x.logs = []; });
     ["reg-sec", "reg-safety", "reg-dg", "scr-status", "scr-equip"].forEach(id => {
@@ -1041,7 +1054,7 @@ const SeMIS = (() => {
   const VIEW_WIDTH = {
     schedule: "wide", dashboard: "wide", board: "wide", flight: "wide",
     minutes: "mid", contacts: "mid", crisis: "mid", serp: "mid", threat: "mid", phonebook: "mid", settings: "mid", vault: "mid",
-    "reg-sec": "mid", "reg-safety": "mid", "reg-dg": "mid", "scr-status": "mid", "scr-equip": "mid", audit: "mid", inspection: "mid", shortcuts: "mid"
+    "reg-sec": "mid", "reg-safety": "mid", "reg-dg": "mid", "scr-status": "mid", "scr-equip": "mid", audit: "mid", inspection: "mid", shortcuts: "mid", "daily-safety": "mid"
   };
   function applyViewWidth(view, route) {
     const r = String(route);
