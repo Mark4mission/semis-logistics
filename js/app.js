@@ -8,7 +8,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.30.0";
+  const VERSION = "1.31.0";
   const APP_NAME = "SeMIS · Logistics";
   /* v1.15: 데이터 캐시는 이 탭의 sessionStorage 에만 둔다(탭을 닫거나 로그아웃하면 사라짐).
      화면 설정(LS_UI)만 localStorage. */
@@ -264,6 +264,7 @@ const SeMIS = (() => {
         "지게차·돌리·ULD 장비 등 지상조업 장비 안전 점검, 운전자 자격, 램프 안전 규칙 준수 현황."),
 
       h("hub-aud", "점검 · 교육", "clipboard"),
+      m("aud-dash", "점검 · 교육 대시보드", "📊", "aud-dash", "mgr", "hub-aud"),
       m("audit", "수검 대응 센터", "🗂️", "audit", "mgr", "hub-aud"),
       m("inspection", "보안 기록부", "📒", "inspection", "mgr", "hub-aud"),
       p("car", "시정조치 (CAR)", "📋", "car", "hq", "hub-aud",
@@ -597,6 +598,16 @@ const SeMIS = (() => {
     if (!DATA.contacts || typeof DATA.contacts !== "object" || Array.isArray(DATA.contacts)) DATA.contacts = { sections: [] };
     if (!Array.isArray(DATA.contacts.sections)) DATA.contacts.sections = [];
     if (!Array.isArray(DATA.fleet)) DATA.fleet = [];
+    // v1.31 점검 · 교육 대시보드 — 기존 메뉴 데이터에 없으면 점검 · 교육 허브 맨 위에 1회 추가(이후 숨김·이름은 운영자 설정 유지)
+    if (!DATA.menus.some(m => m.type === "module" && m.module === "aud-dash")) {
+      const hub = DATA.menus.find(m => m.id === "hub-aud" && m.type === "group");
+      const kids = hub ? DATA.menus.filter(m => m.parent === "hub-aud").map(m => m.seq || 0) : [];
+      const first = kids.length ? Math.min.apply(null, kids) : null;
+      const seq = hub ? (first == null ? (hub.seq || 0) + 0.5 : ((hub.seq || 0) < first ? ((hub.seq || 0) + first) / 2 : first - 0.5))
+        : DATA.menus.reduce((mx, m) => Math.max(mx, m.seq || 0), 0) + 1;
+      DATA.menus.push({ id: DATA.menus.some(m => m.id === "aud-dash") ? "aud-dash-" + Date.now().toString(36) : "aud-dash",
+        seq, type: "module", label: "점검 · 교육 대시보드", icon: "📊", module: "aud-dash", vis: "mgr", parent: hub ? "hub-aud" : null });
+    }
     DATA.fleet = DATA.fleet.filter(f => f && typeof f === "object" && f.hex);
     if (!DATA.crisis || typeof DATA.crisis !== "object" || Array.isArray(DATA.crisis)) DATA.crisis = { rows: [] };
     if (!Array.isArray(DATA.crisis.rows)) DATA.crisis.rows = [];
@@ -1075,7 +1086,7 @@ const SeMIS = (() => {
     schedule: "wide", dashboard: "wide", board: "wide", flight: "wide",
     minutes: "mid", contacts: "mid", crisis: "mid", serp: "mid", threat: "mid", phonebook: "mid", settings: "mid", vault: "mid",
     "reg-sec": "mid", "reg-safety": "mid", "reg-dg": "mid", "scr-status": "mid", "scr-equip": "mid", audit: "mid", inspection: "mid", shortcuts: "mid", "daily-safety": "mid",
-    "sec-dash": "mid"
+    "sec-dash": "mid", "aud-dash": "mid", training: "mid"
   };
   function applyViewWidth(view, route) {
     const r = String(route);
@@ -1510,7 +1521,7 @@ const SeMIS = (() => {
   }
   /* v1.28 허브 대시보드 — 레일에서 이 허브를 누르면 오른쪽 화면이 허브 대시보드로 바뀐다(권한 · 숨김 따름).
      이미 그 화면이면 예전처럼 허브 패널만 연다(좁은 화면에서 하위 메뉴로 가는 길). */
-  const HUB_HOME = { "hub-sec": "sec-dash" };
+  const HUB_HOME = { "hub-sec": "sec-dash", "hub-aud": "aud-dash" };
   function hubHomeRoute(id) {
     const r = HUB_HOME[id];
     if (!r || !modules[r]) return null;
