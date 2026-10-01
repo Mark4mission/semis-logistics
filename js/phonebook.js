@@ -96,10 +96,10 @@
     if (r.office) out.push(`<a class="pb-act" href="${esc(telHref(r.office))}" title="전화 걸기">${icon("phone", 14)}<span class="mono">${hl(r.office, q)}</span></a>`);
     if (r.mobile) out.push(`<span class="pb-pair"><a class="pb-act is-mob" href="${esc(telHref(r.mobile))}" title="휴대폰 전화">${icon("phone", 14)}<span class="mono">${hl(r.mobile, q)}</span></a>${isMobile(r.mobile)
       ? `<a class="pb-sms" href="sms:${esc(r.mobile.replace(/[^\d]/g, ""))}" title="문자 보내기">문자</a>` : ""}</span>`);
-    if (r.email) out.push(`<span class="pb-pair"><a class="pb-act is-mail" href="mailto:${esc(r.email)}" title="메일 쓰기">${icon("notes", 14)}<span>${hl(r.email, q)}</span></a><button type="button" class="pb-cp" data-copy="${esc(r.email)}" title="주소 복사" aria-label="메일 주소 복사">복사</button></span>`);
+    if (r.email) out.push(`<span class="pb-pair"><a class="pb-act is-mail" href="mailto:${esc(r.email)}" title="메일 쓰기">${icon("notes", 14)}<span>${hl(r.email, q)}</span></a><button type="button" class="pb-cp m-hide" data-copy="${esc(r.email)}" title="주소 복사" aria-label="메일 주소 복사">복사</button></span>`);
     return out.join("");
   }
-  const editBtn = (r) => `<button type="button" class="pb-edit" data-edit="${esc(r.id)}" aria-label="${esc(label(r))} 수정">${icon("sliders", 15)}</button>`;
+  const editBtn = (r) => `<button type="button" class="pb-edit m-ed" data-edit="${esc(r.id)}" aria-label="${esc(label(r))} 수정">${icon("sliders", 15)}</button>`;
 
   function rowHTML(r, canWrite) {
     const s = sub(r);
@@ -108,7 +108,7 @@
         <div class="pb-nm"><b>${hl(label(r), query)}</b>${r.title ? `<span class="pb-title">${hl(r.title, query)}</span>` : ""}${flag(r)}</div>
         ${s || r.duty ? `<div class="pb-meta">${s ? `<span>${hl(s, query)}</span>` : ""}${r.duty ? `<span class="pb-duty">${hl(r.duty, query)}</span>` : ""}</div>` : ""}
         ${r.note ? `<div class="pb-note">${hl(r.note, query)}</div>` : ""}
-        ${r.check && r.verify ? `<div class="pb-verify">${icon("info", 13)}<span>${hl(r.verify, query)}</span></div>` : ""}
+        ${r.check && r.verify ? `<div class="pb-verify ${canWrite ? "m-ed" : "m-hide"}">${icon("info", 13)}<span>${hl(r.verify, query)}</span></div>` : ""}
       </div>
       <div class="pb-acts">${acts(r, query)}</div>
       ${canWrite ? editBtn(r) : ""}
@@ -116,13 +116,16 @@
   }
   function mailAll(rs) {
     const ms = rs.map(r => r.email).filter(Boolean).filter((m, i, a) => a.indexOf(m) === i);
-    return ms.length > 1 ? `<a class="pb-mailall" href="mailto:${esc(ms.join(","))}" title="이 구역 ${ms.length}명에게 메일">${icon("notes", 14)}<span>전체 메일</span></a>` : "";
+    return ms.length > 1 ? `<a class="pb-mailall mf-x" href="mailto:${esc(ms.join(","))}" title="이 구역 ${ms.length}명에게 메일">${icon("notes", 14)}<span>전체 메일</span></a>` : "";
   }
+
+  /* v1.30 모바일: 구역은 제목 줄만 — 검색 · 구역 고르기 · 확인 필요 필터 중에는 펼침 */
+  const isNarrow = () => !!(grp || query || onlyCheck);
 
   /* ─────── 보기별 본문 ─────── */
   function groupView(list, canWrite) {
-    return `<div class="pb-grid">${byGroup(list).map(({ g, rs }) => `<section class="card pb-sec" style="--gc:${esc(g.color || "#646b73")}" data-group="${esc(g.id)}">
-      <header class="pb-sechead"><h3>${esc(g.name)}</h3><span class="pb-cnt mono">${rs.length}</span><span class="spacer"></span>${mailAll(rs)}</header>
+    return `<div class="pb-grid">${byGroup(list).map(({ g, rs }) => `<section class="card pb-sec" style="--gc:${esc(g.color || "#646b73")}" data-group="${esc(g.id)}"${ui.mf("g:" + g.id, isNarrow())}>
+      <header class="pb-sechead mf-h"><h3>${esc(g.name)}</h3><span class="pb-cnt mono">${rs.length}</span><span class="spacer"></span>${mailAll(rs)}</header>
       <div class="pb-rows">${rs.map(r => rowHTML(r, canWrite)).join("")}</div>
     </section>`).join("")}</div>`;
   }
@@ -140,8 +143,8 @@
         </div>
       </article>`;
     };
-    return byGroup(list).map(({ g, rs }) => `<section class="pb-qsec" style="--gc:${esc(g.color || "#646b73")}">
-      <h3 class="pb-qh">${dot(g.color)}${esc(g.name)}<span class="mono">${rs.length}</span></h3>
+    return byGroup(list).map(({ g, rs }) => `<section class="pb-qsec" style="--gc:${esc(g.color || "#646b73")}"${ui.mf("q:" + g.id, isNarrow())}>
+      <h3 class="pb-qh mf-h">${dot(g.color)}${esc(g.name)}<span class="mono">${rs.length}</span></h3>
       <div class="pb-tiles">${rs.map(tile).join("")}</div></section>`).join("");
   }
   function tableView(list, canWrite) {
@@ -166,7 +169,7 @@
   function notesHTML() {
     const ns = notes();
     if (!ns.length) return "";
-    return `<section class="card pb-notes"><h3>참고</h3><ul>${ns.map(n => `<li>${esc(n)}</li>`).join("")}</ul></section>`;
+    return `<section class="card pb-notes"${ui.mf("notes")}><h3 class="mf-h">참고</h3><ul>${ns.map(n => `<li>${esc(n)}</li>`).join("")}</ul></section>`;
   }
 
   /* ─────── 렌더 ─────── */
@@ -210,7 +213,7 @@
       ${ui.search("pb-q", "이름 · 소속 · 번호 · 메일 검색", query)}
       <div class="seg" role="group" aria-label="보기">${VIEWS.map(([v, lb]) =>
         `<button type="button" class="seg-btn" data-view="${v}" aria-pressed="${view === v}">${lb}</button>`).join("")}</div>
-      ${checks ? `<button type="button" class="pb-chk" id="pb-only" aria-pressed="${onlyCheck}">${icon("alert", 14)}<span>확인 필요 <b class="mono">${checks}</b></span></button>` : ""}
+      ${checks ? `<button type="button" class="pb-chk ${canWrite ? "m-ed" : "m-hide"}" id="pb-only" aria-pressed="${onlyCheck}">${icon("alert", 14)}<span>확인 필요 <b class="mono">${checks}</b></span></button>` : ""}
       ${narrowed ? `<span class="pb-result"><b class="mono">${list.length}</b> / ${all.length}<button type="button" class="pb-clear" id="pb-clear">조건 해제</button></span>` : ""}
     </div>`;
     const body = !list.length ? `<section class="card">${ui.empty("조건에 맞는 연락처가 없습니다.")}</section>`

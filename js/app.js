@@ -8,7 +8,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.29.0";
+  const VERSION = "1.30.0";
   const APP_NAME = "SeMIS · Logistics";
   /* v1.15: 데이터 캐시는 이 탭의 sessionStorage 에만 둔다(탭을 닫거나 로그아웃하면 사라짐).
      화면 설정(LS_UI)만 localStorage. */
@@ -187,7 +187,11 @@ const SeMIS = (() => {
     wrench: '<path d="M15.2 4.3a4.5 4.5 0 0 0-5.6 5.9L3.8 16a2 2 0 0 0 2.8 2.8l5.8-5.8a4.5 4.5 0 0 0 5.9-5.6l-2.6 2.6-2.5-.6-.6-2.5z"/>',
     edit: '<path d="M4.5 19.5 5 16 15.5 5.5a2.1 2.1 0 0 1 3 3L8 19z"/><path d="m13.5 7.5 3 3"/>',
     chevl: '<path d="m15 6-6 6 6 6"/>',
-    image: '<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="m4 18 5-5 3.5 3.5L15 14l5 4.5"/>'
+    image: '<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="m4 18 5-5 3.5 3.5L15 14l5 4.5"/>',
+    chevup: '<path d="m6 15 6-6 6 6"/>',
+    eyeoff: '<path d="M4 4l16 16"/><path d="M9.9 5.8A9.7 9.7 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a17 17 0 0 1-3 3.8M6.4 7.2A17.3 17.3 0 0 0 2.5 12S6 18.5 12 18.5a9.3 9.3 0 0 0 4.2-1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
+    copy: '<rect x="8.5" y="8.5" width="11.5" height="11.5" rx="2"/><path d="M15.5 8.5V6A1.5 1.5 0 0 0 14 4.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/>',
+    more: '<circle cx="5.5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="18.5" cy="12" r="1.2"/>'
   });
   /* 허브 선택용 아이콘 목록 (시스템 설정 → 메뉴 관리) */
   const HUB_ICONS = ["home", "scan", "hardhat", "clipboard", "users", "book", "folder", "calendar", "notes", "alert", "link", "doc"];
@@ -1129,6 +1133,7 @@ const SeMIS = (() => {
   function renderView() {
     let route = currentRoute();
     const view = $("#view");
+    if (route !== lastViewRoute) { lastViewRoute = route; mEditRoute = ""; view.classList.remove("m-editing"); }   // v1.30 편집 모드는 화면을 옮기면 끔
     view.innerHTML = "";
     applyViewWidth(view, route);
     markHub(view, currentUser && (currentUser.role === "vendor" || currentUser.role === "signer") ? "" : route);
@@ -1869,7 +1874,15 @@ const SeMIS = (() => {
     tip(text, label) {
       return '<button type="button" class="help-tip" data-tip="' + esc(text) + '" aria-label="' + esc(label || "설명") +
         '" aria-expanded="false">' + icon("info", 16) + '</button>';
-    }
+    },
+    /* v1.30 모바일 접기 — 묶음(카드)에 붙이는 속성 문자열. 모바일(<768px)에서는 머리(.mf-h)만 보이고 누르면 펼친다.
+       force: 검색 · 필터 중처럼 늘 펼칠 때. 펼친 상태는 화면(라우트)별로 기억(탭을 닫을 때까지). PC는 늘 펼침.
+       사용: `<section class="card"${ui.mf("org:" + id, !!query)}><header class="mf-h">…</header>…</section>` */
+    mf(key, force) {
+      const k = String(key || "");
+      return ' data-mf="' + esc(k) + '"' + (force || mfOpen.has(currentRoute() + "|" + k) ? " data-mf-on" : "");
+    },
+    mfSet(el, on) { mfToggle(el, on); }
   };
 
   /* 설명 말풍선 동작: 문서 전체에 한 번만 위임. 화면에 하나만 뜨고 Esc·바깥 클릭·스크롤로 닫힌다.
@@ -1951,13 +1964,39 @@ const SeMIS = (() => {
       !b.closest(".ph-more") && !b.hasAttribute("data-keep") && !b.closest("[data-keep]") &&
       !b.classList.contains("hidden") && !b.hidden && b.style.display !== "none");
   }
+  /* v1.30 편집 모드(모바일) — 편집 전용 단추(.m-ed)는 모바일에서 평소 숨기고, 더보기 › '편집'을 누르면 보인다.
+     켜진 동안 머리말에 '완료'. 화면(라우트)을 옮기면 꺼진다. PC는 늘 보임(CSS가 모바일에서만 숨김). */
+  let mEditRoute = "", lastViewRoute = "";
+  const hasEdits = (view) => !!(view && view.querySelector(".m-ed"));
+  const editingNow = () => !!mEditRoute && mEditRoute === currentRoute();
+  function setEditMode(on) {
+    mEditRoute = on ? currentRoute() : "";
+    const view = $("#view");
+    if (view) view.classList.toggle("m-editing", editingNow());
+    tidyView();
+  }
   function tidyHead(head) {
     const btns = headButtons(head);
     const main = btns.find(b => b.classList.contains("btn-primary") && !b.disabled) || null;
     const rest = btns.filter(b => b !== main);
     btns.forEach(b => b.classList.toggle("ph-hide", b !== main));
+    const view = head.closest("#view");
+    const eds = hasEdits(view);
+    let done = head.querySelector(":scope > .ph-done");
+    if (eds && editingNow()) {
+      if (!done) {
+        done = document.createElement("button");
+        done.type = "button";
+        done.className = "btn btn-soft ph-done no-print";
+        done.setAttribute("data-keep", "");
+        done.textContent = "완료";
+        done.onclick = () => setEditMode(false);
+        const mo = head.querySelector(":scope > .ph-more");
+        if (mo) head.insertBefore(done, mo); else head.appendChild(done);
+      }
+    } else if (done) done.remove();
     let more = head.querySelector(":scope > .ph-more");
-    if (!rest.length) { if (more) more.remove(); head.classList.remove("ph-has-more"); return; }
+    if (!rest.length && !eds) { if (more) more.remove(); head.classList.remove("ph-has-more"); return; }
     head.classList.add("ph-has-more");
     if (!more) {
       more = document.createElement("button");
@@ -1968,15 +2007,72 @@ const SeMIS = (() => {
       more.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5.5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="18.5" cy="12" r="1.8"/></svg>';
       more.onclick = () => {
         const list = headButtons(head).filter(b => b.classList.contains("ph-hide"));
-        actionSheet(list.map(b => ({
+        const items = list.map(b => ({
           label: txtOf(b).replace(/^[+＋]\s*/, "") || b.title || b.getAttribute("aria-label") || "실행",
           icon: b.querySelector("svg") ? b.querySelector("svg").outerHTML : "",
           danger: b.classList.contains("btn-danger"), disabled: !!b.disabled,
           run: () => b.click()
-        })), { title: txtOf(head.querySelector(".page-title")) }, more);
+        }));
+        if (hasEdits(head.closest("#view"))) {
+          const on = editingNow();
+          items.unshift({ label: on ? "편집 끝내기" : "편집", icon: icon(on ? "check" : "edit"), run: () => setEditMode(!on) });
+        }
+        actionSheet(items, { title: txtOf(head.querySelector(".page-title")) }, more);
       };
       head.appendChild(more);
     }
+  }
+  /* v1.30 모바일 접기 — ui.mf() 로 표시한 묶음. 머리 끝에 펼침 단추(키보드 · 화면낭독용)를 붙이고 상태를 맞춘다 */
+  const mfOpen = new Set();
+  function mfToggle(sec, on) {
+    if (!sec || !sec.hasAttribute || !sec.hasAttribute("data-mf")) return;
+    const k = currentRoute() + "|" + sec.getAttribute("data-mf");
+    const v = on == null ? !sec.hasAttribute("data-mf-on") : !!on;
+    if (v) { sec.setAttribute("data-mf-on", ""); mfOpen.add(k); } else { sec.removeAttribute("data-mf-on"); mfOpen.delete(k); }
+    const t = sec.querySelector(":scope > .mf-h > .mf-tog");
+    if (t) mfLabel(t, sec);
+    if (v) queueTidy();   // 펼친 안의 표 정돈(접힌 동안은 크기를 잴 수 없음)
+  }
+  function mfLabel(t, sec) {
+    const on = sec.hasAttribute("data-mf-on");
+    t.setAttribute("aria-expanded", String(on));
+    t.setAttribute("aria-label", (on ? "접기: " : "펼치기: ") + txtOf(t.parentNode).slice(0, 40));
+  }
+  function tidyFolds(view) {
+    $$("[data-mf]", view).forEach(sec => {
+      const h = sec.querySelector(":scope > .mf-h");
+      if (!h) return;
+      let t = h.querySelector(":scope > .mf-tog");
+      if (!t) {
+        t = document.createElement("button");
+        t.type = "button"; t.className = "mf-tog no-print";
+        t.innerHTML = icon("chevdown", 18);
+        h.appendChild(t);
+      }
+      mfLabel(t, sec);
+    });
+  }
+  /* 가로로 넘치는 탭 줄은 고른 탭이 보이게(새로 그린 탭 줄에 한 번만) */
+  function tidyTabs(view) {
+    if (!isMobile()) return;
+    $$('[role="tablist"], .tabs', view).forEach(tl => {
+      if (tl.dataset.tsc) return;
+      tl.dataset.tsc = "1";
+      if (tl.scrollWidth <= tl.clientWidth + 2) return;
+      const sel = tl.querySelector('[aria-selected="true"], .active');
+      if (!sel) return;
+      const x = sel.offsetLeft - (tl.clientWidth - sel.offsetWidth) / 2;
+      tl.scrollLeft = Math.max(0, x);
+    });
+  }
+  if (typeof document !== "undefined") {
+    document.addEventListener("click", (ev) => {
+      const h = ev.target && ev.target.closest && ev.target.closest("#view [data-mf] > .mf-h");
+      if (!h || !isMobile()) return;
+      const tog = ev.target.closest(".mf-tog");
+      if (!tog && ev.target.closest("a, button, input, select, textarea, label, summary, [data-no-mf]")) return;
+      mfToggle(h.parentNode);
+    });
   }
   /* 표 — 머리글 이름 · 제목 칸 · 조작 칸 표시(한 번) */
   function labelTable(t) {
@@ -2035,6 +2131,7 @@ const SeMIS = (() => {
       if (!t.dataset.lbl) t.dataset.lbl = labelTable(t) ? "1" : "0";
       else if (t.dataset.lbl === "1") labelTable(t);   // 나중에 붙은 행(더 보기 등)도 표시
       if (t.dataset.lbl !== "1" || !mob || t.dataset.stk) return;
+      if (!t.getClientRects().length) return;   // v1.30 접힌 묶음 · 숨은 탭 안의 표는 펼칠 때 판정
       t.classList.remove("tbl-stack");
       const st = needsStack(t);
       t.classList.toggle("tbl-stack", st);
@@ -2048,8 +2145,11 @@ const SeMIS = (() => {
     if (!view || !currentUser) return;
     if (tidyObs) tidyObs.disconnect();
     try {
+      view.classList.toggle("m-editing", editingNow());
       $$(".page-head", view).forEach(tidyHead);
       tidyTables(view);
+      tidyFolds(view);
+      tidyTabs(view);
     } finally {
       if (tidyObs) tidyObs.observe(view, { childList: true, subtree: true });
     }
@@ -2124,7 +2224,8 @@ const SeMIS = (() => {
     isLinkGroup, linkChildren, isIntranet, hostOf, openHub, hubHomeRoute, togglePanel, openSheet,
     LINK_ICONS, LINK_TONES, favOk, linkIconHTML, linkCardHTML, menuForModule,
     closeSidebar, closeOverlays, migrateHubs,
-    isMobile, actionSheet, closeActionSheet, tidyView, labelTable,
+    isMobile, actionSheet, closeActionSheet, tidyView, labelTable, setEditMode, mfToggle,
+    get editing() { return editingNow(); },
     openModal, closeModal, confirmModal, toast,
     $, $$, esc, fmtDate, dsRing, sortedMenus,
     SEC_LEVELS, secCurrent, secNext, levelSorted,

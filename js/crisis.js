@@ -133,11 +133,11 @@
     const num = numOf(c);
     return `<span class="cr-p"><button type="button" class="cr-pn" data-person="${esc(n)}" title="${esc(n)} 임무 전체">${hl(n, q)}</button>${num
       ? `<a class="cr-tel" href="${esc(telHref(num))}" title="${esc(num)}" aria-label="${esc(n)} 전화">${icon("phone", 15)}</a>`
-      : SeMIS.canEdit() ? `<button type="button" class="cr-addnum" data-pc="${esc(n)}" aria-label="${esc(n)} 번호 입력">${icon("plus", 13)}<span>번호</span></button>` : ""}</span>`;
+      : SeMIS.canEdit() ? `<button type="button" class="cr-addnum m-ed" data-pc="${esc(n)}" aria-label="${esc(n)} 번호 입력">${icon("plus", 13)}<span>번호</span></button>` : ""}</span>`;
   }
   const dot = (o) => `<i class="cr-dot" style="--oc:${orgColor(o)}"></i>`;
   const orgTag = (o, q) => `<span class="cr-orgtag">${dot(o)}${hl(o, q)}</span>`;
-  const editBtn = (r) => `<button type="button" class="cr-edit" data-edit="${esc(r.id)}" aria-label="행 편집">${icon("sliders", 15)}</button>`;
+  const editBtn = (r) => `<button type="button" class="cr-edit m-ed" data-edit="${esc(r.id)}" aria-label="행 편집">${icon("sliders", 15)}</button>`;
 
   function lineHTML(r, o) {
     const home = r.team === homeTeam();
@@ -161,12 +161,15 @@
   }
   const thead = (first, second, canWrite) => `<div class="cr-th${canWrite ? " has-edit" : ""}" aria-hidden="true"><span>${first}</span><span>${second}</span><span>정</span><span>부</span></div>`;
 
+  /* v1.30 모바일: 묶음은 제목 줄만 — 검색 · 조직 고르기 · 번호 없음 필터 중에는 펼침 */
+  const isNarrow = () => !!(org || query || noNum);
+
   /* ─────── 보기별 본문 ─────── */
   function orgView(list, canWrite) {
     return orgs(list).map(o => {
       const rs = list.filter(r => r.org === o);
-      return `<section class="card cr-sec" data-org="${esc(o)}">
-        <header class="cr-sechead">${dot(o)}<h3>${esc(o)}</h3><span class="cr-cnt">팀 <b class="mono">${teamsOf(rs).length}</b> · 임무 <b class="mono">${rs.length}</b></span></header>
+      return `<section class="card cr-sec" data-org="${esc(o)}"${ui.mf("org:" + o, isNarrow())}>
+        <header class="cr-sechead mf-h">${dot(o)}<h3>${esc(o)}</h3><span class="cr-cnt">팀 <b class="mono">${teamsOf(rs).length}</b> · 임무 <b class="mono">${rs.length}</b></span></header>
         <div class="cr-tbl${canWrite ? " has-edit" : ""}">${thead("팀", "위기대응 업무", canWrite)}${teamGroups(rs, { showDiv: true, canWrite })}</div>
       </section>`;
     }).join("");
@@ -174,8 +177,8 @@
   function teamView(list, canWrite) {
     return divsOf(list).map(d => {
       const rs = list.filter(r => (r.div || "기타") === d);
-      return `<section class="card cr-sec">
-        <header class="cr-sechead"><h3>${esc(d)}</h3><span class="cr-cnt">팀 <b class="mono">${teamsOf(rs).length}</b> · 임무 <b class="mono">${rs.length}</b></span></header>
+      return `<section class="card cr-sec"${ui.mf("div:" + d, isNarrow())}>
+        <header class="cr-sechead mf-h"><h3>${esc(d)}</h3><span class="cr-cnt">팀 <b class="mono">${teamsOf(rs).length}</b> · 임무 <b class="mono">${rs.length}</b></span></header>
         <div class="cr-tbl${canWrite ? " has-edit" : ""}">${thead("팀", "위기대응 조직 · 업무", canWrite)}${teamGroups(rs, { showOrg: true, canWrite })}</div>
       </section>`;
     }).join("");
@@ -199,7 +202,7 @@
           <b class="cr-pname">${hl(p.name, query)}</b>
           ${num ? `<a class="cr-ptel" href="${esc(telHref(num))}">${icon("phone", 15)}<span class="mono">${esc(num)}</span></a>` : `<span class="cr-nonum">번호 없음</span>`}
           ${second ? `<a class="cr-ptel is-2" href="${esc(telHref(second))}"><span class="mono">${esc(second)}</span></a>` : ""}
-          ${ed ? `<button type="button" class="cr-pedit" data-pc="${esc(p.name)}" aria-label="${esc(p.name)} 연락처 편집">${icon("edit", 15)}<span>${num ? "연락처" : "번호 입력"}</span></button>` : ""}
+          ${ed ? `<button type="button" class="cr-pedit m-ed" data-pc="${esc(p.name)}" aria-label="${esc(p.name)} 연락처 편집">${icon("edit", 15)}<span>${num ? "연락처" : "번호 입력"}</span></button>` : ""}
           <span class="cr-pteams">${p.teams.map(t => hl(t, query)).join(" · ")}${c && c.src !== "crisis" && ed ? ` · <small class="cr-src">${esc(SRC_LABEL[c.src])}</small>` : ""}</span>
         </header>
         <ul>${tasks.map(([k, r]) => `<li><span class="cr-role${k === "부" ? " is-sub" : ""}">${k}</span>
@@ -251,7 +254,7 @@
     const ns = notes();
     if (!ns.length) return "";
     const link = (s) => esc(s).replace(/(\d{2,3}-\d{3,4}-\d{4})/g, (m) => `<a href="tel:${m.replace(/\D/g, "")}">${m}</a>`);
-    return `<section class="card cr-notes" id="cr-notes"><h3>참고</h3><ol>${ns.map(n => `<li>${link(n)}</li>`).join("")}</ol></section>`;
+    return `<section class="card cr-notes" id="cr-notes"${ui.mf("notes")}><h3 class="mf-h">참고</h3><ol>${ns.map(n => `<li>${link(n)}</li>`).join("")}</ol></section>`;
   }
 
   /* ─────── 렌더 ─────── */
@@ -305,7 +308,7 @@
       ${ui.search("cr-q", "이름 · 팀 · 업무 검색", query)}
       <div class="seg" role="group" aria-label="보기">${VIEWS.map(([v, lb]) =>
         `<button type="button" class="seg-btn" data-view="${v}" aria-pressed="${view === v}">${lb}</button>`).join("")}</div>
-      ${miss || noNum ? `<button type="button" class="cr-misschip" id="cr-nonum" aria-pressed="${noNum}">${icon("phone", 14)}<span>번호 없음 <b class="mono">${miss}</b></span></button>` : ""}
+      ${miss || noNum ? `<button type="button" class="cr-misschip ${canWrite ? "m-ed" : "m-hide"}" id="cr-nonum" aria-pressed="${noNum}">${icon("phone", 14)}<span>번호 없음 <b class="mono">${miss}</b></span></button>` : ""}
       ${narrowed ? `<span class="cr-result">임무 <b class="mono">${list.length}</b> / ${rows.length}<button type="button" class="cr-clear" id="cr-clear">조건 해제</button></span>` : ""}
     </div>`;
     const body = !list.length ? `<section class="card">${ui.empty("조건에 맞는 임무가 없습니다.", '<button type="button" class="btn btn-ghost btn-sm" id="cr-clear2">조건 해제</button>')}</section>`
@@ -335,7 +338,7 @@
     $$(".cr-orgbtn", root).forEach(b => b.onclick = () => { org = b.dataset.org === org ? "" : b.dataset.org; rerender(); });
     ["#cr-clear", "#cr-clear2"].forEach(id => { const b = $(id, root); if (b) b.onclick = () => { org = ""; query = ""; noNum = false; rerender(); }; });
     $$("[data-person]", root).forEach(b => b.onclick = () => { view = "person"; org = ""; noNum = false; query = b.dataset.person; rerender(); scrollTop(); });
-    $$("[data-jump=notes]", root).forEach(b => b.onclick = () => { const n = $("#cr-notes"); if (n && n.scrollIntoView) n.scrollIntoView({ behavior: "smooth", block: "start" }); });
+    $$("[data-jump=notes]", root).forEach(b => b.onclick = () => { const n = $("#cr-notes"); if (n) ui.mfSet(n, true); if (n && n.scrollIntoView) n.scrollIntoView({ behavior: "smooth", block: "start" }); });
     $$("[data-mx-team]", root).forEach(b => b.onclick = () => { view = "org"; org = b.dataset.mxOrg; query = b.dataset.mxTeam; rerender(); scrollTop(); });
     if (!canWrite) return;
     $$("[data-pc]", root).forEach(b => b.onclick = () => editPerson(b.dataset.pc));

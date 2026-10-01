@@ -5218,3 +5218,116 @@ table.fo-folded tbody tr.fo-x { display: none !important; }
 .asheet:not(.on) { pointer-events: none; }
 .mn-search-ico { display: flex; }
 [hidden] { display: none !important; }   /* v1.29: .btn 등 display 지정이 hidden 속성을 이기던 문제(규정 화면 "검색 해제"가 늘 보임) */
+
+/* ═════════════════════════════════════════════════════════════
+   v1.30 화면 정돈 2단계 (2026-10-01) — 편집 모드 · 모바일 접기
+   ① 편집 전용 단추(.m-ed)는 모바일에서 평소 숨김 → 머리말 더보기 › '편집'(켜지면 '완료')
+   ② 묶음(ui.mf)은 모바일에서 제목 줄만 — 누르면 펼침, 검색 · 필터 중에는 펼침
+   ③ .m-hide = 모바일에서 숨기는 보조 정보(설명 · 복사 단추 · 중복 안내)
+   모두 screen 한정 — 인쇄(A4)와 PC 화면은 그대로.
+   ═════════════════════════════════════════════════════════════ */
+.mf-tog, .mt-more { display: none; }
+.page-head > .ph-done { display: none; }
+@media screen and (max-width: 767px) {
+  #view:not(.m-editing) .m-ed { display: none !important; }
+  #view .m-hide { display: none !important; }
+  #view.m-editing .page-head > .ph-done {
+    display: inline-flex; order: 2; min-height: 38px; padding: 0 16px; border-radius: 12px; font-size: .9rem; font-weight: 700;
+  }
+  #view.m-editing .page-head > .ph-more { display: none; }   /* 편집 중에는 '완료'만(iOS 방식) */
+
+  /* 접기 */
+  [data-mf]:not([data-mf-on]) > :not(.mf-h) { display: none !important; }
+  [data-mf] > .mf-h { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  [data-mf]:not([data-mf-on]) > .mf-h { margin-bottom: 0 !important; }
+  [data-mf]:not([data-mf-on]) > .mf-h .mf-x { display: none !important; }
+  .mf-tog {
+    display: inline-flex; align-items: center; justify-content: center; flex: none; width: 34px; height: 34px;
+    margin: -8px -8px -8px auto; border: 0; border-radius: 10px; background: none; color: var(--text-3);
+  }
+  .mf-tog:active { background: var(--surface-2); }
+  .mf-tog .ico { transition: transform .18s var(--ease-out); }
+  [data-mf-on] > .mf-h > .mf-tog .ico { transform: rotate(180deg); }
+  h3.mf-h, h2.mf-h { display: flex; align-items: center; gap: 8px; }
+
+  /* 탭 줄은 한 줄(가로로 밀어 보기) */
+  .tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-bottom: 14px; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs .tab { flex: 0 0 auto; white-space: nowrap; }
+  .sp-tabs::-webkit-scrollbar { display: none; }
+
+  /* SERP · 위협전화 — 영문 병기 · 반복 안내는 모바일에서 숨김 */
+  #view .tc-en { display: none !important; }
+  .sp-sec[data-mf]:not([data-mf-on]), .sp-role[data-mf]:not([data-mf-on]) { margin-bottom: 10px; }
+  .sp-cg[data-mf] { margin-bottom: 8px; padding: 10px 12px; }
+  .sp-cg > h3.mf-h { justify-content: flex-start; min-height: 30px; margin-bottom: 0; }
+  .sp-cg[data-mf-on] > h3.mf-h { margin-bottom: 4px; }
+  .sp-grid3 > .sp-sec, .sp-grid2 > .sp-sec { min-width: 0; }
+  .sp-grid3 .sp-sh.mf-h, .sp-grid2 .sp-sh.mf-h { align-items: center; }
+  .sp-grid3 .sp-sh.mf-h > .spacer, .sp-grid2 .sp-sh.mf-h > .spacer { display: none; }
+
+  /* 위기대응 담당자 · 업무 연락처 — 머리 띠가 있는 카드는 바깥 여백 없이(v1.29 모바일 .card 여백이 덮던 문제) */
+  .card.cr-sec, .card.pb-sec { padding: 0; }
+  .cr-sec[data-mf] { margin-bottom: 10px; }
+  .cr-sec[data-mf]:not([data-mf-on]) > .cr-sechead { border-bottom-color: transparent; }
+  .cr-sechead.mf-h { padding: 13px 16px; }
+  .cr-sechead .mf-tog { margin-right: -6px; }
+  .cr-notes[data-mf]:not([data-mf-on]) > h3 { margin-bottom: 0; }
+
+  /* 업무 연락처 */
+  .pb-grid { gap: 10px; }
+  .pb-sec[data-mf]:not([data-mf-on]) > .pb-sechead { border-bottom-color: transparent; }
+  .pb-sechead.mf-h { min-height: 50px; padding: 10px 14px 10px 16px; }
+  .pb-qsec[data-mf] { margin-bottom: 0; border-bottom: 1px solid var(--border); }
+  .pb-qsec[data-mf-on] { padding-bottom: 14px; }
+  .pb-qh.mf-h { min-height: 50px; margin: 0; }
+  .pb-notes[data-mf]:not([data-mf-on]) > h3 { margin-bottom: 0; }
+
+  /* 비상연락망 */
+  .ct-sec[data-mf] { margin-bottom: 10px; }
+  .ct-grid { gap: 10px; }
+  .ct-sec > .card-title.mf-h { flex-wrap: nowrap; }
+  .ct-sec > .card-title.mf-h > span:not(.spacer):not(.ct-sico):not(.ct-cnt) { min-width: 0; }
+  .ct-sec > .card-title.mf-h .ct-dnum { display: none; }
+  .ct-fgrp[data-mf] { margin-bottom: 0; }
+  .ct-fgrp[data-mf] > .ct-fgrp-t.mf-h {
+    display: flex; align-items: center; gap: 8px; min-height: 46px; padding: 0 2px; font-size: .9rem;
+    border-bottom: 1px solid #edf1f0; color: var(--text);
+  }
+  .ct-fgrp[data-mf-on] > .ct-fgrp-t.mf-h { color: var(--primary-dark); border-bottom-color: var(--primary-soft); }
+  .ct-fgrp[data-mf-on] { margin-bottom: 10px; }
+  .ct-hero { padding: 14px 16px; margin-bottom: 14px; }
+  .ct-hero-main { font-size: 1rem; }
+
+  /* 시스템 설정 — 메뉴 줄은 한 줄 + '…'(액션 시트) · 허브는 접어 둠 · 권한 배지는 수정 화면에서 */
+  .menu-tree-item { flex-wrap: nowrap; gap: 8px; min-height: 48px; padding: 6px 4px 6px 10px; margin-bottom: 5px; }
+  .menu-tree-item .mt-label { flex: 1 1 0; }
+  .menu-tree-item > .badge ~ .badge { display: none; }
+  .menu-tree-item .mt-more {
+    display: inline-flex; flex: none; align-items: center; justify-content: center; width: 36px; height: 34px;
+    border: 0; border-radius: 9px; background: none; color: var(--text-2);
+  }
+  .menu-tree-item .mt-more:active { background: var(--surface-2); }
+  .menu-tree-item .mt-actions { display: none; }
+  .menu-tree-item > .mf-tog { order: 5; margin: 0 0 0 -6px; }
+  .mt-grp[data-mf] { margin-bottom: 5px; }
+  .mt-grp[data-mf]:not([data-mf-on]) > .menu-tree-item.mf-h { margin-bottom: 0; }
+  .mt-grp[data-mf-on] > .menu-tree-item.mf-h { border-color: var(--primary); }
+}
+@media (prefers-reduced-motion: reduce) { .mf-tog .ico { transition: none; } }
+
+/* 비상연락망 — 이모지 → 선 아이콘 (v1.30) */
+.ct-sico { display: inline-flex; color: var(--primary); flex: none; }
+.ct-danger .ct-sico { color: var(--danger); }
+.ct-cnt { font-size: .76rem; font-weight: 500; color: var(--text-3); }
+.ct-tel { display: inline-flex; align-items: center; gap: 5px; }
+.ct-tel .ico { flex: none; color: var(--text-3); }
+.ct-num.is-mobile .ct-tel .ico { color: var(--primary); }
+.ct-copy { display: inline-flex; align-items: center; color: var(--text-3); }
+.ct-hero-main { display: flex; align-items: flex-start; gap: 8px; }
+.ct-hero-main .ico { flex: none; margin-top: 2px; }
+.ct-duty { display: inline-flex; align-items: center; gap: 5px; }
+.card-title .ico { flex: none; }
+.card-title > .ico { color: var(--primary); }
+.mt-btn .ico { display: block; }
+.ct-fgrp-t .ct-cnt { margin-left: 6px; }

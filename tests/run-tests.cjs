@@ -3,7 +3,7 @@
    실행: npm test  (jsdom 필요: npm install)
    구성: [C] 코어(해시·계정·메뉴·정규화·권한·라우터·예정 모듈)
          [D] 대시보드·공지·현황판  [S] 시스템 설정  [M] 이식 모듈 스모크(일정·회의록·연락망·검색)
-         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [IM] 한글 입력 보호  [FL] 운항 현황  [AU] 수검 대응 센터  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [SEC] 서버 보안(비공개 파일·살균·CSP)  [PT] 순찰일지  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
+         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [IM] 한글 입력 보호  [FL] 운항 현황  [AU] 수검 대응 센터  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [SEC] 서버 보안(비공개 파일·살균·CSP)  [PT] 순찰일지  [CM] v1.29 화면 정돈  [CN] v1.30 편집 모드 · 모바일 접기  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
    ═══════════════════════════════════════════════════════ */
 "use strict";
 const fs = require("fs");
@@ -2309,7 +2309,7 @@ function makeServer(opts = {}) {
     t("CF03 패널 내용: 보고 순서 4단계 · 구분 제목 · 원터치 번호 · PDF 원본 링크", () => {
       const p = q(e, '[data-ctf-panel="cf-a"]');
       eq(qa(e, '[data-ctf-panel="cf-a"] .ct-fsteps li').length, 4);
-      eq(qa(e, '[data-ctf-panel="cf-a"] .ct-fgrp-t').map(x => x.textContent.trim()).join(","), "보고선,해외기관");
+      eq(qa(e, '[data-ctf-panel="cf-a"] .ct-fgrp-t > span:first-child').map(x => x.textContent.trim()).join(","), "보고선,해외기관");   // v1.30: 제목 옆 건수(.ct-cnt)
       ok(p.querySelector('a[href="tel:0320000001"]'));
       ok(p.querySelector('a[href="sms:01000000002"]'), "휴대전화 문자");
       ok(p.querySelector('a[href="tel:+10000000003"]'), "국제번호");
@@ -6388,6 +6388,175 @@ function makeServer(opts = {}) {
       e.S.data.menus = e.S.data.menus.filter(m => !/^cmlk/.test(m.id)); e.S.renderNav();
     });
     go(e, "vault");   // 대시보드의 비동기 적재(CARES · 운항)가 닫힌 창을 건드리지 않게 창은 열어 둔다(끝에서 process.exit)
+  }
+
+  /* ══════════ [CN] v1.30 화면 정돈 2단계 — 편집 모드 · 모바일 접기 (SERP · 위협전화 · 위기대응 · 연락망 · 업무 연락처 · 설정) ══════════
+     가짜 이름 · 번호만 사용 */
+  {
+    const e = makeEnv();
+    loginAs(e, "admin");
+    const setW = (w) => Object.defineProperty(e.w, "innerWidth", { value: w, configurable: true });
+    const emoji = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u;
+    const seedCrisis = () => {
+      e.S.data.crisis = { asOf: "26년 9월", homeTeam: "가팀", notes: ["참고 하나"], people: {},
+        rows: [{ id: "c1", div: "가본부", team: "가팀", org: "초동조치센터", task: "업무 하나", main: "갑일", sub: "을일" },
+          { id: "c2", div: "나본부", team: "나팀", org: "종합지원센터", task: "업무 둘", main: "병일", sub: "" },
+          { id: "c3", div: "나본부", team: "다팀", org: "종합지원센터", task: "업무 셋", main: "정일", sub: "갑일" }] };
+    };
+    const seedPb = () => {
+      e.S.data.phonebook = { asOf: "26년 9월", notes: ["참고"], groups: [{ id: "ga", name: "가구역", color: "#d42a1e" }, { id: "gb", name: "나구역", color: "#1f4fd6" }],
+        rows: [{ id: "p1", group: "ga", org: "갑사", name: "갑일", mobile: "010-0000-1111", email: "a@x.com", check: true, verify: "철자 확인" },
+          { id: "p2", group: "gb", org: "을사", name: "을일", office: "032-000-2072" }] };
+    };
+    const seedContacts = () => {
+      e.S.data.contacts = { flows: [{ id: "cf1", title: "가 연락망", short: "가사고", rows: [{ id: "r1", grp: "보고선", role: "가팀장", office: "032-000-0001", mobile: "010-0000-0002" }] }],
+        sections: [{ id: "s1", type: "people", icon: "🏢", title: "가팀", rows: [{ role: "팀장", name: "갑일", mobile: "010-0000-0003", office: "032-000-0004", email: "g@x.com" }] },
+          { id: "s2", type: "people", icon: "🛡️", title: "빈 섹션", rows: [] },
+          { id: "s3", type: "emails", icon: "📧", title: "메일", rows: [{ name: "을일", email: "e@x.com" }, { name: "병일", email: "f@x.com" }] }] };
+    };
+    seedCrisis(); seedPb(); seedContacts(); e.S.saveSilent();
+    const click = (el) => el.dispatchEvent(new e.w.MouseEvent("click", { bubbles: true }));
+
+    t("CN01 ui.mf: 묶음 속성(data-mf) · force 면 펼침 · 펼친 상태는 화면별로 기억(다시 그려도 유지)", () => {
+      setW(390); go(e, "crisis");
+      eq(e.S.ui.mf("x"), ' data-mf="x"'); ok(/data-mf-on/.test(e.S.ui.mf("x", true)));
+      const sec = q(e, '.cr-sec[data-mf="org:종합지원센터"]');
+      ok(sec && !sec.hasAttribute("data-mf-on"), "모바일 기본 접힘");
+      e.S.tidyView();
+      const tog = sec.querySelector(":scope > .mf-h > .mf-tog");
+      ok(tog && tog.getAttribute("aria-expanded") === "false", "펼침 단추(접근성)");
+      click(sec.querySelector(".cr-sechead h3"));
+      ok(sec.hasAttribute("data-mf-on")); eq(tog.getAttribute("aria-expanded"), "true");
+      go(e, "crisis"); e.S.tidyView();
+      ok(q(e, '.cr-sec[data-mf="org:종합지원센터"]').hasAttribute("data-mf-on"), "다시 그려도 펼침 유지");
+      click(q(e, '.cr-sec[data-mf="org:종합지원센터"] .mf-tog'));
+      ok(!q(e, '.cr-sec[data-mf="org:종합지원센터"]').hasAttribute("data-mf-on"), "펼침 단추로 접기");
+    });
+    t("CN02 머리 안의 단추 · 링크는 접기와 무관 · PC 폭에서는 눌러도 접지 않음", () => {
+      setW(390); go(e, "contacts"); e.S.tidyView();
+      const sec = q(e, '.ct-sec[data-mf="sec:s1"]');
+      const ed = sec.querySelector(".mf-h .ct-edit");
+      ok(ed && ed.classList.contains("m-ed"), "편집 단추는 편집 모드 전용");
+      click(ed); ok(!sec.hasAttribute("data-mf-on"), "편집 단추는 접기 안 함");
+      e.S.closeModal();
+      setW(1024); click(sec.querySelector(".card-title > span:nth-child(2)"));
+      ok(!sec.hasAttribute("data-mf-on"), "PC 는 접기 동작 없음(늘 펼쳐 보임 — CSS)");
+    });
+    t("CN03 편집 모드: 더보기 첫 줄 '편집' → m-editing · '완료' → 끔 · 다른 화면으로 가면 꺼짐", () => {
+      setW(390); go(e, "crisis"); e.S.tidyView();
+      ok(qa(e, "#view .m-ed").length > 0);
+      q(e, "#view .ph-more").click();
+      const first = q(e, "#asheet .asheet-item");
+      eq(first.textContent.trim(), "편집");
+      first.click(); e.S.tidyView();
+      ok(q(e, "#view").classList.contains("m-editing")); ok(e.S.editing);
+      ok(q(e, "#view .page-head > .ph-done"), "'완료' 단추");
+      go(e, "crisis"); e.S.tidyView(); ok(q(e, "#view").classList.contains("m-editing"), "같은 화면을 다시 그려도 유지");
+      q(e, "#view .ph-done").click();
+      ok(!q(e, "#view").classList.contains("m-editing")); ok(!q(e, "#view .ph-done"));
+      e.S.setEditMode(true); go(e, "phonebook"); e.S.tidyView();
+      ok(!q(e, "#view").classList.contains("m-editing") && !e.S.editing, "화면 이동 → 꺼짐");
+    });
+    t("CN04 편집 전용 표시: 위기대응(+번호 · 행 편집) · 업무 연락처(행 편집 · 확인 메모) · 권한 없으면 m-ed 없음(더보기에 '편집' 없음)", () => {
+      setW(390); go(e, "crisis");
+      ok(q(e, ".cr-addnum.m-ed") && q(e, ".cr-edit.m-ed") && q(e, ".cr-misschip.m-ed"));
+      go(e, "phonebook");
+      ok(q(e, ".pb-edit.m-ed") && q(e, ".pb-verify.m-ed") && q(e, ".pb-cp.m-hide") && q(e, ".pb-chk.m-ed"));
+      loginAs(e, "manager"); go(e, "crisis"); e.S.tidyView();
+      eq(qa(e, "#view .m-ed").length, 0, "manager 위기대응");
+      go(e, "phonebook"); eq(qa(e, "#view .m-ed").length, 0, "manager 업무 연락처");
+      ok(q(e, ".pb-verify.m-hide") && q(e, ".pb-chk.m-hide"), "확인 메모 · 필터는 모바일에서 숨김");
+      e.S.tidyView(); const mo = q(e, "#view .ph-more");
+      if (mo) { mo.click(); ok(!qa(e, "#asheet .asheet-item").some(b => b.textContent.trim() === "편집"), "'편집' 없음"); e.S.closeActionSheet(); }
+      loginAs(e, "admin");
+    });
+    t("CN05 검색 · 필터 중에는 묶음 펼침(위기대응 · 업무 연락처 · 연락망)", () => {
+      setW(390); go(e, "crisis");
+      const qi = q(e, "#cr-q"); qi.value = "업무"; qi.dispatchEvent(new e.w.Event("input"));
+      ok(qa(e, ".cr-sec[data-mf]").every(x => x.hasAttribute("data-mf-on")), "검색 → 펼침");
+      qi.value = ""; qi.dispatchEvent(new e.w.Event("input"));
+      ok(qa(e, ".cr-sec[data-mf]").some(x => !x.hasAttribute("data-mf-on")), "검색 해제 → 접힘");
+      go(e, "phonebook"); q(e, '.pb-gbtn[data-grp="gb"]').click();
+      ok(qa(e, ".pb-sec[data-mf]").length === 1 && q(e, ".pb-sec[data-mf]").hasAttribute("data-mf-on"), "구역 고르면 펼침");
+      q(e, '.pb-gbtn[data-grp="gb"]').click();
+      go(e, "contacts"); const si = q(e, "#ct-search"); si.value = "을일"; si.dispatchEvent(new e.w.Event("input"));
+      ok(qa(e, "#ct-body [data-mf]").every(x => x.hasAttribute("data-mf-on")));
+      si.value = ""; si.dispatchEvent(new e.w.Event("input"));
+    });
+    t("CN06 접힌 묶음 안의 표는 크기를 잴 수 없으니 판정 보류 → 펼칠 때 정돈", () => {
+      setW(390);
+      e.w.location.hash = "#/crisis";
+      const v = q(e, "#view");
+      v.innerHTML = '<section class="card" data-mf="tt"><header class="mf-h">표</header><div class="table-wrap"><table class="tbl" id="cn-t"><thead><tr><th>가</th><th>나</th><th>다</th></tr></thead><tbody><tr><td><b>값</b></td><td>1</td><td>2</td></tr></tbody></table></div></section>';
+      const tb = q(e, "#cn-t");
+      tb.getClientRects = () => [];
+      e.S.tidyView();
+      ok(!tb.dataset.stk, "숨은 표는 판정 안 함");
+      tb.getClientRects = () => [{}];
+      e.S.mfToggle(q(e, '[data-mf="tt"]'), true); e.S.tidyView();
+      ok(tb.dataset.stk === "0" || tb.dataset.stk === "1", "펼친 뒤 판정");
+      go(e, "crisis");
+    });
+    t("CN07 비상연락망: 이모지 없음(섹션 · 번호 · 메일은 선 아이콘) · 복사는 모바일 숨김 · 빈 섹션은 편집 모드(hq↑)/숨김", () => {
+      setW(390); go(e, "contacts");
+      const body = q(e, "#view");
+      ok(!emoji.test(body.textContent), "화면 글자에 이모지 없음: " + (body.textContent.match(emoji) || [""])[0]);
+      ok(q(e, '[data-ct-sec="s1"] .ct-sico svg'), "섹션 선 아이콘");
+      ok(q(e, '[data-ct-sec="s1"] .ct-tel svg') && qa(e, ".ct-copy").every(b => b.classList.contains("m-hide")));
+      ok(q(e, '[data-ct-sec="s2"]').classList.contains("m-ed"), "빈 섹션: 편집 모드에서만");
+      ok(q(e, ".ct-fgrp[data-mf] > .ct-fgrp-t.mf-h"), "체계도 묶음 접기");
+      loginAs(e, "manager"); go(e, "contacts");
+      ok(q(e, '[data-ct-sec="s2"]').classList.contains("m-hide"), "manager 는 숨김");
+      loginAs(e, "admin");
+    });
+    t("CN08 시스템 설정: 허브는 접기 묶음 · 줄마다 '…' → 액션 시트(원래 단추 실행) · 단추 이모지 → 선 아이콘", () => {
+      setW(390); go(e, "settings");
+      const grps = qa(e, "#menu-tree .mt-grp[data-mf]");
+      ok(grps.length >= 3, "허브 묶음 " + grps.length);
+      ok(grps.every(g => g.querySelector(":scope > .menu-tree-item.mf-h")));
+      ok(!qa(e, "#menu-tree .mt-btn").some(b => /[▲▼👁🙈✏🗑]/u.test(b.textContent)), "단추 이모지 없음");
+      const g0 = grps[0], kids = g0.querySelectorAll(":scope > .menu-tree-item.is-child");
+      ok(kids.length >= 2);
+      const id1 = kids[0].dataset.id, id2 = kids[1].dataset.id;
+      const seq = (id) => e.S.data.menus.find(m => m.id === id).seq;
+      const s1 = seq(id1), s2 = seq(id2);
+      kids[0].querySelector(".mt-more").click();
+      const items = qa(e, "#asheet .asheet-item").map(b => b.textContent.trim());
+      eq(items.slice(0, 2).join(","), "위로,아래로");
+      qa(e, "#asheet .asheet-item").find(b => b.textContent.trim() === "아래로").click();
+      eq(seq(id1), s2); eq(seq(id2), s1);
+    });
+    t("CN09 SERP 모바일: 3.6 초동조치가 맨 위 · 원문 절은 접힘 · PC 순서는 그대로", () => {
+      e.S.data.serp = { title: "가 계획", docNo: "T-1", occ: { team: "가 통제팀", phone: "02-0000-0001" },
+        sections: [{ id: "s1", no: "3.1.3", tab: "init", title: "원칙", body: "본문" }, { id: "s2", no: "3.2", tab: "init", title: "대외", body: "본문" }],
+        serc: { within: 30 }, roles: [{ id: "leader", no: 1, name: "리더", duties: ["지휘"], checklist: ["가동"] }],
+        timeline: [{ id: "t1", min: 10, text: "통보", roles: ["leader"] }], notify: [{ id: "n1", label: "일시" }], people: [] };
+      e.S.data.serpRuns = []; e.S.saveSilent();
+      setW(390); go(e, "serp");
+      const tb = q(e, ".sp-tabbody");
+      eq(tb.firstElementChild.id, "sp-tlcard", "모바일 첫 카드");
+      ok(q(e, '.sp-tabbody .sp-occ[data-mf]') && q(e, '.sp-tabbody .sp-serc[data-mf]') && q(e, '.sp-tabbody [data-mf="sec:s2"]'));
+      ok(q(e, ".sp-occbox.m-hide"), "통보처 큰 전화는 위 띠와 같아 모바일 숨김");
+      ok(qa(e, ".sp-tabbody .sp-ed").every(b => b.classList.contains("m-ed")), "계획 화면 편집 단추");
+      setW(1280); go(e, "serp");
+      ok(q(e, ".sp-tabbody").firstElementChild.classList.contains("sp-grid2"), "PC 순서 그대로");
+    });
+    t("CN10 위협전화: 영문 병기는 모바일 CSS로 숨김 · STEP 은 늘 펼침 · 응대 요령 · TSOC · 보고 순서는 접기 · 편집 단추 m-ed", () => {
+      const css = read("css/main.css");
+      const tail = css.slice(css.indexOf("v1.30 화면 정돈 2단계"));
+      ok(/@media screen and \(max-width: 767px\)[\s\S]*#view \.tc-en \{ display: none/.test(tail), "영문 숨김(화면 한정)");
+      ok(/#view:not\(\.m-editing\) \.m-ed/.test(tail) && /\[data-mf\]:not\(\[data-mf-on\]\) > :not\(\.mf-h\)/.test(tail));
+      e.S.data.threat = { title: "위협", trigger: "협박 전화", quick: [{ label: "가", num: "032-000-0001" }],
+        steps: [{ id: "s1", no: "1", ko: "확인", en: "Check", phase: "call", subs: [] }], tips: ["침착"], chain: [{ id: "c1", to: "팀장" }],
+        tsoc: { phones: [{ label: "OUT", num: "+1-000" }], items: [{ ko: "항공사", en: "Airline" }] }, sections: [], form: { secs: [] } };
+      e.S.data.threatRuns = []; e.S.data.threatChecks = []; e.S.saveSilent();
+      setW(390); go(e, "threat");
+      ok(q(e, ".tc-steps") && !q(e, ".tc-flow").hasAttribute("data-mf"), "STEP 카드는 접지 않음");
+      ok(q(e, ".tc-tipc[data-mf]") && q(e, ".tc-tsoc[data-mf]") && q(e, ".tc-chainc[data-mf]"));
+      ok(q(e, ".tc-en"), "영문은 화면에 있음(CSS로 모바일만 숨김)");
+      ok(qa(e, ".tc-guide .sp-ed").every(b => b.classList.contains("m-ed")) && q(e, "#tc-step-add.m-ed"));
+    });
+    go(e, "vault");
   }
 
   /* ══════════ [W] 릴리스 위생 ══════════ */

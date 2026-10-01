@@ -714,7 +714,7 @@
     title: "시스템 설정",
     render(root) {
       if (!SeMIS.isAdmin()) {
-        root.innerHTML = '<div class="card"><div class="empty">🔒 시스템관리자 전용 메뉴입니다.</div></div>';
+        root.innerHTML = '<div class="card"><div class="empty">시스템관리자 전용 메뉴입니다.</div></div>';
         return;
       }
       root.innerHTML = `
@@ -756,8 +756,8 @@
         ? '<span class="badge badge-amber mt-type">예정 모듈</span>'
         : '<span class="badge badge-green mt-type">모듈</span>';
 
-    const row = (m, depth) => `
-      <div class="menu-tree-item ${depth ? "is-child" : ""}${depth > 1 ? " is-sub" : ""}${m.hidden ? " is-hidden" : ""}" data-id="${esc(m.id)}">
+    const row = (m, depth, grp) => `
+      <div class="menu-tree-item ${depth ? "is-child" : ""}${depth > 1 ? " is-sub" : ""}${m.hidden ? " is-hidden" : ""}${grp ? " mf-h" : ""}" data-id="${esc(m.id)}">
         <span class="mt-ico">${m.type === "group" ? SeMIS.icon(m.ico, 18) : m.type === "link" ? SeMIS.linkIconHTML(m, "mt-lki") : esc(m.icon || "▪")}</span>
         <span class="mt-label">${esc(m.label)}
           ${m.hidden ? '<span class="badge badge-gray mt-type">숨김</span>' : ""}
@@ -770,32 +770,49 @@
         ${typeBadge(m)}
         ${m.type === "group" ? "" : `<span class="badge badge-gray mt-type">${esc(SeMIS.VIS_LABEL[m.vis || "all"] || "전체")}</span>`}
         <span class="mt-actions">
-          <button class="mt-btn" data-up="${esc(m.id)}" title="위로">▲</button>
-          <button class="mt-btn" data-down="${esc(m.id)}" title="아래로">▼</button>
+          <button type="button" class="mt-btn" data-up="${esc(m.id)}" title="위로" aria-label="위로">${SeMIS.icon("chevup", 16)}</button>
+          <button type="button" class="mt-btn" data-down="${esc(m.id)}" title="아래로" aria-label="아래로">${SeMIS.icon("chevdown", 16)}</button>
           ${SeMIS.canHide(m)
-            ? `<button class="mt-btn${m.hidden ? " on" : ""}" data-hide="${esc(m.id)}" title="${m.hidden ? "다시 표시" : "화면에서 숨기기"}">${m.hidden ? "🙈" : "👁"}</button>`
+            ? `<button type="button" class="mt-btn${m.hidden ? " on" : ""}" data-hide="${esc(m.id)}" title="${m.hidden ? "다시 표시" : "화면에서 숨기기"}" aria-label="${m.hidden ? "다시 표시" : "화면에서 숨기기"}">${SeMIS.icon(m.hidden ? "eyeoff" : "eye", 16)}</button>`
             : ""}
-          <button class="mt-btn" data-edit="${esc(m.id)}" title="수정">✏️</button>
+          <button type="button" class="mt-btn" data-edit="${esc(m.id)}" title="수정" aria-label="수정">${SeMIS.icon("edit", 16)}</button>
           ${m.module === "settings" || m.module === "dashboard" ? "" :
-            `<button class="mt-btn danger" data-del="${esc(m.id)}" title="삭제">🗑</button>`}
+            `<button type="button" class="mt-btn danger" data-del="${esc(m.id)}" title="삭제" aria-label="삭제">${SeMIS.icon("trash", 16)}</button>`}
         </span>
+        <button type="button" class="mt-more" data-mt-more="${esc(m.id)}" aria-label="${esc(m.label)} 관리">${SeMIS.icon("more", 20)}</button>
       </div>`;
 
     let html = `
       <div class="card">
         <div class="card-title">메뉴 구성 <span class="spacer"></span>
           <button class="btn btn-primary btn-sm" id="btn-add-menu">+ 메뉴 추가</button></div>
-        <p class="form-hint" style="margin-bottom:12px"><b>허브</b>는 왼쪽 아이콘 줄에 표시되는 업무 묶음입니다. 허브 없는 항목은 아이콘 줄 아래(관리)에 놓입니다. ▲▼ 순서 · 👁 숨기기(권한과 별개).</p>
+        <p class="form-hint m-hide" style="margin-bottom:12px"><b>허브</b>는 왼쪽 아이콘 줄에 표시되는 업무 묶음입니다. 허브 없는 항목은 아이콘 줄 아래(관리)에 놓입니다. 숨기기는 권한과 별개입니다.</p>
         <div id="menu-tree">`;
+    /* v1.30 모바일: 허브는 제목 줄만(누르면 하위 메뉴) — PC는 그대로 */
     const walk = (m, depth) => {
-      html += row(m, depth);
-      if (depth < 2) menus.filter(c => c.parent === m.id).forEach(c => walk(c, depth + 1));
+      const kids = depth < 2 ? menus.filter(c => c.parent === m.id) : [];
+      const grp = depth === 0 && m.type === "group" && kids.length > 0;
+      if (grp) html += `<div class="mt-grp"${SeMIS.ui.mf("hub:" + m.id)}>`;
+      html += row(m, depth, grp);
+      kids.forEach(c => walk(c, depth + 1));
+      if (grp) html += `</div>`;
     };
     menus.filter(m => !m.parent || m.type === "group").forEach(m => walk(m, 0));
     html += `</div></div>`;
     box.innerHTML = html;
 
     $("#btn-add-menu").onclick = () => menuForm(null);
+    /* v1.30 모바일: 줄마다 '…' → 액션 시트(위로 · 아래로 · 숨기기 · 수정 · 삭제 — 원래 단추를 누른다) */
+    $$("#menu-tree [data-mt-more]").forEach(b => b.onclick = () => {
+      const rowEl = b.closest(".menu-tree-item");
+      const acts = $$(".mt-actions .mt-btn", rowEl);
+      SeMIS.actionSheet(acts.map(x => ({
+        label: x.getAttribute("aria-label") || x.title || "실행",
+        icon: x.querySelector("svg") ? x.querySelector("svg").outerHTML : "",
+        danger: x.classList.contains("danger"), disabled: !!x.disabled,
+        run: () => x.click()
+      })), { title: (D().menus.find(x => x.id === b.dataset.mtMore) || {}).label || "" }, b);
+    });
     $$("#menu-tree [data-edit]").forEach(b => b.onclick = () => menuForm(b.dataset.edit));
     $$("#menu-tree [data-up]").forEach(b => b.onclick = () => moveMenu(b.dataset.up, -1));
     $$("#menu-tree [data-down]").forEach(b => b.onclick = () => moveMenu(b.dataset.down, 1));
@@ -1059,7 +1076,7 @@
       <div class="card">
         <div class="card-title">사용자 계정 <span class="spacer"></span>
           <button class="btn btn-primary btn-sm" id="btn-add-user">+ 사용자 추가</button></div>
-        <p class="form-hint" style="margin-bottom:12px">
+        <p class="form-hint m-hide" style="margin-bottom:12px">
           <b>암호만 입력</b>해 로그인하므로 계정마다 암호가 달라야 합니다. 암호는 서버에만 bcrypt로 보관되며, 바꾸면 그 계정의 다른 접속은 끊깁니다.</p>
         <div id="user-list" class="form-hint">불러오는 중…</div>
       </div>`;
@@ -1211,7 +1228,7 @@
       </div>
       <div class="card">
         <div class="card-title">접속 중 <span class="spacer"></span>
-          <button class="btn btn-ghost btn-sm" id="sec-reload">↻ 새로고침</button>
+          <button class="btn btn-ghost btn-sm" id="sec-reload">${SeMIS.icon("refresh", 15)}<span>새로고침</span></button>
           <button class="btn btn-danger btn-sm" id="sec-end">다른 접속 모두 끊기</button></div>
         <div id="sec-sessions" class="form-hint">불러오는 중…</div>
       </div>
@@ -1240,7 +1257,7 @@
       { label: "로그인 실패 (1시간)", value: String(st.fail60 || 0), tone: "muted" },
       { label: "접속 확인 난이도", value: String(st.powBits || "-"), sub: raised ? "상향됨" : "", tone: raised ? "warn" : "muted" },
       { label: "회의 서명 코드", value: st.signPaused ? "중지" : "정상", tone: st.signPaused ? "bad" : "ok" }
-    ]) + `<p class="form-hint" style="margin-top:10px">같은 IP에서 15분 안에 20번 틀리면 15분 동안 제한됩니다. 전체 실패가 늘면 접속 확인 난이도가 자동으로 오르고,
+    ]) + `<p class="form-hint m-hide" style="margin-top:10px">같은 IP에서 15분 안에 20번 틀리면 15분 동안 제한됩니다. 전체 실패가 늘면 접속 확인 난이도가 자동으로 오르고,
         회의 서명 코드는 1시간 실패가 200회를 넘으면 15분 동안 받지 않습니다.</p>`;
     sb.innerHTML = (locked.length ? `<div class="badge badge-red" style="margin-bottom:8px">로그인 제한 중 IP ${locked.map(esc).join(", ")}</div>` : "") +
       (sessions.length ? `<div class="table-wrap"><table class="tbl"><thead><tr><th>계정</th><th>종류</th><th>시작</th><th>최근 확인</th><th>IP</th></tr></thead><tbody>
@@ -1273,9 +1290,9 @@
     const free = Object.keys(used).filter(n => !list.some(a => a.name === n)).sort();
     box.innerHTML = `
       <div class="card">
-        <div class="card-title">🧭 일정 담당자 <span class="spacer"></span>
+        <div class="card-title">${SeMIS.icon("users", 17)}<span>일정 담당자</span><span class="spacer"></span>
           <button class="btn btn-primary btn-sm" id="btn-add-as">+ 담당자 추가</button></div>
-        <p class="form-hint" style="margin-bottom:12px">
+        <p class="form-hint m-hide" style="margin-bottom:12px">
           일정관리의 <b>담당자 선택 버튼 · 필터 · 칩 태그</b>에 쓰이는 목록입니다. 일정 하나에 여러 명을 지정할 수 있습니다.<br>
           목록에 없는 이름을 직접 입력하면 아래 <b>직접 입력된 담당자</b>에 모이고, 담당자를 지워도 기존 일정의 이름은 남습니다.</p>
         <div class="table-wrap"><table class="tbl as-tbl">
@@ -1284,8 +1301,8 @@
           <tbody>
           ${list.length ? list.map((a, i) => `<tr>
             <td>
-              <button class="mt-btn" data-as-up="${esc(a.id)}" title="위로" ${i === 0 ? "disabled" : ""}>▲</button>
-              <button class="mt-btn" data-as-down="${esc(a.id)}" title="아래로" ${i === list.length - 1 ? "disabled" : ""}>▼</button></td>
+              <button type="button" class="mt-btn" data-as-up="${esc(a.id)}" title="위로" aria-label="위로" ${i === 0 ? "disabled" : ""}>${SeMIS.icon("chevup", 16)}</button>
+              <button type="button" class="mt-btn" data-as-down="${esc(a.id)}" title="아래로" aria-label="아래로" ${i === list.length - 1 ? "disabled" : ""}>${SeMIS.icon("chevdown", 16)}</button></td>
             <td style="font-size:1.15rem;text-align:center">${esc(a.emoji)}</td>
             <td><b>${esc(a.name)}</b></td>
             <td>${esc(a.title || "-")}</td>
@@ -1298,8 +1315,8 @@
           </tbody></table></div>
       </div>
       <div class="card">
-        <div class="card-title">✍️ 직접 입력된 담당자 <span class="badge badge-gray">${free.length}명</span></div>
-        <p class="form-hint" style="margin-bottom:10px">일정에 직접 입력된, 목록에 없는 이름입니다.</p>
+        <div class="card-title">${SeMIS.icon("edit", 17)}<span>직접 입력된 담당자</span><span class="badge badge-gray">${free.length}명</span></div>
+        <p class="form-hint m-hide" style="margin-bottom:10px">일정에 직접 입력된, 목록에 없는 이름입니다.</p>
         ${free.length ? `<div class="as-free">${free.map(n =>
           `<span class="as-free-item">${esc(n)} <span class="as-free-n">${used[n]}건</span>
             <button class="btn btn-ghost btn-sm" data-as-promote="${esc(n)}">목록에 추가</button></span>`).join("")}</div>`
@@ -1394,46 +1411,46 @@
   function renderDataTab(box) {
     box.innerHTML = `
       <div class="card">
-        <div class="card-title">💾 백업 / 복원</div>
-        <p class="form-hint" style="margin-bottom:12px">
+        <div class="card-title">${SeMIS.icon("database", 17)}<span>백업 / 복원</span></div>
+        <p class="form-hint m-hide" style="margin-bottom:12px">
           모든 데이터는 공용 DB에 실시간 동기화됩니다. 이 탭에는 로그인한 동안만 사본이 남습니다.<br>
           백업 파일에는 민감 자료가 들어 있으니 암호가 걸린 저장소에만 보관하세요.</p>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-primary" id="btn-export">⬇ 백업 파일 다운로드</button>
-          <label class="btn btn-ghost" style="cursor:pointer">⬆ 백업 파일 복원
+          <button class="btn btn-primary" id="btn-export">${SeMIS.icon("down", 16)}<span>백업 파일 다운로드</span></button>
+          <label class="btn btn-ghost" style="cursor:pointer">${SeMIS.icon("refresh", 16)}<span>백업 파일 복원</span>
             <input type="file" id="btn-import" accept=".json" style="display:none"></label>
         </div>
       </div>
       <div class="card">
-        <div class="card-title">🛟 변경 이력 (서버 자동 백업)</div>
-        <p class="form-hint" style="margin-bottom:12px">
+        <div class="card-title">${SeMIS.icon("repeat", 17)}<span>변경 이력 (서버 자동 백업)</span></div>
+        <p class="form-hint m-hide" style="margin-bottom:12px">
           공용 DB의 모든 컬렉션 변경 직전 값이 서버에 자동 보관됩니다(90일).<br>
           실수로 지운 데이터는 아래에서 그 시점으로 되돌릴 수 있습니다.</p>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
           <select id="hist-key" class="hist-sel"></select>
-          <button class="btn btn-ghost" id="btn-hist-reload">↻ 불러오기</button>
+          <button class="btn btn-ghost" id="btn-hist-reload">${SeMIS.icon("refresh", 16)}<span>불러오기</span></button>
         </div>
         <div id="hist-body" class="form-hint">불러오는 중…</div>
       </div>
       <div class="card">
-        <div class="card-title">🧹 초기화</div>
+        <div class="card-title">${SeMIS.icon("refresh", 17)}<span>초기화</span></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-ghost" id="btn-reset-menu">메뉴 기본값으로 재설정</button>
           <button class="btn btn-danger" id="btn-reset-all">이 탭의 데이터 사본 초기화</button>
         </div>
-        <p class="form-hint" style="margin-top:10px">메뉴 재설정은 공지·일정·사용자는 유지합니다. 로컬 초기화 후에는 공용 DB에서 다시 동기화됩니다.</p>
+        <p class="form-hint m-hide" style="margin-top:10px">메뉴 재설정은 공지·일정·사용자는 유지합니다. 로컬 초기화 후에는 공용 DB에서 다시 동기화됩니다.</p>
       </div>
       <div class="card">
-        <div class="card-title">🔗 구글 캘린더 연동 <span class="badge badge-gray">일정관리</span></div>
-        <p class="form-hint" style="margin-bottom:12px">
+        <div class="card-title">${SeMIS.icon("calendar", 17)}<span>구글 캘린더 연동</span><span class="badge badge-gray">일정관리</span></div>
+        <p class="form-hint m-hide" style="margin-bottom:12px">
           <b>Google → SeMIS</b> 공개 캘린더를 일정관리에 겹쳐 봅니다.</p>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-          <button class="btn btn-primary" id="btn-gcal">🔗 연동 설정 열기</button>
+          <button class="btn btn-primary" id="btn-gcal">${SeMIS.icon("link", 16)}<span>연동 설정 열기</span></button>
           <span class="form-hint" id="gcal-state"></span>
         </div>
       </div>
       <div class="card">
-        <div class="card-title">ℹ️ 시스템 정보</div>
+        <div class="card-title">${SeMIS.icon("info", 17)}<span>시스템 정보</span></div>
         <table class="tbl">
           <tr><td style="width:140px;color:var(--text-2)">버전</td><td>${esc(SeMIS.APP_NAME)} v${esc(SeMIS.VERSION)}</td></tr>
           <tr><td style="color:var(--text-2)">저장 방식</td><td>Supabase 공용 DB(semis_logi_store) · 권한별 서버 접근 제어(RLS) · 파일은 비공개 저장소(서명 URL)</td></tr>
@@ -1630,25 +1647,25 @@
     const ss = storeSizes();
     box.innerHTML = `
       <div class="card">
-        <div class="card-title">📦 저장 용량 현황 <span class="spacer"></span>
-          <button class="btn btn-ghost btn-sm" id="st-reload">↻ 새로고침</button></div>
+        <div class="card-title">${SeMIS.icon("database", 17)}<span>저장 용량 현황</span><span class="spacer"></span>
+          <button class="btn btn-ghost btn-sm" id="st-reload">${SeMIS.icon("refresh", 15)}<span>새로고침</span></button></div>
         <div class="st-gauges">
           <div id="st-file-gauge">${gaugeHTML("파일 스토리지 (semis-logi-files)", 0, STORE_LIMIT, "불러오는 중…")}</div>
           ${gaugeHTML("데이터베이스 (semis_logi_store)", ss.total, DB_LIMIT, ss.rows.length + "개 컬렉션")}
         </div>
-        <p class="form-hint" style="margin-top:10px">무료 플랜 기준(파일 1GB · DB 500MB). 데이터베이스 수치는 컬렉션 JSON 합계의 근사치입니다.</p>
+        <p class="form-hint m-hide" style="margin-top:10px">무료 플랜 기준(파일 1GB · DB 500MB). 데이터베이스 수치는 컬렉션 JSON 합계의 근사치입니다.</p>
       </div>
       <div class="card">
-        <div class="card-title">📂 분류별 파일</div>
+        <div class="card-title">${SeMIS.icon("folder", 17)}<span>분류별 파일</span></div>
         <div id="st-folders" class="st-loading">파일 목록을 불러오는 중…</div>
       </div>
       <div class="card">
-        <div class="card-title">🧹 미참조 파일 정리</div>
+        <div class="card-title">${SeMIS.icon("trash", 17)}<span>미참조 파일 정리</span></div>
         <p class="form-hint" style="margin-bottom:12px">어느 기록에서도 참조하지 않는 파일입니다(업로드 24시간 이내 제외). <b>삭제는 되돌릴 수 없습니다.</b></p>
         <div id="st-orphans" class="st-loading">참조 관계를 확인하는 중…</div>
       </div>
       <div class="card">
-        <div class="card-title">🗄 컬렉션별 데이터 용량</div>
+        <div class="card-title">${SeMIS.icon("chart", 17)}<span>컬렉션별 데이터 용량</span></div>
         <table class="tbl st-tbl">
           <colgroup><col style="width:38%"><col style="width:22%"><col style="width:20%"><col style="width:20%"></colgroup>
           <thead><tr><th>컬렉션</th><th>항목 수</th><th>용량</th><th>비중</th></tr></thead>

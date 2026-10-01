@@ -84,14 +84,24 @@
   /* ─────── 연락처 액션 버튼 (전화/문자/복사) ─────── */
   function numHTML(num, kind, q) {
     if (!num) return "";
-    const icon = kind === "mobile" ? "📱" : kind === "fax" ? "📠" : "☎️";
+    /* v1.30: 이모지 → 선 아이콘(휴대폰은 색으로 구분) · 복사 단추는 모바일에서 숨김(길게 눌러 복사) */
+    const ico = SeMIS.icon(kind === "fax" ? "doc" : "phone", 14);
     const tel = kind === "fax" ? "" : telHref(num);
     const sms = kind === "mobile" && isMobile(num) ? smsHref(num) : "";
-    return `<span class="ct-num">
-      ${tel ? `<a class="ct-tel" href="${esc(tel)}" title="전화 걸기">${icon} ${hl(num, q)}</a>` : `<span class="ct-tel">${icon} ${hl(num, q)}</span>`}
+    return `<span class="ct-num is-${kind}">
+      ${tel ? `<a class="ct-tel" href="${esc(tel)}" title="전화 걸기">${ico}<span>${hl(num, q)}</span></a>` : `<span class="ct-tel" title="팩스">${ico}<span>${hl(num, q)}</span></span>`}
       ${sms ? `<a class="ct-mini" href="${esc(sms)}" title="문자 보내기">문자</a>` : ""}
-      <button class="ct-copy" data-copy="${esc(num)}" title="번호 복사">📋</button></span>`;
+      ${copyBtn(num, "번호 복사")}</span>`;
   }
+
+  const copyBtn = (v, t) => `<button type="button" class="ct-copy m-hide" data-copy="${esc(v)}" title="${esc(t || "복사")}" aria-label="${esc(t || "복사")}">${SeMIS.icon("copy", 14)}</button>`;
+  const mailA = (email, q) => `<a class="ct-tel" href="mailto:${esc(email || "")}">${SeMIS.icon("mail", 14)}<span>${hl(email || "", q)}</span></a>`;
+  /* 섹션 아이콘 — 저장된 값(이모지)은 그대로 두고 화면에는 선 아이콘으로(제목 · 메뉴 이모지 금지 규칙) */
+  const SEC_ICO = { "📋": "clipboard", "🚨": "alert", "🛡️": "shield", "🛡": "shield", "🏢": "building", "🏛": "building", "🏛️": "building",
+    "🛫": "plane", "✈️": "plane", "✈": "plane", "⚖️": "book", "🚒": "bell", "🧯": "building", "🚔": "shield", "📧": "mail", "☎️": "phone", "📞": "phone" };
+  const TYPE_ICO = { procedure: "clipboard", incidents: "alert", emails: "mail", people: "phone" };
+  const secIcon = (sec) => `<span class="ct-sico">${SeMIS.icon(SEC_ICO[String(sec.icon || "").trim()] || TYPE_ICO[sec.type] || "phone", 17)}</span>`;
+  const edBtn = (id) => `<button type="button" class="btn btn-ghost btn-sm ct-edit m-ed" data-ct-edit="${esc(id)}" title="편집" aria-label="편집">${SeMIS.icon("edit", 15)}</button>`;
 
   /* ─────── 섹션 렌더 ─────── */
   function peopleRow(r, q) {
@@ -104,8 +114,7 @@
       <div class="ct-nums">
         ${numHTML(r.mobile, "mobile", q)}
         ${numHTML(r.office, /fax/i.test(r.role || "") ? "fax" : "office", q)}
-        ${r.email ? `<span class="ct-num"><a class="ct-tel" href="mailto:${esc(r.email)}">✉️ ${hl(r.email, q)}</a>
-          <button class="ct-copy" data-copy="${esc(r.email)}" title="복사">📋</button></span>` : ""}
+        ${r.email ? `<span class="ct-num is-mail">${mailA(r.email, q)}${copyBtn(r.email, "주소 복사")}</span>` : ""}
       </div>
       ${r.note ? `<div class="ct-note">${hl(r.note, q)}</div>` : ""}
     </div>`;
@@ -113,9 +122,7 @@
   function emailRow(r, q) {
     return `<div class="ct-row ct-row-mail">
       <div class="ct-who"><b class="ct-name">${hl(r.name || "", q)}</b></div>
-      <div class="ct-nums"><span class="ct-num">
-        <a class="ct-tel" href="mailto:${esc(r.email || "")}">✉️ ${hl(r.email || "", q)}</a>
-        <button class="ct-copy" data-copy="${esc(r.email || "")}" title="복사">📋</button></span></div>
+      <div class="ct-nums"><span class="ct-num is-mail">${mailA(r.email, q)}${copyBtn(r.email || "", "주소 복사")}</span></div>
     </div>`;
   }
   function incidentCard(r, q) {
@@ -139,37 +146,40 @@
   function sectionHTML(sec, q, canWrite) {
     const rows = (sec.rows || []).filter(r => matches(rowText(r), q) || matches(sec.title || "", q));
     if (q && !rows.length) return "";
-    const editBtn = canWrite ? `<button class="btn btn-ghost btn-sm ct-edit" data-ct-edit="${esc(sec.id)}" title="편집">✎</button>` : "";
-    const duty = sec.duty ? `<a class="ct-duty" href="${esc(telHref(sec.duty))}" title="당직실 전화">🌙 당직실 ${hl(sec.duty, q)}</a>` : "";
+    const editBtn = canWrite ? edBtn(sec.id) : "";
+    const duty = sec.duty ? `<a class="ct-duty" href="${esc(telHref(sec.duty))}" title="당직실 전화">${SeMIS.icon("phone", 14)}<span>당직실</span><span class="ct-dnum">${hl(sec.duty, q)}</span></a>` : "";
+    /* v1.30 모바일: 섹션은 제목 줄만(검색 중엔 펼침) · 빈 섹션은 모바일에서 숨김(편집 권한자는 편집 모드에서) */
+    const fold = SeMIS.ui.mf("sec:" + sec.id, !!q);
+    const empty = !(sec.rows || []).length && !q ? (canWrite ? " m-ed" : " m-hide") : "";
 
     if (sec.type === "procedure") {
-      return `<div class="card ct-sec ct-proc" data-ct-sec="${esc(sec.id)}">
-        <div class="card-title">${esc(sec.icon || "📋")} ${hl(sec.title || "보고 절차", q)} <span class="spacer"></span>${editBtn}</div>
+      return `<div class="card ct-sec ct-proc${empty}" data-ct-sec="${esc(sec.id)}">
+        <div class="card-title">${secIcon(sec)}<span>${hl(sec.title || "보고 절차", q)}</span><span class="spacer"></span>${editBtn}</div>
         ${rows.map((r, i) => procedureCard(r, q, !!q || i === 0)).join("")}
         ${sec.note ? `<div class="ct-secnote">${nl2br(sec.note, q)}</div>` : ""}
       </div>`;
     }
     if (sec.type === "incidents") {
-      return `<div class="card ct-sec ct-incsec" data-ct-sec="${esc(sec.id)}">
-        <div class="card-title">${esc(sec.icon || "🚨")} ${hl(sec.title || "사건별 보고처", q)} <span class="spacer"></span>${editBtn}</div>
+      return `<div class="card ct-sec ct-incsec${empty}" data-ct-sec="${esc(sec.id)}"${fold}>
+        <div class="card-title mf-h">${secIcon(sec)}<span>${hl(sec.title || "사건별 보고처", q)}</span><span class="ct-cnt mono">${rows.length}</span><span class="spacer"></span>${editBtn}</div>
         ${sec.note ? `<div class="ct-secnote" style="margin:0 0 10px">${nl2br(sec.note, q)}</div>` : ""}
         <div class="ct-inc-grid">${rows.map(r => incidentCard(r, q)).join("")}</div>
       </div>`;
     }
     if (sec.type === "emails") {
       const all = (sec.rows || []).map(r => r.email).filter(Boolean);
-      return `<div class="card ct-sec" data-ct-sec="${esc(sec.id)}">
-        <div class="card-title">${esc(sec.icon || "📧")} ${hl(sec.title || "", q)} <span class="spacer"></span>${editBtn}</div>
+      return `<div class="card ct-sec${empty}" data-ct-sec="${esc(sec.id)}"${fold}>
+        <div class="card-title mf-h">${secIcon(sec)}<span>${hl(sec.title || "", q)}</span><span class="ct-cnt mono">${rows.length}</span><span class="spacer"></span>${editBtn}</div>
         ${rows.map(r => emailRow(r, q)).join("") || '<div class="empty">등록된 항목이 없습니다.</div>'}
         ${all.length ? `<div class="ct-mailall">
-          <a class="btn btn-ghost btn-sm" href="mailto:${esc(all.join(","))}">✉️ 전체 메일 작성</a>
-          <button class="btn btn-ghost btn-sm" data-copy="${esc(all.join(", "))}" id="ct-copy-all">📋 전체 주소 복사</button></div>` : ""}
+          <a class="btn btn-ghost btn-sm" href="mailto:${esc(all.join(","))}">${SeMIS.icon("mail", 15)}<span>전체 메일 작성</span></a>
+          <button type="button" class="btn btn-ghost btn-sm m-hide" data-copy="${esc(all.join(", "))}" id="ct-copy-all">${SeMIS.icon("copy", 15)}<span>전체 주소 복사</span></button></div>` : ""}
         ${sec.note ? `<div class="ct-secnote">${nl2br(sec.note, q)}</div>` : ""}
       </div>`;
     }
     // people (기본)
-    return `<div class="card ct-sec${sec.accent === "danger" ? " ct-danger" : ""}" data-ct-sec="${esc(sec.id)}">
-      <div class="card-title">${esc(sec.icon || "☎️")} ${hl(sec.title || "", q)} <span class="spacer"></span>${duty}${editBtn}</div>
+    return `<div class="card ct-sec${sec.accent === "danger" ? " ct-danger" : ""}${empty}" data-ct-sec="${esc(sec.id)}"${fold}>
+      <div class="card-title mf-h">${secIcon(sec)}<span>${hl(sec.title || "", q)}</span><span class="ct-cnt mono">${rows.length}</span><span class="spacer"></span>${duty}${editBtn}</div>
       ${rows.map(r => peopleRow(r, q)).join("") || '<div class="empty">등록된 항목이 없습니다.</div>'}
       ${sec.note ? `<div class="ct-secnote">${nl2br(sec.note, q)}</div>` : ""}
     </div>`;
@@ -180,16 +190,16 @@
     const flowPart = flowsHTML(q, canWrite);
     if (!list.length) {
       return flowPart + `<div class="card"><div class="empty" style="padding:32px 10px">
-        ☁️ 아직 등록된 연락망이 없습니다.<br>
+        아직 등록된 연락망이 없습니다.<br>
         <span style="font-size:.8rem;color:var(--text-3)">공용 DB에 데이터가 있으면 연결 시 자동으로 표시됩니다.${canWrite ? " 아래 버튼으로 화물팀 기본 구성(빈 서식)을 만들고 각 섹션의 ✎ 로 내용을 채워 주세요." : ""}</span>
-        ${canWrite ? '<div style="margin-top:14px"><button class="btn btn-primary btn-sm" id="ct-seed">🧩 기본 구성 만들기</button></div>' : ""}</div></div>`;
+        ${canWrite ? '<div style="margin-top:14px"><button class="btn btn-primary btn-sm" id="ct-seed">기본 구성 만들기</button></div>' : ""}</div></div>`;
     }
     const wide = list.filter(s => s.type === "procedure" || s.type === "incidents");
     const grid = list.filter(s => s.type !== "procedure" && s.type !== "incidents");
     const wideHTML = wide.map(s => sectionHTML(s, q, canWrite)).join("");
     const gridHTML = grid.map(s => sectionHTML(s, q, canWrite)).join("");
     const out = flowPart + wideHTML + (gridHTML ? `<div class="ct-grid">${gridHTML}</div>` : "");
-    return out.trim() ? out : `<div class="card"><div class="empty">🔍 "${esc(q)}" 검색 결과가 없습니다.</div></div>`;
+    return out.trim() ? out : `<div class="card"><div class="empty">"${esc(q)}" 검색 결과가 없습니다.</div></div>`;
   }
 
 
@@ -304,7 +314,7 @@
     const ed = rowEditor("#cte-rows", defs, rows);
 
     openModal(`
-      <h3>✎ ${esc(sec.title || "")} <span class="badge badge-gray">연락망 편집</span></h3>
+      <h3>${esc(sec.title || "")} <span class="badge badge-gray">연락망 편집</span></h3>
       <div id="cte-rows" class="ct-editlist"></div>
       <button type="button" class="btn btn-ghost btn-sm" id="cte-add" style="margin-top:8px">+ 행 추가</button>
       <div class="form-row" style="margin-top:12px"><label>하단 주석 (선택)</label>
@@ -395,11 +405,11 @@
             ${f.ver ? `<span class="ct-fver mono">Ver.${esc(f.ver)}</span>` : ""}
             <span class="spacer"></span>
             ${f.fileUrl ? `<a class="btn btn-ghost btn-sm" href="${esc(f.fileUrl)}" target="_blank" rel="noopener">${SeMIS.icon("external", 15)}<span>PDF 원본</span></a>` : ""}
-            ${canWrite ? `<button type="button" class="btn btn-ghost btn-sm" data-ctf-edit="${esc(f.id)}" title="체계도 편집">✎ 편집</button>` : ""}
+            ${canWrite ? `<button type="button" class="btn btn-ghost btn-sm m-ed" data-ctf-edit="${esc(f.id)}" title="체계도 편집">${SeMIS.icon("edit", 15)}<span>편집</span></button>` : ""}
           </div>
           ${stepsHTML(f, q)}
-          <div class="ct-fgroups">${groups.map(g => `<div class="ct-fgrp">
-            ${g.title ? `<div class="ct-fgrp-t">${hl(g.title, q)}</div>` : ""}
+          <div class="ct-fgroups">${groups.map(g => `<div class="ct-fgrp"${g.title ? SeMIS.ui.mf("fg:" + f.id + ":" + g.title, !!q) : ""}>
+            ${g.title ? `<div class="ct-fgrp-t mf-h"><span>${hl(g.title, q)}</span><span class="ct-cnt mono">${g.rows.length}</span></div>` : ""}
             ${g.rows.map(r => flowRowHTML(r, q)).join("")}</div>`).join("") || '<div class="empty">등록된 연락처가 없습니다.</div>'}</div>
           ${f.memo ? `<details class="ct-acc ct-fmemo"${q && matches(f.memo, q) ? " open" : ""}>
             <summary>조치 사항</summary><div class="ct-acc-body">${nl2br(f.memo, q)}</div></details>` : ""}
@@ -874,8 +884,8 @@
           <div class="page-desc">화물터미널 안전·보안 사건 발생 시 보고 절차 · 유관기관 비상 연락처</div>
         </div>
         <div class="ct-hero">
-          <div class="ct-hero-main">🚨 안전·보안 사건 발생 시 <b>인지 후 30분 이내</b> SMS 최초 보고</div>
-          <div class="ct-hero-sub">1차 SMS → 2차 서면 보고(E-MAIL) · 보고 내용은 파트 내 보관</div>
+          <div class="ct-hero-main">${SeMIS.icon("alert", 19)}<span>안전·보안 사건 발생 시 <b>인지 후 30분 이내</b> SMS 최초 보고</span></div>
+          <div class="ct-hero-sub m-hide">1차 SMS → 2차 서면 보고(E-MAIL) · 보고 내용은 파트 내 보관</div>
         </div>
         <div class="ct-searchwrap">
           <input id="ct-search" class="ct-search" type="search"

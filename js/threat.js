@@ -114,7 +114,7 @@
   function repaint() { if (routeNow() === MOD) SeMIS.renderView(); }
   function navSync() { try { SeMIS.renderNav(); } catch (e) { /* 메뉴 배지만 영향 */ } }
   function commit(msg) { SeMIS.save(); repaint(); navSync(); if (msg) toast(msg); }
-  const edBtn = (attr, val, label) => canW() ? `<button type="button" class="sp-ed" ${attr}="${esc(val)}" aria-label="${esc(label)}">${icon("edit", 15)}</button>` : "";
+  const edBtn = (attr, val, label) => canW() ? `<button type="button" class="sp-ed m-ed" ${attr}="${esc(val)}" aria-label="${esc(label)}">${icon("edit", 15)}</button>` : "";
   function paras(body) { return String(body || "").split("\n").map(norm).filter(Boolean).map(p => `<p>${esc(p)}</p>`).join(""); }
   const kindChip = (run) => run.kind === "drill" ? ui.chip("훈련", "amber") : ui.chip("실제 상황", "red");
 
@@ -181,7 +181,7 @@
     const pl = P();
     const quick = arr(pl.quick).filter(q => q && q.num).slice(0, 2);
     return `<section class="sp-quick tc-quick" aria-label="위협전화 수신 시">
-      <div class="sp-q-l"><b>위협전화 수신 시</b><small>${esc(pl.trigger || "")}</small></div>
+      <div class="sp-q-l"><b>위협전화 수신 시</b><small class="m-hide">${esc(pl.trigger || "")}</small></div>
       <div class="sp-q-acts">
         ${quick.map(q => `<a class="sp-qbtn" href="${esc(telHref(q.num))}">${icon("phone", 17)}<span><b>${esc(q.label)}</b><small class="mono">${esc(q.num)}</small></span></a>`).join("")}
         ${canRun() ? `<button type="button" class="sp-qbtn is-start" data-tc-start="real">${icon("alert", 17)}<span><b>응대 시작</b><small>실제 수신</small></span></button>
@@ -215,8 +215,8 @@
   function tsocCard() {
     const t = obj(P().tsoc);
     if (!arr(t.phones).length && !arr(t.items).length) return "";
-    return `<section class="card sp-sec tc-tsoc"><header class="sp-sh">${t.no ? `<span class="sp-no mono">${esc(t.no)}</span>` : ""}<h3>${esc(t.title || "미주 행/발 편 — TSOC 즉시 보고")}</h3><span class="spacer"></span>
-        ${canW() ? `<button type="button" class="sp-ed" id="tc-tsoc-edit" aria-label="TSOC 편집">${icon("edit", 15)}</button>` : ""}</header>
+    return `<section class="card sp-sec tc-tsoc"${ui.mf("tsoc")}><header class="sp-sh mf-h">${t.no ? `<span class="sp-no mono">${esc(t.no)}</span>` : ""}<h3>${esc(t.title || "미주 행/발 편 — TSOC 즉시 보고")}</h3><span class="spacer"></span>
+        ${canW() ? `<button type="button" class="sp-ed m-ed" id="tc-tsoc-edit" aria-label="TSOC 편집">${icon("edit", 15)}</button>` : ""}</header>
       ${t.note ? `<p class="sp-hint">${esc(t.note)}</p>` : ""}
       <div class="tc-tsocp">${arr(t.phones).map(p => `<span class="tc-cp"><small>${esc(p.label || "")}</small>${telA(p.num)}</span>`).join("")}</div>
       ${arr(t.items).length ? `<ol class="tc-tsoci">${arr(t.items).map(x => `<li><span>${esc(x.ko)}</span>${x.en ? `<small class="tc-en">${esc(x.en)}</small>` : ""}</li>`).join("")}</ol>` : ""}
@@ -225,26 +225,26 @@
   function guideTab() {
     const pl = P(), ss = steps(), cs = chain();
     return `<div class="tc-guide">
-      <section class="card sp-sec tc-flow"><header class="sp-sh"><h3>대응 및 보고 절차</h3>${pl.docRef ? `<span class="sp-mut">${esc(pl.docRef)}</span>` : ""}<span class="spacer"></span>
-          ${canW() ? `<button type="button" class="btn btn-ghost btn-sm" id="tc-step-add">${icon("plus", 15)}<span>STEP</span></button>` : ""}</header>
+      <section class="card sp-sec tc-flow"><header class="sp-sh"><h3>대응 및 보고 절차</h3>${pl.docRef ? `<span class="sp-mut m-hide">${esc(pl.docRef)}</span>` : ""}<span class="spacer"></span>
+          ${canW() ? `<button type="button" class="btn btn-ghost btn-sm m-ed" id="tc-step-add">${icon("plus", 15)}<span>STEP</span></button>` : ""}</header>
         ${pl.trigger ? `<p class="tc-trigger">${icon("alert", 17)}<span>${esc(pl.trigger)}</span></p>` : ""}
         ${ss.length ? `<ol class="tc-steps">${ss.map(stepCard).join("")}</ol>` : ui.empty("등록된 절차가 없습니다.")}</section>
       <div class="sp-grid2 tc-g2">
-        <section class="card sp-sec tc-tipc"><header class="sp-sh"><h3>응대 요령</h3><span class="spacer"></span>
-            ${canW() ? `<button type="button" class="sp-ed" id="tc-tips-edit" aria-label="응대 요령 편집">${icon("edit", 15)}</button>` : ""}</header>
+        <section class="card sp-sec tc-tipc"${ui.mf("tips")}><header class="sp-sh mf-h"><h3>응대 요령</h3><span class="spacer"></span>
+            ${canW() ? `<button type="button" class="sp-ed m-ed" id="tc-tips-edit" aria-label="응대 요령 편집">${icon("edit", 15)}</button>` : ""}</header>
           <ul class="tc-tips">${arr(pl.tips).map(t => `<li>${esc(t)}</li>`).join("")}</ul></section>
         ${tsocCard()}
       </div>
-      <section class="card sp-sec tc-chainc"><header class="sp-sh"><h3>보고 순서</h3><span class="spacer"></span>
-          ${canW() ? `<button type="button" class="btn btn-ghost btn-sm" id="tc-chain-add">${icon("plus", 15)}<span>보고처</span></button>` : ""}</header>
+      <section class="card sp-sec tc-chainc"${ui.mf("chain")}><header class="sp-sh mf-h"><h3>보고 순서</h3><span class="mono sp-mut">${cs.length}</span><span class="spacer"></span>
+          ${canW() ? `<button type="button" class="btn btn-ghost btn-sm m-ed" id="tc-chain-add">${icon("plus", 15)}<span>보고처</span></button>` : ""}</header>
         ${cs.length ? `<ol class="tc-chain">${cs.map(chainItem).join("")}</ol>` : ui.empty("등록된 보고처가 없습니다.")}</section>
     </div>`;
   }
 
   /* ── 관리 절차 ── */
   function secCard(s) {
-    return `<section class="card sp-sec tc-sec" data-sec="${esc(s.id)}">
-      <header class="sp-sh">${s.no ? `<span class="sp-no mono">${esc(s.no)}</span>` : ""}<h3>${esc(s.title || "")}</h3><span class="spacer"></span>
+    return `<section class="card sp-sec tc-sec" data-sec="${esc(s.id)}"${ui.mf("sec:" + s.id)}>
+      <header class="sp-sh mf-h">${s.no ? `<span class="sp-no mono">${esc(s.no)}</span>` : ""}<h3>${esc(s.title || "")}</h3><span class="spacer"></span>
         ${s.link === "phones" ? `<button type="button" class="link-btn" data-ttab="phones">녹음 전화 보기</button>` : ""}
         ${edBtn("data-sec-edit", s.id, (s.title || "") + " 편집")}</header>
       <div class="sp-body">${paras(s.body)}</div></section>`;
@@ -252,8 +252,8 @@
   function cmdCard() {
     const c = obj(P().cmd);
     if (!arr(c.order).length && !c.place) return "";
-    return `<section class="card sp-sec tc-cmdc"><header class="sp-sh">${c.no ? `<span class="sp-no mono">${esc(c.no)}</span>` : ""}<h3>임시 통제반</h3><span class="spacer"></span>
-        ${canW() ? `<button type="button" class="sp-ed" id="tc-cmd-edit" aria-label="임시 통제반 편집">${icon("edit", 15)}</button>` : ""}</header>
+    return `<section class="card sp-sec tc-cmdc"${ui.mf("cmd")}><header class="sp-sh mf-h">${c.no ? `<span class="sp-no mono">${esc(c.no)}</span>` : ""}<h3>임시 통제반</h3><span class="spacer"></span>
+        ${canW() ? `<button type="button" class="sp-ed m-ed" id="tc-cmd-edit" aria-label="임시 통제반 편집">${icon("edit", 15)}</button>` : ""}</header>
       <p class="sp-hint">통제반장 보임 순서</p>
       <ol class="tc-cmd">${arr(c.order).map((o, i) => `<li><span class="mono">${i + 1}</span><b>${esc(o)}</b></li>`).join("")}</ol>
       ${c.place ? `<div class="sp-kv"><span>설치 장소</span><b>${esc(c.place)}</b></div>` : ""}</section>`;
@@ -261,13 +261,13 @@
   function procTab() {
     const pl = P(), secs = arr(pl.sections).filter(s => s && s.id);
     return `<div class="tc-proc">
-      ${canW() ? `<div class="tc-bar"><button type="button" class="btn btn-ghost btn-sm" id="tc-meta-edit">${icon("edit", 15)}<span>기본 정보</span></button>
+      ${canW() ? `<div class="tc-bar m-ed"><button type="button" class="btn btn-ghost btn-sm" id="tc-meta-edit">${icon("edit", 15)}<span>기본 정보</span></button>
         <button type="button" class="btn btn-ghost btn-sm" id="tc-sec-add">${icon("plus", 15)}<span>절</span></button></div>` : ""}
       ${secs.length ? secs.map(secCard).join("") : ui.empty("등록된 절차 원문이 없습니다.")}
       ${tsocCard()}
       ${cmdCard()}
-      ${canW() ? `<section class="card sp-sec tc-gaps"><header class="sp-sh"><h3>원문 확인 필요</h3><span class="mono sp-mut">${arr(pl.gaps).length}</span><span class="spacer"></span>
-          <button type="button" class="sp-ed" id="tc-gaps-edit" aria-label="원문 확인 필요 편집">${icon("edit", 15)}</button></header>
+      ${canW() ? `<section class="card sp-sec tc-gaps m-ed"><header class="sp-sh"><h3>원문 확인 필요</h3><span class="mono sp-mut">${arr(pl.gaps).length}</span><span class="spacer"></span>
+          <button type="button" class="sp-ed m-ed" id="tc-gaps-edit" aria-label="원문 확인 필요 편집">${icon("edit", 15)}</button></header>
         ${arr(pl.gaps).length ? `<ol class="tc-gapl">${arr(pl.gaps).map(g => `<li>${esc(g)}</li>`).join("")}</ol>` : `<p class="sp-miss">없음</p>`}</section>` : ""}
     </div>`;
   }
@@ -306,7 +306,7 @@
         { label: "마지막 점검", value: hist[0] ? hist[0].date.replace(/-/g, ".") : "-" }])}
       <div class="sp-grid2 tc-g2">
         <section class="card sp-sec tc-rec"><header class="sp-sh"><h3>녹취 열람</h3><span class="spacer"></span>
-            ${canW() ? `<button type="button" class="sp-ed" id="tc-rec-edit" aria-label="녹취 열람 편집">${icon("edit", 15)}</button>` : ""}</header>
+            ${canW() ? `<button type="button" class="sp-ed m-ed" id="tc-rec-edit" aria-label="녹취 열람 편집">${icon("edit", 15)}</button>` : ""}</header>
           ${rec.url ? `<a class="tc-url" href="${esc(rec.url)}" target="_blank" rel="noopener">${icon("external", 15)}<span>${esc(rec.url.replace(/^https?:\/\//, ""))}</span></a>` : `<p class="sp-miss">열람 사이트 미등록</p>`}
           <dl class="sp-dl">${rec.idRule ? `<div><dt>사용자 ID</dt><dd>${esc(rec.idRule)}${rec.idEx ? `<small class="tc-ex mono">${esc(rec.idEx)}</small>` : ""}</dd></div>` : ""}
             <div><dt>비밀번호</dt><dd>암호 관리 보관${canW() ? ` <button type="button" class="link-btn" id="tc-vault">암호 관리에서 열기</button>` : ""}</dd></div>
@@ -319,17 +319,17 @@
             const ok = vs.reduce((n, r) => n + (r.rec === "ok") + (r.form === "ok"), 0), ng = vs.reduce((n, r) => n + (r.rec === "ng") + (r.form === "ng"), 0);
             return `<li data-chk="${esc(c.id)}"><span class="mono">${esc(c.date.replace(/-/g, "."))}</span><span>${esc(c.by || "")}</span>
               <span class="tc-chkn">정상 <b class="mono">${ok}</b>${ng ? ` · 이상 <b class="mono is-bad">${ng}</b>` : ""}</span>${c.note ? `<small>${esc(c.note)}</small>` : ""}
-              ${canRun() ? `<button type="button" class="sp-ed" data-chk-edit="${esc(c.id)}" aria-label="점검 기록 수정">${icon("edit", 14)}</button>` : ""}</li>`;
+              ${canRun() ? `<button type="button" class="sp-ed m-ed" data-chk-edit="${esc(c.id)}" aria-label="점검 기록 수정">${icon("edit", 14)}</button>` : ""}</li>`;
           }).join("")}</ul>` : ui.empty("점검 기록이 없습니다.")}
           ${pl.checkCycle ? `<p class="sp-foot">점검 주기 ${esc(pl.checkCycle)}개월</p>` : ""}</section>
       </div>
       <section class="card sp-sec tc-postc"><header class="sp-sh"><h3>녹음 가능 자리</h3><span class="mono sp-mut">${posts.length}</span><span class="spacer"></span>
-          ${canW() ? `<button type="button" class="btn btn-ghost btn-sm" id="tc-phones-edit">${icon("edit", 15)}<span>전화 목록</span></button>` : ""}</header>
+          ${canW() ? `<button type="button" class="btn btn-ghost btn-sm m-ed" id="tc-phones-edit">${icon("edit", 15)}<span>전화 목록</span></button>` : ""}</header>
         ${pl.phoneNote ? `<p class="sp-hint">${esc(pl.phoneNote)}</p>` : ""}
         ${posts.length ? `<div class="table-wrap"><table class="tbl tc-ptbl"><thead><tr><th>자리</th><th>번호</th><th>녹음 작동</th><th>양식 비치</th><th>비고</th></tr></thead>
           <tbody>${posts.map(p => `<tr data-phone="${esc(p.id)}"><td><b>${esc(p.label)}</b></td><td>${telA(p.num)}</td><td>${chkCell(p.id, "rec")}</td><td>${chkCell(p.id, "form")}</td><td>${esc(p.note || "")}</td></tr>`).join("")}</tbody></table></div>`
           : ui.empty("등록된 전화가 없습니다.")}</section>
-      ${lines.length ? `<section class="card sp-sec tc-linec"><header class="sp-sh"><h3>${esc(pl.lineTitle || "업무 담당 녹음 전화")}</h3><span class="mono sp-mut">${lines.length}</span></header>
+      ${lines.length ? `<section class="card sp-sec tc-linec"${ui.mf("lines")}><header class="sp-sh mf-h"><h3>${esc(pl.lineTitle || "업무 담당 녹음 전화")}</h3><span class="mono sp-mut">${lines.length}</span></header>
         <div class="tc-lines">${lines.map(p => `<div class="tc-ln" data-phone="${esc(p.id)}">${telA(p.num)}<span class="tc-lnck">${chkCell(p.id, "rec")}${chkCell(p.id, "form")}</span>${p.note ? `<small>${esc(p.note)}</small>` : ""}</div>`).join("")}</div>
         <p class="sp-foot">녹음 작동 · 양식 비치 순</p></section>` : ""}
     </div>`;
@@ -368,9 +368,9 @@
     return `<div class="tc-form">
       <div class="tc-bar"><button type="button" class="btn btn-primary btn-sm" id="tc-print-card">${icon("print", 15)}<span>비치용 A4 (가로)</span></button>
         <button type="button" class="btn btn-ghost btn-sm" id="tc-print-blank">${icon("print", 15)}<span>빈 보고양식</span></button>
-        ${canW() ? `<button type="button" class="btn btn-ghost btn-sm" id="tc-form-edit">${icon("edit", 15)}<span>양식 편집</span></button>
-        <button type="button" class="btn btn-ghost btn-sm" id="tc-file-up">${icon("plus", 15)}<span>원본 파일</span></button><input type="file" id="tc-file" hidden>` : ""}</div>
-      ${fs.length ? `<div class="au-files tc-orig">${fs.map((f, i) => `<span class="au-file"><a class="nb-file" href="${esc(f.url)}" target="_blank" rel="noopener">${icon("link", 14)}<span>${esc(f.name || "원본")}</span></a>${canW() ? `<button type="button" class="mt-btn danger" data-orig-del="${i}" aria-label="원본 빼기">${icon("x", 14)}</button>` : ""}</span>`).join("")}</div>` : ""}
+        ${canW() ? `<button type="button" class="btn btn-ghost btn-sm m-ed" id="tc-form-edit">${icon("edit", 15)}<span>양식 편집</span></button>
+        <button type="button" class="btn btn-ghost btn-sm m-ed" id="tc-file-up">${icon("plus", 15)}<span>원본 파일</span></button><input type="file" id="tc-file" hidden>` : ""}</div>
+      ${fs.length ? `<div class="au-files tc-orig">${fs.map((f, i) => `<span class="au-file"><a class="nb-file" href="${esc(f.url)}" target="_blank" rel="noopener">${icon("link", 14)}<span>${esc(f.name || "원본")}</span></a>${canW() ? `<button type="button" class="mt-btn danger m-ed" data-orig-del="${i}" aria-label="원본 빼기">${icon("x", 14)}</button>` : ""}</span>`).join("")}</div>` : ""}
       <section class="card tc-paper">${formSecs().length ? paperHTML(formSecs(), null) : ui.empty("등록된 보고양식이 없습니다.")}</section>
     </div>`;
   }

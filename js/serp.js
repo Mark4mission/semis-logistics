@@ -148,10 +148,10 @@
   /* ═════════════ 계획 화면 ═════════════ */
   function sectionsOf(t) { return arr(P().sections).filter(s => s && s.tab === t); }
   function paras(body) { return String(body || "").split("\n").map(norm).filter(Boolean).map(p => `<p>${esc(p)}</p>`).join(""); }
-  function secCard(s, extra) {
-    return `<section class="card sp-sec"${s.id ? ` data-sec="${esc(s.id)}"` : ""}>
-      <header class="sp-sh"><span class="sp-no mono">${esc(s.no || "")}</span><h3>${esc(s.title || "")}</h3><span class="spacer"></span>${extra || ""}
-        ${canW() && s.id ? `<button type="button" class="sp-ed" data-sec-edit="${esc(s.id)}" aria-label="${esc(s.title)} 편집">${icon("edit", 15)}</button>` : ""}</header>
+  function secCard(s, extra, fold) {
+    return `<section class="card sp-sec"${s.id ? ` data-sec="${esc(s.id)}"` : ""}${fold ? ui.mf("sec:" + (s.id || s.no)) : ""}>
+      <header class="sp-sh${fold ? " mf-h" : ""}"><span class="sp-no mono">${esc(s.no || "")}</span><h3>${esc(s.title || "")}</h3><span class="spacer"></span>${extra || ""}
+        ${canW() && s.id ? `<button type="button" class="sp-ed m-ed" data-sec-edit="${esc(s.id)}" aria-label="${esc(s.title)} 편집">${icon("edit", 15)}</button>` : ""}</header>
       <div class="sp-body">${paras(s.body)}</div></section>`;
   }
   const revBadge = () => P().rev ? `<span class="sp-rev">${esc(P().rev)}${P().revDate ? " " + esc(P().revDate.replace(/-/g, ".")) : ""}</span>` : "";
@@ -172,7 +172,7 @@
     const occ = obj(P().occ);
     const apt = aptContact();
     return `<section class="sp-quick" aria-label="위기상황 발생 시">
-      <div class="sp-q-l"><b>위기상황 발생 시</b><small>신속성 우선 — 확인된 내용부터 먼저 통보</small></div>
+      <div class="sp-q-l"><b>위기상황 발생 시</b><small class="m-hide">신속성 우선 — 확인된 내용부터 먼저 통보</small></div>
       <div class="sp-q-acts">
         ${occ.phone ? `<a class="sp-qbtn is-occ" href="${esc(telHref(occ.phone))}">${icon("phone", 17)}<span><b>종합통제팀 (OCC)</b><small class="mono">${esc(occ.phone)}</small></span></a>` : ""}
         ${apt ? `<a class="sp-qbtn" href="${esc(telHref(apt.phone))}">${icon("phone", 17)}<span><b>${esc(apt.org)}</b><small class="mono">${esc(apt.phone)}</small></span></a>` : ""}
@@ -198,35 +198,35 @@
           <span class="sp-tt"><b>${esc(x.text)}</b>${x.sub ? `<small>${esc(x.sub)}</small>` : ""}</span>
           <span class="sp-who">${arr(x.roles).map(r => rchip(r)).join("")}</span></li>`).join("")}</ol></div>`;
     }).join("");
-    return `<div class="sp-grid2">
-      <section class="card sp-sec sp-occ">
-        <header class="sp-sh"><span class="sp-no mono">3.1</span><h3>위기상황 발생 통보 (사내)</h3><span class="spacer"></span>
-          ${canW() ? `<button type="button" class="sp-ed" id="sp-occ-edit" aria-label="통보처 편집">${icon("edit", 15)}</button>` : ""}</header>
+    /* v1.30 모바일: 가장 먼저 할 일(3.6 초동조치)을 맨 위에, 원문 절은 접어 둔다. 통보처 전화는 위 띠와 같아 모바일에서 숨김 */
+    const occCard = `<section class="card sp-sec sp-occ"${ui.mf("occ")}>
+        <header class="sp-sh mf-h"><span class="sp-no mono">3.1</span><h3>위기상황 발생 통보 (사내)</h3><span class="spacer"></span>
+          ${canW() ? `<button type="button" class="sp-ed m-ed" id="sp-occ-edit" aria-label="통보처 편집">${icon("edit", 15)}</button>` : ""}</header>
         <div class="sp-body"><p>팀장을 포함한 팀의 모든 구성원은 위기상황을 인지하면 모든 통신수단으로 최대한 신속하게 본사 종합통제팀(OCC)에 보고한다.</p></div>
-        ${occ.phone ? `<div class="sp-occbox"><div><small>접수</small><b>${esc(occ.team || "종합통제팀")}</b><small>${esc(occ.who || "")}</small></div>
+        ${occ.phone ? `<div class="sp-occbox m-hide"><div><small>접수</small><b>${esc(occ.team || "종합통제팀")}</b><small>${esc(occ.who || "")}</small></div>
           <a class="btn btn-danger sp-callbig" href="${esc(telHref(occ.phone))}">${icon("phone", 18)}<span class="mono">${esc(occ.phone)}</span></a></div>` : ""}
         ${inner.map(s => `<div class="sp-subsec" data-sec="${esc(s.id)}"><h4><span class="mono">${esc(s.no)}</span> ${esc(s.title)}
-          ${canW() ? `<button type="button" class="sp-ed" data-sec-edit="${esc(s.id)}" aria-label="${esc(s.title)} 편집">${icon("edit", 14)}</button>` : ""}</h4>${paras(s.body)}</div>`).join("")}
-      </section>
-      ${sercCard(serc)}
-    </div>
-    <section class="card sp-sec" id="sp-tlcard">
+          ${canW() ? `<button type="button" class="sp-ed m-ed" data-sec-edit="${esc(s.id)}" aria-label="${esc(s.title)} 편집">${icon("edit", 14)}</button>` : ""}</h4>${paras(s.body)}</div>`).join("")}
+      </section>`;
+    const tlCard = `<section class="card sp-sec" id="sp-tlcard">
       <header class="sp-sh"><span class="sp-no mono">3.6</span><h3>시간대별 초동조치</h3><span class="spacer"></span>${roleSeg()}
-        ${canW() ? `<button type="button" class="sp-ed" id="sp-tl-edit" aria-label="초동조치 편집">${icon("edit", 15)}</button>` : ""}</header>
-      <p class="sp-hint">종합통제팀 최초 통보 후 다른 항목은 실제 상황과 관계당국 요청을 고려해 조치 시점을 조정할 수 있다.</p>
+        ${canW() ? `<button type="button" class="sp-ed m-ed" id="sp-tl-edit" aria-label="초동조치 편집">${icon("edit", 15)}</button>` : ""}</header>
+      <p class="sp-hint m-hide">종합통제팀 최초 통보 후 다른 항목은 실제 상황과 관계당국 요청을 고려해 조치 시점을 조정할 수 있다.</p>
       <div class="sp-phs">${tlBody || ui.empty("해당 역할의 조치가 없습니다.")}</div>
-    </section>
-    ${outer.length ? `<div class="sp-grid3">${outer.map(s => secCard(s)).join("")}</div>` : ""}
-    ${notifyF.length ? `<section class="card sp-sec">
-      <header class="sp-sh"><span class="sp-no mono">3.1.2</span><h3>위기상황 발생 통보 양식</h3><span class="spacer"></span>
-        <button type="button" class="btn btn-ghost btn-sm" id="sp-form-copy">${icon("doc", 15)}<span>빈 양식 복사</span></button></header>
+    </section>`;
+    const top = `<div class="sp-grid2">${occCard}${sercCard(serc)}</div>`;
+    const rest = `${outer.length ? `<div class="sp-grid3">${outer.map(s => secCard(s, "", true)).join("")}</div>` : ""}
+    ${notifyF.length ? `<section class="card sp-sec"${ui.mf("nf")}>
+      <header class="sp-sh mf-h"><span class="sp-no mono">3.1.2</span><h3>위기상황 발생 통보 양식</h3><span class="spacer"></span>
+        <button type="button" class="btn btn-ghost btn-sm mf-x" id="sp-form-copy">${icon("doc", 15)}<span>빈 양식 복사</span></button></header>
       <ol class="sp-nf">${notifyF.map(f => `<li><b>${esc(f.label)}</b>${f.hint ? `<small>${esc(f.hint)}</small>` : ""}</li>`).join("")}</ol>
     </section>` : ""}`;
+    return SeMIS.isMobile() ? tlCard + top + rest : top + tlCard + rest;
   }
   function sercCard(serc) {
-    return `<section class="card sp-sec sp-serc">
-      <header class="sp-sh"><span class="sp-no mono">3.5</span><h3>팀위기대응센터 (SERC)</h3><span class="spacer"></span>
-        ${canW() ? `<button type="button" class="sp-ed" id="sp-serc-edit" aria-label="SERC 편집">${icon("edit", 15)}</button>` : ""}</header>
+    return `<section class="card sp-sec sp-serc"${ui.mf("serc")}>
+      <header class="sp-sh mf-h"><span class="sp-no mono">3.5</span><h3>팀위기대응센터 (SERC)</h3><span class="spacer"></span>
+        ${canW() ? `<button type="button" class="sp-ed m-ed" id="sp-serc-edit" aria-label="SERC 편집">${icon("edit", 15)}</button>` : ""}</header>
       <div class="sp-serc-t"><span class="sp-big mono">${esc(serc.within || 30)}분</span><span>위기상황 발생 시점부터 <b>${esc(serc.within || 30)}분 이내</b> 개설 원칙</span></div>
       ${serc.intro ? `<div class="sp-body"><p>${esc(serc.intro)}</p></div>` : ""}
       ${arr(serc.consider).length ? `<ul class="sp-dots">${arr(serc.consider).map(c => `<li>${esc(c)}</li>`).join("")}</ul>` : ""}
@@ -246,7 +246,7 @@
   function personLine(p, opt) {
     return `<div class="sp-pl" data-person="${esc(p.id)}"><b>${esc(p.name)}</b>${p.grade ? `<small>${esc(p.grade)}</small>` : ""}
       ${p.mobile ? telA(p.mobile) : '<span class="sp-miss">번호 없음</span>'}
-      ${opt && opt.edit ? `<button type="button" class="sp-ed" data-person-edit="${esc(p.id)}" aria-label="${esc(p.name)} 편집">${icon("edit", 14)}</button>` : ""}</div>`;
+      ${opt && opt.edit ? `<button type="button" class="sp-ed m-ed" data-person-edit="${esc(p.id)}" aria-label="${esc(p.name)} 편집">${icon("edit", 14)}</button>` : ""}</div>`;
   }
   function chartHTML() {
     const ch = obj(P().chart);
@@ -260,7 +260,7 @@
     const others = roles().filter(r => r.id !== "leader" && r.id !== "sup").map(r => r.id);
     return `<section class="card sp-sec sp-chart">
       <header class="sp-sh"><span class="sp-no mono">6.3</span><h3>팀 비상연락망</h3>${revBadge()}<span class="spacer"></span>
-        ${canW() ? `<button type="button" class="sp-ed" id="sp-chart-edit" aria-label="연락망 기관 편집">${icon("edit", 15)}</button>` : ""}</header>
+        ${canW() ? `<button type="button" class="sp-ed m-ed" id="sp-chart-edit" aria-label="연락망 기관 편집">${icon("edit", 15)}</button>` : ""}</header>
       <div class="sp-ctop">
         <div class="sp-cside"><small>대외 기관</small>${arr(ch.ext).map(box).join("")}</div>
         <div class="sp-chead t-rose"><small>팀장 (Station Manager)</small>${lead.map(p => `<b>${esc(p.name)}</b>${telA(p.mobile)}`).join("") || '<span class="sp-miss">미지정</span>'}</div>
@@ -272,21 +272,21 @@
   }
   function roleCard(r) {
     const ps = peopleOf(r.id), ed = canW();
-    return `<section class="card sp-role t-${toneOf(r.id)}" data-role="${esc(r.id)}">
-      <header class="sp-role-h"><span class="sp-role-no mono">${esc(r.no || "")}</span>
+    return `<section class="card sp-role t-${toneOf(r.id)}" data-role="${esc(r.id)}"${ui.mf("role:" + r.id)}>
+      <header class="sp-role-h mf-h"><span class="sp-role-no mono">${esc(r.no || "")}</span>
         <div><h3>${esc(r.name)}</h3><small>${esc(r.en || "")}${r.who ? " · 수행자 " + esc(r.who) : ""}</small></div><span class="spacer"></span>
-        ${ed ? `<button type="button" class="sp-ed" data-role-edit="${esc(r.id)}" aria-label="${esc(r.name)} 역할 편집">${icon("edit", 15)}</button>` : ""}</header>
+        ${ed ? `<button type="button" class="sp-ed m-ed" data-role-edit="${esc(r.id)}" aria-label="${esc(r.name)} 역할 편집">${icon("edit", 15)}</button>` : ""}</header>
       <div class="sp-role-b">
         <ul class="sp-dots">${arr(r.duties).map(d => `<li>${esc(d)}</li>`).join("")}</ul>
         <div class="sp-ppl">${ps.map(p => `<article class="sp-pc" data-person="${esc(p.id)}">
           <div class="sp-pc-h"><b>${esc(p.name)}</b>${p.grade ? `<small>${esc(p.grade)}</small>` : ""}
-            ${ed ? `<button type="button" class="sp-ed" data-person-edit="${esc(p.id)}" aria-label="${esc(p.name)} 편집">${icon("edit", 14)}</button>` : ""}</div>
+            ${ed ? `<button type="button" class="sp-ed m-ed" data-person-edit="${esc(p.id)}" aria-label="${esc(p.name)} 편집">${icon("edit", 14)}</button>` : ""}</div>
           <div class="sp-pc-n">${p.mobile ? telA(p.mobile) : ""}${p.office ? telA(p.office, "", "sp-tel is-office") : ""}
             ${p.email ? `<a class="sp-tel" href="mailto:${esc(p.email)}">${icon("mail", 15)}<span>${esc(p.email)}</span></a>` : ""}</div>
           ${p.place ? `<div class="sp-pc-m"><span>위기 시 근무 위치</span>${esc(p.place)}</div>` : ""}
           ${p.note ? `<div class="sp-pc-m is-note">※ ${esc(p.note)}</div>` : ""}
         </article>`).join("") || '<div class="sp-miss">배정된 인원이 없습니다.</div>'}
-        ${ed ? `<button type="button" class="sp-padd" data-person-add="${esc(r.id)}">${icon("plus", 15)}<span>인원 추가</span></button>` : ""}</div>
+        ${ed ? `<button type="button" class="sp-padd m-ed" data-person-add="${esc(r.id)}">${icon("plus", 15)}<span>인원 추가</span></button>` : ""}</div>
       </div></section>`;
   }
   function orgTab() {
@@ -323,22 +323,22 @@
     const gs = contactGroups().map(g => Object.assign({}, g, { rows: g.rows.filter(r => cMatch(r, g.title, cq)) })).filter(g => g.rows.length);
     if (!gs.length) return ui.empty(cq ? "검색 결과가 없습니다." : "등록된 연락처가 없습니다.");
     const ed = canW();
-    return `<div class="sp-cgrid">${gs.map(g => `<section class="sp-cg" data-cg="${esc(g.id)}"><h3>${esc(g.title)}<span class="mono">${g.rows.length}</span></h3>
+    return `<div class="sp-cgrid">${gs.map(g => `<section class="sp-cg" data-cg="${esc(g.id)}"${ui.mf("cg:" + g.id, !!cq)}><h3 class="mf-h">${esc(g.title)}<span class="mono">${g.rows.length}</span></h3>
       <ul>${g.rows.map(r => `<li class="sp-cr${r.conf ? " is-conf" : ""}"><div class="sp-cr-t"><b>${esc(r.org)}</b>${r.conf ? ui.chip("대외비", "red") : ""}
         ${r.note ? `<small>${esc(r.note)}</small>` : ""}</div>${telA(r.phone)}
-        ${ed && r.src !== "occ" ? `<button type="button" class="sp-ed" data-c-edit="${esc(r.src)}:${esc(r.id)}" aria-label="${esc(r.org)} 편집">${icon("edit", 14)}</button>` : ""}</li>`).join("")}</ul>
+        ${ed && r.src !== "occ" ? `<button type="button" class="sp-ed m-ed" data-c-edit="${esc(r.src)}:${esc(r.id)}" aria-label="${esc(r.org)} 편집">${icon("edit", 14)}</button>` : ""}</li>`).join("")}</ul>
 </section>`).join("")}</div>`;
   }
   function imagesHTML() {
     const im = arr(P().images).filter(x => x && x.url);
     if (!im.length) return "";
-    return `<section class="card sp-sec"><header class="sp-sh"><h3>비상전파 · 통신체계 · Airport Grid map</h3></header>
+    return `<section class="card sp-sec"${ui.mf("img")}><header class="sp-sh mf-h"><h3>비상전파 · 통신체계 · Airport Grid map</h3></header>
       <div class="sp-imgs">${im.map((x, i) => `<button type="button" class="sp-img" data-img="${i}">
         <img src="${esc(x.thumb || x.url)}" alt="${esc(x.title)}" loading="lazy"><span><b>${esc(x.title)}</b>${x.note ? `<small>${esc(x.note)}</small>` : ""}</span></button>`).join("")}</div></section>`;
   }
   function contactsTab() {
     return `<section class="card sp-sec"><div class="toolbar">${ui.search("sp-cq", "기관 · 이름 · 번호 검색", cq)}
-      ${canW() ? `<span class="spacer"></span><button type="button" class="btn btn-ghost btn-sm" data-c-add="">${icon("plus", 15)}<span>관계 기관 추가</span></button>` : ""}</div>
+      ${canW() ? `<span class="spacer m-ed"></span><button type="button" class="btn btn-ghost btn-sm m-ed" data-c-add="">${icon("plus", 15)}<span>관계 기관 추가</span></button>` : ""}</div>
       <div id="sp-cbody">${contactsBody()}</div></section>` + imagesHTML();
   }
 
@@ -352,20 +352,20 @@
   function formsTab() {
     const pl = P();
     return `<h2 class="sp-h2">위기대응 업무 체크리스트 <span>7.1 · 개인별</span></h2>
-      <p class="sp-hint">실제 위기상황에서는 '대응 시작'으로 이 화면에서 바로 기록한다. 종이 · 태블릿용으로 인쇄해 쓸 수 있으며 항목은 상황에 맞게 가감한다.</p>
-      <div class="sp-cks">${roles().map(r => `<section class="card sp-ckc t-${toneOf(r.id)}" data-ck-role="${esc(r.id)}">
-        <header class="sp-sh"><h3>${esc(r.name)}</h3><small class="sp-ckn">성명:</small><span class="spacer"></span>
-          ${canW() ? `<button type="button" class="sp-ed" data-ck-edit="${esc(r.id)}" aria-label="${esc(r.name)} 체크리스트 편집">${icon("edit", 15)}</button>` : ""}</header>
+      <p class="sp-hint m-hide">실제 위기상황에서는 '대응 시작'으로 이 화면에서 바로 기록한다. 종이 · 태블릿용으로 인쇄해 쓸 수 있으며 항목은 상황에 맞게 가감한다.</p>
+      <div class="sp-cks">${roles().map(r => `<section class="card sp-ckc t-${toneOf(r.id)}" data-ck-role="${esc(r.id)}"${ui.mf("ck:" + r.id)}>
+        <header class="sp-sh mf-h"><h3>${esc(r.name)}</h3><small class="sp-ckn m-hide">성명:</small><span class="mono sp-mut">${arr(r.checklist).length}</span><span class="spacer"></span>
+          ${canW() ? `<button type="button" class="sp-ed m-ed" data-ck-edit="${esc(r.id)}" aria-label="${esc(r.name)} 체크리스트 편집">${icon("edit", 15)}</button>` : ""}</header>
         ${ckTable("항목", arr(r.checklist), 2)}</section>`).join("")}</div>
-      <section class="card sp-sec"><header class="sp-sh"><span class="sp-no mono">7.2</span><h3>사고자료 관리 대장 (양식)</h3></header>
-        <p class="sp-hint">법규 또는 관계 당국 요청으로 외부기관에 사고자료를 제출할 때 기록한다. 본사 사고대책본부의 최종 지침이 있을 때까지 보존한다.</p>
+      <section class="card sp-sec"${ui.mf("ledger")}><header class="sp-sh mf-h"><span class="sp-no mono">7.2</span><h3>사고자료 관리 대장 (양식)</h3></header>
+        <p class="sp-hint m-hide">법규 또는 관계 당국 요청으로 외부기관에 사고자료를 제출할 때 기록한다. 본사 사고대책본부의 최종 지침이 있을 때까지 보존한다.</p>
         <div class="table-wrap"><table class="tbl sp-ledger"><thead><tr>${LEDGER_COLS.map(c => `<th>${esc(c)}</th>`).join("")}</tr></thead>
           <tbody>${Array.from({ length: 6 }, (x, i) => `<tr><td class="mono">${i + 1}</td>${"<td></td>".repeat(7)}</tr>`).join("")}</tbody></table></div>
         <p class="sp-foot">제출방법: 이메일(파일 첨부) · 지면(자료 사본) · 카톡(파일 첨부) 등 / 비고: 자료 제출 근거(법규)가 있으면 기입</p></section>
-      <section class="card sp-sec"><header class="sp-sh"><span class="sp-no mono">5.2</span><h3>제출 요청이 예상되는 사고자료</h3></header>
+      <section class="card sp-sec"${ui.mf("docs")}><header class="sp-sh mf-h"><span class="sp-no mono">5.2</span><h3>제출 요청이 예상되는 사고자료</h3></header>
         ${pl.docsNote ? `<div class="sp-body"><p>${esc(pl.docsNote)}</p></div>` : ""}
         <ol class="sp-docs">${arr(pl.docs).map(d => `<li>${esc(d)}</li>`).join("")}</ol></section>
-      <div class="sp-grid2">${sectionsOf("forms").map(s => secCard(s)).join("")}</div>`;
+      <div class="sp-grid2">${sectionsOf("forms").map(s => secCard(s, "", true)).join("")}</div>`;
   }
 
   /* ── 대응 기록 탭 ── */
@@ -395,44 +395,44 @@
     const nextDue = (d) => { if (!d) return ""; const x = new Date(d); x.setFullYear(x.getFullYear() + 1); return localInput(x.toISOString()).slice(0, 10); };
     return `<div class="sp-grid2">
       <section class="card sp-sec"><header class="sp-sh"><h3>운영표</h3><span class="spacer"></span>
-        ${ed ? `<button type="button" class="sp-ed" id="sp-meta-edit" aria-label="문서 정보 편집">${icon("edit", 15)}</button>` : ""}</header>
+        ${ed ? `<button type="button" class="sp-ed m-ed" id="sp-meta-edit" aria-label="문서 정보 편집">${icon("edit", 15)}</button>` : ""}</header>
         <dl class="sp-dl">${kv("문서", esc(pl.title || "") + (pl.en ? ` <small>(${esc(pl.en)})</small>` : ""))}${kv("관리 번호", `<span class="mono">${esc(pl.docNo || "-")}</span>`)}
           ${kv("주관 · 관리 부서", esc(pl.dept || "-"))}${kv("제정권자", esc(pl.owner || "-"))}${kv("최초 시행", `<span class="mono">${esc(pl.firstDate || "-")}</span>`)}
           ${kv("현행", esc(pl.rev || "-") + (pl.revDate ? ` <span class="mono">${esc(pl.revDate)}</span>` : ""))}
           ${kv("원본", pl.fileUrl ? `<a href="${esc(pl.fileUrl)}${pl.fileUrl.indexOf("?") < 0 ? "?download=" + encodeURIComponent(pl.fileName || "SERP.docx") : ""}">${icon("down", 15)} ${esc(pl.fileName || "원본 파일")}</a>` : '<span class="sp-miss">없음</span>')}</dl>
-        ${ed ? `<div class="sp-file"><button type="button" class="btn btn-ghost btn-sm" id="sp-file-up">${icon("doc", 15)}<span>원본 파일 ${pl.fileUrl ? "교체" : "올리기"}</span></button>
+        ${ed ? `<div class="sp-file m-ed"><button type="button" class="btn btn-ghost btn-sm" id="sp-file-up">${icon("doc", 15)}<span>원본 파일 ${pl.fileUrl ? "교체" : "올리기"}</span></button>
           <input type="file" id="sp-file" hidden accept=".docx,.pdf,.hwp,.hwpx,.doc"></div>` : ""}
       </section>
-      <section class="card sp-sec"><header class="sp-sh"><span class="sp-no mono">1</span><h3>목적 · 적용 범위</h3></header>
+      <section class="card sp-sec"${ui.mf("purpose")}><header class="sp-sh mf-h"><span class="sp-no mono">1</span><h3>목적 · 적용 범위</h3></header>
         <div class="sp-body"><p>${esc(pl.purpose || "")}</p></div>
         <ul class="sp-dots">${arr(pl.scope).map(s => `<li>${esc(s)}</li>`).join("")}</ul>
         ${pl.scopeNote ? `<p class="sp-foot">${esc(pl.scopeNote)}</p>` : ""}</section>
     </div>
-    <section class="card sp-sec"><header class="sp-sh"><h3>개정 이력</h3></header>
+    <section class="card sp-sec"${ui.mf("revs")}><header class="sp-sh mf-h"><h3>개정 이력</h3><span class="mono sp-mut">${revs.length}</span></header>
       <div class="table-wrap"><table class="tbl sp-revs"><thead><tr><th>개정 차수</th><th>개정일자</th><th>개정 조항</th><th>개정 사유</th></tr></thead>
       <tbody>${revs.map(r => `<tr><td>${esc(r.no)}</td><td class="mono">${esc(r.date)}</td><td>${esc(r.clauses)}</td><td>${esc(r.reason)}</td></tr>`).join("")}</tbody></table></div></section>
-    ${cur ? `<section class="card sp-sec sp-cmp"><header class="sp-sh"><h3>${esc(cur.no)} 개정 주요 내용</h3><span class="mono sp-mut">${esc(cur.date)}</span></header>
+    ${cur ? `<section class="card sp-sec sp-cmp"${ui.mf("cmp")}><header class="sp-sh mf-h"><h3>${esc(cur.no)} 개정 주요 내용</h3><span class="mono sp-mut">${esc(cur.date)}</span></header>
       ${arr(cur.purpose).length ? `<div class="sp-purp"><b>개정 목적</b><ul class="sp-dots">${arr(cur.purpose).map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>` : ""}
       ${arr(cur.changes).map(c => `<div class="sp-chg"><h4><span class="mono">${esc(c.clause)}</span> ${esc(c.title)}</h4>
         ${c.before ? `<div class="sp-ba"><div class="sp-b"><small>개정 전</small>${paras(c.before)}</div><div class="sp-a"><small>개정 후</small>${diffAfter(c.before, c.after)}</div></div>`
           : `<div class="sp-body">${paras(c.after)}</div>`}</div>`).join("")}</section>` : ""}
-    <section class="card sp-sec"><header class="sp-sh"><span class="sp-no mono">6.1</span><h3>관리 기준 · 점검</h3></header>
+    <section class="card sp-sec"${ui.mf("mgmt")}><header class="sp-sh mf-h"><span class="sp-no mono">6.1</span><h3>관리 기준 · 점검</h3></header>
       ${pl.mgmtNote ? `<div class="sp-body"><p>${esc(pl.mgmtNote)}</p></div>` : ""}
-      <div class="table-wrap"><table class="tbl sp-mgmt"><thead><tr><th>항목</th><th>점검 주기</th><th>최신화 요건</th><th>최근 점검</th><th>다음 점검</th>${ed ? "<th></th>" : ""}</tr></thead>
+      <div class="table-wrap"><table class="tbl sp-mgmt"><thead><tr><th>항목</th><th>점검 주기</th><th>최신화 요건</th><th>최근 점검</th><th>다음 점검</th>${ed ? '<th class="m-ed"></th>' : ""}</tr></thead>
       <tbody>${arr(pl.mgmt).map(m => { const nd = nextDue(m.checked), late = nd && nd < today(); return `<tr${late || !m.checked ? ' class="is-due"' : ""}>
         <td><b>${esc(m.item)}</b></td><td>${esc(m.cycle)}</td><td>${esc(m.req)}</td>
         <td class="mono">${m.checked ? esc(m.checked) : '<span class="sp-miss">기록 없음</span>'}</td>
         <td class="mono">${nd ? esc(nd) + (late ? " " + ui.chip("경과", "red") : "") : "-"}</td>
-        ${ed ? `<td><button type="button" class="btn btn-ghost btn-sm" data-mgmt="${esc(m.id)}">${icon("check", 15)}<span>오늘 점검</span></button></td>` : ""}</tr>`; }).join("")}</tbody></table></div></section>
-    <section class="card sp-sec"><header class="sp-sh"><span class="sp-no mono">6.2</span><h3>팀 위기대응 개황</h3><span class="spacer"></span>
-      ${ed ? `<button type="button" class="sp-ed" id="sp-ov-edit" aria-label="개황 편집">${icon("edit", 15)}</button>` : ""}</header>
+        ${ed ? `<td class="m-ed"><button type="button" class="btn btn-ghost btn-sm" data-mgmt="${esc(m.id)}">${icon("check", 15)}<span>오늘 점검</span></button></td>` : ""}</tr>`; }).join("")}</tbody></table></div></section>
+    <section class="card sp-sec"${ui.mf("ov")}><header class="sp-sh mf-h"><span class="sp-no mono">6.2</span><h3>팀 위기대응 개황</h3><span class="spacer"></span>
+      ${ed ? `<button type="button" class="sp-ed m-ed" id="sp-ov-edit" aria-label="개황 편집">${icon("edit", 15)}</button>` : ""}</header>
       <dl class="sp-dl sp-dl2">${kv("팀장", esc(ov.leader || "-"))}${kv("팀 가용 인력", `지점 <b class="mono">${esc(ov.staff || "-")}</b>명 · 조업사 <b class="mono">${esc(ov.vendor || "-")}</b>명`)}
         ${kv("SERC 위치 · 보유 장비", miss([obj(pl.serc).place, obj(pl.serc).equip].filter(Boolean).join(" · ")))}${kv("초동조치 지원 계약", miss(ov.contract))}
         ${kv("대체 공항", miss(ov.altApt))}${kv("지원 요청 가능 항공사", miss(ov.airline))}
         ${kv("국가별 가족 지원법", esc((ov.familyAct || "-") + (ov.familyName ? " · " + ov.familyName : "")))}
         ${kv("공항 비상대응 계획 (AEP)", esc((ov.aep || "-") + (ov.aepName ? " · " + ov.aepName : "")))}</dl></section>
-    ${ed && arr(pl.gaps).length ? `<section class="card sp-sec sp-gaps"><header class="sp-sh"><h3>원문 확인 필요</h3><span class="mono sp-mut">${arr(pl.gaps).length}</span><span class="spacer"></span>
-      <button type="button" class="sp-ed" id="sp-gaps-edit" aria-label="확인 필요 편집">${icon("edit", 15)}</button></header>
+    ${ed && arr(pl.gaps).length ? `<section class="card sp-sec sp-gaps m-ed"><header class="sp-sh"><h3>원문 확인 필요</h3><span class="mono sp-mut">${arr(pl.gaps).length}</span><span class="spacer"></span>
+      <button type="button" class="sp-ed m-ed" id="sp-gaps-edit" aria-label="확인 필요 편집">${icon("edit", 15)}</button></header>
       <ol class="sp-docs">${arr(pl.gaps).map(g => `<li>${esc(g)}</li>`).join("")}</ol></section>` : ""}`;
   }
   /* 개정 후 문구 중 개정 전에 없던 문단을 강조 */
