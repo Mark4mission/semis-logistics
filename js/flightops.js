@@ -363,7 +363,7 @@
     $$("[data-fo-go]", box).forEach(b => b.onclick = () => SeMIS.navigate(MOD));
   }
   function paintDash() {
-    const box = document.getElementById("dash-flt");
+    const box = typeof document !== "undefined" && document ? document.getElementById("dash-flt") : null;   // 창이 닫힌 뒤 늦은 응답
     if (!box) return;
     const md = model();
     $("#dflt-meta", box).textContent = updText();

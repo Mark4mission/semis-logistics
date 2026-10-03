@@ -5,6 +5,7 @@
    - 교육 · 자격: window.SemisTraining (stats · roleStats · dueList · expiryByMonth · sessionsByMonth)
    - 수검 대응: window.SemisAudit (nextAudit · prep · phase · allFindings · overdueF · repeatCount)
    - 보안 기록부: window.SemisSeclog (templates · status · isNG)
+   - 자체 보안점검: window.SemisSelfcheck (forms · allFindings · fState · openRecord) — v1.32
    메뉴가 숨겨졌거나 권한 밖인 모듈의 카드는 그리지 않는다. 색: 상태 3색(유효 · 갱신 필요 · 정지 · 미이수)과
    교육 실시 2색(당사 · 협력사) — dataviz 검증기(CVD ΔE ≥ 8) 통과값.
    ═══════════════════════════════════════════════════════ */
@@ -15,7 +16,7 @@
   const MOD = "aud-dash", TITLE = "점검 · 교육 대시보드";
   const STC = { good: "#2f8f5b", warn: "#d99a0b", bad: "#c2402f" };
   const KIND = { own: "#2b59c3", vendor: "#d97706" };
-  const TR = () => window.SemisTraining, AU = () => window.SemisAudit, SL = () => window.SemisSeclog;
+  const TR = () => window.SemisTraining, AU = () => window.SemisAudit, SL = () => window.SemisSeclog, SC = () => window.SemisSelfcheck;
   const p2 = (n) => String(n).padStart(2, "0");
   let fixedToday = "";
   const todayISO = () => { if (fixedToday) return fixedToday; const d = new Date(); return d.getFullYear() + "-" + p2(d.getMonth() + 1) + "-" + p2(d.getDate()); };
@@ -80,6 +81,10 @@
       let past = 0, done = 0, miss = 0;
       ts.forEach(x => { const s = S.status(x, t); if (s.event) return; past += s.past.length; done += s.past.length - s.missing.length; miss += s.missing.length; });
       tiles.push({ label: "기록부 이행률", value: past ? Math.round(done / past * 100) + "%" : "-", sub: "누락 " + miss + "칸", tone: !past ? "muted" : miss ? "warn" : "ok" });
+    }
+    if (can("selfcheck") && SC()) {
+      const fs = SC().allFindings(), open = fs.filter(x => SC().fState(x.fx, t) !== "done"), late = open.filter(x => SC().fState(x.fx, t) === "late").length;
+      tiles.push({ label: "자체 점검 지적", value: open.length, sub: late ? "기한 경과 " + late : "R/C · 미흡 미결", tone: late ? "bad" : open.length ? "warn" : "ok" });
     }
     return tiles.length ? ui.stats(tiles) : "";
   }
@@ -211,6 +216,37 @@
     </section>`;
   }
 
+  /* ═════════ 자체 보안점검 (v1.32) ═════════ */
+  function selfcheckCard(t) {
+    const S = SC();
+    const y = t.slice(0, 4);
+    const recs = (Array.isArray(SeMIS.data.selfChecks) ? SeMIS.data.selfChecks : []).filter(r => r && r.id && isISO(r.date) && S.formOf(r.form));
+    const yr = recs.filter(r => r.date.slice(0, 4) === y);
+    const rows = S.forms().map(f => {
+      const rs = yr.filter(r => r.form === f.id), done = rs.filter(r => r.status === "done").length;
+      const last = recs.filter(r => r.form === f.id).map(r => r.date).sort().pop();
+      return sbar("별표 " + f.id.slice(1) + " " + f.title.replace(/ 점검표$/, ""), [{ v: done, c: STC.good }, { v: rs.length - done, c: STC.warn }], Math.max(1, rs.length), rs.length ? done + "/" + rs.length : "-",
+        `별표 ${f.id.slice(1)} ${f.title} · ${y}년 ${rs.length}건(완료 ${done})${last ? " · 최근 " + dot(last) : ""}`);
+    }).join("");
+    const open = S.allFindings().filter(x => S.fState(x.fx, t) !== "done")
+      .sort((a, b) => (S.fState(a.fx, t) === "late" ? 0 : 1) - (S.fState(b.fx, t) === "late" ? 0 : 1) || String(a.fx.due || "9").localeCompare(String(b.fx.due || "9")));
+    const n = mob() ? 5 : 8;
+    return `<section class="card sd-card ad-card" aria-label="자체 보안점검">
+      <h2 class="card-title">자체 보안점검<span class="dc-meta">${y}년 ${yr.length}건 · 수준관리지침 별표</span><span class="spacer"></span><button type="button" class="link-btn" data-ad-go="selfcheck">자체 보안점검</button></h2>
+      <div class="sd-grid ad-grid2">
+        <div class="sd-pane">
+          <div class="sd-ph"><b>양식별 ${y}년 점검</b>${legend([{ name: "완료", c: STC.good }, { name: "작성 중", c: STC.warn }])}</div>
+          <div class="ad-sbs">${rows}</div>
+        </div>
+        <div class="sd-pane">
+          <div class="sd-ph"><b>미결 지적</b><span class="dc-meta">${open.length}건</span></div>
+          ${open.length ? `<ul class="ad-pend">${open.slice(0, n).map(x => `<li><button type="button" data-ad-sc="${esc(x.r.id)}|${esc(x.it.id)}"><b>${esc(x.it.t || x.it.g || "장비")}</b><small>${esc("별표 " + x.f.id.slice(1) + " · " + dot(x.r.date) + (x.fx.due ? " · 기한 " + dot(x.fx.due) : ""))}${S.fState(x.fx, t) === "late" ? " · 기한 경과" : ""}</small></button></li>`).join("")}</ul>${open.length > n ? `<p class="sd-foot">외 ${open.length - n}건</p>` : ""}`
+            : `<p class="ad-ok">${icon("check", 16)}<span>미결 지적이 없습니다.</span></p>`}
+        </div>
+      </div>
+    </section>`;
+  }
+
   /* ═════════ 말풍선 · 연결 ═════════ */
   let tt = null;
   function ttBox() {
@@ -240,6 +276,7 @@
     $$("[data-ad-person]", root).forEach(b => b.onclick = () => { if (TR()) TR().openPerson(b.dataset.adPerson); });
     $$("[data-ad-aud]", root).forEach(b => b.onclick = () => { if (AU()) AU().open(b.dataset.adAud); });
     $$("[data-ad-find]", root).forEach(b => b.onclick = () => { if (AU()) AU().setState({ tab: "findings", sel: "", fStF: b.dataset.adFind }); SeMIS.navigate("audit"); });
+    $$("[data-ad-sc]", root).forEach(b => b.onclick = () => { const [id, it] = b.dataset.adSc.split("|"); if (SC()) SC().openRecord(id, it); });
   }
   function render(root) {
     const t = todayISO();
@@ -248,6 +285,7 @@
     if (can("training") && TR()) cards.push(trainCard(t));
     if (can("audit") && AU()) cards.push(auditCard(t));
     if (can("inspection") && SL()) cards.push(seclogCard(t));
+    if (can("selfcheck") && SC()) cards.push(selfcheckCard(t));
     root.innerHTML = ui.head({ title: TITLE, meta: "기준 " + dot(t) }) + kpiHTML(t)
       + (cards.length ? cards.join("") : `<section class="card">${ui.empty("볼 수 있는 점검 · 교육 메뉴가 없습니다.")}</section>`);
     wire(root);
@@ -256,5 +294,5 @@
   }
 
   SeMIS.registerModule(MOD, { title: TITLE, render });
-  window.SemisAudDash = { render, kpiHTML, trainCard, auditCard, seclogCard, setToday(t) { fixedToday = isISO(t) ? t : ""; } };
+  window.SemisAudDash = { render, kpiHTML, trainCard, auditCard, seclogCard, selfcheckCard, setToday(t) { fixedToday = isISO(t) ? t : ""; } };
 })();

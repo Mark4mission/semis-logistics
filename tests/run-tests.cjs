@@ -3,7 +3,7 @@
    실행: npm test  (jsdom 필요: npm install)
    구성: [C] 코어(해시·계정·메뉴·정규화·권한·라우터·예정 모듈)
          [D] 대시보드·공지·현황판  [S] 시스템 설정  [M] 이식 모듈 스모크(일정·회의록·연락망·검색)
-         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [IM] 한글 입력 보호  [FL] 운항 현황  [AU] 수검 대응 센터  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [SEC] 서버 보안(비공개 파일·살균·CSP)  [PT] 순찰일지  [CM] v1.29 화면 정돈  [CN] v1.30 편집 모드 · 모바일 접기  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
+         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [IM] 한글 입력 보호  [FL] 운항 현황  [AU] 수검 대응 센터  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [SEC] 서버 보안(비공개 파일·살균·CSP)  [PT] 순찰일지  [SK] 자체 보안점검(수준관리지침 별표 · HWPX)  [CM] v1.29 화면 정돈  [CN] v1.30 편집 모드 · 모바일 접기  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
    ═══════════════════════════════════════════════════════ */
 "use strict";
 const fs = require("fs");
@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/loginguard.js", "js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/auddash.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
+const FILES = ["js/loginguard.js", "js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/selfcheck.js", "js/auddash.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -1376,7 +1376,7 @@ function makeServer(opts = {}) {
     const e = makeEnv({ fetch: server.fetch });
     const { Sync } = e;
     t("Y01 SYNC_KEYS 구성(계정 자료 제외)", () =>
-      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,chatRooms,vault,regulations,equipment,crisis,fleet,audits,phonebook,training,seclog,seclogCfg,serp,serpRuns,threat,threatRuns,threatChecks,patrol,patrolCfg,patrolPeople,secPost,secPostImg"));
+      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,chatRooms,vault,regulations,equipment,crisis,fleet,audits,phonebook,training,seclog,seclogCfg,serp,serpRuns,threat,threatRuns,threatChecks,patrol,patrolCfg,patrolPeople,secPost,secPostImg,selfChecks"));
     t("Y02 SYNC_KEYS는 모두 freshData 컬렉션에 존재", () => Sync.SYNC_KEYS.forEach(k => ok(e.S.data[k] !== undefined, k)));
     await ta("Y03 로그인 전에는 서버를 부르지 않음 · 로그인 후 초기 pull + 쓰기 권한 있는 컬렉션만 시드", async () => {
       await Sync.start();
@@ -5825,10 +5825,10 @@ function makeServer(opts = {}) {
       go(e, "aud-dash");
       ok(q(e, "#view .page-head [data-print-btn]"), "인쇄");
       const kp = q(e, "#view .stat-row").textContent;
-      ["자격 유효율", "갱신 · 조치 필요", "SSI 서약", "다음 수검", "미결 지적", "기록부 이행률"].forEach(k => ok(kp.indexOf(k) >= 0, k));
+      ["자격 유효율", "갱신 · 조치 필요", "SSI 서약", "다음 수검", "미결 지적", "기록부 이행률", "자체 점검 지적"].forEach(k => ok(kp.indexOf(k) >= 0, k));
       ok(/D-19/.test(kp), "다음 수검 D-day");
       const cards = qa(e, ".ad-card");
-      eq(cards.length, 3);
+      eq(cards.length, 4, "교육 · 수검 · 기록부 · 자체 보안점검(v1.32)");
       const tc = cards[0];
       ok(qa(e, ".ad-card")[0].querySelectorAll(".ad-sb").length >= 3, "직무별 막대(항공사보안감독자 · 화물보안 업무요원 · 항공보안교관)");
       eq(tc.querySelectorAll(".cc").length, 2); ok(Array.from(tc.querySelectorAll(".cc")).every(c => c.querySelectorAll(".cc-col").length === 12), "12칸");
@@ -5852,11 +5852,11 @@ function makeServer(opts = {}) {
       const mn = e.S.data.menus.find(m => m.module === "inspection");
       mn.hidden = true;
       go(e, "aud-dash");
-      eq(qa(e, ".ad-card").length, 2, "보안 기록부 카드 없음");
+      eq(qa(e, ".ad-card").length, 3, "보안 기록부 카드 없음");
       ok(!/기록부 이행률/.test(q(e, "#view .stat-row").textContent));
       delete mn.hidden;
       loginAs(e, "manager"); go(e, "aud-dash");
-      eq(qa(e, ".ad-card").length, 3);
+      eq(qa(e, ".ad-card").length, 4);
       setW(390); go(e, "aud-dash");
       ok(qa(e, ".ad-due").length <= 5, "모바일 목록 5건까지");
       setW(1024);
@@ -6884,6 +6884,287 @@ function makeServer(opts = {}) {
       ok(qa(e, ".tc-guide .sp-ed").every(b => b.classList.contains("m-ed")) && q(e, "#tc-step-add.m-ed"));
     });
     go(e, "vault");
+  }
+
+  /* ══════════ [SK] 자체 보안점검 — 국가항공보안 수준관리지침 별표 (v1.32) ══════════ */
+  {
+    /* 양식 원본(assets/forms/nas/*.hwpx)은 파일에서 바로 내준다 */
+    const assetFetch = async (url) => {
+      const u = String(url).split("?")[0].replace(/^https?:\/\/[^/]+\//, "");
+      const fp = path.join(ROOT, u);
+      if (/^assets\//.test(u) && fs.existsSync(fp)) {
+        const b = fs.readFileSync(fp);
+        return { ok: true, status: 200, arrayBuffer: async () => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) };
+      }
+      return new Promise(() => {});   // 그 밖의 요청(운항 · 서버)은 응답 없음 — 창을 닫은 뒤 다시 그리지 않게
+    };
+    const e = makeEnv({ fetch: assetFetch });
+    for (const k of ["TextEncoder", "TextDecoder", "CompressionStream", "DecompressionStream"]) if (!e.w[k]) e.w[k] = globalThis[k];
+    const S = e.w.SemisSelfcheck, H = e.w.SemisHwpx, NF = e.w.SemisNasForms;
+    const setv = (sel, v) => { const el = q(e, sel); el.value = v; return el; };
+    const fire = (el, type) => el.dispatchEvent(new e.w.Event(type, { bubbles: true }));
+    const tplOf = async (id) => H.open(new Uint8Array(fs.readFileSync(path.join(ROOT, "assets/forms/nas/" + id + ".hwpx"))));
+    const cellT = (pkg, ref) => { const tc = H.cell(pkg, ref); return tc ? H.cellText(tc) : null; };
+    const items = (id) => S.itemsOf(S.formOf(id));
+    let n = 0;
+    const rec = (form, o) => Object.assign({ id: "sk" + (++n), form, date: "2026-10-03", insp: "", org: "", ans: {}, txt: {}, rm: {}, nm: {}, fx: {}, note: "", files: [], status: "draft", createdAt: "2026-10-03T00:00:00Z", createdBy: "Thq" }, o || {});
+    S.setToday("2026-10-03");
+    loginAs(e, "hq");
+
+    t("SK01 메뉴 · 데이터 · 동기화 키 · 권한표: 점검 · 교육 허브(보안 기록부 다음) · mgr · 옛 데이터 자동 추가(멱등)", () => {
+      const ms = e.S.data.menus;
+      const m = ms.find(x => x.module === "selfcheck"), ins = ms.find(x => x.module === "inspection");
+      ok(m && m.type === "module" && !m.planned); eq(m.parent, "hub-aud"); eq(m.vis, "mgr"); eq(m.label, "자체 보안점검");
+      ok(m.seq > ins.seq, "보안 기록부 다음");
+      ok(!ms.some(x => x.parent === "hub-aud" && x.seq > ins.seq && x.seq < m.seq), "바로 다음");
+      const legacy = e.S.defaultMenus().filter(x => x.module !== "selfcheck");
+      const e2 = makeEnv({ preData: { version: 1, menus: legacy } });
+      eq(e2.S.data.menus.filter(x => x.module === "selfcheck").length, 1, "옛 데이터에 추가");
+      e2.S.normalizeData(e2.S.data); e2.S.normalizeData(e2.S.data);
+      eq(e2.S.data.menus.filter(x => x.module === "selfcheck").length, 1, "멱등");
+      ok(Array.isArray(e2.S.data.selfChecks));
+      e2.w.close();
+      ok(e.Sync.SYNC_KEYS.indexOf("selfChecks") >= 0);
+      eq(JSON.stringify(ACL.selfChecks), "[2,2]", "권한표: manager 읽기 · 쓰기");
+      ok(SEC_SQL.indexOf("semis_logi_security_17_selfcheck") > 0);
+    });
+
+    await ta("SK02 양식 사양 ↔ 원본 HWPX: 별표 1 · 3 · 4 · 7 · 8 · 9 · 10 · 11 · 15 · 모든 칸 주소 실재 · 빈칸(□) · 분석표 15개 세부", async () => {
+      eq(NF.FORMS.map(f => f.id).join(","), "b1,b3,b4,b7,b8,b9,b10,b11,b15");
+      eq(NF.SRC.rev, "국토교통부예규 제217호"); eq(NF.SRC.date, "2018-05-16");
+      for (const f of NF.FORMS) {
+        const pkg = await tplOf(f.id);
+        const has = (ref) => ok(H.cell(pkg, ref), f.id + " 칸 " + JSON.stringify(ref));
+        if (f.kind === "insp") {
+          [f.head.insp, f.head.date, f.head.org].forEach(has);
+          S.itemsOf(f).forEach(it => {
+            if (it.k === "yn") { eq(it.b.length, 4, f.id + " " + it.id); it.b.forEach(b => eq(cellT(pkg, b).trim(), "□", f.id + " " + it.id)); }
+            else has(it.a);
+          });
+        } else if (f.kind === "fsc") {
+          f.head.appr.forEach(has);
+          const line = H.paraText(H.topParas(pkg)[f.head.line]);
+          ok(/점검일/.test(line) && /\(서명\)/.test(line), "점검일 · 서명 줄");
+          S.itemsOf(f).forEach(it => { it.b.forEach(has); if (it.k === "eq" && !it.t) has(it.nm); });
+        } else {
+          eq(f.cats.length, 4); eq(f.cats.reduce((a, c) => a + c.items.length, 0), 15);
+          eq(f.cats.map(c => c.items.map(x => x.id).join(",")).join(","), Array.from({ length: 15 }, (_, i) => "p" + (i + 1)).join(","));
+          f.cats.forEach(c => c.items.forEach(x => { has(x.n); has(x.pct); }));
+          ok(H.topParas(pkg)[f.head.org], "기관 줄");
+        }
+      }
+      ok(S.forms().every(f => f.kind !== "ana"));
+      eq(S.anaForm().id, "b15");
+    });
+
+    await ta("SK03 HWPX 채우기(별표 4): Y · R/C · N/A 칸 ■ · 서술 답 · 점검일 · 감독관 · 기관 → ZIP(mimetype 첫 · 무압축) · 다시 열기 · 파일 이름", async () => {
+      const its = items("b4"), yn = its.filter(x => x.k === "yn"), tx = its.find(x => x.k === "tx");
+      const r = rec("b4", { insp: "점검갑", org: "시험 화물터미널", ans: { [yn[0].id]: "Y", [yn[1].id]: "RC", [yn[2].id]: "NA", [yn[3].id]: "N" }, txt: { [tx.id]: "첫 줄\n둘째 줄" } });
+      const pkg = await S.recordPkg(r);
+      const f = S.formOf("b4");
+      eq(cellT(pkg, f.head.date), "2026. 10. 3."); eq(cellT(pkg, f.head.insp), "점검갑"); eq(cellT(pkg, f.head.org), "시험 화물터미널");
+      eq(yn[0].b.map(b => cellT(pkg, b)).join(""), "■□□□");
+      eq(yn[1].b.map(b => cellT(pkg, b)).join(""), "□□■□");
+      eq(yn[2].b.map(b => cellT(pkg, b)).join(""), "□□□■");
+      eq(yn[3].b.map(b => cellT(pkg, b)).join(""), "□■□□");
+      eq(yn[4].b.map(b => cellT(pkg, b)).join(""), "□□□□", "미응답은 빈칸");
+      eq(H.cellParas(H.cell(pkg, tx.a)).map(p => H.paraText(p)).join("|"), "첫 줄|둘째 줄");
+      ok(!H.cell(pkg, tx.a).getElementsByTagNameNS(H.NS.hp, "linesegarray").length, "고친 칸의 줄 배치 캐시 제거");
+      const out = await H.build(pkg, { preview: "x" });
+      eq(String.fromCharCode(out[0], out[1], out[2], out[3]), "PK\u0003\u0004");
+      eq(out[8] | (out[9] << 8), 0, "mimetype 무압축");
+      eq(String.fromCharCode.apply(null, Array.from(out.slice(30, 38))), "mimetype");
+      const re = await H.open(out);
+      eq(re.sec.getElementsByTagName("parsererror").length, 0);
+      eq(yn[1].b.map(b => cellT(re, b)).join(""), "□□■□", "다시 열어도 같음");
+      eq(cellT(re, f.head.insp), "점검갑");
+      eq(S.fileName(f, "2026-10-03"), "[별표 4] 화물보관창고_검색절차 점검표_20261003.hwpx");
+    });
+
+    await ta("SK04 HWPX 채우기(별표 1 현장보안확인표): 결재란(점검자 비우면 점검자) 가운데 · 점검일 줄 · 양호/미흡 ○ · 장비명 · 비고", async () => {
+      const f = S.formOf("b1"), its = items("b1");
+      const named = its.filter(x => x.k === "eq" && x.t), blank = its.find(x => x.k === "eq" && !x.t), gp = its.find(x => x.k === "gp" && x.rm);
+      const r = rec("b1", { insp: "점검갑", appr: ["", "담당을", ""], ans: { [named[0].id]: "G", [named[1].id]: "P", [blank.id]: "G", [gp.id]: "P" },
+        nm: { [blank.id]: "시험 장비" }, rm: { [named[0].rm.join(",")]: "정상 작동", [gp.rm.join(",")]: "개선 필요" } });
+      const pkg = await S.recordPkg(r);
+      eq(cellT(pkg, f.head.appr[0]), "점검갑", "결재란 점검자 = 점검자");
+      eq(cellT(pkg, f.head.appr[1]), "담당을"); eq(cellT(pkg, f.head.appr[2]), "");
+      const ctr = H.centerPara(pkg);
+      ok(ctr != null); eq(H.cellParas(H.cell(pkg, f.head.appr[0]))[0].getAttribute("paraPrIDRef"), String(ctr));
+      const line = H.paraText(H.topParas(pkg)[f.head.line]);
+      eq(line, S.fscLine(r)); ok(line.indexOf("점검일 : 2026. 10. 3.") === 0 && /점검자 : 점검갑\s+\(서명\)$/.test(line), line);
+      eq(cellT(pkg, named[0].b[0]), "○"); eq(cellT(pkg, named[0].b[1]), "");
+      eq(cellT(pkg, named[1].b[1]), "○"); eq(cellT(pkg, gp.b[1]), "○");
+      eq(cellT(pkg, blank.nm), "시험 장비"); eq(cellT(pkg, named[0].rm), "정상 작동"); eq(cellT(pkg, gp.rm), "개선 필요");
+      const runOf = (ref) => H.cellParas(H.cell(pkg, ref))[0].getElementsByTagNameNS(H.NS.hp, "run")[0].getAttribute("charPrIDRef");
+      const prevNamed = S.itemsOf(f).slice(0, S.itemsOf(f).indexOf(blank)).reverse().find(x => x.k === "eq" && x.t);
+      eq(runOf(blank.nm), runOf(prevNamed.nm), "빈 장비명 칸 = 위 장비명 글자 모양");
+      eq(H.cellParas(H.cell(pkg, named[1].b[1]))[0].getAttribute("paraPrIDRef"), String(ctr), "○ 가운데");
+    });
+
+    t("SK05 지적(R/C · 미흡) · 조치 상태(조치 중 · 기한 경과 · 완료) · 이행 시기(제55조 4항) 기한 · 결과 요약 · 보존(제14조)", () => {
+      eq(S.termDue("onsite", "2026-10-03"), "2026-10-03"); eq(S.termDue("short", "2026-10-03"), "2026-10-13");
+      eq(S.termDue("mid", "2026-10-03"), "2027-01-03"); eq(S.termDue("long", "2026-10-03"), ""); eq(S.termDue("short", ""), "");
+      const yn = items("b4").filter(x => x.k === "yn");
+      ok(!S.isFind(S.formOf("b4"), yn[0], "N")); ok(S.isFind(S.formOf("b4"), yn[0], "RC"));
+      ok(S.isFind(S.formOf("b1"), items("b1").find(x => x.k === "eq"), "P"));
+      const r = rec("b4", { ans: { [yn[0].id]: "RC", [yn[1].id]: "RC", [yn[2].id]: "Y" }, fx: { [yn[0].id]: { due: "2026-10-01" }, [yn[1].id]: { done: "2026-10-02" } } });
+      const c = S.counts(r);
+      eq(c.fx, 2); eq(c.open, 1); eq(c.late, 1); eq(c.RC, 2); eq(c.Y, 1);
+      eq(S.fState(r.fx[yn[0].id]), "late"); eq(S.fState(r.fx[yn[1].id]), "done"); eq(S.fState({ due: "2026-12-01" }), "open");
+      ok(/^Y 1 · R\/C 2 · 미응답 \d+$/.test(S.resultText(r)), S.resultText(r));
+      eq(S.keepText(r), "보존: 조치 완료 때까지 (제14조)");
+      r.fx[yn[0].id].done = "2026-10-03";
+      eq(S.keepText(r), "보존: 2029.10.03까지 (제14조)");
+    });
+
+    await ta("SK06 문제점 분석(별표 15): 세부별 연간 건수 · 전년 대비 증감률 · 분야 미지정 제외 · 수검 지적 포함 · HWPX 채우기", async () => {
+      const yn = items("b4").filter(x => x.k === "yn");
+      const mk = (date, cats) => rec("b4", { date, ans: Object.fromEntries(cats.map((c, i) => [yn[i].id, "RC"])), fx: Object.fromEntries(cats.map((c, i) => [yn[i].id, c ? { cat: c } : {}])) });
+      e.S.data.selfChecks = [mk("2026-03-02", ["p1", "p1", "p5", ""]), mk("2026-07-01", ["p3"]), mk("2025-05-05", ["p1", "p5", "p5"])];
+      e.S.data.audits = [{ id: "a1", title: "시험 수검", start: "2026-05-10", end: "2026-05-11", findings: [{ id: "f1", text: "x", cat: "p2" }, { id: "f2", text: "y", cat: "" }] }];
+      const A = S.analysis("2026", false);
+      eq(A.cnt.p1, 2); eq(A.prev.p1, 1); eq(A.cnt.p5, 1); eq(A.prev.p5, 2); eq(A.cnt.p3, 1); eq(A.none, 1); eq(A.total, 4); eq(A.ptotal, 3);
+      eq(S.pctText(A, "p1"), "+100"); eq(S.pctText(A, "p5"), "-50"); eq(S.pctText(A, "p3"), "-"); eq(S.pctText(A, "p2"), "");
+      const B = S.analysis("2026", true);
+      eq(B.cnt.p2, 1); eq(B.fromAudit, 1); eq(B.total, 5);
+      const pkg = await S.anaPkg("2026", false, "시험 기관");
+      const f = S.anaForm(), it = (id) => f.cats.reduce((a, c) => a.concat(c.items), []).find(x => x.id === id);
+      eq(cellT(pkg, it("p1").n), "2"); eq(cellT(pkg, it("p1").pct), "+100"); eq(cellT(pkg, it("p5").pct), "-50"); eq(cellT(pkg, it("p2").n), "0");
+      ok(H.paraText(H.topParas(pkg)[f.head.org]).indexOf("(시험 기관)") >= 0);
+      ok(S.catLabel("p1").indexOf("인적") === 0, S.catLabel("p1"));
+      e.S.data.audits = [];
+    });
+
+    t("SK07 수검 대응 센터 증빙: 2.7 자체 점검 기록(완료 · 1년) · 2.8 지적 개선(기한 경과 없음)", () => {
+      eq(typeof e.w.SemisEvidence.selfcheck, "function");
+      const yn = items("b4").filter(x => x.k === "yn");
+      e.S.data.selfChecks = [rec("b4", { date: "2026-09-01", status: "done", ans: { [yn[0].id]: "RC" }, fx: { [yn[0].id]: { due: "2026-09-10" } } }), rec("b1", { date: "2026-09-20" }), rec("b4", { date: "2025-01-01", status: "done" })];
+      const a = S.evidence("2.7");
+      ok(a.ok); ok(/1건\(1년\) · 작성 중 1/.test(a.text), a.text);
+      const b = S.evidence("2.8");
+      ok(!b.ok, "기한 경과 지적"); ok(/기한 경과 1/.test(b.text), b.text);
+      e.S.data.selfChecks[0].fx[yn[0].id].done = "2026-09-09";
+      ok(S.evidence("2.8").ok);
+      eq(S.evidence("1.1"), null);
+    });
+
+    await ta("SK08 화면: 4개 탭 · 양식 9개 · 새 점검(별표 4) → 기록 화면 · Y/R/C 선택 · 지적 칸 · 이행 구분 → 기한 · 점검 완료 · 목록 · Print 1개", async () => {
+      e.S.data.selfChecks = [];
+      e.S.setEditMode && e.S.setEditMode(false);
+      S.setState({ tab: "list", rid: "" });
+      go(e, "selfcheck");
+      eq(qa(e, "[data-sctab]").length, 4);
+      ok(q(e, "#view .stat-row") || q(e, "#view .stats"), "요약 지표");
+      q(e, "[data-sctab=forms]").click();
+      eq(qa(e, ".sc-fcard").length, 9);
+      q(e, "[data-sc-new=b4]").click();
+      eq(e.S.data.selfChecks.length, 1);
+      const r = e.S.data.selfChecks[0];
+      ok(q(e, "#sc-page") && /별표 4/.test(q(e, "#view .page-title").textContent));
+      eq(qa(e, "#view [data-print-btn]").length, 1, "Print 버튼 하나(양식 인쇄)");
+      ok(q(e, "#sc-hwpx") && q(e, "#sc-pv"));
+      const lis = qa(e, "#sc-page li.sc-it.is-ch");
+      lis[0].querySelector("[data-sv=Y]").click();
+      eq(r.ans[lis[0].dataset.iid], "Y");
+      q(e, `#sc-page li[data-iid="${lis[1].dataset.iid}"] [data-sv=RC]`).click();
+      eq(r.ans[lis[1].dataset.iid], "RC");
+      const box = q(e, `#sc-page [data-fxbox="${lis[1].dataset.iid}"]`);
+      ok(box, "R/C → 지적 칸");
+      const term = box.querySelector('[data-k$="|term"]'); term.value = "short"; fire(term, "change");
+      eq(r.fx[lis[1].dataset.iid].term, "short"); eq(r.fx[lis[1].dataset.iid].due, "2026-10-13");
+      eq(box.querySelector('[data-k$="|due"]').value, "2026-10-13");
+      const cat = box.querySelector('[data-k$="|cat"]'); cat.value = "p2"; fire(cat, "change");
+      eq(r.fx[lis[1].dataset.iid].cat, "p2");
+      q(e, `#sc-page li[data-iid="${lis[1].dataset.iid}"] [data-sv=RC]`).click();
+      ok(!q(e, `#sc-page [data-fxbox="${lis[1].dataset.iid}"]`), "다시 누르면 해제");
+      q(e, `#sc-page li[data-iid="${lis[1].dataset.iid}"] [data-sv=RC]`).click();
+      const insp = q(e, '#sc-page input[data-k="insp"]'); insp.value = "점검갑"; fire(insp, "change");
+      eq(r.insp, "점검갑");
+      q(e, "#sc-done").click();
+      if (q(e, "#modal-box [data-act=ok]")) clickOk(e);
+      eq(r.status, "done");
+      ok(q(e, "#sc-reopen"), "다시 열기");
+      q(e, "[data-scback]").click();
+      for (let i = 0; i < 200 && q(e, "#sc-page"); i++) await tick(10);   // jsdom 의 history.back 은 비동기
+      ok(!q(e, "#sc-page"), "목록으로(브라우저 뒤로)");
+      q(e, "[data-sctab=list]").click();
+      ok(q(e, `#view [data-scid="${r.id}"]`), "목록 행");
+      q(e, "[data-sctab=fx]").click();
+      ok(q(e, `#view [data-scfx]`), "지적 · 조치 행");
+      q(e, "[data-sctab=ana]").click();
+      ok(q(e, "#view table.sc-ana") && q(e, "#sc-aprint[data-print-btn]"));
+      eq(qa(e, "#view [data-print-btn]").length, 1);
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+
+    t("SK09 권한: manager 작성 · user 접근 불가 · 남의 기록 삭제는 관리자만", () => {
+      loginAs(e, "manager"); S.setState({ tab: "list", rid: "" }); go(e, "selfcheck");
+      ok(q(e, "#sc-add"), "manager 새 점검");
+      const r = e.S.data.selfChecks[0];
+      S.openRecord(r.id); e.S.renderView();
+      ok(q(e, "#sc-page"));
+      ok(!q(e, "#sc-del"), "남이 만든 기록 삭제 버튼 없음");
+      S.setState({ rid: "" });
+      loginAs(e, "user"); go(e, "selfcheck");
+      ok(!q(e, "#sc-add") && !q(e, ".sc-fcard") && !q(e, "[data-sctab]"), "user 화면 없음");
+      loginAs(e, "hq");
+    });
+
+    t("SK10 수검 지적 폼: 문제점 분야(별표 15 · 15개) · 이행 시기 → 기한 제안 · 저장", () => {
+      e.S.data.audits = [{ id: "a9", title: "시험 수검", body: Object.keys({}).length ? "" : undefined, start: "2026-10-01", end: "2026-10-02", findings: [], checklist: [] }];
+      e.w.SemisAudit.findingForm("a9", null);
+      eq(qa(e, "#fd-cat option").length, 16, "미지정 + 15");
+      eq(qa(e, "#fd-term option").length, 5);
+      setv("#fd-text", "시험 지적");
+      setv("#fd-cat", "p9");
+      const tm = setv("#fd-term", "short"); fire(tm, "change");
+      eq(q(e, "#fd-due").value, "2026-10-12", "종료일 + 10일");
+      clickOk(e);
+      const fd = e.S.data.audits[0].findings[0];
+      ok(fd); eq(fd.cat, "p9"); eq(fd.term, "short"); eq(fd.due, "2026-10-12");
+      eq(S.analysis("2026", true).cnt.p9, 1);
+      e.S.data.audits = [];
+    });
+
+    t("SK11 점검 · 교육 대시보드: 자체 보안점검 카드 · 미결 지적 → 기록 화면", () => {
+      go(e, "aud-dash");
+      const card = q(e, '.ad-card[aria-label="자체 보안점검"]');
+      ok(card, "카드");
+      ok(/자체 점검 지적/.test(q(e, "#view").textContent));
+      const b = card.querySelector("[data-ad-sc]");
+      ok(b, "미결 지적 목록");
+      b.click(); e.S.renderView();
+      ok(q(e, "#sc-page"), "기록 화면 열림");
+      S.setState({ rid: "" });
+    });
+
+    await ta("SK12 인쇄 렌더러: A4 · 표는 블록(쪽 나눔 가능) · 칸 높이 border-box · 한글 줄 간격(칸 마지막 줄 간격 제외)", async () => {
+      const pkg = await tplOf("b1");
+      const pg = H.page(pkg);
+      eq(Math.round(pg.w), 210); eq(Math.round(pg.h), 297);
+      const css = H.css(pkg, {});
+      ok(css.indexOf("inline-table") < 0); ok(/\.hx-t td \{[^}]*box-sizing: border-box/.test(css)); ok(/@page \{ size: 210/.test(css));
+      const html = H.html(pkg);
+      ok(/class="hx-doc"/.test(html));
+      ok(/<td[^>]*><p class="hx-p" style="font-size:[\d.]+pt;[^"]*margin-bottom:-[\d.]+mm;/.test(html), "칸 마지막 문단 줄 간격 빼기");
+      const r = rec("b1", { insp: "점검갑" });
+      e.S.data.selfChecks = [r];
+      await S.printRecord(r, false);
+      ok(/<title>\[별표 1\] 현장보안확인표 2026\.10\.03<\/title>/.test(S.lastPrint()), "인쇄 문서 제목");
+      ok(S.lastPrint().indexOf("점검갑") > 0);
+    });
+
+    t("SK13 규정 자료용 지침 PDF(본문 + 화물 별표 9종) · 양식 탭 링크", () => {
+      const pdf = fs.readFileSync(path.join(ROOT, "assets/regs/nas-217.pdf"));
+      eq(pdf.slice(0, 5).toString(), "%PDF-");
+      ok(pdf.length > 100000 && pdf.length < 3000000, "크기 " + pdf.length);
+      S.setState({ tab: "forms", rid: "" }); go(e, "selfcheck");
+      const a = q(e, '#view .sc-src a[href="assets/regs/nas-217.pdf"]');
+      ok(a && a.target === "_blank");
+    });
+
+    e.w.close();
   }
 
   /* ══════════ [W] 릴리스 위생 ══════════ */

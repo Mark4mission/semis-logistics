@@ -122,6 +122,7 @@
     threat: ["2.9"],
     audit: ["2.8"],
     inspection: ["2.7", "4.1", "4.2", "4.3", "5.3", "5.4", "7.2", "7.6", "9.1.2", "9.4", "9.6"],
+    selfcheck: ["2.7", "2.8"],
     partners: ["3.1", "3.2", "3.3", "3.5"],
     "sec-cases": ["6.3.1", "6.4", "6.6", "6.10", "9.3", "9.8", "9.12", "9.13"],
     "kc-ra": ["6.5", "6.5.1", "9.9"],
@@ -1019,7 +1020,10 @@
     if (!a || !SeMIS.canEdit()) return;
     const f = fid ? findingsOf(a).find(x => x.id === fid) : null;
     if (fid && !f) return;
-    const v = Object.assign({ type: "car", ref: "", text: "", action: "", owner: "", due: "", status: "open", doneDate: "" }, f || {});
+    const v = Object.assign({ type: "car", ref: "", text: "", action: "", owner: "", due: "", status: "open", doneDate: "", cat: "", term: "" }, f || {});
+    /* v1.32 국가항공보안 수준관리지침 — 문제점 분야(제54조 · 별표 15)와 이행 시기(제55조 4항) */
+    const SC = window.SemisSelfcheck;
+    const catOpts = SC ? SC.cats().map(c => `<optgroup label="${esc(c.n)}">${c.items.map(it => `<option value="${esc(it.id)}" ${v.cat === it.id ? "selected" : ""}>${esc(it.t)}</option>`).join("")}</optgroup>`).join("") : "";
     const files = filesOf(f).map(x => Object.assign({}, x));
     openModal(`<h3>${f ? "지적사항 수정" : "지적사항 추가"} <small class="au-mh">${esc(auditTitle(a))}</small></h3>
       <div class="form-grid">
@@ -1030,6 +1034,10 @@
       <div id="fd-rep" class="au-rep" role="status"></div>
       ${fld("fd-text", "지적 내용", `<textarea id="fd-text" rows="3" maxlength="1000">${esc(v.text)}</textarea>`)}
       ${fld("fd-action", "조치 내용", `<textarea id="fd-action" rows="2" maxlength="1000">${esc(v.action)}</textarea>`)}
+      ${SC ? `<div class="form-grid">
+        ${fld("fd-cat", "문제점 분야", `<select id="fd-cat"><option value="">미지정</option>${catOpts}</select>`, "국가항공보안 수준관리지침 제54조 · 별표 15 — 자체 보안점검 '문제점 분석'에 함께 집계")}
+        ${fld("fd-term", "이행 시기", `<select id="fd-term"><option value="">선택</option>${Object.keys(SC.TERMS).map(k => `<option value="${k}" ${v.term === k ? "selected" : ""}>${esc(SC.TERMS[k])}</option>`).join("")}</select>`, "제55조 4항 — 시정조치서를 받으면 이행 시기를 나눠 20일 안에 이행계획서 제출")}
+      </div>` : ""}
       <div class="form-grid">
         ${fld("fd-owner", "담당", `<input id="fd-owner" value="${esc(v.owner)}" maxlength="40" autocomplete="off" list="fd-dl-p">`)}
         ${fld("fd-due", "조치 기한", `<input type="date" id="fd-due" value="${esc(v.due)}">`)}
@@ -1059,6 +1067,8 @@
       }
     };
     $("#fd-status").onchange = () => { if ($("#fd-status").value === "done" && !$("#fd-donedate").value) $("#fd-donedate").value = todayISO(); };
+    const ft = $("#fd-term");
+    if (ft && SC) ft.onchange = () => { const d = SC.termDue(ft.value, isISO(a.end) ? a.end : isISO(a.start) ? a.start : todayISO()); if (d && !$("#fd-due").value) $("#fd-due").value = d; };
     $("#modal-box [data-act=cancel]").onclick = closeModal;
     const del = $("#modal-box [data-act=del]");
     if (del) del.onclick = () => {
@@ -1074,6 +1084,7 @@
         action: String($("#fd-action").value || "").trim(), owner: norm($("#fd-owner").value), due: $("#fd-due").value || "",
         status, doneDate: status === "done" ? ($("#fd-donedate").value || todayISO()) : "", files: files.slice()
       };
+      if ($("#fd-cat")) { rec.cat = SC && SC.catOf($("#fd-cat").value) ? $("#fd-cat").value : ""; rec.term = SC && SC.TERMS[$("#fd-term").value] ? $("#fd-term").value : ""; }
       if (!Array.isArray(a.findings)) a.findings = [];
       if (f) Object.assign(f, rec); else a.findings.push(Object.assign({ id: uid("fd") }, rec));
       if (a.outcome === "none") a.outcome = "";

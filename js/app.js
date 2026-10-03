@@ -8,7 +8,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.31.0";
+  const VERSION = "1.32.0";
   const APP_NAME = "SeMIS · Logistics";
   /* v1.15: 데이터 캐시는 이 탭의 sessionStorage 에만 둔다(탭을 닫거나 로그아웃하면 사라짐).
      화면 설정(LS_UI)만 localStorage. */
@@ -267,6 +267,7 @@ const SeMIS = (() => {
       m("aud-dash", "점검 · 교육 대시보드", "📊", "aud-dash", "mgr", "hub-aud"),
       m("audit", "수검 대응 센터", "🗂️", "audit", "mgr", "hub-aud"),
       m("inspection", "보안 기록부", "📒", "inspection", "mgr", "hub-aud"),
+      m("selfcheck", "자체 보안점검", "🧾", "selfcheck", "mgr", "hub-aud"),
       p("car", "시정조치 (CAR)", "📋", "car", "hq", "hub-aud",
         "점검·감사에서 나온 부적합을 접수 → 조치중 → 종결 3단계로 추적하고 기한 경과를 에스컬레이션합니다."),
       m("training", "보안교육 · 자격 관리", "🎓", "training", "mgr", "hub-aud"),
@@ -383,6 +384,7 @@ const SeMIS = (() => {
       patrol: [],        // 일일 보안 · 안전 순찰일지 하루 기록 (v1.27 — js/patrol.js)
       patrolCfg: {},     // 순찰일지 양식 (점검사항 문구는 공용 DB만 — 코드는 구분 뼈대)
       patrolPeople: [],  // 순찰자 · 보안감독자와 등록 서명 (명단은 공용 DB만)
+      selfChecks: [],    // 자체 보안점검 — 국가항공보안 수준관리지침 별표 점검표 기록 (v1.32 — js/selfcheck.js)
       chatRooms: []      // (예약) 팀 채팅방
     };
   }
@@ -666,6 +668,20 @@ const SeMIS = (() => {
       if (ds.label === "일일 안전점검") ds.label = "일일 보안 · 안전 순찰일지";
       if (ds.icon === "✅") ds.icon = "📝";
     })();
+    // 자체 보안점검 (v1.32) — 배열 보정 · 기존 메뉴 데이터에 없으면 점검 · 교육 허브의 보안 기록부 바로 아래에 1회 추가(이후 숨김 · 이름은 운영자 설정 유지)
+    DATA.selfChecks = (Array.isArray(DATA.selfChecks) ? DATA.selfChecks : []).filter(x => x && typeof x === "object" && x.id);
+    if (!DATA.menus.some(m => m.type === "module" && m.module === "selfcheck")) {
+      const ins = DATA.menus.find(m => m.type === "module" && m.module === "inspection");
+      const hub = DATA.menus.find(m => m.id === "hub-aud" && m.type === "group");
+      let seq = DATA.menus.reduce((mx, m) => Math.max(mx, m.seq || 0), 0) + 1;
+      if (ins) {   // 바로 다음 메뉴와의 사이
+        const nx = DATA.menus.filter(m => m.parent === ins.parent && (m.seq || 0) > (ins.seq || 0)).map(m => m.seq || 0);
+        seq = nx.length ? ((ins.seq || 0) + Math.min.apply(null, nx)) / 2 : (ins.seq || 0) + 0.5;
+      }
+      DATA.menus.push({ id: DATA.menus.some(m => m.id === "selfcheck") ? "selfcheck-" + Date.now().toString(36) : "selfcheck",
+        seq, type: "module", label: "자체 보안점검", icon: "🧾", module: "selfcheck", vis: "mgr",
+        parent: ins && ins.parent ? ins.parent : (hub ? "hub-aud" : null) });
+    }
     DATA.equipment.forEach(x => { if (!Array.isArray(x.logs)) x.logs = []; });
     ["reg-sec", "reg-safety", "reg-dg", "scr-status", "scr-equip"].forEach(id => {
       const mn = DATA.menus.find(m => m.type === "module" && m.module === id);
@@ -1086,7 +1102,7 @@ const SeMIS = (() => {
     schedule: "wide", dashboard: "wide", board: "wide", flight: "wide",
     minutes: "mid", contacts: "mid", crisis: "mid", serp: "mid", threat: "mid", phonebook: "mid", settings: "mid", vault: "mid",
     "reg-sec": "mid", "reg-safety": "mid", "reg-dg": "mid", "scr-status": "mid", "scr-equip": "mid", audit: "mid", inspection: "mid", shortcuts: "mid", "daily-safety": "mid",
-    "sec-dash": "mid", "aud-dash": "mid", training: "mid"
+    "sec-dash": "mid", "aud-dash": "mid", training: "mid", selfcheck: "mid"
   };
   function applyViewWidth(view, route) {
     const r = String(route);
