@@ -172,6 +172,29 @@
     const end = periodEnd(t, s.cur.k);
     return { due: s.cur.done ? periodEnd(t, periodOf(t, addDays(end, 1))) : end, done: s.cur.done, missing: s.missing.length, cur: s.cur.k };
   }
+  /* v1.34 — 기간 [from, to] 의 점검 일정(대시보드 달력): 주 · 월 · 분기 · 연 양식만 —
+     기록한 날 { kind: "done" } · 기록이 없는 주기의 마지막 날 { kind: "due" | "late" }. cell = "양식|주기"(openCell) */
+  function calEvents(from, to, today) {
+    today = today || todayISO();
+    const out = [], all = logs();
+    if (!isISO(from) || !isISO(to) || from > to) return out;
+    templates().forEach(t => {
+      if (t.cycle === "day" || t.cycle === "event") return;
+      const first = periodOf(t, isISO(t.from) ? t.from : since());
+      const rs = all.filter(r => r.tid === t.id);
+      rs.filter(r => r.date >= from && r.date <= to).forEach(r =>
+        out.push({ d: r.date, kind: "done", tid: t.id, name: t.name, ng: isNG(r), cell: t.id + "|" + periodOf(t, r.date) }));
+      let k = periodOf(t, from);
+      for (let guard = 0; guard < 80; guard++) {
+        const end = periodEnd(t, k);
+        if (end > to) break;
+        if (end >= from && k >= first && !doneIn(t, rs.filter(r => periodOf(t, r.date) === k)))
+          out.push({ d: end, kind: end < today ? "late" : "due", tid: t.id, name: t.name, cell: t.id + "|" + k });
+        k = periodOf(t, addDays(end, 1));
+      }
+    });
+    return out;
+  }
   /* 오늘로부터 최근 n개 주기(오래된 것 → 이번 주기). 평일만 양식은 주말을 건너뛴다 */
   function periodsBack(t, today, n) {
     const out = [];
@@ -698,7 +721,7 @@
 
   window.SemisSeclog = {
     DEF_TEMPLATES, templates, tplOf, status, evidence, periodOf, periodsBack, periodLabel, missCount, isNG,
-    GRPS, DEF_META, whoText, cycLabel, periodEnd, nextDue,
+    GRPS, DEF_META, whoText, cycLabel, periodEnd, nextDue, calEvents,
     recordForm, quickRound, templatesForm, openCell,
     setToday(t, hm) { fixedToday = isISO(t) ? t : ""; fixedNow = isHM(hm) ? hm : ""; },
     getState() { return { tab, q, fTid, fMonth, fNG }; },

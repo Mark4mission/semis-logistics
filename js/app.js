@@ -8,7 +8,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.33.0";
+  const VERSION = "1.34.0";
   const APP_NAME = "SeMIS · Logistics";
   /* v1.15: 데이터 캐시는 이 탭의 sessionStorage 에만 둔다(탭을 닫거나 로그아웃하면 사라짐).
      화면 설정(LS_UI)만 localStorage. */
@@ -384,6 +384,7 @@ const SeMIS = (() => {
       patrol: [],        // 일일 보안 · 안전 순찰일지 하루 기록 (v1.27 — js/patrol.js)
       patrolCfg: {},     // 순찰일지 양식 (점검사항 문구는 공용 DB만 — 코드는 구분 뼈대)
       patrolPeople: [],  // 순찰자 · 보안감독자와 등록 서명 (명단은 공용 DB만)
+      selfCheckCfg: {},  // 자체 보안점검 안내 — 주체 · 대상 · 주기 덮어쓰기 (v1.34 — 비면 코드 기본값)
       selfChecks: [],    // 자체 보안점검 — 국가항공보안 수준관리지침 별표 점검표 기록 (v1.32 — js/selfcheck.js)
       chatRooms: []      // (예약) 팀 채팅방
     };
@@ -669,6 +670,8 @@ const SeMIS = (() => {
       if (ds.icon === "✅") ds.icon = "📝";
     })();
     // 자체 보안점검 (v1.32) — 배열 보정 · 기존 메뉴 데이터에 없으면 점검 · 교육 허브의 보안 기록부 바로 아래에 1회 추가(이후 숨김 · 이름은 운영자 설정 유지)
+    if (!DATA.selfCheckCfg || typeof DATA.selfCheckCfg !== "object" || Array.isArray(DATA.selfCheckCfg)) DATA.selfCheckCfg = {};
+    if (!DATA.selfCheckCfg.forms || typeof DATA.selfCheckCfg.forms !== "object" || Array.isArray(DATA.selfCheckCfg.forms)) DATA.selfCheckCfg.forms = {};
     DATA.selfChecks = (Array.isArray(DATA.selfChecks) ? DATA.selfChecks : []).filter(x => x && typeof x === "object" && x.id);
     if (!DATA.menus.some(m => m.type === "module" && m.module === "selfcheck")) {
       const ins = DATA.menus.find(m => m.type === "module" && m.module === "inspection");

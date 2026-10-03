@@ -78,6 +78,7 @@ insert into semis_logi_private.key_acl(key, read_rank, write_rank) values
   ('threat',2,3), ('threatRuns',2,2), ('threatChecks',2,2),   -- 테러 위협전화 대응 (v1.26): 절차는 hq · 접수 기록 · 녹음 전화 점검은 manager (마이그레이션 semis_logi_security_15_threat)
   ('patrol',2,2), ('patrolCfg',2,3), ('patrolPeople',2,2),   -- 일일 보안 · 안전 순찰일지 (v1.27): 기록 · 순찰자 서명은 manager · 양식은 hq (마이그레이션 semis_logi_security_16_patrol)
   ('selfChecks',2,2),   -- 자체 보안점검 (v1.32): 수준관리지침 별표 점검 기록 · 지적 조치는 manager 가 남김 (마이그레이션 semis_logi_security_17_selfcheck)
+  ('selfCheckCfg',2,3), -- 자체 보안점검 안내 (v1.34): 주체 · 대상 · 주기 — hq 편집 (마이그레이션 semis_logi_security_18_selfcheckcfg)
   ('secPost',2,3), ('secPostImg',2,3), -- 경비대원 배치도 (v1.28, 민감보안정보): manager 열람 · hq 편집 (마이그레이션 semis_logi_security_15_secpost)
   ('vault',3,3),
   ('auditMaster',3,9),   -- 수검 체크리스트 원본(민감보안정보): hq 열람 · 등록은 SQL(서비스 권한)로만 (마이그레이션 semis_logi_security_9_audit_master)

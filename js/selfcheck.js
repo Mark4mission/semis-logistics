@@ -70,9 +70,26 @@
     insp: { by: "항공보안감독관", target: "화물터미널운영자 등", cyc: "연 1회 이상", ref: "제23조" },
     b15: { by: "항공보안감독관", target: "점검 결과", cyc: "점검 뒤 기록", ref: "제55조" }
   };
-  const offOf = (f) => OFFICIAL[f.id] || (f.kind === "insp" ? OFFICIAL.insp : OFFICIAL.b15);
   /* 자체 점검 주기: 연 1회 이상 + 국토부 수검 7일 전까지(수검 전 90일 안에 끝낸 기록이 있으면 주기만) */
   const SELF = { by: "인천화물팀", cyc: "연 1회 이상 · 국토부 수검 전", months: 12, before: 7, fresh: 90 };
+  /* v1.34 — 안내(누가 · 누구를 · 주기)는 안전보안파트(hq) 이상이 고친다. 공용 DB selfCheckCfg —
+     { selfBy, months, before, fresh, forms: { 별표 id: { by, target, cyc } } } · 비거나 기본값과 같으면 저장하지 않는다(코드 기본값) */
+  const CFG = "selfCheckCfg";
+  const CYC_M = { 1: "월 1회 이상", 3: "분기 1회 이상", 6: "반기 1회 이상", 12: "연 1회 이상" };
+  const cfgObj = () => { const c = D()[CFG]; return c && typeof c === "object" && !Array.isArray(c) ? c : {}; };
+  const intIn = (v, lo, hi, d) => { if (v === "" || v == null) return d; const n = Math.round(Number(v)); return Number.isFinite(n) && n >= lo && n <= hi ? n : d; };
+  function selfCfg() {
+    const c = cfgObj();
+    const months = CYC_M[Number(c.months)] ? Number(c.months) : SELF.months;
+    return { by: norm(c.selfBy) || SELF.by, months, before: intIn(c.before, 0, 60, SELF.before), fresh: intIn(c.fresh, 0, 365, SELF.fresh), cycOnly: CYC_M[months], cyc: CYC_M[months] + " · 국토부 수검 전" };
+  }
+  const offBase = (f) => OFFICIAL[f.id] || (f.kind === "insp" ? OFFICIAL.insp : OFFICIAL.b15);
+  function offOf(f) {
+    const b = offBase(f), fs = cfgObj().forms, o = fs && typeof fs === "object" ? fs[f.id] : null;
+    if (!o || typeof o !== "object") return b;
+    const pick = (k) => norm(o[k]) || b[k];
+    return { by: pick("by"), target: pick("target"), cyc: pick("cyc"), ref: b.ref };
+  }
   const basisOf = (f) => BASIS[f.id] || (f.kind === "insp" ? BASIS.insp : "");
   const ITEMS = {};
   function itemsOf(f) {
@@ -164,10 +181,11 @@
     const last = rs.filter(r => r.status === "done").map(r => r.date).sort().pop() || "";
     const out = { due: "", why: "", last, draft: rs.find(r => r.status !== "done") || null, audit: null };
     if (f.kind === "ana") return out;
-    const cyc = last ? addMonths(last, SELF.months) : "";
+    const C = selfCfg();
+    const cyc = last ? addMonths(last, C.months) : "";
     const a = govAudit(t);
     let pre = "";
-    if (a && (!last || last < addDays(a.start, -SELF.fresh))) { pre = addDays(a.start, -SELF.before); if (pre < t) pre = t; }
+    if (a && (!last || last < addDays(a.start, -C.fresh))) { pre = addDays(a.start, -C.before); if (pre < t) pre = t; }
     if (pre && (!cyc || pre <= cyc)) { out.due = pre; out.why = "수검 전"; out.audit = a; }
     else if (cyc) { out.due = cyc; out.why = "주기"; }
     return out;
@@ -481,10 +499,11 @@
   const tagsHTML = (f) => `<span class="sc-tags"><span class="sc-tag is-off" title="${esc(offOf(f).ref)} — 항공보안감독관이 쓰는 양식">감독관 점검표</span><span class="sc-tag is-mark">${esc(f.kind === "ana" ? "수검대비 자체 분석" : "수검대비 자체 점검")}</span></span>`;
   const offText = (f) => { const o = offOf(f); return `${o.by} → ${o.target} · ${o.cyc}`; };
   function selfText(f, t) {
-    if (f.kind === "ana") return `${SELF.by} · 연 1회 (연말)`;
+    const C = selfCfg();
+    if (f.kind === "ana") return `${C.by} · 연 1회 (연말)`;
     const n = nextDue(f, t);
     const tail = n.due ? `다음 ${dot(n.due).slice(5)} (${dday(n.due, t)}${n.why === "수검 전" ? " · 수검 전" : ""})` : n.last ? "최근 " + dot(n.last) : "기록 없음";
-    return `${SELF.by} · ${tail}`;
+    return `${C.by} · ${C.cycOnly} · ${tail}`;
   }
   const whoHTML = (f, t) => `<dl class="sc-who">
       <div><dt>감독관</dt><dd title="${esc(offOf(f).ref)}">${esc(offText(f))}</dd></div>
@@ -515,6 +534,55 @@
           <button type="button" class="btn btn-primary btn-sm" data-sc-tab="ana">${icon("chart", 15)}<span>문제점 분석</span></button></div>
       </section>` : ""}</div>
       <p class="sc-src">${esc(NF().SRC.title || "")} (${esc(NF().SRC.rev || "")}, ${esc(dot(NF().SRC.date || ""))}) 별표 — 국가법령정보센터 원본 양식 · <a href="${esc(REG_PDF)}" target="_blank" rel="noopener">지침 본문 PDF</a></p>`;
+  }
+
+  /* ═════════ 안내 편집 (v1.34, hq 이상) — 누가 · 누구를 · 주기 ═════════ */
+  function cfgForm() {
+    if (!SeMIS.canEdit()) return;
+    const C = selfCfg(), fl = allForms();
+    const inp = (k, v, ph, max) => `<input data-c="${k}" value="${esc(v)}" placeholder="${esc(ph)}" maxlength="${max || 40}">`;
+    const frow = (f) => { const o = offOf(f), b = offBase(f); return `<div class="sc-cfg-r" data-cf="${esc(f.id)}">
+        <span class="sc-cfg-f"><b class="mono">${esc(bno(f))}</b><small>${esc(f.title)}</small></span>
+        <label><span>누가</span>${inp("by", o.by, b.by)}</label>
+        <label><span>누구를</span>${inp("target", o.target, b.target)}</label>
+        <label><span>주기</span>${inp("cyc", o.cyc, b.cyc, 30)}</label>
+      </div>`; };
+    openModal(`<h3>점검 안내 <small class="au-mh">${esc(TITLE)}</small></h3>
+      <section class="sc-cfg-sec"><h4>자체 점검 (${esc(MARK)})</h4>
+        <div class="sc-cfg-g">
+          <label><span>누가</span><input id="sc-c-by" value="${esc(C.by)}" placeholder="${esc(SELF.by)}" maxlength="30"></label>
+          <label><span>주기</span><select id="sc-c-m">${Object.keys(CYC_M).map(k => `<option value="${k}" ${Number(k) === C.months ? "selected" : ""}>${esc(CYC_M[k])}</option>`).join("")}</select></label>
+          <label><span>국토부 수검 며칠 전</span><input id="sc-c-before" type="number" min="0" max="60" value="${C.before}"></label>
+          <label><span>수검 전 인정 기간(일)</span><input id="sc-c-fresh" type="number" min="0" max="365" value="${C.fresh}" title="수검 시작 전 이 기간 안에 끝낸 점검이 있으면 주기만 따릅니다"></label>
+        </div>
+      </section>
+      <section class="sc-cfg-sec"><h4>감독관 점검 (수준관리지침)</h4>
+        <div class="sc-cfg-rows">${fl.map(frow).join("")}</div>
+      </section>
+      <div class="modal-actions"><button type="button" class="btn btn-ghost" id="sc-c-reset">기본값</button><span class="spacer"></span><button type="button" class="btn btn-ghost" data-act="cancel">취소</button><button type="button" class="btn btn-primary" data-act="ok">저장</button></div>`, { wide: true });
+    $("#sc-c-reset").onclick = () => {
+      $("#sc-c-by").value = SELF.by; $("#sc-c-m").value = String(SELF.months); $("#sc-c-before").value = SELF.before; $("#sc-c-fresh").value = SELF.fresh;
+      $$("#modal-box [data-cf]").forEach(r => { const b = offBase(formOf(r.dataset.cf)); $$("[data-c]", r).forEach(i => { i.value = b[i.dataset.c]; }); });
+    };
+    $("#modal-box [data-act=cancel]").onclick = closeModal;
+    $("#modal-box [data-act=ok]").onclick = () => {
+      const out = { forms: {} };
+      const by = norm($("#sc-c-by").value), m = Number($("#sc-c-m").value);
+      const before = intIn($("#sc-c-before").value, 0, 60, -1), fresh = intIn($("#sc-c-fresh").value, 0, 365, -1);
+      if (before < 0 || fresh < 0) { toast("일수는 0~60 · 0~365 사이로 넣으세요.", true); return; }
+      if (by && by !== SELF.by) out.selfBy = by;
+      if (CYC_M[m] && m !== SELF.months) out.months = m;
+      if (before !== SELF.before) out.before = before;
+      if (fresh !== SELF.fresh) out.fresh = fresh;
+      $$("#modal-box [data-cf]").forEach(r => {
+        const f = formOf(r.dataset.cf); if (!f) return;
+        const b = offBase(f), o = {};
+        $$("[data-c]", r).forEach(i => { const v = norm(i.value); if (v && v !== b[i.dataset.c]) o[i.dataset.c] = v; });
+        if (Object.keys(o).length) out.forms[f.id] = o;
+      });
+      D()[CFG] = out;
+      SeMIS.save(); closeModal(); SeMIS.renderView(); toast("저장했습니다.");
+    };
   }
 
   /* ═════════ 지적 · 조치 ═════════ */
@@ -975,6 +1043,7 @@
     const w = canW();
     const acts = [
       w ? `<button type="button" class="btn btn-primary btn-sm" id="sc-add">${icon("plus", 16)}<span>점검</span></button>` : "",
+      tab === "forms" && SeMIS.canEdit() ? `<button type="button" class="btn btn-ghost btn-sm m-ed" id="sc-cfg" title="누가 · 누구를 · 주기">${icon("edit", 16)}<span>안내 편집</span></button>` : "",
       tab === "ana" ? `<button type="button" class="btn btn-ghost btn-sm no-print" id="sc-aprint" data-print-btn="1" title="별표 15 양식으로 인쇄">${icon("print", 17)}<span>Print</span></button>` : ""
     ].join("");
     root.innerHTML = ui.head({ title: TITLE, meta: MARK + " — 항공보안감독관 점검표(수준관리지침 별표) 사용", actions: acts })
@@ -983,6 +1052,7 @@
       + `<div id="sc-body" data-tab="${tab}">${bodyHTML()}</div>`;
     $$("[data-sctab]", root).forEach(b => b.onclick = () => { tab = b.dataset.sctab; SeMIS.renderView(); });
     const ab = $("#sc-add", root); if (ab) ab.onclick = pickForm;
+    const cb = $("#sc-cfg", root); if (cb) cb.onclick = cfgForm;
     const ap = $("#sc-aprint", root); if (ap) ap.onclick = () => printAna(false);
     wire(root);
   }
@@ -1004,7 +1074,7 @@
     KEY, forms, formOf, anaForm, itemsOf, counts, resultText, findingsOf, allFindings, fState, analysis, pctText, catOf, catLabel, cats,
     TERMS, termDue, isFind, evidence, fill, fillAna, fscLine, recordPkg, anaPkg, downloadRecord, downloadAna, printRecord, printBlank, printAna,
     newRecord, openRecord, startForm, backToList, applyField, keepText, fileName, dateText,
-    MARK, OFFICIAL, SELF, offOf, nextDue, govAudit, dday, markPkg,
+    MARK, OFFICIAL, SELF, offOf, nextDue, govAudit, dday, markPkg, selfCfg, cfgForm, offText, CYC_M,
     lastPrint: () => lastPrint,
     setToday(t) { fixedToday = isISO(t) ? t : ""; },
     getState() { return { tab, q, fForm, fYear, fOpen, rid, anaY, anaAudit }; },
