@@ -3,7 +3,7 @@
    실행: npm test  (jsdom 필요: npm install)
    구성: [C] 코어(해시·계정·메뉴·정규화·권한·라우터·예정 모듈)
          [D] 대시보드·공지·현황판  [S] 시스템 설정  [M] 이식 모듈 스모크(일정·회의록·연락망·검색)
-         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [IM] 한글 입력 보호  [FL] 운항 현황  [AU] 수검 대응 센터  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [SEC] 서버 보안(비공개 파일·살균·CSP)  [PT] 순찰일지  [SK] 자체 보안점검(수준관리지침 별표 · HWPX)  [CM] v1.29 화면 정돈  [CN] v1.30 편집 모드 · 모바일 접기  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
+         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [IM] 한글 입력 보호  [FL] 운항 현황  [AU] 수검 대응 센터  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [SEC] 서버 보안(비공개 파일·살균·CSP)  [PT] 순찰일지  [SK] 자체 보안점검(수준관리지침 별표 · HWPX)  [UP] 점검 표시 · 다가오는 점검  [CM] v1.29 화면 정돈  [CN] v1.30 편집 모드 · 모바일 접기  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
    ═══════════════════════════════════════════════════════ */
 "use strict";
 const fs = require("fs");
@@ -5827,10 +5827,11 @@ function makeServer(opts = {}) {
       const kp = q(e, "#view .stat-row").textContent;
       ["자격 유효율", "갱신 · 조치 필요", "SSI 서약", "다음 수검", "미결 지적", "기록부 이행률", "자체 점검 지적"].forEach(k => ok(kp.indexOf(k) >= 0, k));
       ok(/D-19/.test(kp), "다음 수검 D-day");
-      const cards = qa(e, ".ad-card");
-      eq(cards.length, 4, "교육 · 수검 · 기록부 · 자체 보안점검(v1.32)");
+      eq(qa(e, ".ad-card").length, 5, "다가오는 점검(v1.33) · 교육 · 수검 · 기록부 · 자체 보안점검(v1.32)");
+      ok(qa(e, ".ad-card")[0].classList.contains("ad-up"), "다가오는 점검이 맨 위");
+      const cards = qa(e, ".ad-card:not(.ad-up)");
       const tc = cards[0];
-      ok(qa(e, ".ad-card")[0].querySelectorAll(".ad-sb").length >= 3, "직무별 막대(항공사보안감독자 · 화물보안 업무요원 · 항공보안교관)");
+      ok(cards[0].querySelectorAll(".ad-sb").length >= 3, "직무별 막대(항공사보안감독자 · 화물보안 업무요원 · 항공보안교관)");
       eq(tc.querySelectorAll(".cc").length, 2); ok(Array.from(tc.querySelectorAll(".cc")).every(c => c.querySelectorAll(".cc-col").length === 12), "12칸");
       const dues = qa(e, ".ad-due");
       ok(dues.length >= 2 && dues.some(b => /을일/.test(b.textContent)) && dues.some(b => /갑일/.test(b.textContent)), "갱신 목록");
@@ -5852,11 +5853,12 @@ function makeServer(opts = {}) {
       const mn = e.S.data.menus.find(m => m.module === "inspection");
       mn.hidden = true;
       go(e, "aud-dash");
-      eq(qa(e, ".ad-card").length, 3, "보안 기록부 카드 없음");
+      eq(qa(e, ".ad-card:not(.ad-up)").length, 3, "보안 기록부 카드 없음");
+      ok(!q(e, ".ad-up [data-ad-sl]") && !q(e, ".ad-up .up-daily"), "숨긴 보안 기록부는 다가오는 점검에서도 빠짐");
       ok(!/기록부 이행률/.test(q(e, "#view .stat-row").textContent));
       delete mn.hidden;
       loginAs(e, "manager"); go(e, "aud-dash");
-      eq(qa(e, ".ad-card").length, 4);
+      eq(qa(e, ".ad-card").length, 5);
       setW(390); go(e, "aud-dash");
       ok(qa(e, ".ad-due").length <= 5, "모바일 목록 5건까지");
       setW(1024);
@@ -7164,6 +7166,176 @@ function makeServer(opts = {}) {
       ok(a && a.target === "_blank");
     });
 
+    e.w.close();
+  }
+
+  /* ══════════ [UP] v1.33 점검 표시 · 수검대비 표식 · 다가오는 점검 ══════════ */
+  {
+    const assetFetch = async (url) => {
+      const u = String(url).split("?")[0].replace(/^https?:\/\/[^/]+\//, "");
+      const fp = path.join(ROOT, u);
+      if (/^assets\//.test(u) && fs.existsSync(fp)) { const b = fs.readFileSync(fp); return { ok: true, status: 200, arrayBuffer: async () => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) }; }
+      return new Promise(() => {});
+    };
+    const e = makeEnv({ fetch: assetFetch });
+    for (const k of ["TextEncoder", "TextDecoder", "CompressionStream", "DecompressionStream"]) if (!e.w[k]) e.w[k] = globalThis[k];
+    const S = e.w.SemisSelfcheck, H = e.w.SemisHwpx, SL = e.w.SemisSeclog, AD = e.w.SemisAudDash, A = e.w.SemisAudit;
+    const T0 = "2026-10-03";
+    S.setToday(T0); SL.setToday(T0, "09:30"); AD.setToday(T0); A.setToday(T0);
+    loginAs(e, "hq");
+    const gov = (start, extra) => Object.assign({ id: "g" + start, body: "gov", org: "서울지방항공청", kind: "정기 보안점검", start, end: start, findings: [], checklist: [] }, extra || {});
+    const sc = (form, date, status, extra) => Object.assign({ id: "u" + form + date + status, form, date, insp: "", org: "", ans: {}, txt: {}, rm: {}, nm: {}, fx: {}, files: [], status, createdAt: date + "T00:00:00Z", createdBy: "Thq" }, extra || {});
+    const lg = (tid, date) => ({ id: "l" + tid + date, tid, date, time: "09:00", by: "점검자", checks: [], result: "ok", note: "", action: "", files: [], rounds: [] });
+    const reset = () => { e.S.data.audits = []; e.S.data.selfChecks = []; e.S.data.seclog = []; e.S.data.seclogCfg = { since: "2026-09-01", templates: [] }; };
+
+    t("UP01 자체 보안점검: 감독관 점검표 · 수검대비 표식(양식 카드 9 · 기록 화면) · 감독관/자체 주체 → 대상 · 주기 · 점검자 칸 이름", () => {
+      reset();
+      S.setState({ tab: "forms", rid: "" }); go(e, "selfcheck");
+      const cards = qa(e, ".sc-fcard");
+      eq(cards.length, 9);
+      ok(cards.every(c => /감독관 점검표/.test(c.querySelector(".sc-tags").textContent) && /수검대비 자체 (점검|분석)/.test(c.querySelector(".sc-tags").textContent)), "모든 카드 표식");
+      const who = (id) => q(e, `.sc-fcard[data-fid="${id}"] .sc-who`).textContent.replace(/\s+/g, " ");
+      ok(/항공보안감독관 · 지방항공청 → 화물터미널운영자 · 상주업체 · 항목별 주 2회 이상/.test(who("b1")), who("b1"));
+      ok(/항공보안감독관 → 화물터미널운영자 등 · 연 1회 이상/.test(who("b4")) && /자체\s*인천화물팀 · 기록 없음/.test(who("b4")), who("b4"));
+      ok(/국토부 수검대비 자체 점검/.test(q(e, "#view .page-head").textContent), "머리말");
+      q(e, "[data-sc-new=b4]").click();
+      ok(q(e, "#sc-page .sc-mark .sc-tag.is-mark"), "기록 화면 표식");
+      ok(/점검자 \(양식 '감독관' 칸\)/.test(q(e, "#sc-page .sc-infog").textContent));
+      S.setState({ rid: "" }); e.S.data.selfChecks = [];
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+
+    await ta("UP02 HWPX · 인쇄 첫 줄 끝에 '※ 국토부 수검대비 자체 점검'(기록 · 분석표) · 빈 양식은 원본 그대로 · 쪽 배치 문단 수 불변", async () => {
+      const r = sc("b4", T0, "draft", { insp: "점검갑" });
+      const pkg = await S.recordPkg(r);
+      const first = H.paraText(H.topParas(pkg)[0]);
+      ok(/^\[별표 4\] 화물보관창고\/검색절차 점검표\s+※ 국토부 수검대비 자체 점검$/.test(first), first);
+      const blank = await H.open(new Uint8Array(fs.readFileSync(path.join(ROOT, "assets/forms/nas/b4.hwpx"))));
+      eq(H.topParas(pkg).length, H.topParas(blank).length, "문단 수 그대로");
+      ok(H.paraText(H.topParas(blank)[0]).indexOf(S.MARK) < 0, "빈 양식 원본");
+      const r1 = await S.recordPkg(sc("b1", T0, "draft", { appr: ["", "", ""] }));
+      ok(/^\[별표 1\]\s+※ 국토부 수검대비 자체 점검$/.test(H.paraText(H.topParas(r1)[0])));
+      const ana = await S.anaPkg("2026", false, "");
+      ok(/^\[별표 15\]\s+※ 국토부 수검대비 자체 점검$/.test(H.paraText(H.topParas(ana)[0])));
+      S.markPkg(pkg); eq((H.paraText(H.topParas(pkg)[0]).match(/수검대비/g) || []).length, 1, "두 번 붙지 않음");
+      e.S.data.selfChecks = [r];
+      await S.printRecord(r, false);
+      ok(S.lastPrint().indexOf("※ 국토부 수검대비 자체 점검") > 0, "인쇄 문서");
+      e.S.data.selfChecks = [];
+    });
+
+    t("UP03 자체 점검 다음 기한: 연 1회 · 국토부 수검 7일 전(수검 전 90일 안 완료 기록이 있으면 주기만) · 해외 수검 제외 · 임박 수검은 오늘 · 작성 중이면 이어 쓰기", () => {
+      reset();
+      const b4 = S.formOf("b4");
+      let n = S.nextDue(b4, T0); eq(n.due, ""); eq(n.why, "");
+      e.S.data.audits = [gov("2026-10-23"), Object.assign(gov("2026-10-10"), { body: "foreign" }), Object.assign(gov("2026-10-12"), { cancelled: true })];
+      n = S.nextDue(b4, T0); eq(n.due, "2026-10-16"); eq(n.why, "수검 전"); eq(n.audit.start, "2026-10-23");
+      e.S.data.selfChecks = [sc("b4", "2025-11-01", "done")];
+      n = S.nextDue(b4, T0); eq(n.due, "2026-10-16", "수검 전이 주기보다 빠름"); eq(n.last, "2025-11-01");
+      e.S.data.selfChecks = [sc("b4", "2026-09-01", "done")];
+      n = S.nextDue(b4, T0); eq(n.due, "2027-09-01"); eq(n.why, "주기");
+      e.S.data.audits = [gov("2026-10-06")];
+      e.S.data.selfChecks = [];
+      eq(S.nextDue(b4, T0).due, T0, "수검이 7일 안이면 오늘");
+      eq(S.dday("2026-10-16", T0), "D-13"); eq(S.dday(T0, T0), "오늘"); eq(S.dday("2026-10-01", T0), "지남 2일");
+      eq(S.nextDue(S.anaForm(), T0).due, "", "분석표는 일정 없음");
+      e.S.data.selfChecks = [sc("b1", "2026-10-02", "draft", { appr: ["", "", ""] })];
+      S.setState({ tab: "forms", rid: "" }); go(e, "selfcheck");
+      ok(/이어 쓰기/.test(q(e, "[data-sc-new=b1]").textContent));
+      q(e, "[data-sc-new=b1]").click();
+      eq(e.S.data.selfChecks.length, 1, "새로 만들지 않음"); eq(S.getState().rid, e.S.data.selfChecks[0].id);
+      S.setState({ rid: "" });
+    });
+
+    t("UP04 보안 기록부: 주체 → 대상 · 대상 묶음 기본값(비면 기본, 고친 값 유지) · 카드 표시 · 기한 · 다음 기한(nextDue) · 양식 편집 칸", () => {
+      reset();
+      const daily = SL.tplOf("t-daily");
+      eq(daily.by, "보안감독자"); eq(daily.target, "화물터미널 보안구역"); eq(daily.grp, "terminal");
+      eq(SL.tplOf("t-hazmat").grp, "hazmat"); eq(SL.tplOf("t-selfaudit").grp, "us");
+      e.S.data.seclogCfg.templates = SL.DEF_TEMPLATES.map(x => Object.assign({}, x, x.id === "t-hazmat" ? { by: "시험 담당", target: "시험 대상", grp: "etc" } : {}));
+      eq(SL.tplOf("t-hazmat").by, "시험 담당"); eq(SL.tplOf("t-hazmat").grp, "etc");
+      eq(SL.whoText(SL.tplOf("t-hazmat")), "시험 담당 → 시험 대상");
+      e.S.data.seclogCfg.templates = [];
+      SL.setState({ tab: "today" }); go(e, "inspection");
+      const card = q(e, '.sl-card[data-tid="t-hazmat"]');
+      ok(/위해물품 관리책임자 → 위해물품/.test(card.querySelector(".sl-who").textContent));
+      ok(/이번 달 미기록 · 10\.31까지/.test(card.textContent), card.textContent);
+      ok(!/까지/.test(q(e, '.sl-card[data-tid="t-daily"] .sl-card-s').textContent), "매일 양식은 기한 표시 없음");
+      const M = SL.tplOf("t-hazmat"), Q = SL.tplOf("t-regular"), Y = SL.tplOf("t-surprise");
+      eq(SL.nextDue(M, T0).due, "2026-10-31"); eq(SL.nextDue(Q, T0).due, "2026-12-31"); eq(SL.nextDue(Y, T0).due, "2026-12-31");
+      e.S.data.seclog = [lg("t-hazmat", "2026-10-02"), lg("t-regular", "2026-10-01")];
+      eq(SL.nextDue(M, T0).due, "2026-11-30", "이번 달 했으면 다음 달 끝"); eq(SL.nextDue(Q, T0).due, "2027-03-31");
+      ok(SL.nextDue(daily, T0).daily); ok(SL.nextDue(SL.tplOf("t-guard"), T0).event);
+      eq(SL.periodEnd({ cycle: "week" }, "W2026-09-28"), "2026-10-04"); eq(SL.periodEnd({ cycle: "month" }, "2026-02"), "2026-02-28");
+      SL.templatesForm();
+      const row = q(e, '#sl-tpls .sl-tpl');
+      ok(row.querySelector('[data-k="by"]') && row.querySelector('[data-k="target"]') && row.querySelector('select[data-k="grp"]'), "편집 칸");
+      row.querySelector('[data-k="by"]').value = "바꾼 주체";
+      clickOk(e);
+      eq(e.S.data.seclogCfg.templates[0].by, "바꾼 주체");
+      e.S.data.seclogCfg.templates = [];
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+
+    t("UP05 대시보드 '다가오는 점검': 맨 위 · 대상별 묶음(가까운 날짜 순) · 30일 안 강조 · 지남 · 외부 수검 → 수검 상세 · 우리 팀 점검은 점검표 바로 가기 · 매일 점검 줄", () => {
+      reset();
+      e.S.data.audits = [gov("2026-10-23", { end: "2026-10-24" }), Object.assign(gov("2026-12-03"), { body: "foreign", org: "TSA", kind: "ACC3 검증" })];
+      e.S.data.seclog = [lg("t-daily", T0), lg("t-regular", "2026-07-15")];
+      e.S.data.selfChecks = [sc("b1", "2026-10-02", "draft", { appr: ["", "", ""] })];
+      go(e, "aud-dash");
+      const card = q(e, ".ad-card");
+      ok(card.classList.contains("ad-up"), "맨 위");
+      const gs = qa(e, ".ad-up .up-grp").map(g => g.dataset.grp);
+      eq(gs[0], "sc", "가장 가까운 묶음(수검 7일 전 10.16)"); eq(gs[1], "recv"); ok(gs.indexOf("hazmat") > 1);
+      const scRow = q(e, '.up-grp[data-grp="sc"] .up-row');
+      ok(scRow.classList.contains("is-soon") && /D-13/.test(scRow.textContent) && /10\.16\(금\)/.test(scRow.textContent), scRow.textContent);
+      eq(scRow.querySelectorAll("[data-ad-scf]").length, 8, "별표 8종 바로 가기");
+      ok(scRow.querySelector('[data-ad-scf="b1"]').classList.contains("is-draft"), "작성 중 표시");
+      const recv = qa(e, '.up-grp[data-grp="recv"] .up-row');
+      eq(recv.length, 2); ok(recv[0].classList.contains("is-soon") && !recv[1].classList.contains("is-soon"), "30일 안만 강조");
+      ok(!recv[0].querySelector(".up-act"), "외부 수검은 점검표 없음");
+      ok(/서울지방항공청 → 인천화물팀 · ~10\.24/.test(recv[0].textContent));
+      const daily = q(e, ".ad-up .up-daily");
+      ok(daily && daily.querySelector('[data-ad-sl="t-daily"]').classList.contains("is-done") && !daily.querySelector('[data-ad-sl="t-uld"]').classList.contains("is-done"), "매일 점검 오늘 상태");
+      ok(daily.querySelector('[data-ad-sl="t-patrol"][data-ad-round]'), "순찰은 순찰 기록");
+      const hz = q(e, '.up-grp[data-grp="hazmat"] [data-ad-sl="t-hazmat"]');
+      ok(hz && hz.classList.contains("btn-primary"), "30일 안 → 주 버튼");
+      hz.click();
+      ok(q(e, "#modal-box") && /위해물품 월간 점검/.test(q(e, "#modal-box").textContent), "점검표(기록 폼) 열림");
+      e.S.closeModal();
+      AD.setToday("2026-11-02"); SL.setToday("2026-11-02", "09:00"); S.setToday("2026-11-02");
+      e.S.data.audits = []; go(e, "aud-dash");
+      const late = q(e, '.up-grp[data-grp="terminal"] .up-row.is-late') || q(e, '.ad-up .up-row.is-late');
+      ok(!late, "기한은 주기 끝이라 지나지 않음");
+      AD.setToday(T0); SL.setToday(T0, "09:30"); S.setToday(T0);
+      e.S.data.audits = [gov("2026-10-23")];
+      go(e, "aud-dash");
+      q(e, '.up-grp[data-grp="recv"] [data-ad-aud]').click();
+      eq(e.w.location.hash, "#/audit"); eq(A.getState().sel, "g2026-10-23");
+      go(e, "aud-dash");
+      q(e, '.up-grp[data-grp="sc"] [data-ad-scf="b4"]').click(); e.S.renderView();
+      ok(q(e, "#sc-page") && /별표 4/.test(q(e, "#view .page-title").textContent), "자체 점검표로 바로");
+      S.setState({ rid: "" });
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+
+    t("UP06 다가오는 점검: 지난 기한 · user 접근 불가 · 쓰기 권한 없으면 바로 가기 대신 이동 · 모바일 구성", () => {
+      reset();
+      const rows = AD.upData(T0);
+      eq(rows.groups.find(g => g.key === "sc").rows[0].due, "", "수검 없으면 기록 없음 줄");
+      e.S.data.selfChecks = [sc("b4", "2025-09-01", "done")];
+      const u = AD.upData(T0);
+      const r4 = u.groups.find(g => g.key === "sc").rows.find(r => r.due === "2026-09-01");
+      ok(r4 && u.late >= 1, "주기 지남");
+      go(e, "aud-dash");
+      const lr = qa(e, ".ad-up .up-row.is-late");
+      ok(lr.length >= 1 && /지남 32일/.test(lr[0].textContent), lr.length ? lr[0].textContent : "none");
+      loginAs(e, "user"); go(e, "aud-dash");
+      ok(!q(e, ".ad-up"), "user 없음");
+      loginAs(e, "hq");
+      e.S.data.selfChecks = [];
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
     e.w.close();
   }
 

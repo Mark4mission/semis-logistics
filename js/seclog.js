@@ -64,6 +64,21 @@
     { id: "t-hold", name: "화물칸 보안 점검 (미주행)", kind: "flight", cycle: "event", evidence: ["9.6"] },
     { id: "t-appoint", name: "위해물품 관리책임자 지정", kind: "doc", cycle: "year", evidence: ["4.1"] }
   ];
+  /* v1.33 — 누가(주체) 누구를(대상) 점검하는지 · 대시보드 '다가오는 점검'의 대상 묶음(grp). 양식 편집에서 고칠 수 있고 비우면 아래 기본값 */
+  const GRPS = { terminal: "화물터미널 · 보안검색", hazmat: "위해물품", us: "미주행 (TSA)", aircraft: "항공기", etc: "기타" };
+  const DEF_META = {
+    "t-daily": { by: "보안감독자", target: "화물터미널 보안구역", grp: "terminal" },
+    "t-patrol": { by: "보안감독자", target: "보안요원 · 터미널", grp: "terminal" },
+    "t-uld": { by: "보안요원", target: "ULD · 화물장비", grp: "terminal" },
+    "t-hazmat": { by: "위해물품 관리책임자", target: "위해물품", grp: "hazmat" },
+    "t-regular": { by: "인천화물팀", target: "보안검색 현장 · 협력사", grp: "terminal" },
+    "t-surprise": { by: "인천화물팀", target: "보안검색 현장", grp: "terminal" },
+    "t-selfaudit": { by: "인천화물팀", target: "미주행 화물 보안절차", grp: "us" },
+    "t-guard": { by: "보안요원", target: "미주행 항공기", grp: "us" },
+    "t-hold": { by: "보안요원", target: "미주행 항공기 화물칸", grp: "us" },
+    "t-appoint": { by: "인천화물팀", target: "위해물품 관리책임자", grp: "hazmat" }
+  };
+  const whoText = (t) => (t.by || t.target) ? `${t.by || "-"} → ${t.target || "-"}` : "";
   const cycLabel = (t) => t.kind === "flight" ? "편별" : t.cycle === "day" && t.days === "weekday" ? "평일" : CYCLES[t.cycle];
   /* 누락을 찾는 기간(최근 주기 수) */
   const WINDOW = { day: 30, week: 13, month: 12, quarter: 4, year: 2 };
@@ -91,6 +106,10 @@
     x.items = (Array.isArray(x.items) ? x.items : []).filter(it => it && norm(it.text)).map(it => ({ id: it.id || uid("i"), text: norm(it.text) }));
     x.evidence = (Array.isArray(x.evidence) ? x.evidence : []).map(norm).filter(Boolean);
     x.rounds = Math.max(0, Math.round(Number(x.rounds) || 0));
+    const m = DEF_META[x.id] || {};
+    x.by = norm(x.by) || m.by || "";
+    x.target = norm(x.target) || m.target || "";
+    x.grp = GRPS[x.grp] ? x.grp : (m.grp || "etc");
     return x;
   }
   function templates(all) {
@@ -132,6 +151,26 @@
     if (t.cycle === "quarter") return k.slice(0, 4) + "-" + p2((Number(k.slice(-1)) - 1) * 3 + 1) + "-01";
     if (t.cycle === "year") return k + "-01-01";
     return k;
+  }
+  /* 주기의 마지막 날 */
+  function periodEnd(t, k) {
+    const st = periodStart(t, k);
+    if (t.cycle === "week") return addDays(st, 6);
+    const y = +st.slice(0, 4), m = +st.slice(5, 7);
+    const last = (yy, mm) => { const d = new Date(Date.UTC(yy, mm, 0)); return d.toISOString().slice(0, 10); };   // mm 월의 말일
+    if (t.cycle === "month") return last(y, m);
+    if (t.cycle === "quarter") return last(y, m + 2);
+    if (t.cycle === "year") return y + "-12-31";
+    return k;
+  }
+  /* 다음 점검 기한 — 이번 주기를 아직 안 했으면 이번 주기 끝, 했으면 다음 주기 끝. 매일 · 수시는 { daily | event } */
+  function nextDue(t, today) {
+    today = today || todayISO();
+    if (t.cycle === "event") return { event: true, due: "" };
+    const s = status(t, today);
+    if (t.cycle === "day") return { daily: true, due: today, done: s.cur.done, missing: s.missing.length };
+    const end = periodEnd(t, s.cur.k);
+    return { due: s.cur.done ? periodEnd(t, periodOf(t, addDays(end, 1))) : end, done: s.cur.done, missing: s.missing.length, cur: s.cur.k };
   }
   /* 오늘로부터 최근 n개 주기(오래된 것 → 이번 주기). 평일만 양식은 주말을 건너뛴다 */
   function periodsBack(t, today, n) {
@@ -247,6 +286,7 @@
         sub = lastT ? "마지막 " + lastT : "";
       } else {
         state = cur.done ? `${lb} 기록` : `${lb} 미기록`; tone = cur.done ? (cur.ng ? "ng" : "ok") : "none";
+        if (!cur.done && t.cycle !== "day") state += ` · ${dot(periodEnd(t, cur.k)).slice(5)}까지`;
         sub = cur.done ? cur.rs.map(r => r.by).filter(Boolean).slice(0, 2).join(", ") : "";
       }
       if (s.missing.length) sub = (sub ? sub + " · " : "") + `누락 ${s.missing.length}`;
@@ -256,6 +296,7 @@
       : `<button type="button" class="btn ${s.event || !s.cur.done ? "btn-primary" : "btn-ghost"} btn-sm" data-sl-new="${esc(t.id)}">${icon("plus", 15)}<span>${t.kind === "flight" ? "편 추가" : s.event || !s.cur.done ? "기록" : "추가 기록"}</span></button>`;
     return `<section class="sl-card" data-tone="${tone}" data-tid="${esc(t.id)}">
       <div class="sl-card-h"><b>${esc(t.name)}</b><span class="sl-cyc">${esc(cycLabel(t))}</span></div>
+      ${whoText(t) ? `<div class="sl-who">${icon("user", 14)}<span>${esc(whoText(t))}</span></div>` : ""}
       <div class="sl-card-s"><span class="sl-dot" aria-hidden="true"></span><span>${esc(state)}</span></div>
       ${sub ? `<div class="sl-card-sub">${esc(sub)}</div>` : ""}
       <div class="sl-card-f">${evTags(t)}<span class="spacer"></span>${btn}</div>
@@ -532,6 +573,9 @@
         <label>요일<select data-k="days"><option value="all" ${t.days !== "weekday" ? "selected" : ""}>매일</option><option value="weekday" ${t.days === "weekday" ? "selected" : ""}>평일만</option></select></label>
         <label>시작일<input type="date" data-k="from" value="${esc(t.from || "")}"></label>
         <label>순찰 최소<input type="number" min="0" max="48" data-k="rounds" value="${esc(t.rounds || 0)}"></label>
+        <label>점검 주체<input data-k="by" value="${esc(t.by || "")}" maxlength="30" placeholder="보안감독자"></label>
+        <label>점검 대상<input data-k="target" value="${esc(t.target || "")}" maxlength="40" placeholder="화물터미널 보안구역"></label>
+        <label>대상 묶음<select data-k="grp">${Object.keys(GRPS).map(k => `<option value="${k}" ${t.grp === k ? "selected" : ""}>${esc(GRPS[k])}</option>`).join("")}</select></label>
         <label>체크리스트 번호<input data-k="evidence" value="${esc(t.evidence.join(", "))}" maxlength="60" placeholder="2.7, 4.3"></label>
       </div>
       <label class="sl-tpl-items">점검 항목 (한 줄에 하나)<textarea data-k="items" rows="3">${esc(t.items.map(it => it.text).join("\n"))}</textarea></label>
@@ -547,7 +591,7 @@
         else if (k === "items") {
           const old = t.items || [];
           t.items = f.value.split(/\n/).map(norm).filter(Boolean).map(text => ({ id: (old.find(o => o.text === text) || {}).id || uid("i"), text }));
-        } else t[k] = k === "name" ? norm(f.value) : f.value;
+        } else t[k] = k === "name" || k === "by" || k === "target" ? norm(f.value) : f.value;
       });
     });
     const wireRows = () => $$("[data-tdel]").forEach(b => b.onclick = () => { pull(); ts.splice(Number(b.dataset.tdel), 1); paintRows(); });
@@ -610,7 +654,7 @@
   }
   function paint() {
     const box = document.getElementById("sl-body");
-    if (!box) { if (routeNow() === MOD) SeMIS.renderView(); return; }
+    if (!box) { if (routeNow() === MOD || routeNow() === "aud-dash") SeMIS.renderView(); return; }   // 대시보드 '다가오는 점검'에서 기록한 뒤
     box.innerHTML = bodyHTML();
     wire(box);
     if (SeMIS.renderNav) try { SeMIS.renderNav(); } catch (e) { /* 메뉴 배지만 영향 */ }
@@ -633,7 +677,7 @@
   function pickTemplate() {
     const ts = templates();
     if (!ts.length) { toast("사용 중인 점검 양식이 없습니다.", true); return; }
-    openModal(`<h3>기록할 양식</h3><div class="sl-pick">${ts.map(t => `<button type="button" class="sl-pbtn" data-pick="${esc(t.id)}"><b>${esc(t.name)}</b><span>${esc(cycLabel(t))}</span></button>`).join("")}</div>
+    openModal(`<h3>기록할 양식</h3><div class="sl-pick">${ts.map(t => `<button type="button" class="sl-pbtn" data-pick="${esc(t.id)}"><b>${esc(t.name)}</b><span>${esc([whoText(t), cycLabel(t)].filter(Boolean).join(" · "))}</span></button>`).join("")}</div>
       <div class="modal-actions"><button type="button" class="btn btn-ghost" data-act="cancel">닫기</button></div>`);
     $("#modal-box [data-act=cancel]").onclick = closeModal;
     $$("[data-pick]").forEach(b => b.onclick = () => { const t = tplOf(b.dataset.pick); if (t && t.kind === "patrol") quickRound(t.id); else recordForm(b.dataset.pick, ""); });
@@ -654,6 +698,7 @@
 
   window.SemisSeclog = {
     DEF_TEMPLATES, templates, tplOf, status, evidence, periodOf, periodsBack, periodLabel, missCount, isNG,
+    GRPS, DEF_META, whoText, cycLabel, periodEnd, nextDue,
     recordForm, quickRound, templatesForm, openCell,
     setToday(t, hm) { fixedToday = isISO(t) ? t : ""; fixedNow = isHM(hm) ? hm : ""; },
     getState() { return { tab, q, fTid, fMonth, fNG }; },

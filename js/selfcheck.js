@@ -63,6 +63,16 @@
     b15: "제53~56조 결과 분석 · 문제점 분포 · 증감률"
   };
   const REG_PDF = "assets/regs/nas-217.pdf";   // 지침 본문 + 화물 관련 별표 9종(규정 자료에도 같은 파일)
+  /* v1.33 — 별표는 항공보안감독관이 쓰는 점검표: 이 메뉴의 기록은 '국토부 수검대비 자체 점검'으로 표시해 구분한다 */
+  const MARK = "국토부 수검대비 자체 점검";
+  const OFFICIAL = {            // 지침상 실제 점검 — 주체 → 대상 · 주기(조항)
+    b1: { by: "항공보안감독관 · 지방항공청", target: "화물터미널운영자 · 상주업체", cyc: "항목별 주 2회 이상", ref: "제16 · 17조" },
+    insp: { by: "항공보안감독관", target: "화물터미널운영자 등", cyc: "연 1회 이상", ref: "제23조" },
+    b15: { by: "항공보안감독관", target: "점검 결과", cyc: "점검 뒤 기록", ref: "제55조" }
+  };
+  const offOf = (f) => OFFICIAL[f.id] || (f.kind === "insp" ? OFFICIAL.insp : OFFICIAL.b15);
+  /* 자체 점검 주기: 연 1회 이상 + 국토부 수검 7일 전까지(수검 전 90일 안에 끝낸 기록이 있으면 주기만) */
+  const SELF = { by: "인천화물팀", cyc: "연 1회 이상 · 국토부 수검 전", months: 12, before: 7, fresh: 90 };
   const basisOf = (f) => BASIS[f.id] || (f.kind === "insp" ? BASIS.insp : "");
   const ITEMS = {};
   function itemsOf(f) {
@@ -141,6 +151,28 @@
     if (c.open) return "보존: 조치 완료 때까지 (제14조)";
     return "보존: " + dot(addMonths(r.date, 36)) + "까지 (제14조)";
   }
+  /* 다음 국토부(지방항공청 포함) 수검 — 수검 대응 센터 기록 */
+  function govAudit(t) {
+    t = t || todayISO();
+    const as = (Array.isArray(D().audits) ? D().audits : []).filter(a => a && !a.cancelled && a.body === "gov" && isISO(a.start) && a.start >= t);
+    return as.sort((a, b) => a.start.localeCompare(b.start))[0] || null;
+  }
+  /* 양식별 다음 자체 점검일 — { due, why(수검 전 | 주기 | ""), last(마지막 완료일), draft(작성 중 기록), audit } */
+  function nextDue(f, t) {
+    t = t || todayISO();
+    const rs = recs().filter(r => r.form === f.id);
+    const last = rs.filter(r => r.status === "done").map(r => r.date).sort().pop() || "";
+    const out = { due: "", why: "", last, draft: rs.find(r => r.status !== "done") || null, audit: null };
+    if (f.kind === "ana") return out;
+    const cyc = last ? addMonths(last, SELF.months) : "";
+    const a = govAudit(t);
+    let pre = "";
+    if (a && (!last || last < addDays(a.start, -SELF.fresh))) { pre = addDays(a.start, -SELF.before); if (pre < t) pre = t; }
+    if (pre && (!cyc || pre <= cyc)) { out.due = pre; out.why = "수검 전"; out.audit = a; }
+    else if (cyc) { out.due = cyc; out.why = "주기"; }
+    return out;
+  }
+  const dday = (due, t) => { if (!isISO(due)) return ""; const n = Math.round((Date.UTC(+due.slice(0, 4), +due.slice(5, 7) - 1, +due.slice(8, 10)) - Date.UTC(+t.slice(0, 4), +t.slice(5, 7) - 1, +t.slice(8, 10))) / 86400000); return n === 0 ? "오늘" : n > 0 ? "D-" + n : "지남 " + (-n) + "일"; };
   const touch = (r) => { r.updatedAt = new Date().toISOString(); r.updatedBy = me(); };
   const canW = () => !!SeMIS.user && SeMIS.roleRank() >= 2 && SeMIS.user.role !== "vendor";
   const canDel = (r) => SeMIS.canEdit() || (!!r && !!SeMIS.user && (r.createdBy === me() && canW()));
@@ -187,8 +219,17 @@
     const d = dateText(r.date), n = norm(r.insp);
     return "점검일 : " + d + sp(22 - 1 - wid(d)) + "점검자 : " + n + sp(14 - 1 - wid(n)) + "(서명)";
   }
+  /* 첫 줄([별표 N] …) 끝에 수검대비 자체 점검 표시 — 줄이 늘지 않게 같은 문단에 붙인다 */
+  function markPkg(pkg) {
+    const H = SemisHwpx, p = H.topParas(pkg)[0];
+    if (!p) return pkg;
+    const txt = H.paraText(p).replace(/\s+$/, "");
+    if (txt.indexOf(MARK) < 0) H.setPara(p, txt + "      ※ " + MARK);
+    return pkg;
+  }
   function fill(pkg, f, r) {
     const H = SemisHwpx;
+    markPkg(pkg);
     const set = (ref, lines, o) => { const tc = H.cell(pkg, ref); if (tc) H.setCell(tc, lines, o); };
     const plain = H.plainPara(pkg);
     if (f.kind === "insp") {
@@ -244,6 +285,7 @@
   }
   function fillAna(pkg, f, A, org) {
     const H = SemisHwpx;
+    markPkg(pkg);
     const tp = H.topParas(pkg)[f.head.org];
     if (tp && norm(org)) {
       const old = H.paraText(tp), lab = "(" + norm(org) + ")";
@@ -435,28 +477,39 @@
   }
 
   /* ═════════ 양식 ═════════ */
+  /* 양식 카드 · 기록 화면에 함께 쓰는 표시 — 감독관 점검표 · 수검대비 자체 점검 */
+  const tagsHTML = (f) => `<span class="sc-tags"><span class="sc-tag is-off" title="${esc(offOf(f).ref)} — 항공보안감독관이 쓰는 양식">감독관 점검표</span><span class="sc-tag is-mark">${esc(f.kind === "ana" ? "수검대비 자체 분석" : "수검대비 자체 점검")}</span></span>`;
+  const offText = (f) => { const o = offOf(f); return `${o.by} → ${o.target} · ${o.cyc}`; };
+  function selfText(f, t) {
+    if (f.kind === "ana") return `${SELF.by} · 연 1회 (연말)`;
+    const n = nextDue(f, t);
+    const tail = n.due ? `다음 ${dot(n.due).slice(5)} (${dday(n.due, t)}${n.why === "수검 전" ? " · 수검 전" : ""})` : n.last ? "최근 " + dot(n.last) : "기록 없음";
+    return `${SELF.by} · ${tail}`;
+  }
+  const whoHTML = (f, t) => `<dl class="sc-who">
+      <div><dt>감독관</dt><dd title="${esc(offOf(f).ref)}">${esc(offText(f))}</dd></div>
+      <div><dt>자체</dt><dd>${esc(selfText(f, t))}</dd></div>
+    </dl>`;
   function formsHTML() {
-    const w = canW();
+    const w = canW(), t = todayISO();
     const card = (f) => {
-      const its = itemsOf(f);
-      const k = (x) => its.filter(it => it.k === x).length;
-      const parts = f.kind === "fsc" ? [`장비 ${k("eq")}`, `점검 내용 ${k("gp")}`] : [`Y/N ${k("yn")}`, (k("tx") + k("pr") + k("un")) ? `서술 · 기재 ${k("tx") + k("pr") + k("un")}` : ""].filter(Boolean);
-      const last = recs().filter(r => r.form === f.id).map(r => r.date).sort().pop();
-      return `<section class="sc-fcard" data-fid="${esc(f.id)}">
+      const n = nextDue(f, t);
+      const soon = n.due && n.due <= addDays(t, 30);
+      return `<section class="sc-fcard${soon ? " is-soon" : ""}" data-fid="${esc(f.id)}">
         <div class="sc-fcard-h"><span class="sc-bno mono">${esc(bno(f))}</span><b>${esc(f.title)}</b></div>
-        <div class="sc-fcard-s">${esc(f.field && f.field !== f.title.replace(/ 점검표$/, "") ? f.field + " · " : "")}${esc(parts.join(" · "))}</div>
-        <div class="sc-fcard-b">${esc(basisOf(f))}</div>
-        <div class="sc-fcard-f"><span class="cell-sub">${last ? "최근 " + esc(dot(last)) : "기록 없음"}</span><span class="spacer"></span>
+        ${tagsHTML(f)}
+        ${whoHTML(f, t)}
+        <div class="sc-fcard-f"><span class="spacer"></span>
           <button type="button" class="btn btn-ghost btn-sm" data-sc-blank="${esc(f.id)}" title="빈 양식 미리보기 · 인쇄">${icon("eye", 15)}<span>빈 양식</span></button>
           <button type="button" class="btn btn-ghost btn-sm" data-sc-bdl="${esc(f.id)}" title="빈 양식 HWPX 내려받기">${icon("down", 15)}<span>HWPX</span></button>
-          ${w ? `<button type="button" class="btn btn-primary btn-sm" data-sc-new="${esc(f.id)}">${icon("plus", 15)}<span>점검</span></button>` : ""}</div>
+          ${w ? `<button type="button" class="btn btn-primary btn-sm" data-sc-new="${esc(f.id)}">${icon(n.draft ? "edit" : "plus", 15)}<span>${n.draft ? "이어 쓰기" : "점검"}</span></button>` : ""}</div>
       </section>`;
     };
     const a = anaForm();
     return `<div class="sc-fcards">${forms().map(card).join("")}${a ? `<section class="sc-fcard is-ana">
         <div class="sc-fcard-h"><span class="sc-bno mono">${esc(bno(a))}</span><b>${esc(a.title)}</b></div>
-        <div class="sc-fcard-s">${esc(cats().map(c => c.n).join(" · "))} — 연간 발생 건수 · 증감률</div>
-        <div class="sc-fcard-b">${esc(BASIS.b15)}</div>
+        ${tagsHTML(a)}
+        ${whoHTML(a, t)}
         <div class="sc-fcard-f"><span class="spacer"></span>
           <button type="button" class="btn btn-ghost btn-sm" data-sc-bdl="${esc(a.id)}">${icon("down", 15)}<span>빈 양식 HWPX</span></button>
           <button type="button" class="btn btn-primary btn-sm" data-sc-tab="ana">${icon("chart", 15)}<span>문제점 분석</span></button></div>
@@ -607,9 +660,10 @@
     const appr = f.kind === "fsc" ? `<div class="sc-apprw"><div class="sc-appr-h">결재란</div><div class="sc-appr">${f.head.apprL.map((lb, i) =>
       `<label><span>${esc(lb)}</span><input data-k="appr|${i}" value="${esc((r.appr || [])[i] || "")}" maxlength="20"${i === 0 ? ' placeholder="점검자와 같음"' : ""}${dis}></label>`).join("")}</div></div>` : "";
     const info = `<section class="card sc-info">
+      <div class="sc-mark">${tagsHTML(f)}<span class="sc-mark-t">${esc(offText(f))}</span></div>
       <div class="sc-infog">
         <label><span>점검일</span><input type="date" data-k="date" value="${esc(r.date)}" max="${esc(todayISO())}"${dis}></label>
-        <label><span>${f.kind === "insp" ? "감독관(점검자)" : "점검자"}</span><input data-k="insp" value="${esc(r.insp || "")}" maxlength="40" list="sc-dl-insp" autocomplete="off"${dis}></label>
+        <label><span>${f.kind === "insp" ? "점검자 (양식 '감독관' 칸)" : "점검자"}</span><input data-k="insp" value="${esc(r.insp || "")}" maxlength="40" list="sc-dl-insp" autocomplete="off"${dis}></label>
         ${f.kind === "insp" ? `<label><span>수검자 및 기관</span><input data-k="org" value="${esc(r.org || "")}" maxlength="60" list="sc-dl-org" autocomplete="off"${dis}></label>` : ""}
       </div>
       ${appr}
@@ -803,8 +857,16 @@
     SeMIS.save();
     openRecord(r.id);
   }
+  /* 점검표 바로 가기 — 작성 중 기록이 있으면 그것을, 없으면 새로 */
+  function startForm(fid) {
+    if (!canW()) return;
+    const f = formOf(fid);
+    if (!f || f.kind === "ana") return;
+    const d = recs().filter(r => r.form === f.id && r.status !== "done").sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")))[0];
+    if (d) openRecord(d.id); else newRecord(f.id);
+  }
   function pickForm() {
-    openModal(`<h3>점검할 양식</h3><div class="sl-pick">${forms().map(f => `<button type="button" class="sl-pbtn" data-pick="${esc(f.id)}"><b>${esc(bno(f))} ${esc(f.title)}</b><span>${esc(f.kind === "fsc" ? "양호 · 미흡" : "Y · N · R/C · N/A")}</span></button>`).join("")}</div>
+    openModal(`<h3>점검할 양식</h3><div class="sl-pick">${forms().map(f => `<button type="button" class="sl-pbtn" data-pick="${esc(f.id)}"><b>${esc(bno(f))} ${esc(f.title)}</b><span>감독관: ${esc(offText(f))}</span><span>자체: ${esc(selfText(f, todayISO()))}</span></button>`).join("")}</div>
       <div class="modal-actions"><button type="button" class="btn btn-ghost" data-act="cancel">닫기</button></div>`);
     $("#modal-box [data-act=cancel]").onclick = closeModal;
     $$("[data-pick]").forEach(b => b.onclick = () => { closeModal(); newRecord(b.dataset.pick); });
@@ -851,7 +913,7 @@
     const aa = $("#sc-aaud", box); if (aa) aa.onclick = () => { anaAudit = !anaAudit; paint(); };
     const apv = $("#sc-apv", box); if (apv) apv.onclick = () => printAna(true);
     const adl = $("#sc-adl", box); if (adl) adl.onclick = () => downloadAna(anaYear(), anaAudit && auditFindings().length > 0, anaOrg());
-    $$("[data-sc-new]", box).forEach(b => b.onclick = () => newRecord(b.dataset.scNew));
+    $$("[data-sc-new]", box).forEach(b => b.onclick = () => startForm(b.dataset.scNew));
     $$("[data-sc-blank]", box).forEach(b => b.onclick = () => { const f = formOf(b.dataset.scBlank); if (f) printBlank(f, true); });
     $$("[data-sc-bdl]", box).forEach(b => b.onclick = () => { const f = formOf(b.dataset.scBdl); if (f) blankDownload(f); });
     $$("[data-sc-tab]", box).forEach(b => b.onclick = () => { tab = b.dataset.scTab; SeMIS.renderView(); });
@@ -915,7 +977,7 @@
       w ? `<button type="button" class="btn btn-primary btn-sm" id="sc-add">${icon("plus", 16)}<span>점검</span></button>` : "",
       tab === "ana" ? `<button type="button" class="btn btn-ghost btn-sm no-print" id="sc-aprint" data-print-btn="1" title="별표 15 양식으로 인쇄">${icon("print", 17)}<span>Print</span></button>` : ""
     ].join("");
-    root.innerHTML = ui.head({ title: TITLE, meta: "국가항공보안 수준관리지침 별표 점검표 · 지적 조치 · 문제점 분석", actions: acts })
+    root.innerHTML = ui.head({ title: TITLE, meta: MARK + " — 항공보안감독관 점검표(수준관리지침 별표) 사용", actions: acts })
       + `<div class="eq-tabs" role="tablist" aria-label="자체 보안점검 화면">${TABS.map(([id, lb]) =>
         `<button type="button" role="tab" class="eq-tab" data-sctab="${id}" aria-selected="${tab === id}">${esc(lb)}</button>`).join("")}</div>`
       + `<div id="sc-body" data-tab="${tab}">${bodyHTML()}</div>`;
@@ -941,7 +1003,8 @@
   window.SemisSelfcheck = {
     KEY, forms, formOf, anaForm, itemsOf, counts, resultText, findingsOf, allFindings, fState, analysis, pctText, catOf, catLabel, cats,
     TERMS, termDue, isFind, evidence, fill, fillAna, fscLine, recordPkg, anaPkg, downloadRecord, downloadAna, printRecord, printBlank, printAna,
-    newRecord, openRecord, backToList, applyField, keepText, fileName, dateText,
+    newRecord, openRecord, startForm, backToList, applyField, keepText, fileName, dateText,
+    MARK, OFFICIAL, SELF, offOf, nextDue, govAudit, dday, markPkg,
     lastPrint: () => lastPrint,
     setToday(t) { fixedToday = isISO(t) ? t : ""; },
     getState() { return { tab, q, fForm, fYear, fOpen, rid, anaY, anaAudit }; },

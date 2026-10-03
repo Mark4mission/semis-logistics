@@ -216,6 +216,87 @@
     </section>`;
   }
 
+  /* ═════════ 다가오는 점검 (v1.33) — 대상별 묶음 · 가까운 날짜 순 · 30일 안 강조 · 우리 팀 점검은 점검표 바로 가기 ═════════ */
+  const SOON = 30;
+  const canW = () => !!SeMIS.user && SeMIS.roleRank() >= 2 && SeMIS.user.role !== "vendor";
+  const WD = ["일", "월", "화", "수", "목", "금", "토"];
+  const wd = (iso) => WD[new Date(utc(iso)).getUTCDay()];
+  function ddText(due, t) {
+    if (!isISO(due)) return "";
+    const n = dayDiff(t, due);
+    return n === 0 ? "오늘" : n > 0 ? "D-" + n : "지남 " + (-n) + "일";
+  }
+  function upData(t) {
+    const rows = [], daily = [];
+    const S = SL(), C = SC(), A = AU();
+    if (can("inspection") && S) S.templates().forEach(x => {
+      const n = S.nextDue(x, t);
+      if (n.event) return;
+      if (n.daily) { daily.push({ x, n }); return; }
+      rows.push({ grp: x.grp, due: n.due, own: true, name: x.name, sub: [S.whoText(x), cycLabel(x), n.missing ? "누락 " + n.missing : ""].filter(Boolean).join(" · "),
+        miss: n.missing, sl: x.id, patrol: x.kind === "patrol" });
+    });
+    if (can("selfcheck") && C) {
+      const by = {};
+      C.forms().forEach(f => { const n = C.nextDue(f, t); (by[n.due] = by[n.due] || []).push({ f, n }); });
+      Object.keys(by).forEach(due => {
+        const fs = by[due], n0 = fs[0].n;
+        const sub = due ? [C.SELF.by + " → 화물터미널 운영", n0.why === "수검 전" && n0.audit ? "국토부 수검 " + md(n0.audit.start) + " 전" : "연 1회 이상"].join(" · ")
+          : C.SELF.by + " → 화물터미널 운영 · 기록 없음";
+        rows.push({ grp: "sc", due, own: true, name: "감독관 점검표 " + fs.length + "종", sub, forms: fs });
+      });
+    }
+    if (can("audit") && A) (Array.isArray(SeMIS.data.audits) ? SeMIS.data.audits : [])
+      .filter(a => a && a.id && !a.cancelled && isISO(a.start) && (isISO(a.end) && a.end >= a.start ? a.end : a.start) >= t)
+      .forEach(a => rows.push({ grp: "recv", due: a.start, own: false, name: A.auditTitle(a),
+        sub: (a.org || (A.BODIES && A.BODIES[a.body] ? A.BODIES[a.body].short : "외부")) + " → 인천화물팀" + (isISO(a.end) && a.end > a.start ? " · ~" + md(a.end) : ""), aud: a.id }));
+    const GL = Object.assign({}, S ? S.GRPS : {}, { sc: "국토부 수검대비 자체 점검", recv: "인천화물팀 수검 (외부 점검)" });
+    const groups = {};
+    rows.forEach(r => { (groups[r.grp] = groups[r.grp] || { key: r.grp, label: GL[r.grp] || "기타", rows: [] }).rows.push(r); });
+    const key = (d) => d || "9999-12-31";
+    const gs = Object.keys(groups).map(k => groups[k]);
+    gs.forEach(g => { g.rows.sort((a, b) => key(a.due).localeCompare(key(b.due)) || a.name.localeCompare(b.name)); g.first = g.rows[0].due; });
+    gs.sort((a, b) => key(a.first).localeCompare(key(b.first)) || a.label.localeCompare(b.label));
+    const soon = rows.filter(r => isISO(r.due) && r.due <= addDays(t, SOON)).length;
+    const late = rows.filter(r => isISO(r.due) && r.due < t).length;
+    return { groups: gs, daily, soon, late, total: rows.length };
+  }
+  function upRowHTML(r, t, w) {
+    const n = isISO(r.due) ? dayDiff(t, r.due) : null;
+    const cls = n === null ? "" : n < 0 ? " is-late" : n <= SOON ? " is-soon" : "";
+    const dd = n === null ? "-" : ddText(r.due, t);
+    const date = isISO(r.due) ? `${md(r.due)}(${wd(r.due)})` : "";
+    let act = "";
+    if (r.forms) act = `<span class="up-forms">${r.forms.map(x => `<button type="button" class="up-f${x.n.draft ? " is-draft" : ""}" ${w ? `data-ad-scf="${esc(x.f.id)}"` : `data-ad-go="selfcheck"`} title="${esc("별표 " + x.f.id.slice(1) + " " + x.f.title + (x.n.draft ? " · 작성 중" : "") + (x.n.last ? " · 최근 " + dot(x.n.last) : ""))}">별표 ${esc(x.f.id.slice(1))}</button>`).join("")}</span>`;
+    else if (r.own && w) act = `<button type="button" class="btn btn-sm ${cls ? "btn-primary" : "btn-ghost"} up-go" data-ad-sl="${esc(r.sl)}"${r.patrol ? " data-ad-round" : ""}>${icon(r.patrol ? "plus" : "clipboard", 15)}<span>점검표</span></button>`;
+    else if (r.aud) act = `<span class="up-recv">${icon("chevron", 15)}</span>`;
+    const inner = `<span class="up-d mono">${esc(dd)}</span>
+        <span class="up-dt mono">${esc(date)}</span>
+        <span class="up-n"><b>${esc(r.name)}</b><small>${esc(r.sub)}</small></span>`;
+    return r.aud
+      ? `<li class="up-row is-recv${cls}"><button type="button" class="up-main" data-ad-aud="${esc(r.aud)}">${inner}${act}</button></li>`
+      : `<li class="up-row${cls}${r.forms ? " has-forms" : ""}"><div class="up-main">${inner}</div><div class="up-act">${act}</div></li>`;
+  }
+  function upcomingCard(t) {
+    const U = upData(t), w = canW(), LIM = 4;
+    const daily = U.daily.length ? `<div class="up-daily" aria-label="매일 점검"><span class="up-daily-h">오늘 · 매일</span>${U.daily.map(({ x, n }) =>
+      `<button type="button" class="up-day${n.done ? " is-done" : ""}" ${w ? `data-ad-sl="${esc(x.id)}"${x.kind === "patrol" ? " data-ad-round" : ""}` : `data-ad-go="inspection"`} title="${esc(SL().whoText(x))}">${icon(n.done ? "check" : "clipboard", 14)}<span>${esc(x.name)}</span></button>`).join("")}</div>` : "";
+    const groups = U.groups.map(g => {
+      const rs = g.rows.map(r => upRowHTML(r, t, w));
+      const nSoon = g.rows.filter(r => isISO(r.due) && r.due <= addDays(t, SOON)).length;
+      return `<section class="up-grp" data-grp="${esc(g.key)}">
+        <h3 class="up-gh"><b>${esc(g.label)}</b><span class="dc-meta">${g.rows.length}건${nSoon ? " · 30일 안 " + nSoon : ""}</span></h3>
+        <ul class="up-list">${rs.slice(0, LIM).join("")}</ul>
+        ${rs.length > LIM ? `<details class="up-more"><summary>외 ${rs.length - LIM}건</summary><ul class="up-list">${rs.slice(LIM).join("")}</ul></details>` : ""}
+      </section>`;
+    }).join("");
+    return `<section class="card sd-card ad-card ad-up" aria-label="다가오는 점검">
+      <h2 class="card-title">다가오는 점검<span class="dc-meta">30일 안 ${U.soon}건${U.late ? " · 지남 " + U.late : ""}</span></h2>
+      ${daily}
+      ${groups ? `<div class="up-grps">${groups}</div>` : `<p class="ad-ok">${icon("calendar", 16)}<span>예정된 점검이 없습니다.</span></p>`}
+    </section>`;
+  }
+
   /* ═════════ 자체 보안점검 (v1.32) ═════════ */
   function selfcheckCard(t) {
     const S = SC();
@@ -277,11 +358,14 @@
     $$("[data-ad-aud]", root).forEach(b => b.onclick = () => { if (AU()) AU().open(b.dataset.adAud); });
     $$("[data-ad-find]", root).forEach(b => b.onclick = () => { if (AU()) AU().setState({ tab: "findings", sel: "", fStF: b.dataset.adFind }); SeMIS.navigate("audit"); });
     $$("[data-ad-sc]", root).forEach(b => b.onclick = () => { const [id, it] = b.dataset.adSc.split("|"); if (SC()) SC().openRecord(id, it); });
+    $$("[data-ad-scf]", root).forEach(b => b.onclick = () => { if (SC()) SC().startForm(b.dataset.adScf); });
+    $$("[data-ad-sl]", root).forEach(b => b.onclick = () => { if (!SL()) return; if (b.hasAttribute("data-ad-round")) SL().quickRound(b.dataset.adSl); else SL().recordForm(b.dataset.adSl, ""); });
   }
   function render(root) {
     const t = todayISO();
     hideTT();
     const cards = [];
+    if ((can("inspection") && SL()) || (can("selfcheck") && SC()) || (can("audit") && AU())) cards.push(upcomingCard(t));
     if (can("training") && TR()) cards.push(trainCard(t));
     if (can("audit") && AU()) cards.push(auditCard(t));
     if (can("inspection") && SL()) cards.push(seclogCard(t));
@@ -294,5 +378,5 @@
   }
 
   SeMIS.registerModule(MOD, { title: TITLE, render });
-  window.SemisAudDash = { render, kpiHTML, trainCard, auditCard, seclogCard, selfcheckCard, setToday(t) { fixedToday = isISO(t) ? t : ""; } };
+  window.SemisAudDash = { render, kpiHTML, upData, upcomingCard, trainCard, auditCard, seclogCard, selfcheckCard, setToday(t) { fixedToday = isISO(t) ? t : ""; } };
 })();
