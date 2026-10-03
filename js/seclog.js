@@ -17,6 +17,9 @@
      seclog = [{ id, tid, date, time, by, checks[{ t, v(ok|ng|na) }], result(ok|ng), note, action,
                  rounds[{ t, by, note }], flight{ no, reg, dest }, files[], createdAt/By, updatedAt/By }]
        — 점검 항목은 기록할 때 문구째 남긴다(양식을 고쳐도 옛 기록은 그때 점검한 그대로).
+     v1.35 표시(시스템관리자): seclogCfg.vis = { 양식id: { m: "dim" | "hide", msg } } — 숨김은 어디에도 없는 것처럼(기록 · 통계 · 배지 · 증빙 · 달력),
+       흐리게는 카드에 제목 + 안내 문구만, 종이 대장을 보고 넣은 하드카피 집계로 통계에 반영
+     하드카피 집계(seclog 안 한 줄): { id: "hc-"+양식id, tid, hc: true, marks{ 주기키: ok | ng | miss }, cnt{ "YYYY-MM": 건수 }(편별 · 수시), updatedAt/By }
    권한: 열람 · 기록 mgr(권한표 seclog 2/2) · 양식 hq(seclogCfg 2/3). 파일: 비공개 버킷 seclog/ 폴더(열람 2 · 올리기 2).
    수검 대응 센터 증빙: window.SemisEvidence.inspection(mid) → { ok, text } (2.7 · 4.1~4.3 · 5.3 · 5.4 · 7.2 · 7.6 · 9.1.2 · 9.4 · 9.6)
    ═══════════════════════════════════════════════════════ */
@@ -112,14 +115,43 @@
     x.grp = GRPS[x.grp] ? x.grp : (m.grp || "etc");
     return x;
   }
-  function templates(all) {
+  /* v1.35 — 표시(시스템관리자): 숨김 · 흐리게 */
+  const VIS_MSG = "하드카피본 확인";
+  function visMap() { const c = D()[CFG]; return c && c.vis && typeof c.vis === "object" && !Array.isArray(c.vis) ? c.vis : {}; }
+  function visOf(id) {
+    const v = visMap()[id];
+    const m = v && (v.m === "dim" || v.m === "hide") ? v.m : "";
+    return { m, msg: m === "dim" ? (norm(v.msg) || VIS_MSG) : "" };
+  }
+  const stripVis = (t) => { const x = Object.assign({}, t); delete x.vis; delete x.dimMsg; return x; };
+  /* 숨김 · 사용 안 함까지 모든 양식 */
+  function allTemplates() {
     const c = D()[CFG];
     const list = c && Array.isArray(c.templates) && c.templates.length ? c.templates : DEF_TEMPLATES;
-    return list.filter(t => t && t.id && t.name).map(fixT).filter(t => all || t.active !== false)
+    return list.filter(t => t && t.id && t.name).map((t, i) => { const x = fixT(t, i), v = visOf(x.id); x.vis = v.m; x.dimMsg = v.msg; return x; })
       .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
   }
-  const tplOf = (id) => templates(true).find(t => t.id === id) || null;
-  const logs = () => (Array.isArray(D()[KEY]) ? D()[KEY] : []).filter(r => r && r.id && r.tid && isISO(r.date));
+  /* 쓰는 양식 — 숨긴 양식은 없는 것처럼 빠진다(all: 사용 안 함 포함) */
+  function templates(all) { return allTemplates().filter(t => t.vis !== "hide" && (all || t.active !== false)); }
+  const tplOf = (id) => allTemplates().find(t => t.id === id) || null;
+  const hiddenSet = () => { const m = visMap(), o = {}; Object.keys(m).forEach(k => { if (m[k] && m[k].m === "hide") o[k] = true; }); return o; };
+  /* 기록 — 하드카피 집계 줄 · 숨긴 양식의 기록은 빠진다 */
+  const logs = () => { const hid = hiddenSet(); return (Array.isArray(D()[KEY]) ? D()[KEY] : []).filter(r => r && r.id && r.tid && !r.hc && isISO(r.date) && !hid[r.tid]); };
+  /* 하드카피 집계 */
+  const HCID = (tid) => "hc-" + tid;
+  const MARKS = { ok: "확인", ng: "이상", miss: "누락" };
+  const hcItem = (tid) => (Array.isArray(D()[KEY]) ? D()[KEY] : []).find(r => r && r.hc && r.tid === tid) || null;
+  function marksOf(tid) {
+    const h = hcItem(tid), m = h && h.marks && typeof h.marks === "object" ? h.marks : {}, o = {};
+    Object.keys(m).forEach(k => { if (MARKS[m[k]]) o[k] = m[k]; });
+    return o;
+  }
+  function cntOf(tid) {
+    const h = hcItem(tid), m = h && h.cnt && typeof h.cnt === "object" ? h.cnt : {}, o = {};
+    Object.keys(m).forEach(k => { const n = Math.round(Number(m[k])); if (/^\d{4}-\d{2}$/.test(k) && n > 0) o[k] = n; });
+    return o;
+  }
+  const markDone = (v) => v === "ok" || v === "ng";
   function list() { let a = D()[KEY]; if (!Array.isArray(a)) a = D()[KEY] = []; return a; }
   const checksOf = (r) => (Array.isArray(r.checks) ? r.checks : []);
   const roundsOf = (r) => (Array.isArray(r.rounds) ? r.rounds : []).filter(x => x && isHM(x.t));
@@ -181,14 +213,20 @@
     templates().forEach(t => {
       if (t.cycle === "day" || t.cycle === "event") return;
       const first = periodOf(t, isISO(t.from) ? t.from : since());
-      const rs = all.filter(r => r.tid === t.id);
+      const rs = all.filter(r => r.tid === t.id), hm = marksOf(t.id);
       rs.filter(r => r.date >= from && r.date <= to).forEach(r =>
         out.push({ d: r.date, kind: "done", tid: t.id, name: t.name, ng: isNG(r), cell: t.id + "|" + periodOf(t, r.date) }));
+      /* 하드카피 집계로 확인한 주기 — 전산 기록이 없으면 주기 끝(오늘을 넘지 않게)에 완료 */
+      Object.keys(hm).forEach(k => {
+        if (!markDone(hm[k]) || k < first || rs.some(r => periodOf(t, r.date) === k)) return;
+        let d = periodEnd(t, k); if (d > today) d = today;
+        if (d >= from && d <= to) out.push({ d, kind: "done", tid: t.id, name: t.name, ng: hm[k] === "ng", cell: t.id + "|" + k, hc: true });
+      });
       let k = periodOf(t, from);
       for (let guard = 0; guard < 80; guard++) {
         const end = periodEnd(t, k);
         if (end > to) break;
-        if (end >= from && k >= first && !doneIn(t, rs.filter(r => periodOf(t, r.date) === k)))
+        if (end >= from && k >= first && !doneIn(t, rs.filter(r => periodOf(t, r.date) === k)) && !markDone(hm[k]))
           out.push({ d: end, kind: end < today ? "late" : "due", tid: t.id, name: t.name, cell: t.id + "|" + k });
         k = periodOf(t, addDays(end, 1));
       }
@@ -227,8 +265,12 @@
       const days = EVENT_DAYS[t.kind] || 30;
       const from = addDays(today, -(days - 1));
       const recent = rs.filter(r => r.date >= from && r.date <= today);
-      return { event: true, days, recent, count: recent.length, ng: recent.filter(isNG).length, last: rs.map(r => r.date).sort().pop() || "" };
+      /* 하드카피 월별 건수 — 기간과 겹치는 달을 센다 */
+      const cnt = cntOf(t.id);
+      const hcN = Object.keys(cnt).filter(m => periodEnd({ cycle: "month" }, m) >= from && m + "-01" <= today).reduce((n, m) => n + cnt[m], 0);
+      return { event: true, days, recent, count: recent.length + hcN, hcN, ng: recent.filter(isNG).length, last: rs.map(r => r.date).sort().pop() || "" };
     }
+    const hm = marksOf(t.id);
     const start = isISO(t.from) ? t.from : since();
     const cur = periodOf(t, today);
     const first = periodOf(t, start);
@@ -236,13 +278,13 @@
     const by = {};
     rs.forEach(r => { const k = periodOf(t, r.date); (by[k] = by[k] || []).push(r); });
     const cells = keys.map(k => {
-      const g = by[k] || [];
-      const done = doneIn(t, g);
-      return { k, cur: k === cur, done, part: !done && g.length > 0, ng: g.some(isNG), rs: g };
+      const g = by[k] || [], mk = hm[k] || "";
+      const done = doneIn(t, g) || markDone(mk);
+      return { k, cur: k === cur, done, part: !done && g.length > 0, ng: g.some(isNG) || mk === "ng", rs: g, hc: mk };
     });
     const past = cells.filter(c => !c.cur);
     const missing = past.filter(c => !c.done);
-    const curCell = cells.find(c => c.cur) || { k: cur, cur: true, done: doneIn(t, by[cur] || []), rs: by[cur] || [] };
+    const curCell = cells.find(c => c.cur) || { k: cur, cur: true, done: doneIn(t, by[cur] || []) || markDone(hm[cur]), rs: by[cur] || [], hc: hm[cur] || "" };
     return { cells, past, missing, cur: curCell, ng: cells.filter(c => c.ng).length, last: rs.map(r => r.date).sort().pop() || "" };
   }
   const missCount = (today) => templates().reduce((n, t) => { const s = status(t, today); return n + (s.event ? 0 : s.missing.length); }, 0);
@@ -284,7 +326,7 @@
     const due = st.filter(x => !x.s.event && !x.s.cur.done).length;
     const miss = st.reduce((n, x) => n + (x.s.event ? 0 : x.s.missing.length), 0);
     const todayN = logs().filter(r => r.date === t0).length;
-    const ng = logs().filter(r => r.date >= addDays(t0, -29) && isNG(r)).length;
+    const ng = logs().filter(r => r.date >= addDays(t0, -29) && isNG(r)).length + hcNgIn(addDays(t0, -29), t0);
     return ui.stats([
       { label: "이번 주기 미기록", value: due, sub: "양식 " + ts.filter(t => t.cycle !== "event").length + "종 중", tone: due ? "warn" : "ok" },
       { label: "누락", value: miss, sub: "지난 주기", tone: miss ? "bad" : "ok" },
@@ -292,7 +334,26 @@
       { label: "이상 (30일)", value: ng, tone: ng ? "warn" : "muted" }
     ]) + (ts.length ? `<div class="sl-cards">${st.map(x => cardHTML(x.t, x.s, t0)).join("")}</div>` : ui.empty("사용 중인 점검 양식이 없습니다."));
   }
+  /* 하드카피 집계의 '이상' 주기 수 — 날짜는 주기 끝(오늘을 넘지 않게) */
+  function hcNgIn(from, to) {
+    const t0 = todayISO();
+    return templates().reduce((n, t) => {
+      if (t.cycle === "event") return n;
+      const hm = marksOf(t.id);
+      return n + Object.keys(hm).filter(k => {
+        if (hm[k] !== "ng") return false;
+        let d = periodEnd(t, k); if (d > t0) d = t0;
+        return d >= from && d <= to;
+      }).length;
+    }, 0);
+  }
+  /* 흐리게 — 제목과 안내 문구만(누르면 하드카피 집계) */
+  const dimCardHTML = (t) => `<button type="button" class="sl-card is-dim" data-tid="${esc(t.id)}" data-sl-hc="${esc(t.id)}" aria-label="${esc(t.name + " — " + t.dimMsg)}">
+      <span class="sl-card-h"><b>${esc(t.name)}</b></span>
+      <span class="sl-dim">${icon("doc", 16)}<span>${esc(t.dimMsg)}</span></span>
+    </button>`;
   function cardHTML(t, s, t0) {
+    if (t.vis === "dim") return dimCardHTML(t);
     const w = canW();
     let state, tone, sub = "";
     if (s.event) {
@@ -334,14 +395,15 @@
       <div class="sl-legend"><span data-c="ok">기록</span><span data-c="ng">이상 있음</span><span data-c="part">일부</span><span data-c="miss">누락</span><span data-c="cur">진행 중</span></div>
       ${ts.length ? ts.map(t => {
         const s = status(t, t0);
-        if (s.event) return `<div class="sl-row"><div class="sl-row-h"><b>${esc(t.name)}</b><span class="sl-cyc">편별 · 수시</span>${evTags(t)}</div>
+        const hcTag = t.vis === "dim" ? `<span class="sl-hc">${esc(t.dimMsg)}</span>` : "";
+        if (s.event) return `<div class="sl-row${t.vis === "dim" ? " is-dim" : ""}"><div class="sl-row-h"><b>${esc(t.name)}</b><span class="sl-cyc">편별 · 수시</span>${hcTag}${evTags(t)}${t.vis === "dim" && canW() ? `<span class="spacer"></span><button type="button" class="sl-mbtn" data-sl-hc="${esc(t.id)}">집계 입력</button>` : ""}</div>
           <div class="sl-row-b">${s.count ? `최근 ${s.days === 365 ? "1년" : s.days + "일"} <b class="mono">${s.count}</b>건${s.ng ? ` · 이상 <b class="mono">${s.ng}</b>` : ""} · 최근 ${esc(dot(s.last))}` : "기록 없음"}</div></div>`;
         const k = s.past.length - s.missing.length;
-        return `<div class="sl-row"><div class="sl-row-h"><b>${esc(t.name)}</b><span class="sl-cyc">${esc(cycLabel(t))}</span>${evTags(t)}
+        return `<div class="sl-row${t.vis === "dim" ? " is-dim" : ""}"><div class="sl-row-h"><b>${esc(t.name)}</b><span class="sl-cyc">${esc(cycLabel(t))}</span>${hcTag}${evTags(t)}
             <span class="spacer"></span><span class="sl-rate mono">${s.past.length ? k + "/" + s.past.length : "-"}</span></div>
           <div class="sl-strip" role="list">${s.cells.map(c => {
             const cls = c.cur ? (c.done ? (c.ng ? "ng" : "ok") : "cur") : c.done ? (c.ng ? "ng" : "ok") : c.part ? "part" : "miss";
-            const lab = periodLabel(t, c.k) + " · " + ({ ok: "기록", ng: "이상 있음", part: "일부", miss: "누락", cur: "진행 중" })[cls];
+            const lab = periodLabel(t, c.k) + " · " + ({ ok: "기록", ng: "이상 있음", part: "일부", miss: "누락", cur: "진행 중" })[cls] + (c.hc && !c.rs.length ? " (하드카피)" : "");
             return `<button type="button" class="sl-cell" role="listitem" data-c="${cls}" data-sl-cell="${esc(t.id)}|${esc(c.k)}" title="${esc(lab)}" aria-label="${esc(lab)}"></button>`;
           }).join("")}</div>
           ${s.missing.length ? `<div class="sl-miss"><span>누락</span>${s.missing.slice(-8).map(c => canW()
@@ -424,6 +486,7 @@
   /* 기록 폼 — tid 양식, rid 기존 기록(없으면 새로), preset { date } */
   function recordForm(tid, rid, preset) {
     if (!canW()) return;
+    if (!rid) { const td = tplOf(tid); if (td && td.vis === "dim") return hcForm(td.id, preset && preset.k); }
     const x = rid ? logs().find(r => r.id === rid) : null;
     if (rid && !x) return;
     const t = tplOf(x ? x.tid : tid) || templates()[0];
@@ -539,6 +602,7 @@
     if (!canW()) return;
     const t = tplOf(tid);
     if (!t) return;
+    if (t.vis === "dim") return hcForm(t.id);
     const t0 = todayISO();
     const cur = logs().find(r => r.tid === t.id && r.date === t0);
     openModal(`<h3>순찰 기록 <small class="au-mh">${esc(t.name)} · ${esc(dot(t0))}</small></h3>
@@ -574,7 +638,8 @@
   function openCell(key) {
     const i = String(key || "").indexOf("|");
     const t = tplOf(key.slice(0, i)), k = key.slice(i + 1);
-    if (!t) return;
+    if (!t || t.vis === "hide") return;
+    if (t.vis === "dim") return hcForm(t.id, k);
     const rs = logs().filter(r => r.tid === t.id && periodOf(t, r.date) === k);
     if (rs.length === 1 && canW()) return recordForm(t.id, rs[0].id);
     if (rs.length) { tab = "list"; fTid = t.id; fMonth = rs[0].date.slice(0, 7); q = ""; SeMIS.renderView(); return; }
@@ -584,7 +649,8 @@
   /* ═════════ 점검 양식 (hq) ═════════ */
   function templatesForm() {
     if (!SeMIS.canEdit()) return;
-    const ts = templates(true).map(t => JSON.parse(JSON.stringify(t)));
+    const ts = templates(true).map(t => JSON.parse(JSON.stringify(stripVis(t))));
+    const hidden = allTemplates().filter(t => t.vis === "hide").map(stripVis);      // 숨긴 양식은 보이지 않게 두고 그대로 저장
     const used = (id) => logs().some(r => r.tid === id);
     const row = (t, i) => `<div class="sl-tpl" data-ti="${i}">
       <div class="sl-tpl-h"><input data-k="name" value="${esc(t.name)}" maxlength="40" aria-label="양식 이름">
@@ -633,9 +699,177 @@
       const since0 = since();                              // 첫 저장: 이미 쌓인 기록의 첫날부터(없으면 오늘)
       const c = cfg();
       if (!isISO(c.since)) c.since = since0;
-      c.templates = out.map(fixT);
+      c.templates = out.map(fixT).map(stripVis).concat(hidden.map((t, i) => Object.assign(t, { order: out.length + i })));
       SeMIS.save(); closeModal(); paint(); toast("저장했습니다.");
     };
+  }
+
+  function setState(o) {
+    o = o || {};
+    if (o.tab) tab = o.tab; if (o.q !== undefined) q = String(o.q || "");
+    if (o.fTid !== undefined) fTid = String(o.fTid || ""); if (o.fMonth !== undefined) fMonth = String(o.fMonth || "");
+    if (o.fNG !== undefined) fNG = !!o.fNG;
+  }
+
+  /* ═════════ 표시 관리 (v1.35, 시스템관리자) ═════════ */
+  function visForm() {
+    if (!SeMIS.isAdmin()) return;
+    const vm = visMap(), shown = allTemplates().filter(t => t.active !== false);
+    SeMIS.ui.visForm({
+      title: TITLE,
+      rows: shown.map(t => ({ id: t.id, name: t.name, sub: cycLabel(t), m: t.vis, msg: (vm[t.id] && vm[t.id].msg) || "" })),
+      onSave(map) {
+        const keep = {};
+        Object.keys(vm).forEach(id => { if (!shown.some(t => t.id === id)) keep[id] = vm[id]; });   // 목록에 없는(사용 안 함) 양식 값은 그대로
+        cfg().vis = Object.assign(keep, map);
+        SeMIS.save(); SeMIS.renderView(); toast("저장했습니다.");
+      }
+    });
+  }
+
+  /* ═════════ 하드카피 집계 (v1.35) — 종이 대장을 보고 주기마다 확인 · 이상 · 누락(편별 · 수시는 월별 건수) ═════════ */
+  function hcForm(tid, focusK) {
+    const t = tplOf(tid);
+    if (!t || t.vis === "hide" || t.active === false) return;
+    const w = canW(), t0 = todayISO();
+    const start = isISO(t.from) ? t.from : since();
+    const marks = marksOf(t.id), cnt = cntOf(t.id);
+    const rs = logs().filter(r => r.tid === t.id);
+    const recBy = {};
+    rs.forEach(r => { const k = periodOf(t, r.date); (recBy[k] = recBy[k] || []).push(r); });
+    const recDone = (k) => doneIn(t, recBy[k] || []);
+    const dis = w ? "" : " disabled";
+    const segFor = (k) => `<span class="hc-seg" role="group" aria-label="${esc(periodLabel(t, k))}">${Object.keys(MARKS).map(v =>
+      `<button type="button" data-hk="${esc(k)}" data-hv="${v}" aria-pressed="${marks[k] === v}"${dis}>${MARKS[v]}</button>`).join("")}</span>`;
+    let ym = "", body = "";
+    const ev = t.cycle === "event";
+    const firstYM = start.slice(0, 7), curYM = t0.slice(0, 7);
+    const ymAdd = (m, n) => { const d = new Date(Date.UTC(+m.slice(0, 4), +m.slice(5, 7) - 1 + n, 1)); return d.getUTCFullYear() + "-" + p2(d.getUTCMonth() + 1); };
+    if (t.cycle === "day") {
+      ym = /^\d{4}-\d{2}/.test(focusK || "") ? String(focusK).slice(0, 7) : curYM;
+      if (ym < firstYM) ym = firstYM; if (ym > curYM) ym = curYM;
+    }
+    const dayGrid = () => {
+      const f = ym + "-01", last = periodEnd({ cycle: "month" }, ym);
+      const lead = dow(f);
+      let cells = WD.map((x, i) => `<span class="hc-wd${i === 0 ? " is-sun" : i === 6 ? " is-sat" : ""}">${x}</span>`).join("");
+      for (let i = 0; i < lead; i++) cells += `<span class="hc-d is-pad"></span>`;
+      for (let d = f; d <= last; d = addDays(d, 1)) {
+        const n = Number(d.slice(8)), we = dow(d) === 0 || dow(d) === 6;
+        if (d < start || d > t0 || (t.days === "weekday" && we)) { cells += `<span class="hc-d is-off">${n}</span>`; continue; }
+        if (recDone(d)) { cells += `<span class="hc-d is-rec" title="전산 기록">${n}</span>`; continue; }
+        const v = marks[d] || "";
+        cells += `<button type="button" class="hc-d" data-hd="${d}" data-v="${v}" aria-label="${esc(periodLabel(t, d) + " " + (MARKS[v] || "미입력"))}"${dis}>${n}</button>`;
+      }
+      return `<div class="hc-nav"><button type="button" class="btn btn-ghost btn-sm" data-hm="-1" aria-label="이전 달"${ym <= firstYM ? " disabled" : ""}>${icon("chevl", 15)}</button>
+          <b>${ym.slice(0, 4)}년 ${Number(ym.slice(5))}월</b>
+          <button type="button" class="btn btn-ghost btn-sm" data-hm="1" aria-label="다음 달"${ym >= curYM ? " disabled" : ""}>${icon("chevron", 15)}</button>
+          ${w ? `<span class="spacer"></span><button type="button" class="btn btn-ghost btn-sm" id="hc-fill">빈 날 모두 확인</button>` : ""}</div>
+        <div class="hc-grid">${cells}</div>
+        <div class="hc-lg"><span data-v="ok">확인</span><span data-v="ng">이상</span><span data-v="miss">누락</span><span data-v="rec">전산 기록</span></div>`;
+    };
+    if (t.cycle === "day") body = `<div id="hc-day">${dayGrid()}</div>`;
+    else if (ev) {
+      const ms = [];
+      for (let m = curYM, g = 0; m >= firstYM && g < 24; m = ymAdd(m, -1), g++) ms.push(m);
+      body = `<ol class="hc-rows">${ms.map(m => {
+        const dn = rs.filter(r => r.date.slice(0, 7) === m).length;
+        return `<li><span class="hc-l mono">${m.replace("-", ".")}</span>${dn ? `<span class="hc-rec">전산 ${dn}건</span>` : ""}
+          <label class="hc-cnt"><input type="number" min="0" max="999" inputmode="numeric" data-hc-m="${m}" value="${esc(cnt[m] || "")}" aria-label="${esc(m)} 건수"${dis}><span>건</span></label></li>`;
+      }).join("")}</ol>`;
+    } else {
+      const keys = periodsBack(t, t0, Math.max(4, (WINDOW[t.cycle] || 12))).filter(k => k >= periodOf(t, start)).reverse();
+      body = keys.length ? `<ol class="hc-rows">${keys.map(k => `<li data-hrow="${esc(k)}"${k === focusK ? ' class="is-focus"' : ""}><span class="hc-l">${esc(periodLabel(t, k))}${k === periodOf(t, t0) ? ' <small>진행 중</small>' : ""}</span>
+          ${recDone(k) ? `<span class="hc-rec">전산 기록</span>` : segFor(k)}</li>`).join("")}</ol>` : ui.empty("집계할 주기가 없습니다.");
+    }
+    openModal(`<h3>하드카피 집계 <small class="au-mh">${esc(t.name)} · ${esc(cycLabel(t))}</small></h3>
+      ${body}
+      <div class="modal-actions"><button type="button" class="btn btn-ghost" data-act="cancel">${w ? "취소" : "닫기"}</button>${w ? '<button type="button" class="btn btn-primary" data-act="ok">저장</button>' : ""}</div>`, { wide: t.cycle === "day" });
+    const wireDay = () => {
+      const box = $("#hc-day");
+      if (!box) return;
+      $$("[data-hd]", box).forEach(b => b.onclick = () => {
+        const order = ["", "ok", "ng", "miss"];
+        const v = order[(order.indexOf(marks[b.dataset.hd] || "") + 1) % order.length];
+        if (v) marks[b.dataset.hd] = v; else delete marks[b.dataset.hd];
+        b.dataset.v = v;
+        b.setAttribute("aria-label", periodLabel(t, b.dataset.hd) + " " + (MARKS[v] || "미입력"));
+      });
+      $$("[data-hm]", box).forEach(b => b.onclick = () => { ym = ymAdd(ym, Number(b.dataset.hm)); box.innerHTML = dayGrid(); wireDay(); });
+      const fill = $("#hc-fill", box);
+      if (fill) fill.onclick = () => { $$("[data-hd]", box).forEach(b => { if (!marks[b.dataset.hd]) { marks[b.dataset.hd] = "ok"; b.dataset.v = "ok"; } }); };
+    };
+    wireDay();
+    $$("#modal-box [data-hk]").forEach(b => b.onclick = () => {
+      const k = b.dataset.hk;
+      if (marks[k] === b.dataset.hv) delete marks[k]; else marks[k] = b.dataset.hv;
+      $$(`#modal-box [data-hk="${k}"]`).forEach(o => o.setAttribute("aria-pressed", String(marks[k] === o.dataset.hv)));
+    });
+    $("#modal-box [data-act=cancel]").onclick = closeModal;
+    const okb = $("#modal-box [data-act=ok]");
+    if (okb) okb.onclick = () => {
+      const c2 = {};
+      if (ev) {
+        $$("#modal-box [data-hc-m]").forEach(i => { const n = Math.round(Number(i.value)); if (i.value !== "" && (!Number.isFinite(n) || n < 0 || n > 999)) return; if (n > 0) c2[i.dataset.hcM] = n; });
+        Object.keys(cnt).forEach(m => { if (!$(`#modal-box [data-hc-m="${m}"]`)) c2[m] = cnt[m]; });   // 목록 밖(오래된) 달은 그대로
+      }
+      const arr = list();
+      let it = arr.find(r => r && r.hc && r.tid === t.id);
+      if (!it) { it = { id: HCID(t.id), tid: t.id, hc: true, marks: {}, cnt: {} }; arr.push(it); }
+      if (ev) it.cnt = c2; else it.marks = Object.assign({}, marks);
+      it.updatedAt = new Date().toISOString(); it.updatedBy = me();
+      SeMIS.save(); closeModal(); paint(); toast("저장했습니다.");
+    };
+  }
+
+  /* ═════════ 일정관리 연동 (v1.35) — 기간 [from, to] 의 점검 일정(읽기 전용 · 일정관리가 그릴 때 계산)
+     주 · 월 · 분기 · 연 양식 = 주기 마감일마다 한 건, 매일 양식 = 날마다 '매일 점검' 한 건(양식 묶음). 편별 · 수시는 넣지 않는다 ═════════ */
+  function calItems(from, to, today) {
+    today = today || todayISO();
+    const out = [];
+    if (!isISO(from) || !isISO(to) || from > to) return out;
+    const ts = templates(), all = logs(), s0 = since(), w = canW();
+    const navTo = (st) => () => { setState(st); if (routeNow() === MOD) SeMIS.renderView(); else SeMIS.navigate(MOD); };
+    const dash = { lb: "점검 · 교육 대시보드", ico: "grid", run: () => SeMIS.navigate("aud-dash") };
+    ts.forEach(t => {
+      if (t.cycle === "day" || t.cycle === "event") return;
+      const first = periodOf(t, isISO(t.from) ? t.from : s0);
+      const rs = all.filter(r => r.tid === t.id), hm = marksOf(t.id);
+      let k = periodOf(t, from);
+      for (let guard = 0; guard < 400; guard++) {
+        const end = periodEnd(t, k), st = periodStart(t, k);
+        if (end > to) break;
+        if (k >= first) {
+          const g = rs.filter(r => periodOf(t, r.date) === k);
+          const done = doneIn(t, g) || markDone(hm[k]);
+          let go;
+          if (!w) go = { lb: TITLE, ico: "clipboard", run: navTo({ tab: "status" }) };
+          else if (t.vis === "dim") go = { lb: "하드카피 집계", ico: "clipboard", run: () => hcForm(t.id, k) };
+          else if (st > today) go = { lb: TITLE, ico: "clipboard", run: navTo({ tab: "today" }) };
+          else if (!done && end >= today) go = { lb: "점검표", ico: "clipboard", run: () => recordForm(t.id, "") };
+          else go = { lb: "점검표", ico: "clipboard", run: () => openCell(t.id + "|" + k) };
+          out.push({ ik: "sl:" + t.id + ":" + k, start: end, end, title: "[점검] " + t.name, done, late: !done && end < today, color: "red",
+            sub: [periodLabel(t, k), whoText(t), t.vis === "dim" ? t.dimMsg : "", g.some(isNG) || hm[k] === "ng" ? "이상 있음" : ""].filter(Boolean).join(" · "),
+            go: [go, dash] });
+        }
+        k = periodOf(t, addDays(end, 1));
+      }
+    });
+    const days = ts.filter(t => t.cycle === "day").map(t => {
+      const by = {};
+      all.forEach(r => { if (r.tid === t.id) (by[r.date] = by[r.date] || []).push(r); });
+      return { t, first: isISO(t.from) ? t.from : s0, by, hm: marksOf(t.id) };
+    });
+    if (days.length) for (let d = from, g = 0; d <= to && g < 400; d = addDays(d, 1), g++) {
+      const app = days.filter(m => d >= m.first && !(m.t.days === "weekday" && (dow(d) === 0 || dow(d) === 6)));
+      if (!app.length) continue;
+      const st = app.map(m => ({ t: m.t, done: doneIn(m.t, m.by[d] || []) || markDone(m.hm[d]) }));
+      const n = st.filter(x => x.done).length, N = st.length, past = d <= today;
+      out.push({ ik: "sld:" + d, start: d, end: d, title: "[점검] 매일 점검" + (past && n < N ? " " + n + "/" + N : ""), done: past && n === N, late: d < today && n < N, soft: !past, color: "red",
+        sub: st.map(x => x.t.name + (past ? (x.done ? " 완료" : " 미기록") : "")).join(" · "),
+        go: [{ lb: d < today ? "기록 현황" : TITLE, ico: "clipboard", run: navTo({ tab: d < today ? "status" : "today" }) }, dash] });
+    }
+    return out;
   }
 
   /* ═════════ 렌더 ═════════ */
@@ -656,6 +890,7 @@
     $$("[data-sl-round]", box).forEach(b => b.onclick = () => quickRound(b.dataset.slRound));
     $$("[data-sl-cell]", box).forEach(b => b.onclick = () => openCell(b.dataset.slCell));
     $$("[data-sl-late]", box).forEach(b => b.onclick = () => openCell(b.dataset.slLate));
+    $$("[data-sl-hc]", box).forEach(b => b.onclick = () => hcForm(b.dataset.slHc));
     $$("tr[data-slid]", box).forEach(tr => {
       const open = (ev) => { if (ev && ev.target.closest("a")) return; if (canW()) recordForm("", tr.dataset.slid); else viewRecord(tr.dataset.slid); };
       tr.onclick = open;
@@ -677,13 +912,14 @@
   }
   function paint() {
     const box = document.getElementById("sl-body");
-    if (!box) { if (routeNow() === MOD || routeNow() === "aud-dash") SeMIS.renderView(); return; }   // 대시보드 '다가오는 점검'에서 기록한 뒤
+    if (!box) { if (routeNow() === MOD || routeNow() === "aud-dash" || routeNow() === "schedule") SeMIS.renderView(); return; }   // 대시보드 · 일정관리에서 기록한 뒤
     box.innerHTML = bodyHTML();
     wire(box);
     if (SeMIS.renderNav) try { SeMIS.renderNav(); } catch (e) { /* 메뉴 배지만 영향 */ }
   }
   function render(root) {
     const act = [
+      SeMIS.isAdmin() ? `<button type="button" class="btn btn-ghost btn-sm m-ed" id="sl-vis" title="표시 · 흐리게 · 숨김">${icon("eye", 16)}<span>표시 관리</span></button>` : "",
       SeMIS.canEdit() ? `<button type="button" class="btn btn-ghost btn-sm" id="sl-tpl">${icon("sliders", 16)}<span>점검 양식</span></button>` : "",
       canW() ? `<button type="button" class="btn btn-primary btn-sm" id="sl-add">${icon("plus", 16)}<span>기록</span></button>` : ""
     ].join("");
@@ -693,12 +929,13 @@
       + `<div id="sl-body">${bodyHTML()}</div>`;
     $$("[data-sltab]", root).forEach(b => b.onclick = () => { tab = b.dataset.sltab; SeMIS.renderView(); });
     const tb = $("#sl-tpl", root); if (tb) tb.onclick = templatesForm;
+    const vb = $("#sl-vis", root); if (vb) vb.onclick = visForm;
     const ab = $("#sl-add", root); if (ab) ab.onclick = () => pickTemplate();
     wire(root);
   }
   /* 머리말 '기록' — 양식 고르기 */
   function pickTemplate() {
-    const ts = templates();
+    const ts = templates().filter(t => t.vis !== "dim");
     if (!ts.length) { toast("사용 중인 점검 양식이 없습니다.", true); return; }
     openModal(`<h3>기록할 양식</h3><div class="sl-pick">${ts.map(t => `<button type="button" class="sl-pbtn" data-pick="${esc(t.id)}"><b>${esc(t.name)}</b><span>${esc([whoText(t), cycLabel(t)].filter(Boolean).join(" · "))}</span></button>`).join("")}</div>
       <div class="modal-actions"><button type="button" class="btn btn-ghost" data-act="cancel">닫기</button></div>`);
@@ -723,13 +960,9 @@
     DEF_TEMPLATES, templates, tplOf, status, evidence, periodOf, periodsBack, periodLabel, missCount, isNG,
     GRPS, DEF_META, whoText, cycLabel, periodEnd, nextDue, calEvents,
     recordForm, quickRound, templatesForm, openCell,
+    allTemplates, visOf, marksOf, cntOf, hcForm, visForm, VIS_MSG, calItems, logs, hcNgIn,
     setToday(t, hm) { fixedToday = isISO(t) ? t : ""; fixedNow = isHM(hm) ? hm : ""; },
     getState() { return { tab, q, fTid, fMonth, fNG }; },
-    setState(o) {
-      o = o || {};
-      if (o.tab) tab = o.tab; if (o.q !== undefined) q = String(o.q || "");
-      if (o.fTid !== undefined) fTid = String(o.fTid || ""); if (o.fMonth !== undefined) fMonth = String(o.fMonth || "");
-      if (o.fNG !== undefined) fNG = !!o.fNG;
-    }
+    setState
   };
 })();

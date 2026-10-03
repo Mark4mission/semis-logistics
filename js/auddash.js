@@ -6,6 +6,7 @@
    - 수검 대응: window.SemisAudit (nextAudit · prep · phase · allFindings · overdueF · repeatCount)
    - 보안 기록부: window.SemisSeclog (templates · status · isNG)
    - 자체 보안점검: window.SemisSelfcheck (forms · allFindings · fState · openRecord) — v1.32
+   v1.35: 숨긴 점검(시스템관리자 '표시 관리')은 각 모듈 API 에서 이미 빠져 있고, 흐리게 한 점검은 하드카피 집계 · 기록이 통계에 들어온다
    메뉴가 숨겨졌거나 권한 밖인 모듈의 카드는 그리지 않는다. 색: 상태 3색(유효 · 갱신 필요 · 정지 · 미이수)과
    교육 실시 2색(당사 · 협력사) — dataviz 검증기(CVD ΔE ≥ 8) 통과값.
    ═══════════════════════════════════════════════════════ */
@@ -84,7 +85,8 @@
     }
     if (can("selfcheck") && SC()) {
       const fs = SC().allFindings(), open = fs.filter(x => SC().fState(x.fx, t) !== "done"), late = open.filter(x => SC().fState(x.fx, t) === "late").length;
-      tiles.push({ label: "자체 점검 지적", value: open.length, sub: late ? "기한 경과 " + late : "R/C · 미흡 미결", tone: late ? "bad" : open.length ? "warn" : "ok" });
+      const n = open.length + (SC().hcOpen ? SC().hcOpen() : 0);   // v1.35 하드카피 기록의 미결 건수 포함
+      tiles.push({ label: "자체 점검 지적", value: n, sub: late ? "기한 경과 " + late : "R/C · 미흡 미결", tone: late ? "bad" : n ? "warn" : "ok" });
     }
     return tiles.length ? ui.stats(tiles) : "";
   }
@@ -187,9 +189,9 @@
   function seclogCard(t) {
     const S = SL();
     const ts = S.templates();
-    const logs = (Array.isArray(SeMIS.data.seclog) ? SeMIS.data.seclog : []).filter(r => r && r.id && isISO(r.date));
+    const logs = S.logs ? S.logs() : (Array.isArray(SeMIS.data.seclog) ? SeMIS.data.seclog : []).filter(r => r && r.id && isISO(r.date));   // v1.35 숨긴 양식 · 하드카피 집계 줄 제외
     const from = addDays(t, -29);
-    const ng30 = logs.filter(r => r.date >= from && r.date <= t && S.isNG(r)).length;
+    const ng30 = logs.filter(r => r.date >= from && r.date <= t && S.isNG(r)).length + (S.hcNgIn ? S.hcNgIn(from, t) : 0);
     const n30 = logs.filter(r => r.date >= from && r.date <= t).length;
     const rows = ts.map(x => {
       const s = S.status(x, t);
@@ -239,8 +241,8 @@
       const n = S.nextDue(x, t);
       if (n.event) return;
       if (n.daily) { daily.push({ x, n }); return; }
-      own.push({ grp: x.grp, due: n.due, own: true, name: x.name, sub: [S.whoText(x), cycLabel(x), n.missing ? "누락 " + n.missing : ""].filter(Boolean).join(" · "),
-        miss: n.missing, sl: x.id, patrol: x.kind === "patrol" });
+      own.push({ grp: x.grp, due: n.due, own: true, name: x.name, sub: [S.whoText(x), cycLabel(x), x.vis === "dim" ? x.dimMsg : "", n.missing ? "누락 " + n.missing : ""].filter(Boolean).join(" · "),
+        miss: n.missing, sl: x.id, patrol: x.kind === "patrol", dim: x.vis === "dim" });
     });
     if (can("selfcheck") && C) {
       const by = {}, cf = C.selfCfg();
@@ -283,7 +285,7 @@
     const date = !isISO(r.due) ? "" : r.due.slice(0, 4) === t.slice(0, 4) ? `${md(r.due)}(${wd(r.due)})` : `${r.due.slice(2, 4)}.${md(r.due)}`;   // 다른 해는 연도(요일 대신)
     let act = "";
     if (r.forms) act = `<span class="uc-forms">${r.forms.map(x => `<button type="button" class="uc-f${x.n.draft ? " is-draft" : ""}" ${w ? `data-ie-scf="${esc(x.f.id)}"` : `data-ie-go="selfcheck"`} title="${esc("별표 " + x.f.id.slice(1) + " " + x.f.title + (x.n.draft ? " · 작성 중" : "") + (x.n.last ? " · 최근 " + dot(x.n.last) : ""))}">별표 ${esc(x.f.id.slice(1))}</button>`).join("")}</span>`;
-    else if (r.own && w) act = `<button type="button" class="btn btn-sm ${cls ? "btn-primary" : "btn-ghost"} uc-go" data-ie-sl="${esc(r.sl)}"${r.patrol ? " data-ie-round" : ""}>${icon(r.patrol ? "plus" : "clipboard", 15)}<span>점검표</span></button>`;
+    else if (r.own && w) act = `<button type="button" class="btn btn-sm ${cls ? "btn-primary" : "btn-ghost"} uc-go" data-ie-sl="${esc(r.sl)}"${r.patrol ? " data-ie-round" : ""}>${icon(r.patrol && !r.dim ? "plus" : "clipboard", 15)}<span>${r.dim ? "집계" : "점검표"}</span></button>`;
     else if (r.aud) act = `<span class="uc-recv">${icon("chevron", 15)}</span>`;
     const inner = `<span class="uc-d mono">${esc(dd)}</span>
         <span class="uc-dt mono">${esc(date)}</span>
@@ -373,8 +375,11 @@
       ev.push({ d: x.d, kind: x.kind, name: x.name, sub: (tp ? S.whoText(tp) + " · " + cycLabel(tp) : "") + (x.kind === "done" ? (x.ng ? " · 이상 있음" : "") : " · 기록 없음"), cell: x.cell, ng: !!x.ng });
     });
     if (can("selfcheck") && C) {
-      (Array.isArray(SeMIS.data.selfChecks) ? SeMIS.data.selfChecks : []).filter(r => r && r.id && r.status === "done" && isISO(r.date) && r.date >= R.from && r.date <= R.to && C.formOf(r.form))
+      const vis = new Set(C.forms().map(f => f.id));
+      (Array.isArray(SeMIS.data.selfChecks) ? SeMIS.data.selfChecks : []).filter(r => r && r.id && !r.hc && r.status === "done" && isISO(r.date) && r.date >= R.from && r.date <= R.to && vis.has(r.form))
         .forEach(r => { const f = C.formOf(r.form); ev.push({ d: r.date, kind: "done", name: "별표 " + f.id.slice(1) + " 자체 점검", sub: f.title + (r.insp ? " · " + r.insp : ""), scid: r.id }); });
+      if (C.hcRecs) C.hcRecs().filter(r => r.date >= R.from && r.date <= R.to)
+        .forEach(r => { const f = C.formOf(r.form); ev.push({ d: r.date, kind: "done", name: "별표 " + f.id.slice(1) + " 자체 점검", sub: f.title + (r.insp ? " · " + r.insp : "") + " · 하드카피", schc: f.id }); });
       const by = {};
       C.forms().forEach(f => { const n = C.nextDue(f, t); if (isISO(n.due) && n.due >= R.from && n.due <= R.to) (by[n.due] = by[n.due] || []).push(f); });
       Object.keys(by).forEach(d => ev.push({ d, kind: d < t ? "late" : "due", name: "자체 점검 " + by[d].length + "종", sub: "별표 " + by[d].map(f => f.id.slice(1)).join(" · ") + " · " + C.selfCfg().by, scforms: 1 }));
@@ -385,7 +390,7 @@
     return { R, days, n: ev.filter(e => e.d >= R.first && e.d <= R.last).length };
   }
   const evAttr = (e, w) => e.aud ? `data-ie-aud="${esc(e.aud)}"` : e.cell ? (w ? `data-ie-cell="${esc(e.cell)}"` : `data-ie-go="inspection"`)
-    : e.scid ? `data-ie-sc="${esc(e.scid)}|"` : e.scforms ? `data-ie-scforms` : "";
+    : e.scid ? `data-ie-sc="${esc(e.scid)}|"` : e.schc ? `data-ie-schc="${esc(e.schc)}"` : e.scforms ? `data-ie-scforms` : "";
   function calAgenda(d, list, t, w, auto) {
     const head = `${md(d)}(${wd(d)})${d === t ? " · 오늘" : ""}`;
     return `<div class="ic-ag${auto ? " is-auto" : ""}" aria-live="polite">
@@ -431,16 +436,19 @@
   function selfcheckCard(t) {
     const S = SC();
     const y = t.slice(0, 4);
-    const recs = (Array.isArray(SeMIS.data.selfChecks) ? SeMIS.data.selfChecks : []).filter(r => r && r.id && isISO(r.date) && S.formOf(r.form));
+    const vis = new Set(S.forms().map(f => f.id));                       // v1.35 숨긴 별표는 없는 것처럼
+    const hcs = S.hcRecs ? S.hcRecs() : [];                                // 하드카피 기록 = 완료로 셈
+    const recs = (Array.isArray(SeMIS.data.selfChecks) ? SeMIS.data.selfChecks : []).filter(r => r && r.id && !r.hc && isISO(r.date) && vis.has(r.form)).concat(hcs.map(r => Object.assign({}, r, { status: "done" })));
     const yr = recs.filter(r => r.date.slice(0, 4) === y);
     const rows = S.forms().map(f => {
-      const rs = yr.filter(r => r.form === f.id), done = rs.filter(r => r.status === "done").length;
+      const rs = yr.filter(r => r.form === f.id), done = rs.filter(r => r.status === "done").length, hc = rs.filter(r => r.hc).length;
       const last = recs.filter(r => r.form === f.id).map(r => r.date).sort().pop();
       return sbar("별표 " + f.id.slice(1) + " " + f.title.replace(/ 점검표$/, ""), [{ v: done, c: STC.good }, { v: rs.length - done, c: STC.warn }], Math.max(1, rs.length), rs.length ? done + "/" + rs.length : "-",
-        `별표 ${f.id.slice(1)} ${f.title} · ${y}년 ${rs.length}건(완료 ${done})${last ? " · 최근 " + dot(last) : ""}`);
+        `별표 ${f.id.slice(1)} ${f.title} · ${y}년 ${rs.length}건(완료 ${done}${hc ? " · 하드카피 " + hc : ""})${last ? " · 최근 " + dot(last) : ""}`);
     }).join("");
     const open = S.allFindings().filter(x => S.fState(x.fx, t) !== "done")
       .sort((a, b) => (S.fState(a.fx, t) === "late" ? 0 : 1) - (S.fState(b.fx, t) === "late" ? 0 : 1) || String(a.fx.due || "9").localeCompare(String(b.fx.due || "9")));
+    const hcOpen = S.forms().map(f => ({ f, n: S.hcOpen ? S.hcOpen(f.id) : 0 })).filter(x => x.n);
     const n = mob() ? 5 : 8;
     return `<section class="card sd-card ie-card" aria-label="자체 보안점검">
       <h2 class="card-title">자체 보안점검<span class="dc-meta">${y}년 ${yr.length}건 · 수준관리지침 별표</span><span class="spacer"></span><button type="button" class="link-btn" data-ie-go="selfcheck">자체 보안점검</button></h2>
@@ -450,8 +458,8 @@
           <div class="ie-sbs">${rows}</div>
         </div>
         <div class="sd-pane">
-          <div class="sd-ph"><b>미결 지적</b><span class="dc-meta">${open.length}건</span></div>
-          ${open.length ? `<ul class="ie-pend">${open.slice(0, n).map(x => `<li><button type="button" data-ie-sc="${esc(x.r.id)}|${esc(x.it.id)}"><b>${esc(x.it.t || x.it.g || "장비")}</b><small>${esc("별표 " + x.f.id.slice(1) + " · " + dot(x.r.date) + (x.fx.due ? " · 기한 " + dot(x.fx.due) : ""))}${S.fState(x.fx, t) === "late" ? " · 기한 경과" : ""}</small></button></li>`).join("")}</ul>${open.length > n ? `<p class="sd-foot">외 ${open.length - n}건</p>` : ""}`
+          <div class="sd-ph"><b>미결 지적</b><span class="dc-meta">${open.length + hcOpen.reduce((k, x) => k + x.n, 0)}건</span></div>
+          ${open.length || hcOpen.length ? `<ul class="ie-pend">${hcOpen.map(x => `<li><button type="button" data-ie-schc="${esc(x.f.id)}"><b>${esc("별표 " + x.f.id.slice(1) + " 하드카피 미결 " + x.n + "건")}</b><small>${esc(x.f.title)}</small></button></li>`).join("")}${open.slice(0, n).map(x => `<li><button type="button" data-ie-sc="${esc(x.r.id)}|${esc(x.it.id)}"><b>${esc(x.it.t || x.it.g || "장비")}</b><small>${esc("별표 " + x.f.id.slice(1) + " · " + dot(x.r.date) + (x.fx.due ? " · 기한 " + dot(x.fx.due) : ""))}${S.fState(x.fx, t) === "late" ? " · 기한 경과" : ""}</small></button></li>`).join("")}</ul>${open.length > n ? `<p class="sd-foot">외 ${open.length - n}건</p>` : ""}`
             : `<p class="ie-ok">${icon("check", 16)}<span>미결 지적이 없습니다.</span></p>`}
         </div>
       </div>
@@ -497,6 +505,7 @@
       if (!ov || ov.classList.contains("hidden")) SeMIS.navigate("inspection");   // 한 주기에 기록이 여럿이면 기록 목록으로
     });
     $$("[data-ie-scforms]", root).forEach(b => b.onclick = () => { if (SC()) SC().setState({ tab: "forms", rid: "" }); SeMIS.navigate("selfcheck"); });
+    $$("[data-ie-schc]", root).forEach(b => b.onclick = () => { if (SC() && SC().hcForm) SC().hcForm(b.dataset.ieSchc); });
     $$("[data-ie-cfg]", root).forEach(b => b.onclick = cfgPick);
     $$("[data-ie-cm]", root).forEach(b => b.onclick = () => { const n = Number(b.dataset.ieCm), t = todayISO(); calYM = n ? ymAdd(calYM || ymOf(t), n) : ymOf(t); calSel = ""; paintCal(); });
     $$("[data-ie-dayb]", root).forEach(b => b.onclick = (ev) => { ev.stopPropagation(); calSel = b.dataset.ieDayb; paintCal(); });

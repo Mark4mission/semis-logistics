@@ -14,6 +14,9 @@
      fx{항목id: { cat(별표 15 세부 id), act, term(onsite|short|mid|long), due, done }}, note, files[], status(draft|done),
      createdAt/By, updatedAt/By }]
    지적 = R/C(Required Correction) · 미흡. 권한: 열람 · 기록 mgr(권한표 selfChecks 2/2), 삭제 hq 또는 작성자.
+   v1.35 표시(시스템관리자): selfCheckCfg.vis = { 별표 id: { m: "dim" | "hide", msg } } — 숨김은 없는 것처럼(카드 · 기록 · 지적 · 통계 · 일정),
+     흐리게는 카드에 제목 + 안내 문구만. 하드카피 기록(종이 점검표를 보고 넣는 요약) = selfChecks 안
+     { id, form, hc: true, date, insp, find(지적 건수), open(미결 건수), note, createdAt/By, updatedAt/By } → 다음 기한 · 대시보드 · 증빙 2.7 · 일정관리에 반영
    수검 대응 센터 증빙: window.SemisEvidence.selfcheck(2.7 · 2.8). 별표 15 집계에는 수검 지적의 '문제점 분야'도 넣을 수 있다.
    ═══════════════════════════════════════════════════════ */
 "use strict";
@@ -51,7 +54,17 @@
   /* ─────── 양식 ─────── */
   const NF = () => window.SemisNasForms || { SRC: {}, FORMS: [] };
   const allForms = () => NF().FORMS || [];
-  const forms = () => allForms().filter(f => f.kind !== "ana");
+  /* v1.35 — 표시(시스템관리자): 숨김 · 흐리게 (selfCheckCfg.vis) */
+  const VIS_MSG = "하드카피본 확인";
+  function visMap() { const c = D()[CFG], v = c && typeof c === "object" ? c.vis : null; return v && typeof v === "object" && !Array.isArray(v) ? v : {}; }
+  function visOf(id) {
+    const v = visMap()[id];
+    const m = v && (v.m === "dim" || v.m === "hide") ? v.m : "";
+    return { m, msg: m === "dim" ? (norm(v.msg) || VIS_MSG) : "" };
+  }
+  const isHid = (id) => visOf(id).m === "hide";
+  const isDim = (f) => !!f && visOf(f.id).m === "dim";
+  const forms = () => allForms().filter(f => f.kind !== "ana" && !isHid(f.id));
   const formOf = (id) => allForms().find(f => f.id === id) || null;
   const anaForm = () => allForms().find(f => f.kind === "ana") || null;
   const bno = (f) => "별표 " + String(f.id).slice(1);
@@ -120,7 +133,11 @@
 
   /* ─────── 데이터 ─────── */
   function list() { let a = D()[KEY]; if (!Array.isArray(a)) a = D()[KEY] = []; return a; }
-  const recs = () => (Array.isArray(D()[KEY]) ? D()[KEY] : []).filter(r => r && r.id && formOf(r.form) && formOf(r.form).kind !== "ana" && isISO(r.date));
+  const recs = () => (Array.isArray(D()[KEY]) ? D()[KEY] : []).filter(r => r && r.id && !r.hc && formOf(r.form) && formOf(r.form).kind !== "ana" && !isHid(r.form) && isISO(r.date));
+  /* 하드카피 기록(v1.35) — fid 를 주면 그 양식만 */
+  const hcRecs = (fid) => (Array.isArray(D()[KEY]) ? D()[KEY] : []).filter(r => r && r.id && r.hc && formOf(r.form) && formOf(r.form).kind !== "ana" && !isHid(r.form) && isISO(r.date) && (!fid || r.form === fid));
+  const hcN = (v) => { const n = Math.round(Number(v)); return Number.isFinite(n) && n > 0 ? n : 0; };
+  const hcOpen = (fid) => hcRecs(fid).reduce((n, r) => n + Math.min(hcN(r.open), hcN(r.find) || hcN(r.open)), 0);
   const recOf = (id) => recs().find(r => r.id === id) || null;
   const bag = (r, k) => { if (!r[k] || typeof r[k] !== "object" || Array.isArray(r[k])) r[k] = {}; return r[k]; };
   const ansOf = (r, id) => (r && r.ans && r.ans[id]) || "";
@@ -178,7 +195,7 @@
   function nextDue(f, t) {
     t = t || todayISO();
     const rs = recs().filter(r => r.form === f.id);
-    const last = rs.filter(r => r.status === "done").map(r => r.date).sort().pop() || "";
+    const last = rs.filter(r => r.status === "done").map(r => r.date).concat(hcRecs(f.id).map(r => r.date)).sort().pop() || "";
     const out = { due: "", why: "", last, draft: rs.find(r => r.status !== "done") || null, audit: null };
     if (f.kind === "ana") return out;
     const C = selfCfg();
@@ -421,7 +438,8 @@
     const rs = recs().filter(r => r.date >= from && r.date <= t);
     if (mid === "2.7") {
       const done = rs.filter(r => r.status === "done");
-      return { ok: done.length > 0, text: `자체 보안점검(수준관리지침 별표) ${done.length}건(1년)${rs.length > done.length ? " · 작성 중 " + (rs.length - done.length) : ""}` };
+      const hc = hcRecs().filter(r => r.date >= from && r.date <= t).length;
+      return { ok: done.length + hc > 0, text: `자체 보안점검(수준관리지침 별표) ${done.length + hc}건(1년${hc ? " · 하드카피 " + hc : ""})${rs.length > done.length ? " · 작성 중 " + (rs.length - done.length) : ""}` };
     }
     const fs = rs.reduce((a, r) => a.concat(findingsOf(r)), []);
     const late = fs.filter(x => fState(x.fx, t) === "late").length, done = fs.filter(x => fState(x.fx, t) === "done").length;
@@ -439,7 +457,7 @@
   const anaOrg = () => recall(LS_ORG) || DEF_ORG;
   function years() {
     const ys = new Set([todayISO().slice(0, 4)]);
-    recs().forEach(r => ys.add(r.date.slice(0, 4)));
+    recs().concat(hcRecs()).forEach(r => ys.add(r.date.slice(0, 4)));
     return Array.from(ys).sort().reverse();
   }
   function fileChips(files) {
@@ -449,20 +467,29 @@
 
   /* ═════════ 점검 기록 ═════════ */
   function listRows() {
-    return recs().filter(r => {
+    return recs().concat(hcRecs()).filter(r => {
       if (fForm && r.form !== fForm) return false;
       if (fYear && r.date.slice(0, 4) !== fYear) return false;
       if (!q) return true;
       const f = formOf(r.form);
-      return hay([fname(f), r.insp, r.org, r.note, dot(r.date)]).indexOf(q.toLowerCase()) >= 0;
+      return hay([fname(f), r.insp, r.org, r.note, dot(r.date), r.hc ? "하드카피" : ""]).indexOf(q.toLowerCase()) >= 0;
     }).sort((a, b) => b.date.localeCompare(a.date) || String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
   }
+  const hcRowHTML = (r) => { const f = formOf(r.form), fd = hcN(r.find), op = Math.min(hcN(r.open), fd || hcN(r.open));
+    return `<tr data-schc="${esc(r.form)}" tabindex="0" class="is-click sc-hcrow">
+      <td><span class="mono">${esc(dot(r.date))}</span></td>
+      <td data-role="title"><b>${esc(bno(f))}</b> ${esc(f.title)}</td>
+      <td>${esc(r.insp || "-")}</td><td>-</td>
+      <td class="sc-res">${esc(r.note || "-")}</td>
+      <td>${fd ? ui.chip((op ? "미결 " + op : "완료") + " / " + fd, op ? "amber" : "green") : '<span class="cell-sub">없음</span>'}</td>
+      <td>${ui.chip("하드카피", "gray")}</td></tr>`; };
   function listBodyHTML() {
     const rows = listRows();
     if (!rows.length) return ui.empty(recs().length ? "조건에 맞는 기록이 없습니다." : "등록된 점검 기록이 없습니다.");
     return `<div class="table-wrap"><table class="tbl tbl-cap sc-tbl">
       <thead><tr><th>점검일</th><th>양식</th><th>점검자</th><th>수검자 및 기관</th><th>결과</th><th>지적</th><th>상태</th></tr></thead>
       <tbody>${rows.map(r => {
+        if (r.hc) return hcRowHTML(r);
         const f = formOf(r.form), c = counts(r);
         return `<tr data-scid="${esc(r.id)}" tabindex="0" class="is-click">
           <td><span class="mono">${esc(dot(r.date))}</span></td>
@@ -476,11 +503,12 @@
   function listHTML() {
     const all = recs(), y = todayISO().slice(0, 4);
     const fs = allFindings(), t = todayISO();
-    const open = fs.filter(x => fState(x.fx, t) !== "done").length, late = fs.filter(x => fState(x.fx, t) === "late").length;
+    const hy = hcRecs().filter(r => r.date.slice(0, 4) === y).length;
+    const open = fs.filter(x => fState(x.fx, t) !== "done").length + hcOpen(), late = fs.filter(x => fState(x.fx, t) === "late").length;
     const ys = years();
     if (fYear && ys.indexOf(fYear) < 0) fYear = "";
     return ui.stats([
-      { label: y + "년 점검", value: all.filter(r => r.date.slice(0, 4) === y).length, sub: "완료 " + all.filter(r => r.date.slice(0, 4) === y && r.status === "done").length },
+      { label: y + "년 점검", value: all.filter(r => r.date.slice(0, 4) === y).length + hy, sub: "완료 " + (all.filter(r => r.date.slice(0, 4) === y && r.status === "done").length + hy) + (hy ? " · 하드카피 " + hy : "") },
       { label: "작성 중", value: all.filter(r => r.status !== "done").length, tone: all.some(r => r.status !== "done") ? "warn" : "muted" },
       { label: "미결 지적", value: open, sub: "R/C · 미흡", tone: open ? "warn" : "ok" },
       { label: "기한 경과", value: late, tone: late ? "bad" : "ok" }
@@ -512,6 +540,10 @@
   function formsHTML() {
     const w = canW(), t = todayISO();
     const card = (f) => {
+      if (isDim(f)) return `<button type="button" class="sc-fcard is-dim" data-fid="${esc(f.id)}" data-sc-hc="${esc(f.id)}" aria-label="${esc(bno(f) + " " + f.title + " — " + visOf(f.id).msg)}">
+        <span class="sc-fcard-h"><span class="sc-bno mono">${esc(bno(f))}</span><b>${esc(f.title)}</b></span>
+        <span class="sl-dim">${icon("doc", 16)}<span>${esc(visOf(f.id).msg)}</span></span>
+      </button>`;
       const n = nextDue(f, t);
       const soon = n.due && n.due <= addDays(t, 30);
       return `<section class="sc-fcard${soon ? " is-soon" : ""}" data-fid="${esc(f.id)}">
@@ -539,7 +571,7 @@
   /* ═════════ 안내 편집 (v1.34, hq 이상) — 누가 · 누구를 · 주기 ═════════ */
   function cfgForm() {
     if (!SeMIS.canEdit()) return;
-    const C = selfCfg(), fl = allForms();
+    const C = selfCfg(), fl = allForms().filter(f => !isHid(f.id));
     const inp = (k, v, ph, max) => `<input data-c="${k}" value="${esc(v)}" placeholder="${esc(ph)}" maxlength="${max || 40}">`;
     const frow = (f) => { const o = offOf(f), b = offBase(f); return `<div class="sc-cfg-r" data-cf="${esc(f.id)}">
         <span class="sc-cfg-f"><b class="mono">${esc(bno(f))}</b><small>${esc(f.title)}</small></span>
@@ -566,7 +598,9 @@
     };
     $("#modal-box [data-act=cancel]").onclick = closeModal;
     $("#modal-box [data-act=ok]").onclick = () => {
-      const out = { forms: {} };
+      const out = { forms: {} }, prev = cfgObj();
+      if (prev.vis && typeof prev.vis === "object") out.vis = prev.vis;                       // 표시(시스템관리자) 값은 그대로
+      allForms().forEach(f => { if (isHid(f.id) && prev.forms && prev.forms[f.id]) out.forms[f.id] = prev.forms[f.id]; });   // 숨긴 별표 안내도 그대로
       const by = norm($("#sc-c-by").value), m = Number($("#sc-c-m").value);
       const before = intIn($("#sc-c-before").value, 0, 60, -1), fresh = intIn($("#sc-c-fresh").value, 0, 365, -1);
       if (before < 0 || fresh < 0) { toast("일수는 0~60 · 0~365 사이로 넣으세요.", true); return; }
@@ -583,6 +617,110 @@
       D()[CFG] = out;
       SeMIS.save(); closeModal(); SeMIS.renderView(); toast("저장했습니다.");
     };
+  }
+
+  /* ═════════ 표시 관리 (v1.35, 시스템관리자) ═════════ */
+  function visForm() {
+    if (!SeMIS.isAdmin()) return;
+    const vm = visMap(), fl = allForms().filter(f => f.kind !== "ana");
+    SeMIS.ui.visForm({
+      title: TITLE,
+      rows: fl.map(f => ({ id: f.id, name: bno(f) + " " + f.title, sub: "", m: visOf(f.id).m, msg: (vm[f.id] && vm[f.id].msg) || "" })),
+      onSave(map) {
+        const c = Object.assign({}, cfgObj());
+        if (Object.keys(map).length) c.vis = map; else delete c.vis;
+        if (!c.forms || typeof c.forms !== "object") c.forms = {};
+        D()[CFG] = c;
+        SeMIS.save(); SeMIS.renderView(); toast("저장했습니다.");
+      }
+    });
+  }
+
+  /* ═════════ 하드카피 기록 (v1.35) — 종이 점검표를 보고 점검일 · 점검자 · 지적 · 미결 건수만 남긴다 ═════════ */
+  function hcForm(fid) {
+    const f = formOf(fid);
+    if (!f || f.kind === "ana" || isHid(f.id)) return;
+    const w = canW(), t0 = todayISO();
+    let editId = "";
+    const rowsHTML = () => {
+      const rs = hcRecs(f.id).sort((a, b) => b.date.localeCompare(a.date));
+      return rs.length ? `<ol class="hc-list">${rs.map(r => { const fd = hcN(r.find), op = Math.min(hcN(r.open), fd || hcN(r.open));
+        return `<li${r.id === editId ? ' class="is-edit"' : ""}><span class="mono">${esc(dot(r.date))}</span><span class="hc-li">${esc(r.insp || "-")}${r.note ? `<small>${esc(r.note)}</small>` : ""}</span>
+          <span class="hc-fx">${fd ? ui.chip((op ? "미결 " + op : "조치 완료") + " / 지적 " + fd, op ? "amber" : "green") : '<span class="cell-sub">지적 없음</span>'}</span>
+          ${w ? `<button type="button" class="mt-btn" data-hce="${esc(r.id)}" aria-label="수정">${icon("edit", 14)}</button>` : ""}
+          ${canDel(r) ? `<button type="button" class="mt-btn danger" data-hcx="${esc(r.id)}" aria-label="삭제">${icon("x", 14)}</button>` : ""}</li>`; }).join("")}</ol>`
+        : `<p class="hc-none">하드카피 기록이 없습니다.</p>`;
+    };
+    const formHTML = (r) => !w ? "" : `<div class="hc-form">
+        <label><span>점검일</span><input type="date" id="hcs-date" value="${esc((r && r.date) || t0)}" max="${esc(t0)}"></label>
+        <label><span>점검자</span><input id="hcs-insp" value="${esc((r && r.insp) || recall(LS_INSP) || "")}" maxlength="40" autocomplete="off"></label>
+        <label><span>지적 (R/C · 미흡)</span><input type="number" id="hcs-find" min="0" max="999" inputmode="numeric" value="${esc(r && hcN(r.find) ? hcN(r.find) : "")}"></label>
+        <label><span>미결</span><input type="number" id="hcs-open" min="0" max="999" inputmode="numeric" value="${esc(r && hcN(r.open) ? hcN(r.open) : "")}"></label>
+        <label class="hc-wide"><span>메모</span><input id="hcs-note" value="${esc((r && r.note) || "")}" maxlength="200" autocomplete="off"></label>
+      </div>`;
+    const paintBox = () => {
+      const r = editId ? hcRecs(f.id).find(x => x.id === editId) : null;
+      $("#hcs-body").innerHTML = formHTML(r) + rowsHTML();
+      const ok = $("#modal-box [data-act=ok]"); if (ok) ok.textContent = editId ? "수정 저장" : "추가";
+      const nw = $("#modal-box [data-act=new]"); if (nw) nw.classList.toggle("hidden", !editId);
+      $$("#hcs-body [data-hce]").forEach(b => b.onclick = () => { editId = b.dataset.hce; paintBox(); });
+      $$("#hcs-body [data-hcx]").forEach(b => b.onclick = () => {
+        const x = hcRecs(f.id).find(y => y.id === b.dataset.hcx);
+        if (!x || !canDel(x)) return;
+        D()[KEY] = list().filter(y => y.id !== x.id);
+        if (editId === x.id) editId = "";
+        SeMIS.save(); paintBox(); refreshViews(); toast("삭제했습니다.");
+      });
+    };
+    openModal(`<h3>하드카피 기록 <small class="au-mh">${esc(bno(f))} ${esc(f.title)}</small></h3>
+      <div id="hcs-body"></div>
+      <div class="modal-actions">${w ? '<button type="button" class="btn btn-ghost hidden" data-act="new">새 기록</button><span class="spacer"></span>' : ""}
+        <button type="button" class="btn btn-ghost" data-act="cancel">닫기</button>${w ? '<button type="button" class="btn btn-primary" data-act="ok">추가</button>' : ""}</div>`, { wide: true });
+    paintBox();
+    $("#modal-box [data-act=cancel]").onclick = closeModal;
+    const nw = $("#modal-box [data-act=new]"); if (nw) nw.onclick = () => { editId = ""; paintBox(); };
+    const okb = $("#modal-box [data-act=ok]");
+    if (okb) okb.onclick = () => {
+      const date = $("#hcs-date").value, insp = norm($("#hcs-insp").value), note = norm($("#hcs-note").value);
+      const fv = $("#hcs-find").value, ov = $("#hcs-open").value;
+      const fd = fv === "" ? 0 : Math.round(Number(fv)), op = ov === "" ? 0 : Math.round(Number(ov));
+      if (!isISO(date) || date > t0) { toast("점검일을 확인하세요.", true); return; }
+      if (!Number.isFinite(fd) || !Number.isFinite(op) || fd < 0 || op < 0 || fd > 999) { toast("건수를 확인하세요.", true); return; }
+      if (op > fd) { toast("미결은 지적 건수보다 많을 수 없습니다.", true); $("#hcs-open").focus(); return; }
+      const now = new Date().toISOString();
+      const x = editId ? list().find(y => y.id === editId) : null;
+      if (x) Object.assign(x, { date, insp, find: fd, open: op, note, updatedAt: now, updatedBy: me() });
+      else list().push({ id: uid("sh"), form: f.id, hc: true, date, insp, find: fd, open: op, note, createdAt: now, createdBy: me() });
+      remember(LS_INSP, insp);
+      editId = "";
+      SeMIS.save(); paintBox(); refreshViews(); toast("저장했습니다.");
+    };
+  }
+
+  /* ═════════ 일정관리 연동 (v1.35) — 기간 [from, to]: 다음 자체 점검 기한(같은 날 묶음) · 완료한 점검(전산 · 하드카피) ═════════ */
+  function calItems(from, to, today) {
+    today = today || todayISO();
+    const out = [];
+    if (!isISO(from) || !isISO(to) || from > to) return out;
+    const w = canW();
+    const dash = { lb: "점검 · 교육 대시보드", ico: "grid", run: () => SeMIS.navigate("aud-dash") };
+    const toForms = () => { tab = "forms"; rid = ""; if (routeNow() === MOD) SeMIS.renderView(); else SeMIS.navigate(MOD); };
+    const by = {};
+    forms().forEach(f => { const n = nextDue(f, today); if (isISO(n.due) && n.due >= from && n.due <= to) (by[n.due] = by[n.due] || []).push({ f, n }); });
+    Object.keys(by).forEach(d => {
+      const fs = by[d], one = fs.length === 1 ? fs[0].f : null;
+      out.push({ ik: "scd:" + d, start: d, end: d, title: "[점검] " + (one ? bno(one) + " 자체 점검" : "자체 보안점검 " + fs.length + "종"), done: false, late: d < today, color: "red",
+        sub: [fs.map(x => bno(x.f)).join(" · "), fs[0].n.why === "수검 전" && fs[0].n.audit ? "국토부 수검 " + dot(fs[0].n.audit.start).slice(5) + " 전" : selfCfg().cycOnly,
+          fs.some(x => isDim(x.f)) ? VIS_MSG : ""].filter(Boolean).join(" · "),
+        go: [{ lb: one ? (isDim(one) ? "하드카피 기록" : "점검표") : "양식", ico: "clipboard", run: one && w ? () => startForm(one.id) : toForms }, dash] });
+    });
+    recs().filter(r => r.status === "done" && r.date >= from && r.date <= to).forEach(r => { const f = formOf(r.form);
+      out.push({ ik: "scr:" + r.id, start: r.date, end: r.date, title: "[점검] " + bno(f) + " 자체 점검", done: true, late: false, color: "red",
+        sub: [f.title, r.insp].filter(Boolean).join(" · "), go: [{ lb: "점검 기록", ico: "clipboard", run: () => openRecord(r.id) }, dash] }); });
+    hcRecs().filter(r => r.date >= from && r.date <= to).forEach(r => { const f = formOf(r.form);
+      out.push({ ik: "scr:" + r.id, start: r.date, end: r.date, title: "[점검] " + bno(f) + " 자체 점검", done: true, late: false, color: "red",
+        sub: [f.title, r.insp, "하드카피"].filter(Boolean).join(" · "), go: [{ lb: "하드카피 기록", ico: "clipboard", run: () => hcForm(f.id) }, dash] }); });
+    return out;
   }
 
   /* ═════════ 지적 · 조치 ═════════ */
@@ -916,7 +1054,8 @@
   function newRecord(fid) {
     if (!canW()) return;
     const f = formOf(fid);
-    if (!f || f.kind === "ana") return;
+    if (!f || f.kind === "ana" || isHid(f.id)) return;
+    if (isDim(f)) return hcForm(f.id);
     const r = { id: uid("sc"), form: f.id, date: todayISO(), insp: recall(LS_INSP) || "", org: f.kind === "insp" ? (recall(LS_ORG) || DEF_ORG) : "",
       appr: f.kind === "fsc" ? ["", "", ""] : undefined, ans: {}, txt: {}, rm: {}, nm: {}, fx: {}, note: "", files: [], status: "draft",
       createdAt: new Date().toISOString(), createdBy: me() };
@@ -929,12 +1068,13 @@
   function startForm(fid) {
     if (!canW()) return;
     const f = formOf(fid);
-    if (!f || f.kind === "ana") return;
+    if (!f || f.kind === "ana" || isHid(f.id)) return;
+    if (isDim(f)) return hcForm(f.id);
     const d = recs().filter(r => r.form === f.id && r.status !== "done").sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")))[0];
     if (d) openRecord(d.id); else newRecord(f.id);
   }
   function pickForm() {
-    openModal(`<h3>점검할 양식</h3><div class="sl-pick">${forms().map(f => `<button type="button" class="sl-pbtn" data-pick="${esc(f.id)}"><b>${esc(bno(f))} ${esc(f.title)}</b><span>감독관: ${esc(offText(f))}</span><span>자체: ${esc(selfText(f, todayISO()))}</span></button>`).join("")}</div>
+    openModal(`<h3>점검할 양식</h3><div class="sl-pick">${forms().filter(f => !isDim(f)).map(f => `<button type="button" class="sl-pbtn" data-pick="${esc(f.id)}"><b>${esc(bno(f))} ${esc(f.title)}</b><span>감독관: ${esc(offText(f))}</span><span>자체: ${esc(selfText(f, todayISO()))}</span></button>`).join("")}</div>
       <div class="modal-actions"><button type="button" class="btn btn-ghost" data-act="cancel">닫기</button></div>`);
     $("#modal-box [data-act=cancel]").onclick = closeModal;
     $$("[data-pick]").forEach(b => b.onclick = () => { closeModal(); newRecord(b.dataset.pick); });
@@ -982,6 +1122,11 @@
     const apv = $("#sc-apv", box); if (apv) apv.onclick = () => printAna(true);
     const adl = $("#sc-adl", box); if (adl) adl.onclick = () => downloadAna(anaYear(), anaAudit && auditFindings().length > 0, anaOrg());
     $$("[data-sc-new]", box).forEach(b => b.onclick = () => startForm(b.dataset.scNew));
+    $$("[data-sc-hc]", box).forEach(b => b.onclick = () => hcForm(b.dataset.scHc));
+    $$("tr[data-schc]", box).forEach(tr => {
+      tr.onclick = () => hcForm(tr.dataset.schc);
+      tr.onkeydown = (ev) => { if (ev.key === "Enter") { ev.preventDefault(); hcForm(tr.dataset.schc); } };
+    });
     $$("[data-sc-blank]", box).forEach(b => b.onclick = () => { const f = formOf(b.dataset.scBlank); if (f) printBlank(f, true); });
     $$("[data-sc-bdl]", box).forEach(b => b.onclick = () => { const f = formOf(b.dataset.scBdl); if (f) blankDownload(f); });
     $$("[data-sc-tab]", box).forEach(b => b.onclick = () => { tab = b.dataset.scTab; SeMIS.renderView(); });
@@ -1007,6 +1152,8 @@
     if (SeMIS.tidyView) try { SeMIS.tidyView(); } catch (e) { /* 정돈만 영향 */ }
   }
   const repaint = () => { if (routeNow() === MOD) SeMIS.renderView(); if (SeMIS.renderNav) try { SeMIS.renderNav(); } catch (e) { /* noop */ } };
+  /* 하드카피 기록은 대시보드 · 일정관리에서도 연다 — 그 화면도 다시 그림 */
+  const refreshViews = () => { const r = routeNow(); if (r === MOD || r === "aud-dash" || r === "schedule") SeMIS.renderView(); if (SeMIS.renderNav) try { SeMIS.renderNav(); } catch (e) { /* noop */ } };
   /* 원격 변경으로 다시 그릴 때 입력 중 칸 · 커서를 지킨다 */
   function captureFocus(root) {
     const a = typeof document !== "undefined" ? document.activeElement : null;
@@ -1044,6 +1191,7 @@
     const acts = [
       w ? `<button type="button" class="btn btn-primary btn-sm" id="sc-add">${icon("plus", 16)}<span>점검</span></button>` : "",
       tab === "forms" && SeMIS.canEdit() ? `<button type="button" class="btn btn-ghost btn-sm m-ed" id="sc-cfg" title="누가 · 누구를 · 주기">${icon("edit", 16)}<span>안내 편집</span></button>` : "",
+      tab === "forms" && SeMIS.isAdmin() ? `<button type="button" class="btn btn-ghost btn-sm m-ed" id="sc-vis" title="표시 · 흐리게 · 숨김">${icon("eye", 16)}<span>표시 관리</span></button>` : "",
       tab === "ana" ? `<button type="button" class="btn btn-ghost btn-sm no-print" id="sc-aprint" data-print-btn="1" title="별표 15 양식으로 인쇄">${icon("print", 17)}<span>Print</span></button>` : ""
     ].join("");
     root.innerHTML = ui.head({ title: TITLE, meta: MARK + " — 항공보안감독관 점검표(수준관리지침 별표) 사용", actions: acts })
@@ -1053,13 +1201,14 @@
     $$("[data-sctab]", root).forEach(b => b.onclick = () => { tab = b.dataset.sctab; SeMIS.renderView(); });
     const ab = $("#sc-add", root); if (ab) ab.onclick = pickForm;
     const cb = $("#sc-cfg", root); if (cb) cb.onclick = cfgForm;
+    const vb = $("#sc-vis", root); if (vb) vb.onclick = visForm;
     const ap = $("#sc-aprint", root); if (ap) ap.onclick = () => printAna(false);
     wire(root);
   }
 
   SeMIS.registerModule(MOD, {
     title: TITLE,
-    navBadge() { if (!canW()) return ""; const t = todayISO(); return allFindings().filter(x => fState(x.fx, t) !== "done").length || ""; },
+    navBadge() { if (!canW()) return ""; const t = todayISO(); return (allFindings().filter(x => fState(x.fx, t) !== "done").length + hcOpen()) || ""; },
     render
   });
 
@@ -1075,6 +1224,7 @@
     TERMS, termDue, isFind, evidence, fill, fillAna, fscLine, recordPkg, anaPkg, downloadRecord, downloadAna, printRecord, printBlank, printAna,
     newRecord, openRecord, startForm, backToList, applyField, keepText, fileName, dateText,
     MARK, OFFICIAL, SELF, offOf, nextDue, govAudit, dday, markPkg, selfCfg, cfgForm, offText, CYC_M,
+    visOf, isDim, hcRecs, hcOpen, hcForm, visForm, VIS_MSG, calItems,
     lastPrint: () => lastPrint,
     setToday(t) { fixedToday = isISO(t) ? t : ""; },
     getState() { return { tab, q, fForm, fYear, fOpen, rid, anaY, anaAudit }; },

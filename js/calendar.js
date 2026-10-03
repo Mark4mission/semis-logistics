@@ -9,6 +9,10 @@
 
    개인 일정(나에게만 보이기) · 자동 연기 / 자동 연장 (v2.37)
 
+   v1.35 점검 일정 연동 — 보안 기록부(주 · 월 · 분기 · 연 양식의 주기 마감일, 매일 양식은 날마다 '매일 점검' 한 건)와
+   자체 보안점검(다음 기한 · 완료한 점검)이 계산한 일정을 그릴 때마다 받아 함께 표시한다(저장하지 않음 · 읽기 전용 · 숨긴 점검 제외).
+   점검 일정과 수검 연동 일정(aud_ · audf_)에는 점검표 · 대시보드로 가는 작은 아이콘 버튼(chip-go)이 붙는다.
+
    데이터 스키마: { id, title, memo, memoHtml?, start, end, allDay, time, timeEnd,
                     color, done, assignee, vehicle, room, reminders[],
                     repeat?: { freq: none|daily|weekly|2week|monthly|yearly, until },
@@ -547,7 +551,76 @@
       const dur = diffDays(e.start, e.end || e.start);
       native.push(Object.assign({}, e, { start: occ, end: addDays(occ, dur), done: dn, occStart: occ }));
     });
-    return native.concat(gcalOnDay(iso)).sort(evCompare);
+    return native.concat(gcalOnDay(iso), inspOnDay(iso)).sort(evCompare);
+  }
+
+  /* ─────── v1.35 점검 일정 연동 (읽기 전용 · 저장하지 않음) ─────── */
+  const INSP_SRC = [["inspection", () => window.SemisSeclog], ["selfcheck", () => window.SemisSelfcheck]];
+  let inspCache = {}, inspIdx = {};
+  function modCan(module) {
+    const mn = SeMIS.menuForModule && SeMIS.menuForModule(module);
+    return !!(mn && SeMIS.navVisible && SeMIS.navVisible(mn) && SeMIS.hasModule && SeMIS.hasModule(module));
+  }
+  function inspBucket(ym) {
+    if (inspCache[ym]) return inspCache[ym];
+    const from = ym + "-01", to = addDays(addDays(from, 32).slice(0, 8) + "01", -1);
+    let items = [];
+    INSP_SRC.forEach(([m, api]) => {
+      const A = api();
+      if (!A || typeof A.calItems !== "function" || !modCan(m)) return;
+      try { items = items.concat(A.calItems(from, to) || []); }
+      catch (err) { if (typeof console !== "undefined") console.error("[schedule] " + m, err); }
+    });
+    items.forEach(it => { it.allDay = true; it.time = ""; it.end = it.end || it.start; inspIdx[it.ik] = it; });
+    return (inspCache[ym] = items);
+  }
+  function inspOnDay(iso) {
+    if (fAssignee) return [];
+    return inspBucket(iso.slice(0, 7)).filter(e => e.start <= iso && iso <= e.end && !(fHideDone && e.done));
+  }
+  const inspReset = () => { inspCache = {}; inspIdx = {}; };
+  const isInsp = (e) => !!(e && e.ik && !e.id);
+  const DASH_GO = () => modCan("aud-dash") ? [{ lb: "점검 · 교육 대시보드", ico: "grid", run: () => SeMIS.navigate("aud-dash") }] : [];
+  /* 바로 가기 — 점검 일정은 모듈이 준 것, 수검 연동 일정은 수검 상세 · 대시보드 */
+  function goOf(e) {
+    if (!e) return [];
+    if (isInsp(e)) return (e.go || []).filter(g => g && typeof g.run === "function" && (g.ico !== "grid" || modCan("aud-dash")));
+    const l = linkOf(e);
+    return l && l.go ? l.go(e) : [];
+  }
+  function goBtns(e, max) {
+    return goOf(e).slice(0, max || 2).map((g, i) => `<button type="button" class="chip-go" data-igo="${i}" ${isInsp(e) ? `data-ik="${esc(e.ik)}"` : `data-gev="${esc(e.id)}"`} title="${esc(g.lb)}" aria-label="${esc(g.lb)}">${SeMIS.icon(g.ico || "external", 13)}</button>`).join("");
+  }
+  function runGo(b) {
+    const e = b.dataset.ik ? inspIdx[b.dataset.ik] : D().schedules.find(x => x.id === b.dataset.gev);
+    const g = goOf(e)[Number(b.dataset.igo)];
+    if (!g) return;
+    closeModal();
+    g.run();
+  }
+  function inspDetail(ik) {
+    const e = inspIdx[ik];
+    if (!e) return;
+    const gs = goOf(e);
+    const st = e.done ? '<span class="badge badge-green">완료</span>' : e.late ? '<span class="badge badge-red">기한 지남</span>' : "";
+    openModal(`
+      <h3><span class="cal-dot ev-${esc(pickColor(e.color))}"></span> ${esc(e.title)} ${st}</h3>
+      <table class="tbl" style="font-size:.88rem">
+        <tr><td style="width:90px;color:var(--text-2)">날짜</td><td>${esc(e.start)} (${esc(dowName(e.start))})</td></tr>
+        ${e.sub ? `<tr><td style="color:var(--text-2)">내용</td><td>${esc(e.sub)}</td></tr>` : ""}
+      </table>
+      <div class="modal-actions"><button type="button" class="btn btn-ghost" id="f-close">닫기</button>${gs.map((g, i) =>
+        `<button type="button" class="btn ${i ? "btn-ghost" : "btn-primary"}" data-igo="${i}" data-ik="${esc(e.ik)}">${SeMIS.icon(g.ico || "external", 15)}<span>${esc(g.lb)}</span></button>`).join("")}</div>`);
+    $("#f-close").onclick = closeModal;
+    $$("#modal-box [data-igo]").forEach(b => b.onclick = () => runGo(b));
+  }
+  function wireInsp(root) {
+    $$("[data-igo]", root).forEach(b => b.onclick = (ev) => { ev.stopPropagation(); runGo(b); });
+    $$("[data-ik]", root).forEach(el => {
+      if (el.hasAttribute("data-igo")) return;
+      el.onclick = (ev) => { if (ev.target.closest("[data-igo]")) return; inspDetail(el.dataset.ik); };
+      el.onkeydown = (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); inspDetail(el.dataset.ik); } };
+    });
   }
   function assigneeList() {
     const used = new Set();
@@ -562,7 +635,11 @@
   /* v1.17: 수검 대응 센터 연동 일정("aud_*" 수검 기간 · "audf_*" 지적 조치 기한)도 같은 방식으로 되반영한다. */
   const LINKED = [
     { pre: ["insp_"], api: () => window.SemisInspection, note: "보안점검 연동이 해제됩니다. 점검 기록 자체는 남습니다." },
-    { pre: ["aud_", "audf_"], api: () => window.SemisAudit, note: "수검 대응 센터 연동이 해제됩니다. 수검 기록 자체는 남습니다." }
+    { pre: ["aud_", "audf_"], api: () => window.SemisAudit, note: "수검 대응 센터 연동이 해제됩니다. 수검 기록 자체는 남습니다.",
+      go: (e) => {
+        const A = window.SemisAudit, id = String(e.src || "").indexOf("aud:") === 0 ? String(e.src).slice(4) : "";
+        return (A && A.open && id && modCan("audit") ? [{ lb: "수검 상세", ico: "clipboard", run: () => A.open(id) }] : []).concat(DASH_GO());
+      } }
   ];
   function linkOf(e) {
     const id = e ? String(e.id) : "";
@@ -743,7 +820,7 @@
       el.addEventListener("pointerdown", (ev) => {
         if (ev.button !== 0) return;
         if (ev.pointerType && ev.pointerType !== "mouse" && ev.pointerType !== "pen") return;
-        if (ev.target && ev.target.closest && ev.target.closest("[data-donetoggle]")) return;
+        if (ev.target && ev.target.closest && ev.target.closest("[data-donetoggle],[data-igo]")) return;
         if (dragState) dragTeardown();
         dragState = { id: el.dataset.ev, from: el.dataset.from, el, body, pid: ev.pointerId,
                       x0: ev.clientX, y0: ev.clientY, ox: 0, oy: 0, moved: false, cell: null, ghost: null };
@@ -794,8 +871,16 @@
     return canWrite ? `<span class="chip-check todo"${attr} title="완료 표시${rep ? " (범위 선택)" : ""}">○</span>` : "";
   }
 
+  /* v1.35 점검 일정 칩 — 읽기 전용(끌기 · 완료 체크 없음), 눌러 상세 · 아이콘으로 바로 가기 */
+  function inspBarHTML(e, style, cls, max) {
+    return `<div class="${cls} ev-${esc(pickColor(e.color))} is-insp${e.done ? " done" : ""}${e.late ? " late" : ""}${e.soft ? " soft" : ""}"${style ? ` style="${style}"` : ""}
+        data-ik="${esc(e.ik)}" role="button" tabindex="0" title="${esc(e.title)}${e.sub ? "\n" + esc(e.sub) : ""}">
+      ${e.done ? '<span class="chip-check done">✓</span>' : ""}
+      <span class="chip-title">${esc(e.title)}</span>${goBtns(e, max || 1)}</div>`;
+  }
   function barHTML(it, canWrite, style) {
     const e = it.ev;
+    if (isInsp(e)) return inspBarHTML(e, style, "cal-bar" + (it.contL ? " cont-l" : "") + (it.contR ? " cont-r" : ""), 1);
     if (!e.id && e.gcalId) {
       return `<div class="cal-bar ev-gcal${it.contL ? " cont-l" : ""}${it.contR ? " cont-r" : ""}" style="${style}"
         data-gcal="${esc(e.gcalId)}" title="Google 캘린더: ${esc(e.title)}"><span class="chip-g">G</span>
@@ -808,12 +893,13 @@
       ${checkHTML(e, canWrite, e.start)}
       ${!e.allDay && e.time ? `<span class="chip-time">${esc(e.time)}</span>` : ""}
       <span class="chip-title">${evIcons(e)}${esc(e.title)}</span>
-      ${e.assignee ? `<span class="chip-tag" title="${esc(e.assignee)}">${esc(tagsOf(e.assignee))}</span>` : ""}
+      ${e.assignee ? `<span class="chip-tag" title="${esc(e.assignee)}">${esc(tagsOf(e.assignee))}</span>` : ""}${goBtns(e, 1)}
     </div>`;
   }
 
   function tchipHTML(it, canWrite, style) {
     const e = it.ev;
+    if (isInsp(e)) return inspBarHTML(e, style, "cal-tchip", 1);
     if (!e.id && e.gcalId) {
       return `<div class="cal-tchip ev-gcal" style="${style}" data-gcal="${esc(e.gcalId)}" title="Google 캘린더: ${esc(e.title)}">
         <span class="chip-g">G</span><span class="chip-time">${esc(e.time || "")}</span>
@@ -838,7 +924,7 @@
     const items = [];
     days7.forEach(iso => {
       eventsOnDay(iso).forEach(ev => {
-        const key = (ev.gcalId || ev.id) + "@" + ev.start;
+        const key = (ev.ik || ev.gcalId || ev.id) + "@" + ev.start;
         if (seen[key]) return;
         seen[key] = true;
         const s = ev.start < w0 ? w0 : ev.start;
@@ -907,6 +993,7 @@
     const isLastDay = dayIso === (e.end || e.start);
     const timeTxt = (!e.allDay && e.time && e.start === dayIso)
       ? `<span class="chip-time">${esc(e.time)}</span>` : "";
+    if (isInsp(e)) return inspBarHTML(e, "", "cal-chip", 2);
     if (!e.id && e.gcalId) {
       return `<div class="cal-chip ev-gcal" data-gcal="${esc(e.gcalId)}" title="Google 캘린더: ${esc(e.title)}">
         <span class="chip-g">G</span>${timeTxt}
@@ -917,7 +1004,7 @@
       ${checkHTML(e, canWrite, e.start)}
       ${timeTxt}
       <span class="chip-title">${cont}${evIcons(e)}${esc(e.title)}${cont2}</span>
-      ${!noTag && e.assignee ? `<span class="chip-tag" title="${esc(e.assignee)}">${esc(tagsOf(e.assignee))}</span>` : ""}
+      ${!noTag && e.assignee ? `<span class="chip-tag" title="${esc(e.assignee)}">${esc(tagsOf(e.assignee))}</span>` : ""}${goBtns(e, compact ? 1 : 2)}
     </div>`;
   }
 
@@ -927,6 +1014,11 @@
     const alldays = evs.filter(e => e.allDay);
     const timed = evs.filter(e => !e.allDay);
     const row = (e) => {
+      if (isInsp(e)) return `
+      <div class="cal-agenda-row">
+        <div class="ag-time">종일</div>
+        <div class="ag-chip">${chipHTML(e, anchor, false, false, true)}${e.sub ? `<div class="ag-memo">${esc(e.sub)}</div>` : ""}</div>
+      </div>`;
       const who = namesHTML(e.assignee);
       return `
       <div class="cal-agenda-row">
@@ -1296,6 +1388,13 @@
   /* ─────── 모듈 렌더 ─────── */
   /* ─────── 모바일 달력 (v1.29) ─────── */
   function mEvRow(e, dayIso, canWrite) {
+    if (isInsp(e)) return `<div class="calm-ev ev-${esc(pickColor(e.color))} is-insp has-go${e.done ? " done" : ""}${e.late ? " late" : ""}" data-ik="${esc(e.ik)}" role="button" tabindex="0">
+      <span class="calm-bar" aria-hidden="true"></span>
+      <span class="calm-when">종일</span>
+      <span class="calm-body"><b>${esc(e.title)}</b>${e.sub ? `<small>${esc(e.sub)}</small>` : ""}</span>
+      <span class="calm-go">${goBtns(e, 2)}</span>
+      ${e.done ? '<span class="calm-chk"><span class="chip-check done">✓</span></span>' : ""}
+    </div>`;
     if (!e.id && e.gcalId) {
       return `<button type="button" class="calm-ev" data-gcal="${esc(e.gcalId)}" style="--evf:#1a73e8">
         <span class="calm-bar" aria-hidden="true"></span>
@@ -1305,10 +1404,11 @@
     const multi = (e.end || e.start) !== e.start;
     const when = !e.allDay && e.time ? esc(e.time) + (e.timeEnd ? `<small>${esc(e.timeEnd)}</small>` : "") : (multi ? "기간" : "종일");
     const sub = [multi ? md(e.start) + " – " + md(e.end) : "", e.assignee ? String(e.assignee) : ""].filter(Boolean).join(" · ");
-    return `<div class="calm-ev ev-${esc(pickColor(e.color))}${e.done ? " done" : ""}" data-ev="${esc(e.id)}" data-from="${esc(dayIso)}" data-occ="${esc(e.start)}" role="button" tabindex="0">
+    return `<div class="calm-ev ev-${esc(pickColor(e.color))}${e.done ? " done" : ""}${goOf(e).length ? " has-go" : ""}" data-ev="${esc(e.id)}" data-from="${esc(dayIso)}" data-occ="${esc(e.start)}" role="button" tabindex="0">
       <span class="calm-bar" aria-hidden="true"></span>
       <span class="calm-when">${when}</span>
       <span class="calm-body"><b>${esc(e.title)}</b>${sub ? `<small>${esc(sub)}</small>` : ""}</span>
+      ${goOf(e).length ? `<span class="calm-go">${goBtns(e, 2)}</span>` : ""}
       ${canWrite ? `<span class="calm-chk">${checkHTML(e, canWrite, e.start)}</span>` : (e.done ? '<span class="calm-chk"><span class="chip-check done">✓</span></span>' : "")}
     </div>`;
   }
@@ -1410,16 +1510,18 @@
     $$("[data-donetoggle]", body).forEach(el => el.onclick = (ev) => { ev.stopPropagation(); askDoneScope(el.dataset.donetoggle, el.dataset.occ); });
     const open = (el) => canWrite ? eventForm(el.dataset.ev, null, el.dataset.occ) : eventDetail(el.dataset.ev, el.dataset.occ);
     $$("[data-ev]", body).forEach(el => {
-      el.onclick = (ev) => { if (ev.target.closest("[data-donetoggle]")) return; open(el); };
+      el.onclick = (ev) => { if (ev.target.closest("[data-donetoggle],[data-igo]")) return; open(el); };
       el.onkeydown = (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); open(el); } };
     });
     $$("[data-gcal]", body).forEach(el => el.onclick = () => gcalDetail(el.dataset.gcal));
+    wireInsp(body);
   }
 
   SeMIS.registerModule("schedule", {
     title: "일정관리",
     render(root) {
       const canWrite = SeMIS.canEdit();
+      inspReset();                                           // v1.35: 점검 일정은 그릴 때마다 새로 계산
       autoRollIfAllowed();                                   // v2.37: 화면 진입 시 자동 연기/연장 보정
       const assignees = assigneeList();
       if (SeMIS.isMobile && SeMIS.isMobile()) { renderMobile(root, canWrite, assignees); return; }
@@ -1491,11 +1593,12 @@
       });
       $$("[data-ev]", body).forEach(el => el.onclick = (ev) => {
         if (justDragged()) return;                 // 드래그로 이동한 직후의 클릭은 무시
-        if (ev.target.closest("[data-donetoggle]")) return;
+        if (ev.target.closest("[data-donetoggle],[data-igo]")) return;
         canWrite ? eventForm(el.dataset.ev, null, el.dataset.occ)
                  : eventDetail(el.dataset.ev, el.dataset.occ);
       });
       $$("[data-gcal]", body).forEach(el => el.onclick = () => gcalDetail(el.dataset.gcal));
+      wireInsp(body);
       $$("[data-more]", body).forEach(el => el.onclick = (ev) => {
         ev.stopPropagation();
         setAnchor(el.dataset.more); setView("day"); SeMIS.renderView();
@@ -1510,7 +1613,7 @@
       /* ── 빈 칸 클릭 → 신규 등록 ── */
       if (canWrite) $$(".cal-cell", body).forEach(cell => cell.onclick = (ev) => {
         if (justDragged()) return;
-        if (ev.target.closest(".cal-more,[data-ev],[data-gcal]")) return;
+        if (ev.target.closest(".cal-more,[data-ev],[data-gcal],[data-ik]")) return;
         eventForm(null, cell.dataset.day);
       });
 
@@ -1528,6 +1631,7 @@
     setAnchor, getAnchor: () => anchor,
     setFilter, getFilter: () => ({ assignee: fAssignee, hideDone: fHideDone }),
     moveEvent, resizeEvent, toggleDone, backSyncInsp, isInspEvent,
+    inspOnDay, inspReset, goOf, inspDetail,
     occDone, setOccDone, applyOccDone, askDoneScope, occurrenceStarts, stepOccurrence,
     shiftDoneMarks, clearDoneMarks, nextOpenOccurrence, DONE_SCOPES,
     eventsOnDay, filteredEvents, assigneeList,

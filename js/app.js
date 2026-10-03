@@ -8,7 +8,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.34.0";
+  const VERSION = "1.35.0";
   const APP_NAME = "SeMIS · Logistics";
   /* v1.15: 데이터 캐시는 이 탭의 sessionStorage 에만 둔다(탭을 닫거나 로그아웃하면 사라짐).
      화면 설정(LS_UI)만 localStorage. */
@@ -1912,7 +1912,41 @@ const SeMIS = (() => {
       const k = String(key || "");
       return ' data-mf="' + esc(k) + '"' + (force || mfOpen.has(currentRoute() + "|" + k) ? " data-mf-on" : "");
     },
-    mfSet(el, on) { mfToggle(el, on); }
+    mfSet(el, on) { mfToggle(el, on); },
+    /* v1.35 점검 표시 관리(시스템관리자) — 표시 · 흐리게 · 숨김.
+       rows[{ id, name, sub, m(""|"dim"|"hide"), msg }] · onSave(map): map = { id: { m, msg? } }(표시는 넣지 않음 · msg 는 기본 문구와 다를 때만) */
+    VIS_MSG: "하드카피본 확인",
+    visForm(o) {
+      o = o || {};
+      if (!isAdmin()) return;
+      const rows = (o.rows || []).map(r => ({ id: String(r.id), name: r.name || "", sub: r.sub || "", m: r.m === "dim" || r.m === "hide" ? r.m : "", msg: r.msg || "" }));
+      const MODES = [["", "표시"], ["dim", "흐리게"], ["hide", "숨김"]];
+      openModal('<h3>점검 표시' + (o.title ? ' <small class="au-mh">' + esc(o.title) + '</small>' : "") + '</h3>' +
+        '<div class="vis-rows">' + rows.map((r, i) => '<div class="vis-r" data-vi="' + i + '" data-m="' + esc(r.m) + '">' +
+          '<span class="vis-n"><b>' + esc(r.name) + '</b>' + (r.sub ? '<small>' + esc(r.sub) + '</small>' : "") + '</span>' +
+          '<span class="vis-seg" role="group" aria-label="' + esc(r.name + " 표시") + '">' + MODES.map(([v, lb]) =>
+            '<button type="button" data-vm="' + v + '" aria-pressed="' + (r.m === v) + '">' + lb + '</button>').join("") + '</span>' +
+          '<input class="vis-msg" data-vmsg value="' + esc(r.msg) + '" placeholder="' + esc(ui.VIS_MSG) + '" maxlength="30" aria-label="' + esc(r.name + " 안내 문구") + '">' +
+        '</div>').join("") + '</div>' +
+        '<div class="modal-actions"><button type="button" class="btn btn-ghost" data-act="cancel">취소</button><button type="button" class="btn btn-primary" data-act="ok">저장</button></div>', { wide: true });
+      $$("#modal-box .vis-r").forEach(el => $$("[data-vm]", el).forEach(b => b.onclick = () => {
+        rows[Number(el.dataset.vi)].m = b.dataset.vm;
+        el.dataset.m = b.dataset.vm;
+        $$("[data-vm]", el).forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+      }));
+      $("#modal-box [data-act=cancel]").onclick = closeModal;
+      $("#modal-box [data-act=ok]").onclick = () => {
+        const map = {};
+        $$("#modal-box .vis-r").forEach(el => {
+          const r = rows[Number(el.dataset.vi)];
+          if (!r.m) return;
+          const msg = String($("[data-vmsg]", el).value || "").replace(/\s+/g, " ").trim();
+          map[r.id] = r.m === "dim" && msg && msg !== ui.VIS_MSG ? { m: r.m, msg } : { m: r.m };
+        });
+        closeModal();
+        if (o.onSave) o.onSave(map);
+      };
+    }
   };
 
   /* 설명 말풍선 동작: 문서 전체에 한 번만 위임. 화면에 하나만 뜨고 Esc·바깥 클릭·스크롤로 닫힌다.
