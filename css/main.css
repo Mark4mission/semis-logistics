@@ -5333,7 +5333,6 @@ table.fo-folded tbody tr.fo-x { display: none !important; }
 .ct-fgrp-t .ct-cnt { margin-left: 6px; }
 
 /* ═════════ v1.31 보안교육 · 자격 관리 재정비 (js/training.js) ═════════ */
-.tr-role.is-own { background: #f4f1ea; }
 /* 인원 목록 — 자격 상태 칩 묶음 */
 .tr-ptbl .c-q { min-width: 260px; }
 .tr-ptbl .c-next { white-space: nowrap; }
@@ -5908,4 +5907,64 @@ button.hc-d:focus-visible { outline: 2px solid var(--primary); outline-offset: 1
   .hzf-line { grid-template-columns: minmax(0, 1fr) auto; }
   .hzf-line .hzf-bar { grid-column: 1 / -1; grid-row: 2; }
   .hzf-s { display: none; }
+}
+
+/* ═════════ v1.37 보안교육 · 자격 관리 — 직무군 색 (js/training.js RGROUPS) ═════════
+   5군 + 기타. 색 = dataviz 검증기 --pairs all 통과(CVD 10.2 · 정상 시각 19.6) · 상태 색(초록 · 호박 · 빨강 · 틸) 색상 피함.
+   표식은 점(8px) + 옅은 바탕, 글자는 본문 잉크. 기타는 기본색 + 빈 고리(색이 아니라 모양으로도 구분) */
+.rg-sup { --rc: #3a4e9d; --rt: #dfe3ef; --rs: #ebedf5; --rb: #c4cae2; }
+.rg-scr { --rc: #0d98ce; --rt: #d8eff7; --rs: #e7f5fa; --rb: #b6e0f0; }
+.rg-rel { --rc: #72842b; --rt: #e8ebdd; --rs: #f1f3ea; --rb: #d5dabf; }
+.rg-tel { --rc: #cb6398; --rt: #f7e6ef; --rs: #faeff5; --rb: #efd0e0; }
+.rg-ins { --rc: #932643; --rt: #eedce1; --rs: #f4e9ec; --rb: #dfbec7; }
+.rg-etc { --rc: #8a979b; --rt: #eef2f1; --rs: #f5f7f6; --rb: #d6dedb; }
+.rg-dot { display: inline-block; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--rc, #8a979b); vertical-align: middle; }
+.rg-dot.rg-etc { background: transparent; box-shadow: inset 0 0 0 1.5px var(--rc); }
+.tr-role { display: inline-flex; align-items: center; gap: 6px; margin: 0 4px 4px 0; padding: 1px 8px 1px 7px; border-radius: 6px; background: var(--rt, #eef2f1);
+  color: var(--text); font-size: .8rem; font-weight: 600; line-height: 1.65; white-space: nowrap; }
+.tr-role .rg-dot { width: 7px; height: 7px; }
+/* 인원 목록 위 직무군 범례 = 걸러 보기 */
+.tr-rglg { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: -2px 0 12px; }
+.tr-rgb { display: inline-flex; align-items: center; gap: 7px; min-height: 32px; padding: 0 11px 0 10px; border: 1px solid var(--border); border-radius: 999px;
+  background: var(--surface); color: var(--text-2); font-size: .82rem; font-weight: 600; white-space: nowrap;
+  transition: background-color .15s var(--ease-out), border-color .15s var(--ease-out), color .15s var(--ease-out); }
+.tr-rgb b { font-weight: 600; color: var(--text-3); }
+@media (hover: hover) and (pointer: fine) { .tr-rgb:not(:disabled):hover { border-color: var(--rb); background: var(--rt); color: var(--text); } }
+.tr-rgb[aria-pressed="true"] { border-color: var(--rc); background: var(--rt); color: var(--text); box-shadow: inset 0 0 0 1px var(--rc); }
+.tr-rgb[aria-pressed="true"] b { color: var(--text); }
+.tr-rgb.is-zero { opacity: .5; cursor: default; }
+.tr-rgb:focus-visible { outline: 2px solid var(--rc); outline-offset: 2px; }
+/* 직무 · 과정 탭 색 범례(누르지 않음) */
+.tr-rglg.is-key { margin: 0; gap: 4px 14px; }
+.tr-rgk { display: inline-flex; align-items: center; gap: 6px; font-size: .82rem; color: var(--text-2); white-space: nowrap; }
+/* 모바일 한 줄 카드 — 이름 옆 직무군 점 */
+.tr-rdots { display: inline-flex; align-items: center; gap: 3px; flex: none; align-self: center; }
+/* 이수 현황표 이름 칸 — 작은 직무 표시 */
+.tr-rmini { display: flex; flex-wrap: wrap; gap: 1px 10px; margin-top: 2px; }
+.tr-rmini > span { display: inline-flex; align-items: center; gap: 5px; font-size: .81rem; color: var(--text-2); white-space: nowrap; }
+.tr-rmini .rg-dot { width: 7px; height: 7px; }
+/* 개인 화면 직무 카드 */
+.tr-roles li { padding-left: 2px; }
+.tr-roles b { display: inline-flex; align-items: center; gap: 8px; }
+.tr-roles small { padding-left: 16px; }
+/* 직무 · 과정 기준표 — 직무 줄 왼쪽 색 띠 + 점 */
+.tr-rd[class*="rg-"] > summary { box-shadow: inset 3px 0 0 var(--rc); padding-left: 14px; }
+.tr-rd.rg-etc > summary { box-shadow: inset 3px 0 0 var(--rb); }
+.tr-rd[class*="rg-"][open] > summary { background: var(--rs); }
+.tr-rn > .rg-dot { margin-right: -1px; }
+/* 인원 등록 · 과정 편집 — 직무 고르기 */
+.tr-rgrp > small { display: flex; align-items: center; gap: 7px; font-size: .81rem; }
+.tr-rgrp:not(.rg-etc) .ck-rc:has(input:checked) { border-color: var(--rc); background: var(--rt); color: var(--text); }
+.tr-rgrp:not(.rg-etc) .ck-rc input { accent-color: var(--rc); }
+#tc-roles .ck-rc .rg-dot { margin-left: -1px; }
+#tc-roles .ck-rc:not(.rg-etc):has(input:checked) { border-color: var(--rc); background: var(--rt); color: var(--text); }
+@media screen and (max-width: 767px) {
+  .tr-rglg:not(.is-key) { flex-wrap: nowrap; overflow-x: auto; margin: 0 -2px 10px; padding: 2px 2px 4px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .tr-rglg:not(.is-key)::-webkit-scrollbar { display: none; }
+  .tr-rgb { min-height: 36px; }
+  .tr-rglg.is-key { gap: 4px 12px; }
+}
+@media print {
+  .tr-rglg:not(.is-key) { display: none; }
+  .rg-dot, .tr-role, .tr-rd[class*="rg-"] > summary { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }

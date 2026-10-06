@@ -121,6 +121,25 @@
   /* v1.31 옛 직무 이름 → 정식 명칭 (읽을 때 바꾸고, 데이터는 이전(migrate)에서 고친다) */
   const ROLE_ALIAS = { "보안감독자": "항공사보안감독자", "화물보안 요원": "화물보안 업무요원", "장비 운용자": "항공보안장비 유지보수요원" };
   const roleDef = (r) => ROLE_DEF.find(x => x.id === r) || null;
+  /* v1.37 직무군 색 (Mark 지정 5군) — 그 밖(위험물 · SSI · ACMR · ACC3 · 사내 직무)은 '기타' 기본색.
+     색은 css `.rg-*` (dataviz 검증기 --pairs all 통과 · 상태 색(초록 · 호박 · 빨강 · 틸) 색상 피함), 글자는 본문 잉크 */
+  const RGROUPS = [
+    { id: "sup", label: "항공사 보안관리", roles: ["항공사보안책임자", "항공사보안감독자"] },
+    { id: "scr", label: "보안검색 · 화물보안", roles: ["보안검색감독자", "보안검색요원", "항공보안장비 유지보수요원", "화물보안 업무요원"] },
+    { id: "rel", label: "보안 유관부서", roles: ["보안 유관부서 관리자", "보안 유관부서 일반요원"] },
+    { id: "tel", label: "전화 접수 · 안내", roles: ["전화 접수자 · 안내요원"] },
+    { id: "ins", label: "보안교관", roles: ["항공보안교관", "사내보안교관"] },
+    { id: "etc", label: "기타", roles: [] }
+  ];
+  const rgOf = (r) => { r = ROLE_ALIAS[r] || r; return RGROUPS.find(g => g.roles.indexOf(r) >= 0) || RGROUPS[RGROUPS.length - 1]; };
+  const rgById = (id) => RGROUPS.find(g => g.id === id) || null;
+  /* 직무 늘어놓는 순서 = 직무군 순서 → 군 안 순서(기타는 기준표 순서 → 이름) */
+  const roleRank = (r) => {
+    const g = rgOf(r), gi = RGROUPS.indexOf(g), ri = g.roles.indexOf(ROLE_ALIAS[r] || r), di = ROLES.indexOf(ROLE_ALIAS[r] || r);
+    return gi * 1000 + (ri >= 0 ? ri : di >= 0 ? di : 900);
+  };
+  const sortRoles = (rs) => rs.slice().sort((a, b) => roleRank(a) - roleRank(b) || String(a).localeCompare(String(b), "ko"));
+  const rgDot = (g) => `<i class="rg-dot rg-${g.id}" aria-hidden="true"></i>`;
 
   /* ─────── 과정 기준 (코드 기본 — 데이터가 비었을 때 · 이전 때) ─────── */
   const SCR_ORG = "국토부 지정 보안검색교육기관 (위탁 의무)";
@@ -540,7 +559,7 @@
   if (typeof window !== "undefined") (window.SemisEvidence = window.SemisEvidence || {})[MOD] = evidence;
 
   /* ─────── 화면 상태 ─────── */
-  let tab = "people", q = "", roleF = "", onlyAct = false, year = "", sType = "all", pState = "active", pView = "list";
+  let tab = "people", q = "", roleF = "", rgF = "", onlyAct = false, year = "", sType = "all", pState = "active", pView = "list";
   let pid = "", sid = "";                       // 개인 화면 · 교육 기록 화면
   const TABS = [["people", "인원"], ["sessions", "교육 기록"], ["catalog", "직무 · 과정"], ["pledges", "SSI 서약"]];
   let plScope = "team", plState = "valid";
@@ -557,7 +576,11 @@
     const sub = stText(c, true);
     return `<span class="tr-cell" data-st="${c.st}">${stChip(c)}${sub && c.st !== "perm" && c.st !== "none" ? `<small class="mono">${esc(sub)}</small>` : ""}</span>`;
   }
-  const roleChips = (p) => rolesOf(p).map(r => `<span class="tr-role${roleDef(r) ? "" : " is-own"}">${esc(r)}</span>`).join("");
+  /* 직무 칩 — 직무군 색 점 + 옅은 바탕(기타는 기본색 · 빈 고리) */
+  const roleChip = (r) => { const g = rgOf(r); return `<span class="tr-role rg-${g.id}" title="${esc(g.label)}">${rgDot(g)}${esc(r)}</span>`; };
+  const roleChips = (p) => sortRoles(rolesOf(p)).map(roleChip).join("");
+  /* 사람이 가진 직무군(순서대로, 중복 없이) */
+  const rgsOf = (p) => RGROUPS.filter(g => rolesOf(p).some(r => rgOf(r) === g));
   const legalChip = (k) => ui.chip(LEGAL[k][0], LEGAL[k][1]);
 
   /* ─────── 화면 이동 (개인 · 교육 기록) — 브라우저 뒤로 = 목록 ─────── */
@@ -606,6 +629,7 @@
       if (pState === "active" && !a) return false;
       if (pState === "left" && a) return false;
       if (roleF && rolesOf(p).indexOf(roleF) < 0) return false;
+      if (rgF && !rolesOf(p).some(r => rgOf(r).id === rgF)) return false;
       if (onlyAct) { const pq = personQuals(p, t); if (!(pq.worst && needAct(pq.worst.st)) && !(isSSI(p) && !pledged(p))) return false; }
       return !q || hay([p.name, p.dept, rolesOf(p).join(" "), p.note]).indexOf(q.toLowerCase()) >= 0;
     }).map(p => ({ p, pq: personQuals(p, t) }))
@@ -615,7 +639,11 @@
     const t = todayISO(), st = stats(t);
     const all = people();
     const left = all.filter(p => !active(p, t));
-    const roleOpts = [["", "전체 직무"]].concat(allRoles().filter(r => all.some(p => rolesOf(p).indexOf(r) >= 0)).map(r => [r, r]));
+    const used = sortRoles(allRoles().filter(r => all.some(p => rolesOf(p).indexOf(r) >= 0)));
+    const roleSel = `<select id="tr-role" aria-label="직무"><option value="">전체 직무</option>${RGROUPS.map(g => {
+      const rs = used.filter(r => rgOf(r) === g);
+      return rs.length ? `<optgroup label="${esc(g.label)}">${rs.map(r => `<option value="${esc(r)}" ${roleF === r ? "selected" : ""}>${esc(r)}</option>`).join("")}</optgroup>` : "";
+    }).join("")}</select>`;
     const band = ui.stats([
       { label: "재직 인원", value: st.people, sub: left.length ? "퇴직 · 전출 " + left.length : "" },
       { label: "자격 유효율", value: st.valid == null ? "-" : st.valid + "%", sub: "필수 " + st.cells + "건", tone: st.valid == null ? "muted" : st.valid === 100 ? "ok" : "warn" },
@@ -625,13 +653,23 @@
     ]);
     const tools = `<div class="toolbar">
         ${ui.search("tr-q", "이름 · 소속 · 직무 검색", q)}
-        ${roleOpts.length > 2 ? `<label class="ck-f"><span class="m-hide">직무</span><select id="tr-role" aria-label="직무">${roleOpts.map(([v, lb]) => `<option value="${esc(v)}" ${roleF === v ? "selected" : ""}>${esc(lb)}</option>`).join("")}</select></label>` : ""}
+        ${used.length > 1 ? `<label class="ck-f"><span class="m-hide">직무</span>${roleSel}</label>` : ""}
         <button type="button" class="pb-chk" id="tr-act" aria-pressed="${onlyAct}">${icon("alert", 14)}<span>조치 필요만</span></button>
         <span class="spacer m-hide"></span>
         <span class="m-hide">${segHTML("pstate", [["active", "재직"], ["left", "퇴직 · 전출"], ["all", "전체"]], pState)}</span>
         ${mob() ? "" : segHTML("pview", [["list", "목록"], ["grid", "이수 현황표"]], pView)}
       </div>`;
-    return band + `<section class="card" id="tr-plist">${tools}<div id="tr-pbody">${peopleBody(canW, t)}</div></section>`;
+    return band + `<section class="card" id="tr-plist">${tools}${all.length ? rgLegend(t) : ""}<div id="tr-pbody">${peopleBody(canW, t)}</div></section>`;
+  }
+  /* 직무군 범례 = 직무군 걸러 보기(다시 누르면 해제). 숫자 = 지금 재직/퇴직 보기에서 그 군 직무를 가진 사람 수 */
+  function rgLegend(t) {
+    const base = people().filter(p => { const a = active(p, t); return pState === "all" || (pState === "left" ? !a : a); });
+    return `<div class="tr-rglg" role="group" aria-label="직무군">${RGROUPS.map(g => {
+      const n = base.filter(p => rolesOf(p).some(r => rgOf(r) === g)).length;
+      const on = rgF === g.id;
+      return `<button type="button" class="tr-rgb rg-${g.id}${n ? "" : " is-zero"}" data-rgf="${g.id}" aria-pressed="${on}"${n || on ? "" : " disabled"}
+        title="${esc(g.roles.length ? g.roles.join(" · ") : "위험물 · SSI · ACMR · ACC3 · 사내 직무")}">${rgDot(g)}<span>${esc(g.label)}</span><b class="mono">${n}</b></button>`;
+    }).join("")}</div>`;
   }
   function peopleBody(canW, t) {
     const rows = peopleRows(t);
@@ -642,7 +680,7 @@
       const sub = !a ? "퇴직 · 전출 " + dot(p.left) : nx ? famShort(nx.g) + " " + stText(nx, true) : pq.req.length ? "필수 과정 " + pq.req.length + "건" : "필수 과정 없음";
       const ssiMiss = isSSI(p) && !pledged(p);
       return `<li><button type="button" class="tr-mrow" data-tperson="${esc(p.id)}">
-        <span class="tr-mn"><b>${esc(p.name)}</b><small>${esc(p.dept || "")}</small></span>
+        <span class="tr-mn"><b>${esc(p.name)}</b>${rgsOf(p).length ? `<span class="tr-rdots" role="img" aria-label="${esc("직무: " + sortRoles(rolesOf(p)).join(", "))}">${rgsOf(p).map(rgDot).join("")}</span>` : ""}<small>${esc(p.dept || "")}</small></span>
         <span class="tr-ms">${w ? stChip(w) : ""}${ssiMiss ? ui.chip("서약 누락", "red") : ""}</span>
         <span class="tr-mx mono">${esc(sub)}</span></button></li>`;
     }).join("")}</ul>`;
@@ -684,7 +722,7 @@
     return `<div class="table-wrap"><table class="tbl tbl-cap tr-gtbl" data-no-stack style="--cap:1480px">
       <thead><tr><th>이름</th>${gs.map(x => `<th>${esc(famShort(x))}</th>`).join("")}${ssiCol ? "<th>SSI 서약</th>" : ""}</tr></thead>
       <tbody>${ps.filter(p => ids.indexOf(p.id) >= 0).map(p => `<tr data-pid="${esc(p.id)}">
-        <td class="c-name"><button type="button" class="tbl-open" data-tperson="${esc(p.id)}">${esc(p.name)}</button><div class="cell-sub">${esc(rolesOf(p).join(" · "))}</div></td>
+        <td class="c-name"><button type="button" class="tbl-open" data-tperson="${esc(p.id)}">${esc(p.name)}</button><div class="tr-rmini">${sortRoles(rolesOf(p)).map(r => `<span>${rgDot(rgOf(r))}${esc(r)}</span>`).join("")}</div></td>
         ${gs.map(x => { const c = g.cells.find(k => k.p === p && k.g === x);
           return `<td class="c-cell${c ? "" : " is-na"}"${c && canW ? ` data-tcell="${esc(p.id)}|${esc(x.fam)}"` : ""}>${cellChip(c)}</td>`; }).join("")}
         ${ssiCol ? `<td class="c-cell${isSSI(p) ? "" : " is-na"}">${isSSI(p) ? ssiCell(p) : '<span class="tr-na">-</span>'}</td>` : ""}
@@ -746,8 +784,8 @@
       </section>`;
     const roleCard = `<section class="card tr-pcard" aria-label="직무">
         <h2 class="card-title">직무</h2>
-        ${rolesOf(p).length ? `<ul class="tr-roles">${rolesOf(p).map(r => { const d = roleDef(r);
-          return `<li><b>${esc(r)}</b>${d ? `<small>${esc(d.basis)}</small>` : '<small>사내 직무</small>'}</li>`; }).join("")}</ul>` : ui.empty("지정된 직무가 없습니다.")}
+        ${rolesOf(p).length ? `<ul class="tr-roles">${sortRoles(rolesOf(p)).map(r => { const d = roleDef(r), g = rgOf(r);
+          return `<li class="rg-${g.id}"><b>${rgDot(g)}${esc(r)}</b><small>${esc(g.id === "etc" ? (d ? d.basis : "사내 직무") : g.label + (d ? " · " + d.basis : ""))}</small></li>`; }).join("")}</ul>` : ui.empty("지정된 직무가 없습니다.")}
       </section>`;
     const infoCard = `<section class="card tr-pcard" aria-label="기본 정보">
         <h2 class="card-title">기본 정보</h2>
@@ -902,8 +940,9 @@
       const lg = d.grp === "intl" ? "intl" : d.grp === "own" ? "own" : "law";
       const hit = !!q && hay([r, d.basis, d.qual, d.duty, list.map(c => c.name + " " + (c.org || "")).join(" ")]).indexOf(q.toLowerCase()) >= 0;
       if (q && !hit) return "";
-      return `<details class="tr-rd"${hit ? " open" : ""}>
-        <summary><span class="tr-rn"><b>${esc(r)}</b>${legalChip(lg)}${d.check ? ui.chip("확인 필요", "amber") : ""}</span>
+      const g = rgOf(r);
+      return `<details class="tr-rd rg-${g.id}"${hit ? " open" : ""}>
+        <summary><span class="tr-rn">${rgDot(g)}<b>${esc(r)}</b>${legalChip(lg)}${d.check ? ui.chip("확인 필요", "amber") : ""}</span>
           <span class="tr-rc">${esc(cycSum(list, d))}</span><span class="tr-rp">인원 <b class="mono">${n}</b></span>${icon("chevdown", 18)}</summary>
         <div class="tr-rb">
           <dl class="tr-dl tr-rdl">
@@ -916,7 +955,7 @@
         </div></details>`;
     };
     const groups = GROUPS.map(([gk, gl]) => {
-      const rs = usedRoles.filter(r => (roleDef(r) ? roleDef(r).grp : "own") === gk);
+      const rs = sortRoles(usedRoles.filter(r => (roleDef(r) ? roleDef(r).grp : "own") === gk));
       const html = rs.map(roleRow).join("");
       return html ? `<section class="card tr-rgcard" aria-label="${esc(gl)}"><h2 class="card-title">${esc(gl)}<span class="dc-meta">${rs.length}개 직무</span></h2><div class="tr-rds">${html}</div></section>` : "";
     }).join("");
@@ -938,7 +977,8 @@
           <li><b>위험물</b><span>24개월 이내 보수교육 — 만료 3개월 안 이수 시 기존 만료일 기준 연장 (항공위험물운송기술기준 제12조②)</span></li>
         </ul>
       </section>
-      <div class="toolbar tr-ctool">${ui.search("tr-q", "직무 · 과정 · 근거 검색", q)}</div>
+      <div class="toolbar tr-ctool">${ui.search("tr-q", "직무 · 과정 · 근거 검색", q)}
+        <span class="tr-rglg is-key" aria-label="직무군 색">${RGROUPS.map(g => `<span class="tr-rgk">${rgDot(g)}${esc(g.label)}</span>`).join("")}</span></div>
       <div id="tr-cbody">${groups}${ex ? `<section class="card tr-rgcard" aria-label="그 밖의 과정"><h2 class="card-title">그 밖의 과정</h2><div class="tr-rds">${ex}</div></section>` : ""}
         ${q && !groups && !ex ? ui.empty("검색 결과가 없습니다.") : ""}</div>`;
   }
@@ -1049,9 +1089,10 @@
     const have = cur.slice();
     const custom = allRoles().filter(r => !roleDef(r));
     const box = (r) => `<label class="ck-rc"><input type="checkbox" value="${esc(r)}" ${have.indexOf(r) >= 0 ? "checked" : ""}><span>${esc(r)}</span></label>`;
-    return GROUPS.map(([gk, gl]) => {
-      const rs = ROLE_DEF.filter(d => d.grp === gk).map(d => d.id).concat(gk === "own" ? custom : []);
-      return rs.length ? `<div class="tr-rgrp"><small>${esc(gl)}</small><div class="ck-rchoose">${rs.map(box).join("")}</div></div>` : "";
+    /* 직무군(색)별 — 마지막 '기타'에 사내 직무가 붙는다(직접 입력도 여기로) */
+    return RGROUPS.map(g => {
+      const rs = g.id === "etc" ? ROLES.filter(r => rgOf(r) === g).concat(custom) : g.roles.slice();
+      return `<div class="tr-rgrp rg-${g.id}"><small>${rgDot(g)}${esc(g.label)}</small><div class="ck-rchoose">${rs.map(box).join("")}</div></div>`;
     }).join("");
   }
   function personForm(id) {
@@ -1082,7 +1123,7 @@
       const all = $$("#tp-roles input");
       if (!all.some(i => i.value === r)) {
         let own = $("#tp-roles .tr-rgrp:last-child .ck-rchoose");
-        if (!own) { $("#tp-roles").insertAdjacentHTML("beforeend", `<div class="tr-rgrp"><small>사내 · 기타</small><div class="ck-rchoose"></div></div>`); own = $("#tp-roles .tr-rgrp:last-child .ck-rchoose"); }
+        if (!own) { $("#tp-roles").insertAdjacentHTML("beforeend", `<div class="tr-rgrp rg-etc"><small>${rgDot(rgById("etc"))}기타</small><div class="ck-rchoose"></div></div>`); own = $("#tp-roles .tr-rgrp:last-child .ck-rchoose"); }
         own.insertAdjacentHTML("beforeend", `<label class="ck-rc"><input type="checkbox" value="${esc(r)}" checked><span>${esc(r)}</span></label>`);
       } else all.forEach(i => { if (i.value === r) i.checked = true; });
       ra.value = "";
@@ -1338,7 +1379,7 @@
     };
     const editOne = (i) => {
       const c = list[i];
-      const roleBox = allRoles().map(r => `<label class="ck-rc"><input type="checkbox" value="${esc(r)}" ${(c.roles || []).map(x => ROLE_ALIAS[x] || x).indexOf(r) >= 0 ? "checked" : ""}><span>${esc(r)}</span></label>`).join("");
+      const roleBox = sortRoles(allRoles()).map(r => `<label class="ck-rc rg-${rgOf(r).id}"><input type="checkbox" value="${esc(r)}" ${(c.roles || []).map(x => ROLE_ALIAS[x] || x).indexOf(r) >= 0 ? "checked" : ""}>${rgDot(rgOf(r))}<span>${esc(r)}</span></label>`).join("");
       openModal(`<h3>${c.name ? "과정 수정" : "과정 추가"}</h3>
         ${fld("tc-name", "과정 이름", `<input id="tc-name" value="${esc(c.name || "")}" maxlength="60">`)}
         <div class="form-grid">
@@ -1414,7 +1455,12 @@
       ui.repaintKeep(b, bodyHTML(canW), qi);
       wire(b);
     };
-    const rs = $("#tr-role", box); if (rs) rs.onchange = () => { roleF = rs.value; paint(); };
+    const rs = $("#tr-role", box); if (rs) rs.onchange = () => { roleF = rs.value; if (roleF && rgF && rgOf(roleF).id !== rgF) rgF = ""; paint(); };
+    $$("[data-rgf]", box).forEach(b => b.onclick = () => {
+      rgF = rgF === b.dataset.rgf ? "" : b.dataset.rgf;
+      if (rgF && roleF && rgOf(roleF).id !== rgF) roleF = "";
+      paint();
+    });
     const yr = $("#tr-year", box); if (yr) yr.onchange = () => { year = yr.value; paint(); };
     const ac = $("#tr-act", box); if (ac) ac.onclick = () => { onlyAct = !onlyAct; paint(); };
     $$("[data-tseg]", box).forEach(b => b.onclick = () => {
@@ -1507,17 +1553,18 @@
   });
 
   window.SemisTraining = {
-    DEF_COURSES, ROLES, ROLE_DEF, ROLE_ALIAS, GROUPS, EIGHT, ST, CAT_VER, calcExpire, shiftM, nextExpire, previewExpire,
+    DEF_COURSES, ROLES, ROLE_DEF, ROLE_ALIAS, GROUPS, RGROUPS, rgOf, sortRoles, EIGHT, ST, CAT_VER, calcExpire, shiftM, nextExpire, previewExpire,
     courses, fams, famStatus, personQuals, stats, roleStats, dueList, expiryByMonth, sessionsByMonth, grid, missing, evidence, expireOf, stText, cycleText,
     migrate, rolesOf, needAct, loadPledges, pledgeMatch, pledgeInfo, pledgesState: PL,
     syncSessionRecords, personForm, pledgeForm, recordForm, sessionForm, coursesForm, keepOver, leftOver, openPerson, openSession,
     setToday(t) { fixedToday = isISO(t) ? t : ""; },
-    getState() { return { tab, q, roleF, onlyAct, year, sType, pState, pView, pid, sid, plScope, plState }; },
+    getState() { return { tab, q, roleF, rgF, onlyAct, year, sType, pState, pView, pid, sid, plScope, plState }; },
     setState(o) {
       o = o || {};
       if (o.tab) { tab = o.tab === "grid" ? "people" : o.tab; if (o.tab === "grid") pView = "grid"; }
       if (o.q !== undefined) q = String(o.q || "");
       if (o.roleF !== undefined) roleF = String(o.roleF || ""); if (o.onlyAct !== undefined) onlyAct = !!o.onlyAct;
+      if (o.rgF !== undefined) rgF = rgById(o.rgF) ? String(o.rgF) : "";
       if (o.year !== undefined) year = String(o.year || ""); if (o.sType) sType = o.sType; if (o.pState) pState = o.pState;
       if (o.pView) pView = o.pView;
       if (o.pid !== undefined || o.sid !== undefined) {
