@@ -6,6 +6,7 @@
    - 수검 대응: window.SemisAudit (nextAudit · prep · phase · allFindings · overdueF · repeatCount)
    - 보안 기록부: window.SemisSeclog (templates · status · isNG)
    - 자체 보안점검: window.SemisSelfcheck (forms · allFindings · fState · openRecord) — v1.32
+   - 위해물품 적발 일지: window.SemisHaz (CARES 월 집계 한 줄, 보안 기록부 카드 안) — v1.36
    v1.35: 숨긴 점검(시스템관리자 '표시 관리')은 각 모듈 API 에서 이미 빠져 있고, 흐리게 한 점검은 하드카피 집계 · 기록이 통계에 들어온다
    메뉴가 숨겨졌거나 권한 밖인 모듈의 카드는 그리지 않는다. 색: 상태 3색(유효 · 갱신 필요 · 정지 · 미이수)과
    교육 실시 2색(당사 · 협력사) — dataviz 검증기(CVD ΔE ≥ 8) 통과값.
@@ -208,6 +209,7 @@
         <div class="sd-pane">
           <div class="sd-ph"><b>양식별 기록 이행</b>${legend([{ name: "기록", c: STC.good }, { name: "누락", c: STC.bad }])}</div>
           ${ts.length ? `<div class="ie-sbs">${rows}</div>` : ui.empty("사용 중인 양식이 없습니다.")}
+          ${window.SemisHaz && SemisHaz.canShow() ? SemisHaz.slot("ie") : ""}
         </div>
         <div class="sd-pane">
           <div class="sd-ph"><b>이번 주기 미기록</b><span class="dc-meta">${pend.length}개 양식</span></div>
@@ -507,6 +509,7 @@
     $$("[data-ie-scforms]", root).forEach(b => b.onclick = () => { if (SC()) SC().setState({ tab: "forms", rid: "" }); SeMIS.navigate("selfcheck"); });
     $$("[data-ie-schc]", root).forEach(b => b.onclick = () => { if (SC() && SC().hcForm) SC().hcForm(b.dataset.ieSchc); });
     $$("[data-ie-cfg]", root).forEach(b => b.onclick = cfgPick);
+    if (window.SemisHaz) SemisHaz.fill(root);
     $$("[data-ie-cm]", root).forEach(b => b.onclick = () => { const n = Number(b.dataset.ieCm), t = todayISO(); calYM = n ? ymAdd(calYM || ymOf(t), n) : ymOf(t); calSel = ""; paintCal(); });
     $$("[data-ie-dayb]", root).forEach(b => b.onclick = (ev) => { ev.stopPropagation(); calSel = b.dataset.ieDayb; paintCal(); });
     $$("[data-ie-day]", root).forEach(c => c.onclick = (ev) => { if (ev.target.closest(".ic-ev, .ic-n, .ic-more")) return; calSel = c.dataset.ieDay; paintCal(); });

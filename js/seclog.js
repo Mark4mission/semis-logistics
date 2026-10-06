@@ -319,6 +319,15 @@
   const evTags = (t) => t.evidence.length ? `<span class="sl-ev mono" title="수검 체크리스트 번호">${esc(t.evidence.join(" · "))}</span>` : "";
 
   /* ═════════ 오늘 ═════════ */
+  /* v1.36 위해물품 적발 일지(CARES 월 집계, js/hazfind.js) — 위해물품 묶음 양식 뒤(없으면 끝)에 자리만 둔다 */
+  function hazAfter(pairs, kind) {
+    if (!window.SemisHaz || !SemisHaz.canShow()) return pairs.map(p => p[1]).join("");
+    let at = -1;
+    pairs.forEach((p, i) => { if (p[0] && p[0].grp === "hazmat") at = i; });
+    const out = pairs.map(p => p[1]);
+    out.splice(at >= 0 ? at + 1 : out.length, 0, SemisHaz.slot(kind));
+    return out.join("");
+  }
   function todayHTML() {
     const t0 = todayISO();
     const ts = templates();
@@ -332,7 +341,7 @@
       { label: "누락", value: miss, sub: "지난 주기", tone: miss ? "bad" : "ok" },
       { label: "오늘 기록", value: todayN, sub: dot(t0) + "(" + WD[dow(t0)] + ")" },
       { label: "이상 (30일)", value: ng, tone: ng ? "warn" : "muted" }
-    ]) + (ts.length ? `<div class="sl-cards">${st.map(x => cardHTML(x.t, x.s, t0)).join("")}</div>` : ui.empty("사용 중인 점검 양식이 없습니다."));
+    ]) + (ts.length ? `<div class="sl-cards">${hazAfter(st.map(x => [x.t, cardHTML(x.t, x.s, t0)]), "sl-card")}</div>` : ui.empty("사용 중인 점검 양식이 없습니다."));
   }
   /* 하드카피 집계의 '이상' 주기 수 — 날짜는 주기 끝(오늘을 넘지 않게) */
   function hcNgIn(from, to) {
@@ -393,7 +402,10 @@
     const ts = templates();
     return `<section class="card" id="sl-status">
       <div class="sl-legend"><span data-c="ok">기록</span><span data-c="ng">이상 있음</span><span data-c="part">일부</span><span data-c="miss">누락</span><span data-c="cur">진행 중</span></div>
-      ${ts.length ? ts.map(t => {
+      ${ts.length ? hazAfter(ts.map(t => [t, statusRow(t, t0)]), "sl-row") : ui.empty("사용 중인 점검 양식이 없습니다.")}
+    </section>`;
+  }
+  function statusRow(t, t0) {
         const s = status(t, t0);
         const hcTag = t.vis === "dim" ? `<span class="sl-hc">${esc(t.dimMsg)}</span>` : "";
         if (s.event) return `<div class="sl-row${t.vis === "dim" ? " is-dim" : ""}"><div class="sl-row-h"><b>${esc(t.name)}</b><span class="sl-cyc">편별 · 수시</span>${hcTag}${evTags(t)}${t.vis === "dim" && canW() ? `<span class="spacer"></span><button type="button" class="sl-mbtn" data-sl-hc="${esc(t.id)}">집계 입력</button>` : ""}</div>
@@ -410,8 +422,6 @@
             ? `<button type="button" class="sl-mbtn mono" data-sl-late="${esc(t.id)}|${esc(c.k)}">${esc(periodLabel(t, c.k))}</button>`
             : `<span class="mono">${esc(periodLabel(t, c.k))}</span>`).join("")}${s.missing.length > 8 ? `<span class="cell-sub">외 ${s.missing.length - 8}</span>` : ""}</div>` : ""}
         </div>`;
-      }).join("") : ui.empty("사용 중인 점검 양식이 없습니다.")}
-    </section>`;
   }
 
   /* ═════════ 기록 목록 ═════════ */
@@ -891,6 +901,7 @@
     $$("[data-sl-cell]", box).forEach(b => b.onclick = () => openCell(b.dataset.slCell));
     $$("[data-sl-late]", box).forEach(b => b.onclick = () => openCell(b.dataset.slLate));
     $$("[data-sl-hc]", box).forEach(b => b.onclick = () => hcForm(b.dataset.slHc));
+    if (window.SemisHaz) SemisHaz.fill(box);
     $$("tr[data-slid]", box).forEach(tr => {
       const open = (ev) => { if (ev && ev.target.closest("a")) return; if (canW()) recordForm("", tr.dataset.slid); else viewRecord(tr.dataset.slid); };
       tr.onclick = open;

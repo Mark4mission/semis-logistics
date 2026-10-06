@@ -8,6 +8,7 @@
    - 경비대원 배치도(js/secpost.js)
    - 장비 가동 · 고장 추이: 월별 고장 신고 12개월(X-ray · ETD) · 장비별 가동률 12개월 · 평균 고장 간격
    - 점검 이행 분석: 주별 일일점검 이행률 12주(X-ray · ETD) · 점검 시각 분포 · 점검자별 건수(28일) · 정기점검 경과 · 점검 이상 항목
+   - 위해물품 적발 일지(v1.36, js/hazfind.js): 이번 달 합계 · 분류 · 호기 + 12개월 — CARES 월 집계만
    - 검색 환경 24시간: 온도 · 습도 · 결로 여유 추이(지점 3곳) · 기준 초과 시간 · 표로 보기
    차트는 SVG(선) + HTML(막대 · 축 글자) — 화면 폭에 따라 글자가 줄어들지 않게. 색은 CVD 검증 통과값.
    ═══════════════════════════════════════════════════════ */
@@ -290,6 +291,10 @@
       const r = rate28();
       tiles.push({ label: "일일점검 이행률", value: pct0(r.all), sub: "28일 · X-ray " + pct0(r.xray) + " · ETD " + pct0(r.etd), tone: r.all != null && r.all < 0.8 ? "warn" : "ok" });
     }
+    if (K.has("haz") && !K.failed("haz")) {
+      const hz = K.hazMonth(K.ymKST(0)), hp = K.hazMonth(K.ymKST(-1));
+      tiles.push({ label: "위해물품 적발", value: hz.total + "건", sub: "이번 달 · 지난달 " + hp.total + "건" });
+    }
     if (SP && SP.canRead() && SP.hasData()) {
       const ps = SP.stats();
       tiles.push({ label: "경비 지점", value: ps.total + "곳", sub: "카드리더 " + ps.cr + " · 문형 금속탐지기 " + ps.dmd });
@@ -437,7 +442,7 @@
     if (!s.ts && !s.err) return wait("CARES에서 장비 · 점검 · 센서 기록을 불러오는 중입니다.");
     if (s.err && !s.equips.length) return `<section class="card">${ui.empty("CARES에 연결하지 못했습니다. (" + s.err + ")",
       '<button type="button" class="btn btn-ghost btn-sm" data-sd-retry>다시 시도</button>')}</section>`;
-    return equipCard() + inspCard() + envCard();
+    return equipCard() + inspCard() + (window.SemisHaz ? SemisHaz.sdCard() : "") + envCard();
   }
   function metaText() {
     return window.SemisScreen && SemisScreen.metaText ? SemisScreen.metaText(C().state) : "CARES";
@@ -507,6 +512,7 @@
     $$("[data-sd-equip]", root).forEach(b => b.onclick = () => { if (window.SemisEquip) SemisEquip.setTab(b.dataset.sdEquip); SeMIS.navigate("scr-equip"); });
     $$("[data-sd-retry]", root).forEach(b => b.onclick = () => refresh(true));
     wireCharts(root);
+    if (window.SemisHaz) SemisHaz.fill(root);
   }
   function paint() {
     const box = document.getElementById("sd-body");

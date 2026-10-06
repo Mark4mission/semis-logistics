@@ -12,6 +12,7 @@
    - 묶음별 캐시(live 60초 · repairs 10분 · history 15분 · env 5분) · 화면 여러 곳이 동시에 불러도 요청은 한 번.
    - v1.28 화물보안 대시보드: 점검 조회 12주(주별 이행률) · 환경센서 24시간 추이(env — 이 브라우저에 24시간치를
      쌓아 두고 마지막 수신 이후만 새로 읽는다: 처음 한 번 약 1,440건, 이후 몇 건).
+   - v1.36 위해물품 적발 월 집계(haz — CARES hazStats, 공개 · 개인정보 · AWB 없음). 기록 원본 hazFinds 는 CARES 비공개라 읽지 않는다.
    ═══════════════════════════════════════════════════════ */
 "use strict";
 
@@ -109,11 +110,11 @@
      - history (15분):  최근 12주 점검 · 정기점검(주간·월간…) 최근 기록     ≈ 800건 — 화면에 들어올 때만
      - env     (5분):   환경센서 24시간(이 브라우저에 쌓아 두고 마지막 수신 이후만) — 화물보안 대시보드만
      자동 새로고침(5분)은 live만 강제로, repairs는 유효기간이 지났을 때만 다시 읽는다. */
-  const st = { ts: 0, ver: 0, err: null, loading: false, parts: { live: 0, repairs: 0, history: 0, env: 0 },
-    equips: [], repairs: [], inspections: [], todayIns: [], periodic: [], sensors: {}, thresholds: {}, env: [], errs: {} };
-  const TTL = { live: TTL_MS, repairs: 10 * 60000, history: 15 * 60000, env: 5 * 60000 };
-  const ALL_PARTS = ["live", "repairs", "history"];   // env 는 따로 요청할 때만(load({ parts: ["env"] }))
-  const KNOWN_PARTS = ALL_PARTS.concat(["env"]);
+  const st = { ts: 0, ver: 0, err: null, loading: false, parts: { live: 0, repairs: 0, history: 0, env: 0, haz: 0 },
+    equips: [], repairs: [], inspections: [], todayIns: [], periodic: [], sensors: {}, thresholds: {}, env: [], haz: [], errs: {} };
+  const TTL = { live: TTL_MS, repairs: 10 * 60000, history: 15 * 60000, env: 5 * 60000, haz: 10 * 60000 };
+  const ALL_PARTS = ["live", "repairs", "history"];   // env · haz 는 따로 요청할 때만(load({ parts: ["env"] }))
+  const KNOWN_PARTS = ALL_PARTS.concat(["env", "haz"]);
   const inflight = {};
   const listeners = [];
   const why = (r) => r.status === "rejected" ? ((r.reason && r.reason.message) || "실패") : null;
@@ -151,6 +152,9 @@
         st.errs.repairs = why(res[0]);
       } else if (p === "env") {
         await fetchEnv();
+      } else if (p === "haz") {
+        try { st.haz = (await fsList("hazStats", 60)).filter(d => /^\d{4}-\d{2}$/.test(d.id)).sort((a, b) => a.id.localeCompare(b.id)); st.errs.haz = null; }
+        catch (e) { st.errs.haz = (e && e.message) || "연동 실패"; }
       } else {
         const res = await Promise.allSettled([
           inspQuery(Date.now() - INSP_DAYS * DAY, 1000),
@@ -170,7 +174,7 @@
     }
     st.parts[p] = Date.now();
     /* v1.28 실패한 묶음은 유효기간을 기다리지 않고 30초 뒤 다시 읽을 수 있게 */
-    const failed = p === "live" ? st.err : p === "repairs" ? st.errs.repairs : p === "history" ? st.errs.inspections : st.errs.env;
+    const failed = p === "live" ? st.err : p === "repairs" ? st.errs.repairs : p === "history" ? st.errs.inspections : p === "haz" ? st.errs.haz : st.errs.env;
     if (failed) st.parts[p] = Date.now() - TTL[p] + 30000;
   }
   /* 묶음을 읽었지만 실패해 쓸 자료가 없음 — 화면은 0건 대신 '불러오지 못함'을 보여야 한다 */
@@ -178,6 +182,7 @@
     if (p === "repairs") return !!st.errs.repairs && !st.repairs.length;
     if (p === "history") return !!st.errs.inspections && !st.inspections.length;
     if (p === "env") return !!st.errs.env && !st.env.length;
+    if (p === "haz") return !!st.errs.haz && !st.haz.length;
     return !!st.err && !st.equips.length;
   }
   const stale = (p) => !st.parts[p] || Date.now() - st.parts[p] >= TTL[p];
@@ -499,6 +504,28 @@
     });
   }
 
+  /* ─────── 위해물품 적발 월 집계 (v1.36) ───────
+     CARES hazStats/{YYYY-MM} = { total, cat:{liquid,powder,mixed,other,none}, loc:{'1','2','3',etc}, day:{DD}, withdrawn, review }
+     작성은 프로에스콤(CARES 웹 '위해물품 적발 일지'). 여기서는 월 숫자만 쓴다. */
+  const HAZ_CATS = [["liquid", "액체"], ["powder", "분말"], ["mixed", "분·액"], ["other", "기타"], ["none", "미기재"]];
+  const ymKST = (off) => { const d = new Date(Date.now() + KST); const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + (off || 0), 1));
+    return t.getUTCFullYear() + "-" + String(t.getUTCMonth() + 1).padStart(2, "0"); };
+  const num = (v) => typeof v === "number" && isFinite(v) ? v : 0;
+  function hazMonth(ym) {
+    const d = st.haz.find(x => x.id === ym);
+    const cat = {}, loc = {};
+    HAZ_CATS.forEach(([k]) => { cat[k] = num(d && d.cat && d.cat[k]); });
+    ["1", "2", "3", "etc"].forEach(k => { loc[k] = num(d && d.loc && d.loc[k]); });
+    return { ym, has: !!d, total: num(d && d.total), cat, loc, withdrawn: num(d && d.withdrawn), review: num(d && d.review), day: (d && d.day) || {} };
+  }
+  /* 끝 달(기본 이번 달)까지 n개월 */
+  function hazSeries(n, endYm) {
+    const end = endYm || ymKST(0);
+    const [y, m] = end.split("-").map(Number);
+    return Array.from({ length: n }, (_, i) => { const t = new Date(Date.UTC(y, m - 1 - (n - 1 - i), 1));
+      return hazMonth(t.getUTCFullYear() + "-" + String(t.getUTCMonth() + 1).padStart(2, "0")); });
+  }
+
   /* 상세 모달용 — 고장 1건의 사진(data URL) */
   async function repairPhotos(id) {
     const d = await fsGet("repairLogs/" + encodeURIComponent(id), ["reportPhotos", "repairPhotos"]);
@@ -511,8 +538,8 @@
     units, unitById, stateLabel, stateTone, repairStatus, RS_META, CAUSE, INS_TYPE, KIND_LABEL, kindOf, laneOf, normSN, ledgerBySN,
     inspIndex, badCount, cautionCount, yearStats, rangeStats, repairYears, downDays, spanOf,
     DEVICES, DEVICE_ORDER, METRICS, thFor, dewPoint, exceed, isOffline, sensorRows, condensation, repairPhotos, envSeries, ENV_CACHE,
-    dayKey, todayKey, dayStartMs, lastDays, hm, mdk, fmtMs, fmtDur,
-    _setFetch(fn) { fetchImpl = fn; }, _reset() { st.ts = 0; st.err = null; st.loading = false; st.parts = { live: 0, repairs: 0, history: 0, env: 0 }; st.errs = {};
-      st.equips = []; st.repairs = []; st.inspections = []; st.todayIns = []; st.periodic = []; st.sensors = {}; st.thresholds = {}; st.env = []; apiKey = null; }
+    dayKey, todayKey, dayStartMs, lastDays, hm, mdk, fmtMs, fmtDur, HAZ_CATS, hazMonth, hazSeries, ymKST, HAZ_URL: CARES_URL + "/#/hazard",
+    _setFetch(fn) { fetchImpl = fn; }, _reset() { st.ts = 0; st.err = null; st.loading = false; st.parts = { live: 0, repairs: 0, history: 0, env: 0, haz: 0 }; st.errs = {};
+      st.equips = []; st.repairs = []; st.inspections = []; st.todayIns = []; st.periodic = []; st.sensors = {}; st.thresholds = {}; st.env = []; st.haz = []; apiKey = null; }
   };
 })();

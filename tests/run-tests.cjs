@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/loginguard.js", "js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/selfcheck.js", "js/auddash.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
+const FILES = ["js/loginguard.js", "js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/hazfind.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/selfcheck.js", "js/auddash.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -3175,7 +3175,7 @@ function makeServer(opts = {}) {
       const labels = qa(e, "#sd-kpi .stat-label").map(x => x.textContent);
       eq(labels.slice(0, 4).join("|"), "장비 가동률|고장 신고|평균 복구 시간|일일점검 이행률");
       eq(qa(e, "#sd-kpi .stat-value")[1].textContent, "3건");
-      eq(qa(e, "#sd-body .sd-card").length, 3);
+      eq(qa(e, "#sd-body .sd-card").length, 4, "고장 · 점검 · 위해물품(v1.36) · 환경");
       eq(qa(e, "#sd-body .sd-card")[0].querySelectorAll(".cc-col").length, 12);
       eq(qa(e, "#sd-body .sd-card")[0].querySelectorAll(".av-row").length, 8);
       ok(q(e, '.lc[data-lc="wk"] polyline'), "주별 선");
@@ -3299,6 +3299,88 @@ function makeServer(opts = {}) {
       eq(repCalls.length, n + 1, "30초가 지나면 다시 읽음"); ok(!K.failed("repairs")); eq(K.state.repairs.length, 3);
       K._setFetch(fake2);
     });
+    /* ── v1.36 위해물품 적발 일지 — CARES 월 집계(hazStats)만 읽어 세 화면에 ── */
+    {
+      const ym0 = K.ymKST(0), ym1 = K.ymKST(-1), ym2 = K.ymKST(-2);
+      const HAZ = [
+        { id: ym2, month: ym2, total: 371, cat: { liquid: 300, powder: 33, mixed: 30, other: 8, none: 0 }, loc: { "1": 120, "2": 150, "3": 101, etc: 0 }, withdrawn: 3, review: 0 },
+        { id: ym1, month: ym1, total: 402, cat: { liquid: 333, powder: 30, mixed: 30, other: 7, none: 2 }, loc: { "1": 146, "2": 164, "3": 92, etc: 0 }, withdrawn: 2, review: 215, day: { "01": 16 } },
+        { id: ym0, month: ym0, total: 9, cat: { liquid: 6, powder: 1, mixed: 1, other: 1 }, loc: { "1": 4, "2": 3, "3": 2 }, withdrawn: 1 },
+        { id: "bogus", total: 99 }
+      ];
+      let hazFail = false; const hzCalls = [];
+      const fakeHz = (url, opts) => {
+        url = String(url); hzCalls.push({ url, method: (opts && opts.method) || "GET" });
+        if (url.indexOf("/hazStats?") >= 0) return hazFail ? Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) })
+          : Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ documents: HAZ.map(o => doc("hazStats", o.id, o)) }) });
+        return fake2(url, opts);
+      };
+      await ta("HZ01 위해물품 월 집계: hazStats 한 번 GET · 월 형식만 · 분류/호기 숫자 · 12개월 이어 붙이기 · 기록 원본(hazFinds)은 읽지 않음", async () => {
+        K._setFetch(fakeHz);
+        await K.load({ parts: ["haz"], force: true });
+        eq(K.state.haz.map(d => d.id).join(","), [ym2, ym1, ym0].join(","), "월 형식만 · 정렬");
+        const m = K.hazMonth(ym1);
+        eq(m.total, 402); eq(m.cat.liquid, 333); eq(m.cat.none, 2); eq(m.loc["2"], 164); eq(m.withdrawn, 2); ok(m.has);
+        const z = K.hazMonth("2001-01"); eq(z.total, 0); ok(!z.has); eq(z.cat.mixed, 0);
+        const ser = K.hazSeries(12);
+        eq(ser.length, 12); eq(ser[11].ym, ym0); eq(ser[10].total, 402); eq(ser[0].total, 0);
+        ok(hzCalls.every(c => c.method === "GET" && c.url.indexOf("hazFinds") < 0), "GET · hazFinds 없음");
+        ok(!/hazFinds["']\s*[,)]/.test(read("js/cares.js") + read("js/hazfind.js")), "원본 컬렉션 조회 코드 없음");
+        const n = hzCalls.length; await K.load({ parts: ["haz"] }); eq(hzCalls.length, n, "10분 캐시");
+      });
+      t("HZ02 화물보안 대시보드: 위해물품 카드(이번 달 · 분류 · 호기 · 반입취하 + 12개월 막대) · 요약 지표 · CARES 링크", () => {
+        loginAs(e, "manager"); go(e, "sec-dash");
+        const card = qa(e, "#sd-body .sd-card").find(c => c.getAttribute("aria-label") === "위해물품 적발 일지");
+        ok(card, "카드");
+        eq(card.querySelector(".hzf-big").textContent, "9");
+        eq(card.querySelectorAll(".cc-col").length, 12, "12개월");
+        ok(card.querySelector(".hzf-dl").textContent.includes("액체6"), card.querySelector(".hzf-dl").textContent);
+        ok(card.querySelector(".hzf-dl.is-loc").textContent.includes("반입취하1"));
+        ok(card.textContent.includes("지난달 402건"), "지난달");
+        eq(card.querySelector(".hzf-link").getAttribute("href"), "https://airzeta-security-system.web.app/#/hazard");
+        eq(card.querySelector(".hzf-link").getAttribute("rel"), "noopener");
+        const lb = qa(e, "#sd-kpi .stat-label").map(x => x.textContent), i = lb.indexOf("위해물품 적발");
+        ok(i >= 0); eq(qa(e, "#sd-kpi .stat-value")[i].textContent, "9건");
+      });
+      t("HZ03 보안 기록부: 오늘 = 위해물품 양식 뒤 카드(이번 달 · 지난달) · 기록 현황 = 12개월 칸 띠", () => {
+        loginAs(e, "manager");
+        const SL = e.w.SemisSeclog;
+        SL.setState({ tab: "today" }); go(e, "inspection");
+        const c = q(e, "#view .hzf-card");
+        ok(c, "카드"); eq(c.dataset.tone, "ok");
+        ok(c.textContent.includes("이번 달 9건") && c.textContent.includes("지난달 402건") && c.textContent.includes("반입취하 1"), c.textContent);
+        const prev = c.closest(".hzf-slot").previousElementSibling;
+        const tpl = SL.tplOf(prev.dataset.tid);
+        eq(tpl && tpl.grp, "hazmat", "위해물품 묶음 양식 뒤");
+        SL.setState({ tab: "status" }); go(e, "inspection");
+        const row = qa(e, "#view .sl-row").find(r => r.textContent.includes("위해물품 적발 일지"));
+        ok(row, "기록 현황 줄");
+        eq(row.querySelectorAll(".sl-cell").length, 12);
+        eq(row.querySelectorAll('.sl-cell[data-c="ok"]').length, 3);
+        eq(row.querySelector(".sl-rate").textContent, "2/11");
+        SL.setState({ tab: "today" });
+      });
+      t("HZ04 점검 · 교육 대시보드: 보안 기록부 카드 안 위해물품 월 합계 한 줄", () => {
+        loginAs(e, "manager"); go(e, "aud-dash");
+        const line = q(e, "#view .hzf-line");
+        ok(line, "한 줄");
+        ok(line.textContent.includes(Number(ym0.slice(5)) + "월 9건") && line.textContent.includes(Number(ym1.slice(5)) + "월 402건"), line.textContent);
+        ok(line.closest('[aria-label="보안 기록부"]'), "보안 기록부 카드 안");
+      });
+      await ta("HZ05 CARES 실패: 카드 · 줄은 '불러오지 못함/연결 실패' · 요약 지표 빠짐", async () => {
+        hazFail = true; K.state.parts.haz = 0; K.state.haz = [];
+        await K.load({ parts: ["haz"], force: true });
+        ok(K.failed("haz"));
+        loginAs(e, "manager"); go(e, "sec-dash");
+        ok(q(e, '#sd-body [aria-label="위해물품 적발 일지"]').textContent.includes("불러오지 못했습니다"));
+        ok(qa(e, "#sd-kpi .stat-label").every(x => x.textContent !== "위해물품 적발"));
+        e.w.SemisSeclog.setState({ tab: "today" }); go(e, "inspection");
+        ok(q(e, "#view .hzf-card").textContent.includes("CARES 연결 실패"));
+        hazFail = false; K.state.parts.haz = 0;
+        await K.load({ parts: ["haz"], force: true });
+        ok(!K.failed("haz")); K._setFetch(fake2);
+      });
+    }
     t("SC20 jsdom 오류 없음(화물 보안 블록)", () => eq(e.errors.length, 0, e.errors.join(" | ")));
   }
 
@@ -7563,7 +7645,7 @@ function makeServer(opts = {}) {
       ok(!q(e, "#sl-vis"), "hq 없음");
       loginAs(e, "admin"); go(e, "inspection");
       ok(q(e, "#sl-vis").classList.contains("m-ed"), "모바일 편집 모드 단추");
-      const n0 = qa(e, "#view .sl-card").length;
+      const n0 = qa(e, "#view .sl-card:not(.hzf-card)").length;
       eq(n0, 5);
       q(e, "#sl-vis").click();
       const rows = qa(e, "#modal-box .vis-r"); eq(rows.length, 5);
@@ -7574,7 +7656,7 @@ function makeServer(opts = {}) {
       hz.querySelector("[data-vmsg]").value = "  ";
       clickOk(e);
       eq(JSON.stringify(e.S.data.seclogCfg.vis), JSON.stringify({ "t-uld": { m: "hide" }, "t-hazmat": { m: "dim" } }));
-      eq(qa(e, "#view .sl-card").length, n0 - 1, "숨긴 카드 빠짐");
+      eq(qa(e, "#view .sl-card:not(.hzf-card)").length, n0 - 1, "숨긴 카드 빠짐");
       ok(!q(e, '#view .sl-card[data-tid="t-uld"]'));
       const dim = q(e, '#view .sl-card.is-dim[data-tid="t-hazmat"]');
       ok(dim && dim.tagName === "BUTTON", "흐리게 = 버튼 카드");
