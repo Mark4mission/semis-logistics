@@ -5368,11 +5368,21 @@ function makeServer(opts = {}) {
       eq(TR.calcExpire("2026-03-01", 12), "2027-02-28"); eq(TR.calcExpire("2026-03-01", 0), "");
       eq(TR.shiftM("2026-05-31", -3), "2026-02-28");
       ok(TR.DEF_COURSES.every(c => c.id && c.fam && c.name && c.kind), "과정 필수 칸");
-      ["항공사보안책임자", "항공사보안감독자", "보안검색감독자", "보안검색요원", "화물보안 업무요원", "항공보안장비 유지보수요원",
-        "보안 유관부서 관리자", "보안 유관부서 일반요원", "전화 접수자 · 안내요원", "항공보안교관", "사내보안교관", "위험물 취급자"].forEach(r => {
+      ["항공사보안감독자", "보안검색감독자", "보안검색요원", "화물보안 업무요원", "항공보안장비 유지보수요원",
+        "보안 유관부서 관리자", "보안 유관부서 일반요원", "전화 접수자 · 안내요원", "사내보안교관", "위험물 취급자", "방사선안전관리자"].forEach(r => {
         const d = TR.ROLE_DEF.find(x => x.id === r);
-        ok(d && d.basis && d.qual && d.duty, "직무 기준: " + r);
+        ok(d && d.basis && d.qual && d.duty && d.who, "직무 기준: " + r);
       });
+      /* v1.38 인천화물팀 기준 — 본사 책임자 · 교육기관 교관 직무 없음, 여객 · 기내식 · 청소 문구 없음 */
+      ok(!TR.ROLES.some(r => ["항공사보안책임자", "항공보안교관"].indexOf(r) >= 0), "뺀 직무 없음");
+      ok(!TR.DEF_COURSES.some(c => (c.roles || []).some(r => ["항공사보안책임자", "항공보안교관"].indexOf(r) >= 0)), "과정 대상에도 없음");
+      const txt = JSON.stringify(TR.ROLE_DEF) + JSON.stringify(TR.DEF_COURSES);
+      ["여객", "승객", "수하물", "기내식", "청소", "무기류"].forEach(w => ok(txt.indexOf(w) < 0, "인천화물팀 범위 밖 문구 없음: " + w));
+      const pre = TR.DEF_COURSES.find(c => c.id === "c-scr-p");
+      ok(pre && pre.roles.join() === "보안검색감독자" && pre.cycle === 0 && pre.same.join() === "c-scn-i", "보안검색감독자 선수 과정 = 검색요원 초기 인정");
+      eq(TR.DEF_COURSES.filter(c => c.fam === "rad").map(c => c.kind + c.cycle).join(","), "초기12,정기12", "방사선안전관리자 초기 · 정기 연 1회");
+      ok(TR.DEF_COURSES.filter(c => c.vendor).every(c => c.who), "협력사 과정 대상");
+      ok(!TR.DEF_COURSES.find(c => c.id === "c-inst").roles.length, "항공보안교관 과정 = 직무 지정 없음(보유)");
       ok(!TR.ROLES.some(r => ["보안감독자", "화물보안 요원", "장비 운용자"].indexOf(r) >= 0), "옛 직무 이름 없음");
       ok(TR.DEF_COURSES.filter(c => !c.vendor && !c.step).every(c => c.basis && (Number(c.cycle) === 0 || c.cycle > 0)), "근거 · 주기");
       const kr = TR.DEF_COURSES.filter(c => c.rule === "kr");
@@ -5676,11 +5686,24 @@ function makeServer(opts = {}) {
       ok(/연 1회 · 전후 30일/.test(card.querySelector(".tr-rc").textContent) && /법정/.test(card.querySelector("summary").textContent), "주기 요약 · 법정");
       ok(/교육훈련지침 제2조8호/.test(card.textContent) && /자격 조건/.test(card.textContent) && /주요 역할/.test(card.textContent));
       ok(/16시간/.test(card.querySelector(".tr-cat").textContent) && /한국공항공사/.test(card.textContent), "시간 · 교육기관");
-      ok(/1회 · 영구/.test(rd("항공보안교관").querySelector(".tr-rc").textContent));
+      ok(/1회 · 영구/.test(rd("사내보안교관").querySelector(".tr-rc").textContent));
       ok(/보안서약/.test(rd("SSI 취급자").querySelector(".tr-rc").textContent));
-      ok(/확인 필요/.test(rd("ACMR").querySelector("summary").textContent), "ACMR 정식 명칭 확인 필요");
+      ok(!/확인 필요/.test(rd("ACMR").querySelector("summary").textContent) && /SSOP/.test(rd("ACMR").textContent), "ACMR = SSOP 교육 조항");
       ok(/24개월/.test(rd("위험물 취급자").querySelector(".tr-rc").textContent));
-      ok(qa(e, ".tr-rgcard").length >= 4, "근거별 묶음 + 그 밖의 과정");
+      ok(/연 1회 · 전후 30일/.test(rd("보안검색감독자").querySelector(".tr-rc").textContent) && /보안검색감독자 선수 과정/.test(rd("보안검색감독자").textContent), "감독자: 주기 요약은 정기 · 선수 과정 표");
+      ok(/12개월|1년/.test(rd("방사선안전관리자").querySelector(".tr-rc").textContent), "방사선안전관리자");
+      ok(!rd("항공사보안책임자"), "뺀 직무 없음");
+      const oi = rd("항공보안교관");
+      ok(oi && oi.classList.contains("rg-etc") && /연결된 과정 없음/.test(oi.textContent), "뺀 직무를 가진 사람이 있으면(TR06 교일) 기타 사내 직무로만");
+      /* v1.38: 공통 규칙 → 인천화물팀(직무군 소제목) → 협력사 · 조업사 → 그 밖의 과정 */
+      eq(qa(e, ".tr-rgcard").map(c => c.getAttribute("aria-label")).join(","), "인천화물팀,협력사 · 조업사,그 밖의 과정");
+      ok(/적용 범위/.test(q(e, ".tr-rules").textContent) && /여객/.test(q(e, ".tr-rules").textContent), "적용 범위 한 줄");
+      eq(qa(e, ".tr-team .tr-rsh").map(h => h.textContent).join(","), "항공사 보안관리,보안검색 · 화물보안,보안 유관부서,전화 접수 · 안내,보안교관,기타", "직무군 소제목");
+      eq(Array.from(qa(e, ".tr-team .tr-rsec")[0].querySelectorAll(".tr-rd")).map(d => d.querySelector(".tr-rn b").textContent).join(","), "항공사보안감독자");
+      const vrows = qa(e, ".tr-vcard .tr-vcat tbody tr");
+      eq(vrows.length, TR.DEF_COURSES.filter(c => c.vendor).length, "협력사 과정 표");
+      ok(vrows.every(r => r.children[1].textContent !== "-") && !/\(협력사\)/.test(q(e, ".tr-vcard").textContent), "대상 칸 · 이름에서 '(협력사)' 뺌");
+      ok(/ICAO/.test(qa(e, ".tr-rgcard")[2].textContent) && /항공보안교관 과정/.test(qa(e, ".tr-rgcard")[2].textContent), "그 밖의 과정");
       const qi = q(e, "#tr-q"); qi.value = "위험물"; qi.dispatchEvent(new e.w.Event("input"));
       ok(q(e, "#tr-q") === qi, "검색칸 유지");
       ok(qa(e, ".tr-rd").length && qa(e, ".tr-rd").every(c => /위험물/.test(c.textContent) && c.open), "검색 → 맞는 줄만 펼침");
@@ -5846,11 +5869,12 @@ function makeServer(opts = {}) {
       eq(TR.migrate(old), true);
       const by = (id) => old.courses.find(c => c.id === id);
       eq(by("c-sup-i").name + "|" + by("c-sup-i").cycle + "|" + by("c-sup-i").rule, "항공사보안책임자 · 감독자 초기|12|kr");
-      eq(by("c-sup-r").roles.join(","), "항공사보안책임자,항공사보안감독자");
+      eq(by("c-sup-r").roles.join(","), "항공사보안감독자", "v1.38: 책임자 직무 뺌");
       eq(by("c-equip").name + "|" + by("c-equip").cycle, "항공보안장비 유지보수요원 초기|12");
       ok(!by("c-aware").all && by("c-aware").name === "보안 유관부서 일반요원 정기", "전 직원 인지교육 → 제29조②");
       eq([by("u-dg1").cycle, by("u-dg1").rule, by("u-dg1").roles.join(","), by("u-dg2").kind].join("|"), "24|dg|위험물 취급자|정기");
-      eq([by("u-inst").kind, by("u-inst").cycle, by("u-inst").roles.join(",")].join("|"), "1회|0|항공보안교관");
+      eq([by("u-inst").kind, by("u-inst").cycle, by("u-inst").roles.join(",")].join("|"), "1회|0|", "교관 = 1회 · 영구 · 직무 지정 없음(v1.38)");
+      eq(by("u-dg1").hours, "직무구분별 — Function 7.3 집체 40시간 · 7.4 온라인", "위험물 시간 빈칸 채움");
       eq(by("u-wb").legal, "own", "사내 과정 유지");
       ok(!old.courses.some(c => c.id === "c-dg-i" || c.id === "c-inst"), "같은 묶음 · 구분이 있으면 기본 과정을 덧붙이지 않음");
       ok(old.courses.some(c => c.id === "c-mnt-r") && old.courses.some(c => c.id === "c-bomb"), "없는 기본 과정 추가");
@@ -5867,12 +5891,13 @@ function makeServer(opts = {}) {
       const G = (r) => TR.rgOf(r).id;
       const qin = (root, sel) => Array.from(root.querySelectorAll(sel));
       eq(TR.RGROUPS.map(g => g.id).join(","), "sup,scr,rel,tel,ins,etc");
-      eq(["항공사보안책임자", "항공사보안감독자"].map(G).join(","), "sup,sup");
+      eq(G("항공사보안감독자"), "sup");
+      eq(["항공사보안책임자", "항공보안교관"].map(G).join(","), "etc,etc", "v1.38 기준표에서 뺀 직무는 남아 있으면 기타(사내 직무)");
       eq(["보안검색감독자", "보안검색요원", "항공보안장비 유지보수요원", "화물보안 업무요원"].map(G).join(","), "scr,scr,scr,scr");
       eq(["보안 유관부서 관리자", "보안 유관부서 일반요원"].map(G).join(","), "rel,rel");
       eq(G("전화 접수자 · 안내요원"), "tel");
-      eq(["항공보안교관", "사내보안교관"].map(G).join(","), "ins,ins");
-      eq(["위험물 취급자", "SSI 취급자", "ACMR", "ACC3 보안통제 직원", "야간 당직"].map(G).join(","), "etc,etc,etc,etc,etc", "그 밖은 기본색");
+      eq(G("사내보안교관"), "ins");
+      eq(["위험물 취급자", "방사선안전관리자", "SSI 취급자", "ACMR", "ACC3 보안통제 직원", "야간 당직"].map(G).join(","), "etc,etc,etc,etc,etc,etc", "그 밖은 기본색");
       eq(G("보안감독자"), "sup", "옛 직무 이름도");
       ok(TR.RGROUPS.every(g => g.roles.every(r => TR.ROLES.indexOf(r) >= 0)), "직무군의 직무는 모두 기준표 정식 명칭");
       eq(TR.sortRoles(["SSI 취급자", "사내보안교관", "화물보안 업무요원", "항공사보안감독자", "보안검색요원"]).join(","), "항공사보안감독자,보안검색요원,화물보안 업무요원,사내보안교관,SSI 취급자");
@@ -5923,7 +5948,7 @@ function makeServer(opts = {}) {
       TR.setState({ pid: "", tab: "catalog", q: "" }); go(e, "training");
       const rd = (name) => qa(e, ".tr-rd").find(c => c.querySelector("summary .tr-rn b").textContent === name);
       ok(rd("항공사보안감독자").classList.contains("rg-sup") && rd("보안검색요원").classList.contains("rg-scr") && rd("위험물 취급자").classList.contains("rg-etc"), "기준표 직무 줄 색");
-      eq(qa(e, ".tr-rglg.is-key .tr-rgk").length, 6, "기준표 색 범례");
+      eq(qa(e, ".tr-team .tr-rsec").map(x => x.className.split(" ")[1]).join(","), "rg-sup,rg-scr,rg-rel,rg-tel,rg-ins,rg-etc", "기준표 = 직무군 소제목(색 점)");
       TR.setState({ tab: "people" }); go(e, "training");
       q(e, "#tr-padd").click();
       eq(qa(e, "#tp-roles .tr-rgrp").map(g => g.className.split(" ")[1]).join(","), "rg-sup,rg-scr,rg-rel,rg-tel,rg-ins,rg-etc", "직무 고르기 = 직무군 묶음");
@@ -5933,6 +5958,52 @@ function makeServer(opts = {}) {
       ok(qa(e, "#tp-roles .rg-etc input").some(i => i.value === "새 당직" && i.checked), "직접 입력 → 기타");
       e.S.closeModal();
       data().people = data().people.filter(p => ["c1", "c2", "c3"].indexOf(p.id) < 0);
+    });
+    t("TR22 인천화물팀 기준(v1.38): 판 2 → 3 이전(책임자 · 교관 직무 뺌 · 새 과정 · 협력사 대상 · 사람 · 기록 그대로) · 감독자 선수 과정 = 검색요원 초기 기록 인정", () => {
+      eq(TR.CAT_VER, 3);
+      const D = (id) => JSON.parse(JSON.stringify(TR.DEF_COURSES.find(c => c.id === id)));
+      const v131 = (id, o) => Object.assign(D(id), o);
+      const prod = { catVer: 2,
+        courses: [v131("c-sup-i", { roles: ["항공사보안책임자", "항공사보안감독자"], hours: "16시간↑ (책임자 8시간↑) · 평가" }),
+          v131("c-sup-r", { roles: ["항공사보안책임자", "항공사보안감독자"] }), D("c-scr-i"), D("c-scr-r"), D("c-scn-i"),
+          { id: "u-dgi", fam: "dgr", name: "IATA DGR 위험물 교육 초기", kind: "초기", cycle: 24, rule: "dg", legal: "law", roles: ["위험물 취급자"], vendor: false },
+          { id: "u-wb", fam: "w/b", name: "Weight & Balance(B74F) 초기", kind: "초기", cycle: 12, legal: "own", roles: [], vendor: false },
+          { id: "u-ins", fam: "inst", name: "항공보안 교관", kind: "1회", cycle: 0, legal: "law", roles: ["항공보안교관"], vendor: false },
+          v131("v-screen", { who: undefined }), v131("c-acmr-i", { basis: "TSA 보안프로그램 (미주편) — 정식 명칭 · 주기 확인 필요" })],
+        people: [{ id: "k1", name: "갑", roles: ["항공사보안감독자", "보안검색감독자"] }, { id: "k2", name: "을", roles: ["항공사보안책임자"] }],
+        records: [{ id: "x1", pid: "k1", cid: "c-sup-r", date: "2025-10-17", expire: "" }, { id: "x2", pid: "k1", cid: "u-ins", date: "2024-03-08", expire: "" }],
+        sessions: [] };
+      const ppl = JSON.stringify(prod.people), recs = JSON.stringify(prod.records);
+      eq(TR.migrate(prod), true);
+      const by = (id) => prod.courses.find(c => c.id === id);
+      eq(by("c-sup-i").roles.join() + "|" + by("c-sup-i").hours, "항공사보안감독자|16시간↑ · 평가 80점↑", "코드 정의로");
+      eq(by("u-ins").roles.join(), "", "교관 과정 = 직무 지정 없음");
+      eq(by("u-wb").name + "|" + by("u-wb").legal, "Weight & Balance(B74F) 초기|own", "사내 과정 그대로");
+      ok(by("v-screen").who && !/확인 필요/.test(by("c-acmr-i").basis), "협력사 대상 · ACMR 근거");
+      ok(by("c-scr-p") && by("c-rad-i") && by("c-rad-r"), "새 과정 추가");
+      ok(!by("c-inst"), "같은 묶음 교관 과정이 있으면 덧붙이지 않음");
+      const ids = prod.courses.map(c => c.id);
+      eq(ids.indexOf("c-scr-p"), ids.indexOf("c-scr-r") + 1, "새 과정은 코드 순서상 앞 과정 뒤(이수 현황표 칸 순서)");
+      eq(ids.indexOf("c-rad-i"), ids.indexOf("c-dg-r") + 1); eq(ids.indexOf("c-rad-r"), ids.indexOf("c-rad-i") + 1);
+      eq(prod.courses.filter(c => c.fam === "dgr" && c.kind === "초기").length, 1, "위험물 초기 하나");
+      eq(JSON.stringify(prod.people) + JSON.stringify(prod.records), ppl + recs, "사람 직무 · 기록은 그대로");
+      eq(prod.catVer, 3);
+      const snap = JSON.stringify(prod);
+      eq(TR.migrate(prod), false, "멱등"); eq(JSON.stringify(prod), snap);
+      /* 감독자 선수 과정: 검색요원 초기(c-scn-i) 기록을 인정 */
+      const keep = JSON.stringify(data());
+      Object.assign(data(), { courses: TR.DEF_COURSES.map(c => JSON.parse(JSON.stringify(c))), people: [{ id: "sv", name: "감독", dept: "인천화물팀", roles: ["보안검색감독자"] }], records: [], sessions: [] });
+      TR.setToday("2026-10-01");
+      const sv = data().people[0];
+      const pq = () => TR.personQuals(sv).req.map(x => x.g.fam + ":" + x.st).sort().join(",");
+      eq(pq(), "scr-p:none,scr:none", "감독자 = 감독자 과정 + 선수 과정");
+      data().records.push({ id: "sn1", pid: "sv", cid: "c-scn-i", date: "2019-05-02" });
+      eq(pq(), "scr-p:perm,scr:none", "검색요원 초기 기록 → 선수 과정 영구");
+      eq(TR.personQuals(sv).held.length, 0, "검색요원 묶음을 '보유(인증 전)'로 따로 보이지 않음");
+      eq(TR.expireOf(data().records[0]), "", "검색요원 초기 기록 자체는 단계(유효기한 없음)");
+      data().records.push({ id: "sn2", pid: "sv", cid: "c-scr-i", date: "2026-03-01" });
+      eq(pq(), "scr-p:perm,scr:ok");
+      Object.assign(data(), JSON.parse(keep));
     });
     e.w.close();
   }
@@ -5967,9 +6038,9 @@ function makeServer(opts = {}) {
           { id: "s2", type: "vendor", cid: "v-screen", vendor: "가나보안", date: "2026-08-05" }],
         people: [{ id: "p1", name: "갑일", dept: "인천화물팀", roles: ["항공사보안감독자", "화물보안 업무요원"] },
           { id: "p2", name: "을일", dept: "인천화물팀", roles: ["항공사보안감독자", "SSI 취급자"] },
-          { id: "p3", name: "병일", dept: "인천화물팀", roles: ["항공보안교관"] }],
+          { id: "p3", name: "병일", dept: "인천화물팀", roles: ["전화 접수자 · 안내요원"] }],
         records: [{ id: "r1", pid: "p1", cid: "c-sup-r", date: "2025-10-20" }, { id: "r2", pid: "p2", cid: "c-sup-r", date: "2025-08-22" },
-          { id: "r3", pid: "p3", cid: "c-inst", date: "2024-03-08" }] };
+          { id: "r3", pid: "p3", cid: "c-bomb", date: "2024-03-08" }] };
       TR.syncSessionRecords(d.training.sessions[0]);
       d.audits = [{ id: "a1", body: "gov", org: "서울지방항공청", kind: "정기점검", start: "2026-10-20", end: "2026-10-21",
           checklist: [{ id: "k1", mid: "9.9", text: "x", docScore: 3, impScore: 3, files: [{ name: "a", url: "u" }] }, { id: "k2", mid: "9.8", text: "y" }], findings: [] },
@@ -5985,7 +6056,7 @@ function makeServer(opts = {}) {
       ok(!q(e, ".ie-err"), "카드 오류 없음");
       const cards = qa(e, ".ie-card:not(.ie-up):not(.ie-cal)");
       const tc = cards[0];
-      ok(cards[0].querySelectorAll(".ie-sb").length >= 3, "직무별 막대(항공사보안감독자 · 화물보안 업무요원 · 항공보안교관)");
+      ok(cards[0].querySelectorAll(".ie-sb").length >= 3, "직무별 막대(항공사보안감독자 · 화물보안 업무요원 · 전화 접수자)");
       eq(tc.querySelectorAll(".cc").length, 2); ok(Array.from(tc.querySelectorAll(".cc")).every(c => c.querySelectorAll(".cc-col").length === 12), "12칸");
       const dues = qa(e, ".ie-due");
       ok(dues.length >= 2 && dues.some(b => /을일/.test(b.textContent)) && dues.some(b => /갑일/.test(b.textContent)), "갱신 목록");

@@ -5516,6 +5516,23 @@ button.tr-hrow { cursor: pointer; }
 }
 @media print { .tr-rd > summary > svg { display: none; } }
 #tr-plist .toolbar select { max-width: 190px; }
+/* v1.38 직무 · 과정 — 인천화물팀(직무군 소제목) · 협력사 · 조업사 */
+.tr-rsec + .tr-rsec { margin-top: 14px; }
+.tr-rsh { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; padding: 0 2px 6px; border-bottom: 1px solid #edf1f0;
+  font-size: .84rem; font-weight: 700; color: var(--text-2); letter-spacing: -.005em; }
+.tr-rsh .rg-dot { width: 9px; height: 9px; }
+.tr-vcat td { font-size: .86rem; }
+.tr-vcat td:first-child { min-width: 200px; }
+.tr-vcat td:first-child b { font-weight: 700; margin-right: 4px; }
+.tr-vcat td:nth-child(3) { white-space: nowrap; }
+.tr-vbasis { color: var(--text-2); }
+.tr-vlist li > span .badge { margin-right: 2px; }
+.tr-vwho { color: var(--text-2) !important; }
+@media print {
+  .tr-rsh .rg-dot { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .tr-rsec { break-inside: auto; }
+  .tr-rsh { break-after: avoid; }
+}
 
 /* ═════════ v1.32 자체 보안점검 — 수준관리지침 별표 점검표 (js/selfcheck.js) ═════════ */
 .sc-head .sc-back { order: -1; margin-right: 4px; }
