@@ -29,10 +29,13 @@
      courses[{ id, fam, name, kind(초기|직무|인증|정기|1회), cycle(개월, 0 = 영구), rule(kr|dg|""), step(자격을 주지 않는 단계),
                hours, legal(law|intl|own), basis, org, roles[], all, vendor, who(협력사 과정 대상),
                same[](같은 교육으로 인정하는 다른 과정 id — 그 기록도 이 묶음에 셈) }] — 비면 코드 기본 과정
-     people[{ id, name, dept, roles[], left(퇴직일), pledge(SSI 서약일), pledgeFiles[], note }]
-     records[{ id, pid, cid, date, expire(비면 규칙으로 계산), hours, score, org, certNo, files[], sessionId, note, src }]
+     people[{ id, name, dept, roles[], apt{직무: 임명일}, left(퇴직일), pledge(SSI 서약일), pledgeFiles[], note, src, selfAt }]
+     records[{ id, pid, cid, date, expire(비면 규칙으로 계산), hours, score, org, certNo, files[], sessionId, note, src, selfAt, chkAt, chkBy }]
      sessions[{ id, type(own|vendor), cid, title, date, time, hours, place, instructor, evalText, pids[],
                 files{ tt[], roster[], eval[] }, vendor, target, done, note, createdAt/By, updatedAt/By }] }
+   v1.39 — 배포용 이수 등록(edu.html): 메일로 받은 링크에서 본인이 인원 · 직무(임명일) · 이수(수료일 · 이수증)를 등록하면
+     서버(semis_logi_edu_submit)가 이 컬렉션에 병합한다. 사람 apt{직무: 임명일} · selfAt, 기록 src 'self' · selfAt,
+     안전보안파트 확인 chkAt · chkBy. 링크는 이 화면 '이수 등록 링크'(hq)에서 만들고 끄고 메일 · QR 로 보낸다(RPC semis_logi_edu_links · _link_save).
    권한: 열람 mgr(권한표 training 2) · 편집 hq(3). 파일은 비공개 버킷 training/ 폴더(열람 2 · 올리기 3).
    수검 대응 센터 증빙: window.SemisEvidence.training(mid) → { ok, text } (1.1~1.4 · 2.10 · 3.4 · 8.2 · 9.2 · 9.2.1)
    점검 · 교육 대시보드(js/auddash.js)는 window.SemisTraining 의 집계 함수를 쓴다.
@@ -549,6 +552,11 @@
     return { date: "", src: "", ambiguous: !!(m && m.ambiguous), row: m && !m.ambiguous ? m : null };
   }
   const pledged = (p) => !!pledgeInfo(p).date;
+  /* v1.39 본인 등록 — 안전보안파트가 아직 확인하지 않은 기록 */
+  const selfOpen = (r) => !!r && !!r.selfAt && !r.chkAt;
+  const selfRecs = (pid) => records().filter(r => r.pid === pid && selfOpen(r));
+  const selfPending = () => records().filter(r => selfOpen(r) && personOf(r.pid)).length;
+  const aptOf = (p, r) => (p && p.apt && typeof p.apt === "object" && isISO(p.apt[r]) ? p.apt[r] : "");
   const isSSI = (p) => rolesOf(p).indexOf("SSI 취급자") >= 0;
 
   /* ─────── 수검 대응 센터 증빙 연결 ───────
@@ -585,7 +593,7 @@
   if (typeof window !== "undefined") (window.SemisEvidence = window.SemisEvidence || {})[MOD] = evidence;
 
   /* ─────── 화면 상태 ─────── */
-  let tab = "people", q = "", roleF = "", rgF = "", onlyAct = false, year = "", sType = "all", pState = "active", pView = "list";
+  let tab = "people", q = "", roleF = "", rgF = "", onlyAct = false, onlySelf = false, year = "", sType = "all", pState = "active", pView = "list";
   let pid = "", sid = "";                       // 개인 화면 · 교육 기록 화면
   const TABS = [["people", "인원"], ["sessions", "교육 기록"], ["catalog", "직무 · 과정"], ["pledges", "SSI 서약"]];
   let plScope = "team", plState = "valid";
@@ -657,6 +665,7 @@
       if (roleF && rolesOf(p).indexOf(roleF) < 0) return false;
       if (rgF && !rolesOf(p).some(r => rgOf(r).id === rgF)) return false;
       if (onlyAct) { const pq = personQuals(p, t); if (!(pq.worst && needAct(pq.worst.st)) && !(isSSI(p) && !pledged(p))) return false; }
+      if (onlySelf && !selfRecs(p.id).length) return false;
       return !q || hay([p.name, p.dept, rolesOf(p).join(" "), p.note]).indexOf(q.toLowerCase()) >= 0;
     }).map(p => ({ p, pq: personQuals(p, t) }))
       .sort((a, b) => (onlyAct ? (b.pq.worst ? ST[b.pq.worst.st].lv : 0) - (a.pq.worst ? ST[a.pq.worst.st].lv : 0) : 0) || String(a.p.name).localeCompare(String(b.p.name), "ko"));
@@ -681,6 +690,7 @@
         ${ui.search("tr-q", "이름 · 소속 · 직무 검색", q)}
         ${used.length > 1 ? `<label class="ck-f"><span class="m-hide">직무</span>${roleSel}</label>` : ""}
         <button type="button" class="pb-chk" id="tr-act" aria-pressed="${onlyAct}">${icon("alert", 14)}<span>조치 필요만</span></button>
+        ${selfPending() || onlySelf ? `<button type="button" class="pb-chk" id="tr-self" aria-pressed="${onlySelf}">${icon("user", 14)}<span>본인 등록 확인</span><b class="mono">${selfPending()}</b></button>` : ""}
         <span class="spacer m-hide"></span>
         <span class="m-hide">${segHTML("pstate", [["active", "재직"], ["left", "퇴직 · 전출"], ["all", "전체"]], pState)}</span>
         ${mob() ? "" : segHTML("pview", [["list", "목록"], ["grid", "이수 현황표"]], pView)}
@@ -707,7 +717,7 @@
       const ssiMiss = isSSI(p) && !pledged(p);
       return `<li><button type="button" class="tr-mrow" data-tperson="${esc(p.id)}">
         <span class="tr-mn"><b>${esc(p.name)}</b>${rgsOf(p).length ? `<span class="tr-rdots" role="img" aria-label="${esc("직무: " + sortRoles(rolesOf(p)).join(", "))}">${rgsOf(p).map(rgDot).join("")}</span>` : ""}<small>${esc(p.dept || "")}</small></span>
-        <span class="tr-ms">${w ? stChip(w) : ""}${ssiMiss ? ui.chip("서약 누락", "red") : ""}</span>
+        <span class="tr-ms">${selfRecs(p.id).length ? '<small class="tr-self">본인 등록</small>' : ""}${w ? stChip(w) : ""}${ssiMiss ? ui.chip("서약 누락", "red") : ""}</span>
         <span class="tr-mx mono">${esc(sub)}</span></button></li>`;
     }).join("")}</ul>`;
     if (pView === "grid") return gridTable(rows, canW, t);
@@ -716,7 +726,7 @@
       <tbody>${rows.map(({ p, pq }) => {
         const a = active(p, t), nx = pq.next;
         return `<tr data-tperson="${esc(p.id)}" tabindex="0" class="is-click">
-          <td class="c-name" data-role="title"><button type="button" class="tbl-open" data-tperson="${esc(p.id)}">${esc(p.name)}</button><div class="cell-sub">${esc(p.dept || "")}</div></td>
+          <td class="c-name" data-role="title"><button type="button" class="tbl-open" data-tperson="${esc(p.id)}">${esc(p.name)}</button>${selfRecs(p.id).length ? ' <small class="tr-self">본인 등록</small>' : ""}<div class="cell-sub">${esc(p.dept || "")}</div></td>
           <td class="c-roles">${roleChips(p) || '<span class="cell-sub">-</span>'}</td>
           <td class="c-q">${!a ? `${leftOver(p, t) ? ui.chip("보관 기한 경과", "amber") : ui.chip("퇴직", "gray")}<div class="cell-sub mono">${esc(dot(p.left))}${leftOver(p, t) ? "" : " · 보관 ~" + esc(dot(addDays(p.left, KEEP_LEFT_DAYS)))}</div>`
             : pq.req.length ? `<div class="tr-qs">${pq.req.map(c => `<span class="tr-qi" data-st="${c.st}" title="${esc(c.g.name + " · " + ST[c.st].label + " · " + stText(c))}"><span class="tr-qn">${esc(famShort(c.g))}</span>${stChip(c)}</span>`).join("")}</div>`
@@ -763,13 +773,15 @@
     const rs = records().filter(r => r.pid === p.id).sort((a, b) => String(b.date).localeCompare(String(a.date)));
     const pi = pledgeInfo(p);
     const a = active(p, t);
+    const sp = selfRecs(p.id);
     const head = `<div class="page-head tr-head">
         <button type="button" class="btn btn-ghost btn-sm tr-back" data-keep data-tback aria-label="인원 목록으로">${icon("chevl", 16)}<span>인원</span></button>
         <div class="page-title">${esc(p.name)}</div><span class="page-meta">${esc([p.dept, a ? "" : "퇴직 · 전출 " + dot(p.left)].filter(Boolean).join(" · "))}</span>
         <span class="spacer"></span>
         ${canW ? `<button type="button" class="btn btn-primary btn-sm" id="tr-prec">${icon("plus", 16)}<span>이수 등록</span></button>
           <button type="button" class="btn btn-ghost btn-sm" id="tr-ppl">${icon("shield", 16)}<span>서약 등록</span></button>
-          <button type="button" class="btn btn-ghost btn-sm" id="tr-pedit">${icon("edit", 16)}<span>정보 수정</span></button>` : ""}
+          <button type="button" class="btn btn-ghost btn-sm" id="tr-pedit">${icon("edit", 16)}<span>정보 수정</span></button>
+          ${sp.length ? `<button type="button" class="btn btn-soft btn-sm" id="tr-pchk">${icon("check", 16)}<span>본인 등록 확인 ${sp.length}</span></button>` : ""}` : ""}
       </div>`;
     const qual = (c) => {
       const lastC = c.r ? courseOf(c.r.cid) : null;
@@ -794,7 +806,7 @@
           const tag = canW ? "button" : "div";
           return `<li><${tag}${tag === "button" ? ` type="button" data-rid="${esc(r.id)}"` : ""} class="tr-hrow">
             <span class="tr-hd mono">${esc(dot(r.date))}</span>
-            <span class="tr-hn"><b>${esc(c ? c.name : "과정 없음")}</b><small>${esc([c ? c.kind : "", r.hours != null && r.hours !== "" ? r.hours + "시간" : "", r.org, r.certNo ? "No. " + r.certNo : "", r.sessionId ? "당사 교육 기록" : ""].filter(Boolean).join(" · "))}</small></span>
+            <span class="tr-hn"><b>${esc(c ? c.name : "과정 없음")}${selfOpen(r) ? ' <small class="tr-self">본인 등록</small>' : r.selfAt ? ' <small class="tr-self is-ok" title="' + esc("본인 등록 · 확인 " + (r.chkBy || "")) + '">본인 등록 · 확인</small>' : ""}</b><small>${esc([c ? c.kind : "", r.hours != null && r.hours !== "" ? r.hours + "시간" : "", r.org, r.certNo ? "No. " + r.certNo : "", r.sessionId ? "당사 교육 기록" : ""].filter(Boolean).join(" · "))}</small></span>
             <span class="tr-he mono">${c && c.step ? "단계" : exp ? "~" + esc(ymd2(exp)) : "영구"}</span>
           </${tag}>${filesOf(r.files).length ? `<div class="au-files">${fileChips(r.files)}</div>` : ""}</li>`;
         }).join("")}</ul>` : ui.empty("등록된 이수 기록이 없습니다.")}
@@ -811,13 +823,14 @@
     const roleCard = `<section class="card tr-pcard" aria-label="직무">
         <h2 class="card-title">직무</h2>
         ${rolesOf(p).length ? `<ul class="tr-roles">${sortRoles(rolesOf(p)).map(r => { const d = roleDef(r), g = rgOf(r);
-          return `<li class="rg-${g.id}"><b>${rgDot(g)}${esc(r)}</b><small>${esc(g.id === "etc" ? (d ? d.basis : "사내 직무") : g.label + (d ? " · " + d.basis : ""))}</small></li>`; }).join("")}</ul>` : ui.empty("지정된 직무가 없습니다.")}
+          return `<li class="rg-${g.id}"><b>${rgDot(g)}${esc(r)}${aptOf(p, r) ? `<span class="tr-apt mono">임명 ${esc(dot(aptOf(p, r)))}</span>` : ""}</b><small>${esc(g.id === "etc" ? (d ? d.basis : "사내 직무") : g.label + (d ? " · " + d.basis : ""))}</small></li>`; }).join("")}</ul>` : ui.empty("지정된 직무가 없습니다.")}
       </section>`;
     const infoCard = `<section class="card tr-pcard" aria-label="기본 정보">
         <h2 class="card-title">기본 정보</h2>
         <dl class="tr-dl">
           <div><dt>소속</dt><dd>${esc(p.dept || "-")}</dd></div>
           <div><dt>상태</dt><dd>${a ? "재직" : `퇴직 · 전출 <span class="mono">${esc(dot(p.left))}</span> · 기록 보관 ~<span class="mono">${esc(dot(addDays(p.left, KEEP_LEFT_DAYS)))}</span>`}</dd></div>
+          ${p.selfAt ? `<div><dt>본인 등록</dt><dd><span class="mono">${esc(dot(String(p.selfAt).slice(0, 10)))}</span>${p.src === "self" ? " · 처음 등록" : ""}</dd></div>` : ""}
           ${p.note ? `<div><dt>메모</dt><dd>${esc(p.note)}</dd></div>` : ""}
         </dl>
       </section>`;
@@ -827,6 +840,12 @@
     const rb = $("#tr-prec", root); if (rb) rb.onclick = () => recordForm(p.id, "", "");
     const pb = $("#tr-ppl", root); if (pb) pb.onclick = () => pledgeForm(p.id);
     const eb = $("#tr-pedit", root); if (eb) eb.onclick = () => personForm(p.id);
+    const kb = $("#tr-pchk", root);
+    if (kb) kb.onclick = () => confirmModal(`${p.name} 님이 직접 등록한 이수 기록 ${sp.length}건을 확인 처리합니다.`, () => {
+      const at = new Date().toISOString();
+      selfRecs(p.id).forEach(r => { r.chkAt = at; r.chkBy = me(); });
+      SeMIS.save(); toast("확인했습니다."); paint();
+    });
     if (canW) {
       $$("[data-tqual]", root).forEach(b => b.onclick = (ev) => { if (ev.target.closest("a")) return; openCell(p.id + "|" + b.dataset.tqual); });
       $$("[data-rid]", root).forEach(b => b.onclick = (ev) => { if (ev.target.closest("a")) return; recordForm(p.id, b.dataset.rid, ""); });
@@ -1152,10 +1171,23 @@
       <div class="form-row"><label>직무 ${ui.tip("직무에 맞는 필수 과정이 자격 현황에 표시됩니다. 직무별 근거 · 자격 조건은 '직무 · 과정' 탭에 있습니다.", "직무 설명")}</label>
         <div id="tp-roles">${roleChooser(x ? rolesOf(x) : [])}</div>
         <input id="tp-role-add" class="tr-roleadd" maxlength="20" autocomplete="off" placeholder="사내 직무 직접 입력 후 Enter"></div>
+      <div class="form-row" id="tp-apts"></div>
       ${fld("tp-left", "퇴직 · 전출일", `<input type="date" id="tp-left" value="${esc(v.left)}">`, "교육 기록은 퇴직 · 전출 후 " + KEEP_LEFT_DAYS + "일까지 보관합니다(교육훈련지침 제32조).")}
       ${fld("tp-note", "메모", `<input id="tp-note" value="${esc(v.note)}" maxlength="200">`)}
       ${dl("tp-dl-dept", depts)}
       ${actions(!!x && SeMIS.canDelete())}`, { wide: true });
+    /* 직무 임명일 — 고른 직무마다 (v1.39) */
+    const aptVals = Object.assign({}, x && x.apt && typeof x.apt === "object" ? x.apt : {});
+    const paintApts = () => {
+      const box = $("#tp-apts");
+      if (!box) return;
+      $$("#tp-apts input[data-apt]").forEach(i => { aptVals[i.dataset.apt] = i.value; });
+      const rs = sortRoles($$("#tp-roles input:checked").map(i => i.value));
+      box.innerHTML = rs.length ? `<label>직무 임명일</label><ul class="tr-apts">${rs.map(r => `<li class="rg-${rgOf(r).id}"><span>${rgDot(rgOf(r))}${esc(r)}</span>
+        <input type="date" data-apt="${esc(r)}" value="${esc(isISO(aptVals[r]) ? aptVals[r] : "")}" aria-label="${esc(r)} 임명일"></li>`).join("")}</ul>` : "";
+    };
+    paintApts();
+    $("#tp-roles").addEventListener("change", paintApts);
     const ra = $("#tp-role-add");
     ra.onkeydown = (ev) => {
       if (ev.key !== "Enter") return;
@@ -1169,10 +1201,15 @@
         own.insertAdjacentHTML("beforeend", `<label class="ck-rc"><input type="checkbox" value="${esc(r)}" checked><span>${esc(r)}</span></label>`);
       } else all.forEach(i => { if (i.value === r) i.checked = true; });
       ra.value = "";
+      paintApts();
     };
     $("#modal-box [data-act=cancel]").onclick = closeModal;
     $("#modal-box [data-act=ok]").onclick = () => {
-      const rec = { name: norm($("#tp-name").value), dept: norm($("#tp-dept").value), roles: $$("#tp-roles input:checked").map(i => i.value),
+      const roles = $$("#tp-roles input:checked").map(i => i.value);
+      $$("#tp-apts input[data-apt]").forEach(i => { aptVals[i.dataset.apt] = i.value; });
+      const apt = {};
+      roles.forEach(r => { if (isISO(aptVals[r])) apt[r] = aptVals[r]; });
+      const rec = { name: norm($("#tp-name").value), dept: norm($("#tp-dept").value), roles, apt,
         left: $("#tp-left").value || "", note: norm($("#tp-note").value) };
       if (!rec.name) { toast("이름을 입력하세요.", true); $("#tp-name").focus(); return; }
       const t = T();
@@ -1256,6 +1293,7 @@
       </div>
       ${fileBox("trf", "이수증")}
       ${fld("tr-m", "메모", `<input id="tr-m" value="${esc(v.note)}" maxlength="200">`)}
+      ${x && x.selfAt ? `<label class="ck-rc tr-chk"><input type="checkbox" id="tr-chk" checked><span>본인 등록 이수증 확인${x.chkAt ? ` <small class="mono">${esc(dot(String(x.chkAt).slice(0, 10)))} ${esc(x.chkBy || "")}</small>` : ""}</span></label>` : ""}
       ${dl("tr-dl-org", orgs)}
       ${actions(!!x)}`, { wide: true });
     wireFileBox("trf", files);
@@ -1285,7 +1323,12 @@
       const rec = { pid: p.id, cid, date, expire: isISO(e) && e !== calc ? e : "", hours: num($("#tr-h").value), score: num($("#tr-s").value),
         org: norm($("#tr-o").value), certNo: norm($("#tr-n").value), note: norm($("#tr-m").value), files: files.slice() };
       const t = T();
-      if (x) Object.assign(x, rec); else t.records.push(Object.assign({ id: uid("tr"), createdAt: new Date().toISOString(), createdBy: me() }, rec));
+      if (x) {
+        Object.assign(x, rec);
+        const ck = $("#tr-chk");
+        if (ck && ck.checked && !x.chkAt) { x.chkAt = new Date().toISOString(); x.chkBy = me(); }
+        else if (ck && !ck.checked) { delete x.chkAt; delete x.chkBy; }
+      } else t.records.push(Object.assign({ id: uid("tr"), createdAt: new Date().toISOString(), createdBy: me() }, rec));
       SeMIS.save(); closeModal(); toast("저장했습니다."); paint();
     };
   }
@@ -1465,6 +1508,121 @@
     shell();
   }
 
+  /* ═════════ 이수 등록 링크 — 배포용 edu.html (v1.39) ═════════
+     서버 RPC semis_logi_edu_links(목록 · 최근 제출) · semis_logi_edu_link_save(만들기 · 마감 · 다시 열기 · 연장) — hq 이상.
+     링크 = 이 사이트 주소/edu.html#코드. 메일은 메일 프로그램으로 쓴다(mailto — 받는 사람은 직접). */
+  const EDU = { links: null, recent: [], err: "", qr: "" };
+  const WDK = ["일", "월", "화", "수", "목", "금", "토"];
+  const dotWd = (s) => (isISO(s) ? dot(s) + " (" + WDK[new Date(utc(s)).getUTCDay()] + ")" : "");
+  function eduUrl(code) {
+    const base = typeof location !== "undefined" ? location.origin + location.pathname.replace(/[^/]*$/, "") : "";
+    return base + "edu.html#" + code;
+  }
+  function eduMail(l) {
+    const subject = "[보안교육] 이수 등록 안내" + (l.title ? " — " + l.title : "");
+    const body = ["안녕하세요. 인천화물팀 안전보안파트입니다.", "",
+      "보안교육 이수 현황 관리를 위해 아래 링크에서 직무와 이수 내용을 등록해 주세요.", "",
+      "▶ 등록 링크: " + eduUrl(l.code), "▶ 등록 기한: " + dotWd(l.expires),
+      "▶ 준비: 직무 임명일, 의무 교육 이수증(PDF 또는 사진)", "",
+      "PC와 휴대폰 모두에서 입력할 수 있습니다.", "", "감사합니다."].join("\n");
+    return "mailto:?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
+  }
+  const fmtAt = (iso) => { const d = new Date(iso); return isNaN(d) ? "" : p2(d.getMonth() + 1) + "." + p2(d.getDate()) + " " + p2(d.getHours()) + ":" + p2(d.getMinutes()); };
+  async function eduLoad() {
+    const S = typeof window !== "undefined" ? window.SemisSync : null;
+    if (!S || !S.rpc) { EDU.err = "offline"; return; }
+    try {
+      const d = await S.rpc("semis_logi_edu_links", {});
+      if (!d || !d.ok) throw new Error((d && d.error) || "edu");
+      EDU.links = Array.isArray(d.links) ? d.links : []; EDU.recent = Array.isArray(d.recent) ? d.recent : []; EDU.err = "";
+    } catch (e) { EDU.err = String((e && e.message) || e); }
+  }
+  async function eduSave(p) {
+    const d = await window.SemisSync.rpc("semis_logi_edu_link_save", p);
+    if (!d || !d.ok) throw new Error((d && d.error) || "save");
+    return d.link;
+  }
+  function copyText(txt) {
+    const fallback = () => {
+      const ta = document.createElement("textarea");
+      ta.value = txt; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select();
+      let ok = false;
+      try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+      ta.remove();
+      return ok;
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(txt).then(() => true, fallback);
+    return Promise.resolve(fallback());
+  }
+  function eduLinks() {
+    if (!SeMIS.canEdit()) return;
+    const KIND = { new: ["신규", "blue"], updated: ["갱신", "gray"], dup: ["동명이인", "amber"] };
+    const stOf = (l) => (l.open ? ["열림", "green"] : !l.active ? ["마감", "gray"] : ["기한 지남", "amber"]);
+    const act = async (fn, okMsg) => {
+      try { await fn(); await eduLoad(); paintM(); if (okMsg) toast(okMsg); }
+      catch (e) { toast("처리하지 못했습니다.", true); }
+    };
+    const paintM = () => {
+      const box = $("#te-body");
+      if (!box) return;
+      if (!EDU.links) {
+        box.innerHTML = EDU.err ? ui.empty("링크 목록을 불러오지 못했습니다.", '<button type="button" class="btn btn-soft btn-sm" id="te-retry">다시 시도</button>') : '<p class="au-none">불러오는 중</p>';
+        const rt = $("#te-retry", box); if (rt) rt.onclick = () => { EDU.err = ""; paintM(); eduLoad().then(paintM); };
+        return;
+      }
+      box.innerHTML = `<div class="te-new">
+          <input id="te-title" maxlength="60" placeholder="제목 (예: 2026 하반기 정기교육)" autocomplete="off" aria-label="링크 제목">
+          <select id="te-days" aria-label="등록 기한">${[7, 14, 30, 60, 90].map(n => `<option value="${n}" ${n === 30 ? "selected" : ""}>기한 ${n}일</option>`).join("")}</select>
+          <button type="button" class="btn btn-primary btn-sm" id="te-add">${icon("plus", 15)}<span>새 링크</span></button>
+        </div>
+        ${EDU.links.length ? `<ul class="te-links">${EDU.links.map(l => { const s2 = stOf(l); return `<li class="te-link${l.open ? "" : " is-off"}" data-code="${esc(l.code)}">
+          <div class="te-lh"><b>${esc(l.title || "이수 등록")}</b>${ui.chip(s2[0], s2[1])}${l.target === "eduTest" ? ui.chip("시험", "gray") : ""}
+            <span class="te-lm mono">~${esc(dot(l.expires))} · 제출 ${Number(l.submits) || 0}</span></div>
+          <div class="te-url mono">${esc(eduUrl(l.code))}</div>
+          <div class="te-acts">
+            <button type="button" class="btn btn-ghost btn-sm" data-te="copy">${icon("copy", 15)}<span>복사</span></button>
+            <a class="btn btn-ghost btn-sm" href="${esc(eduMail(l))}">${icon("mail", 15)}<span>메일 작성</span></a>
+            <button type="button" class="btn btn-ghost btn-sm" data-te="qr" aria-pressed="${EDU.qr === l.code}">QR</button>
+            <a class="btn btn-ghost btn-sm" href="${esc(eduUrl(l.code))}" target="_blank" rel="noopener">${icon("external", 15)}<span>열기</span></a>
+            <span class="spacer"></span>
+            ${l.open ? `<button type="button" class="btn btn-ghost btn-sm" data-te="ext">+30일</button><button type="button" class="btn btn-ghost btn-sm" data-te="close">마감</button>`
+              : `<button type="button" class="btn btn-soft btn-sm" data-te="open">다시 열기</button>`}
+          </div>
+          ${EDU.qr === l.code && window.SemisQR ? `<div class="te-qr">${window.SemisQR.svg(eduUrl(l.code), { ecc: "M", size: 176, label: "이수 등록 QR" })}</div>` : ""}
+        </li>`; }).join("")}</ul>` : ui.empty("만든 링크가 없습니다.")}
+        <h4 class="te-h">최근 제출${selfPending() ? `<small>본인 등록 확인 전 ${selfPending()}건</small>` : ""}</h4>
+        ${EDU.recent.length ? `<ul class="te-recent">${EDU.recent.map(r => { const k = KIND[r.kind] || [String(r.kind || ""), "gray"];
+          return `<li><button type="button" class="te-rrow" data-te-pid="${esc(r.pid)}">
+            <span class="te-rt mono">${esc(fmtAt(r.at))}</span><b>${esc(r.name)}</b><small>${esc(r.dept || "")}</small>
+            ${ui.chip(k[0], k[1])}<span class="te-rn">교육 ${Number(r.n) || 0}</span></button></li>`; }).join("")}</ul>`
+          : '<p class="au-none">제출 기록이 없습니다.</p>'}`;
+      $("#te-add", box).onclick = () => act(async () => {
+        const l = await eduSave({ title: norm($("#te-title").value), days: Number($("#te-days").value) || 30 });
+        EDU.qr = l && l.code ? l.code : "";
+      }, "링크를 만들었습니다.");
+      $$("[data-te]", box).forEach(b => b.onclick = () => {
+        const code = b.closest("[data-code]").dataset.code, l = EDU.links.find(x => x.code === code) || {};
+        const k = b.dataset.te;
+        if (k === "copy") { copyText(eduUrl(code)).then(ok => toast(ok ? "링크를 복사했습니다." : "복사하지 못했습니다.", !ok)); return; }
+        if (k === "qr") { EDU.qr = EDU.qr === code ? "" : code; paintM(); return; }
+        if (k === "close") act(() => eduSave({ code, active: false }), "마감했습니다.");
+        if (k === "open") act(() => eduSave({ code, active: true, days: 30 }), "다시 열었습니다 (30일).");
+        if (k === "ext") act(() => eduSave({ code, days: Math.min(365, Math.max(1, (isISO(l.expires) ? dayDiff(todayISO(), l.expires) : 0) + 30)) }), "30일 늘렸습니다.");
+      });
+      $$("[data-te-pid]", box).forEach(b => b.onclick = () => {
+        const id = b.dataset.tePid;
+        if (!personOf(id)) { toast("아직 이 화면에 반영되지 않았습니다. 잠시 뒤 다시 여세요.", true); return; }
+        closeModal(); q = ""; openPerson(id);
+      });
+    };
+    openModal(`<h3>이수 등록 링크</h3><div id="te-body" class="te-body"></div>
+      <div class="modal-actions"><span class="spacer" style="flex:1"></span><button type="button" class="btn btn-ghost" data-act="cancel">닫기</button></div>`, { wide: true });
+    $("#modal-box [data-act=cancel]").onclick = closeModal;
+    paintM();
+    eduLoad().then(paintM);
+  }
+
   /* ═════════ 렌더 ═════════ */
   function bodyHTML(canW) {
     return tab === "sessions" ? sessionsHTML(canW) : tab === "catalog" ? catalogHTML(canW) : tab === "pledges" ? pledgesHTML(canW) : peopleHTML(canW);
@@ -1505,6 +1663,7 @@
     });
     const yr = $("#tr-year", box); if (yr) yr.onchange = () => { year = yr.value; paint(); };
     const ac = $("#tr-act", box); if (ac) ac.onclick = () => { onlyAct = !onlyAct; paint(); };
+    const sf = $("#tr-self", box); if (sf) sf.onclick = () => { onlySelf = !onlySelf; paint(); };
     $$("[data-tseg]", box).forEach(b => b.onclick = () => {
       const k = b.dataset.tseg, v = b.dataset.v;
       if (k === "stype") sType = v; else if (k === "pstate") pState = v; else if (k === "pview") pView = v;
@@ -1565,7 +1724,7 @@
     const b = (id, ic, label, primary) => `<button type="button" class="btn ${primary ? "btn-primary" : "btn-ghost"} btn-sm" id="${id}">${icon(ic, 16)}<span>${label}</span></button>`;
     const act = !canW ? "" : tab === "sessions" ? b("tr-sadd", "plus", "교육 기록", true)
       : tab === "catalog" ? b("tr-courses", "sliders", "과정 관리", true)
-      : tab === "pledges" ? "" : b("tr-radd", "plus", "이수 등록", true) + b("tr-padd", "user", "인원 등록");
+      : tab === "pledges" ? "" : b("tr-radd", "plus", "이수 등록", true) + b("tr-padd", "user", "인원 등록") + b("tr-edu", "mail", "이수 등록 링크");
     root.innerHTML = ui.head({ title: TITLE, meta: "인천화물팀 · 협력사 기준", actions: act })
       + `<div class="eq-tabs" role="tablist" aria-label="보안교육 화면">${TABS.map(([id, lb]) =>
         `<button type="button" role="tab" class="eq-tab" data-ttab="${id}" aria-selected="${tab === id}">${esc(lb)}</button>`).join("")}</div>`
@@ -1575,6 +1734,7 @@
     const pa = $("#tr-padd", root); if (pa) pa.onclick = () => personForm("");
     const sa = $("#tr-sadd", root); if (sa) sa.onclick = () => sessionForm("", "own");
     const ra = $("#tr-radd", root); if (ra) ra.onclick = () => recordForm("", "", "");
+    const eb = $("#tr-edu", root); if (eb) eb.onclick = eduLinks;
     wire(root);
     /* SSI 서약 대조용 명단 — 받아 오면(바뀌었으면) 다시 그린다 */
     loadPledges(false).then(ch => { if ((ch || (tab === "pledges" && PL.err)) && routeNow() === MOD && !pid && !sid) paint(); });
@@ -1599,13 +1759,15 @@
     courses, fams, famStatus, personQuals, stats, roleStats, dueList, expiryByMonth, sessionsByMonth, grid, missing, evidence, expireOf, stText, cycleText,
     migrate, rolesOf, needAct, loadPledges, pledgeMatch, pledgeInfo, pledgesState: PL,
     syncSessionRecords, personForm, pledgeForm, recordForm, sessionForm, coursesForm, keepOver, leftOver, openPerson, openSession,
+    eduLinks, eduUrl, eduMail, selfPending, selfRecs, aptOf, eduState: EDU,
     setToday(t) { fixedToday = isISO(t) ? t : ""; },
-    getState() { return { tab, q, roleF, rgF, onlyAct, year, sType, pState, pView, pid, sid, plScope, plState }; },
+    getState() { return { tab, q, roleF, rgF, onlyAct, onlySelf, year, sType, pState, pView, pid, sid, plScope, plState }; },
     setState(o) {
       o = o || {};
       if (o.tab) { tab = o.tab === "grid" ? "people" : o.tab; if (o.tab === "grid") pView = "grid"; }
       if (o.q !== undefined) q = String(o.q || "");
       if (o.roleF !== undefined) roleF = String(o.roleF || ""); if (o.onlyAct !== undefined) onlyAct = !!o.onlyAct;
+      if (o.onlySelf !== undefined) onlySelf = !!o.onlySelf;
       if (o.rgF !== undefined) rgF = rgById(o.rgF) ? String(o.rgF) : "";
       if (o.year !== undefined) year = String(o.year || ""); if (o.sType) sType = o.sType; if (o.pState) pState = o.pState;
       if (o.pView) pView = o.pView;

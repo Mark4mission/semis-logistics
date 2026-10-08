@@ -1,10 +1,12 @@
-/* SeMIS · Logistics — Supabase Edge Function "semis-logi-files" (v1.15)
+/* SeMIS · Logistics — Supabase Edge Function "semis-logi-files" (v1.15 · v1.39 edu-upload)
    비공개 버킷 semis-logi-files 의 유일한 출입구. 브라우저는 버킷에 직접 접근하지 못한다.
    - 인증: 요청 헤더 x-semis-token (로그인 세션) → public.semis_logi_file_auth() 로 확인
    - op "sign"   : 파일 열람용 서명 URL(1시간) — 폴더별 열람 등급 확인
    - op "upload" : 업로드용 서명 URL — 폴더별 작성 등급 확인, 저장 경로는 이 함수가 정한다
    - op "list" / "delete" : 시스템관리자만 (시스템 설정 › 저장소 관리)
    - 회의 서명 세션(signer)은 minutes-sign/ 폴더만 올리고 볼 수 있다
+   - op "edu-upload" (v1.39): 보안교육 이수 등록 화면(edu.html, 로그인 없음)의 이수증 — 세션 대신 표(ticket)로 확인.
+     PDF · 이미지만, 20MB 이하, training/ 폴더. public.semis_logi_edu_claim(서비스 권한)이 표 · 개수 · 용량을 확인하고 기록한다
    - 배포: Supabase MCP deploy_edge_function (verify_jwt false — 위의 세션 확인으로 대신). 이 파일이 원본. */
 
 const SUPA = Deno.env.get("SUPABASE_URL")!;
@@ -29,6 +31,9 @@ const WRITE_RANK: Record<string, number> = {
 };
 const DEFAULT_READ = 3, DEFAULT_WRITE = 3;
 const BLOCK_TYPES = /^(text\/html|application\/xhtml\+xml|text\/javascript|application\/(x-)?javascript)/i;
+const EDU_MAX = 20 * 1024 * 1024;
+const EDU_EXT = /\.(pdf|jpe?g|png|webp|heic|heif)$/i;
+const EDU_TYPES = /^(application\/pdf|image\/(jpeg|png|webp|heic|heif))$/i;
 
 type Who = { ok: boolean; kind?: string; rank?: number; who?: string };
 
@@ -86,6 +91,42 @@ function canWrite(w: Who, folder: string): boolean {
   return (w.rank ?? 0) >= (WRITE_RANK[folder] ?? DEFAULT_WRITE);
 }
 
+function newPath(folder: string, name: unknown): string {
+  const safe = String(name || "file").replace(/[^A-Za-z0-9._-]/g, "_").slice(-80) || "file";
+  const rand = crypto.getRandomValues(new Uint8Array(9));
+  const tag = Date.now().toString(36) + Array.from(rand, (b) => (b % 36).toString(36)).join("");
+  return folder + "/" + tag + "_" + safe;
+}
+async function uploadSign(path: string): Promise<string> {
+  const r = await fetch(STORAGE + "/object/upload/sign/" + BUCKET + "/" + encPath(path), {
+    method: "POST", headers: svc({ "Content-Type": "application/json" }), body: "{}"
+  });
+  if (!r.ok) throw new Error("upload_sign " + r.status);
+  const d = await r.json() as { url?: string };
+  if (!d || !d.url) throw new Error("upload_sign");
+  return STORAGE + d.url;
+}
+
+/* 이수 등록 화면 — 표 확인 · 기록(서비스 권한 RPC) 후 업로드 URL */
+async function eduUpload(body: Record<string, unknown>, origin: string): Promise<Response> {
+  const ticket = String(body.ticket || "");
+  if (!/^[0-9a-f]{48}$/.test(ticket)) return json({ ok: false, error: "ticket" }, 401, origin);
+  const name = String(body.name || "file").slice(0, 160);
+  const type = String(body.type || "");
+  const size = Number(body.size) || 0;
+  if (!EDU_EXT.test(name) || (type && !EDU_TYPES.test(type))) return json({ ok: false, error: "type" }, 415, origin);
+  if (size <= 0 || size > EDU_MAX) return json({ ok: false, error: "too_large" }, 413, origin);
+  const path = newPath("training", name);
+  const r = await fetch(SUPA + "/rest/v1/rpc/semis_logi_edu_claim", {
+    method: "POST", headers: svc({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ p_ticket: ticket, p_path: path, p_name: name, p_size: size, p_type: type })
+  });
+  if (!r.ok) return json({ ok: false, error: "claim " + r.status }, 502, origin);
+  const d = await r.json() as { ok?: boolean; error?: string };
+  if (!d || !d.ok) return json({ ok: false, error: String((d && d.error) || "claim") }, 403, origin);
+  return json({ ok: true, path, url: PUBLIC_PREFIX + path, upload: await uploadSign(path) }, 200, origin);
+}
+
 async function signPaths(paths: string[]): Promise<Record<string, string>> {
   const r = await fetch(STORAGE + "/object/sign/" + BUCKET, {
     method: "POST", headers: svc({ "Content-Type": "application/json" }),
@@ -124,9 +165,13 @@ Deno.serve(async (req: Request) => {
 
   let body: Record<string, unknown>;
   try { body = await req.json(); } catch (_e) { return json({ ok: false, error: "bad_json" }, 400, origin); }
+  const op = String(body.op || "");
+  if (op === "edu-upload") {
+    try { return await eduUpload(body, origin); }
+    catch (e) { return json({ ok: false, error: String((e as Error).message || e) }, 500, origin); }
+  }
   const w = await whoAmI(req);
   if (!w.ok) return json({ ok: false, error: "auth" }, 401, origin);
-  const op = String(body.op || "");
 
   try {
     if (op === "sign") {
@@ -146,17 +191,8 @@ Deno.serve(async (req: Request) => {
       if (size > MAX_SIZE) return json({ ok: false, error: "too_large" }, 413, origin);
       const type = String(body.type || "");
       if (BLOCK_TYPES.test(type)) return json({ ok: false, error: "type" }, 415, origin);
-      const safe = String(body.name || "file").replace(/[^A-Za-z0-9._-]/g, "_").slice(-80) || "file";
-      const rand = crypto.getRandomValues(new Uint8Array(9));
-      const tag = Date.now().toString(36) + Array.from(rand, (b) => (b % 36).toString(36)).join("");
-      const path = folder + "/" + tag + "_" + safe;
-      const r = await fetch(STORAGE + "/object/upload/sign/" + BUCKET + "/" + encPath(path), {
-        method: "POST", headers: svc({ "Content-Type": "application/json" }), body: "{}"
-      });
-      if (!r.ok) return json({ ok: false, error: "upload_sign " + r.status }, 502, origin);
-      const d = await r.json() as { url?: string };
-      if (!d || !d.url) return json({ ok: false, error: "upload_sign" }, 502, origin);
-      return json({ ok: true, path, url: PUBLIC_PREFIX + path, upload: STORAGE + d.url }, 200, origin);
+      const path = newPath(folder, body.name);
+      return json({ ok: true, path, url: PUBLIC_PREFIX + path, upload: await uploadSign(path) }, 200, origin);
     }
 
     if (op === "list") {

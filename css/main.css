@@ -5985,3 +5985,48 @@ button.hc-d:focus-visible { outline: 2px solid var(--primary); outline-offset: 1
   .tr-rglg:not(.is-key) { display: none; }
   .rg-dot, .tr-role, .tr-rd[class*="rg-"] > summary { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* ═══════ v1.39 보안교육 이수 등록 — 본인 등록 · 임명일 · 링크 관리 ═══════ */
+.tr-self { display: inline-block; margin-left: 4px; padding: 0 7px; border-radius: 999px; background: var(--info-soft); color: var(--info); font-size: .72rem; font-weight: 700; vertical-align: middle; white-space: nowrap; }
+.tr-self.is-ok { background: #eef4f3; color: var(--text-3); font-weight: 600; }
+.tr-ms .tr-self { margin: 0 4px 0 0; }
+.tr-apt { margin-left: 4px; padding: 0 6px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2); font-size: .72rem; font-weight: 500; }
+.tr-apts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.tr-apts li { display: grid; grid-template-columns: minmax(0, 1fr) 180px; align-items: center; gap: 10px; padding: 6px 10px; border-radius: var(--radius-sm); background: var(--surface-2); box-shadow: inset 3px 0 0 var(--rc, var(--border-strong)); }
+.tr-apts li.rg-etc { box-shadow: inset 3px 0 0 var(--rb); }
+.tr-apts li span { display: inline-flex; align-items: center; gap: 8px; font-size: .88rem; font-weight: 600; min-width: 0; }
+.tr-apts input { min-height: 36px; padding: 0 9px; border: 1.5px solid var(--border-strong); border-radius: 8px; font-family: var(--mono); font-size: .86rem; background: var(--surface); }
+.tr-chk { margin-top: 8px; }
+.tr-chk small { color: var(--text-3); margin-left: 4px; }
+.pb-chk b { margin-left: 2px; font-size: .78rem; }
+.te-body { display: flex; flex-direction: column; gap: 12px; }
+.te-new { display: flex; gap: 8px; flex-wrap: wrap; }
+.te-new input { flex: 1 1 240px; min-height: 40px; padding: 0 12px; border: 1.5px solid var(--border-strong); border-radius: var(--radius-sm); font-size: .92rem; }
+.te-new select { min-height: 40px; padding: 0 10px; border: 1.5px solid var(--border-strong); border-radius: var(--radius-sm); font-size: .9rem; background: var(--surface); }
+.te-links { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.te-link { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; background: var(--surface); }
+.te-link.is-off { background: var(--surface-2); }
+.te-link.is-off .te-url { color: var(--text-3); text-decoration: line-through; text-decoration-color: var(--border-strong); }
+.te-lh { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.te-lh b { font-size: .96rem; font-weight: 700; }
+.te-lm { margin-left: auto; font-size: .78rem; color: var(--text-3); white-space: nowrap; }
+.te-url { margin-top: 4px; font-size: .78rem; color: var(--text-2); overflow-wrap: anywhere; }
+.te-acts { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.te-acts .spacer { flex: 1; }
+.te-acts [data-te="qr"][aria-pressed="true"] { border-color: var(--primary); color: var(--primary); }
+.te-qr { display: flex; align-items: center; gap: 14px; margin-top: 10px; padding: 10px; border-radius: var(--radius-sm); background: var(--surface-2); }
+.te-qr svg { width: 176px; height: 176px; background: #fff; border-radius: 8px; }
+.te-h { display: flex; align-items: baseline; gap: 8px; margin-top: 6px; font-size: .92rem; font-weight: 700; }
+.te-h small { font-size: .76rem; font-weight: 600; color: var(--info); }
+.te-recent { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border-top: 1px solid var(--border); }
+.te-rrow { width: 100%; display: flex; align-items: center; gap: 10px; padding: 9px 4px; border: none; border-bottom: 1px solid var(--border); background: none; text-align: left; font-size: .88rem; }
+.te-rrow:hover { background: var(--surface-2); }
+.te-rt { color: var(--text-3); font-size: .78rem; flex: none; }
+.te-rrow small { color: var(--text-3); font-size: .78rem; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.te-rn { color: var(--text-3); font-size: .78rem; white-space: nowrap; }
+@media screen and (max-width: 767px) {
+  .tr-apts li { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .te-lm { margin-left: 0; width: 100%; }
+  .te-rrow { flex-wrap: wrap; gap: 4px 8px; }
+  .te-rrow small { flex-basis: 100%; order: 5; }
+}

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#0b1f26">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src https://mzyuzrxkdcpzxojenwat.supabase.co; img-src 'self' data: blob:; object-src 'none'; base-uri 'self'; form-action 'none'">
+<title>보안교육 이수 등록 — SeMIS · Logistics</title>
+<link rel="icon" type="image/svg+xml" href="assets/mark.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="css/edu.css?v=1.39.0">
+</head>
+<body>
+<header class="ed-top">
+  <div class="ed-top-in">
+    <span class="ed-brand"><img src="assets/mark.svg" alt="" width="30" height="30"><span>SeMIS <b>Logistics</b></span></span>
+    <span class="ed-top-t">보안교육 이수 등록</span>
+    <button type="button" class="ed-ibtn" id="ed-print" aria-label="인쇄"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 9V4h10v5"/><rect x="3.5" y="9" width="17" height="8" rx="2"/><path d="M7 14h10v6H7z"/></svg><span>Print</span></button>
+  </div>
+</header>
+
+<main class="ed-main" id="ed-app" aria-live="polite">
+  <div class="ed-load" id="ed-load"><span class="ed-spin" aria-hidden="true"></span><span>불러오는 중</span></div>
+</main>
+
+<div class="ed-busy hidden" id="ed-busy" role="status" aria-live="polite">
+  <div class="ed-busy-box"><span class="ed-spin" aria-hidden="true"></span><span id="ed-busy-t">제출하는 중</span></div>
+</div>
+
+<script src="js/edu-shim.js?v=1.39.0" defer></script>
+<script src="js/training.js?v=1.39.0" defer></script>
+<script src="js/pow.js?v=1.39.0" defer></script>
+<script src="js/edu-form.js?v=1.39.0" defer></script>
+</body>
+</html>

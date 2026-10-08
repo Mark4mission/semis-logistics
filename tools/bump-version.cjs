@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /* 릴리스 버전 스탬프 — 사용: node tools/bump-version.cjs 1.0.1
    1) js/app.js 의 VERSION 갱신
-   2) index.html 의 로컬 css/js 참조에 ?v=<버전> 부여 (브라우저 캐시 무효화)
+   2) index.html · edu.html 의 로컬 css/js 참조에 ?v=<버전> 부여 (브라우저 캐시 무효화)
    ※ 캐시 스탬프가 없으면 배포 후에도 구버전 CSS/JS가 남아 화면이 갱신되지 않습니다. */
 "use strict";
 const fs = require("fs");
@@ -29,4 +29,14 @@ html = html.replace(/(href|src)="((?:css|js)\/[\w.-]+\.(?:css|js))(?:\?v=[\d.]+)
   return `${attr}="${file}?v=${ver}"`;
 });
 fs.writeFileSync(htmlPath, html);
-console.log(`v${ver} — app.js VERSION 갱신, index.html 캐시 스탬프 ${n}건 적용`);
+/* v1.39 배포용 이수 등록 화면(edu.html)도 같은 스탬프 */
+const eduPath = path.join(ROOT, "edu.html");
+let m = 0;
+if (fs.existsSync(eduPath)) {
+  const edu = fs.readFileSync(eduPath, "utf8").replace(/(href|src)="((?:css|js)\/[\w.-]+\.(?:css|js))(?:\?v=[\d.]+)?"/g, (x, attr, file) => {
+    m++;
+    return `${attr}="${file}?v=${ver}"`;
+  });
+  fs.writeFileSync(eduPath, edu);
+}
+console.log(`v${ver} — app.js VERSION 갱신, index.html 캐시 스탬프 ${n}건 · edu.html ${m}건 적용`);
