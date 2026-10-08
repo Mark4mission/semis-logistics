@@ -585,10 +585,12 @@
   }
   /* 이수증 번호 — '제 2026-0931 호' · 'No. 12' 의 앞뒤 말은 뺀다 */
   const certNoNorm = (v) => norm(v).replace(/^(제|No\.?|NO\.?|№)\s*/i, "").replace(/\s*호$/, "").slice(0, 40);
+  /* 교육기관 — 서명란의 'OO원장 · 센터장' 은 기관 이름으로 */
+  const orgNorm = (v) => norm(v).replace(/(원|센터|소|협회|학교)장(?=\s|\(|$)/, "$1").slice(0, 60);
   function applyRead(it, x) {
     if (courseOf(x.cid)) it.cid = x.cid;
     if (dateOk(x.date)) it.date = x.date;
-    if (x.org) it.org = norm(x.org).slice(0, 60);
+    if (x.org) it.org = orgNorm(x.org);
     if (x.certNo) it.certNo = certNoNorm(x.certNo);
     it.course = norm(x.course).slice(0, 80);
     const h = Number(x.hours);
@@ -834,6 +836,6 @@
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 
-  window.SemisEdu = { st, check, payload, groups, complete, applyRead, certNoNorm, guidance, nextLine, icsText, codeFromUrl, errText, render, toggleRole,
+  window.SemisEdu = { st, check, payload, groups, complete, applyRead, certNoNorm, orgNorm, guidance, nextLine, icsText, codeFromUrl, errText, render, toggleRole,
     setToday(t) { fixedToday = isISO(t) ? t : ""; if (TR() && TR().setToday) TR().setToday(t); } };
 })();

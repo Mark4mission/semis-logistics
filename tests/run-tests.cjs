@@ -8183,6 +8183,8 @@ function makeServer(opts = {}) {
       ok(part.cid === "c-dg-r" && !part.date && part.rerr === "part", "일부만 읽음");
       ok(/일부만 읽었습니다/.test($e(x, '.ed-fi[data-k="' + part.k + '"]').textContent) && !$e(x, '[data-reread="' + part.k + '"]'), "일부 = 빈 칸만 채움(다시 읽기 없음)");
       eq([x.E.certNoNorm("제 2026-0931 호"), x.E.certNoNorm("No. A-12"), x.E.certNoNorm("DG-11873")].join(), "2026-0931,A-12,DG-11873", "이수증 번호 앞뒤 말 빼기");
+      eq([x.E.orgNorm("한국공항공사 항공기술훈련원장"), x.E.orgNorm("시험교육원장 (테스트용)"), x.E.orgNorm("항공보안교육센터장"), x.E.orgNorm("원장학교")].join("|"),
+        "한국공항공사 항공기술훈련원|시험교육원 (테스트용)|항공보안교육센터|원장학교", "서명란 기관장 → 기관");
       eq($e(x, "#ed-cid-" + part.k).value, "c-dg-r", "읽은 과정은 채워 둠");
       eq(x.E.check().map(c => c.f).join(","), "item");
       typeIn(x, "#ed-date-" + part.k, "2026-12-01", "change");
