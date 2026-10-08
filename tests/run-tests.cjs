@@ -6038,6 +6038,33 @@ function makeServer(opts = {}) {
       eq(TR.migrate(prod), false, "멱등"); eq(JSON.stringify(prod), snap);
       eq(TR.aptOf({ apt: { "위험물 취급자": "2025-03-02" } }, "DGR"), "2025-03-02", "옛 키 임명일도 읽음");
     });
+    t("TR24 보안교관 직무군(v1.43.1): 항공보안교관 과정 이수자(직무 없음)도 범례 수 · 걸러 보기 · 보유 칩 · 현황표 · 모바일 점 — 필수 과정 집계는 그대로", () => {
+      const keep = JSON.stringify(data());
+      Object.assign(data(), { courses: TR.DEF_COURSES.map(c => JSON.parse(JSON.stringify(c))).concat([{ id: "u-ins", fam: "inst", name: "항공보안 교관", kind: "1회", cycle: 0, legal: "law", roles: [] }]),
+        people: [{ id: "i1", name: "교관가", dept: "인천화물팀", roles: ["항공사보안감독자"] }, { id: "i2", name: "교관나", dept: "인천화물팀", roles: ["사내보안교관"] },
+          { id: "i3", name: "일반다", dept: "인천화물팀", roles: ["항공사보안감독자"] }],
+        records: [{ id: "x1", pid: "i1", cid: "u-ins", date: "2024-03-08" }, { id: "x2", pid: "i1", cid: "c-sup-r", date: "2026-03-02" }], sessions: [] });
+      TR.setToday("2026-10-08");
+      const s0 = TR.stats("2026-10-08");
+      loginAs(e, "hq"); TR.setState({ tab: "people", pid: "", sid: "", q: "", roleF: "", rgF: "", onlyAct: false, pState: "active", pView: "list" }); go(e, "training");
+      const lg = (id) => q(e, `#tr-plist .tr-rglg [data-rgf="${id}"]`);
+      eq(lg("ins").querySelector("b").textContent, "2", "직무 1 + 과정 이수 1"); ok(!lg("ins").disabled && /항공보안교관 과정/.test(lg("ins").title));
+      eq(lg("sup").querySelector("b").textContent, "2");
+      const row = (n) => qa(e, ".tr-ptbl tbody tr").find(r => r.querySelector(".tbl-open").textContent === n);
+      const held = row("교관가").querySelector(".tr-role.is-held.rg-ins");
+      ok(held && /항공보안 교관/.test(held.textContent) && /보유/.test(held.textContent), "보유 칩");
+      ok(!row("교관나").querySelector(".is-held"), "직무가 있으면 보유 칩 없음");
+      lg("ins").click();
+      eq(qa(e, ".tr-ptbl tbody tr").map(r => r.querySelector(".tbl-open").textContent).sort().join(), "교관가,교관나", "걸러 보기에 이수자 포함");
+      TR.setState({ rgF: "", pView: "grid" }); go(e, "training");
+      ok(/항공보안 교관 \(보유\)/.test(q(e, '.tr-gtbl tr[data-pid="i1"] .tr-rmini').textContent), "현황표 이름 칸");
+      TR.setState({ pView: "list" });
+      const s1 = TR.stats("2026-10-08");
+      eq(JSON.stringify([s1.cells, s1.good, s1.bad]), JSON.stringify([s0.cells, s0.good, s0.bad]), "필수 과정 집계는 그대로(직무 아님)");
+      ok(!TR.roleStats("2026-10-08").some(r => r.role === "항공보안 교관"), "직무별 집계에 넣지 않음");
+      eq(e.errors.length, 0, e.errors.join("|"));
+      Object.assign(data(), JSON.parse(keep));
+    });
     e.w.close();
   }
 

@@ -136,7 +136,7 @@
     { id: "scr", label: "보안검색 · 화물보안", roles: ["보안검색감독자", "보안검색요원", "항공보안장비 유지보수요원", "화물보안 업무요원"] },
     { id: "rel", label: "보안 유관부서", roles: ["보안 유관부서 관리자", "보안 유관부서 일반요원"] },
     { id: "tel", label: "전화 접수 · 안내", roles: ["전화 접수자 · 안내요원"] },
-    { id: "ins", label: "보안교관", roles: ["사내보안교관"] },
+    { id: "ins", label: "보안교관", roles: ["사내보안교관"], fams: ["inst", "inh"], held: "항공보안교관 과정 · 사내보안교관 임명 이수자" },
     { id: "etc", label: "기타", roles: [] }
   ];
   const rgOf = (r) => { r = ROLE_ALIAS[r] || r; return RGROUPS.find(g => g.roles.indexOf(r) >= 0) || RGROUPS[RGROUPS.length - 1]; };
@@ -758,9 +758,20 @@
   }
   /* 직무 칩 — 직무군 색 점 + 옅은 바탕(기타는 기본색 · 빈 고리) */
   const roleChip = (r) => { const g = rgOf(r); return `<span class="tr-role rg-${g.id}" title="${esc(g.label)}">${rgDot(g)}${esc(r)}</span>`; };
-  const roleChips = (p) => sortRoles(rolesOf(p)).map(roleChip).join("");
-  /* 사람이 가진 직무군(순서대로, 중복 없이) */
-  const rgsOf = (p) => RGROUPS.filter(g => rolesOf(p).some(r => rgOf(r) === g));
+  /* v1.43.1 자격 보유로도 직무군에 든다(g.fams) — 보안교관 = 사내보안교관 직무 또는 항공보안교관 과정 · 사내보안교관 임명 이수.
+     직무가 아니므로 필수 과정 · 상태 집계(roleStats · stats)에는 넣지 않고, 직무군 집계 · 걸러 보기 · 표시에만 쓴다 */
+  const heldRecs = (p, g) => (g && g.fams && p ? records().filter(r => r.pid === p.id && g.fams.indexOf((courseOf(r.cid) || {}).fam) >= 0) : []);
+  const roleIn = (p, g) => rolesOf(p).some(r => rgOf(r) === g);
+  const inRg = (p, g) => roleIn(p, g) || heldRecs(p, g).length > 0;
+  /* 직무 없이 자격만 가진 직무군 — 과정 이름(보유) 칩 */
+  const heldOnly = (p) => RGROUPS.filter(g => g.fams && !roleIn(p, g)).map(g => {
+    const n = Array.from(new Set(heldRecs(p, g).map(r => famName(courseOf(r.cid)))));
+    return n.length ? { g, names: n } : null;
+  }).filter(Boolean);
+  const heldChips = (p) => heldOnly(p).map(({ g, names }) => names.map(nm => `<span class="tr-role rg-${g.id} is-held" title="${esc(g.label + " — 보유 자격(직무 아님)")}">${rgDot(g)}${esc(nm)}<small>보유</small></span>`).join("")).join("");
+  const roleChips = (p) => sortRoles(rolesOf(p)).map(roleChip).join("") + heldChips(p);
+  /* 사람이 가진 직무군(순서대로, 중복 없이 — 보유 자격 포함) */
+  const rgsOf = (p) => RGROUPS.filter(g => inRg(p, g));
   const legalChip = (k) => ui.chip(LEGAL[k][0], LEGAL[k][1]);
 
   /* ─────── 화면 이동 (개인 · 교육 기록) — 브라우저 뒤로 = 목록 ─────── */
@@ -809,7 +820,7 @@
       if (pState === "active" && !a) return false;
       if (pState === "left" && a) return false;
       if (roleF && rolesOf(p).indexOf(roleF) < 0) return false;
-      if (rgF && !rolesOf(p).some(r => rgOf(r).id === rgF)) return false;
+      if (rgF && !inRg(p, rgById(rgF))) return false;
       if (onlyAct) { const pq = personQuals(p, t); if (!(pq.worst && needAct(pq.worst.st)) && !(isSSI(p) && !pledged(p))) return false; }
       if (onlySelf && !selfRecs(p.id).length) return false;
       return !q || hay([p.name, p.emp, p.dept, rolesOf(p).join(" "), p.note]).indexOf(q.toLowerCase()) >= 0;
@@ -848,10 +859,10 @@
   function rgLegend(t) {
     const base = people().filter(p => { const a = active(p, t); return pState === "all" || (pState === "left" ? !a : a); });
     return `<div class="tr-rglg" role="group" aria-label="직무군">${RGROUPS.map(g => {
-      const n = base.filter(p => rolesOf(p).some(r => rgOf(r) === g)).length;
+      const n = base.filter(p => inRg(p, g)).length;
       const on = rgF === g.id;
       return `<button type="button" class="tr-rgb rg-${g.id}${n ? "" : " is-zero"}" data-rgf="${g.id}" aria-pressed="${on}"${n || on ? "" : " disabled"}
-        title="${esc(g.roles.length ? g.roles.join(" · ") : "위험물 · SSI · ACMR · ACC3 · 사내 직무")}">${rgDot(g)}<span>${esc(g.label)}</span><b class="mono">${n}</b></button>`;
+        title="${esc(g.roles.length ? g.roles.join(" · ") + (g.held ? " · " + g.held : "") : "DGR · SSI · ACMR · ACC3 · 사내 직무")}">${rgDot(g)}<span>${esc(g.label)}</span><b class="mono">${n}</b></button>`;
     }).join("")}</div>`;
   }
   function peopleBody(canW, t) {
@@ -863,7 +874,7 @@
       const sub = !a ? "퇴직 · 전출 " + dot(p.left) : nx ? famShort(nx.g) + " " + stText(nx, true) : pq.req.length ? "필수 과정 " + pq.req.length + "건" : "필수 과정 없음";
       const ssiMiss = isSSI(p) && !pledged(p);
       return `<li><button type="button" class="tr-mrow" data-tperson="${esc(p.id)}">
-        <span class="tr-mn"><b>${esc(p.name)}</b>${rgsOf(p).length ? `<span class="tr-rdots" role="img" aria-label="${esc("직무: " + sortRoles(rolesOf(p)).join(", "))}">${rgsOf(p).map(rgDot).join("")}</span>` : ""}<small>${esc(p.dept || "")}</small></span>
+        <span class="tr-mn"><b>${esc(p.name)}</b>${rgsOf(p).length ? `<span class="tr-rdots" role="img" aria-label="${esc("직무: " + sortRoles(rolesOf(p)).concat(heldOnly(p).map(x => x.names.join(", ") + " (보유)")).join(", "))}">${rgsOf(p).map(rgDot).join("")}</span>` : ""}<small>${esc(p.dept || "")}</small></span>
         <span class="tr-ms">${selfRecs(p.id).length ? '<small class="tr-self">본인 등록</small>' : ""}${w ? stChip(w) : ""}${ssiMiss ? ui.chip("서약 누락", "red") : ""}</span>
         <span class="tr-mx mono">${esc(sub)}</span></button></li>`;
     }).join("")}</ul>`;
@@ -905,7 +916,7 @@
     return `<div class="table-wrap"><table class="tbl tbl-cap tr-gtbl" data-no-stack style="--cap:1480px">
       <thead><tr><th>이름</th>${gs.map(x => `<th>${esc(famShort(x))}</th>`).join("")}${ssiCol ? "<th>SSI 서약</th>" : ""}</tr></thead>
       <tbody>${ps.filter(p => ids.indexOf(p.id) >= 0).map(p => `<tr data-pid="${esc(p.id)}">
-        <td class="c-name"><button type="button" class="tbl-open" data-tperson="${esc(p.id)}">${esc(p.name)}</button><div class="tr-rmini">${sortRoles(rolesOf(p)).map(r => `<span>${rgDot(rgOf(r))}${esc(r)}</span>`).join("")}</div></td>
+        <td class="c-name"><button type="button" class="tbl-open" data-tperson="${esc(p.id)}">${esc(p.name)}</button><div class="tr-rmini">${sortRoles(rolesOf(p)).map(r => `<span>${rgDot(rgOf(r))}${esc(r)}</span>`).join("")}${heldOnly(p).map(({ g, names }) => names.map(nm => `<span class="is-held">${rgDot(g)}${esc(nm)} (보유)</span>`).join("")).join("")}</div></td>
         ${gs.map(x => { const c = g.cells.find(k => k.p === p && k.g === x);
           return `<td class="c-cell${c ? "" : " is-na"}"${c && canW ? ` data-tcell="${esc(p.id)}|${esc(x.fam)}"` : ""}>${cellChip(c)}</td>`; }).join("")}
         ${ssiCol ? `<td class="c-cell${isSSI(p) ? "" : " is-na"}">${isSSI(p) ? ssiCell(p) : '<span class="tr-na">-</span>'}</td>` : ""}

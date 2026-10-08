@@ -6016,6 +6016,9 @@ button.hc-d:focus-visible { outline: 2px solid var(--primary); outline-offset: 1
 .tr-role { display: inline-flex; align-items: center; gap: 6px; margin: 0 4px 4px 0; padding: 1px 8px 1px 7px; border-radius: 6px; background: var(--rt, #eef2f1);
   color: var(--text); font-size: .8rem; font-weight: 600; line-height: 1.65; white-space: nowrap; }
 .tr-role .rg-dot { width: 7px; height: 7px; }
+.tr-role.is-held { background: var(--rs, transparent); box-shadow: inset 0 0 0 1px var(--rb, var(--border-strong)); font-weight: 500; }
+.tr-role.is-held small { margin-left: 2px; font-size: .68rem; font-weight: 600; color: var(--text-3); }
+.tr-rmini .is-held { color: var(--text-3); }
 /* 인원 목록 위 직무군 범례 = 걸러 보기 */
 .tr-rglg { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: -2px 0 12px; }
 .tr-rgb { display: inline-flex; align-items: center; gap: 7px; min-height: 32px; padding: 0 11px 0 10px; border: 1px solid var(--border); border-radius: 999px;
