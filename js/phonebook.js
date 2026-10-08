@@ -179,7 +179,7 @@
     const p = P();
     const actions = canWrite ? [
       all.length || groups().length ? `<button type="button" class="btn btn-ghost btn-sm" id="pb-groups">${icon("palette", 16)}<span>구역 관리</span></button>` : "",
-      `<button type="button" class="btn btn-ghost btn-sm" id="pb-meta">${icon("sliders", 16)}<span>기본 정보</span></button>`,
+      `<button type="button" class="link-btn head-link m-ed" id="pb-meta">기본 정보</button>`,
       `<button type="button" class="btn btn-primary btn-sm" id="pb-add">${icon("plus", 16)}<span>추가</span></button>`
     ].join("") : "";
     const head = ui.head({ title: TITLE, meta: p.asOf ? "기준 " + p.asOf : "", desc: "현장 · 협력사 · 유관기관 업무 연락처", actions });

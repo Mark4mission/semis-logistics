@@ -264,7 +264,7 @@
     const c = C();
     const actions = [
       c.fileUrl ? `<a class="btn btn-ghost btn-sm" href="${esc(c.fileUrl)}${c.fileUrl.indexOf("?") < 0 ? "?download=" + encodeURIComponent(c.fileName || "위기대응담당자.xlsx") : ""}" id="cr-file">${icon("down", 16)}<span>원본</span></a>` : "",
-      canWrite ? `<button type="button" class="btn btn-ghost btn-sm" id="cr-import">${icon("doc", 16)}<span>엑셀 반영</span></button>` : "",
+      canWrite ? `<button type="button" class="link-btn head-link m-ed" id="cr-import">엑셀 반영</button>` : "",
       canWrite && rows.length ? `<button type="button" class="btn btn-ghost btn-sm" id="cr-meta">${icon("sliders", 16)}<span>기본 정보</span></button>` : "",
       canWrite && rows.length ? `<button type="button" class="btn btn-ghost btn-sm" id="cr-bulk">${icon("phone", 16)}<span>연락처 입력</span></button>` : "",
       canWrite ? `<button type="button" class="btn btn-primary btn-sm" id="cr-add">${icon("plus", 16)}<span>추가</span></button>` : "",

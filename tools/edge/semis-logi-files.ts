@@ -9,6 +9,7 @@
      PDF · 이미지만, 20MB 이하, training/ 폴더. public.semis_logi_edu_claim(서비스 권한)이 표 · 개수 · 용량을 확인하고 기록한다
    - op "edu-read" (v1.39.2): 올린 이수증을 Claude(ANTHROPIC_API_KEY · LOGI_AI_MODEL)로 판독 → { cid, course, date, expire, org, certNo, hours, name, conf }.
      public.semis_logi_edu_read_ok(서비스 권한)가 표 · 경로 · 판독 횟수를 확인하고 과정 목록을 준다. PDF 15MB · 이미지 5MB(jpeg · png · webp · gif)
+   - v1.40 폴더: docs(열람 2) · docs-ssi(3, 민감보안정보) · contracts(3) · cases(2) · dissem(2) — 올리기는 모두 3(hq)
    - 배포: Supabase MCP deploy_edge_function (verify_jwt false — 위의 세션 확인으로 대신). 이 파일이 원본. */
 
 const SUPA = Deno.env.get("SUPABASE_URL")!;
@@ -25,11 +26,13 @@ const MAX_SIGN = 200;
 /* 폴더별 등급 — 권한 서열 admin 4 · hq 3 · manager 2 · user 1 (공용 DB 권한표와 맞춘다) */
 const READ_RANK: Record<string, number> = {
   notices: 1, attach: 1, minutes: 1, "minutes-sign": 1,
-  schedules: 2, contacts: 2, crisis: 2, regs: 2, "regs-diff": 2, audits: 2, training: 2, seclog: 2, threat: 2, patrol: 2
+  schedules: 2, contacts: 2, crisis: 2, regs: 2, "regs-diff": 2, audits: 2, training: 2, seclog: 2, threat: 2, patrol: 2,
+  docs: 2, cases: 2, dissem: 2            // v1.40 증빙 문서 · 보안 처리 대장 · 전파교육 (docs-ssi · contracts 는 기본 3 = hq)
 };
 const WRITE_RANK: Record<string, number> = {
   minutes: 2, "minutes-sign": 2, seclog: 2, threat: 2, patrol: 2,
-  schedules: 3, notices: 3, attach: 3, contacts: 3, crisis: 3, regs: 3, "regs-diff": 3, audits: 3, training: 3
+  schedules: 3, notices: 3, attach: 3, contacts: 3, crisis: 3, regs: 3, "regs-diff": 3, audits: 3, training: 3,
+  docs: 3, "docs-ssi": 3, contracts: 3, cases: 3, dissem: 3
 };
 const DEFAULT_READ = 3, DEFAULT_WRITE = 3;
 const BLOCK_TYPES = /^(text\/html|application\/xhtml\+xml|text\/javascript|application\/(x-)?javascript)/i;

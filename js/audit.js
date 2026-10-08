@@ -113,43 +113,59 @@
   /* ─────── 증빙 화면 연결 (evidence map) ───────
      항목 번호 → 그 항목을 증명하는 Logistics 화면. 메뉴가 새로 열리면(registerModule) 자동으로 '증빙 있음'이 된다.
      항목별로 바꾸면 그 항목의 links[] 가 우선(수검마다 따로). 번호와 화면 이름만 있어 민감정보가 아니다. */
-  const EVIDENCE = {
-    training: ["1.1", "1.2", "1.3", "1.4", "2.10", "2.10.1", "3.4", "8.2", "9.2", "9.2.1"],
-    dashboard: ["2.1", "2.2", "2.2.1"],
-    "reg-sec": ["2.3", "2.4", "2.4.1", "2.5", "2.10.2"],
-    contacts: ["2.6", "2.9"],
-    crisis: ["2.9"],
-    threat: ["2.9"],
-    audit: ["2.8"],
-    inspection: ["2.7", "4.1", "4.2", "4.3", "5.3", "5.4", "7.2", "7.6", "9.1.2", "9.4", "9.6"],
-    selfcheck: ["2.7", "2.8"],
-    partners: ["3.1", "3.2", "3.3", "3.5"],
-    "sec-cases": ["6.3.1", "6.4", "6.6", "6.10", "9.3", "9.8", "9.12", "9.13"],
-    "kc-ra": ["6.5", "6.5.1", "9.9"],
-    "scr-equip": ["8.1"],
-    "scr-status": ["8.1", "8.3"]
+  /* v1.41: 항목 → 화면(또는 '화면:탭') — 수검 대응 센터가 한 번에 증빙 화면으로 데려간다. 문서 증빙(SemisDocs.forMid)은 따로 붙는다 */
+  const MID_LINKS = {
+    "1.1": ["training"], "1.2": ["training", "dissem"], "1.3": ["partners:vendor", "training", "dissem"], "1.4": ["training"],
+    "2.1": ["dashboard"], "2.2": ["dashboard", "dissem", "reg-sec"], "2.2.1": ["dashboard", "dissem"],
+    "2.3": ["dissem", "reg-sec"], "2.4": ["reg-sec"], "2.4.1": ["reg-sec"], "2.5": ["reg-sec"],
+    "2.6": ["contacts", "dissem", "sec-cases"], "2.7": ["inspection", "inspection:docs", "selfcheck"], "2.8": ["audit", "selfcheck"],
+    "2.9": ["contacts", "crisis", "threat", "serp"], "2.10": ["training"], "2.10.1": ["training"], "2.10.2": ["reg-sec", "training"],
+    "3.1": ["partners:vendor", "contracts"], "3.2": ["contracts", "inspection"], "3.3": ["partners:vendor"], "3.4": ["partners:vendor", "training"],
+    "3.5": ["partners:vendor"],
+    "4.1": ["inspection"], "4.2": ["inspection", "inspection:docs"], "4.3": ["inspection"],
+    "5.1": ["sec-dash", "reg-sec"], "5.2": ["sec-dash", "scr-equip:docs", "partners:staff"], "5.3": ["inspection"], "5.4": ["inspection"],
+    "6.1": ["reg-sec"], "6.1.1": ["reg-sec"], "6.2": ["scr-status", "reg-sec"], "6.3": ["sec-cases", "reg-sec"], "6.3.1": ["sec-cases"],
+    "6.4": ["sec-cases"], "6.5": ["kc-ra", "contracts"], "6.5.1": ["kc-ra"], "6.6": ["sec-cases", "reg-sec"], "6.7": ["scr-status", "partners:edu"],
+    "6.8": ["scr-status"], "6.9": ["reg-sec"], "6.10": ["sec-cases"], "6.11": ["reg-sec"],
+    "7.1": ["reg-sec"], "7.2": ["inspection"], "7.3": ["reg-sec"], "7.3.1": ["reg-sec"], "7.4": ["reg-sec"], "7.5": ["reg-sec", "sec-dash"], "7.6": ["inspection"],
+    "8.1": ["scr-equip", "scr-status"], "8.2": ["partners:edu", "training"], "8.3": ["scr-status", "scr-equip:docs"],
+    "9.1": ["training"], "9.1.1": ["training"], "9.1.2": ["inspection"], "9.2": ["training"], "9.2.1": ["partners:vendor", "training"],
+    "9.3": ["sec-cases"], "9.4": ["inspection"], "9.5": ["reg-sec"], "9.6": ["inspection"], "9.7": ["reg-sec"], "9.8": ["sec-cases"], "9.9": ["kc-ra"],
+    "9.10": ["reg-sec", "scr-status"], "9.11": ["reg-sec"], "9.12": ["sec-cases"], "9.13": ["sec-cases"]
   };
-  const DEF_LINKS = (() => {
+  /* 화면 → 항목 번호 (예전 EVIDENCE 모양 — 테스트 · 대시보드가 쓴다) */
+  const EVIDENCE = (() => {
     const out = {};
-    Object.keys(EVIDENCE).forEach(r => EVIDENCE[r].forEach(mid => { (out[mid] = out[mid] || []).push(r); }));
+    Object.keys(MID_LINKS).forEach(mid => MID_LINKS[mid].forEach(r => { (out[r] = out[r] || []).push(mid); }));
     return out;
   })();
+  const DEF_LINKS = MID_LINKS;
   /* 연결 화면 이름 — 준비 중인 메뉴는 앞으로 열릴 이름으로 */
   const ROUTE_NAME = {
     dashboard: "보안등급 이력", audit: "수검 지적 관리", inspection: "보안 기록부",
-    partners: "협력사 · 보안용역 관리", "sec-cases": "보안 처리 대장", "kc-ra": "상용화주 · RA 관리"
+    partners: "협력사 · 보안요원", "sec-cases": "보안 처리 대장", "kc-ra": "상용화주 · RA 관리", contracts: "계약 · 협약 관리", dissem: "보안 전파교육",
+    "partners:staff": "보안요원 현황", "partners:edu": "보안요원 교육 이력", "partners:vendor": "협력사 점검 · 증빙",
+    "inspection:docs": "보안 기록부 · 보고서", "scr-equip:docs": "검색장비 인증서 · 절차"
   };
-  const routeLive = (r) => !!(SeMIS.hasModule && SeMIS.hasModule(r));
+  /* 'route:tab' — 화면 + 그 화면의 탭 */
+  const baseOf = (r) => String(r || "").split(":")[0];
+  const subOf = (r) => String(r || "").split(":")[1] || "";
+  const routeLive = (r) => !!(SeMIS.hasModule && SeMIS.hasModule(baseOf(r)));
   function routeLabel(r) {
     if (ROUTE_NAME[r]) return ROUTE_NAME[r];
-    const mn = (D().menus || []).find(m => m && m.type === "module" && m.module === r);
+    const mn = (D().menus || []).find(m => m && m.type === "module" && m.module === baseOf(r));
     return (mn && mn.label) || r;
+  }
+  function goRoute(r) {
+    const b = baseOf(r), sub = subOf(r);
+    if (window.SemisDeep && typeof SemisDeep[b] === "function") { try { SemisDeep[b](sub || ""); } catch (e) { /* 탭만 영향 */ } }
+    SeMIS.navigate(b);
   }
   /* 연결 후보 — 메뉴의 업무 화면(링크 · 설정 · 암호 관리 제외) + 앞으로 열릴 화면 */
   function routeChoices() {
     const seen = {}, out = [];
     const add = (r) => { if (r && !seen[r]) { seen[r] = true; out.push(r); } };
-    Object.keys(EVIDENCE).forEach(add);
+    Object.keys(EVIDENCE).filter(r => routeLive(r) || !subOf(r)).forEach(add);
     (D().menus || []).forEach(m => { if (m && m.type === "module" && routeLive(m.module) && ["settings", "vault"].indexOf(m.module) < 0) add(m.module); });
     return out;
   }
@@ -159,13 +175,15 @@
      없으면 화면이 열려 있는 것만으로 증빙으로 본다 */
   function routeEv(r, mid) {
     const live = routeLive(r);
-    const fn = live && typeof window !== "undefined" && window.SemisEvidence ? window.SemisEvidence[r] : null;
+    const fn = live && typeof window !== "undefined" && window.SemisEvidence ? window.SemisEvidence[baseOf(r)] : null;
     if (typeof fn === "function") {
-      try { const v = fn(mid); if (v && typeof v === "object") return { ok: !!v.ok, text: norm(v.text), live }; } catch (e) { /* 판단 실패 → 화면 기준 */ }
+      try { const v = fn(mid, subOf(r)); if (v && typeof v === "object") return { ok: !!v.ok, text: norm(v.text), live }; } catch (e) { /* 판단 실패 → 화면 기준 */ }
     }
     return { ok: live, text: "", live };
   }
-  const hasEvidence = (c) => filesOf(c).length > 0 || linksOf(c).some(r => routeEv(r, c && c.mid).ok);
+  /* v1.41 증빙 문서(SemisDocs) — 문서 서가에서 이 항목 번호를 단 문서(판 묶음마다 최신 판) */
+  const docsOf = (c) => (c && c.mid && typeof window !== "undefined" && window.SemisDocs ? SemisDocs.forMid(c.mid) : []);
+  const hasEvidence = (c) => filesOf(c).length > 0 || docsOf(c).length > 0 || linksOf(c).some(r => routeEv(r, c && c.mid).ok);
   /* 항목 상태 — N/A · 미평가(문서·시행 중 하나라도 비었음) · 보완 필요(3점 미만) · 증빙 없음 · 준비됨 */
   function itemState(c) {
     if (!c) return "todo";
@@ -575,9 +593,24 @@
         ? `<button type="button" class="ck-link${ev.ok ? "" : " is-warn"}" data-ck-go="${esc(r)}">${icon("forward", 13)}<span>${esc(routeLabel(r))}</span>${ev.text ? `<small>${esc(ev.text)}</small>` : ""}</button>`
         : `<span class="ck-link is-plan"><span>${esc(routeLabel(r))}</span><small>준비 중</small></span>`; }).join("");
   }
+  const DOC_SHOW = 3;
+  function docChips(c) {
+    const ds = docsOf(c);
+    if (!ds.length) return "";
+    const one = (d) => { const f = (d.files || [])[0]; return `<a class="nb-file ck-doc" href="${esc(f.url)}" target="_blank" rel="noopener" data-name="${esc(f.name || "")}" title="${esc([d.title, d.date].filter(Boolean).join(" · "))}">${icon("doc", 13)}<span>${esc(d.title)}</span>${d.date ? `<small class="mono">${esc(String(d.date).slice(2).replace(/-/g, "."))}</small>` : ""}</a>`; };
+    const more = ds.length - DOC_SHOW;
+    return ds.slice(0, DOC_SHOW).map(one).join("") + (more > 0 ? `<button type="button" class="link-btn ck-docmore" data-ck-docs="${esc(c.mid)}">문서 ${more}건 더</button>` : "");
+  }
+  function docsModal(mid) {
+    const ds = window.SemisDocs ? SemisDocs.forMid(mid) : [];
+    openModal(`<h3>증빙 문서 <small class="au-mh mono">${esc(mid)}</small></h3><ul class="dk-list">${ds.map(d => { const f = (d.files || [])[0];
+      return `<li class="dk-row"><span class="dk-ext mono">${esc(((f && f.name) || "").split(".").pop().toUpperCase().slice(0, 4))}</span><div class="dk-main"><div class="dk-t"><a class="nb-file" href="${esc(f.url)}" target="_blank" rel="noopener" data-name="${esc(f.name || "")}">${esc(d.title)}</a></div><div class="dk-meta">${esc([String(d.date || "").slice(2).replace(/-/g, "."), d.org, routeLabel(d.mod)].filter(Boolean).join(" · "))}</div></div></li>`; }).join("")}</ul>
+      <div class="modal-actions"><button type="button" class="btn btn-primary" data-act="cancel">닫기</button></div>`, { wide: true });
+    $("#modal-box [data-act=cancel]").onclick = closeModal;
+  }
   function ckRow(c, canW, canB) {
     const st = CST[itemState(c)];
-    const ev = filesOf(c).length || linksOf(c).length;
+    const ev = filesOf(c).length || linksOf(c).length || docsOf(c).length;
     return `<li class="ck-row" data-st="${itemState(c)}" data-cid="${esc(c.id)}">
       <div class="ck-no mono">${esc(c.mid || "·")}</div>
       <div class="ck-main">
@@ -591,7 +624,7 @@
           ${canW ? `<button type="button" class="mt-btn" data-ck-edit="${esc(c.id)}" aria-label="항목 수정">${icon("notes", 15)}</button>` : ""}
         </div>
         ${c.owner || c.note ? `<div class="ck-meta">${[c.owner ? "담당 " + esc(c.owner) : "", c.note ? `<span class="ck-note">${esc(c.note)}</span>` : ""].filter(Boolean).join('<span class="au-sep">·</span>')}</div>` : ""}
-        ${ev ? `<div class="ck-ev">${fileChips(filesOf(c))}${linkChips(c)}</div>` : ""}
+        ${ev ? `<div class="ck-ev">${linkChips(c)}${fileChips(filesOf(c))}${docChips(c)}</div>` : ""}
       </div>
     </li>`;
   }
@@ -611,6 +644,7 @@
     const src = a.chkSrc || {};
     const sub = (s) => `문서 ${s.dSum}/${s.dN * 4} · 시행 ${s.iSum}/${s.iN * 4} · 평균 ${avgTxt(s.dAvg)} / ${avgTxt(s.iAvg)} · 준비 ${s.ready}/${s.ap}`;
     const remark = (c) => [c.note ? esc(c.note) : "", filesOf(c).length ? "첨부 " + filesOf(c).length : "",
+      docsOf(c).length ? "증빙: " + docsOf(c).slice(0, 4).map(d => esc(d.title)).join(", ") + (docsOf(c).length > 4 ? " 외 " + (docsOf(c).length - 4) : "") : "",
       linksOf(c).filter(routeLive).map(r => { const ev = routeEv(r, c.mid); return esc(routeLabel(r) + (ev.text ? " — " + ev.text : "")); }).join(", ")]
       .filter(Boolean).join("<br>");
     return `<div class="print-only au-print">
@@ -795,7 +829,8 @@
       ckSt = ckSt === b.dataset.ckst ? "all" : b.dataset.ckst;
       paintChecks(a, `[data-ckst="${cssq(b.dataset.ckst)}"]`);
     });
-    $$("[data-ck-go]", sec).forEach(b => b.onclick = () => SeMIS.navigate(b.dataset.ckGo));
+    $$("[data-ck-go]", sec).forEach(b => b.onclick = () => goRoute(b.dataset.ckGo));
+    $$("[data-ck-docs]", sec).forEach(b => b.onclick = () => docsModal(b.dataset.ckDocs));
     $$("[data-basis]", sec).forEach(b => b.onclick = () => basisView(b.dataset.basis));
     if (!canW) return;
     $$("select[data-sc]", sec).forEach(el => el.onchange = () => {

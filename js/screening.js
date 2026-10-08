@@ -231,12 +231,14 @@
     </section>`;
   }
 
+  /* v1.41 보안검색 실적(월별) · 관련 문서 — CARES 와 무관한 공용 DB 자료라 CARES 를 못 읽어도 보인다 */
+  const extraHTML = () => (window.SemisScrStats ? SemisScrStats.cardHTML() : "") + (window.SemisDocs && SemisDocs.list(MOD).length ? SemisDocs.card(MOD) : "");
   function bodyHTML(s) {
-    if (!s.ts && !s.err) return `<div class="scr-wait" role="status"><span class="cfe-spin" aria-hidden="true"></span>CARES에서 장비·점검·센서 정보를 불러오는 중입니다.</div>`;
+    if (!s.ts && !s.err) return `<div class="scr-wait" role="status"><span class="cfe-spin" aria-hidden="true"></span>CARES에서 장비·점검·센서 정보를 불러오는 중입니다.</div>` + extraHTML();
     if (s.err && !s.equips.length) return `<section class="card">${ui.empty("CARES에 연결하지 못했습니다. (" + s.err + ")",
-      '<button type="button" class="btn btn-ghost btn-sm" data-scr-retry>다시 시도</button>')}</section>`;
+      '<button type="button" class="btn btn-ghost btn-sm" data-scr-retry>다시 시도</button>')}</section>` + extraHTML();
     const m = summary(s);
-    return statsHTML(m) + laneHTML(m) + `<div class="scr-grid">${envHTML(m)}${faultsHTML(m)}</div>` + heatHTML(m);
+    return statsHTML(m) + laneHTML(m) + `<div class="scr-grid">${envHTML(m)}${faultsHTML(m)}</div>` + heatHTML(m) + extraHTML();
   }
 
   /* ─────── 조작 연결 ─────── */
@@ -254,6 +256,8 @@
     $$("[data-go-equip]", root).forEach(b => b.onclick = () => goEquip(b.dataset.goEquip));
     const rt = $("[data-scr-retry]", root);
     if (rt) rt.onclick = () => refresh(true);
+    if (window.SemisScrStats) SemisScrStats.wire($("#ss-card", root) || root.querySelector("#ss-card"));
+    if (window.SemisDocs) SemisDocs.wire(root, paint);
   }
   function paint() {
     const box = document.getElementById("scr-body");

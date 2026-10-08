@@ -1863,7 +1863,7 @@
     const b = (id, ic, label, primary) => `<button type="button" class="btn ${primary ? "btn-primary" : "btn-ghost"} btn-sm" id="${id}">${icon(ic, 16)}<span>${label}</span></button>`;
     const act = !canW ? "" : tab === "sessions" ? b("tr-sadd", "plus", "교육 기록", true)
       : tab === "catalog" ? b("tr-courses", "sliders", "과정 관리", true)
-      : tab === "pledges" ? "" : b("tr-radd", "plus", "이수 등록", true) + b("tr-padd", "user", "인원 등록") + b("tr-edu", "mail", "이수 등록 페이지");
+      : tab === "pledges" ? "" : b("tr-radd", "plus", "이수 등록", true) + b("tr-padd", "user", "인원 등록") + `<button type="button" class="link-btn head-link" id="tr-edu">이수 등록 페이지</button>`;
     root.innerHTML = ui.head({ title: TITLE, meta: "인천화물팀 · 협력사 기준", actions: act })
       + `<div class="eq-tabs" role="tablist" aria-label="보안교육 화면">${TABS.map(([id, lb]) =>
         `<button type="button" role="tab" class="eq-tab" data-ttab="${id}" aria-selected="${tab === id}">${esc(lb)}</button>`).join("")}</div>`

@@ -102,6 +102,9 @@
   }
 
   /* ─────── 화면 상태 (모듈 메모리) ─────── */
+  if (window.SemisDocs) SemisDocs.define("serp", [
+    { id: "training", label: "위기대응 교육 · 훈련 결과" }, { id: "material", label: "교안 · 시나리오" }, { id: "plan", label: "계획 · 절차" }, { id: "misc", label: "기타" }
+  ]);
   const TABS = [["init", "초동대응"], ["org", "조직 · 연락망"], ["contacts", "연락처"], ["forms", "체크리스트 · 양식"], ["runs", "대응 기록"], ["doc", "문서 · 개정"]];
   const RTABS = [["tl", "초동조치"], ["ck", "역할별 체크리스트"], ["notify", "통보 · 보고"], ["log", "상황 기록"], ["subs", "사고자료 대장"]];
   let tab = "init", runSel = "", runTab = "tl", roleF = "", cq = "";
@@ -603,7 +606,7 @@
       if (!hasPlan()) {
         root.innerHTML = ui.head({ title: TITLE, actions: acts }) + `<section class="card">${ui.empty("등록된 팀위기대응계획이 없습니다.")}</section>`;
       } else {
-        const body = tab === "org" ? orgTab() : tab === "contacts" ? contactsTab() : tab === "forms" ? formsTab() : tab === "runs" ? runsTab() : tab === "doc" ? docTab() : initTab();
+        const body = tab === "org" ? orgTab() : tab === "contacts" ? contactsTab() : tab === "forms" ? formsTab() : tab === "runs" ? runsTab() + (window.SemisDocs ? SemisDocs.card(MOD, { title: "교육 · 훈련 기록 (문서)" }) : "") : tab === "doc" ? docTab() : initTab();
         root.innerHTML = ui.head({ title: TITLE, meta: [pl.docNo, pl.rev && (pl.rev + (pl.revDate ? " " + pl.revDate.replace(/-/g, ".") : ""))].filter(Boolean).join(" · ") })
           + alertBar()
           + `<div class="eq-tabs sp-tabs no-print" role="tablist" aria-label="팀위기대응계획">${TABS.map(([id, lb]) =>
@@ -612,6 +615,7 @@
       }
     }
     wire(root);
+    if (window.SemisDocs && tab === "runs") SemisDocs.wire(root, () => SeMIS.renderView());
     restoreFocus(root, focus);
     ensureTimer();
   }
@@ -1317,6 +1321,7 @@
     }
   });
 
+  (window.SemisDeep = window.SemisDeep || {})[MOD] = (sub) => { if (TABS.some(x => x[0] === sub)) tab = sub; };
   window.SemisSerp = {
     activeRun, runStat, phases, phaseLabel, notifyText, syncContacts, telHref, dur, durText, dashHTML, mountDash, tick,
     startForm, toggleDone, sercForm, recallForm, subForm, personForm, contactForm, timelineForm, doAct,

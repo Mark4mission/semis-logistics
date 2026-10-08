@@ -309,7 +309,14 @@
 
   /* ─────── 화면 상태 ─────── */
   let tab = "today", q = "", fTid = "", fMonth = "", fNG = false;
-  const TABS = [["today", "오늘"], ["status", "기록 현황"], ["list", "기록 목록"]];
+  const TABS = [["today", "오늘"], ["status", "기록 현황"], ["list", "기록 목록"], ["docs", "보고서 · 증빙"]];
+  /* v1.41 종이 기록 · 결과 보고서(월간 · 분기 자체 점검, 불시 점검, 위해물품 관리대장 등) — 증빙 문서 서가(js/docshelf.js) */
+  if (window.SemisDocs) SemisDocs.define(MOD, [
+    { id: "monthly", label: "월간 자체 보안점검" }, { id: "quarterly", label: "분기 자체 보안점검 · Self Audit" }, { id: "surprise", label: "불시 점검 · 대테러 훈련" },
+    { id: "hazmat", label: "위해물품 관리대장 (월별)" }, { id: "hazmgr", label: "위해물품 관리책임자" }, { id: "patrol", label: "순찰 · 브리핑" }, { id: "misc", label: "기타" }
+  ]);
+  if (typeof window !== "undefined") (window.SemisDeep = window.SemisDeep || {})[MOD] = (sub) => { if (TABS.some(x => x[0] === sub)) { tab = sub; q = ""; } };
+  const docsHTML = () => `<section class="card">${window.SemisDocs ? SemisDocs.groupsHTML(MOD) : ui.empty("문서 서가를 불러오지 못했습니다.")}</section>`;
   const routeNow = () => (typeof location !== "undefined" ? location.hash.replace(/^#\//, "") : "") || "dashboard";
   const canW = () => !!SeMIS.user && SeMIS.roleRank() >= 2 && SeMIS.user.role !== "vendor";
   const hay = (a) => a.map(v => String(v || "")).join(" ").toLowerCase();
@@ -385,8 +392,8 @@
       if (s.missing.length) sub = (sub ? sub + " · " : "") + `누락 ${s.missing.length}`;
     }
     const btn = !w ? "" : t.kind === "patrol"
-      ? `<button type="button" class="btn btn-primary btn-sm" data-sl-round="${esc(t.id)}">${icon("plus", 15)}<span>순찰 기록</span></button>`
-      : `<button type="button" class="btn ${s.event || !s.cur.done ? "btn-primary" : "btn-ghost"} btn-sm" data-sl-new="${esc(t.id)}">${icon("plus", 15)}<span>${t.kind === "flight" ? "편 추가" : s.event || !s.cur.done ? "기록" : "추가 기록"}</span></button>`;
+      ? `<button type="button" class="btn btn-ghost btn-sm" data-sl-round="${esc(t.id)}">${icon("plus", 15)}<span>순찰 기록</span></button>`
+      : `<button type="button" class="btn btn-ghost btn-sm${s.event || !s.cur.done ? " is-due" : ""}" data-sl-new="${esc(t.id)}">${icon("plus", 15)}<span>${t.kind === "flight" ? "편 추가" : s.event || !s.cur.done ? "기록" : "추가 기록"}</span></button>`;
     return `<section class="sl-card" data-tone="${tone}" data-tid="${esc(t.id)}">
       <div class="sl-card-h"><b>${esc(t.name)}</b><span class="sl-cyc">${esc(cycLabel(t))}</span></div>
       ${whoText(t) ? `<div class="sl-who">${icon("user", 14)}<span>${esc(whoText(t))}</span></div>` : ""}
@@ -883,7 +890,7 @@
   }
 
   /* ═════════ 렌더 ═════════ */
-  function bodyHTML() { return tab === "status" ? statusHTML() : tab === "list" ? listHTML() : todayHTML(); }
+  function bodyHTML() { return tab === "status" ? statusHTML() : tab === "list" ? listHTML() : tab === "docs" ? docsHTML() : todayHTML(); }
   function wire(box) {
     const qi = $("#sl-q", box);
     if (qi) qi.oninput = () => {
@@ -902,6 +909,7 @@
     $$("[data-sl-late]", box).forEach(b => b.onclick = () => openCell(b.dataset.slLate));
     $$("[data-sl-hc]", box).forEach(b => b.onclick = () => hcForm(b.dataset.slHc));
     if (window.SemisHaz) SemisHaz.fill(box);
+    if (window.SemisDocs && tab === "docs") SemisDocs.wire(box, paint);
     $$("tr[data-slid]", box).forEach(tr => {
       const open = (ev) => { if (ev && ev.target.closest("a")) return; if (canW()) recordForm("", tr.dataset.slid); else viewRecord(tr.dataset.slid); };
       tr.onclick = open;
@@ -930,8 +938,8 @@
   }
   function render(root) {
     const act = [
-      SeMIS.isAdmin() ? `<button type="button" class="btn btn-ghost btn-sm m-ed" id="sl-vis" title="표시 · 흐리게 · 숨김">${icon("eye", 16)}<span>표시 관리</span></button>` : "",
-      SeMIS.canEdit() ? `<button type="button" class="btn btn-ghost btn-sm" id="sl-tpl">${icon("sliders", 16)}<span>점검 양식</span></button>` : "",
+      SeMIS.isAdmin() ? `<button type="button" class="link-btn head-link m-ed" id="sl-vis" title="표시 · 흐리게 · 숨김">표시 관리</button>` : "",
+      SeMIS.canEdit() ? `<button type="button" class="link-btn head-link m-ed" id="sl-tpl">점검 양식</button>` : "",
       canW() ? `<button type="button" class="btn btn-primary btn-sm" id="sl-add">${icon("plus", 16)}<span>기록</span></button>` : ""
     ].join("");
     root.innerHTML = ui.head({ title: TITLE, meta: "일일 · 정기 · 불시 점검 · 순찰 · 편별 점검", actions: act })

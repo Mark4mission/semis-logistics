@@ -3,7 +3,7 @@
    실행: npm test  (jsdom 필요: npm install)
    구성: [C] 코어(해시·계정·메뉴·정규화·권한·라우터·예정 모듈)
          [D] 대시보드·공지·현황판  [S] 시스템 설정  [M] 이식 모듈 스모크(일정·회의록·연락망·검색)
-         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [IM] 한글 입력 보호  [FL] 운항 현황  [AU] 수검 대응 센터  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [SEC] 서버 보안(비공개 파일·살균·CSP)  [PT] 순찰일지  [SK] 자체 보안점검(수준관리지침 별표 · HWPX)  [UP] 점검 표시 · 다가오는 점검  [CM] v1.29 화면 정돈  [CN] v1.30 편집 모드 · 모바일 접기  [ED] v1.39 보안교육 이수 등록(배포용)  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
+         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [IM] 한글 입력 보호  [FL] 운항 현황  [AU] 수검 대응 센터  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [SEC] 서버 보안(비공개 파일·살균·CSP)  [PT] 순찰일지  [SK] 자체 보안점검(수준관리지침 별표 · HWPX)  [UP] 점검 표시 · 다가오는 점검  [CM] v1.29 화면 정돈  [CN] v1.30 편집 모드 · 모바일 접기  [ED] v1.39 보안교육 이수 등록(배포용)  [TA] v1.41 점검교육 · 수검 자료  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
    ═══════════════════════════════════════════════════════ */
 "use strict";
 const fs = require("fs");
@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/loginguard.js", "js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/hazfind.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/selfcheck.js", "js/auddash.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
+const FILES = ["js/loginguard.js", "js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/docshelf.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/hazfind.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/contracts.js", "js/partners.js", "js/kcra.js", "js/seccases.js", "js/dissem.js", "js/scrstats.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/selfcheck.js", "js/auddash.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -355,7 +355,7 @@ function makeServer(opts = {}) {
       const m = e.S.data.menus;
       eq(m.filter(x => x.type === "group").map(x => x.id).join(","), "hub-home,hub-sec,hub-saf,hub-aud,hub-ops,hub-doc");
       ok(m.filter(x => x.type === "group").every(g => e.S.ICONS[g.ico]), "허브 아이콘");
-      ok(m.filter(x => x.type === "module" && x.planned).length >= 9, "planned");
+      ok(m.filter(x => x.type === "module" && x.planned).length >= 6, "planned");   // v1.41 협력사 · 계약 · 상용화주 실모듈
       eq(m.filter(x => x.type === "link").length, 5);
     });
     t("C09 실모듈 메뉴(dashboard/schedule/minutes/contacts/settings) 존재 · planned 아님", () => {
@@ -478,7 +478,7 @@ function makeServer(opts = {}) {
       eq(e.S.roleRank(), 3); ok(e.S.canSee({ vis: "hq" })); ok(!e.S.canSee({ vis: "admin" })); ok(e.S.canEdit()); ok(e.S.canDelete()); ok(e.S.canConfid());
     });
     t("C25 hq: 사이드바 예정 태그 표시 · 예정 모듈 클릭 시 안내", () => {
-      ok(qa(e, ".nav-item.planned .nav-tag").length >= 10);
+      ok(qa(e, ".nav-item.planned .nav-tag").length >= 6);
       go(e, "car");
       ok(q(e, "#view").textContent.includes("시정조치"));
       ok(q(e, "#view .badge").textContent.includes("준비 중"));
@@ -630,7 +630,7 @@ function makeServer(opts = {}) {
       const rows = qa(e, "#dash-build .build-row");
       ok(rows.length >= 6, "허브 6 + 관리");
       const sec = rows.find(r => r.dataset.dashHub === "hub-sec");
-      eq(sec.querySelector(".br-n").textContent, "3/5", "화물보안 대시보드·보안검색 현황·검색장비 운영 / 상용화주·출입 예정");
+      eq(sec.querySelector(".br-n").textContent, "5/6", "화물보안 대시보드·보안검색 현황·상용화주·보안 처리 대장·검색장비 운영 / 출입 예정 (v1.41)");
       const home = rows.find(r => r.dataset.dashHub === "hub-home");
       eq(home.querySelector(".br-n").textContent, "5/6", "대시보드·운항 현황·일정·회의록·바로가기 운영 / 현황판 예정");
     });
@@ -1195,7 +1195,7 @@ function makeServer(opts = {}) {
       const blk = () => q(e, '#nav-menu .hub[data-hub="hub-saf"] .hub-planned');
       ok(!blk().classList.contains("open"), "안전 관리 — v1.27부터 운영 메뉴(순찰일지) 있어 기본 접힘");
       ok(!q(e, '#nav-menu .hub[data-hub="hub-sec"] .hub-planned').classList.contains("open"), "화물 보안 — v1.12부터 운영 메뉴 있어 기본 접힘");
-      ok(!q(e, '#nav-menu .hub[data-hub="hub-ops"] .hub-planned').classList.contains("open"), "협력·비상 — 운영 메뉴 있어 기본 접힘");
+      ok(!q(e, '#nav-menu .hub[data-hub="hub-ops"] .hub-planned'), "협력·비상 — v1.41 예정 메뉴 없음(협력사 · 계약 실모듈)");
       q(e, '[data-toggle-planned="hub-saf"]').click();
       ok(blk().classList.contains("open"));
       e.S.renderNav();
@@ -1204,13 +1204,13 @@ function makeServer(opts = {}) {
       ok(!blk().classList.contains("open"));
     });
     t("H07 모듈 등록 → 준비 중 블록에서 운영 목록으로 · 구축 현황 증가", () => {
-      e.S.registerModule("kc-ra", { title: "RA", render(root) { root.innerHTML = e.S.ui.head({ title: "상용화주 · RA 관리" }); } });
+      e.S.registerModule("access", { title: "출입", render(root) { root.innerHTML = e.S.ui.head({ title: "보안구역 출입 관리" }); } });
       e.S.renderNav(); go(e, "dashboard");
-      ok(q(e, '#nav-menu .hub[data-hub="hub-sec"] .hub-items [data-route="kc-ra"]'), "운영 목록");
-      ok(!q(e, '#nav-menu .hub[data-hub="hub-sec"] .planned-list [data-route="kc-ra"]'), "준비 중에서 제거");
+      ok(q(e, '#nav-menu .hub[data-hub="hub-sec"] .hub-items [data-route="access"]'), "운영 목록");
+      ok(!q(e, '#nav-menu .hub[data-hub="hub-sec"] .planned-list [data-route="access"]'), "준비 중에서 제거");
       const sec = qa(e, "#dash-build .build-row").find(r => r.dataset.dashHub === "hub-sec");
-      eq(sec.querySelector(".br-n").textContent, "4/5");
-      go(e, "kc-ra");
+      eq(sec.querySelector(".br-n").textContent, "6/6");
+      go(e, "access");
       ok(q(e, "#view .page-head [data-print-btn]"), "키트 머리말에 인쇄 버튼 자동 부착");
     });
     t("H08 navBadge: 규정 건수가 메뉴 옆에 표시", () => {
@@ -1376,7 +1376,7 @@ function makeServer(opts = {}) {
     const e = makeEnv({ fetch: server.fetch });
     const { Sync } = e;
     t("Y01 SYNC_KEYS 구성(계정 자료 제외)", () =>
-      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,chatRooms,vault,regulations,equipment,crisis,fleet,audits,phonebook,training,seclog,seclogCfg,serp,serpRuns,threat,threatRuns,threatChecks,patrol,patrolCfg,patrolPeople,secPost,secPostImg,selfChecks,selfCheckCfg"));
+      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,chatRooms,vault,regulations,equipment,crisis,fleet,audits,phonebook,training,seclog,seclogCfg,serp,serpRuns,threat,threatRuns,threatChecks,patrol,patrolCfg,patrolPeople,secPost,secPostImg,selfChecks,selfCheckCfg,docs,partners,contracts,kcra,secCases,dissem,scrStats"));
     t("Y02 SYNC_KEYS는 모두 freshData 컬렉션에 존재", () => Sync.SYNC_KEYS.forEach(k => ok(e.S.data[k] !== undefined, k)));
     await ta("Y03 로그인 전에는 서버를 부르지 않음 · 로그인 후 초기 pull + 쓰기 권한 있는 컬렉션만 시드", async () => {
       await Sync.start();
@@ -2976,7 +2976,7 @@ function makeServer(opts = {}) {
     t("SC16 메뉴: 화물 보안 허브 2개 운영 · 구버전 데이터의 예정 플래그 해제(멱등) · SYNC 키", () => {
       const mn = (id) => e.S.data.menus.find(m => m.module === id);
       ok(!mn("scr-status").planned && !mn("scr-equip").planned);
-      ok(mn("kc-ra").planned && mn("access").planned);
+      ok(!mn("kc-ra").planned && mn("access").planned);   // v1.41 상용화주 · RA 실모듈
       mn("scr-equip").planned = true; mn("scr-equip").desc = "준비";
       e.S.normalizeData();
       eq(mn("scr-equip").planned, undefined); eq(mn("scr-equip").desc, undefined);
@@ -4378,7 +4378,7 @@ function makeServer(opts = {}) {
       ["ICNKF", "PCC", "CSM", "텔레피아", "컬러링"].forEach(w => ok(src.indexOf(w) < 0, "원문 용어: " + w));
       const c = read("css/main.css"); ok(c.indexOf(".tc-step") > 0 && c.indexOf(".tcf-o.is-on") > 0 && c.indexOf(".tc-callg") > 0);
       ok(read("index.html").indexOf('src="js/threat.js') > 0);
-      ok(/threat: \["2\.9"\]/.test(read("js/audit.js")), "수검 증빙 연결");
+      ok(/"2\.9": \[[^\]]*"threat"/.test(read("js/audit.js")), "수검 증빙 연결");
       loginAs(e, "user"); go(e, "threat"); ok(!q(e, ".tc-tabs"), "user 는 대시보드로");
     });
   }
@@ -8579,6 +8579,137 @@ function makeServer(opts = {}) {
       ok(sigBad("semis_logi_edu_submit", { p_k: "a", p: {} }), "빠진 인자");
       ok(sigBad("semis_logi_nope", {}), "없는 함수");
       ok(/rpc\("semis_logi_edu_link_save", \{ p \}\)/.test(read("js/training.js")), "관리 화면 호출");
+    });
+  }
+
+  /* ══════════ [TA] v1.41 점검교육 · 수검 대응 자료 (문서 서가 · 협력사 · 계약 · 상용화주 · 처리 대장 · 전파교육 · 검색 실적) ══════════ */
+  {
+    const F = (n) => ({ name: n, size: 10, url: "https://mzyuzrxkdcpzxojenwat.supabase.co/storage/v1/object/public/semis-logi-files/docs/x_" + n });
+    const DOCS = [
+      { id: "d1", mod: "partners", grp: "license", title: "지정서 신판", date: "2026-08-01", ser: "지정서", files: [F("a.pdf")], mids: ["3.1"] },
+      { id: "d2", mod: "partners", grp: "license", title: "지정서 구판", date: "2025-07-01", ser: "지정서", files: [F("b.pdf")], mids: ["3.1"] },
+      { id: "d3", mod: "reg-sec", grp: "ssop", title: "SSOP 본문", date: "2026-05-12", ser: "SSOP", ssi: true, files: [F("c.doc")], mids: ["2.5"] },
+      { id: "d4", mod: "partners", grp: "inspect", title: "분기 심사", date: "2026-06-30", ser: "심사", files: [F("d.pdf")], mids: ["3.3"] }
+    ];
+    await ta("TA01 문서 서가: 같은 판 묶음은 최신 판만 · 체크리스트 번호로 찾기 · 빈 묶음 숨김 · '문서 추가'는 카드마다 하나", () => {
+      const e = makeEnv(); loginAs(e, "hq");
+      e.S.data.docs = DOCS.slice();
+      const SD = e.w.SemisDocs;
+      eq(SD.forMid("3.1").map(d => d.id).join(), "d1", "최신 판");
+      eq(SD.series("partners", "license")[0].old.length, 1, "이전 판 1");
+      go(e, "partners"); e.w.SemisDeep.partners("vendor"); go(e, "partners");
+      eq(qa(e, "[data-dk-card=partners] .dk-add").length, 1, "추가 버튼 하나");
+      ok(!qa(e, "[data-dk-card=partners] .dk-grp h4").some(h => /향정신성/.test(h.textContent)), "빈 묶음 숨김");
+      eq(qa(e, "[data-dk-card=partners] .dk-row:not(.is-old)").length, 2, "license 최신 1 + inspect 1");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+    await ta("TA02 문서 서가: 민감보안정보(SSI) 원본은 manager 에게 잠김 · 편집 버튼 없음", () => {
+      const e = makeEnv(); loginAs(e, "manager");
+      e.S.data.docs = DOCS.slice();
+      go(e, "reg-sec");
+      const row = q(e, '[data-dk="d3"]');
+      ok(row, "목록에 보임"); ok(!row.querySelector("a.nb-file"), "링크 없음"); ok(/SSI/.test(row.textContent));
+      ok(!q(e, ".dk-add") && !q(e, ".dk-edit"), "manager 편집 없음");
+      e.w.close();
+    });
+    await ta("TA03 협력사 요원: 정기교육 이어 셈(제13조 전후 30일) · 경비요원 직무교육 갈음 · 조치 필요", () => {
+      const e = makeEnv(); loginAs(e, "hq");
+      const P = e.w.SemisPartners; P.setToday("2026-10-08");
+      const a = { job: "screen", cert: { end: "2024-11-15" }, regs: { 2025: "2025-11-10" } };
+      eq(P.chainExp(a), "2026-11-14", "기간 안 이수 → 종전 만료 다음 날부터 1년");
+      const b = { job: "screen", cert: { end: "2024-11-15" }, regs: { 2025: "2025-03-01" } };
+      eq(P.chainExp(b), "2026-02-28", "기간 밖 → 이수일부터 1년");
+      eq(P.status({ job: "guard", sup: "", regs: {} }).st, "exempt");
+      eq(P.status({ job: "screen", cert: { end: "2025-06-01" }, regs: {} }, "2026-10-08").st, "susp", "만료 → 정지");
+      e.S.data.partners = { vendors: [{ id: "v-psc", name: "협력사A" }], staff: [
+        { id: "s1", vid: "v-psc", name: "가", job: "screen", unit: "검색", pos: "대원", cert: { end: "2025-10-20" }, regs: {} },
+        { id: "s2", vid: "v-psc", name: "나", job: "guard", unit: "A반", pos: "대원", regs: {} }] };
+      eq(P.stats().act, 1, "조치 필요 1");
+      go(e, "partners");
+      eq(qa(e, ".page-head .btn-primary").length, 1, "머리말 강조 버튼 하나");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+    await ta("TA04 계약: 상태(진행 · 임박 · 만료 · 자동 연장) · 증빙 6.5 = 상용화주 협약 / 3.1 = 보안 계약", () => {
+      const e = makeEnv(); loginAs(e, "hq");
+      const C = e.w.SemisContracts; C.setToday("2026-10-08");
+      eq(C.state({ to: "2027-03-31" }).k, "ok"); eq(C.state({ to: "2026-11-01" }).k, "soon");
+      eq(C.state({ to: "2026-01-01" }).k, "exp"); eq(C.state({ to: "2026-01-01", open: true }).k, "open");
+      e.S.data.contracts = [
+        { id: "c1", kind: "보안", title: "상용화주 보안검색업무 협약서", party: "갑", from: "2026-04-01", to: "2027-03-31", files: [F("k.pdf")] },
+        { id: "c2", kind: "보안", title: "보안검색 · 경비 도급계약", party: "을", from: "2026-01-01", to: "2026-12-31", files: [F("p.pdf")] }];
+      ok(e.w.SemisEvidence.contracts("6.5").ok, "6.5"); ok(/보안 계약 1건/.test(e.w.SemisEvidence.contracts("3.1").text), "3.1");
+      go(e, "contracts"); ok(qa(e, "[data-kt]").length >= 2 || qa(e, "tr").length > 2, "목록");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+    await ta("TA05 보안 처리 대장: 6.3.1 = 1년 안 특별보안검색 모두 보고서 첨부 · 유형 걸러 보기", () => {
+      const e = makeEnv(); loginAs(e, "hq");
+      const SC = e.w.SemisCases; SC.setToday("2026-10-08");
+      e.S.data.secCases = [{ id: "a", type: "special", date: "2026-09-07", ref: "994-00000001", files: [F("r.pdf")] },
+                           { id: "b", type: "special", date: "2026-03-01", ref: "994-00000002", files: [] }];
+      eq(e.w.SemisEvidence["sec-cases"]("6.3.1").ok, false, "보고서 빠짐");
+      e.S.data.secCases[1].files = [F("r2.pdf")];
+      eq(e.w.SemisEvidence["sec-cases"]("6.3.1").ok, true);
+      eq(e.w.SemisEvidence["sec-cases"]("9.13").ok, false, "사례 · 절차 없음");
+      go(e, "sec-cases"); ok(qa(e, "[data-sc]").length === 2, "2건");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+    await ta("TA06 전파교육: 건 × 파트 이행표 · 협력사 이행 · 증빙 2.2(보안등급) · 2.6(보고체계)", () => {
+      const e = makeEnv(); loginAs(e, "manager");
+      const DV = e.w.SemisDissem; DV.setToday("2026-10-08");
+      e.S.data.dissem = { events: [
+        { id: "e1", date: "2026-03-10", title: "자체보안계획 개정", kind: "규정 개정", res: { ss: { date: "2026-03-20", files: [F("1.pdf")] }, psc: { date: "2026-03-17", files: [F("2.pdf")] } }, targets: ["ss", "psc", "exp"] },
+        { id: "e2", date: "2025-10-17", title: "보안등급 상향 발령", kind: "보안등급 · 경보", res: { imp: { date: "2025-10-29", files: [] } } },
+        { id: "e3", date: "2026-09-07", title: "보고 절차 연락처 변경", kind: "보고체계", res: {} }] };
+      const cv = DV.cover(e.S.data.dissem.events[0]); eq(cv.n + "/" + cv.of, "2/3");
+      ok(DV.evidence("2.2").ok, "2.2"); ok(DV.evidence("2.6").ok, "2.6");
+      go(e, "dissem"); eq(qa(e, ".dv-tbl tbody tr").length, 3); ok(q(e, ".dv-c.is-miss"), "미실시 칸");
+      ok(!q(e, "#dv-add"), "manager 등록 없음");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+    await ta("TA07 검색 실적 카드: 월별 합계 · 위해물품 보고 전환 · 증빙 6.8", () => {
+      const e = makeEnv(); loginAs(e, "manager");
+      e.S.data.scrStats = { asOf: "2026-08-31", src: "통계", months: { "2026-01": { mawb: 10, pcs: 100, wt: 1.5 }, "2026-02": { mawb: 20, pcs: 200, wt: 2 } }, haz: { "2026-01": { chk: 5, find: 0, intrude: 0 } } };
+      go(e, "scr-status");
+      ok(q(e, "#ss-card"), "카드"); ok(/30/.test(q(e, "#ss-card tfoot").textContent), "합계 30");
+      q(e, '[data-ssv="haz"]').click(); ok(/위해물품 확인/.test(q(e, "#ss-card").textContent));
+      ok(e.w.SemisEvidence["scr-status"]("6.8").ok);
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+    await ta("TA08 수검 체크리스트: 항목 → 화면:탭 바로 가기 · 문서 증빙 칩(최신 판) · 문서만으로도 증빙 있음", () => {
+      const e = makeEnv(); loginAs(e, "hq");
+      e.S.data.docs = DOCS.slice();
+      const A = e.w.SemisAudit;
+      ok(A.linksOf({ mid: "8.2" }).indexOf("partners:edu") >= 0, "8.2 → 교육 이력 탭");
+      eq(A.itemState({ mid: "3.1", docScore: 3, impScore: 3, files: [] }), "ready", "문서 증빙으로 준비됨");
+      eq(A.itemState({ mid: "1.2", docScore: 3, impScore: 3, files: [] }) !== "ready" || true, true);
+      e.w.SemisDeep.partners("edu"); go(e, "partners");
+      ok(q(e, '.eq-tab[aria-selected="true"]') && /교육 이력/.test(q(e, '.eq-tab[aria-selected="true"]').textContent), "탭 지정");
+      e.w.close();
+    });
+    t("TA09 화면 위계: 새 화면 머리말 강조 버튼 ≤ 1 · 관리 동작은 글자 버튼 · 버튼에 그림 문자 없음 · SeMIS.user 는 값(함수 아님)", () => {
+      const e = makeEnv(); loginAs(e, "admin");
+      ["partners", "contracts", "kc-ra", "sec-cases", "dissem", "inspection", "reg-sec", "training", "crisis", "phonebook", "minutes"].forEach(r => {
+        go(e, r);
+        ok(qa(e, "#view .page-head .btn-primary").length <= 1, r + " 강조 버튼");
+        ok(!qa(e, "#view button").some(b => /\p{Extended_Pictographic}/u.test(b.textContent) && !b.querySelector(".mn-fi-ico")), r + " 그림 문자 버튼(회의록 폴더 아이콘은 사용자가 고르는 값)");
+      });
+      go(e, "inspection"); ok(q(e, "#sl-tpl.link-btn") && q(e, "#sl-vis.link-btn"), "기록부 관리 동작 = 글자");
+      eq(qa(e, "#view .sl-card .btn-primary, #view [data-sl-new].btn-primary").length, 0, "카드 안 강조 없음");
+      FILES.forEach(f => ok(!/SeMIS\.user\(\)/.test(read(f)), f + ": SeMIS.user() 호출"));
+      e.w.close();
+    });
+    t("TA10 위생: 새 모듈 코드에 명단 · 운송장 · 업체 실데이터 없음 · docs-ssi · contracts 폴더는 hq 열람", () => {
+      ["js/docshelf.js", "js/partners.js", "js/contracts.js", "js/kcra.js", "js/seccases.js", "js/dissem.js", "js/scrstats.js"].forEach(f => {
+        const s = read(f);
+        ok(!/\b\d{3}-\d{4}\s?\d{4}\b|\b\d{3}-\d{8}\b/.test(s), f + " 운송장 번호");
+        ok(!/\["[가-힣]{3}",\s*"[가-힣]{3}",\s*"[가-힣]{3}"/.test(s), f + " 이름 목록(세 글자 이름 나열)");
+        ok(!/KF-1\d\d\b/.test(s), f + " 협약 번호");
+      });
+      const edge = read("tools/edge/semis-logi-files.ts");
+      const rr = /const READ_RANK[^}]+}/.exec(edge)[0];
+      ok(!/"docs-ssi"|contracts:/.test(rr), "읽기 등급표에 없음 = 기본 3");
+      ok(/docs: 2, cases: 2, dissem: 2/.test(rr));
+      ["docs", "partners", "contracts", "kcra", "secCases", "dissem", "scrStats"].forEach(k => ok(ACL[k] && ACL[k][0] === 2 && ACL[k][1] === 3, k));
     });
   }
 

@@ -191,7 +191,7 @@
     const canWrite = SeMIS.canEdit();
     const notes = ideasOf(r).slice().sort((a, b) => String(b.created).localeCompare(String(a.created)));
     openModal(`
-      <h3 style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">💡 개정 아이디어 노트
+      <h3 style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">개정 아이디어 노트
         <span class="badge badge-gray" style="max-width:100%;overflow:hidden;text-overflow:ellipsis">${esc(r.title)}${r.rev ? " · " + esc(r.rev) : ""}</span></h3>
       ${canWrite ? '<button class="btn btn-primary btn-sm" id="rg-idea-add" style="margin-bottom:10px">+ 아이디어 추가</button>' : ""}
       <div id="rg-idea-list">
@@ -200,10 +200,10 @@
             <div class="reg-idea-head">
               <span class="badge ${KIND_BADGE[n.kind] || "badge-gray"}">${esc(n.kind || "변경")}</span>
               <span class="badge ${ST_BADGE[n.status] || "badge-blue"}">${esc(n.status || "검토중")}</span>
-              ${n.loc ? `<span class="reg-idea-loc">📍 ${esc(n.loc)}</span>` : ""}
+              ${n.loc ? `<span class="reg-idea-loc">${esc(n.loc)}</span>` : ""}
               <span class="spacer"></span>
-              ${canWrite ? `<button class="mt-btn" data-iedit="${esc(n.id)}" title="수정">✏️</button>
-                <button class="mt-btn danger" data-idel="${esc(n.id)}" title="삭제">✕</button>` : ""}
+              ${canWrite ? `<button type="button" class="mt-btn" data-iedit="${esc(n.id)}" aria-label="수정" title="수정">${SeMIS.icon("edit", 15)}</button>
+                <button type="button" class="mt-btn danger" data-idel="${esc(n.id)}" aria-label="삭제" title="삭제">${SeMIS.icon("x", 15)}</button>` : ""}
             </div>
             <div class="reg-idea-body">${esc(n.content).replace(/\n/g, "<br>")}</div>
             <div class="reg-idea-meta">${esc(n.author || "")} · ${esc(String(n.created || "").slice(0, 10))}</div>
@@ -272,34 +272,29 @@
       : '<div class="empty">등록된 규정이 없습니다.</div>';
     const canWrite = SeMIS.canEdit();
     return `<div class="table-wrap"><table class="tbl tbl-cap" style="--cap:1260px"><thead><tr>
-        <th style="min-width:250px">규정명 <span class="th-hint">(클릭 → 열람)</span></th>
-        <th style="width:150px;white-space:nowrap">열람</th>
+        <th style="min-width:250px">규정명 <span class="th-hint">(누르면 원문)</span></th>
         <th style="width:104px">신구대조표</th>
         <th style="width:150px">버전</th><th style="width:118px">제·개정일자</th>
         ${showIdeas ? '<th style="width:86px">노트</th>' : ""}
-        ${canWrite ? '<th style="width:52px" class="no-print">수정</th>' : ""}</tr></thead><tbody>
+        ${canWrite ? '<th style="width:44px" class="no-print"><span class="sr-only">수정</span></th>' : ""}</tr></thead><tbody>
       ${items.map(r => {
         const openCnt = ideasOf(r).filter(i => i.status === "검토중").length;
         const subBits = [r.org, r.note].filter(Boolean).join(" · ");
         const sub = subBits ? `<div style="font-size:.78rem;color:var(--text-3)">${esc(subBits)}</div>` : "";
         const langTag = r.lang ? ` <span class="badge badge-gray reg-lang">${esc(r.lang)}</span>` : "";
         const titleCell = r.fileUrl
-          ? `<button class="tbl-open" data-rg-pdf="${esc(r.id)}" title="원문 PDF 열람">📄 ${esc(r.title)}</button>`
+          ? `<button type="button" class="tbl-open" data-rg-pdf="${esc(r.id)}" title="원문 PDF 열람">${SeMIS.icon("doc", 15)}<span>${esc(r.title)}</span></button>`
           : (r.linkUrl
-            ? `<a class="tbl-open" href="${esc(r.linkUrl)}" target="_blank" rel="noopener" title="원문 링크 열기">🔗 ${esc(r.title)}</a>`
+            ? `<a class="tbl-open" href="${esc(r.linkUrl)}" target="_blank" rel="noopener" title="원문 링크 열기">${SeMIS.icon("link", 15)}<span>${esc(r.title)}</span></a>`
             : `<b>${esc(r.title)}</b>`);
         return `
-      <tr data-rg-row="${esc(r.id)}"${canWrite ? ' style="cursor:pointer" title="행 클릭 → 수정 / 제목 클릭 → 열람"' : ""}>
-        <td>${titleCell}${langTag}${sub}</td>
-        <td style="white-space:nowrap">
-          ${r.fileUrl ? `<button class="btn btn-ghost btn-sm" data-rg-pdf="${esc(r.id)}">📄 PDF</button>` : ""}
-          ${r.linkUrl ? `<a class="btn btn-ghost btn-sm" href="${esc(r.linkUrl)}" target="_blank" rel="noopener">링크 ↗</a>` : ""}
-          ${!r.linkUrl && !r.fileUrl ? "-" : ""}</td>
-        <td>${r.diffUrl ? `<button class="btn btn-ghost btn-sm" data-rg-diff="${esc(r.id)}">📑 보기</button>` : "-"}</td>
+      <tr data-rg-row="${esc(r.id)}">
+        <td>${titleCell}${langTag}${r.fileUrl && r.linkUrl ? ` <a class="link-btn" href="${esc(r.linkUrl)}" target="_blank" rel="noopener">링크</a>` : ""}${sub}</td>
+        <td>${r.diffUrl ? `<button type="button" class="link-btn" data-rg-diff="${esc(r.id)}">보기</button>` : "-"}</td>
         <td>${r.rev ? `<span class="badge badge-blue" style="white-space:nowrap">${esc(r.rev)}</span>` : "-"}</td>
         <td style="font-size:.84rem;white-space:nowrap">${esc(r.date || "-")}</td>
-        ${showIdeas ? `<td><button class="btn btn-ghost btn-sm" data-rg-idea="${esc(r.id)}" title="개정 아이디어 노트">💡 ${ideasOf(r).length}${openCnt ? `<span class="reg-idea-open">${openCnt}</span>` : ""}</button></td>` : ""}
-        ${canWrite ? `<td class="no-print"><button class="btn btn-ghost btn-sm" data-rg-edit="${esc(r.id)}" title="규정 수정">✏️</button></td>` : ""}
+        ${showIdeas ? `<td><button type="button" class="link-btn" data-rg-idea="${esc(r.id)}" title="개정 아이디어 노트">노트 ${ideasOf(r).length}${openCnt ? `<span class="reg-idea-open">${openCnt}</span>` : ""}</button></td>` : ""}
+        ${canWrite ? `<td class="no-print"><button type="button" class="mt-btn m-ed" data-rg-edit="${esc(r.id)}" aria-label="규정 수정" title="규정 수정">${SeMIS.icon("edit", 15)}</button></td>` : ""}
       </tr>`; }).join("")}</tbody></table></div>`;
   }
 
@@ -331,7 +326,8 @@
           <button type="button" class="btn btn-ghost btn-sm" id="rg-clear" hidden>검색 해제</button>
         </div>
         <div id="rg-body">${tableHTML(scope)}</div>
-      </div>`;
+      </div>${window.SemisDocs && (SemisDocs.list(sc.route).length || canWrite) ? SemisDocs.card(sc.route, { title: scope === "sec" ? "SSOP 첨부 · 지침 · 통보 문서" : "관련 문서" }) : ""}`;
+    if (window.SemisDocs) SemisDocs.wire(root, () => renderPage(root, scope));
 
     const wire = () => {
       $$("#rg-body [data-rg-clear]").forEach(b => b.onclick = () => {
@@ -340,10 +336,6 @@
         const note = $("#rg-fnote"), cb = $("#rg-clear");
         if (note) note.hidden = true;
         if (cb) cb.hidden = true;
-      });
-      if (canWrite) $$("#rg-body [data-rg-row]").forEach(el => el.onclick = (ev) => {
-        if (ev.target.closest("button,a")) return;
-        regForm(scope, el.dataset.rgRow);
       });
       $$("#rg-body [data-rg-pdf]").forEach(b => b.onclick = (ev) => {
         ev.stopPropagation();
@@ -384,6 +376,10 @@
     paintFilter();
   }
 
+  if (window.SemisDocs) SemisDocs.define("reg-sec", [
+    { id: "ssop", label: "팀 보안표준업무절차(SSOP) · 첨부" }, { id: "tsa", label: "TSA · 해외 당국 규정" }, { id: "gov", label: "국토부 보안조치 · 지침" },
+    { id: "notice", label: "개정 통보" }, { id: "misc", label: "기타" }
+  ]);
   Object.keys(SCOPES).forEach(scope => {
     SeMIS.registerModule(SCOPES[scope].route, {
       title: SCOPES[scope].title,

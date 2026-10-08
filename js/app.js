@@ -8,7 +8,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.40.0";
+  const VERSION = "1.41.0";
   const APP_NAME = "SeMIS · Logistics";
   /* v1.15: 데이터 캐시는 이 탭의 sessionStorage 에만 둔다(탭을 닫거나 로그아웃하면 사라짐).
      화면 설정(LS_UI)만 localStorage. */
@@ -248,8 +248,8 @@ const SeMIS = (() => {
       h("hub-sec", "화물 보안", "scan"),
       m("sec-dash", "화물보안 대시보드", "📊", "sec-dash", "mgr", "hub-sec"),
       m("scr-status", "화물 보안검색 현황", "🔎", "scr-status", "mgr", "hub-sec"),
-      p("kc-ra", "상용화주 · RA 관리", "🏷️", "kc-ra", "hq", "hub-sec",
-        "상용화주·보안업체(RA) 지정 현황, 유효기간, 점검 이력, 화물 인수 시 확인 절차를 관리합니다."),
+      m("kc-ra", "상용화주 · RA 관리", "🏷️", "kc-ra", "hq", "hub-sec"),
+      m("sec-cases", "보안 처리 대장", "🗃️", "sec-cases", "mgr", "hub-sec"),
       m("scr-equip", "검색장비 유지관리", "🔧", "scr-equip", "mgr", "hub-sec"),
       p("access", "보안구역 출입 관리", "🪪", "access", "mgr", "hub-sec",
         "화물터미널 보호구역 출입증·차량 출입·임시 출입 현황과 만료 도래 알림을 관리합니다."),
@@ -271,6 +271,7 @@ const SeMIS = (() => {
       p("car", "시정조치 (CAR)", "📋", "car", "hq", "hub-aud",
         "점검·감사에서 나온 부적합을 접수 → 조치중 → 종결 3단계로 추적하고 기한 경과를 에스컬레이션합니다."),
       m("training", "보안교육 · 자격 관리", "🎓", "training", "mgr", "hub-aud"),
+      m("dissem", "보안 전파교육", "📣", "dissem", "mgr", "hub-aud"),
 
       h("hub-ops", "협력 · 비상", "users"),
       m("serp", "팀위기대응계획 (SERP)", "🛟", "serp", "mgr", "hub-ops"),
@@ -278,10 +279,8 @@ const SeMIS = (() => {
       Object.assign(m("contacts", "비상연락망 · 보고체계", "☎️", "contacts", "mgr", "hub-ops"), { quick: true }),
       m("crisis", "위기대응 담당자", "🧭", "crisis", "mgr", "hub-ops"),
       m("phonebook", "업무 연락처", "📇", "phonebook", "mgr", "hub-ops"),
-      p("partners", "조업사 · 협력사 현황", "🤝", "partners", "mgr", "hub-ops",
-        "조업사·경비·청소·유지보수 업체 담당자, 인원, 보안서약·교육 이수 현황."),
-      p("contracts", "계약서 관리", "💼", "contracts", "hq", "hub-ops",
-        "협력사 계약서·과업지시서 파일과 계약기간·갱신 시점 관리 (대외비)."),
+      m("partners", "협력사 · 보안요원", "🤝", "partners", "mgr", "hub-ops"),
+      m("contracts", "계약 · 협약 관리", "💼", "contracts", "hq", "hub-ops"),
 
       h("hub-doc", "규정 · 자료", "book"),
       m("reg-sec", "항공보안 규정", "📘", "reg-sec", "mgr", "hub-doc"),
@@ -386,6 +385,13 @@ const SeMIS = (() => {
       patrolPeople: [],  // 순찰자 · 보안감독자와 등록 서명 (명단은 공용 DB만)
       selfCheckCfg: {},  // 자체 보안점검 안내 — 주체 · 대상 · 주기 덮어쓰기 (v1.34 — 비면 코드 기본값)
       selfChecks: [],    // 자체 보안점검 — 국가항공보안 수준관리지침 별표 점검표 기록 (v1.32 — js/selfcheck.js)
+      docs: [],          // 증빙 문서 서가 (v1.41 — js/docshelf.js, 문서 목록은 공용 DB만)
+      partners: {},      // 협력사 · 보안요원 (v1.41 — 명부는 공용 DB만)
+      contracts: [],     // 계약 · 협약 관리 (v1.41)
+      kcra: {},          // 상용화주 · RA 관리 (v1.41)
+      secCases: [],      // 보안 처리 대장 (v1.41)
+      dissem: {},        // 보안 전파교육 (v1.41)
+      scrStats: {},      // 화물 보안검색 실적 (월별 합계, v1.41)
       chatRooms: []      // (예약) 팀 채팅방
     };
   }
@@ -685,6 +691,29 @@ const SeMIS = (() => {
         seq, type: "module", label: "자체 보안점검", icon: "🧾", module: "selfcheck", vis: "mgr",
         parent: ins && ins.parent ? ins.parent : (hub ? "hub-aud" : null) });
     }
+    // v1.41 점검교육 · 수검대응 자료 취합 — 구조 보정 + 예정 메뉴 실모듈 전환(운영자가 바꾼 이름 · 숨김은 유지) + 새 메뉴 1회 추가
+    ["docs", "contracts", "secCases"].forEach(k => { DATA[k] = (Array.isArray(DATA[k]) ? DATA[k] : []).filter(x => x && typeof x === "object" && x.id); });
+    ["partners", "kcra", "dissem", "scrStats"].forEach(k => { if (!DATA[k] || typeof DATA[k] !== "object" || Array.isArray(DATA[k])) DATA[k] = {}; });
+    [["partners", "조업사 · 협력사 현황", "협력사 · 보안요원"], ["contracts", "계약서 관리", "계약 · 협약 관리"], ["kc-ra", "", ""]].forEach(([id, from, to]) => {
+      const mn = DATA.menus.find(m => m.type === "module" && m.module === id);
+      if (!mn) return;
+      if (mn.planned) { delete mn.planned; delete mn.desc; }
+      if (from && mn.label === from) mn.label = to;
+    });
+    const addAfter = (mod, after, hubId, label, icon, vis) => {
+      if (DATA.menus.some(m => m.type === "module" && m.module === mod)) return;
+      const ref = DATA.menus.find(m => m.type === "module" && m.module === after);
+      const hub = DATA.menus.find(m => m.id === hubId && m.type === "group");
+      let seq = DATA.menus.reduce((mx, m) => Math.max(mx, m.seq || 0), 0) + 1;
+      if (ref) {
+        const nx = DATA.menus.filter(m => m.parent === ref.parent && (m.seq || 0) > (ref.seq || 0)).map(m => m.seq || 0);
+        seq = nx.length ? ((ref.seq || 0) + Math.min.apply(null, nx)) / 2 : (ref.seq || 0) + 0.5;
+      }
+      DATA.menus.push({ id: DATA.menus.some(m => m.id === mod) ? mod + "-" + Date.now().toString(36) : mod,
+        seq, type: "module", label, icon, module: mod, vis, parent: ref && ref.parent ? ref.parent : (hub ? hubId : null) });
+    };
+    addAfter("sec-cases", "kc-ra", "hub-sec", "보안 처리 대장", "🗃️", "mgr");
+    addAfter("dissem", "training", "hub-aud", "보안 전파교육", "📣", "mgr");
     DATA.equipment.forEach(x => { if (!Array.isArray(x.logs)) x.logs = []; });
     ["reg-sec", "reg-safety", "reg-dg", "scr-status", "scr-equip"].forEach(id => {
       const mn = DATA.menus.find(m => m.type === "module" && m.module === id);
@@ -1105,7 +1134,8 @@ const SeMIS = (() => {
     schedule: "wide", dashboard: "wide", board: "wide", flight: "wide",
     minutes: "mid", contacts: "mid", crisis: "mid", serp: "mid", threat: "mid", phonebook: "mid", settings: "mid", vault: "mid",
     "reg-sec": "mid", "reg-safety": "mid", "reg-dg": "mid", "scr-status": "mid", "scr-equip": "mid", audit: "mid", inspection: "mid", shortcuts: "mid", "daily-safety": "mid",
-    "sec-dash": "mid", "aud-dash": "mid", training: "mid", selfcheck: "mid"
+    "sec-dash": "mid", "aud-dash": "mid", training: "mid", selfcheck: "mid",
+    partners: "mid", contracts: "mid", "kc-ra": "mid", "sec-cases": "wide", dissem: "wide"
   };
   function applyViewWidth(view, route) {
     const r = String(route);

@@ -1007,7 +1007,7 @@
     if (canW() && dedupe()) SeMIS.save();
     const w = canW(), pend = pending();
     const acts = [
-      SeMIS.canEdit() ? `<button type="button" class="btn btn-ghost btn-sm" id="pt-cfg">${icon("sliders", 16)}<span>양식</span></button>` : "",
+      SeMIS.canEdit() ? `<button type="button" class="link-btn head-link m-ed" id="pt-cfg">양식</button>` : "",
       w && pend.wait.length ? `<button type="button" class="btn btn-soft btn-sm" data-pt-bulk="1">${icon("check", 16)}<span>일괄 확인 <b class="mono">${pend.wait.length}</b></span></button>` : "",
       `<button type="button" class="btn btn-ghost btn-sm no-print" id="pt-print" data-print-btn="1" title="종이 양식으로 인쇄">${icon("print", 17)}<span>Print</span></button>`
     ].join("");

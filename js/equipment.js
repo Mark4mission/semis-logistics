@@ -529,6 +529,7 @@
   }
   function tabBody() {
     const s = C().state;
+    if (tab === "docs") return window.SemisDocs ? `<section class="card">${SemisDocs.groupsHTML(MOD)}</section>` : "";
     if (tab !== "list" && !C().has("repairs")) return s.err
       ? `<section class="card">${ui.empty("CARES에 연결하지 못했습니다. (" + s.err + ")", '<button type="button" class="btn btn-ghost btn-sm" data-eq-retry>다시 시도</button>')}</section>`
       : `<div class="scr-wait" role="status"><span class="cfe-spin" aria-hidden="true"></span>CARES에서 고장·점검 기록을 불러오는 중입니다.</div>`;
@@ -536,6 +537,7 @@
   }
   function wire(root) {
     const box = $("#eq-body", root) || root;
+    if (window.SemisDocs && tab === "docs") SemisDocs.wire(box, () => SeMIS.renderView());
     $$("[data-eq]", box).forEach(tr => {
       const open = () => eqDetail(tr.dataset.eq);
       tr.onclick = (ev) => { if (!ev.target.closest("a")) open(); };
@@ -592,7 +594,12 @@
     if (btn) { btn.disabled = false; btn.classList.remove("is-busy"); }
     paint();
   }
-  const TABS = [["list", "장비 대장"], ["repairs", "고장 · 수리 이력"], ["analysis", "가동 분석"]];
+  const TABS = [["list", "장비 대장"], ["repairs", "고장 · 수리 이력"], ["analysis", "가동 분석"], ["docs", "인증서 · 절차"]];
+  if (window.SemisDocs) SemisDocs.define(MOD, [
+    { id: "cert", label: "장비 성능 인증 · 허가" }, { id: "proc", label: "운영 · 점검 절차" }, { id: "cctv", label: "CCTV · 영상정보" },
+    { id: "rad", label: "방사선 안전" }, { id: "misc", label: "기타" }
+  ]);
+  (window.SemisDeep = window.SemisDeep || {})[MOD] = (sub) => { if (TABS.some(x => x[0] === sub)) tab = sub; };
   function render(root) {
     const s = C().state;
     const canWrite = SeMIS.canEdit();
