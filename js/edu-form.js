@@ -296,8 +296,8 @@
     const el = itemEl(it);
     if (!el) return;
     el.className = "ed-fi is-" + itemState(it) + (it.open ? " is-open" : "");
-    $(".ed-fi-ic", el).innerHTML = itemIcon(it);
-    $(".ed-fi-a", el).innerHTML = itemActs(it);
+    setHTML($(".ed-fi-ic", el), itemIcon(it));
+    setHTML($(".ed-fi-a", el), itemActs(it));
   }
   function paintPick() { const w = $("#ed-pickw"); if (w) w.innerHTML = pickHTML(); }
   function appendItem(it) {
@@ -332,14 +332,22 @@
       if (d) d.setAttribute("aria-invalid", String(st.tried && !dateOk(it.date)));
     });
   }
+  /* 제출 단추는 한 번만 만들고 속성만 고친다 — 입력칸을 떠나며(change) 다시 그리면 그 순간 누른 클릭이 사라진다 */
+  const LAST = new WeakMap();                                         // 마지막으로 넣은 HTML(브라우저 직렬화와 비교하지 않는다)
+  function setHTML(el, html) { if (!el || LAST.get(el) === html) return; LAST.set(el, html); el.innerHTML = html; }
   function paintFoot() {
     const f = $("#ed-foot");
     if (!f) return;
+    if (!$("#ed-submit", f)) f.innerHTML = `<div class="ed-fmsg" id="ed-fmsg"></div><button type="button" class="ed-btn ed-submit" id="ed-submit">제출</button>`;
     const errs = check();
     const ready = !errs.length && !st.sending;
-    f.innerHTML = `${st.msg ? `<p class="ed-msg" role="alert">${svg(IC.alert, 16)}<span>${esc(st.msg)}</span></p>` : ""}
-      ${st.tried && errs.length ? `<p class="ed-miss"><span>남은 항목</span>${esc(missText(errs))}</p>` : ""}
-      <button type="button" class="ed-btn ed-submit" id="ed-submit"${st.sending ? " disabled" : ""} data-ready="${ready}">${st.sending ? "제출하는 중" : "제출"}</button>`;
+    setHTML($("#ed-fmsg", f), (st.msg ? `<p class="ed-msg" role="alert">${svg(IC.alert, 16)}<span>${esc(st.msg)}</span></p>` : "")
+      + (st.tried && errs.length ? `<p class="ed-miss"><span>남은 항목</span>${esc(missText(errs))}</p>` : ""));
+    const b = $("#ed-submit", f);
+    b.disabled = !!st.sending;
+    b.dataset.ready = String(ready);
+    const label = st.sending ? "제출하는 중" : "제출";
+    if (b.textContent !== label) b.textContent = label;
   }
 
   function wireForm() {
@@ -350,7 +358,10 @@
       const t = ev.target;
       if (!t || !t.id) return;
       warm();
-      if (t.id === "ed-name") { st.name = t.value; st.items.filter(complete).forEach(it => { if (it.who && !it.open) paintItem(it); }); }
+      if (t.id === "ed-name") {
+        st.name = t.value;
+        st.items.filter(it => complete(it) && it.who && !it.open).forEach(it => { const el = itemEl(it); if (el && !!$(".ed-warn", el) !== !!whoWarn(it)) paintItem(it); });
+      }
       else if (t.id === "ed-emp") st.emp = t.value;
       else if (t.dataset && t.dataset.f) {
         const el = t.closest(".ed-fi"), it = el && st.items.find(x => x.k === el.dataset.k);

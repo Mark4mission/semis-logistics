@@ -8288,6 +8288,23 @@ function makeServer(opts = {}) {
       ok($e(x, ".ed-ok"), "등록됨");
       eq(x.srv.bad.join("|"), "", "RPC 인자 = SQL 선언");
       x.w.close();
+      /* 입력칸을 떠나며(change) 다시 그려도 누르던 단추는 그대로(클릭이 사라지지 않음) — 운영 E2E 에서 찾은 문제 */
+      const w2 = makeEdu(); await settle();
+      typeIn(w2, "#ed-name", "갑");
+      putFiles(w2, [F(w2, "sup.pdf", 1000, "application/pdf")]); await tick(100);
+      const sup2 = w2.E.st.items[0];
+      $e(w2, '[data-edit="' + sup2.k + '"]').click();
+      const org = $e(w2, "#ed-org-" + sup2.k); org.value = "다른 교육원"; fire(w2, org, "input");
+      const fold = $e(w2, '[data-fold="' + sup2.k + '"]');
+      fire(w2, org, "change");
+      ok(fold.isConnected, "닫기(✓) 단추 유지");
+      typeIn(w2, "#ed-emp", "B2");
+      const btn = $e(w2, "#ed-submit");
+      fire(w2, $e(w2, "#ed-emp"), "change"); fire(w2, $e(w2, "#ed-name"), "change");
+      ok(btn.isConnected, "제출 단추 유지");
+      btn.click(); await tick(80);
+      eq(w2.srv.submits.length, 1, "같은 단추로 제출됨");
+      w2.w.close();
       const y = makeEdu({ submitError: "limit" }); await settle();
       typeIn(y, "#ed-name", "갑"); typeIn(y, "#ed-emp", "9");
       putFiles(y, [F(y, "sup.pdf", 1000, "application/pdf")]); await tick(100);
