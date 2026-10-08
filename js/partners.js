@@ -247,7 +247,7 @@
         <button type="button" class="btn btn-ghost" data-act="cancel">취소</button><button type="button" class="btn btn-primary" data-act="ok">저장</button></div>`, { wide: true });
     $("#modal-box [data-act=cancel]").onclick = closeModal;
     const lf = $("#modal-box [data-act=left]");
-    if (lf) lf.onclick = () => confirmModal(s.name + " 요원을 명부에서 뺄까요? (기록은 남습니다)", () => { s.left = todayISO(); SeMIS.save(); toast("명부에서 뺐습니다."); paint(); });
+    if (lf) lf.onclick = () => confirmModal(s.name + " 요원을 명부에서 제외할까요? (기록은 남습니다)", () => { s.left = todayISO(); SeMIS.save(); toast("명부에서 제외했습니다."); paint(); });
     $("#modal-box [data-act=ok]").onclick = () => {
       const name = norm($("#pf-name").value);
       if (!name) { toast("성명을 입력하세요.", true); $("#pf-name").focus(); return; }
@@ -277,7 +277,7 @@
         <button type="button" class="btn btn-ghost" data-act="cancel">취소</button><button type="button" class="btn btn-primary" data-act="ok">저장</button></div>`, { wide: true });
     $("#modal-box [data-act=cancel]").onclick = closeModal;
     const del = $("#modal-box [data-act=del]");
-    if (del) del.onclick = () => confirmModal(v0.name + " 업체를 뺄까요?", () => { P().vendors = vendors().filter(x => x !== v0); SeMIS.save(); paint(); });
+    if (del) del.onclick = () => confirmModal(v0.name + " 업체를 삭제할까요?", () => { P().vendors = vendors().filter(x => x !== v0); SeMIS.save(); paint(); });
     $("#modal-box [data-act=ok]").onclick = () => {
       const rec = {};
       ["name", "kind", "svc", "lic", "contract", "contact", "note"].forEach(k => { rec[k] = norm($("#pv-" + k).value); });

@@ -110,7 +110,7 @@
         <button type="button" class="btn btn-ghost" data-act="cancel">취소</button><button type="button" class="btn btn-primary" data-act="ok">저장</button></div>`, { wide: true });
     $("#modal-box [data-act=cancel]").onclick = closeModal;
     const del = $("#modal-box [data-act=del]");
-    if (del) del.onclick = () => confirmModal(k.name + "을(를) 목록에서 뺄까요?", () => { K().list = list().filter(x => x !== k); SeMIS.save(); SeMIS.renderView(); });
+    if (del) del.onclick = () => confirmModal(k.name + "을(를) 목록에서 삭제할까요?", () => { K().list = list().filter(x => x !== k); SeMIS.save(); SeMIS.renderView(); });
     $("#modal-box [data-act=ok]").onclick = () => {
       const rec = { kind: $("#kf-kind").value };
       ["name", "code", "site", "desig", "note"].forEach(x => { rec[x] = norm($("#kf-" + x).value); });

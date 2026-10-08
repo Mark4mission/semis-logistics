@@ -277,7 +277,7 @@
       actions
     });
     if (!rows.length) {
-      root.innerHTML = head + `<section class="card">${ui.empty(canWrite ? "등록된 명단이 없습니다. 연간 위기대응 담당자 엑셀을 올려 주세요." : "등록된 명단이 없습니다.")}</section>`;
+      root.innerHTML = head + `<section class="card">${ui.empty(canWrite ? "등록된 명단이 없습니다. 연간 위기대응 담당자 엑셀을 등록해 주세요." : "등록된 명단이 없습니다.")}</section>`;
       wire(root, canWrite);
       return;
     }
@@ -388,7 +388,7 @@
       <div class="form-row"><label for="cr-c-name">이름 ${ui.tip("오타를 고치면 이 사람이 맡은 모든 임무(정 · 부)의 이름이 함께 바뀝니다.", "이름 설명")}</label><input id="cr-c-name" autocomplete="off" value="${esc(name)}"></div>
       ${tasks.length ? `<div class="cr-mtasks"><b>맡은 임무 ${tasks.length}</b><ul>${tasks.map(([k, r]) => `<li><span class="cr-role${k === "부" ? " is-sub" : ""}">${k}</span>
         <span>${esc(r.team)} · ${esc(shortOrg(r.org))} — ${esc(r.task)}</span><button type="button" class="link-btn" data-medit="${esc(r.id)}">수정</button></li>`).join("")}</ul></div>` : ""}
-      <div class="modal-actions">${Object.keys(mine).length ? '<button type="button" class="btn btn-ghost" data-act="clear">입력한 번호 지우기</button><span class="spacer" style="flex:1"></span>' : ""}
+      <div class="modal-actions">${Object.keys(mine).length ? '<button type="button" class="btn btn-ghost" data-act="clear">입력 번호 삭제</button><span class="spacer" style="flex:1"></span>' : ""}
         <button type="button" class="btn btn-ghost" data-act="cancel">취소</button>
         <button type="button" class="btn btn-primary" data-act="ok">저장</button></div>`, { wide: true });
     const val = (k) => norm(($("#cr-c-" + k) || {}).value);
@@ -414,7 +414,7 @@
       }
       setOwn(nn, o);
       closeModal(); SeMIS.save(); rerender();
-      toast(renamed ? "저장했습니다. 임무 " + renamed + "건의 이름을 바꿨습니다." : "저장했습니다.");
+      toast(renamed ? "저장했습니다. 임무 " + renamed + "건의 이름을 변경했습니다." : "저장했습니다.");
     };
   }
   /* 한 표에서 여러 사람 번호 입력 — Enter 로 다음 칸 */

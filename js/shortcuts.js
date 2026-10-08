@@ -93,11 +93,11 @@
     const c = (e && (e.code || e.message)) || "";
     if (/auth/.test(c) || (e && e.status === 401)) return "로그인이 끊겼습니다. 다시 로그인한 뒤 시도하세요.";
     if (/forbidden/.test(c)) return "시스템관리자만 가져올 수 있습니다.";
-    if (/blocked/.test(c)) return "사내망 시스템이라 서버에서 가져올 수 없습니다. 아이콘 이미지를 내려받아 '이미지 파일'로 올리거나 기본 아이콘을 쓰세요.";
+    if (/blocked/.test(c)) return "사내망 시스템이라 서버에서 가져올 수 없습니다. 아이콘 이미지를 다운로드해 '이미지 파일'로 등록하거나 기본 아이콘을 사용하세요.";
     if (/url/.test(c)) return "가져올 수 없는 주소입니다.";
-    if (/unreachable/.test(c)) return "서버에서 이 사이트에 접속하지 못했습니다(사내망 · 해외 접속 차단 등). 아이콘 이미지를 내려받아 '이미지 파일'로 올리거나 기본 아이콘을 쓰세요.";
-    if (/not_found/.test(c)) return "이 사이트에서 아이콘을 찾지 못했습니다. 이미지 파일이나 기본 아이콘을 쓰세요.";
-    if (/decode|canvas/.test(c)) return "이미지를 읽지 못했습니다. 다른 파일을 쓰세요.";
+    if (/unreachable/.test(c)) return "서버에서 이 사이트에 접속하지 못했습니다(사내망 · 해외 접속 차단 등). 아이콘 이미지를 다운로드해 '이미지 파일'로 등록하거나 기본 아이콘을 사용하세요.";
+    if (/not_found/.test(c)) return "이 사이트에서 아이콘을 찾지 못했습니다. 이미지 파일이나 기본 아이콘을 사용하세요.";
+    if (/decode|canvas/.test(c)) return "이미지를 읽지 못했습니다. 다른 파일을 사용하세요.";
     if (/too_big/.test(c)) return "파일이 너무 큽니다(3MB 이하).";
     if (/offline/.test(c)) return "서버에 연결되어 있지 않습니다.";
     return "가져오지 못했습니다. 잠시 뒤 다시 시도하세요.";
@@ -178,7 +178,7 @@
     const doFetch = (auto) => {
       const url = urlEl ? urlEl.value.trim() : "";
       if (!/^https?:\/\/[^\s]+$/i.test(url)) { if (!auto) msg("웹주소(https://…)를 먼저 입력하세요.", true); return; }
-      if (SeMIS.isIntranet(url)) { if (!auto) msg("사내망 주소는 가져올 수 없습니다. 이미지 파일이나 기본 아이콘을 쓰세요.", true); return; }
+      if (SeMIS.isIntranet(url)) { if (!auto) msg("사내망 주소는 가져올 수 없습니다. 이미지 파일이나 기본 아이콘을 사용하세요.", true); return; }
       busyN++;
       if (btn) btn.disabled = true;
       msg("가져오는 중…");

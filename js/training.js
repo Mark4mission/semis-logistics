@@ -54,7 +54,7 @@
   const KR_WIN = 30, KR_SUSP = 6;                       // 지침 제13조: 전후 30일 · 정지 후 6개월
   const DG_WIN = 3;                                     // 기술기준 제12조②: 만료 3개월 안
   const KEEP_YEARS = 3, KEEP_LEFT_DAYS = 90;            // 지침 제32조: 기록 3년 · 퇴직 후 90일
-  const CAT_VER = 3;
+  const CAT_VER = 4;
   const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const p2 = (n) => String(n).padStart(2, "0");
   const toISO = (d) => d.getFullYear() + "-" + p2(d.getMonth() + 1) + "-" + p2(d.getDate());
@@ -113,7 +113,7 @@
     { id: "사내보안교관", grp: "law", basis: "교육훈련지침 제2조11호 · 제14조③ · 사내 절차 1.3.3 · 2.4", who: "소속 기관의 장이 임명 (사내 보안강사)",
       qual: "지침: 교관과정 이수 + 항공보안 경력 1년↑, 또는 해당 분야 실무 2년↑ (보안검색요원 교육은 제외). 사내 절차: 항공사 보안감독자 과정 또는 항공보안교관 과정 수료자, 또는 해당 직종 2년↑ 중 추천자",
       duty: "자체 보안교육 실시 (화물보안 업무요원 · 보안 유관부서 등) · 교육 기록 관리" },
-    { id: "위험물 취급자", grp: "dg", basis: "항공안전법 제72조 · 항공위험물운송기술기준 제12 · 14조 · IATA DGR 1.5 · 화물 절차 2.9", who: "화물 운송서비스 직원(로드마스터 등 수출입 담당) · 지점 영업 담당",
+    { id: "DGR", grp: "dg", basis: "항공안전법 제72조 · 항공위험물운송기술기준 제12 · 14조 · IATA DGR 1.5 · 화물 절차 2.9", who: "화물 운송서비스 직원(로드마스터 등 수출입 담당) · 지점 영업 담당",
       qual: "업무 배치 전 초기교육, 24개월 이내 보수교육 (만료 3개월 안 이수 시 기존 만료일 기준 연장), 24개월이 지나면 초기교육 다시. Function 7.3 = 외부 기관 집체(초기 40시간 · 보수 24시간), 7.4 = 온라인",
       duty: "위험물 접수 · 취급 · 보관 · 탑재 (기술기준 표 1-1)" },
     { id: "방사선안전관리자", grp: "law", basis: "원자력안전법 · 사내 절차 1.3.10 · 3.6", who: "방사선작업종사자 · 방사선관리구역 출입 직원 (X-ray 검색장비)",
@@ -122,12 +122,12 @@
       qual: "초기 · 연 1회 정기교육 — 시간 · 합격 기준 · 이수 기간은 SSOP 교육 조항(비공개)", duty: "미주행 화물기 보안조치 관리" },
     { id: "ACC3 보안통제 직원", grp: "intl", basis: "EU 시행규정 2015/1998 6.8 · 11.2.3.9 · 11.4.3", who: "EU행 화물 보안통제 직원",
       qual: "직무 전 교육, 5년 이내 재교육 (6개월 넘게 직무를 쉬면 복귀 전 재교육)", duty: "EU행 화물 · 우편물 보안통제 (ACC3)" },
-    { id: "SSI 취급자", grp: "own", basis: "자체보안계획 · SSOP 민감보안정보 관리", who: "민감보안정보 열람자",
+    { id: "SSI", grp: "own", basis: "자체보안계획 · SSOP 민감보안정보 관리", who: "민감보안정보 열람자",
       qual: "보안서약 (교육 과정이 아니라 서약으로 관리)", duty: "민감보안정보 열람 · 취급", pledge: true }
   ];
   const ROLES = ROLE_DEF.map(r => r.id);
   /* v1.31 옛 직무 이름 → 정식 명칭 (읽을 때 바꾸고, 데이터는 이전(migrate)에서 고친다) */
-  const ROLE_ALIAS = { "보안감독자": "항공사보안감독자", "화물보안 요원": "화물보안 업무요원", "장비 운용자": "항공보안장비 유지보수요원" };
+  const ROLE_ALIAS = { "보안감독자": "항공사보안감독자", "화물보안 요원": "화물보안 업무요원", "장비 운용자": "항공보안장비 유지보수요원", "위험물 취급자": "DGR", "SSI 취급자": "SSI" };
   const roleDef = (r) => ROLE_DEF.find(x => x.id === r) || null;
   /* v1.37 직무군 색 (Mark 지정 5군 — v1.38 에서 책임자 · 항공보안교관을 뺌) — 그 밖(위험물 · 방사선 · SSI · ACMR · ACC3 · 사내 직무)은 '기타' 기본색.
      색은 css `.rg-*` (dataviz 검증기 --pairs all 통과 · 상태 색(초록 · 호박 · 빨강 · 틸) 색상 피함), 글자는 본문 잉크 */
@@ -163,8 +163,8 @@
   const RAD_BASIS = "원자력안전법 · 사내 절차 3.6";
   const SUP = ["항공사보안감독자"];
   const DEF_COURSES = [
-    C("c-sup-i", "sup", "항공사보안책임자 · 감독자 초기", "초기", 12, { rule: "kr", hours: "16시간↑ · 평가 80점↑", basis: "교육훈련지침 제17조① · 별표 5 · 사내 절차 3.1.1", org: TRN_ORG, roles: SUP }),
-    C("c-sup-r", "sup", "항공사보안책임자 · 감독자 정기", "정기", 12, { rule: "kr", hours: "연 1회 8시간↑", basis: "교육훈련지침 제17조③ · 별표 5의2 · 사내 절차 3.1.2", org: TRN_ORG, roles: SUP }),
+    C("c-sup-i", "sup", "항공사보안감독자 초기", "초기", 12, { rule: "kr", hours: "16시간↑ · 평가 80점↑", basis: "교육훈련지침 제17조① · 별표 5 · 사내 절차 3.1.1", org: TRN_ORG, roles: SUP }),
+    C("c-sup-r", "sup", "항공사보안감독자 정기", "정기", 12, { rule: "kr", hours: "연 1회 8시간↑", basis: "교육훈련지침 제17조③ · 별표 5의2 · 사내 절차 3.1.2", org: TRN_ORG, roles: SUP }),
     C("c-scr-i", "scr", "보안검색감독자 초기", "초기", 12, { rule: "kr", hours: "8시간↑ · 평가", basis: "항공보안법 제28조② · 교육훈련지침 제18조① · 별표 6", org: SCR_ORG, roles: ["보안검색감독자"] }),
     C("c-scr-r", "scr", "보안검색감독자 정기", "정기", 12, { rule: "kr", hours: "연 1회 8시간↑", basis: "교육훈련지침 제18조② · 별표 6의2", org: SCR_ORG, roles: ["보안검색감독자"] }),
     C("c-scr-p", "scr-p", "보안검색감독자 선수 과정", "1회", 0, { hours: "보안검색요원 초기교육 40시간↑ · 평가 (수료증)", basis: "교육훈련지침 제18조① · 별표 8 — 검색요원 초기 이수자를 감독자로", org: SCR_ORG, roles: ["보안검색감독자"], same: ["c-scn-i"] }),
@@ -182,15 +182,15 @@
     C("c-aware", "aware", "보안 유관부서 일반요원 정기", "정기", 12, { rule: "kr", hours: "연 1회 2시간↑", basis: "교육훈련지침 제29조② · 별표 18의4 · 사내 절차 3.4", org: "자체", roles: ["보안 유관부서 일반요원"] }),
     C("c-bomb", "bomb", "폭발물 위협대응 교육", "1회", 0, { hours: "2시간↑", basis: "교육훈련지침 제28조 · 별표 17", org: "자체", roles: ["전화 접수자 · 안내요원"] }),
     C("c-inh", "inh", "사내보안교관 임명", "1회", 0, { hours: "교관과정 + 경력 1년↑ 또는 실무 2년↑", basis: "교육훈련지침 제14조③ · 사내 절차 2.4", org: "소속 기관 (임명)", roles: ["사내보안교관"] }),
-    C("c-dg-i", "dgr", "위험물 교육 초기", "초기", 24, { rule: "dg", hours: DG_HRS_I, basis: DG_BASIS, org: DG_ORG, roles: ["위험물 취급자"] }),
-    C("c-dg-r", "dgr", "위험물 교육 정기", "정기", 24, { rule: "dg", hours: DG_HRS_R, basis: DG_BASIS, org: DG_ORG, roles: ["위험물 취급자"] }),
+    C("c-dg-i", "dgr", "DGR 초기", "초기", 24, { rule: "dg", hours: DG_HRS_I, basis: DG_BASIS, org: DG_ORG, roles: ["DGR"] }),
+    C("c-dg-r", "dgr", "DGR 정기", "정기", 24, { rule: "dg", hours: DG_HRS_R, basis: DG_BASIS, org: DG_ORG, roles: ["DGR"] }),
     C("c-rad-i", "rad", "방사선안전관리자 초기", "초기", 12, { hours: "3시간↑ · 수료증", basis: RAD_BASIS + ".1", org: "외부 전문교육기관", roles: ["방사선안전관리자"] }),
     C("c-rad-r", "rad", "방사선안전관리자 정기", "정기", 12, { hours: "연 1회 3시간↑", basis: RAD_BASIS + ".2", org: "외부 전문교육기관", roles: ["방사선안전관리자"] }),
     C("c-acmr-i", "acmr", "ACMR 초기", "초기", 12, { legal: "intl", hours: "SSOP 교육 조항", basis: ACMR_BASIS, org: "사내 · TSA 인정 과정", roles: ["ACMR"] }),
     C("c-acmr-r", "acmr", "ACMR 정기", "정기", 12, { legal: "intl", hours: "연 1회 · SSOP 교육 조항", basis: ACMR_BASIS, org: "사내 · TSA 인정 과정", roles: ["ACMR"] }),
     C("c-acc3", "acc3", "ACC3 화물 보안통제 교육", "정기", 60, { legal: "intl", hours: "직무 전 · 5년 이내 재교육", basis: "EU 시행규정 2015/1998 11.2.3.9 · 11.4.3", org: "사내 · 위탁", roles: ["ACC3 보안통제 직원"] }),
     C("c-icao-c", "icao-c", "ICAO 항공화물 · 우편물 보안 (ASTP)", "1회", 0, { legal: "intl", hours: "5일", basis: "ICAO Aviation Security Training Package · 교육훈련지침 제10조12호", org: "ICAO 인증 교육센터 (ASTC)" }),
-    C("c-icao-m", "icao-m", "ICAO 항공보안 관리자 (ASTP)", "1회", 0, { legal: "intl", hours: "7일", basis: "ICAO ASTP — 책임자 · 감독자 초기교육 인정 근거(지침 제17조②)", org: "ICAO 인증 교육센터 (ASTC)" }),
+    C("c-icao-m", "icao-m", "ICAO 항공보안 관리자 (ASTP)", "1회", 0, { legal: "intl", hours: "7일", basis: "ICAO ASTP — 항공사보안감독자 초기교육 인정 근거(지침 제17조②)", org: "ICAO 인증 교육센터 (ASTC)" }),
     C("c-iata-c", "iata-c", "IATA 항공화물 · 공급망 보안", "1회", 0, { legal: "intl", hours: "5일", basis: "IATA Training (Air Cargo and Supply Chain Security)", org: "IATA · IATA 인정 교육기관" }),
     C("c-inst", "inst", "항공보안교관 과정", "1회", 0, { hours: "40시간↑ · 평가 · 분야별 인증", basis: INST_BASIS, org: INST_ORG }),
     C("v-screen", "v-screen", "보안검색요원 교육 · 자격인증 (협력사)", "정기", 12, { rule: "kr", vendor: true, who: "보안검색 협력사 — 검색요원 · 감독자 (초기 · OJT · 자격인증 · 정기)", basis: "항공보안법 제28조② · 교육훈련지침 제18조 · 제20조", org: SCR_ORG }),
@@ -456,18 +456,21 @@
     const bad = list.filter(c => BAD.indexOf(c.st) >= 0).length;
     return { bad, warn: list.length - bad, n: list.length, people: new Set(list.map(c => c.p.id)).size, list };
   }
-  /* 인원 탭 위 알림 띠 — 사람 · 교육 · 남은 날(누르면 개인 화면) */
+  /* 인원 탭 위 만료 · 미이수 알림판(v1.42 표 형식) — 상태 · 이름 · 교육 · 기한 · 남은 날, 급한 순. 넓으면 두 단(행 우선),
+     처음 AL_MAX 건 + '전체 n건'. 줄을 누르면 개인 화면 */
+  const AL_MAX = 10;
   function alertStrip(t) {
     const a = alertSummary(t);
     if (!a.n) return "";
-    const MAX = 10;
-    return `<section class="tr-alert ${a.bad ? "is-bad" : "is-warn"}" role="status" aria-label="만료 알림">
-      <span class="tr-al-i" aria-hidden="true">${icon("alert", 18)}</span>
-      <div class="tr-al-b">
-        <b class="tr-al-t">${[a.bad ? `만료 · 미이수 <em class="mono is-bad">${a.bad}</em>` : "", a.warn ? `${DUE_DAYS}일 안 갱신 <em class="mono is-warn">${a.warn}</em>` : ""].filter(Boolean).join('<span class="tr-al-sep">·</span>')}<small>${a.people}명</small></b>
-        <div class="tr-al-list">${a.list.slice(0, MAX).map(c => `<button type="button" class="tr-al-c tone-${esc(ST[c.st].tone)}" data-tperson="${esc(c.p.id)}" title="${esc(c.g.name + " · " + ST[c.st].label + " · " + stText(c))}">
-          <b>${esc(c.p.name)}</b><span>${esc(famShort(c.g))}</span><em class="mono">${esc(ddLabel(c, t) || ST[c.st].label)}</em></button>`).join("")}${a.n > MAX ? `<span class="tr-al-more">외 ${a.n - MAX}건</span>` : ""}</div>
-      </div>
+    const hd = (k) => `<div class="tr-al-r tr-al-hd${k ? " is-2" : ""}" role="row"${k ? ' aria-hidden="true"' : ""}><span role="columnheader">상태</span><span role="columnheader">이름</span><span role="columnheader">교육</span><span role="columnheader" class="tr-al-dt">기한</span><span role="columnheader" class="tr-al-dd">남은 날</span></div>`;
+    const row = (c, i) => { const S = ST[c.st];
+      return `<div class="tr-al-r tone-${esc(S.tone)}" role="row" tabindex="0" data-tperson="${esc(c.p.id)}"${i >= AL_MAX ? " hidden" : ""} title="${esc(c.p.name + " · " + c.g.name + " · " + stText(c))}">
+        <span role="cell" class="tr-al-st">${ui.chip(S.label, S.tone)}</span><span role="cell" class="tr-al-nm">${esc(c.p.name)}</span><span role="cell" class="tr-al-co">${esc(famShort(c.g))}</span>
+        <span role="cell" class="tr-al-dt mono">${esc(ymd2(ddDate(c)) || "-")}</span><span role="cell" class="tr-al-dd mono">${esc(c.st === "none" ? "-" : ddLabel(c, t) || "-")}</span></div>`; };
+    const cnt = [a.bad ? `만료 · 미이수 <em class="mono is-bad">${a.bad}</em>` : "", a.warn ? `${DUE_DAYS}일 안 갱신 <em class="mono is-warn">${a.warn}</em>` : "", `<small>${a.people}명</small>`].filter(Boolean).join('<span class="tr-al-sep">·</span>');
+    return `<section class="tr-alert ${a.bad ? "is-bad" : "is-warn"}" aria-label="만료 · 미이수 알림">
+      <div class="tr-al-h"><span class="tr-al-i" aria-hidden="true">${icon("alert", 15)}</span><b>만료 · 미이수 알림</b><span class="tr-al-t">${cnt}</span><span class="spacer"></span>${a.n > AL_MAX ? `<button type="button" class="link-btn tr-al-more no-print" data-talall aria-expanded="false">전체 ${a.n}건</button>` : ""}</div>
+      <div class="tr-al-tb" role="table" aria-label="만료 · 미이수 명단">${hd(0)}${hd(1)}${a.list.map(row).join("")}</div>
     </section>`;
   }
 
@@ -535,8 +538,8 @@
       a.href = url; a.download = "보안교육_만료예정_" + t.replace(/-/g, "") + ".xlsx"; a.rel = "noopener";
       document.body.appendChild(a); a.click();
       setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 4000);
-      toast("만료 예정 명단을 내려받았습니다.");
-    } catch (e) { toast("엑셀 파일을 만들지 못했습니다.", true); }
+      toast("만료 예정 명단을 다운로드했습니다.");
+    } catch (e) { toast("엑셀 파일을 생성하지 못했습니다.", true); }
   }
 
   /* 월별 교육 실시(지난 n개월) — 당사 실시 · 협력사 확인 건수 · 당사 교육 시간 */
@@ -582,12 +585,17 @@
      같은 묶음 · 구분이 없는 기본 과정은 덧붙인다. 옛 직무 이름은 정식 명칭으로.
      SeMIS v2 에서 옮긴 기록(src semis-v2)의 고정 유효기한(13개월 근사)은 지워 규칙으로 다시 셈한다. */
   const RETIRED_ROLES = ["항공사보안책임자", "항공보안교관"];
+  /* v1.42 (catVer 4) 표기 정리 — 책임자 없음(감독자만) · 위험물 → DGR. 과정 내용(시간 · 기관 · 근거)은 그대로, 이름만 */
+  const NAME_V4 = [[/항공사보안책임자\s*·\s*감독자/g, "항공사보안감독자"], [/(^|[^가-힣])책임자\s*·\s*감독자/g, "$1항공사보안감독자"],
+    [/^\s*(IATA\s*)?(DGR\s*)?위험물\s*교육(?=\s|$)/, "DGR"]];
+  const nameV4 = (s) => NAME_V4.reduce((a, [re, to]) => a.replace(re, to), String(s == null ? "" : s));
   function migrate(t) {
     if (!t || typeof t !== "object" || Array.isArray(t)) return false;
-    if (Number(t.catVer) >= CAT_VER) return false;
+    const from = Number(t.catVer) || 0;
+    if (from >= CAT_VER) return false;
     const before = JSON.stringify(t);
     const list = Array.isArray(t.courses) ? t.courses.filter(c => c && c.id) : [];
-    if (list.length) {
+    if (list.length && from < 3) {
       const out = [];
       list.forEach(c => {
         const d = DEF_COURSES.find(x => x.id === c.id);
@@ -597,7 +605,7 @@
         if (x.fam === "dgr" || /DGR|위험물/i.test(String(x.name || ""))) {
           const reg = x.kind === "정기";
           Object.assign(x, { fam: "dgr", kind: reg ? "정기" : "초기", cycle: 24, rule: "dg", legal: "law", basis: DG_BASIS, org: x.org || DG_ORG, hours: x.hours || (reg ? DG_HRS_R : DG_HRS_I) });
-          if (!x.roles.length) x.roles = ["위험물 취급자"];
+          if (!x.roles.length) x.roles = ["DGR"];
         } else if (x.fam === "inst" || /^항공보안\s*교관/.test(String(x.name || ""))) {
           Object.assign(x, { fam: "inst", kind: "1회", cycle: 0, rule: "", legal: "law", basis: INST_BASIS, org: x.org || INST_ORG, hours: x.hours || "40시간↑ · 평가 · 분야별 인증" });
         } else if (!x.legal) x.legal = "own";
@@ -613,10 +621,22 @@
       });
       t.courses = out;
     }
-    (Array.isArray(t.people) ? t.people : []).forEach(p => {
-      if (p && Array.isArray(p.roles)) p.roles = p.roles.map(r => ROLE_ALIAS[r] || r).filter((r, i, a) => r && a.indexOf(r) === i);
+    (Array.isArray(t.courses) ? t.courses : []).forEach(c => {
+      if (!c || !c.id) return;
+      if (typeof c.name === "string") c.name = nameV4(c.name);
+      if (typeof c.basis === "string") c.basis = nameV4(c.basis);
+      if (Array.isArray(c.roles)) c.roles = c.roles.map(r => ROLE_ALIAS[r] || r).filter((r, i, a) => r && a.indexOf(r) === i);
     });
-    (Array.isArray(t.records) ? t.records : []).forEach(r => { if (r && r.src === "semis-v2" && r.expire) r.expire = ""; });
+    (Array.isArray(t.people) ? t.people : []).forEach(p => {
+      if (!p) return;
+      if (Array.isArray(p.roles)) p.roles = p.roles.map(r => ROLE_ALIAS[r] || r).filter((r, i, a) => r && a.indexOf(r) === i);
+      if (p.apt && typeof p.apt === "object" && !Array.isArray(p.apt)) Object.keys(p.apt).forEach(k => {
+        const k2 = ROLE_ALIAS[k]; if (!k2) return;
+        if (!p.apt[k2]) p.apt[k2] = p.apt[k];
+        delete p.apt[k];
+      });
+    });
+    if (from < 3) (Array.isArray(t.records) ? t.records : []).forEach(r => { if (r && r.src === "semis-v2" && r.expire) r.expire = ""; });
     t.catVer = CAT_VER;
     return JSON.stringify(t) !== before;
   }
@@ -669,8 +689,10 @@
   const selfOpen = (r) => !!r && !!r.selfAt && !r.chkAt;
   const selfRecs = (pid) => records().filter(r => r.pid === pid && selfOpen(r));
   const selfPending = () => records().filter(r => selfOpen(r) && personOf(r.pid)).length;
-  const aptOf = (p, r) => (p && p.apt && typeof p.apt === "object" && isISO(p.apt[r]) ? p.apt[r] : "");
-  const isSSI = (p) => rolesOf(p).indexOf("SSI 취급자") >= 0;
+  const aptOf = (p, r) => { if (!p || !p.apt || typeof p.apt !== "object") return "";
+    if (isISO(p.apt[r])) return p.apt[r];
+    const k = Object.keys(p.apt).find(x => ROLE_ALIAS[x] === r && isISO(p.apt[x])); return k ? p.apt[k] : ""; };
+  const isSSI = (p) => rolesOf(p).indexOf("SSI") >= 0;
 
   /* ─────── 수검 대응 센터 증빙 연결 ───────
      점검 체크리스트 항목 번호 → 이 화면의 실제 기록으로 증빙 여부 판단(없으면 '증빙 없음'). 번호만 쓰고 원문은 쓰지 않는다. */
@@ -695,7 +717,7 @@
         return { ok: own.length > 0 && k === own.length, text: own.length ? `기록 8항목 완비 ${k}/${own.length}` : "교육 기록 없음" }; }
       case "2.10": case "2.10.1": { const ps = people().filter(p => active(p, t) && isSSI(p));
         if (ps.length && !PL.rows) loadPledges(false).then(ch => { if (ch && routeNow() === "audit") SeMIS.renderView(); });
-        const k = ps.filter(pledged).length; return { ok: ps.length > 0 && k === ps.length, text: ps.length ? `SSI 서약 ${k}/${ps.length}명` : "SSI 취급자 등록 없음" }; }
+        const k = ps.filter(pledged).length; return { ok: ps.length > 0 && k === ps.length, text: ps.length ? `SSI 서약 ${k}/${ps.length}명` : "SSI 대상 없음" }; }
       case "3.4": return vend("v-drug", "향정신성 물질 교육");
       case "9.2.1": return vend("v-tsa", "TSA 교육");
       case "8.2": { const v = roleValid("항공보안장비 유지보수요원", t), k = vendorRecent("v-screen", t).length;
@@ -946,7 +968,7 @@
       </section>`;
     const m = pledgeMatch(p);
     const ssiCard = `<section class="card tr-pcard" aria-label="SSI 서약">
-        <h2 class="card-title">SSI 서약${isSSI(p) ? "" : '<span class="dc-meta">SSI 취급자 아님</span>'}</h2>
+        <h2 class="card-title">SSI 서약${isSSI(p) ? "" : '<span class="dc-meta">SSI 대상 아님</span>'}</h2>
         <dl class="tr-dl">
           <div><dt>서약일</dt><dd>${pi.date ? `<span class="mono">${esc(dot(pi.date))}</span>${pi.src === "semis" ? ' <small class="tr-src">SeMIS</small>' : ' <small class="tr-src">직접 입력</small>'}` : isSSI(p) ? ui.chip(pi.ambiguous ? "동명이인 확인" : "누락", pi.ambiguous ? "amber" : "red") : "-"}</dd></div>
           <div><dt>SeMIS 명단</dt><dd>${!PL.rows ? '<span class="cell-sub">불러오는 중</span>' : !m ? "명단에 없음" : m.ambiguous ? `같은 이름 ${m.n}명 — 소속으로 구분되지 않음` : `${esc(dot(m.date))} · ${esc(m.dept || "-")} · ${esc((PL_STATE[m.state] || PL_STATE.valid)[0])}`}</dd></div>
@@ -1199,9 +1221,9 @@
     return ui.stats([
       { label: "전사 유효 서약자", value: valid, sub: "SeMIS 명단" },
       { label: "인천화물팀 서약", value: PL.rows.filter(r => inTeam(r) && r.state === "valid").length, sub: "명단 대조 · 소속" },
-      { label: "SSI 취급자 서약", value: ssi.length ? (ssi.length - miss.length) + "/" + ssi.length : "-", tone: miss.length ? "bad" : ssi.length ? "ok" : "muted" },
-      { label: "서약 누락", value: miss.length, sub: "SSI 취급자", tone: miss.length ? "bad" : "ok" }
-    ]) + (miss.length ? `<section class="card tr-due no-print"><div class="tr-sh"><h3>서약 누락 — SSI 취급자</h3><span class="tr-cnt mono">${miss.length}</span></div>
+      { label: "SSI 서약", value: ssi.length ? (ssi.length - miss.length) + "/" + ssi.length : "-", tone: miss.length ? "bad" : ssi.length ? "ok" : "muted" },
+      { label: "서약 누락", value: miss.length, sub: "SSI 대상", tone: miss.length ? "bad" : "ok" }
+    ]) + (miss.length ? `<section class="card tr-due no-print"><div class="tr-sh"><h3>서약 누락 — SSI 대상</h3><span class="tr-cnt mono">${miss.length}</span></div>
         <p class="tr-plmiss">${miss.map(p => `<span>${who(p)}${pledgeInfo(p).ambiguous ? ' <small class="tr-semis is-warn">동명이인</small>' : ""}</span>`).join("")}</p></section>` : "")
       + `<section class="card" id="tr-pllist">
         <div class="toolbar no-print">
@@ -1235,7 +1257,7 @@
     if (!window.SemisSync || !SemisSync.uploadFile) { toast("오프라인에서는 올릴 수 없습니다.", true); return; }
     for (const file of list) {
       if (file.size > FILE_MAX) { toast(file.name + ": 50MB를 넘습니다.", true); continue; }
-      toast("올리는 중: " + file.name);
+      toast("업로드 중: " + file.name);
       try {
         const up = await SemisSync.uploadFile(file, FOLDER);
         files.push({ name: up.name || file.name, size: up.size || file.size || 0, url: up.url });
@@ -1247,13 +1269,13 @@
     return `<div class="form-row"><label>${esc(label)}</label>
       <div class="au-files au-files-edit" id="${prefix}-files"></div>
       <input type="file" id="${prefix}-file" multiple hidden>
-      <button type="button" class="btn btn-ghost btn-sm" id="${prefix}-fbtn">${icon("link", 15)}<span>파일 올리기</span></button></div>`;
+      <button type="button" class="btn btn-ghost btn-sm" id="${prefix}-fbtn">${icon("link", 15)}<span>파일 첨부</span></button></div>`;
   }
   function wireFileBox(prefix, files) {
     const paint = () => {
       const box = $("#" + prefix + "-files");
       if (!box) return;
-      box.innerHTML = files.map((f, i) => `<span class="au-file"><a class="nb-file" href="${esc(f.url)}" target="_blank" rel="noopener">${icon("link", 14)}<span>${esc(f.name || "첨부")}</span></a><button type="button" class="mt-btn danger" data-fdel="${i}" aria-label="첨부 빼기">${icon("x", 14)}</button></span>`).join("");
+      box.innerHTML = files.map((f, i) => `<span class="au-file"><a class="nb-file" href="${esc(f.url)}" target="_blank" rel="noopener">${icon("link", 14)}<span>${esc(f.name || "첨부")}</span></a><button type="button" class="mt-btn danger" data-fdel="${i}" aria-label="첨부 삭제">${icon("x", 14)}</button></span>`).join("");
       $$("[data-fdel]", box).forEach(b => b.onclick = () => { files.splice(Number(b.dataset.fdel), 1); paint(); });
     };
     paint();
@@ -1312,7 +1334,8 @@
       ${dl("tp-dl-dept", depts)}
       ${actions(!!x && SeMIS.canDelete())}`, { wide: true });
     /* 직무 임명일 — 고른 직무마다 (v1.39) */
-    const aptVals = Object.assign({}, x && x.apt && typeof x.apt === "object" ? x.apt : {});
+    const aptVals = {};
+    if (x && x.apt && typeof x.apt === "object") Object.keys(x.apt).forEach(k => { const k2 = ROLE_ALIAS[k] || k; if (!isISO(aptVals[k2])) aptVals[k2] = x.apt[k]; });
     const paintApts = () => {
       const box = $("#tp-apts");
       if (!box) return;
@@ -1373,7 +1396,7 @@
     openModal(`<h3>SSI 서약 등록 <small class="au-mh">${esc(p.name)}</small></h3>
       ${fld("tp-pledge", "서약일", `<input type="date" id="tp-pledge" value="${esc(p.pledge || "")}">${semisLine(p)}`, "SeMIS 보안서약서 명단에 같은 이름의 서약이 있으면 그 서약일을 씁니다. 명단에 없는 서약(종이 등)만 입력합니다.")}
       ${fileBox("tpf", "서약서")}
-      ${isSSI(p) ? "" : `<label class="ck-rc tr-ssiadd"><input type="checkbox" id="tp-ssi" checked><span>직무에 SSI 취급자 추가</span></label>`}
+      ${isSSI(p) ? "" : `<label class="ck-rc tr-ssiadd"><input type="checkbox" id="tp-ssi" checked><span>직무에 SSI 추가</span></label>`}
       ${actions(false)}`);
     wireFileBox("tpf", pf);
     $("#modal-box [data-act=cancel]").onclick = closeModal;
@@ -1381,7 +1404,7 @@
       p.pledge = $("#tp-pledge").value || "";
       p.pledgeFiles = pf.slice();
       const add = $("#tp-ssi");
-      if (add && add.checked && !isSSI(p)) p.roles = rolesOf(p).concat(["SSI 취급자"]);
+      if (add && add.checked && !isSSI(p)) p.roles = rolesOf(p).concat(["SSI"]);
       stamp(p); SeMIS.save(); closeModal(); paint(); toast("저장했습니다.");
     };
   }
@@ -1450,7 +1473,7 @@
     const del = $("#modal-box [data-act=del]");
     if (del) del.onclick = () => confirmModal("이 이수 기록을 삭제합니다.", () => { T().records = T().records.filter(r => r.id !== x.id); SeMIS.save(); toast("삭제했습니다."); paint(); });
     $("#modal-box [data-act=ok]").onclick = () => {
-      if (!p) { toast("인원을 고르세요.", true); return; }
+      if (!p) { toast("인원을 선택하세요.", true); return; }
       const date = $("#tr-d").value || "";
       if (!isISO(date)) { toast("수료일을 입력하세요.", true); $("#tr-d").focus(); return; }
       const cid = $("#tr-c").value;
@@ -1501,7 +1524,7 @@
         ${fld("ts-inst", "교관", `<input id="ts-inst" value="${esc(v.instructor)}" maxlength="40">`)}
         ${fld("ts-eval", "평가 결과", `<input id="ts-eval" value="${esc(v.evalText)}" maxlength="120" placeholder="예: 전원 합격(평균 92점)">`)}
       </div>
-      <div class="form-row"><label>참석자 ${ui.tip("고른 인원에게 이 과정의 이수 기록이 함께 만들어집니다.", "참석자 설명")}</label>
+      <div class="form-row"><label>참석자 ${ui.tip("선택한 인원에게 이 과정의 이수 기록이 함께 등록됩니다.", "참석자 설명")}</label>
         ${pl.length ? `<div class="ck-rchoose" id="ts-pids">${pl.map(p => `<label class="ck-rc"><input type="checkbox" value="${esc(p.id)}" ${filesOf(v.pids).indexOf(p.id) >= 0 ? "checked" : ""}><span>${esc(p.name)}</span></label>`).join("")}</div>`
           : '<p class="au-none">인원 탭에서 먼저 인원을 등록하세요.</p>'}</div>
       ${fileBox("tst", "시간표")}
@@ -1524,7 +1547,7 @@
     }
     $("#modal-box [data-act=cancel]").onclick = closeModal;
     const del = $("#modal-box [data-act=del]");
-    if (del) del.onclick = () => confirmModal(`교육 기록 "${sessionTitle(x)}"을(를) 삭제합니다.${x.type !== "vendor" && filesOf(x.pids).length ? " 이 기록으로 만든 참석자 이수 기록도 함께 지워집니다." : ""}`, () => {
+    if (del) del.onclick = () => confirmModal(`교육 기록 "${sessionTitle(x)}"을(를) 삭제합니다.${x.type !== "vendor" && filesOf(x.pids).length ? " 이 기록으로 등록된 참석자 이수 기록도 함께 삭제됩니다." : ""}`, () => {
       const t = T();
       t.sessions = t.sessions.filter(s => s.id !== x.id);
       t.records = t.records.filter(r => r.sessionId !== x.id);
@@ -1655,7 +1678,7 @@
   function eduMail(l) {
     const subject = "[보안교육] 이수증 등록 안내";
     const body = ["안녕하세요. 인천화물팀 안전보안파트입니다.", "",
-      "교육기관에서 받은 보안교육 이수증을 아래 페이지에 올려 주세요.", "",
+      "교육기관에서 받은 보안교육 이수증을 아래 페이지에 등록해 주세요.", "",
       "▶ 등록 페이지: " + eduUrl(l.code), "▶ 입력: 이름 · 사번 · 이수증(PDF 또는 사진)", "",
       "이 주소는 계속 쓸 수 있습니다. 새 이수증을 받을 때마다 같은 주소에서 등록해 주세요.", "", "감사합니다."].join("\n");
     return "mailto:?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
@@ -1723,10 +1746,10 @@
             <button type="button" class="btn btn-ghost btn-sm" data-te="qr" aria-pressed="${EDU.qr === l.code}">QR</button>
             <a class="btn btn-ghost btn-sm" href="${esc(eduUrl(l.code))}" target="_blank" rel="noopener">${icon("external", 15)}<span>열기</span></a>
             <span class="spacer"></span>
-            <button type="button" class="btn btn-ghost btn-sm te-renew${armed ? " is-armed" : ""}" data-te="renew">${armed ? "한 번 더 누르면 바뀜" : "주소 바꾸기"}</button>
+            <button type="button" class="btn btn-ghost btn-sm te-renew${armed ? " is-armed" : ""}" data-te="renew">${armed ? "변경 확인" : "주소 변경"}</button>
           </div>
           ${EDU.qr === l.code && window.SemisQR ? `<div class="te-qr">${window.SemisQR.svg(eduUrl(l.code), { ecc: "M", size: 176, label: "이수 등록 QR" })}</div>` : ""}
-        </div>` : `<div class="te-link te-none">${ui.empty("등록 페이지 주소가 없습니다.", '<button type="button" class="btn btn-primary btn-sm" id="te-make">주소 만들기</button>')}</div>`)
+        </div>` : `<div class="te-link te-none">${ui.empty("등록 페이지 주소가 없습니다.", '<button type="button" class="btn btn-primary btn-sm" id="te-make">주소 생성</button>')}</div>`)
         + `<h4 class="te-h">최근 제출${selfPending() ? `<small>본인 등록 확인 전 ${selfPending()}건</small>` : ""}</h4>
         ${EDU.recent.length ? `<ul class="te-recent">${EDU.recent.map(r => { const k = KIND[r.kind] || [String(r.kind || ""), "gray"];
           return `<li><button type="button" class="te-rrow" data-te-pid="${esc(r.pid)}">
@@ -1734,7 +1757,7 @@
             ${ui.chip(k[0], k[1])}<span class="te-rn">이수증 ${Number(r.n) || 0}건</span></button></li>`; }).join("")}</ul>`
           : '<p class="au-none">제출 기록이 없습니다.</p>'}`;
       const mk = $("#te-make", box);
-      if (mk) mk.onclick = () => act(() => eduSave({ title: "보안교육 이수 등록", days: PERM_DAYS }), "등록 페이지 주소를 만들었습니다.");
+      if (mk) mk.onclick = () => act(() => eduSave({ title: "보안교육 이수 등록", days: PERM_DAYS }), "등록 페이지 주소를 생성했습니다.");
       $$("[data-te]", box).forEach(b => b.onclick = () => {
         const code = b.closest("[data-code]").dataset.code;
         const k = b.dataset.te;
@@ -1745,7 +1768,7 @@
           armed = false; clearTimeout(armT);
           /* 새 주소를 먼저 만들고 옛 주소를 닫는다 — 중간에 실패해도 등록 화면이 비지 않게 */
           act(async () => { await eduSave({ title: "보안교육 이수 등록", days: PERM_DAYS }); await eduSave({ code, active: false }); EDU.qr = ""; },
-            "주소를 바꿨습니다. 이전 주소는 더 이상 열리지 않습니다.");
+            "주소를 변경했습니다. 이전 주소는 더 이상 열리지 않습니다.");
         }
       });
       $$("[data-te-pid]", box).forEach(b => b.onclick = () => {
@@ -1814,7 +1837,12 @@
     $$("[data-tperson]", box).forEach(el => {
       const open = (ev) => { if (ev && ev.target.closest("a")) return; if (ev) ev.stopPropagation(); openPerson(el.dataset.tperson); };
       el.onclick = open;
-      if (el.tagName === "TR") el.onkeydown = (ev) => { if (ev.key === "Enter") { ev.preventDefault(); open(); } };
+      if (el.tagName === "TR" || el.getAttribute("role") === "row") el.onkeydown = (ev) => { if (ev.key === "Enter") { ev.preventDefault(); open(); } };
+    });
+    $$("[data-talall]", box).forEach(b => b.onclick = () => {
+      const on = b.getAttribute("aria-expanded") !== "true", tb = b.closest(".tr-alert").querySelector(".tr-al-tb");
+      $$(".tr-al-r[data-tperson]", tb).forEach((r, i) => { r.hidden = !on && i >= AL_MAX; });
+      b.setAttribute("aria-expanded", String(on)); b.textContent = on ? "접기" : "전체 " + tb.querySelectorAll(".tr-al-r[data-tperson]").length + "건";
     });
     $$("[data-sid]", box).forEach(el => {
       el.onclick = (ev) => { if (!ev.target.closest("a")) openSession(el.dataset.sid); };

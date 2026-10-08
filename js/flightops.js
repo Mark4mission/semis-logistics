@@ -558,7 +558,7 @@
       title: TITLE,
       meta: "에어제타 화물기 " + fleet().length + "대 · ADS-B 실시간",
       actions: `<span class="fo-upd" id="fo-upd">${esc(updText())}</span>
-        <button type="button" class="btn btn-ghost btn-sm" id="fo-refresh" title="위치 다시 읽기">${icon("refresh", 16)}<span>새로고침</span></button>
+        <button type="button" class="btn btn-ghost btn-sm" id="fo-refresh" title="위치 새로고침">${icon("refresh", 16)}<span>새로고침</span></button>
         ${canEdit ? `<button type="button" class="btn btn-ghost btn-sm" id="fo-fleet-edit">${icon("sliders", 16)}<span>기체 목록</span></button>` : ""}`
     }) + `<div id="fo-page">
       <div id="fo-alertbox"></div>

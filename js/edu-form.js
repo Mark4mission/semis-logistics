@@ -144,7 +144,7 @@
     if (!empOk(st.emp)) e.push({ f: "emp", id: "ed-emp", msg: "사번" });
     const live = st.items.filter(it => it.st !== "err");
     if (!live.length) e.push({ f: "files", id: "ed-pick", msg: "이수증" });
-    if (live.some(it => it.st === "up" || it.st === "read")) e.push({ f: "busy", id: "ed-pick", msg: "이수증 확인 중" });
+    if (live.some(it => it.st === "up" || it.st === "read")) e.push({ f: "busy", id: "ed-pick", msg: "이수증 판독 중" });
     live.filter(it => it.st === "done" && !complete(it)).forEach(it => e.push({ f: "item", id: (courseOf(it.cid) ? "ed-date-" : "ed-cid-") + it.k, msg: "과정 · 수료일", it }));
     const g = groups();
     if (g.length > MAX_RECS) e.push({ f: "many", id: "ed-pick", msg: "교육 " + MAX_RECS + "건까지" });
@@ -214,19 +214,19 @@
   function pickHTML() {
     const n = st.items.filter(it => it.st !== "err").length;
     if (n >= MAX_FILES) return "";
-    return `<button type="button" class="ed-pick" id="ed-pick">${svg(IC.up, 20)}<span class="ed-pick-t">${n ? "이수증 더 올리기" : "이수증 올리기"}</span><small>PDF · 사진${n ? "" : " · 여러 장 가능"}</small></button>`;
+    return `<button type="button" class="ed-pick" id="ed-pick">${svg(IC.up, 20)}<span class="ed-pick-t">${n ? "이수증 추가 첨부" : "이수증 첨부"}</span><small>PDF · 사진${n ? "" : " · 여러 장 가능"}</small></button>`;
   }
   /* 과정 고르기 — 법정 · 위험물 · 국제 · 사내 묶음 */
   function courseOptions(cur) {
     const all = TR().courses().filter(c => !c.vendor);
     const grp = (c) => (/^(dgr|dg)/.test(String(c.fam || "")) || /위험물|DGR/.test(String(c.name || "")) ? "dg" : c.legal === "intl" ? "intl" : c.legal === "own" ? "own" : "law");
     const opt = (c) => `<option value="${esc(c.id)}"${c.id === cur ? " selected" : ""}>${esc(c.name)}</option>`;
-    return `<option value="">과정 고르기</option>` + [["law", "항공보안법 · 교육훈련지침"], ["dg", "위험물"], ["intl", "국제 기준"], ["own", "사내 · 기타"]].map(([k, lb]) => {
+    return `<option value="">과정 선택</option>` + [["law", "항공보안법 · 교육훈련지침"], ["dg", "위험물"], ["intl", "국제 기준"], ["own", "사내 · 기타"]].map(([k, lb]) => {
       const xs = all.filter(c => grp(c) === k);
       return xs.length ? `<optgroup label="${esc(lb)}">${xs.map(opt).join("")}</optgroup>` : "";
     }).join("");
   }
-  const READ_MSG = (it) => it.rerr === "part" ? "일부만 읽었습니다. 빈 칸을 채워 주세요." : "자동으로 읽지 못했습니다. 직접 입력해 주세요.";
+  const READ_MSG = (it) => it.rerr === "part" ? "일부 항목만 판독되었습니다. 빈 칸을 입력해 주세요." : "자동 판독에 실패했습니다. 직접 입력해 주세요.";
   const canReread = (it) => it.reads < MAX_READS && /^(busy|net|parse|ai|check|http|file)/.test(it.rerr || "");
   function itemState(it) {
     if (it.st === "done") return complete(it) ? "ok" : "fix";
@@ -241,8 +241,8 @@
   }
   function itemActs(it) {
     const s = itemState(it);
-    const del = `<button type="button" class="ed-x" data-del="${it.k}" aria-label="${esc(it.name)} 빼기">${svg(IC.x, 16)}</button>`;
-    if (s === "ok" && !it.open) return `<button type="button" class="ed-x ed-x-edit" data-edit="${it.k}" aria-label="고치기">${svg(IC.edit, 16)}</button>` + del;
+    const del = `<button type="button" class="ed-x" data-del="${it.k}" aria-label="${esc(it.name)} 삭제">${svg(IC.x, 16)}</button>`;
+    if (s === "ok" && !it.open) return `<button type="button" class="ed-x ed-x-edit" data-edit="${it.k}" aria-label="수정">${svg(IC.edit, 16)}</button>` + del;
     if (s === "ok" && it.open) return `<button type="button" class="ed-x ed-x-ok" data-fold="${it.k}" aria-label="닫기">${svg(IC.check, 16)}</button>` + del;
     return del;
   }
@@ -251,15 +251,15 @@
   }
   function itemBody(it) {
     const s = itemState(it);
-    if (s === "up") return `<div class="ed-fi-s"><span class="ed-bar"><i id="ed-bar-${it.k}"></i></span><span>올리는 중</span></div>`;
-    if (s === "read") return `<div class="ed-fi-s"><span>이수증 확인 중</span></div>`;
+    if (s === "up") return `<div class="ed-fi-s"><span class="ed-bar"><i id="ed-bar-${it.k}"></i></span><span>업로드 중</span></div>`;
+    if (s === "read") return `<div class="ed-fi-s"><span>이수증 판독 중</span></div>`;
     if (s === "err") return `<small class="ed-fi-e">${esc(it.err)}</small>`;
     const c = courseOf(it.cid);
     if (s === "ok" && !it.open) {
       return `<div class="ed-fi-r"><b>${esc(c.name)}</b><span class="mono">${esc(dot(it.date))}</span>${it.org ? `<span>${esc(it.org)}</span>` : ""}${it.certNo ? `<span class="mono">No. ${esc(it.certNo)}</span>` : ""}</div>${whoWarn(it)}`;
     }
     const bad = (f) => st.tried && (f === "cid" ? !c : !dateOk(it.date));
-    return `${it.rerr && s === "fix" ? `<p class="ed-fi-n">${esc(READ_MSG(it))}${canReread(it) ? ` <button type="button" class="ed-link" data-reread="${it.k}">다시 읽기</button>` : ""}</p>` : ""}
+    return `${it.rerr && s === "fix" ? `<p class="ed-fi-n">${esc(READ_MSG(it))}${canReread(it) ? ` <button type="button" class="ed-link" data-reread="${it.k}">재판독</button>` : ""}</p>` : ""}
       ${it.course && !c ? `<p class="ed-fi-c">이수증 과정명 <b>${esc(it.course)}</b></p>` : ""}
       <div class="ed-fi-g">
         <label class="ed-f ed-f-c"><span class="ed-l">과정</span><select id="ed-cid-${it.k}" data-f="cid" aria-invalid="${bad("cid")}">${courseOptions(it.cid)}</select></label>
@@ -342,7 +342,7 @@
     const errs = check();
     const ready = !errs.length && !st.sending;
     setHTML($("#ed-fmsg", f), (st.msg ? `<p class="ed-msg" role="alert">${svg(IC.alert, 16)}<span>${esc(st.msg)}</span></p>` : "")
-      + (st.tried && errs.length ? `<p class="ed-miss"><span>남은 항목</span>${esc(missText(errs))}</p>` : ""));
+      + (st.tried && errs.length ? `<p class="ed-miss"><span>미입력 항목</span>${esc(missText(errs))}</p>` : ""));
     const b = $("#ed-submit", f);
     b.disabled = !!st.sending;
     b.dataset.ready = String(ready);
@@ -444,7 +444,7 @@
       if (j.it.st === "err") continue;
       j.it.sha = await shaOf(j.file);
       if (j.it.sha && st.items.some(x => x !== j.it && x.st !== "err" && x.sha === j.it.sha)) {
-        j.it.st = "err"; j.it.err = "같은 파일을 이미 올렸습니다";
+        j.it.st = "err"; j.it.err = "이미 첨부된 파일입니다";
         paintItem(j.it); paintPick(); paintErrs(); paintFoot();
         continue;
       }
@@ -476,7 +476,7 @@
     if (/too_many/.test(c)) return "파일이 너무 많습니다";
     if (/too_large|413/.test(c)) return "20MB 이하만 올릴 수 있습니다";
     if (/type|415/.test(c)) return "PDF · 사진만 올릴 수 있습니다";
-    if (/limit|busy/.test(c)) return "잠시 후 다시 올려 주세요";
+    if (/limit|busy/.test(c)) return "잠시 후 다시 첨부해 주세요";
     return "올리지 못했습니다";
   }
   /* 사진은 긴 변 2400px JPEG 로 줄여 올린다(판독 · 저장 용량) — 줄일 수 없으면 그대로 */
@@ -580,7 +580,7 @@
     const code = String((d && d.error) || "");
     const M = {
       required: "입력하지 않은 칸이 있습니다.", too_long: "입력한 내용이 너무 깁니다.", emp: "사번을 확인해 주세요.", roles: "다시 시도해 주세요.",
-      date: "날짜를 확인해 주세요.", course: "과정을 다시 골라 주세요.", files: "이수증을 다시 올려 주세요.",
+      date: "날짜를 확인해 주세요.", course: "과정을 다시 선택해 주세요.", files: "이수증을 다시 첨부해 주세요.",
       dup_rec: "같은 과정 · 수료일이 두 번 들어 있습니다.", too_many: "한 번에 " + MAX_RECS + "건까지 등록할 수 있습니다.",
       catalog: "과정 기준을 불러오지 못했습니다. 안전보안파트에 알려 주세요.", ticket: "보안 확인이 끝났습니다. 다시 제출해 주세요.",
       net: "서버에 연결하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 제출해 주세요."
@@ -711,7 +711,7 @@
         </dl>
       </section>
       <div class="ed-actions">
-        <button type="button" class="ed-btn ed-btn-ghost" id="ed-again">${svg(IC.plus, 18)}<span>이수증 더 등록</span></button>
+        <button type="button" class="ed-btn ed-btn-ghost" id="ed-again">${svg(IC.plus, 18)}<span>이수증 추가 등록</span></button>
         <button type="button" class="ed-btn ed-btn-ghost" id="ed-dprint">${svg(IC.print, 18)}<span>Print</span></button>
       </div>
     </div>`;
@@ -772,8 +772,8 @@
     const T = {
       nocode: ["링크를 다시 확인해 주세요", "받은 링크를 그대로 열어 주세요."],
       invalid: ["링크를 다시 확인해 주세요", "받은 링크를 그대로 열어 주세요."],
-      closed: ["쓰지 않는 주소입니다", "새 주소는 안전보안파트에 문의해 주세요."],
-      expired: ["쓰지 않는 주소입니다", "새 주소는 안전보안파트에 문의해 주세요."],
+      closed: ["사용하지 않는 주소입니다", "새 주소는 안전보안파트에 문의해 주세요."],
+      expired: ["사용하지 않는 주소입니다", "새 주소는 안전보안파트에 문의해 주세요."],
       limit: ["잠시 후 다시 열어 주세요", (Number(d.wait) || 10) + "분 뒤"],
       busy: ["잠시 후 다시 열어 주세요", ""],
       net: ["서버에 연결하지 못했습니다", "인터넷 연결을 확인해 주세요."]

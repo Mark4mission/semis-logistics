@@ -5369,7 +5369,7 @@ function makeServer(opts = {}) {
       eq(TR.shiftM("2026-05-31", -3), "2026-02-28");
       ok(TR.DEF_COURSES.every(c => c.id && c.fam && c.name && c.kind), "과정 필수 칸");
       ["항공사보안감독자", "보안검색감독자", "보안검색요원", "화물보안 업무요원", "항공보안장비 유지보수요원",
-        "보안 유관부서 관리자", "보안 유관부서 일반요원", "전화 접수자 · 안내요원", "사내보안교관", "위험물 취급자", "방사선안전관리자"].forEach(r => {
+        "보안 유관부서 관리자", "보안 유관부서 일반요원", "전화 접수자 · 안내요원", "사내보안교관", "DGR", "방사선안전관리자"].forEach(r => {
         const d = TR.ROLE_DEF.find(x => x.id === r);
         ok(d && d.basis && d.qual && d.duty && d.who, "직무 기준: " + r);
       });
@@ -5401,19 +5401,19 @@ function makeServer(opts = {}) {
       q(e, "#tr-padd").click();
       ok(qa(e, "#tp-roles .tr-rgrp").length >= 3, "직무를 근거별로 묶음");
       setv("#tp-name", "갑일");
-      qa(e, "#tp-roles input").forEach(i => { if (i.value === "항공사보안감독자" || i.value === "SSI 취급자") i.checked = true; });
+      qa(e, "#tp-roles input").forEach(i => { if (i.value === "항공사보안감독자" || i.value === "SSI") i.checked = true; });
       const ra = setv("#tp-role-add", "야간 당직");
       ra.dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
       ok(qa(e, "#tp-roles input").some(i => i.value === "야간 당직" && i.checked), "사내 직무 직접 추가");
       clickOk(e);
       eq(data().people.length, 1);
       const p = data().people[0];
-      eq(p.roles.join(","), "항공사보안감독자,SSI 취급자,야간 당직"); eq(p.dept, "인천화물팀");
+      eq(p.roles.join(","), "항공사보안감독자,SSI,야간 당직"); eq(p.dept, "인천화물팀");
       eq(TR.getState().pid, p.id, "등록 후 개인 화면");
       ok(q(e, ".tr-head .page-title").textContent === "갑일" && q(e, "[data-tback]"), "개인 화면 · 뒤로");
       ok(q(e, "#view .page-head [data-print-btn]"), "개인 화면 인쇄");
       const qs = qa(e, ".tr-qual");
-      eq(qs.length, 1, "필수 묶음 1(항공사보안책임자 · 감독자)");
+      eq(qs.length, 1, "필수 묶음 1(항공사보안감독자)");
       eq(qs[0].getAttribute("data-st"), "none");
       ok(/SSI 서약/.test(q(e, ".tr-pside").textContent) && /누락/.test(q(e, ".tr-pside").textContent));
       const s = TR.stats();
@@ -5463,7 +5463,7 @@ function makeServer(opts = {}) {
       data().records[1].expire = ""; data().records[1].date = "2026-09-20";
     });
     t("TR05 위험물: 24개월 · 만료 3개월 안 이수 시 기존 유효기한 기준 연장 · 지나면 만료", () => {
-      const p = { id: "dgp", name: "위일", dept: "인천화물팀", roles: ["위험물 취급자"] };
+      const p = { id: "dgp", name: "위일", dept: "인천화물팀", roles: ["DGR"] };
       data().people.push(p);
       data().records.push({ id: "dg1", pid: "dgp", cid: "c-dg-i", date: "2024-03-10" });
       eq(TR.expireOf(data().records.find(r => r.id === "dg1")), "2026-03-09");
@@ -5619,7 +5619,7 @@ function makeServer(opts = {}) {
       p2.left = "";
       q(e, '[data-tseg="pstate"][data-v="active"]').click();
       q(e, '[data-tseg="pview"][data-v="grid"]').click();
-      ok(q(e, ".tr-gtbl") && /항공사보안책임자 · 감독자/.test(q(e, ".tr-gtbl thead").textContent), "이수 현황표");
+      ok(q(e, ".tr-gtbl") && /항공사보안감독자/.test(q(e, ".tr-gtbl thead").textContent), "이수 현황표");
       const cell = q(e, `.tr-gtbl [data-tcell^="dgp|"]`);
       ok(cell, "칸"); cell.click();
       eq(q(e, "#tr-c").value, "c-dg-r", "기록 있으면 정기로 이수 등록");
@@ -5629,7 +5629,7 @@ function makeServer(opts = {}) {
       const m = qa(e, ".tr-mrow");
       eq(m.length, data().people.length);
       const mw = m.find(x => /위일/.test(x.textContent));
-      ok(mw.querySelector(".badge") && /위험물/.test(mw.querySelector(".tr-mx").textContent), "가장 나쁜 상태 · 다음 할 일");
+      ok(mw.querySelector(".badge") && /DGR/.test(mw.querySelector(".tr-mx").textContent), "가장 나쁜 상태 · 다음 할 일");
       mw.click();
       eq(TR.getState().pid, "dgp", "누르면 개인 화면");
       ok(q(e, ".tr-pgrid"), "모바일 개인 화면");
@@ -5655,7 +5655,7 @@ function makeServer(opts = {}) {
       TR.setState({ tab: "catalog", pid: "" }); go(e, "training");
       q(e, "#tr-courses").click();
       eq(qa(e, "#tc-rows .tr-crow").length, TR.DEF_COURSES.length);
-      const supI = qa(e, "#tc-rows .tr-crow").find(b => /항공사보안책임자 · 감독자 초기/.test(b.textContent));
+      const supI = qa(e, "#tc-rows .tr-crow").find(b => /항공사보안감독자 초기/.test(b.textContent));
       supI.click();
       ok(!q(e, "#modal-box [data-act=del]"), "쓰는 과정은 삭제 없음");
       eq(q(e, "#tc-rule").value, "kr");
@@ -5687,9 +5687,9 @@ function makeServer(opts = {}) {
       ok(/교육훈련지침 제2조8호/.test(card.textContent) && /자격 조건/.test(card.textContent) && /주요 역할/.test(card.textContent));
       ok(/16시간/.test(card.querySelector(".tr-cat").textContent) && /한국공항공사/.test(card.textContent), "시간 · 교육기관");
       ok(/1회 · 영구/.test(rd("사내보안교관").querySelector(".tr-rc").textContent));
-      ok(/보안서약/.test(rd("SSI 취급자").querySelector(".tr-rc").textContent));
+      ok(/보안서약/.test(rd("SSI").querySelector(".tr-rc").textContent));
       ok(!/확인 필요/.test(rd("ACMR").querySelector("summary").textContent) && /SSOP/.test(rd("ACMR").textContent), "ACMR = SSOP 교육 조항");
-      ok(/24개월/.test(rd("위험물 취급자").querySelector(".tr-rc").textContent));
+      ok(/24개월/.test(rd("DGR").querySelector(".tr-rc").textContent));
       ok(/연 1회 · 전후 30일/.test(rd("보안검색감독자").querySelector(".tr-rc").textContent) && /보안검색감독자 선수 과정/.test(rd("보안검색감독자").textContent), "감독자: 주기 요약은 정기 · 선수 과정 표");
       ok(/12개월|1년/.test(rd("방사선안전관리자").querySelector(".tr-rc").textContent), "방사선안전관리자");
       ok(!rd("항공사보안책임자"), "뺀 직무 없음");
@@ -5746,7 +5746,7 @@ function makeServer(opts = {}) {
       loginAs(e, "hq");
       const P = TR.pledgesState;
       const ps = data().people;
-      const add = (name, dept, extra) => { const x = Object.assign({ id: "pl-" + name + dept, name, dept, roles: ["SSI 취급자"], left: "", pledge: "", note: "" }, extra || {}); ps.push(x); return x; };
+      const add = (name, dept, extra) => { const x = Object.assign({ id: "pl-" + name + dept, name, dept, roles: ["SSI"], left: "", pledge: "", note: "" }, extra || {}); ps.push(x); return x; };
       const a = ps.find(x => x.name === "갑일");
       a.pledge = "";
       const d1 = add("동명", "인천화물팀"), d2 = add("동명", "");
@@ -5763,7 +5763,7 @@ function makeServer(opts = {}) {
       a.pledge = "2026-09-20";
       eq(TR.pledgeInfo(a).date, "2026-09-20", "입력한 서약일이 더 늦으면 그것");
       a.pledge = "";
-      const n = ps.filter(x => !x.left && (x.roles || []).indexOf("SSI 취급자") >= 0).length;
+      const n = ps.filter(x => !x.left && (x.roles || []).indexOf("SSI") >= 0).length;
       eq(TR.evidence("2.10").text, `SSI 서약 ${n - 1}/${n}명`, "동명이인 미확정 1명만 누락");
       TR.setState({ tab: "people", pid: "", q: "", roleF: "", onlyAct: false, pView: "list" }); go(e, "training");
       ok(/동명이인/.test(q(e, "#tr-body").textContent), "인원 표에 동명이인 표시");
@@ -5774,16 +5774,16 @@ function makeServer(opts = {}) {
       ok(/2026\.03\.13 · 영업운송본부 인천화물팀 · 유효/.test(q(e, ".tr-pside").textContent), "개인 화면에 SeMIS 서약 정보");
       q(e, "#tr-ppl").click();
       ok(/SeMIS 2026\.03\.13/.test(q(e, "#modal-box").textContent), "서약 등록 창에 SeMIS 줄");
-      ok(!q(e, "#tp-ssi"), "이미 SSI 취급자");
+      ok(!q(e, "#tp-ssi"), "이미 SSI 대상");
       setv("#tp-pledge", "2026-09-25"); clickOk(e);
       eq(a.pledge, "2026-09-25"); eq(TR.pledgeInfo(a).src, "manual");
       a.pledge = "";
       const c = add("병삼", "인천화물팀", { roles: [] });
       TR.openPerson(c.id);
       q(e, "#tr-ppl").click();
-      ok(q(e, "#tp-ssi").checked, "SSI 취급자 아니면 추가 선택");
+      ok(q(e, "#tp-ssi").checked, "SSI 대상 아니면 추가 선택");
       setv("#tp-pledge", "2026-09-01"); clickOk(e);
-      eq(c.roles.join(","), "SSI 취급자");
+      eq(c.roles.join(","), "SSI");
       data().people = data().people.filter(x => x.id !== c.id);
     });
     t("TR17 'SSI 서약' 탭: 인천화물팀(명단 대조 + 소속) / 전사 · 유효 / 전체 · 검색 · 누락 목록 · A4 명단(사번 · 서명 없음)", () => {
@@ -5868,11 +5868,11 @@ function makeServer(opts = {}) {
       };
       eq(TR.migrate(old), true);
       const by = (id) => old.courses.find(c => c.id === id);
-      eq(by("c-sup-i").name + "|" + by("c-sup-i").cycle + "|" + by("c-sup-i").rule, "항공사보안책임자 · 감독자 초기|12|kr");
+      eq(by("c-sup-i").name + "|" + by("c-sup-i").cycle + "|" + by("c-sup-i").rule, "항공사보안감독자 초기|12|kr");
       eq(by("c-sup-r").roles.join(","), "항공사보안감독자", "v1.38: 책임자 직무 뺌");
       eq(by("c-equip").name + "|" + by("c-equip").cycle, "항공보안장비 유지보수요원 초기|12");
       ok(!by("c-aware").all && by("c-aware").name === "보안 유관부서 일반요원 정기", "전 직원 인지교육 → 제29조②");
-      eq([by("u-dg1").cycle, by("u-dg1").rule, by("u-dg1").roles.join(","), by("u-dg2").kind].join("|"), "24|dg|위험물 취급자|정기");
+      eq([by("u-dg1").cycle, by("u-dg1").rule, by("u-dg1").roles.join(","), by("u-dg2").kind].join("|"), "24|dg|DGR|정기");
       eq([by("u-inst").kind, by("u-inst").cycle, by("u-inst").roles.join(",")].join("|"), "1회|0|", "교관 = 1회 · 영구 · 직무 지정 없음(v1.38)");
       eq(by("u-dg1").hours, "직무구분별 — Function 7.3 집체 40시간 · 7.4 온라인", "위험물 시간 빈칸 채움");
       eq(by("u-wb").legal, "own", "사내 과정 유지");
@@ -5880,7 +5880,7 @@ function makeServer(opts = {}) {
       ok(old.courses.some(c => c.id === "c-mnt-r") && old.courses.some(c => c.id === "c-bomb"), "없는 기본 과정 추가");
       const keys = old.courses.filter(c => !c.vendor).map(c => c.fam + "|" + c.kind);
       eq(keys.filter(k => k === "dgr|초기").length, 1);
-      eq(old.people[0].roles.join(","), "항공사보안감독자,항공보안장비 유지보수요원,SSI 취급자");
+      eq(old.people[0].roles.join(","), "항공사보안감독자,항공보안장비 유지보수요원,SSI");
       eq(old.records[0].expire, "", "v2 고정 유효기한 지움");
       eq(old.records[2].expire, "2024-12-31", "직접 입력한 유효기한은 유지");
       eq(old.catVer, TR.CAT_VER);
@@ -5897,16 +5897,16 @@ function makeServer(opts = {}) {
       eq(["보안 유관부서 관리자", "보안 유관부서 일반요원"].map(G).join(","), "rel,rel");
       eq(G("전화 접수자 · 안내요원"), "tel");
       eq(G("사내보안교관"), "ins");
-      eq(["위험물 취급자", "방사선안전관리자", "SSI 취급자", "ACMR", "ACC3 보안통제 직원", "야간 당직"].map(G).join(","), "etc,etc,etc,etc,etc,etc", "그 밖은 기본색");
+      eq(["DGR", "방사선안전관리자", "SSI", "ACMR", "ACC3 보안통제 직원", "야간 당직"].map(G).join(","), "etc,etc,etc,etc,etc,etc", "그 밖은 기본색");
       eq(G("보안감독자"), "sup", "옛 직무 이름도");
       ok(TR.RGROUPS.every(g => g.roles.every(r => TR.ROLES.indexOf(r) >= 0)), "직무군의 직무는 모두 기준표 정식 명칭");
-      eq(TR.sortRoles(["SSI 취급자", "사내보안교관", "화물보안 업무요원", "항공사보안감독자", "보안검색요원"]).join(","), "항공사보안감독자,보안검색요원,화물보안 업무요원,사내보안교관,SSI 취급자");
+      eq(TR.sortRoles(["SSI", "사내보안교관", "화물보안 업무요원", "항공사보안감독자", "보안검색요원"]).join(","), "항공사보안감독자,보안검색요원,화물보안 업무요원,사내보안교관,SSI");
       const css = read("css/main.css");
       TR.RGROUPS.forEach(g => ok(new RegExp("\\.rg-" + g.id + " \\{ --rc: #[0-9a-f]{6}; --rt: #[0-9a-f]{6}; --rs: #[0-9a-f]{6}; --rb: #[0-9a-f]{6}; \\}").test(css), "CSS 색: " + g.id));
       ["c1", "c2", "c3"].forEach(id => { data().people = data().people.filter(p => p.id !== id); });
       data().people.push({ id: "c1", name: "색가", dept: "인천화물팀", roles: ["화물보안 업무요원", "보안검색요원"] },
         { id: "c2", name: "색나", dept: "인천화물팀", roles: ["사내보안교관", "전화 접수자 · 안내요원"] },
-        { id: "c3", name: "색다", dept: "인천화물팀", roles: ["보안 유관부서 관리자", "SSI 취급자"] });
+        { id: "c3", name: "색다", dept: "인천화물팀", roles: ["보안 유관부서 관리자", "SSI"] });
       loginAs(e, "hq"); TR.setState({ tab: "people", pid: "", sid: "", q: "", roleF: "", rgF: "", onlyAct: false, pState: "active", pView: "list" }); go(e, "training");
       const rows = () => qa(e, ".tr-ptbl tbody tr");
       const row = (n) => rows().find(r => r.querySelector(".tbl-open").textContent === n);
@@ -5947,12 +5947,12 @@ function makeServer(opts = {}) {
       ok(/보안교관/.test(qa(e, ".tr-roles li small")[1].textContent), "군 이름");
       TR.setState({ pid: "", tab: "catalog", q: "" }); go(e, "training");
       const rd = (name) => qa(e, ".tr-rd").find(c => c.querySelector("summary .tr-rn b").textContent === name);
-      ok(rd("항공사보안감독자").classList.contains("rg-sup") && rd("보안검색요원").classList.contains("rg-scr") && rd("위험물 취급자").classList.contains("rg-etc"), "기준표 직무 줄 색");
+      ok(rd("항공사보안감독자").classList.contains("rg-sup") && rd("보안검색요원").classList.contains("rg-scr") && rd("DGR").classList.contains("rg-etc"), "기준표 직무 줄 색");
       eq(qa(e, ".tr-team .tr-rsec").map(x => x.className.split(" ")[1]).join(","), "rg-sup,rg-scr,rg-rel,rg-tel,rg-ins,rg-etc", "기준표 = 직무군 소제목(색 점)");
       TR.setState({ tab: "people" }); go(e, "training");
       q(e, "#tr-padd").click();
       eq(qa(e, "#tp-roles .tr-rgrp").map(g => g.className.split(" ")[1]).join(","), "rg-sup,rg-scr,rg-rel,rg-tel,rg-ins,rg-etc", "직무 고르기 = 직무군 묶음");
-      ok(qa(e, "#tp-roles .rg-etc input").some(i => i.value === "야간 당직") && qa(e, "#tp-roles .rg-etc input").some(i => i.value === "위험물 취급자"), "기타 = 위험물 · 사내 직무");
+      ok(qa(e, "#tp-roles .rg-etc input").some(i => i.value === "야간 당직") && qa(e, "#tp-roles .rg-etc input").some(i => i.value === "DGR"), "기타 = 위험물 · 사내 직무");
       const ra = setv("#tp-role-add", "새 당직");
       ra.dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
       ok(qa(e, "#tp-roles .rg-etc input").some(i => i.value === "새 당직" && i.checked), "직접 입력 → 기타");
@@ -5960,7 +5960,7 @@ function makeServer(opts = {}) {
       data().people = data().people.filter(p => ["c1", "c2", "c3"].indexOf(p.id) < 0);
     });
     t("TR22 인천화물팀 기준(v1.38): 판 2 → 3 이전(책임자 · 교관 직무 뺌 · 새 과정 · 협력사 대상 · 사람 · 기록 그대로) · 감독자 선수 과정 = 검색요원 초기 기록 인정", () => {
-      eq(TR.CAT_VER, 3);
+      eq(TR.CAT_VER, 4);
       const D = (id) => JSON.parse(JSON.stringify(TR.DEF_COURSES.find(c => c.id === id)));
       const v131 = (id, o) => Object.assign(D(id), o);
       const prod = { catVer: 2,
@@ -5987,7 +5987,7 @@ function makeServer(opts = {}) {
       eq(ids.indexOf("c-rad-i"), ids.indexOf("c-dg-r") + 1); eq(ids.indexOf("c-rad-r"), ids.indexOf("c-rad-i") + 1);
       eq(prod.courses.filter(c => c.fam === "dgr" && c.kind === "초기").length, 1, "위험물 초기 하나");
       eq(JSON.stringify(prod.people) + JSON.stringify(prod.records), ppl + recs, "사람 직무 · 기록은 그대로");
-      eq(prod.catVer, 3);
+      eq(prod.catVer, 4);
       const snap = JSON.stringify(prod);
       eq(TR.migrate(prod), false, "멱등"); eq(JSON.stringify(prod), snap);
       /* 감독자 선수 과정: 검색요원 초기(c-scn-i) 기록을 인정 */
@@ -6004,6 +6004,30 @@ function makeServer(opts = {}) {
       data().records.push({ id: "sn2", pid: "sv", cid: "c-scr-i", date: "2026-03-01" });
       eq(pq(), "scr-p:perm,scr:ok");
       Object.assign(data(), JSON.parse(keep));
+    });
+    t("TR23 판 3 → 4 이전(v1.42): 감독자 · DGR · SSI 표기만 바꿈 — 고친 과정 내용 · v2 기록 유효기한 · 순서는 그대로 · 임명일 키 · 멱등", () => {
+      const D = (id) => JSON.parse(JSON.stringify(TR.DEF_COURSES.find(c => c.id === id)));
+      const prod = { catVer: 3,
+        courses: [Object.assign(D("c-sup-i"), { name: "항공사보안책임자 · 감독자 초기", hours: "16시간↑ (팀 기준)" }), Object.assign(D("c-sup-r"), { name: "항공사보안책임자 · 감독자 정기" }),
+          { id: "u-dgi", fam: "dgr", name: "IATA DGR 위험물 교육 초기", kind: "초기", cycle: 24, rule: "dg", legal: "law", roles: ["위험물 취급자"] },
+          { id: "u-dgr", fam: "dgr", name: "IATA DGR 위험물 교육 정기", kind: "정기", cycle: 24, rule: "dg", legal: "law", roles: ["위험물 취급자"] },
+          Object.assign(D("c-icao-m"), { basis: "ICAO ASTP — 책임자 · 감독자 초기교육 인정 근거(지침 제17조②)" }), D("c-scr-i")],
+        people: [{ id: "k1", name: "갑", roles: ["항공사보안감독자", "위험물 취급자", "SSI 취급자", "DGR"], apt: { "위험물 취급자": "2025-03-02" } },
+          { id: "k2", name: "을", roles: ["SSI"], apt: { "SSI 취급자": "2024-01-01", "SSI": "2025-01-01" } }],
+        records: [{ id: "x1", pid: "k1", cid: "u-dgi", date: "2025-03-02", expire: "2027-03-01", src: "semis-v2" }], sessions: [] };
+      eq(TR.migrate(prod), true);
+      const by = (id) => prod.courses.find(c => c.id === id);
+      eq(prod.courses.map(c => c.name).join("|"), "항공사보안감독자 초기|항공사보안감독자 정기|DGR 초기|DGR 정기|ICAO 항공보안 관리자 (ASTP)|보안검색감독자 초기");
+      eq(by("c-sup-i").hours, "16시간↑ (팀 기준)", "고친 과정 내용 그대로(판 3 이후는 코드 정의로 덮지 않음)");
+      eq(by("u-dgi").roles.join() + "|" + by("c-icao-m").basis, "DGR|ICAO ASTP — 항공사보안감독자 초기교육 인정 근거(지침 제17조②)");
+      eq(prod.courses.length, 6, "기본 과정을 덧붙이지 않음");
+      eq(prod.people[0].roles.join(","), "항공사보안감독자,DGR,SSI");
+      eq(JSON.stringify(prod.people[0].apt) + JSON.stringify(prod.people[1].apt), '{"DGR":"2025-03-02"}{"SSI":"2025-01-01"}', "임명일 키 — 새 이름이 있으면 그것");
+      eq(prod.records[0].expire, "2027-03-01", "v2 기록 유효기한 그대로");
+      eq(prod.catVer, 4);
+      const snap = JSON.stringify(prod);
+      eq(TR.migrate(prod), false, "멱등"); eq(JSON.stringify(prod), snap);
+      eq(TR.aptOf({ apt: { "위험물 취급자": "2025-03-02" } }, "DGR"), "2025-03-02", "옛 키 임명일도 읽음");
     });
     e.w.close();
   }
@@ -6037,7 +6061,7 @@ function makeServer(opts = {}) {
       d.training = { courses: [], sessions: [{ id: "s1", type: "own", cid: "c-cargo-r", title: "화물보안 정기", date: "2026-09-10", hours: 2, pids: ["p1"] },
           { id: "s2", type: "vendor", cid: "v-screen", vendor: "가나보안", date: "2026-08-05" }],
         people: [{ id: "p1", name: "갑일", dept: "인천화물팀", roles: ["항공사보안감독자", "화물보안 업무요원"] },
-          { id: "p2", name: "을일", dept: "인천화물팀", roles: ["항공사보안감독자", "SSI 취급자"] },
+          { id: "p2", name: "을일", dept: "인천화물팀", roles: ["항공사보안감독자", "SSI"] },
           { id: "p3", name: "병일", dept: "인천화물팀", roles: ["전화 접수자 · 안내요원"] }],
         records: [{ id: "r1", pid: "p1", cid: "c-sup-r", date: "2025-10-20" }, { id: "r2", pid: "p2", cid: "c-sup-r", date: "2025-08-22" },
           { id: "r3", pid: "p3", cid: "c-bomb", date: "2024-03-08" }] };
@@ -6049,9 +6073,10 @@ function makeServer(opts = {}) {
       go(e, "aud-dash");
       ok(q(e, "#view .page-head [data-print-btn]"), "인쇄");
       const kp = q(e, "#view .stat-row").textContent;
-      ["자격 유효율", "갱신 · 조치 필요", "SSI 서약", "다음 수검", "미결 지적", "기록부 이행률", "자체 점검 지적"].forEach(k => ok(kp.indexOf(k) >= 0, k));
+      ["자격 유효율", "갱신 · 조치 필요", "SSI 서약", "다음 수검", "미결 지적", "기록부 이행률"].forEach(k => ok(kp.indexOf(k) >= 0, k));
+      ok(kp.indexOf("자체 점검") < 0, "자체 보안점검(선택 실행 · v1.42)은 지표에 없음");
       ok(/D-19/.test(kp), "다음 수검 D-day");
-      eq(qa(e, ".ie-card").length, 6, "점검 일정 달력(v1.34) · 다가오는 점검(v1.33) · 교육 · 수검 · 기록부 · 자체 보안점검(v1.32)");
+      eq(qa(e, ".ie-card").length, 5, "점검 일정 달력(v1.34) · 다가오는 점검(v1.33) · 교육 · 수검 · 기록부 — 자체 보안점검 카드 없음(v1.42)");
       ok(qa(e, ".ie-card")[0].classList.contains("ie-cal") && qa(e, ".ie-card")[1].classList.contains("ie-up"), "달력 · 다가오는 점검이 맨 위");
       ok(!q(e, ".ie-err"), "카드 오류 없음");
       const cards = qa(e, ".ie-card:not(.ie-up):not(.ie-cal)");
@@ -6078,12 +6103,12 @@ function makeServer(opts = {}) {
       const mn = e.S.data.menus.find(m => m.module === "inspection");
       mn.hidden = true;
       go(e, "aud-dash");
-      eq(qa(e, ".ie-card:not(.ie-up):not(.ie-cal)").length, 3, "보안 기록부 카드 없음");
+      eq(qa(e, ".ie-card:not(.ie-up):not(.ie-cal)").length, 2, "보안 기록부 카드 없음");
       ok(!q(e, ".ie-up [data-ie-sl]") && !q(e, ".ie-up .uc-daily"), "숨긴 보안 기록부는 다가오는 점검에서도 빠짐");
       ok(!/기록부 이행률/.test(q(e, "#view .stat-row").textContent));
       delete mn.hidden;
       loginAs(e, "manager"); go(e, "aud-dash");
-      eq(qa(e, ".ie-card").length, 6);
+      eq(qa(e, ".ie-card").length, 5);
       setW(390); go(e, "aud-dash");
       ok(qa(e, ".ie-due").length <= 5, "모바일 목록 5건까지");
       setW(1024);
@@ -7140,15 +7165,16 @@ function makeServer(opts = {}) {
     S.setToday("2026-10-03");
     loginAs(e, "hq");
 
-    t("SK01 메뉴 · 데이터 · 동기화 키 · 권한표: 점검 · 교육 허브(보안 기록부 다음) · mgr · 옛 데이터 자동 추가(멱등)", () => {
+    t("SK01 메뉴 · 데이터 · 동기화 키 · 권한표: 점검 · 교육 허브 맨 아래(v1.42 선택 실행 · '선택' 표시) · mgr · 옛 데이터 자동 추가(멱등)", () => {
       const ms = e.S.data.menus;
-      const m = ms.find(x => x.module === "selfcheck"), ins = ms.find(x => x.module === "inspection");
+      const m = ms.find(x => x.module === "selfcheck");
       ok(m && m.type === "module" && !m.planned); eq(m.parent, "hub-aud"); eq(m.vis, "mgr"); eq(m.label, "자체 보안점검");
-      ok(m.seq > ins.seq, "보안 기록부 다음");
-      ok(!ms.some(x => x.parent === "hub-aud" && x.seq > ins.seq && x.seq < m.seq), "바로 다음");
+      ok(ms.filter(x => x.parent === "hub-aud" && x !== m).every(x => x.seq < m.seq), "허브 맨 아래");
       const legacy = e.S.defaultMenus().filter(x => x.module !== "selfcheck");
       const e2 = makeEnv({ preData: { version: 1, menus: legacy } });
       eq(e2.S.data.menus.filter(x => x.module === "selfcheck").length, 1, "옛 데이터에 추가");
+      const m2 = e2.S.data.menus.find(x => x.module === "selfcheck");
+      ok(e2.S.data.menus.filter(x => x.parent === "hub-aud" && x !== m2).every(x => x.seq < m2.seq), "옛 데이터도 허브 맨 아래");
       e2.S.normalizeData(e2.S.data); e2.S.normalizeData(e2.S.data);
       eq(e2.S.data.menus.filter(x => x.module === "selfcheck").length, 1, "멱등");
       ok(Array.isArray(e2.S.data.selfChecks));
@@ -7356,16 +7382,16 @@ function makeServer(opts = {}) {
       e.S.data.audits = [];
     });
 
-    t("SK11 점검 · 교육 대시보드: 자체 보안점검 카드 · 미결 지적 → 기록 화면", () => {
+    t("SK11 선택 실행(v1.42): 점검 · 교육 대시보드 · 지표 · 일정에 넣지 않음 · 메뉴 '선택' 표시 · 화면 머리 표시", () => {
       go(e, "aud-dash");
-      const card = q(e, '.ie-card[aria-label="자체 보안점검"]');
-      ok(card, "카드");
-      ok(/자체 점검 지적/.test(q(e, "#view").textContent));
-      const b = card.querySelector("[data-ie-sc]");
-      ok(b, "미결 지적 목록");
-      b.click(); e.S.renderView();
-      ok(q(e, "#sc-page"), "기록 화면 열림");
-      S.setState({ rid: "" });
+      ok(!q(e, '.ie-card[aria-label="자체 보안점검"]'), "카드 없음");
+      ok(!/자체 점검|감독관 점검|별표/.test(q(e, "#view").textContent), "지표 · 다가오는 점검 · 달력에도 없음");
+      ok(!q(e, "[data-ie-sc], [data-ie-scf], [data-ie-scforms], [data-ie-schc]"));
+      const nv = q(e, '.nav-item[data-route="selfcheck"]');
+      ok(nv && nv.classList.contains("is-opt") && /선택/.test(nv.querySelector(".nav-tag").textContent) && !nv.querySelector(".nav-meta"), "메뉴 '선택' (미결 건수 배지 대신)");
+      go(e, "selfcheck");
+      ok(/선택 실행/.test(q(e, "#view .page-head .sc-opt").textContent) && /통계/.test(q(e, "#view .page-head .sc-opt").title), "화면 머리 표시");
+      ok(q(e, "#sc-add"), "필요할 때 실행");
     });
 
     await ta("SK12 인쇄 렌더러: A4 · 표는 블록(쪽 나눔 가능) · 칸 높이 border-box · 한글 줄 간격(칸 마지막 줄 간격 제외)", async () => {
@@ -7504,7 +7530,7 @@ function makeServer(opts = {}) {
       eq(e.errors.length, 0, e.errors.join(" | "));
     });
 
-    t("UP05 대시보드 '다가오는 점검': 달력 다음 · 받는 점검(우리 팀 수검) / 하는 점검(대상별 묶음 · 가까운 날짜 순) · 30일 안 강조 · 진행 중 수검 · 점검표 바로 가기 · 매일 점검 줄", () => {
+    t("UP05 대시보드 '다가오는 점검': 달력 다음 · ICNKF 수검 / ICNKF 실행(대상별 묶음 · 가까운 날짜 순) · 30일 안 강조 · 진행 중 수검 · 점검표 바로 가기 · 매일 점검 줄 · 자체 보안점검 제외(v1.42)", () => {
       reset();
       e.S.data.audits = [gov("2026-10-23", { end: "2026-10-24" }), Object.assign(gov("2026-12-03"), { body: "foreign", org: "TSA", kind: "ACC3 검증" })];
       e.S.data.seclog = [lg("t-daily", T0), lg("t-regular", "2026-07-15")];
@@ -7514,23 +7540,17 @@ function makeServer(opts = {}) {
       ok(cs[0].classList.contains("ie-cal") && cs[1].classList.contains("ie-up"), "달력 → 다가오는 점검");
       const rs = q(e, ".ie-up .uc-sec.is-recv"), os = q(e, ".ie-up .uc-sec.is-own");
       ok(rs && os && q(e, ".ie-up .uc-split.is-two"), "두 구역");
-      ok(rs.compareDocumentPosition(os) & 4, "받는 점검이 먼저");
-      ok(/받는 점검\s*인천화물팀 수검/.test(rs.querySelector(".uc-sh").textContent), rs.querySelector(".uc-sh").textContent);
-      ok(/하는 점검\s*인천화물팀 실행/.test(os.querySelector(".uc-sh").textContent), os.querySelector(".uc-sh").textContent);
+      ok(rs.compareDocumentPosition(os) & 4, "수검이 먼저");
+      ok(/^ICNKF 수검/.test(rs.querySelector(".uc-sh").textContent.trim()), rs.querySelector(".uc-sh").textContent);
+      ok(/^ICNKF 실행/.test(os.querySelector(".uc-sh").textContent.trim()), os.querySelector(".uc-sh").textContent);
+      ok(!/받는 점검|하는 점검/.test(q(e, ".ie-up").textContent), "옛 표기 없음");
       const gs = Array.from(os.querySelectorAll(".uc-grp")).map(g => g.dataset.grp);
-      eq(gs[0], "sc", "가장 가까운 묶음(수검 7일 전 10.16)"); ok(gs.indexOf("recv") < 0 && gs.indexOf("hazmat") > 0, gs.join(","));
-      const scRow = os.querySelector('.uc-grp[data-grp="sc"] .uc-row');
-      ok(scRow.classList.contains("is-soon") && /D-13/.test(scRow.textContent) && /10\.16\(금\)/.test(scRow.textContent), scRow.textContent);
-      eq(scRow.querySelectorAll("[data-ie-scf]").length, 8, "별표 8종 바로 가기");
-      ok(scRow.querySelector('[data-ie-scf="b1"]').classList.contains("is-draft"), "작성 중 표시");
+      ok(gs.indexOf("sc") < 0 && gs.indexOf("recv") < 0 && gs.indexOf("hazmat") >= 0, gs.join(","));
+      ok(!q(e, ".ie-up [data-ie-scf]") && !q(e, ".ie-up .uc-std") && !/별표|감독관 점검/.test(q(e, ".ie-up").textContent), "자체 보안점검(선택 실행)은 넣지 않음");
       const recv = Array.from(rs.querySelectorAll(".uc-row"));
       eq(recv.length, 2); ok(recv[0].classList.contains("is-soon") && !recv[1].classList.contains("is-soon"), "30일 안만 강조");
       ok(!recv[0].querySelector(".uc-act"), "외부 수검은 점검표 없음");
       ok(/서울지방항공청 → 인천화물팀 · ~10\.24/.test(recv[0].textContent));
-      const std = Array.from(rs.querySelectorAll(".uc-std li")).map(li => li.textContent.replace(/\s+/g, " "));
-      eq(std.length, 2, std.join(" / "));
-      ok(/항공보안감독관 · 지방항공청 → 화물터미널운영자 · 상주업체\s*항목별 주 2회 이상 · 별표 1/.test(std[0]), std[0]);
-      ok(/항공보안감독관 → 화물터미널운영자 등\s*연 1회 이상 · 별표 3 · 4 · 7 · 8 · 9 · 10 · 11/.test(std[1]), std[1]);
       const daily = os.querySelector(".uc-daily");
       ok(daily && daily.querySelector('[data-ie-sl="t-daily"]').classList.contains("is-done") && !daily.querySelector('[data-ie-sl="t-uld"]').classList.contains("is-done"), "매일 점검 오늘 상태");
       ok(daily.querySelector('[data-ie-sl="t-patrol"][data-ie-round]'), "순찰은 순찰 기록");
@@ -7552,24 +7572,17 @@ function makeServer(opts = {}) {
       go(e, "aud-dash");
       q(e, ".ie-up .uc-sec.is-recv [data-ie-aud]").click();
       eq(e.w.location.hash, "#/audit"); eq(A.getState().sel, "g2026-10-23");
-      go(e, "aud-dash");
-      q(e, '.ie-up .uc-grp[data-grp="sc"] [data-ie-scf="b4"]').click(); e.S.renderView();
-      ok(q(e, "#sc-page") && /별표 4/.test(q(e, "#view .page-title").textContent), "자체 점검표로 바로");
-      S.setState({ rid: "" });
       eq(e.errors.length, 0, e.errors.join(" | "));
     });
 
-    t("UP06 다가오는 점검: 지난 기한 · user 접근 불가 · 쓰기 권한 없으면 바로 가기 대신 이동 · 모바일 구성", () => {
+    t("UP06 다가오는 점검: 자체 보안점검 기한이 지나도 넣지 않음(v1.42 선택 실행) · user 접근 불가", () => {
       reset();
-      const rows = AD.upData(T0);
-      eq(rows.groups.find(g => g.key === "sc").rows[0].due, "", "수검 없으면 기록 없음 줄");
+      ok(!AD.upData(T0).groups.some(g => g.key === "sc"), "기록 없어도 묶음 없음");
       e.S.data.selfChecks = [sc("b4", "2025-09-01", "done")];
       const u = AD.upData(T0);
-      const r4 = u.groups.find(g => g.key === "sc").rows.find(r => r.due === "2026-09-01");
-      ok(r4 && u.late >= 1, "주기 지남");
+      ok(!u.groups.some(g => g.key === "sc") && u.late === 0, "주기가 지나도 없음");
       go(e, "aud-dash");
-      const lr = qa(e, ".ie-up .uc-row.is-late");
-      ok(lr.length >= 1 && /지남 32일/.test(lr[0].textContent), lr.length ? lr[0].textContent : "none");
+      ok(!qa(e, ".ie-up .uc-row.is-late").length, "지남 줄 없음");
       loginAs(e, "user"); go(e, "aud-dash");
       ok(!q(e, ".ie-up"), "user 없음");
       loginAs(e, "hq");
@@ -7624,30 +7637,21 @@ function makeServer(opts = {}) {
       eq(e.errors.length, 0, e.errors.join(" | "));
     });
 
-    t("UP08 대시보드 안내 편집(hq): 고르기(보안 기록부 양식 · 자체 보안점검 안내) → 각 편집 창 · manager 없음 · 하나뿐이면 바로 · 바꾼 팀 이름이 구역 제목에", () => {
+    t("UP08 대시보드 안내 편집(hq): 보안 기록부 양식 편집 창 바로(자체 보안점검 안내는 그 화면에서만 — v1.42) · manager 없음 · 보안 기록부를 숨기면 버튼 없음", () => {
       reset(); e.S.data.selfCheckCfg = { forms: {} };
       loginAs(e, "manager"); go(e, "aud-dash");
       ok(q(e, ".ie-up") && !q(e, "[data-ie-cfg]"), "manager 없음");
       loginAs(e, "hq"); go(e, "aud-dash");
       q(e, "[data-ie-cfg]").click();
-      eq(qa(e, "#modal-box [data-ie-pick]").length, 2);
-      q(e, '#modal-box [data-ie-pick="sl"]').click();
-      ok(q(e, "#sl-tpls .sl-tpl [data-k=by]") && q(e, "#sl-tpls .sl-tpl [data-k=target]"), "보안 기록부 양식 편집");
+      ok(!q(e, "#modal-box [data-ie-pick]") && q(e, "#sl-tpls .sl-tpl [data-k=by]") && q(e, "#sl-tpls .sl-tpl [data-k=target]"), "보안 기록부 양식 편집 바로");
       e.S.closeModal();
-      q(e, "[data-ie-cfg]").click(); q(e, '#modal-box [data-ie-pick="sc"]').click();
-      ok(q(e, '#modal-box [data-cf="b1"]'), "자체 보안점검 안내 편집");
-      q(e, "#sc-c-by").value = "화물보안팀"; clickOk(e);
-      ok(q(e, ".ie-up") && /받는 점검\s*화물보안팀 수검/.test(q(e, ".ie-up .uc-sec.is-recv .uc-sh").textContent), "팀 이름 반영");
-      ok(/하는 점검\s*화물보안팀 실행/.test(q(e, ".ie-up .uc-sec.is-own .uc-sh").textContent));
       const mn = e.S.data.menus.find(m => m.module === "inspection"); mn.hidden = true;
-      go(e, "aud-dash"); q(e, "[data-ie-cfg]").click();
-      ok(q(e, '#modal-box [data-cf="b1"]') && !q(e, "#modal-box [data-ie-pick]"), "하나뿐이면 바로");
-      e.S.closeModal(); delete mn.hidden;
-      e.S.data.selfCheckCfg = { forms: {} };
+      go(e, "aud-dash"); ok(!q(e, "[data-ie-cfg]"), "보안 기록부를 숨기면 편집 버튼 없음");
+      delete mn.hidden;
       eq(e.errors.length, 0, e.errors.join(" | "));
     });
 
-    t("UP09 점검 일정 달력: 이번 달 · 일요일 시작 7열 · 오늘 · 수검 기간 · 기한(기록 없는 주기의 끝) · 완료 · 자체 점검 다음 기한 · 지난달 지남 · 날짜 고르면 목록 · 바로 가기", () => {
+    t("UP09 점검 일정 달력: 이번 달 · 일요일 시작 7열 · 오늘 · 수검 기간 · 기한(기록 없는 주기의 끝) · 완료 · 자체 점검 제외(v1.42) · 지난달 지남 · 날짜 고르면 목록 · 바로 가기", () => {
       reset();
       e.S.data.audits = [gov("2026-10-22", { end: "2026-10-23" })];
       e.S.data.seclog = [lg("t-regular", "2026-10-05")];
@@ -7664,15 +7668,15 @@ function makeServer(opts = {}) {
       ok(day("2026-10-22").some(x => /is-recv/.test(x)) && day("2026-10-23").some(x => /is-recv/.test(x)), "수검 이틀");
       ok(day("2026-10-31").some(x => /is-due/.test(x) && /위해물품/.test(x)), day("2026-10-31").join());
       ok(day("2026-10-05").some(x => /is-done/.test(x) && /정기 보안점검/.test(x)), "기록한 날 완료");
-      ok(day("2026-10-01").some(x => /is-done/.test(x) && /별표 4/.test(x)), "자체 점검 완료");
-      ok(day("2026-10-15").some(x => /is-due/.test(x) && /자체 점검 7종/.test(x)), day("2026-10-15").join());
+      ok(!day("2026-10-01").some(x => /별표/.test(x)) && !day("2026-10-15").some(x => /자체 점검/.test(x)), "자체 보안점검 기한 · 완료 없음");
+      eq(cal.querySelector(".ic-lg").textContent.replace(/\s+/g, ""), "ICNKF수검ICNKF실행기한기한경과완료", "범례");
       ok(cal.querySelector(".ic-ag.is-auto") && /10\.03\(토\) · 오늘/.test(cal.querySelector(".ic-ag").textContent), "모바일 기본 목록 = 오늘");
       ok(cal.querySelector('.ic-c[data-ie-day="2026-10-22"] .ic-dots .is-recv'), "모바일 점");
       q(e, '.ie-cal .ic-c[data-ie-day="2026-10-22"] .ic-n').click();
       let ag = q(e, ".ie-cal .ic-ag");
       ok(!ag.classList.contains("is-auto") && /10\.22\(목\)/.test(ag.textContent) && ag.querySelector(".ic-ag-i.is-recv[data-ie-aud]"), ag.textContent);
-      q(e, '.ie-cal .ic-c[data-ie-day="2026-10-15"]').click();
-      ag = q(e, ".ie-cal .ic-ag"); ok(/10\.15\(목\)/.test(ag.textContent) && ag.querySelector(".ic-ag-i.is-due"), "칸 눌러 고르기");
+      q(e, '.ie-cal .ic-c[data-ie-day="2026-10-31"]').click();
+      ag = q(e, ".ie-cal .ic-ag"); ok(/10\.31\(토\)/.test(ag.textContent) && ag.querySelector(".ic-ag-i.is-due"), "칸 눌러 고르기");
       q(e, '.ie-cal [data-ie-cm="-1"]').click();
       ok(/^점검 일정/.test(q(e, ".ie-cal .card-title").textContent.trim()) && /2026년 9월/.test(q(e, ".ie-cal .card-title").textContent), "지난달");
       const sep = day("2026-09-30");
@@ -7688,14 +7692,6 @@ function makeServer(opts = {}) {
       ok(/정기 보안점검/.test(q(e, "#modal-box").textContent), "완료 → 그 기록"); e.S.closeModal();
       q(e, '.ie-cal .ic-c[data-ie-day="2026-10-22"] .ic-ev.is-recv').click();
       eq(e.w.location.hash, "#/audit"); eq(A.getState().sel, "g2026-10-22");
-      go(e, "aud-dash");
-      S.setState({ tab: "list" });
-      q(e, '.ie-cal .ic-c[data-ie-day="2026-10-15"] .ic-ev.is-due').click();
-      eq(e.w.location.hash, "#/selfcheck"); eq(S.getState().tab, "forms", "자체 점검 양식 탭");
-      go(e, "aud-dash");
-      q(e, '.ie-cal .ic-c[data-ie-day="2026-10-01"] .ic-ev.is-done').click(); e.S.renderView();
-      ok(q(e, "#sc-page"), "자체 점검 기록");
-      S.setState({ rid: "" });
       loginAs(e, "user"); go(e, "aud-dash"); ok(!q(e, ".ie-cal"), "user 없음"); loginAs(e, "hq");
       eq(e.errors.length, 0, e.errors.join(" | "));
     });
@@ -7714,11 +7710,11 @@ function makeServer(opts = {}) {
 
     t("UP11 카드 하나가 실패해도 나머지 표시 · 광고 차단기에 걸리는 클래스 이름(ad- 등) 없음 · 대시보드 클래스(uc-)는 홈 '다가오는 일정'(up-)과 분리", () => {
       reset();
-      const keep = e.w.SemisSelfcheck.nextDue;
-      e.w.SemisSelfcheck.nextDue = () => { throw new Error("boom"); };
+      const keep = e.w.SemisSeclog.nextDue;
+      e.w.SemisSeclog.nextDue = () => { throw new Error("boom"); };
       go(e, "aud-dash");
       ok(q(e, ".ie-err"), "오류 카드"); ok(q(e, ".ie-card:not(.ie-err)"), "다른 카드는 표시"); ok(q(e, "#view .stat-row"), "요약 지표");
-      e.w.SemisSelfcheck.nextDue = keep;
+      e.w.SemisSeclog.nextDue = keep;
       go(e, "aud-dash"); ok(!q(e, ".ie-err"));
       const AD_RE = /^(ad|ads|adv|advert|advertisement|sponsor|sponsored)[-_]/i;
       ok(!qa(e, "#view *").some(el => Array.from(el.classList).some(c => AD_RE.test(c))), "대시보드 DOM");
@@ -7899,7 +7895,7 @@ function makeServer(opts = {}) {
       eq(e.errors.length, 0, e.errors.join(" | "));
     });
 
-    t("VZ05 자체 보안점검: 표시 관리(양식 탭 · 관리자) · 숨긴 별표는 카드 · 기록 · 지적 · 안내 편집에서 빠짐 · 흐리게 카드 → 하드카피 기록(점검일 · 지적 · 미결) → 다음 기한 · 목록 · 대시보드 지적 · 증빙 2.7 · 안내 편집 저장해도 표시 유지", () => {
+    t("VZ05 자체 보안점검: 표시 관리(양식 탭 · 관리자) · 숨긴 별표는 카드 · 기록 · 지적 · 안내 편집에서 빠짐 · 흐리게 카드 → 하드카피 기록(점검일 · 지적 · 미결) → 다음 기한 · 목록 · 증빙 2.7 · 대시보드 제외 · 안내 편집 저장해도 표시 유지", () => {
       reset();
       const yn = S.itemsOf(S.formOf("b3")).find(i => i.k === "yn");
       e.S.data.selfChecks = [sc("b3", "2026-09-20", "done", { ans: { [yn.id]: "RC" } })];
@@ -7938,9 +7934,7 @@ function makeServer(opts = {}) {
       ok(!qa(e, "#view tr[data-scid]").length, "숨긴 별표 기록 없음");
       ok(/미결 지적\s*1/.test(q(e, "#view .stat-row").textContent), q(e, "#view .stat-row").textContent);
       go(e, "aud-dash");
-      const kp = qa(e, "#view .stat").find(x => /자체 점검 지적/.test(x.textContent)); eq(kp.querySelector(".stat-value").textContent, "1");
-      ok(q(e, '#view [data-ie-schc="b4"]'), "미결 지적 목록에 하드카피 줄");
-      ok(!q(e, '#view .uc-f[data-ie-scf="b3"]') && q(e, '#view .uc-f[data-ie-scf="b4"]'), "다가오는 점검 별표 칩");
+      ok(!/자체 점검/.test(q(e, "#view").textContent) && !q(e, '#view [data-ie-schc], #view [data-ie-scf]'), "대시보드에는 넣지 않음(v1.42 선택 실행)");
       loginAs(e, "hq"); S.setState({ tab: "forms" }); go(e, "selfcheck");
       q(e, "#sc-cfg").click();
       ok(!qa(e, "#modal-box [data-cf]").some(r => r.dataset.cf === "b3"), "안내 편집에서도 빠짐");
@@ -7951,7 +7945,7 @@ function makeServer(opts = {}) {
       eq(e.errors.length, 0, e.errors.join(" | "));
     });
 
-    t("VZ06 일정관리 연동: 주기 마감일 · 매일 점검 한 건(진행 수) · 자체 점검 기한/완료 자동 표시(저장 안 함) · 숨김 제외 · 칩 → 상세 · 아이콘 → 점검표/대시보드 · 수검 일정 바로 가기 · 필터 · 주 보기 · 모바일", () => {
+    t("VZ06 일정관리 연동: 주기 마감일 · 매일 점검 한 건(진행 수) · 자동 표시(저장 안 함) · 자체 보안점검 제외(v1.42) · 숨김 제외 · 칩 → 상세 · 아이콘 → 점검표/대시보드 · 수검 일정 바로 가기 · 필터 · 주 보기 · 모바일", () => {
       reset();
       e.S.data.seclogCfg.vis = { "t-regular": { m: "hide" } };
       e.S.data.audits = [{ id: "g1", body: "gov", org: "서울지방항공청", kind: "정기 보안점검", start: "2026-10-20", end: "2026-10-21", findings: [], checklist: [], linkCal: true }];
@@ -7972,7 +7966,7 @@ function makeServer(opts = {}) {
       loginAs(e, "admin"); setW(1024); C.setView("month"); C.setAnchor(T0); C.setFilter("", false); go(e, "schedule");
       const chip = q(e, '#view .cal-bar.is-insp[data-ik="sl:t-hazmat:2026-10"]'); ok(chip, "달력 칩");
       ok(chip.querySelector(".chip-go") && !chip.hasAttribute("data-drag") && !chip.querySelector("[data-donetoggle]"), "읽기 전용 + 아이콘");
-      ok(q(e, '#view .cal-bar.is-insp.done[data-ik="sld:2026-10-02"]') && q(e, '#view .cal-bar.is-insp[data-ik="scd:2026-10-13"]'), "완료 · 자체 점검 기한");
+      ok(q(e, '#view .cal-bar.is-insp.done[data-ik="sld:2026-10-02"]') && !q(e, '#view [data-ik^="sc"]'), "완료 · 자체 보안점검(선택 실행)은 일정에 없음");
       ok(q(e, '#view .cal-bar.is-insp.soft[data-ik="sld:2026-10-10"]') && !q(e, '#view .cal-bar.is-insp.soft[data-ik="sld:2026-10-03"]'), "앞날 매일 점검만 옅게");
       eq(JSON.stringify(e.S.data.schedules), sched0, "일정 데이터에 저장하지 않음");
       chip.click();
@@ -8000,7 +7994,7 @@ function makeServer(opts = {}) {
       ok(/하드카피 집계/.test(q(e, "#modal-box h3").textContent), "흐리게 → 집계 창");
       e.S.closeModal();
       const mn = e.S.data.menus.find(m => m.type === "module" && m.module === "inspection"); mn.hidden = true;
-      go(e, "schedule"); ok(!q(e, '#view [data-ik^="sl"]') && q(e, '#view [data-ik^="sc"]'), "보안 기록부 메뉴를 숨기면 그 일정도 빠짐");
+      go(e, "schedule"); ok(!q(e, '#view [data-ik^="sl"]'), "보안 기록부 메뉴를 숨기면 그 일정도 빠짐");
       mn.hidden = false;
       setW(390); go(e, "schedule");
       const mrow = q(e, "#view .calm-ev.is-insp.has-go"); ok(mrow && mrow.querySelectorAll(".calm-go .chip-go").length === 2, "모바일 아이콘 2");
@@ -8150,12 +8144,12 @@ function makeServer(opts = {}) {
       ok(x.E.complete(sup) && sup.cid === "c-sup-r" && sup.date === "2026-09-30" && sup.org === "교육원" && sup.certNo === "A-1" && sup.hours === 8, "판독 결과");
       const supEl = $e(x, '.ed-fi[data-k="' + sup.k + '"]');
       ok(supEl.classList.contains("is-ok") && !$e(x, "#ed-cid-" + sup.k), "읽은 이수증 = 한 줄(칸 없음)");
-      ok(/항공사보안책임자 · 감독자 정기/.test(supEl.textContent) && /2026\.09\.30/.test(supEl.textContent) && /교육원/.test(supEl.textContent) && /No\. A-1/.test(supEl.textContent), supEl.textContent);
+      ok(/항공사보안감독자 정기/.test(supEl.textContent) && /2026\.09\.30/.test(supEl.textContent) && /교육원/.test(supEl.textContent) && /No\. A-1/.test(supEl.textContent), supEl.textContent);
       ok(memo.st === "err" && /PDF · 사진만/.test($e(x, '.ed-fi[data-k="' + memo.k + '"]').textContent), "형식 거절");
       ok(big.st === "err" && /20MB/.test($e(x, '.ed-fi[data-k="' + big.k + '"]').textContent), "크기 거절");
       const scanEl = $e(x, '.ed-fi[data-k="' + scan.k + '"]');
       ok(scanEl.classList.contains("is-fix") && $e(x, "#ed-cid-" + scan.k) && $e(x, "#ed-date-" + scan.k), "못 읽으면 과정 · 수료일 칸");
-      ok(/자동으로 읽지 못했습니다/.test(scanEl.textContent) && $e(x, '[data-reread="' + scan.k + '"]'), "다시 읽기(일시 오류)");
+      ok(/자동 판독에 실패했습니다/.test(scanEl.textContent) && $e(x, '[data-reread="' + scan.k + '"]'), "다시 읽기(일시 오류)");
       const opts = $e(x, "#ed-cid-" + scan.k).innerHTML;
       ok(/<optgroup label="항공보안법 · 교육훈련지침">[\s\S]*c-sup-r[\s\S]*<\/optgroup><optgroup label="위험물">[\s\S]*c-dg-r/.test(opts), "과정 목록 = 법정 · 위험물 · 국제 · 사내 묶음");
       $e(x, '[data-reread="' + scan.k + '"]').click(); await tick(60);
@@ -8175,7 +8169,7 @@ function makeServer(opts = {}) {
       await tick(250);
       const part = x.E.st.items.find(i => i.name === "part.pdf");
       ok(part.cid === "c-dg-r" && !part.date && part.rerr === "part", "일부만 읽음");
-      ok(/일부만 읽었습니다/.test($e(x, '.ed-fi[data-k="' + part.k + '"]').textContent) && !$e(x, '[data-reread="' + part.k + '"]'), "일부 = 빈 칸만 채움(다시 읽기 없음)");
+      ok(/일부 항목만 판독되었습니다/.test($e(x, '.ed-fi[data-k="' + part.k + '"]').textContent) && !$e(x, '[data-reread="' + part.k + '"]'), "일부 = 빈 칸만 채움(다시 읽기 없음)");
       eq([x.E.certNoNorm("제 2026-0931 호"), x.E.certNoNorm("No. A-12"), x.E.certNoNorm("DG-11873")].join(), "2026-0931,A-12,DG-11873", "이수증 번호 앞뒤 말 빼기");
       eq([x.E.orgNorm("한국공항공사 항공기술훈련원장"), x.E.orgNorm("시험교육원장 (테스트용)"), x.E.orgNorm("항공보안교육센터장"), x.E.orgNorm("원장학교")].join("|"),
         "한국공항공사 항공기술훈련원|시험교육원 (테스트용)|항공보안교육센터|원장학교", "서명란 기관장 → 기관");
@@ -8230,7 +8224,7 @@ function makeServer(opts = {}) {
       x.w.close();
     });
     await ta("ED07 제출 → 등록 화면: 접수 번호 · 다음 교육(이전 기록과 이어 셈 — 이수 기간) · 이번 제출 · 직무가 있는 사람은 필수 교육도 · 제출 정보(사번) · 캘린더(.ics 접기) · 작성 내용 지움 · 이수증 더 등록", async () => {
-      const x = makeEdu({ prev: [{ id: "o1", cid: "c-sup-r", date: "2025-10-17", expire: "" }], personRoles: ["항공사보안감독자", "위험물 취급자"] }); await settle();
+      const x = makeEdu({ prev: [{ id: "o1", cid: "c-sup-r", date: "2025-10-17", expire: "" }], personRoles: ["항공사보안감독자", "DGR"] }); await settle();
       typeIn(x, "#ed-name", "홍길동"); typeIn(x, "#ed-emp", "kj1234567");
       putFiles(x, [F(x, "sup.pdf", 1000, "application/pdf")]);
       await tick(120);
@@ -8246,9 +8240,9 @@ function makeServer(opts = {}) {
       eq(sb.p.recs.length, 1);
       ok($e(x, ".ed-ok") && /AB12CD34/.test($e(x, ".ed-rcpt").textContent), "접수 번호");
       const rows = $$e(x, ".ed-next li").map(li => li.textContent.replace(/\s+/g, " "));
-      ok(rows.some(r => /항공사보안책임자 · 감독자/.test(r) && /2027\.09\.17 ~ 2027\.11\.16/.test(r) && /유효기한 2027\.10\.16/.test(r) && /이번 제출/.test(r)),
+      ok(rows.some(r => /항공사보안감독자/.test(r) && /2027\.09\.17 ~ 2027\.11\.16/.test(r) && /유효기한 2027\.10\.16/.test(r) && /이번 제출/.test(r)),
         "이수 기간 안 이수 → 종전 유효기한 다음 날부터 1년: " + rows.join(" / "));
-      ok(rows.some(r => /위험물 교육/.test(r) && /미이수/.test(r)), "관리 화면에 직무가 있으면 그 직무의 필수 교육도 표시");
+      ok(rows.some(r => /DGR/.test(r) && /미이수/.test(r)), "관리 화면에 직무가 있으면 그 직무의 필수 교육도 표시");
       const sent = $e(x, ".ed-sent").textContent.replace(/\s+/g, " ");
       ok(/KJ1234567/.test(sent) && !/직무|임명/.test(sent) && /2026\.09\.30 · 교육원 · No\. A-1 · 이수증 1/.test(sent), sent);
       eq(x.w.sessionStorage.getItem("semisl:edu2:" + C0), null, "작성 내용 지움");
@@ -8268,7 +8262,7 @@ function makeServer(opts = {}) {
       putFiles(y, [F(y, "dg1.jpg", 1000, "image/jpeg")]); await tick(120);
       $e(y, "#ed-submit").click(); await tick(80);
       const yr = $$e(y, ".ed-next li").map(li => li.textContent.replace(/\s+/g, " "));
-      ok(yr.length === 1 && /위험물/.test(yr[0]) && /이번 제출/.test(yr[0]) && /2027\.10\.14 ~ 2028\.01\.14/.test(yr[0]), yr.join(" / "));
+      ok(yr.length === 1 && /DGR/.test(yr[0]) && /이번 제출/.test(yr[0]) && /2027\.10\.14 ~ 2028\.01\.14/.test(yr[0]), yr.join(" / "));
       y.w.close();
     });
     await ta("ED08 제출 막힘 · 오류: 빈 칸이면 보내지 않고 표시 · 판독 중이면 대기 · 표 만료 → 새 표로 한 번 더 · 제한 안내 · 쓰지 않는 주소 · 잘못된 코드", async () => {
@@ -8277,12 +8271,12 @@ function makeServer(opts = {}) {
       eq(x.srv.submits.length, 0, "빈 칸이면 서버에 안 보냄");
       eq($e(x, "#ed-name").getAttribute("aria-invalid"), "true"); ok(!$e(x, "#ed-name-e").hidden && !$e(x, "#ed-emp-e").hidden);
       ok(!$e(x, "#ed-files-e").hidden && $e(x, "#ed-drop").classList.contains("is-bad"));
-      ok(/남은 항목/.test($e(x, ".ed-miss").textContent) && /이름 · 사번 · 이수증/.test($e(x, ".ed-miss").textContent));
+      ok(/미입력 항목/.test($e(x, ".ed-miss").textContent) && /이름 · 사번 · 이수증/.test($e(x, ".ed-miss").textContent));
       typeIn(x, "#ed-name", "갑"); typeIn(x, "#ed-emp", "A1");
       eq($e(x, "#ed-name").getAttribute("aria-invalid"), "false", "고치면 바로 지움");
       putFiles(x, [F(x, "sup.pdf", 1000, "application/pdf")]);
       await tick(60);
-      ok(x.E.check().some(c => c.f === "busy") && /이수증 확인 중/.test($e(x, ".ed-miss").textContent), "판독 중이면 제출 대기");
+      ok(x.E.check().some(c => c.f === "busy") && /이수증 판독 중/.test($e(x, ".ed-miss").textContent), "판독 중이면 제출 대기");
       await tick(200);
       $e(x, "#ed-submit").click(); await tick(80);
       eq(x.srv.submits.length, 2, "표 만료 → 새 표로 다시 제출");
@@ -8314,10 +8308,10 @@ function makeServer(opts = {}) {
       eq(y.E.errText({ error: "emp" }), "사번을 확인해 주세요.");
       y.w.close();
       const z1 = makeEdu({ info: { ok: false, error: "expired", expires: "2026-10-01" } }); await settle();
-      ok(/쓰지 않는 주소/.test($e(z1, ".ed-gone").textContent) && !/기한/.test($e(z1, ".ed-gone").textContent));
+      ok(/사용하지 않는 주소/.test($e(z1, ".ed-gone").textContent) && !/기한/.test($e(z1, ".ed-gone").textContent));
       z1.w.close();
       const z2 = makeEdu({ info: { ok: false, error: "closed" } }); await settle();
-      ok(/쓰지 않는 주소/.test($e(z2, ".ed-gone").textContent) && /안전보안파트/.test($e(z2, ".ed-gone").textContent)); z2.w.close();
+      ok(/사용하지 않는 주소/.test($e(z2, ".ed-gone").textContent) && /안전보안파트/.test($e(z2, ".ed-gone").textContent)); z2.w.close();
       const z3 = makeEdu({ hash: "" }); await settle();
       ok(/링크를 다시 확인/.test($e(z3, ".ed-gone").textContent)); eq(z3.srv.calls.length, 0, "코드 없으면 서버에 묻지 않음"); z3.w.close();
       const z4 = makeEdu({ hash: "#k=" + C0.toUpperCase() }); await settle();
@@ -8382,7 +8376,7 @@ function makeServer(opts = {}) {
       const e = makeEnv();
       const TR = e.w.SemisTraining;
       TR.setToday("2026-10-08");
-      e.S.data.training = { courses: [], people: [{ id: "p1", name: "홍길동", dept: "인천화물팀", roles: ["위험물 취급자"] }], records: [], sessions: [] };
+      e.S.data.training = { courses: [], people: [{ id: "p1", name: "홍길동", dept: "인천화물팀", roles: ["DGR"] }], records: [], sessions: [] };
       loginAs(e, "manager"); TR.setState({ tab: "people", pid: "" }); go(e, "training");
       ok(!q(e, "#tr-edu"), "manager 에게는 없음");
       loginAs(e, "hq"); go(e, "training");
@@ -8414,7 +8408,7 @@ function makeServer(opts = {}) {
         q(e, '.te-link [data-te="qr"]').click();
         ok(q(e, ".te-qr svg"), "QR");
         q(e, '[data-te="renew"]').click();
-        ok(/한 번 더/.test(q(e, '[data-te="renew"]').textContent), "한 번 누르면 확인 대기");
+        ok(/변경 확인/.test(q(e, '[data-te="renew"]').textContent), "한 번 누르면 확인 대기");
         eq(calls.filter(c => c[0] === "semis_logi_edu_link_save").length, 0, "아직 안 바꿈");
         q(e, '[data-te="renew"]').click();
         return tick(30);
@@ -8471,7 +8465,7 @@ function makeServer(opts = {}) {
       ok(e.S.data.training.records.find(r => r.id === "r1").chkAt, "일괄 확인");
       /* 인원 수정 폼: 직무 임명일 */
       q(e, "#tr-pedit").click();
-      const inp = q(e, '#tp-apts input[data-apt="위험물 취급자"]');
+      const inp = q(e, '#tp-apts input[data-apt="DGR"]');
       eq(inp.value, "2025-03-02");
       qa(e, "#tp-roles input").forEach(i => { if (i.value === "방사선안전관리자") { i.checked = true; i.dispatchEvent(new e.w.Event("change", { bubbles: true })); } });
       const rad = q(e, '#tp-apts input[data-apt="방사선안전관리자"]');
@@ -8480,7 +8474,7 @@ function makeServer(opts = {}) {
       q(e, "#tp-emp").value = " kj 77 ";
       clickOk(e);
       const p1 = e.S.data.training.people.find(p => p.id === "p1");
-      eq(JSON.stringify(p1.apt), JSON.stringify({ "위험물 취급자": "2025-03-02", "방사선안전관리자": "2026-02-01" }));
+      eq(JSON.stringify(p1.apt), JSON.stringify({ "DGR": "2025-03-02", "방사선안전관리자": "2026-02-01" }));
       eq(p1.emp, "KJ77", "사번 — 공백 없이 대문자");
       ok(qa(e, ".tr-dl > div").some(d => /^\s*사번\s*KJ77\s*$/.test(d.textContent)), "개인 화면 기본 정보 — 사번");
       TR.setState({ pid: "", q: "kj77" }); go(e, "training");
@@ -8499,7 +8493,7 @@ function makeServer(opts = {}) {
       await tick(150);
       const [a1, a2] = x.E.st.items;
       ok(/^[0-9a-f]{64}$/.test(a1.sha) && a1.st === "done", "첫 파일 해시 " + a1.sha);
-      ok(a2.st === "err" && /같은 파일을 이미 올렸습니다/.test($e(x, '.ed-fi[data-k="' + a2.k + '"]').textContent), "같은 내용 두 번째 파일 = 막음(이름이 달라도)");
+      ok(a2.st === "err" && /이미 첨부된 파일입니다/.test($e(x, '.ed-fi[data-k="' + a2.k + '"]').textContent), "같은 내용 두 번째 파일 = 막음(이름이 달라도)");
       eq(x.srv.calls.filter(c => c.body && c.body.op === "edu-upload").length, 1, "막은 파일은 올리지 않음");
       eq(x.E.payload().recs[0].files[0].sha, a1.sha, "보낼 때 sha 포함");
       $e(x, "#ed-submit").click(); await tick(80);
@@ -8515,7 +8509,7 @@ function makeServer(opts = {}) {
       const f1 = { name: "a.pdf", size: 270121, url: "https://x/training/1_a.pdf" }, f1b = { name: "a.pdf", size: 270121, url: "https://x/training/2_a.pdf" };
       e.S.data.training = { courses: [], sessions: [],
         people: [{ id: "p1", name: "홍길동", emp: "100046", dept: "인천화물팀", roles: ["항공사보안감독자"] },
-          { id: "p2", name: "을", dept: "인천화물팀", roles: ["위험물 취급자"] },
+          { id: "p2", name: "을", dept: "인천화물팀", roles: ["DGR"] },
           { id: "p3", name: "병", dept: "인천화물팀", roles: ["항공사보안감독자"] }],
         records: [{ id: "r0", pid: "p1", cid: "c-sup-i", date: "2023-10-13", files: [f1] },
           { id: "r1", pid: "p1", cid: "c-sup-r", date: "2025-10-17", files: [f1, f1b] },
@@ -8524,7 +8518,9 @@ function makeServer(opts = {}) {
       /* 알림 띠 */
       const al = q(e, ".tr-alert");
       ok(al && al.classList.contains("is-bad"), "만료 · 미이수가 있으면 빨간 띠");
-      const chips = qa(e, ".tr-al-c").map(b => b.textContent.replace(/\s+/g, " ").trim());
+      const chips = qa(e, ".tr-al-r[data-tperson]").map(b => b.textContent.replace(/\s+/g, " ").trim());
+      eq(qa(e, ".tr-al-hd")[0].textContent.replace(/\s+/g, ""), "상태이름교육기한남은날", "표 머리(v1.42)");
+      ok(qa(e, '.tr-al-r[data-tperson="p1"] [role=cell]').length === 5 && /26\.10\.16/.test(q(e, '.tr-al-r[data-tperson="p1"] .tr-al-dt').textContent), "기한 칸");
       ok(chips.some(c => /을/.test(c) && /미이수/.test(c)) && chips.some(c => /홍길동/.test(c) && /D-8/.test(c)), chips.join(" / "));
       ok(chips.some(c => /병/.test(c) && /D-72/.test(c)), "90일 안 만료 예정도(유효 · D-72)");
       ok(chips.findIndex(c => /을/.test(c)) < chips.findIndex(c => /홍길동/.test(c)) && chips.findIndex(c => /홍길동/.test(c)) < chips.findIndex(c => /병/.test(c)), "급한 순(미이수 → 이수 기간 → 유효)");
@@ -8566,6 +8562,31 @@ function makeServer(opts = {}) {
       /* 점검 · 교육 대시보드 */
       go(e, "aud-dash");
       ok(q(e, "[data-ie-xls]"), "점검 · 교육 대시보드 Excel");
+      eq(e.errors.length, 0, e.errors.join("|"));
+      e.w.close();
+    });
+    t("ED19 v1.42 알림판 표: 줄 → 개인 화면(누름 · Enter) · 10건까지 + '전체 n건' 펼치기/접기 · 두 단 머리 · 인쇄 때 모두", () => {
+      const e = makeEnv();
+      const TR = e.w.SemisTraining;
+      TR.setToday("2026-10-08");
+      e.S.data.training = { courses: [], sessions: [], records: [],
+        people: Array.from({ length: 12 }, (_, i) => ({ id: "q" + i, name: "인원" + i, dept: "인천화물팀", roles: ["DGR"] })) };
+      loginAs(e, "hq"); TR.setState({ tab: "people", pid: "", onlySelf: false, onlyAct: false, q: "" }); go(e, "training");
+      const rows = () => qa(e, ".tr-al-r[data-tperson]");
+      eq(rows().length, 12); eq(rows().filter(r => !r.hidden).length, 10, "10건까지");
+      eq(qa(e, ".tr-al-hd").length, 2, "두 단 머리(좁으면 하나는 CSS 로 숨김)");
+      const more = q(e, "[data-talall]");
+      eq(more.textContent, "전체 12건");
+      more.click();
+      ok(rows().every(r => !r.hidden) && more.textContent === "접기" && more.getAttribute("aria-expanded") === "true", "펼치기");
+      more.click();
+      eq(rows().filter(r => !r.hidden).length, 10, "접기"); eq(more.textContent, "전체 12건");
+      ok(/\.tr-al-r\[hidden\] \{ display: grid !important; \}/.test(read("css/main.css")), "인쇄 때 모두");
+      rows()[1].dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      eq(TR.getState().pid, "q1", "Enter → 개인 화면");
+      TR.setState({ pid: "" }); go(e, "training");
+      rows()[0].click();
+      eq(TR.getState().pid, "q0", "누르면 개인 화면");
       eq(e.errors.length, 0, e.errors.join("|"));
       e.w.close();
     });

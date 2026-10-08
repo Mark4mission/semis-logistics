@@ -90,7 +90,7 @@
     const sms = kind === "mobile" && isMobile(num) ? smsHref(num) : "";
     return `<span class="ct-num is-${kind}">
       ${tel ? `<a class="ct-tel" href="${esc(tel)}" title="전화 걸기">${ico}<span>${hl(num, q)}</span></a>` : `<span class="ct-tel" title="팩스">${ico}<span>${hl(num, q)}</span></span>`}
-      ${sms ? `<a class="ct-mini" href="${esc(sms)}" title="문자 보내기">문자</a>` : ""}
+      ${sms ? `<a class="ct-mini" href="${esc(sms)}" title="문자 발송">문자</a>` : ""}
       ${copyBtn(num, "번호 복사")}</span>`;
   }
 
@@ -192,7 +192,7 @@
       return flowPart + `<div class="card"><div class="empty" style="padding:32px 10px">
         아직 등록된 연락망이 없습니다.<br>
         <span style="font-size:.8rem;color:var(--text-3)">공용 DB에 데이터가 있으면 연결 시 자동으로 표시됩니다.${canWrite ? " 아래 버튼으로 화물팀 기본 구성(빈 서식)을 만들고 각 섹션의 ✎ 로 내용을 채워 주세요." : ""}</span>
-        ${canWrite ? '<div style="margin-top:14px"><button class="btn btn-primary btn-sm" id="ct-seed">기본 구성 만들기</button></div>' : ""}</div></div>`;
+        ${canWrite ? '<div style="margin-top:14px"><button class="btn btn-primary btn-sm" id="ct-seed">기본 구성 생성</button></div>' : ""}</div></div>`;
     }
     const wide = list.filter(s => s.type === "procedure" || s.type === "incidents");
     const grid = list.filter(s => s.type !== "procedure" && s.type !== "incidents");
@@ -619,10 +619,10 @@
     if (!ok) { toast(kind === "pdf" ? "PDF 파일만 올릴 수 있습니다." : "PNG · JPG · WebP 이미지만 올릴 수 있습니다.", true); return null; }
     if (file.size > FILE_MAX) { toast(file.name + ": 25MB를 초과합니다.", true); return null; }
     if (!window.SemisSync || typeof fetch === "undefined") { toast("오프라인에서는 올릴 수 없습니다.", true); return null; }
-    toast("올리는 중: " + file.name);
+    toast("업로드 중: " + file.name);
     try {
       const up = await SemisSync.uploadFile(file, "contacts");
-      toast("올렸습니다: " + file.name);
+      toast("업로드했습니다: " + file.name);
       return { url: up.url, name: file.name };
     } catch (e) { toast("업로드 실패 — 네트워크를 확인하세요.", true); return null; }
   }
@@ -648,8 +648,8 @@
         <div class="cfe-sec"><div class="cfe-sec-t">체계도 파일 ${tip("개정 PDF를 올리면 미리보기 이미지를 자동으로 만들고, 등록된 번호와 대조해 바뀐 번호를 보여 줍니다. 반영할 항목을 골라 반영한 뒤 저장합니다.", "체계도 파일 설명")}</div>
           <div id="cfe-files" class="cfe-files"></div>
           <div class="cfe-upbtns">
-            <label class="btn btn-ghost btn-sm">${SeMIS.icon("doc", 16)}<span>PDF 올리기</span><input type="file" id="cfe-pdf" accept="application/pdf,.pdf" hidden></label>
-            <label class="btn btn-ghost btn-sm">${SeMIS.icon("eye", 16)}<span>이미지 올리기</span><input type="file" id="cfe-img" accept="image/png,image/jpeg,image/webp" hidden></label>
+            <label class="btn btn-ghost btn-sm">${SeMIS.icon("doc", 16)}<span>PDF 첨부</span><input type="file" id="cfe-pdf" accept="application/pdf,.pdf" hidden></label>
+            <label class="btn btn-ghost btn-sm">${SeMIS.icon("eye", 16)}<span>이미지 첨부</span><input type="file" id="cfe-img" accept="image/png,image/jpeg,image/webp" hidden></label>
           </div>
           <div id="cfe-review" class="cfe-review" aria-live="polite" hidden></div></div>
         <div class="form-row"><label class="cfe-label" for="cfe-steps">보고 순서 ${tip("최초 발견자부터 한 줄에 한 단계씩 적습니다.", "보고 순서 설명")}</label>
@@ -672,9 +672,9 @@
       const box = $("#cfe-files");
       if (!box) return;
       box.innerHTML = (file ? `<div class="cfe-file">${SeMIS.icon("doc", 16)}<a href="${esc(file.url)}" target="_blank" rel="noopener">${esc(file.name)}</a>
-          <button type="button" class="link-btn" data-cfe-rm="pdf">빼기</button></div>` : "") +
+          <button type="button" class="link-btn" data-cfe-rm="pdf">삭제</button></div>` : "") +
         (img ? `<div class="cfe-file">${img.thumb ? `<img src="${esc(img.thumb)}" alt="" width="34" height="48">` : ""}<a href="${esc(img.url)}" target="_blank" rel="noopener">${esc(img.name || "미리보기 이미지")}</a>
-          <button type="button" class="link-btn" data-cfe-rm="img">빼기</button></div>` : "") ||
+          <button type="button" class="link-btn" data-cfe-rm="img">삭제</button></div>` : "") ||
         '<div class="cfe-none">올린 파일이 없습니다.</div>';
       $$("#cfe-files [data-cfe-rm]").forEach(b => b.onclick = () => {
         if (b.dataset.cfeRm === "pdf") file = null; else { img = null; imgFresh = false; }
@@ -712,7 +712,7 @@
     function missAction(it) {
       const r = rows.find(x => x.id === it.rowId);
       const other = it.f === "office" ? "mobile" : "office";
-      return r && SemisFlowPdf.keyOf(r[other]) ? FL[it.f] + " 번호 비우기" : "행 삭제";
+      return r && SemisFlowPdf.keyOf(r[other]) ? FL[it.f] + " 번호 초기화" : "행 삭제";
     }
     function rvItem(it, i) {
       const cb = `<input type="checkbox" data-rv="${i}"${it.on ? " checked" : ""}>`;
@@ -810,7 +810,7 @@
       if (!up) { setBusy(""); const b = reviewBox(); if (b) { b.hidden = true; b.innerHTML = ""; } return; }
       file = up;
       if (an && an.image && an.thumb) {
-        setBusy("미리보기 이미지를 올리는 중…");
+        setBusy("미리보기 이미지 업로드 중…");
         try {
           const [a, b] = await Promise.all([SemisSync.uploadFile(an.image, "contacts"), SemisSync.uploadFile(an.thumb, "contacts")]);
           img = { url: a.url, thumb: b.url, name: an.image.name };
@@ -911,7 +911,7 @@
       if (!canWrite) return;
       if (secs().length) { SeMIS.renderView(); return; }
       D().contacts.sections = seedSections();
-      SeMIS.save(); SeMIS.renderView(); toast("기본 구성을 만들었습니다. 각 섹션의 ✎ 로 연락처를 채워 주세요.");
+      SeMIS.save(); SeMIS.renderView(); toast("기본 구성을 생성했습니다. 각 섹션의 ✎ 로 연락처를 채워 주세요.");
     };
     const addBtn = $("#ct-addsec");
     if (addBtn) addBtn.onclick = addSectionForm;

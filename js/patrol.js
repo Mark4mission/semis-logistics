@@ -197,9 +197,9 @@
     openModal(`<h3>${esc(o.title || "서명")}</h3>
       ${o.sub ? `<p class="pt-padsub">${esc(o.sub)}</p>` : ""}
       <div class="pt-padwrap"><canvas id="pt-pad" class="pt-pad" aria-label="서명 칸"></canvas><span class="pt-padline" aria-hidden="true"></span></div>
-      ${o.askRegister ? `<label class="pt-chk"><input type="checkbox" id="pt-padreg" ${o.askRegister === "on" ? "checked" : ""}> 등록 서명도 이것으로 바꾸기</label>` : ""}
+      ${o.askRegister ? `<label class="pt-chk"><input type="checkbox" id="pt-padreg" ${o.askRegister === "on" ? "checked" : ""}> 등록 서명도 이것으로 변경</label>` : ""}
       <div class="modal-actions">
-        <button type="button" class="btn btn-ghost" data-act="clear" style="margin-right:auto">지우기</button>
+        <button type="button" class="btn btn-ghost" data-act="clear" style="margin-right:auto">초기화</button>
         <button type="button" class="btn btn-ghost" data-act="cancel">취소</button>
         <button type="button" class="btn btn-primary" data-act="ok">저장</button>
       </div>`);
@@ -349,7 +349,7 @@
       <div class="form-row"><label>서명</label><div class="pt-fsig">${signImg(st.sign, "pt-sig-lg") || '<span class="pt-none">서명 없음</span>'}
         <button type="button" class="btn btn-ghost btn-sm" id="pt-fredo">${icon("edit", 15)}<span>다시 서명</span></button></div></div>
       <div class="modal-actions">
-        <button type="button" class="btn btn-danger" data-act="del">${slot === "sup" ? "확인 취소" : "비우기"}</button><span class="spacer" style="flex:1"></span>
+        <button type="button" class="btn btn-danger" data-act="del">${slot === "sup" ? "확인 취소" : "초기화"}</button><span class="spacer" style="flex:1"></span>
         <button type="button" class="btn btn-ghost" data-act="cancel">취소</button>
         <button type="button" class="btn btn-primary" data-act="ok">저장</button>
       </div>`);
@@ -459,9 +459,9 @@
       $("#modal-box [data-act=cancel]").onclick = closeModal;
       $("#modal-box [data-act=ok]").onclick = () => {
         const p = personOf(pid);
-        if (!p) { toast("확인자를 고르세요.", true); return; }
+        if (!p) { toast("확인자를 선택하세요.", true); return; }
         const sel = ds.filter(d => picked.has(d));
-        if (!sel.length) { toast("확인할 날을 고르세요.", true); return; }
+        if (!sel.length) { toast("확인할 날을 선택하세요.", true); return; }
         withSign(p, (sign) => {
           sel.forEach(d => { const r = dayOf(d); if (r && hasPatrol(r) && !slotOk(r.sup)) stamp(d, "sup", p, sign); });
           SeMIS.save(); closeModal(); paint(); toast(sel.length + "일 확인했습니다.");
@@ -536,7 +536,7 @@
       if (!name) { toast("이름을 입력하세요.", true); $("#pt-pn").focus(); return; }
       if (peopleAll().some(p => p.name === name && (!x || p.id !== x.id))) { toast("같은 이름이 이미 있습니다.", true); return; }
       const roles = [$("#pt-rp").checked ? "patrol" : "", $("#pt-rs").checked ? "sup" : ""].filter(Boolean);
-      if (!roles.length) { toast("역할을 하나 이상 고르세요.", true); return; }
+      if (!roles.length) { toast("역할을 하나 이상 선택하세요.", true); return; }
       let p = x;
       if (p) { p.name = name; p.roles = roles; const a = $("#pt-pa"); p.active = a ? a.checked : true; }
       else {
@@ -622,7 +622,7 @@
     if (s) {
       const inner = `<b class="pt-slot-name">${esc(s.name)}</b>${signImg(s.sign) || '<span class="pt-none">서명 없음</span>'}`;
       return `<section class="pt-slot is-on${slot === "sup" ? " is-sup" : ""}" data-slot="${slot}">${label}
-        ${w && (slot === "sup" || !lock) ? `<button type="button" class="pt-slot-b" data-pt-edit="${slot}" aria-label="${esc(SLOT_NAME[slot])} ${esc(s.name)} 고치기">${inner}</button>` : `<div class="pt-slot-b">${inner}</div>`}
+        ${w && (slot === "sup" || !lock) ? `<button type="button" class="pt-slot-b" data-pt-edit="${slot}" aria-label="${esc(SLOT_NAME[slot])} ${esc(s.name)} 수정">${inner}</button>` : `<div class="pt-slot-b">${inner}</div>`}
         ${slot === "sup" && whenOf(s.at) ? `<div class="pt-slot-f">확인 <span class="mono">${esc(whenOf(s.at))}</span></div>` : ""}</section>`;
     }
     if (slot === "sup") {
@@ -686,7 +686,7 @@
           return `<li><button type="button" class="pt-item" data-ngt="${esc(it.id)}" aria-pressed="${on}" ${w && !lock ? "" : "disabled"}>
             <span class="pt-item-t">${esc(it.text)}</span><span class="pt-item-v">${on ? "이상" : "이상 없음"}</span></button></li>`;
         }).join("")}</ul></div>` : "").join("") + "</details>"
-        : ui.empty("점검사항이 없습니다.", SeMIS.canEdit() ? `<button type="button" class="btn btn-primary btn-sm" data-pt-cfg="1">${icon("sliders", 15)}<span>양식에서 넣기</span></button>` : "")}
+        : ui.empty("점검사항이 없습니다.", SeMIS.canEdit() ? `<button type="button" class="btn btn-primary btn-sm" data-pt-cfg="1">${icon("sliders", 15)}<span>양식에서 가져오기</span></button>` : "")}
     </section>`;
     return nav
       + `<div class="pt-slots${off ? " is-off" : ""}">${slots}${supCard}</div>`

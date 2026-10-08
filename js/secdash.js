@@ -554,7 +554,7 @@
       title: TITLE,
       meta: "인천화물터미널 B동",
       actions: `<span class="scr-meta" id="sd-meta">${esc(metaText())}</span>
-        <button type="button" class="btn btn-ghost btn-sm" id="sd-refresh" title="CARES에서 다시 읽기">${icon("refresh", 16)}<span>새로고침</span></button>`
+        <button type="button" class="btn btn-ghost btn-sm" id="sd-refresh" title="CARES 자료 새로고침">${icon("refresh", 16)}<span>새로고침</span></button>`
     }) + `<div id="sd-kpi">${kpiHTML(s)}</div>` +
       (scrVisible() ? SemisScreen.opsHTML() : "") +
       (SP ? SP.cardHTML() : "") +

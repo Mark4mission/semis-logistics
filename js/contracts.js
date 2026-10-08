@@ -64,7 +64,7 @@
         : ui.empty(q || kindF ? "조건에 맞는 계약이 없습니다." : "등록된 계약이 없습니다.")}</div>`;
   }
 
-  const fileChips = (files, del) => (files || []).map((f, i) => `<span class="au-file"><a class="nb-file" href="${esc(f.url)}" target="_blank" rel="noopener">${icon("link", 14)}<span>${esc(f.name || "첨부")}</span></a>${del ? `<button type="button" class="mt-btn danger" data-${del}="${i}" aria-label="첨부 빼기">${icon("x", 14)}</button>` : ""}</span>`).join("");
+  const fileChips = (files, del) => (files || []).map((f, i) => `<span class="au-file"><a class="nb-file" href="${esc(f.url)}" target="_blank" rel="noopener">${icon("link", 14)}<span>${esc(f.name || "첨부")}</span></a>${del ? `<button type="button" class="mt-btn danger" data-${del}="${i}" aria-label="첨부 삭제">${icon("x", 14)}</button>` : ""}</span>`).join("");
   function view(id) {
     const c = list().find(x => x.id === id);
     if (!c) return;
@@ -91,7 +91,7 @@
     if (!window.SemisSync || !SemisSync.uploadFile) { toast("오프라인에서는 올릴 수 없습니다.", true); return; }
     for (const file of Array.from(fl || [])) {
       if (file.size > FILE_MAX) { toast(file.name + ": 50MB를 넘습니다.", true); continue; }
-      toast("올리는 중: " + file.name);
+      toast("업로드 중: " + file.name);
       try { const up = await SemisSync.uploadFile(file, "contracts"); files.push({ name: up.name || file.name, size: up.size || file.size || 0, url: up.url }); }
       catch (e) { toast("올리지 못했습니다: " + file.name, true); }
     }
@@ -114,7 +114,7 @@
       ${f("scope", "보안 업무 범위", "예: 화물 보안검색 · 항공경비 · 위해물품 관리")}
       ${f("note", "비고")}
       <div class="form-row"><label>계약서</label><div class="au-files au-files-edit" id="cf-files"></div><input type="file" id="cf-file" multiple hidden>
-        <button type="button" class="btn btn-ghost btn-sm" id="cf-fbtn">${icon("link", 15)}<span>파일 올리기</span></button></div>
+        <button type="button" class="btn btn-ghost btn-sm" id="cf-fbtn">${icon("link", 15)}<span>파일 첨부</span></button></div>
       <div class="form-row"><label>이전 계약서</label><div class="au-files au-files-edit" id="cf-prev"></div></div>
       <div class="modal-actions">${c ? '<button type="button" class="link-btn danger" data-act="del">삭제</button><span class="spacer" style="flex:1"></span>' : ""}
         <button type="button" class="btn btn-ghost" data-act="cancel">취소</button><button type="button" class="btn btn-primary" data-act="ok">저장</button></div>`, { wide: true });
@@ -129,7 +129,7 @@
     $("#cf-file").onchange = () => { const fl = Array.from($("#cf-file").files || []); $("#cf-file").value = ""; uploadInto(files, fl, paint2); };
     $("#modal-box [data-act=cancel]").onclick = closeModal;
     const del = $("#modal-box [data-act=del]");
-    if (del) del.onclick = () => confirmModal("이 계약을 목록에서 뺄까요?", () => { D().contracts = list().filter(x => x !== c); SeMIS.save(); toast("뺐습니다."); paint(); });
+    if (del) del.onclick = () => confirmModal("이 계약을 목록에서 삭제할까요?", () => { D().contracts = list().filter(x => x !== c); SeMIS.save(); toast("삭제했습니다."); paint(); });
     $("#modal-box [data-act=ok]").onclick = () => {
       const rec = { kind: $("#cf-kind").value, from: $("#cf-from").value || "", to: $("#cf-to").value || "", open: !!$("#cf-open").checked, files: files.slice(), prev: prev.slice(), at: new Date().toISOString(), by: me() };
       ["title", "party", "period", "terminate", "owner", "scope", "note"].forEach(k => { rec[k] = norm($("#cf-" + k).value); });

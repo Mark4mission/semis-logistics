@@ -403,7 +403,7 @@
           ${kv("주관 · 관리 부서", esc(pl.dept || "-"))}${kv("제정권자", esc(pl.owner || "-"))}${kv("최초 시행", `<span class="mono">${esc(pl.firstDate || "-")}</span>`)}
           ${kv("현행", esc(pl.rev || "-") + (pl.revDate ? ` <span class="mono">${esc(pl.revDate)}</span>` : ""))}
           ${kv("원본", pl.fileUrl ? `<a href="${esc(pl.fileUrl)}${pl.fileUrl.indexOf("?") < 0 ? "?download=" + encodeURIComponent(pl.fileName || "SERP.docx") : ""}">${icon("down", 15)} ${esc(pl.fileName || "원본 파일")}</a>` : '<span class="sp-miss">없음</span>')}</dl>
-        ${ed ? `<div class="sp-file m-ed"><button type="button" class="btn btn-ghost btn-sm" id="sp-file-up">${icon("doc", 15)}<span>원본 파일 ${pl.fileUrl ? "교체" : "올리기"}</span></button>
+        ${ed ? `<div class="sp-file m-ed"><button type="button" class="btn btn-ghost btn-sm" id="sp-file-up">${icon("doc", 15)}<span>원본 파일 ${pl.fileUrl ? "교체" : "등록"}</span></button>
           <input type="file" id="sp-file" hidden accept=".docx,.pdf,.hwp,.hwpx,.doc"></div>` : ""}
       </section>
       <section class="card sp-sec"${ui.mf("purpose")}><header class="sp-sh mf-h"><span class="sp-no mono">1</span><h3>목적 · 적용 범위</h3></header>
@@ -531,7 +531,7 @@
         const inp = f.long ? `<textarea id="${id}" data-nf="${esc(f.id)}" rows="2" placeholder="${esc(f.hint || "")}"${live ? "" : " readonly"}>${esc(val)}</textarea>`
           : `<input id="${id}" data-nf="${esc(f.id)}" value="${esc(val)}" placeholder="${esc(arr(f.opts).length ? "직접 입력" : (f.hint || ""))}" autocomplete="off"${f.fleet ? ' list="sp-fleet"' : ""}${live ? "" : " readonly"}>`;
         const quick = !live ? "" : f.auto ? `<button type="button" class="link-btn" data-nf-now="${esc(f.id)}">지금 · 기록자</button>`
-          : f.start ? `<button type="button" class="link-btn" data-nf-start="${esc(f.id)}">발생 시각 넣기</button>` : "";
+          : f.start ? `<button type="button" class="link-btn" data-nf-start="${esc(f.id)}">발생 시각 입력</button>` : "";
         return `<div class="sp-nrow"><label for="${id}"><span class="mono">${i + 1})</span> ${esc(f.label)}</label><div class="sp-nin">${opts}${inp}${quick}</div></div>`;
       }).join("")}</div>
       ${fleet.length ? `<datalist id="sp-fleet">${fleet.map(a => `<option value="${esc(a.model || a.type || "")} ${esc(a.reg)}">`).join("")}</datalist>` : ""}
@@ -955,7 +955,7 @@
     openModal(`<h3>비상소집</h3>
       <div class="form-row"><label for="sp-rc-msg">문자 내용</label><textarea id="sp-rc-msg" rows="3">${esc(msg)}</textarea></div>
       <div class="sp-rcl">${ps.map(p => `<label><input type="checkbox" data-rc="${esc(p.id)}" checked><span>${esc(p.name)}</span>${rchip(p.role)}<span class="mono">${esc(p.mobile)}</span></label>`).join("")}</div>
-      <div class="sp-nacts"><a class="btn btn-primary btn-sm" id="sp-rc-sms" href="#">${icon("megaphone", 15)}<span>문자 보내기</span></a>
+      <div class="sp-nacts"><a class="btn btn-primary btn-sm" id="sp-rc-sms" href="#">${icon("megaphone", 15)}<span>문자 발송</span></a>
         <button type="button" class="btn btn-ghost btn-sm" id="sp-rc-copy">${icon("doc", 15)}<span>내용 복사</span></button>
         <button type="button" class="btn btn-ghost btn-sm" id="sp-rc-share">${icon("forward", 15)}<span>공유 (카카오톡 등)</span></button></div>
       <div class="modal-actions"><button type="button" class="btn btn-ghost" data-act="cancel">닫기</button><button type="button" class="btn btn-danger" data-act="ok">소집 완료 기록</button></div>`, { wide: true });
@@ -1052,7 +1052,7 @@
         try {
           const res = await SemisSync.uploadFile(f, "crisis");
           const pl = ensurePlan(); pl.fileUrl = res.url; pl.fileName = f.name;
-          commit("원본 파일을 올렸습니다.");
+          commit("원본 파일을 등록했습니다.");
         } catch (e) { toast("올리지 못했습니다.", true); }
       };
     }

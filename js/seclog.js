@@ -491,7 +491,7 @@
     if (!window.SemisSync || !SemisSync.uploadFile) { toast("오프라인에서는 올릴 수 없습니다.", true); return; }
     for (const file of arr) {
       if (file.size > FILE_MAX) { toast(file.name + ": 50MB를 넘습니다.", true); continue; }
-      toast("올리는 중: " + file.name);
+      toast("업로드 중: " + file.name);
       try { const up = await SemisSync.uploadFile(file, FOLDER); files.push({ name: up.name || file.name, size: up.size || file.size || 0, url: up.url }); }
       catch (e) { toast("올리지 못했습니다: " + file.name, true); }
     }
@@ -540,7 +540,7 @@
         <input type="file" id="sl-cam" accept="image/*" capture="environment" hidden>
         <input type="file" id="sl-file" multiple hidden>
         <div class="sl-fbtns">${t.photo !== false ? `<button type="button" class="btn btn-ghost btn-sm" id="sl-cbtn">${icon("scan", 15)}<span>사진 찍기</span></button>` : ""}
-          <button type="button" class="btn btn-ghost btn-sm" id="sl-fbtn">${icon("link", 15)}<span>파일 올리기</span></button></div></div>
+          <button type="button" class="btn btn-ghost btn-sm" id="sl-fbtn">${icon("link", 15)}<span>파일 첨부</span></button></div></div>
       <datalist id="sl-dl-by">${byNames().map(n => `<option value="${esc(n)}">`).join("")}</datalist>
       <div class="modal-actions">
         ${canDel ? '<button type="button" class="btn btn-danger" data-act="del">삭제</button><span class="spacer" style="flex:1"></span>' : ""}
@@ -565,7 +565,7 @@
       box.innerHTML = rounds.length ? rounds.map((r, i) => `<div class="sl-round"><input type="time" data-rt="${i}" value="${esc(r.t)}" aria-label="순찰 시각">
         <input data-rb="${i}" value="${esc(r.by || "")}" maxlength="40" placeholder="순찰자" list="sl-dl-by" aria-label="순찰자">
         <input data-rn="${i}" value="${esc(r.note || "")}" maxlength="200" placeholder="특이사항" aria-label="특이사항">
-        <button type="button" class="mt-btn danger" data-rdel="${i}" aria-label="순찰 빼기">${icon("x", 14)}</button></div>`).join("") : '<p class="au-none">순찰 기록이 없습니다.</p>';
+        <button type="button" class="mt-btn danger" data-rdel="${i}" aria-label="순찰 삭제">${icon("x", 14)}</button></div>`).join("") : '<p class="au-none">순찰 기록이 없습니다.</p>';
       $$("[data-rt]", box).forEach(el => el.onchange = () => { if (isHM(el.value)) rounds[Number(el.dataset.rt)].t = el.value; });
       $$("[data-rb]", box).forEach(el => el.oninput = () => { rounds[Number(el.dataset.rb)].by = norm(el.value); });
       $$("[data-rn]", box).forEach(el => el.oninput = () => { rounds[Number(el.dataset.rn)].note = norm(el.value); });
@@ -576,7 +576,7 @@
     if (radd) radd.onclick = () => { rounds.push({ t: nowHM(), by: norm($("#sl-by").value), note: "" }); paintRounds(); };
     const paintFiles = () => {
       const box = $("#sl-files");
-      box.innerHTML = files.map((f, i) => `<span class="au-file"><a class="nb-file" href="${esc(f.url)}" target="_blank" rel="noopener">${icon("link", 14)}<span>${esc(f.name || "첨부")}</span></a><button type="button" class="mt-btn danger" data-fdel="${i}" aria-label="첨부 빼기">${icon("x", 14)}</button></span>`).join("");
+      box.innerHTML = files.map((f, i) => `<span class="au-file"><a class="nb-file" href="${esc(f.url)}" target="_blank" rel="noopener">${icon("link", 14)}<span>${esc(f.name || "첨부")}</span></a><button type="button" class="mt-btn danger" data-fdel="${i}" aria-label="첨부 삭제">${icon("x", 14)}</button></span>`).join("");
       $$("[data-fdel]", box).forEach(b => b.onclick = () => { files.splice(Number(b.dataset.fdel), 1); paintFiles(); });
     };
     paintFiles();
@@ -591,7 +591,7 @@
       if (date > todayISO()) { toast("앞으로의 날짜에는 기록할 수 없습니다.", true); return; }
       const by = norm($("#sl-by").value);
       if (!by) { toast("점검자를 입력하세요.", true); $("#sl-by").focus(); return; }
-      if (checks.length && checks.some(c => !c.v)) { toast("점검 항목의 결과를 모두 고르세요.", true); return; }
+      if (checks.length && checks.some(c => !c.v)) { toast("점검 항목의 결과를 모두 선택하세요.", true); return; }
       if (t.kind === "flight" && !norm($("#sl-fno").value)) { toast("편명을 입력하세요.", true); $("#sl-fno").focus(); return; }
       if (t.kind === "patrol" && !rounds.length) { toast("순찰을 하나 이상 추가하세요.", true); return; }
       const res = checks.length ? (checks.some(c => c.v === "ng") ? "ng" : "ok") : ($("#sl-result [aria-pressed=true]") || { dataset: { v: "ok" } }).dataset.v;

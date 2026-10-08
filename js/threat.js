@@ -370,7 +370,7 @@
         <button type="button" class="btn btn-ghost btn-sm" id="tc-print-blank">${icon("print", 15)}<span>빈 보고양식</span></button>
         ${canW() ? `<button type="button" class="btn btn-ghost btn-sm m-ed" id="tc-form-edit">${icon("edit", 15)}<span>양식 편집</span></button>
         <button type="button" class="btn btn-ghost btn-sm m-ed" id="tc-file-up">${icon("plus", 15)}<span>원본 파일</span></button><input type="file" id="tc-file" hidden>` : ""}</div>
-      ${fs.length ? `<div class="au-files tc-orig">${fs.map((f, i) => `<span class="au-file"><a class="nb-file" href="${esc(f.url)}" target="_blank" rel="noopener">${icon("link", 14)}<span>${esc(f.name || "원본")}</span></a>${canW() ? `<button type="button" class="mt-btn danger m-ed" data-orig-del="${i}" aria-label="원본 빼기">${icon("x", 14)}</button>` : ""}</span>`).join("")}</div>` : ""}
+      ${fs.length ? `<div class="au-files tc-orig">${fs.map((f, i) => `<span class="au-file"><a class="nb-file" href="${esc(f.url)}" target="_blank" rel="noopener">${icon("link", 14)}<span>${esc(f.name || "원본")}</span></a>${canW() ? `<button type="button" class="mt-btn danger m-ed" data-orig-del="${i}" aria-label="원본 삭제">${icon("x", 14)}</button>` : ""}</span>`).join("")}</div>` : ""}
       <section class="card tc-paper">${formSecs().length ? paperHTML(formSecs(), null) : ui.empty("등록된 보고양식이 없습니다.")}</section>
     </div>`;
   }
@@ -534,7 +534,7 @@
             `<button type="button" class="tc-rank" data-cmd-rank="${i}" aria-pressed="${c.rank === i}"${live ? "" : " disabled"}><span class="mono">${i + 1}</span>${esc(o)}</button>`).join("")}</div>` : ""}
           <div class="tc-m2"><label class="tc-fl" for="tc-cmd-lead"><span class="tc-flb">통제반장</span><input id="tc-cmd-lead" value="${esc(drafts["tc-cmd-lead"] != null ? drafts["tc-cmd-lead"] : (c.lead || ""))}" autocomplete="off"${live ? "" : " readonly"}></label>
             <label class="tc-fl" for="tc-cmd-place"><span class="tc-flb">설치 장소</span><input id="tc-cmd-place" value="${esc(drafts["tc-cmd-place"] != null ? drafts["tc-cmd-place"] : (c.place || ""))}" placeholder="${esc(cp.place || "")}" autocomplete="off"${live ? "" : " readonly"}></label></div>
-          ${live ? `<div class="sp-nacts"><button type="button" class="btn btn-primary btn-sm" id="tc-cmd-save">${icon("check", 15)}<span>${c.at ? "고치기" : "구성 기록"}</span></button></div>` : ""}</section>
+          ${live ? `<div class="sp-nacts"><button type="button" class="btn btn-primary btn-sm" id="tc-cmd-save">${icon("check", 15)}<span>${c.at ? "수정" : "구성 기록"}</span></button></div>` : ""}</section>
         ${live && SeMIS.hasModule && SeMIS.hasModule("serp") ? `<p class="tc-esc">${icon("alert", 15)}<span>위기상황으로 번지면</span><button type="button" class="link-btn" data-go-serp>팀위기대응계획 (SERP)</button></p>` : ""}
       </div></div>`;
   }
@@ -554,7 +554,7 @@
       <div>
         <section class="card sp-sec tc-files"><header class="sp-sh"><h3>첨부</h3><span class="sp-mut">녹취 파일 · 보고양식 사진 등</span><span class="spacer"></span>
             ${live ? `<button type="button" class="btn btn-ghost btn-sm" id="tc-up">${icon("plus", 15)}<span>파일</span></button><input type="file" id="tc-upf" multiple hidden>` : ""}</header>
-          ${fs.length ? `<div class="au-files">${fs.map((f, i) => `<span class="au-file"><a class="nb-file" href="${esc(f.url)}" target="_blank" rel="noopener">${icon("link", 14)}<span>${esc(f.name || "첨부")}</span></a>${live ? `<button type="button" class="mt-btn danger" data-fdel="${i}" aria-label="첨부 빼기">${icon("x", 14)}</button>` : ""}</span>`).join("")}</div>`
+          ${fs.length ? `<div class="au-files">${fs.map((f, i) => `<span class="au-file"><a class="nb-file" href="${esc(f.url)}" target="_blank" rel="noopener">${icon("link", 14)}<span>${esc(f.name || "첨부")}</span></a>${live ? `<button type="button" class="mt-btn danger" data-fdel="${i}" aria-label="첨부 삭제">${icon("x", 14)}</button>` : ""}</span>`).join("")}</div>`
             : `<p class="sp-miss">첨부 없음</p>`}</section>
         <section class="card sp-sec"><header class="sp-sh"><h3>처리 결과 · 상황 종료</h3></header>
           <textarea id="tc-result" rows="4" placeholder="수색 · 조치 결과, 상황 종료 시각과 판단"${live || (run.end && canW()) ? "" : " readonly"}>${esc(res)}</textarea></section>
@@ -869,7 +869,7 @@
       };
     }
     $$("[data-fdel]", root).forEach(b => b.onclick = () => confirmModal("이 첨부를 뺍니다.", () =>
-      mutRun(r => { const fs = filesOf(r.files); fs.splice(Number(b.dataset.fdel), 1); r.files = fs; }, "뺐습니다.")));
+      mutRun(r => { const fs = filesOf(r.files); fs.splice(Number(b.dataset.fdel), 1); r.files = fs; }, "삭제했습니다.")));
   }
   function saveAns(key, val) {
     const r = curRun();
@@ -972,7 +972,7 @@
     $("#modal-box [data-act=ok]").onclick = () => {
       const date = $("#tc-c-date").value, by = norm($("#tc-c-by").value), note = norm($("#tc-c-note").value);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { toast("점검일을 입력하세요.", true); return; }
-      if (!Object.keys(rows).length) { toast("점검 결과를 하나 이상 고르세요.", true); return; }
+      if (!Object.keys(rows).length) { toast("점검 결과를 하나 이상 선택하세요.", true); return; }
       closeModal();
       const rec = { date, by, rows, note };
       if (c) SeMIS.data[CKEY] = checks().map(x => x.id === id ? Object.assign({}, x, rec, { updatedAt: nowISO() }) : x);
@@ -1105,7 +1105,7 @@
     $$("[data-chain-edit]", root).forEach(b => b.onclick = () => chainForm(b.dataset.chainEdit));
     $$("[data-sec-edit]", root).forEach(b => b.onclick = () => secForm(b.dataset.secEdit));
     $$("[data-orig-del]", root).forEach(b => b.onclick = () => confirmModal("이 원본 파일을 목록에서 뺍니다.", () => {
-      const fs = arr(P().files).filter(f => f && f.url); fs.splice(Number(b.dataset.origDel), 1); ensurePlan().files = fs; commit("뺐습니다.");
+      const fs = arr(P().files).filter(f => f && f.url); fs.splice(Number(b.dataset.origDel), 1); ensurePlan().files = fs; commit("삭제했습니다.");
     }));
     const up = $("#tc-file-up", root), file = $("#tc-file", root);
     if (up && file) {
@@ -1117,7 +1117,7 @@
         try {
           const res = await SemisSync.uploadFile(f, FOLDER);
           const pl = ensurePlan(); pl.files = arr(pl.files).concat([{ url: res.url, name: f.name }]);
-          commit("원본 파일을 올렸습니다.");
+          commit("원본 파일을 등록했습니다.");
         } catch (e) { toast("올리지 못했습니다.", true); }
       };
     }

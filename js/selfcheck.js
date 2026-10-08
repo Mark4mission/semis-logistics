@@ -552,7 +552,7 @@
         ${whoHTML(f, t)}
         <div class="sc-fcard-f"><span class="spacer"></span>
           <button type="button" class="btn btn-ghost btn-sm" data-sc-blank="${esc(f.id)}" title="빈 양식 미리보기 · 인쇄">${icon("eye", 15)}<span>빈 양식</span></button>
-          <button type="button" class="btn btn-ghost btn-sm" data-sc-bdl="${esc(f.id)}" title="빈 양식 HWPX 내려받기">${icon("down", 15)}<span>HWPX</span></button>
+          <button type="button" class="btn btn-ghost btn-sm" data-sc-bdl="${esc(f.id)}" title="빈 양식 HWPX 다운로드">${icon("down", 15)}<span>HWPX</span></button>
           ${w ? `<button type="button" class="btn btn-primary btn-sm" data-sc-new="${esc(f.id)}">${icon(n.draft ? "edit" : "plus", 15)}<span>${n.draft ? "이어 쓰기" : "점검"}</span></button>` : ""}</div>
       </section>`;
     };
@@ -603,7 +603,7 @@
       allForms().forEach(f => { if (isHid(f.id) && prev.forms && prev.forms[f.id]) out.forms[f.id] = prev.forms[f.id]; });   // 숨긴 별표 안내도 그대로
       const by = norm($("#sc-c-by").value), m = Number($("#sc-c-m").value);
       const before = intIn($("#sc-c-before").value, 0, 60, -1), fresh = intIn($("#sc-c-fresh").value, 0, 365, -1);
-      if (before < 0 || fresh < 0) { toast("일수는 0~60 · 0~365 사이로 넣으세요.", true); return; }
+      if (before < 0 || fresh < 0) { toast("일수는 0~60 · 0~365 사이로 입력하세요.", true); return; }
       if (by && by !== SELF.by) out.selfBy = by;
       if (CYC_M[m] && m !== SELF.months) out.months = m;
       if (before !== SELF.before) out.before = before;
@@ -875,7 +875,7 @@
       ${appr}
       <div class="sc-prog"><span id="sc-prog">${esc(resultText(r, c) || "응답 없음")}</span>
         <span class="cell-sub">${esc(keepText(r))}</span>
-        ${w && c.need > c.done ? `<button type="button" class="btn btn-ghost btn-sm" id="sc-fillrest">${icon("check", 15)}<span>남은 항목 ${f.kind === "fsc" ? "양호" : "Y"}</span></button>` : ""}</div>
+        ${w && c.need > c.done ? `<button type="button" class="btn btn-ghost btn-sm" id="sc-fillrest">${icon("check", 15)}<span>미점검 항목 일괄 ${f.kind === "fsc" ? "양호" : "Y"}</span></button>` : ""}</div>
     </section>`;
     const tail = `<section class="card sc-sec">
       <h2 class="card-title">메모 · 첨부<span class="dc-meta">시스템에만 남음</span></h2>
@@ -1038,7 +1038,7 @@
     if (!window.SemisSync || !SemisSync.uploadFile) { toast("오프라인에서는 올릴 수 없습니다.", true); return; }
     for (const file of arr) {
       if (file.size > FILE_MAX) { toast(file.name + ": 50MB를 넘습니다.", true); continue; }
-      toast("올리는 중: " + file.name);
+      toast("업로드 중: " + file.name);
       try {
         const up = await SemisSync.uploadFile(file, FOLDER);
         const x = recOf(rid) || r;
@@ -1194,7 +1194,7 @@
       tab === "forms" && SeMIS.isAdmin() ? `<button type="button" class="btn btn-ghost btn-sm m-ed" id="sc-vis" title="표시 · 흐리게 · 숨김">${icon("eye", 16)}<span>표시 관리</span></button>` : "",
       tab === "ana" ? `<button type="button" class="btn btn-ghost btn-sm no-print" id="sc-aprint" data-print-btn="1" title="별표 15 양식으로 인쇄">${icon("print", 17)}<span>Print</span></button>` : ""
     ].join("");
-    root.innerHTML = ui.head({ title: TITLE, meta: MARK + " — 항공보안감독관 점검표(수준관리지침 별표) 사용", actions: acts })
+    root.innerHTML = ui.head({ title: TITLE, meta: MARK + " — 항공보안감독관 점검표(수준관리지침 별표) 사용", actions: acts }).replace('<span class="spacer">', '<span class="sc-opt" title="의무 사항 아님 — 필요할 때 실행 · 대시보드 · 통계 · 일정 제외">선택 실행</span><span class="spacer">')
       + `<div class="eq-tabs" role="tablist" aria-label="자체 보안점검 화면">${TABS.map(([id, lb]) =>
         `<button type="button" role="tab" class="eq-tab" data-sctab="${id}" aria-selected="${tab === id}">${esc(lb)}</button>`).join("")}</div>`
       + `<div id="sc-body" data-tab="${tab}">${bodyHTML()}</div>`;
@@ -1208,7 +1208,7 @@
 
   SeMIS.registerModule(MOD, {
     title: TITLE,
-    navBadge() { if (!canW()) return ""; const t = todayISO(); return (allFindings().filter(x => fState(x.fx, t) !== "done").length + hcOpen()) || ""; },
+    optional: true,                                // v1.42 의무 아님 — 필요할 때 실행, 대시보드 · 통계 · 일정에서 제외(메뉴에 '선택')
     render
   });
 

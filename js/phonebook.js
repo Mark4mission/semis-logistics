@@ -95,7 +95,7 @@
     if (r.ext) out.push(`<button type="button" class="pb-act is-ext" data-copy="${esc(r.ext)}" title="내선 번호 복사"><span class="pb-k">내선</span><span class="mono">${hl(r.ext, q)}</span></button>`);
     if (r.office) out.push(`<a class="pb-act" href="${esc(telHref(r.office))}" title="전화 걸기">${icon("phone", 14)}<span class="mono">${hl(r.office, q)}</span></a>`);
     if (r.mobile) out.push(`<span class="pb-pair"><a class="pb-act is-mob" href="${esc(telHref(r.mobile))}" title="휴대폰 전화">${icon("phone", 14)}<span class="mono">${hl(r.mobile, q)}</span></a>${isMobile(r.mobile)
-      ? `<a class="pb-sms" href="sms:${esc(r.mobile.replace(/[^\d]/g, ""))}" title="문자 보내기">문자</a>` : ""}</span>`);
+      ? `<a class="pb-sms" href="sms:${esc(r.mobile.replace(/[^\d]/g, ""))}" title="문자 발송">문자</a>` : ""}</span>`);
     if (r.email) out.push(`<span class="pb-pair"><a class="pb-act is-mail" href="mailto:${esc(r.email)}" title="메일 쓰기">${icon("notes", 14)}<span>${hl(r.email, q)}</span></a><button type="button" class="pb-cp m-hide" data-copy="${esc(r.email)}" title="주소 복사" aria-label="메일 주소 복사">복사</button></span>`);
     return out.join("");
   }

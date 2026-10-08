@@ -140,7 +140,7 @@
     if (!window.SemisSync || !SemisSync.uploadFile) { toast("오프라인에서는 올릴 수 없습니다.", true); return; }
     for (const file of arr) {
       if (file.size > FILE_MAX) { toast(file.name + ": 50MB를 넘습니다.", true); continue; }
-      toast("올리는 중: " + file.name);
+      toast("업로드 중: " + file.name);
       try {
         const up = await SemisSync.uploadFile(file, ssi ? "docs-ssi" : "docs");
         files.push({ name: up.name || file.name, size: up.size || file.size || 0, url: up.url });
@@ -157,7 +157,7 @@
     const files = (v.files || []).map(f => Object.assign({}, f));
     const gs = groupsOf(v.mod);
     const sers = Array.from(new Set(list(v.mod).filter(x => x.ser).map(x => x.ser)));
-    const chips = () => files.map((f, i) => `<span class="au-file"><a class="nb-file" href="${esc(f.url)}" target="_blank" rel="noopener">${icon("link", 14)}<span>${esc(f.name)}</span></a><button type="button" class="mt-btn danger" data-dkf="${i}" aria-label="첨부 빼기">${icon("x", 14)}</button></span>`).join("");
+    const chips = () => files.map((f, i) => `<span class="au-file"><a class="nb-file" href="${esc(f.url)}" target="_blank" rel="noopener">${icon("link", 14)}<span>${esc(f.name)}</span></a><button type="button" class="mt-btn danger" data-dkf="${i}" aria-label="첨부 삭제">${icon("x", 14)}</button></span>`).join("");
     openModal(`<h3>${d ? "문서 수정" : "문서 추가"}</h3>
       <div class="form-row"><label for="dk-title">문서 이름</label><input id="dk-title" value="${esc(v.title)}" maxlength="160" autocomplete="off"></div>
       <div class="form-grid">
@@ -176,7 +176,7 @@
       <label class="au-opt"><input type="checkbox" id="dk-ssi" ${v.ssi ? "checked" : ""}> 민감보안정보 (안전보안파트 이상 열람)</label>
       <div class="form-row"><label>파일</label><div class="au-files au-files-edit" id="dk-files">${chips()}</div>
         <input type="file" id="dk-file" multiple hidden>
-        <button type="button" class="btn btn-ghost btn-sm" id="dk-fbtn">${icon("link", 15)}<span>파일 올리기</span></button></div>
+        <button type="button" class="btn btn-ghost btn-sm" id="dk-fbtn">${icon("link", 15)}<span>파일 첨부</span></button></div>
       <div class="modal-actions">
         ${d ? '<button type="button" class="link-btn danger" data-act="del">삭제</button><span class="spacer" style="flex:1"></span>' : ""}
         <button type="button" class="btn btn-ghost" data-act="cancel">취소</button>
@@ -193,9 +193,9 @@
     $("#dk-file").onchange = () => { const fl = Array.from($("#dk-file").files || []); $("#dk-file").value = ""; uploadInto(files, fl, $("#dk-ssi").checked, paint); };
     $("#modal-box [data-act=cancel]").onclick = closeModal;
     const del = $("#modal-box [data-act=del]");
-    if (del) del.onclick = () => confirmModal("이 문서를 목록에서 뺄까요? (원본 파일은 저장소에 남습니다)", () => {
+    if (del) del.onclick = () => confirmModal("이 문서를 목록에서 삭제할까요? (원본 파일은 저장소에 남습니다)", () => {
       D().docs = all().filter(x => x !== d);
-      SeMIS.save(); toast("뺐습니다."); repaint();
+      SeMIS.save(); toast("삭제했습니다."); repaint();
     });
     $("#modal-box [data-act=ok]").onclick = () => {
       const title = norm($("#dk-title").value);

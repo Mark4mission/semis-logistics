@@ -298,7 +298,7 @@
       title: TITLE,
       meta: "인천화물터미널 B동",
       actions: `<span class="scr-meta" id="scr-meta">${esc(metaText(s))}</span>
-        <button type="button" class="btn btn-ghost btn-sm" id="scr-refresh" title="CARES에서 다시 읽기">${icon("refresh", 16)}<span>새로고침</span></button>`
+        <button type="button" class="btn btn-ghost btn-sm" id="scr-refresh" title="CARES 자료 새로고침">${icon("refresh", 16)}<span>새로고침</span></button>`
     }) + `<div id="scr-body">${bodyHTML(s)}</div>`;
     wire(root);
     $("#scr-refresh", root).onclick = () => refresh(true);
@@ -353,7 +353,7 @@
     const K = C();
     if (K.failed && K.failed("repairs")) return `<button type="button" class="dscr-cell" data-dgo="scr-equip" data-dtab="repairs" aria-label="고장·수리 이력 보기">
         <span class="dscr-h">장비 고장<span class="dscr-hm">최근 6개월</span></span>
-        <span class="dscr-sub"><b class="warn">고장 기록을 불러오지 못했습니다</b> · 새로고침으로 다시 읽기</span>
+        <span class="dscr-sub"><b class="warn">고장 기록을 불러오지 못했습니다</b> · 새로고침으로 재조회</span>
       </button>`;
     const bars = monthBars(6);
     const bmax = Math.max(1, ...bars.map(b => b.n));

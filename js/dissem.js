@@ -76,7 +76,7 @@
       <p class="pn-note">${icon("check", 13)} 실시(누르면 결과 기록 보기) · 미실시 = 대상 파트에 결과 없음 · · = 대상 아님</p></div>`;
   }
 
-  const fileChips = (files, del) => (files || []).map((f, i) => `<span class="au-file"><a class="nb-file" href="${esc(f.url)}" target="_blank" rel="noopener">${icon("link", 14)}<span>${esc(f.name || "첨부")}</span></a>${del ? `<button type="button" class="mt-btn danger" data-${del}="${i}" aria-label="첨부 빼기">${icon("x", 14)}</button>` : ""}</span>`).join("");
+  const fileChips = (files, del) => (files || []).map((f, i) => `<span class="au-file"><a class="nb-file" href="${esc(f.url)}" target="_blank" rel="noopener">${icon("link", 14)}<span>${esc(f.name || "첨부")}</span></a>${del ? `<button type="button" class="mt-btn danger" data-${del}="${i}" aria-label="첨부 삭제">${icon("x", 14)}</button>` : ""}</span>`).join("");
   function view(id) {
     const e = events().find(x => x.id === id);
     if (!e) return;
@@ -102,7 +102,7 @@
     if (!window.SemisSync || !SemisSync.uploadFile) { toast("오프라인에서는 올릴 수 없습니다.", true); return; }
     for (const file of Array.from(fl || [])) {
       if (file.size > FILE_MAX) { toast(file.name + ": 50MB를 넘습니다.", true); continue; }
-      toast("올리는 중: " + file.name);
+      toast("업로드 중: " + file.name);
       try { const up = await SemisSync.uploadFile(file, "dissem"); files.push({ name: up.name || file.name, size: up.size || file.size || 0, url: up.url }); }
       catch (err) { toast("올리지 못했습니다: " + file.name, true); }
     }
@@ -122,8 +122,8 @@
         <div class="form-row"><label for="df-kind">구분</label><select id="df-kind"><option value="">-</option>${KINDS.map(k => `<option ${k === v.kind ? "selected" : ""}>${esc(k)}</option>`).join("")}</select></div></div>
       <div class="form-row"><label for="df-src">근거 · 발신</label><input id="df-src" value="${esc(v.src)}" maxlength="120" autocomplete="off" placeholder="예: TA 통보서 · 국토부 공문"></div>
       <div class="form-row"><label>통보 원문</label><div class="au-files au-files-edit" id="df-nfiles"></div><input type="file" id="df-nfile" multiple hidden>
-        <button type="button" class="btn btn-ghost btn-sm" id="df-nbtn">${icon("link", 15)}<span>파일 올리기</span></button></div>
-      <div class="form-row"><label>파트별 결과 ${ui.tip("대상 파트를 고르고, 실시한 파트에 실시일과 결과 파일(회람지 · 교육일지)을 넣습니다.", "파트별 결과 설명")}</label>
+        <button type="button" class="btn btn-ghost btn-sm" id="df-nbtn">${icon("link", 15)}<span>파일 첨부</span></button></div>
+      <div class="form-row"><label>파트별 결과 ${ui.tip("대상 파트를 선택하고, 실시한 파트에 실시일과 결과 파일(회람지 · 교육일지)을 넣습니다.", "파트별 결과 설명")}</label>
         <div class="dv-fres">${ds.map(d => { const r = res[d.id] || {}; return `<div class="dv-fr" data-dfr="${esc(d.id)}">
           <label class="dv-ft"><input type="checkbox" data-dft ${tg.has(d.id) ? "checked" : ""}> ${esc(d.label)}</label>
           <input type="date" data-dfd value="${esc(isISO(r.date) ? r.date : "")}" aria-label="${esc(d.label)} 실시일">

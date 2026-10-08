@@ -8,7 +8,7 @@
                          updatedAt, updatedBy }
      DATA.secPostImg = { img(WebP data URL), w, h, name, updatedAt, updatedBy } — 도면은 거의 바뀌지 않아 따로 둔다(변경 이력 크기)
    화면: 유형별 건수 칩(누르면 그 유형만 강조) · 도면 위 지점(누르면 정보) · 유형별 지점 목록(표 대신 읽는 길)
-   hq: 편집(제목 · 기준일 · 비고 · 도면 바꾸기 · 지점 추가/삭제 · 유형 · 이름표 위치 · 카드리더 · 문형 MD · 도면을 눌러 위치 지정)
+   hq: 편집(제목 · 기준일 · 비고 · 도면 교체 · 지점 추가/삭제 · 유형 · 이름표 위치 · 카드리더 · 문형 MD · 도면을 눌러 위치 지정)
    ═══════════════════════════════════════════════════════ */
 "use strict";
 
@@ -206,7 +206,7 @@
     let imgChanged = false;
     let eSel = "";
     const rowHTML = (p) => `<tr data-row="${esc(p.id)}" class="${p.id === eSel ? "on" : ""}">
-        <td><button type="button" class="gp-pick" data-pick="${esc(p.id)}" aria-label="${esc((p.label || "새 지점") + " 위치 지정")}" title="고른 뒤 도면을 누르면 그 자리로">${sw(p.kind)}</button></td>
+        <td><button type="button" class="gp-pick" data-pick="${esc(p.id)}" aria-label="${esc((p.label || "새 지점") + " 위치 지정")}" title="선택한 뒤 도면을 누르면 그 자리로">${sw(p.kind)}</button></td>
         <td><input type="text" class="gp-in-label" data-f="label" value="${esc(p.label)}" maxlength="12" aria-label="지점 이름"></td>
         <td><select data-f="kind" aria-label="유형">${KINDS.map(x => `<option value="${x.k}"${p.kind === x.k ? " selected" : ""}>${esc(x.label)}</option>`).join("")}</select></td>
         <td><select data-f="lp" aria-label="이름표 위치">${LP.map(([v, l]) => `<option value="${v}"${p.lp === v ? " selected" : ""}>${l}</option>`).join("")}</select></td>
@@ -229,7 +229,7 @@
       </div>
       <div class="gp-ed-img">
         <span class="gp-ed-imgt">도면 <small class="mono" id="gp-e-imginfo">${imgOk(image.img) ? esc((image.w || "?") + "×" + (image.h || "?") + " · " + Math.round(image.img.length / 1365) + "KB") : "없음"}</small></span>
-        <label class="btn btn-ghost btn-sm gp-ed-file">${icon("image", 16)}<span>${imgOk(image.img) ? "도면 바꾸기" : "도면 올리기"}</span>
+        <label class="btn btn-ghost btn-sm gp-ed-file">${icon("image", 16)}<span>${imgOk(image.img) ? "도면 교체" : "도면 첨부"}</span>
           <input type="file" id="gp-e-file" accept="image/png,image/jpeg,image/webp" hidden></label>
         <span class="spacer"></span>${ui.tip("표에서 지점의 색 동그라미를 누른 뒤 도면을 누르면 그 자리로 옮겨집니다. 새 지점은 '지점 추가' 후 도면을 누르세요. 도면은 PNG · JPG · WebP(가로 2,400px 이하로 줄여 WebP로 저장)입니다.", "배치도 편집 방법")}
       </div>
@@ -304,7 +304,7 @@
       if (!f) return;
       if (!/^image\/(png|jpeg|webp)$/.test(f.type)) { toast("PNG · JPG · WebP 파일만 올릴 수 있습니다.", true); return; }
       toWebp(f).then(r => {
-        if (r.url.length > MAX_IMG) { toast("도면 파일이 너무 큽니다. 해상도를 줄여 다시 올려 주세요.", true); return; }
+        if (r.url.length > MAX_IMG) { toast("도면 파일이 너무 큽니다. 해상도를 줄여 다시 첨부해 주세요.", true); return; }
         const ratioChanged = num(image.w) && num(image.h) && image.w && image.h && Math.abs(image.w / image.h - r.w / r.h) > 0.01;
         image = { img: r.url, w: r.w, h: r.h, name: f.name };
         imgChanged = true;

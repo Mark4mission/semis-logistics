@@ -5,7 +5,7 @@
    - 교육 · 자격: window.SemisTraining (stats · roleStats · dueList · expiryByMonth · sessionsByMonth)
    - 수검 대응: window.SemisAudit (nextAudit · prep · phase · allFindings · overdueF · repeatCount)
    - 보안 기록부: window.SemisSeclog (templates · status · isNG)
-   - 자체 보안점검: window.SemisSelfcheck (forms · allFindings · fState · openRecord) — v1.32
+   - 자체 보안점검(국토부 수검대비)은 v1.42 부터 선택 실행 — 이 대시보드 · 통계 · 달력에 넣지 않는다(팀 이름만 그 설정에서 읽음)
    - 위해물품 적발 일지: window.SemisHaz (CARES 월 집계 한 줄, 보안 기록부 카드 안) — v1.36
    v1.35: 숨긴 점검(시스템관리자 '표시 관리')은 각 모듈 API 에서 이미 빠져 있고, 흐리게 한 점검은 하드카피 집계 · 기록이 통계에 들어온다
    메뉴가 숨겨졌거나 권한 밖인 모듈의 카드는 그리지 않는다. 색: 상태 3색(유효 · 갱신 필요 · 정지 · 미이수)과
@@ -68,7 +68,7 @@
       const s = TR().stats(t);
       tiles.push({ label: "자격 유효율", value: s.valid == null ? "-" : s.valid + "%", sub: "재직 " + s.people + "명 · 필수 " + s.cells + "건", tone: s.valid == null ? "muted" : s.valid === 100 ? "ok" : "warn" });
       tiles.push({ label: "갱신 · 조치 필요", value: s.act, sub: "정지 · 만료 · 미이수 " + s.bad, tone: s.bad ? "bad" : s.act ? "warn" : "ok" });
-      tiles.push({ label: "SSI 서약", value: s.ssi ? (s.ssi - s.ssiMiss) + "/" + s.ssi : "-", sub: s.ssiMiss ? "누락 " + s.ssiMiss : "취급자", tone: s.ssiMiss ? "bad" : s.ssi ? "ok" : "muted" });
+      tiles.push({ label: "SSI 서약", value: s.ssi ? (s.ssi - s.ssiMiss) + "/" + s.ssi : "-", sub: s.ssiMiss ? "누락 " + s.ssiMiss : "대상", tone: s.ssiMiss ? "bad" : s.ssi ? "ok" : "muted" });
     }
     if (can("audit") && AU()) {
       const A = AU(), nx = A.nextAudit(t);
@@ -83,11 +83,6 @@
       let past = 0, done = 0, miss = 0;
       ts.forEach(x => { const s = S.status(x, t); if (s.event) return; past += s.past.length; done += s.past.length - s.missing.length; miss += s.missing.length; });
       tiles.push({ label: "기록부 이행률", value: past ? Math.round(done / past * 100) + "%" : "-", sub: "누락 " + miss + "칸", tone: !past ? "muted" : miss ? "warn" : "ok" });
-    }
-    if (can("selfcheck") && SC()) {
-      const fs = SC().allFindings(), open = fs.filter(x => SC().fState(x.fx, t) !== "done"), late = open.filter(x => SC().fState(x.fx, t) === "late").length;
-      const n = open.length + (SC().hcOpen ? SC().hcOpen() : 0);   // v1.35 하드카피 기록의 미결 건수 포함
-      tiles.push({ label: "자체 점검 지적", value: n, sub: late ? "기한 경과 " + late : "R/C · 미흡 미결", tone: late ? "bad" : n ? "warn" : "ok" });
     }
     return tiles.length ? ui.stats(tiles) : "";
   }
@@ -220,8 +215,8 @@
     </section>`;
   }
 
-  /* ═════════ 다가오는 점검 (v1.33 → v1.34) — 받는 점검(우리 팀 수검) · 하는 점검(우리 팀 실행) 두 구역 ═════════
-     하는 점검: 대상별 묶음 · 가까운 날짜 순 · 30일 안 강조 · 점검표 바로 가기 / 받는 점검: 수검 대응 센터 일정 + 지침상 감독관 점검 안내 */
+  /* ═════════ 다가오는 점검 (v1.33 → v1.42) — ICNKF 수검(우리 팀이 받는 점검) · ICNKF 실행(우리 팀이 하는 점검) 두 구역 ═════════
+     실행: 대상별 묶음 · 가까운 날짜 순 · 30일 안 강조 · 점검표 바로 가기 / 수검: 수검 대응 센터 일정 */
   const SOON = 30;
   const canW = () => !!SeMIS.user && SeMIS.roleRank() >= 2 && SeMIS.user.role !== "vendor";
   const WD = ["일", "월", "화", "수", "목", "금", "토"];
@@ -234,11 +229,11 @@
   }
   const audEnd = (a) => (isISO(a.end) && a.end >= a.start ? a.end : a.start);
   const audits = () => (Array.isArray(SeMIS.data.audits) ? SeMIS.data.audits : []).filter(a => a && a.id && !a.cancelled && isISO(a.start));
-  const showOwn = () => (can("inspection") && !!SL()) || (can("selfcheck") && !!SC());
-  const showRecv = () => (can("audit") && !!AU()) || (can("selfcheck") && !!SC());
+  const showOwn = () => can("inspection") && !!SL();
+  const showRecv = () => can("audit") && !!AU();
   function upData(t) {
     const own = [], recv = [], daily = [];
-    const S = SL(), C = SC(), A = AU(), tm = team();
+    const S = SL(), A = AU(), tm = team();
     if (can("inspection") && S) S.templates().forEach(x => {
       const n = S.nextDue(x, t);
       if (n.event) return;
@@ -246,19 +241,9 @@
       own.push({ grp: x.grp, due: n.due, own: true, name: x.name, sub: [S.whoText(x), cycLabel(x), x.vis === "dim" ? x.dimMsg : "", n.missing ? "누락 " + n.missing : ""].filter(Boolean).join(" · "),
         miss: n.missing, sl: x.id, patrol: x.kind === "patrol", dim: x.vis === "dim" });
     });
-    if (can("selfcheck") && C) {
-      const by = {}, cf = C.selfCfg();
-      C.forms().forEach(f => { const n = C.nextDue(f, t); (by[n.due] = by[n.due] || []).push({ f, n }); });
-      Object.keys(by).forEach(due => {
-        const fs = by[due], n0 = fs[0].n;
-        const sub = due ? [cf.by + " → 화물터미널 운영", n0.why === "수검 전" && n0.audit ? "국토부 수검 " + md(n0.audit.start) + " 전" : cf.cycOnly].join(" · ")
-          : cf.by + " → 화물터미널 운영 · 기록 없음";
-        own.push({ grp: "sc", due, own: true, name: "감독관 점검표 " + fs.length + "종", sub, forms: fs });
-      });
-    }
     if (can("audit") && A) audits().filter(a => audEnd(a) >= t).forEach(a => recv.push({ grp: "recv", due: a.start, end: audEnd(a), own: false, name: A.auditTitle(a),
       sub: (a.org || (A.BODIES && A.BODIES[a.body] ? A.BODIES[a.body].short : "외부")) + " → " + tm + (audEnd(a) > a.start ? " · ~" + md(audEnd(a)) : ""), aud: a.id }));
-    const GL = Object.assign({}, S ? S.GRPS : {}, { sc: "국토부 수검대비 자체 점검" });
+    const GL = Object.assign({}, S ? S.GRPS : {});
     const groups = {};
     own.forEach(r => { (groups[r.grp] = groups[r.grp] || { key: r.grp, label: GL[r.grp] || "기타", rows: [] }).rows.push(r); });
     const key = (d) => d || "9999-12-31";
@@ -266,18 +251,10 @@
     gs.forEach(g => { g.rows.sort((a, b) => key(a.due).localeCompare(key(b.due)) || a.name.localeCompare(b.name)); g.first = g.rows[0].due; });
     gs.sort((a, b) => key(a.first).localeCompare(key(b.first)) || a.label.localeCompare(b.label));
     recv.sort((a, b) => a.due.localeCompare(b.due) || a.name.localeCompare(b.name));
-    /* 지침상 감독관 점검(상시 · 정기) — 같은 안내끼리 별표를 묶는다 */
-    const std = [];
-    if (can("selfcheck") && C) C.forms().forEach(f => {
-      const o = C.offOf(f), k = o.by + "→" + o.target + "·" + o.cyc;
-      let s = std.find(x => x.k === k);
-      if (!s) std.push(s = { k, by: o.by, target: o.target, cyc: o.cyc, ref: o.ref, nos: [] });
-      s.nos.push(f.id.slice(1));
-    });
     const all = own.concat(recv);
     const soon = all.filter(r => isISO(r.due) && r.due <= addDays(t, SOON) && !(r.end && r.due < t)).length;
     const late = own.filter(r => isISO(r.due) && r.due < t).length;
-    return { groups: gs, recv, std, daily, soon, late, total: all.length, own: own.length, team: tm };
+    return { groups: gs, recv, daily, soon, late, total: all.length, own: own.length, team: tm };
   }
   function upRowHTML(r, t, w) {
     const now = !!(r.end && r.due <= t && r.end >= t);
@@ -286,15 +263,14 @@
     const dd = now ? "진행 중" : n === null ? "-" : ddText(r.due, t);
     const date = !isISO(r.due) ? "" : r.due.slice(0, 4) === t.slice(0, 4) ? `${md(r.due)}(${wd(r.due)})` : `${r.due.slice(2, 4)}.${md(r.due)}`;   // 다른 해는 연도(요일 대신)
     let act = "";
-    if (r.forms) act = `<span class="uc-forms">${r.forms.map(x => `<button type="button" class="uc-f${x.n.draft ? " is-draft" : ""}" ${w ? `data-ie-scf="${esc(x.f.id)}"` : `data-ie-go="selfcheck"`} title="${esc("별표 " + x.f.id.slice(1) + " " + x.f.title + (x.n.draft ? " · 작성 중" : "") + (x.n.last ? " · 최근 " + dot(x.n.last) : ""))}">별표 ${esc(x.f.id.slice(1))}</button>`).join("")}</span>`;
-    else if (r.own && w) act = `<button type="button" class="btn btn-sm ${cls ? "btn-primary" : "btn-ghost"} uc-go" data-ie-sl="${esc(r.sl)}"${r.patrol ? " data-ie-round" : ""}>${icon(r.patrol && !r.dim ? "plus" : "clipboard", 15)}<span>${r.dim ? "집계" : "점검표"}</span></button>`;
+    if (r.own && w) act = `<button type="button" class="btn btn-sm ${cls ? "btn-primary" : "btn-ghost"} uc-go" data-ie-sl="${esc(r.sl)}"${r.patrol ? " data-ie-round" : ""}>${icon(r.patrol && !r.dim ? "plus" : "clipboard", 15)}<span>${r.dim ? "집계" : "점검표"}</span></button>`;
     else if (r.aud) act = `<span class="uc-recv">${icon("chevron", 15)}</span>`;
     const inner = `<span class="uc-d mono">${esc(dd)}</span>
         <span class="uc-dt mono">${esc(date)}</span>
         <span class="uc-n"><b>${esc(r.name)}</b><small>${esc(r.sub)}</small></span>`;
     return r.aud
       ? `<li class="uc-row is-recv${cls}"><button type="button" class="uc-main" data-ie-aud="${esc(r.aud)}">${inner}${act}</button></li>`
-      : `<li class="uc-row${cls}${r.forms ? " has-forms" : ""}"><div class="uc-main">${inner}</div><div class="uc-act">${act}</div></li>`;
+      : `<li class="uc-row${cls}"><div class="uc-main">${inner}</div><div class="uc-act">${act}</div></li>`;
   }
   const secHead = (cls, title, sub, meta) => `<h3 class="uc-sh ${cls}"><b>${esc(title)}</b><span>${esc(sub)}</span><span class="dc-meta">${esc(meta)}</span></h3>`;
   function upcomingCard(t) {
@@ -303,12 +279,9 @@
     let recvSec = "";
     if (showRecv()) {
       const rs = U.recv.map(r => upRowHTML(r, t, w));
-      const std = U.std.length ? `<div class="uc-std"><span class="uc-std-h">감독관 점검 (수준관리지침)</span><ul>${U.std.map(s =>
-        `<li title="${esc(s.ref)}"><b>${esc(s.by)} → ${esc(s.target)}</b><small>${esc(s.cyc)} · 별표 ${esc(s.nos.join(" · "))}</small></li>`).join("")}</ul></div>` : "";
-      recvSec = `<section class="uc-sec is-recv" aria-label="받는 점검">
-        ${secHead("is-recv", "받는 점검", U.team + " 수검", (can("audit") && AU() ? "예정 " + U.recv.length + "건" : ""))}
-        ${can("audit") && AU() ? (rs.length ? lim(rs) : `<p class="uc-empty">예정된 수검이 없습니다.</p>`) : ""}
-        ${std}
+      recvSec = `<section class="uc-sec is-recv" aria-label="ICNKF 수검">
+        ${secHead("is-recv", "ICNKF 수검", "외부 점검 수검 일정", "예정 " + U.recv.length + "건")}
+        ${rs.length ? lim(rs) : `<p class="uc-empty">예정된 수검이 없습니다.</p>`}
       </section>`;
     }
     let ownSec = "";
@@ -322,25 +295,24 @@
           ${lim(g.rows.map(r => upRowHTML(r, t, w)))}
         </section>`;
       }).join("");
-      ownSec = `<section class="uc-sec is-own" aria-label="하는 점검">
-        ${secHead("is-own", "하는 점검", U.team + " 실행", U.own + "건" + (U.daily.length ? " · 매일 " + U.daily.length : ""))}
+      ownSec = `<section class="uc-sec is-own" aria-label="ICNKF 실행">
+        ${secHead("is-own", "ICNKF 실행", "보안 기록부 점검", U.own + "건" + (U.daily.length ? " · 매일 " + U.daily.length : ""))}
         ${daily}
         ${groups ? `<div class="uc-grps">${groups}</div>` : `<p class="uc-empty">예정된 점검이 없습니다.</p>`}
       </section>`;
     }
-    const ed = SeMIS.canEdit() && ((can("inspection") && SL()) || (can("selfcheck") && SC()))
+    const ed = SeMIS.canEdit() && can("inspection") && SL()
       ? `<button type="button" class="btn btn-ghost btn-sm m-ed" data-ie-cfg title="누가 · 누구를 · 주기">${icon("edit", 15)}<span>안내 편집</span></button>` : "";
     return `<section class="card sd-card ie-card ie-up" aria-label="다가오는 점검">
       <h2 class="card-title">다가오는 점검<span class="dc-meta">30일 안 ${U.soon}건${U.late ? " · 지남 " + U.late : ""}</span><span class="spacer"></span>${ed}</h2>
       <div class="uc-split${recvSec && ownSec ? " is-two" : ""}">${recvSec}${ownSec}</div>
     </section>`;
   }
-  /* 안내 편집 — 보안 기록부 양식(주체 · 대상 · 주기) / 자체 보안점검 안내 */
+  /* 안내 편집 — 보안 기록부 양식(주체 · 대상 · 주기) */
   function cfgPick() {
     if (!SeMIS.canEdit()) return;
     const opts = [];
     if (can("inspection") && SL()) opts.push(["sl", "보안 기록부 양식", "매일 · 월간 · 분기 점검 — 누가 · 누구를 · 주기 · 대상 묶음"]);
-    if (can("selfcheck") && SC()) opts.push(["sc", "자체 보안점검 안내", "감독관 점검(지침) · 자체 점검 주기"]);
     if (opts.length === 1) { pickCfg(opts[0][0]); return; }
     SeMIS.openModal(`<h3>점검 안내 편집</h3>
       <div class="ie-pick">${opts.map(([k, a, b]) => `<button type="button" data-ie-pick="${k}"><b>${esc(a)}</b><small>${esc(b)}</small></button>`).join("")}</div>
@@ -348,10 +320,10 @@
     $("#modal-box [data-act=cancel]").onclick = SeMIS.closeModal;
     $$("#modal-box [data-ie-pick]").forEach(b => b.onclick = () => { const k = b.dataset.iePick; SeMIS.closeModal(); pickCfg(k); });
   }
-  function pickCfg(k) { if (k === "sl" && SL()) SL().templatesForm(); else if (k === "sc" && SC()) SC().cfgForm(); }
+  function pickCfg(k) { if (k === "sl" && SL()) SL().templatesForm(); }
 
   /* ═════════ 점검 일정 달력 (v1.34) — 이번 달 기본 · ‹ › 로 앞뒤 달 ═════════
-     받는 점검(수검 기간) · 하는 점검 기한(기록 없는 주기의 마지막 날 · 자체 점검 다음 기한) · 완료(기록한 날) */
+     ICNKF 수검(수검 기간) · ICNKF 실행 기한(기록 없는 주기의 마지막 날) · 완료(기록한 날) */
   let calYM = "", calSel = "";
   const ymOf = (iso) => iso.slice(0, 7);
   const ymAdd = (ym, n) => { const d = new Date(Date.UTC(+ym.slice(0, 4), +ym.slice(5, 7) - 1 + n, 1)); return d.getUTCFullYear() + "-" + p2(d.getUTCMonth() + 1); };
@@ -365,7 +337,7 @@
   }
   function calData(ym, t) {
     const R = calRange(ym), ev = [];
-    const S = SL(), C = SC(), A = AU();
+    const S = SL(), A = AU();
     if (can("audit") && A) audits().forEach(a => {
       const e = audEnd(a);
       if (e < R.from || a.start > R.to) return;
@@ -376,23 +348,12 @@
       const tp = S.tplOf(x.tid);
       ev.push({ d: x.d, kind: x.kind, name: x.name, sub: (tp ? S.whoText(tp) + " · " + cycLabel(tp) : "") + (x.kind === "done" ? (x.ng ? " · 이상 있음" : "") : " · 기록 없음"), cell: x.cell, ng: !!x.ng });
     });
-    if (can("selfcheck") && C) {
-      const vis = new Set(C.forms().map(f => f.id));
-      (Array.isArray(SeMIS.data.selfChecks) ? SeMIS.data.selfChecks : []).filter(r => r && r.id && !r.hc && r.status === "done" && isISO(r.date) && r.date >= R.from && r.date <= R.to && vis.has(r.form))
-        .forEach(r => { const f = C.formOf(r.form); ev.push({ d: r.date, kind: "done", name: "별표 " + f.id.slice(1) + " 자체 점검", sub: f.title + (r.insp ? " · " + r.insp : ""), scid: r.id }); });
-      if (C.hcRecs) C.hcRecs().filter(r => r.date >= R.from && r.date <= R.to)
-        .forEach(r => { const f = C.formOf(r.form); ev.push({ d: r.date, kind: "done", name: "별표 " + f.id.slice(1) + " 자체 점검", sub: f.title + (r.insp ? " · " + r.insp : "") + " · 하드카피", schc: f.id }); });
-      const by = {};
-      C.forms().forEach(f => { const n = C.nextDue(f, t); if (isISO(n.due) && n.due >= R.from && n.due <= R.to) (by[n.due] = by[n.due] || []).push(f); });
-      Object.keys(by).forEach(d => ev.push({ d, kind: d < t ? "late" : "due", name: "자체 점검 " + by[d].length + "종", sub: "별표 " + by[d].map(f => f.id.slice(1)).join(" · ") + " · " + C.selfCfg().by, scforms: 1 }));
-    }
     const days = {};
     ev.forEach(e => (days[e.d] = days[e.d] || []).push(e));
     Object.keys(days).forEach(d => days[d].sort((a, b) => KORD[a.kind] - KORD[b.kind] || a.name.localeCompare(b.name)));
     return { R, days, n: ev.filter(e => e.d >= R.first && e.d <= R.last).length };
   }
-  const evAttr = (e, w) => e.aud ? `data-ie-aud="${esc(e.aud)}"` : e.cell ? (w ? `data-ie-cell="${esc(e.cell)}"` : `data-ie-go="inspection"`)
-    : e.scid ? `data-ie-sc="${esc(e.scid)}|"` : e.schc ? `data-ie-schc="${esc(e.schc)}"` : e.scforms ? `data-ie-scforms` : "";
+  const evAttr = (e, w) => e.aud ? `data-ie-aud="${esc(e.aud)}"` : e.cell ? (w ? `data-ie-cell="${esc(e.cell)}"` : `data-ie-go="inspection"`) : "";
   function calAgenda(d, list, t, w, auto) {
     const head = `${md(d)}(${wd(d)})${d === t ? " · 오늘" : ""}`;
     return `<div class="ic-ag${auto ? " is-auto" : ""}" aria-live="polite">
@@ -418,7 +379,7 @@
     const title = ym.slice(0, 4) + "년 " + Number(ym.slice(5)) + "월";
     return `<h2 class="card-title">${ymOf(t) === ym ? "이번 달 점검 일정" : "점검 일정"}<span class="dc-meta">${esc(title)} · ${C.n}건</span><span class="spacer"></span>
         <span class="ic-nav"><button type="button" class="btn btn-ghost btn-sm" data-ie-cm="-1" aria-label="이전 달">${icon("chevl", 15)}</button><button type="button" class="btn btn-ghost btn-sm" data-ie-cm="0"${ymOf(t) === ym ? " disabled" : ""}>이번 달</button><button type="button" class="btn btn-ghost btn-sm" data-ie-cm="1" aria-label="다음 달">${icon("chevron", 15)}</button></span></h2>
-      <div class="ic-lg">${[["recv", "받는 점검(수검)"], ["due", "하는 점검 기한"], ["late", "기한 지남"], ["done", "완료"]].map(([k, v]) => `<span class="is-${k}"><i></i>${esc(v)}</span>`).join("")}</div>
+      <div class="ic-lg">${[["recv", "ICNKF 수검"], ["due", "ICNKF 실행 기한"], ["late", "기한 경과"], ["done", "완료"]].map(([k, v]) => `<span class="is-${k}"><i></i>${esc(v)}</span>`).join("")}</div>
       <div class="ic-grid" role="group" aria-label="${esc(title)}">
         ${WD.map((x, i) => `<span class="ic-wd${i === 0 ? " is-sun" : i === 6 ? " is-sat" : ""}">${x}</span>`).join("")}
         ${cells.join("")}
@@ -432,40 +393,6 @@
     hideTT();
     box.innerHTML = calInner(todayISO());
     wire(box);
-  }
-
-  /* ═════════ 자체 보안점검 (v1.32) ═════════ */
-  function selfcheckCard(t) {
-    const S = SC();
-    const y = t.slice(0, 4);
-    const vis = new Set(S.forms().map(f => f.id));                       // v1.35 숨긴 별표는 없는 것처럼
-    const hcs = S.hcRecs ? S.hcRecs() : [];                                // 하드카피 기록 = 완료로 셈
-    const recs = (Array.isArray(SeMIS.data.selfChecks) ? SeMIS.data.selfChecks : []).filter(r => r && r.id && !r.hc && isISO(r.date) && vis.has(r.form)).concat(hcs.map(r => Object.assign({}, r, { status: "done" })));
-    const yr = recs.filter(r => r.date.slice(0, 4) === y);
-    const rows = S.forms().map(f => {
-      const rs = yr.filter(r => r.form === f.id), done = rs.filter(r => r.status === "done").length, hc = rs.filter(r => r.hc).length;
-      const last = recs.filter(r => r.form === f.id).map(r => r.date).sort().pop();
-      return sbar("별표 " + f.id.slice(1) + " " + f.title.replace(/ 점검표$/, ""), [{ v: done, c: STC.good }, { v: rs.length - done, c: STC.warn }], Math.max(1, rs.length), rs.length ? done + "/" + rs.length : "-",
-        `별표 ${f.id.slice(1)} ${f.title} · ${y}년 ${rs.length}건(완료 ${done}${hc ? " · 하드카피 " + hc : ""})${last ? " · 최근 " + dot(last) : ""}`);
-    }).join("");
-    const open = S.allFindings().filter(x => S.fState(x.fx, t) !== "done")
-      .sort((a, b) => (S.fState(a.fx, t) === "late" ? 0 : 1) - (S.fState(b.fx, t) === "late" ? 0 : 1) || String(a.fx.due || "9").localeCompare(String(b.fx.due || "9")));
-    const hcOpen = S.forms().map(f => ({ f, n: S.hcOpen ? S.hcOpen(f.id) : 0 })).filter(x => x.n);
-    const n = mob() ? 5 : 8;
-    return `<section class="card sd-card ie-card" aria-label="자체 보안점검">
-      <h2 class="card-title">자체 보안점검<span class="dc-meta">${y}년 ${yr.length}건 · 수준관리지침 별표</span><span class="spacer"></span><button type="button" class="link-btn" data-ie-go="selfcheck">자체 보안점검</button></h2>
-      <div class="sd-grid ie-grid2">
-        <div class="sd-pane">
-          <div class="sd-ph"><b>양식별 ${y}년 점검</b>${legend([{ name: "완료", c: STC.good }, { name: "작성 중", c: STC.warn }])}</div>
-          <div class="ie-sbs">${rows}</div>
-        </div>
-        <div class="sd-pane">
-          <div class="sd-ph"><b>미결 지적</b><span class="dc-meta">${open.length + hcOpen.reduce((k, x) => k + x.n, 0)}건</span></div>
-          ${open.length || hcOpen.length ? `<ul class="ie-pend">${hcOpen.map(x => `<li><button type="button" data-ie-schc="${esc(x.f.id)}"><b>${esc("별표 " + x.f.id.slice(1) + " 하드카피 미결 " + x.n + "건")}</b><small>${esc(x.f.title)}</small></button></li>`).join("")}${open.slice(0, n).map(x => `<li><button type="button" data-ie-sc="${esc(x.r.id)}|${esc(x.it.id)}"><b>${esc(x.it.t || x.it.g || "장비")}</b><small>${esc("별표 " + x.f.id.slice(1) + " · " + dot(x.r.date) + (x.fx.due ? " · 기한 " + dot(x.fx.due) : ""))}${S.fState(x.fx, t) === "late" ? " · 기한 경과" : ""}</small></button></li>`).join("")}</ul>${open.length > n ? `<p class="sd-foot">외 ${open.length - n}건</p>` : ""}`
-            : `<p class="ie-ok">${icon("check", 16)}<span>미결 지적이 없습니다.</span></p>`}
-        </div>
-      </div>
-    </section>`;
   }
 
   /* ═════════ 말풍선 · 연결 ═════════ */
@@ -498,8 +425,6 @@
     $$("[data-ie-xls]", root).forEach(b => b.onclick = () => { if (TR() && TR().exportDue) TR().exportDue(); });
     $$("[data-ie-aud]", root).forEach(b => b.onclick = () => { if (AU()) AU().open(b.dataset.ieAud); });
     $$("[data-ie-find]", root).forEach(b => b.onclick = () => { if (AU()) AU().setState({ tab: "findings", sel: "", fStF: b.dataset.ieFind }); SeMIS.navigate("audit"); });
-    $$("[data-ie-sc]", root).forEach(b => b.onclick = () => { const [id, it] = b.dataset.ieSc.split("|"); if (SC()) SC().openRecord(id, it); });
-    $$("[data-ie-scf]", root).forEach(b => b.onclick = () => { if (SC()) SC().startForm(b.dataset.ieScf); });
     $$("[data-ie-sl]", root).forEach(b => b.onclick = () => { if (!SL()) return; if (b.hasAttribute("data-ie-round")) SL().quickRound(b.dataset.ieSl); else SL().recordForm(b.dataset.ieSl, ""); });
     $$("[data-ie-cell]", root).forEach(b => b.onclick = () => {
       if (!SL()) return;
@@ -507,8 +432,6 @@
       const ov = document.getElementById("modal-overlay");
       if (!ov || ov.classList.contains("hidden")) SeMIS.navigate("inspection");   // 한 주기에 기록이 여럿이면 기록 목록으로
     });
-    $$("[data-ie-scforms]", root).forEach(b => b.onclick = () => { if (SC()) SC().setState({ tab: "forms", rid: "" }); SeMIS.navigate("selfcheck"); });
-    $$("[data-ie-schc]", root).forEach(b => b.onclick = () => { if (SC() && SC().hcForm) SC().hcForm(b.dataset.ieSchc); });
     $$("[data-ie-cfg]", root).forEach(b => b.onclick = cfgPick);
     if (window.SemisHaz) SemisHaz.fill(root);
     $$("[data-ie-cm]", root).forEach(b => b.onclick = () => { const n = Number(b.dataset.ieCm), t = todayISO(); calYM = n ? ymAdd(calYM || ymOf(t), n) : ymOf(t); calSel = ""; paintCal(); });
@@ -524,11 +447,10 @@
       if (typeof console !== "undefined") console.error("[aud-dash] " + name, err);
       cards.push(`<section class="card ie-card ie-err" aria-label="${esc(name)}"><h2 class="card-title">${esc(name)}</h2><p class="ie-ok">${icon("alert", 16)}<span>이 카드를 표시하지 못했습니다. 새로 고침 후에도 같으면 관리자에게 알려 주세요.</span></p></section>`);
     } };
-    if ((can("inspection") && SL()) || (can("selfcheck") && SC()) || (can("audit") && AU())) { add("점검 일정", calCard); add("다가오는 점검", upcomingCard); }
+    if ((can("inspection") && SL()) || (can("audit") && AU())) { add("점검 일정", calCard); add("다가오는 점검", upcomingCard); }
     if (can("training") && TR()) add("교육 · 자격", trainCard);
     if (can("audit") && AU()) add("수검 대응", auditCard);
     if (can("inspection") && SL()) add("보안 기록부", seclogCard);
-    if (can("selfcheck") && SC()) add("자체 보안점검", selfcheckCard);
     let kpi = "";
     try { kpi = kpiHTML(t); } catch (err) { if (typeof console !== "undefined") console.error("[aud-dash] kpi", err); }
     root.innerHTML = ui.head({ title: TITLE, meta: "기준 " + dot(t) }) + kpi
@@ -539,6 +461,6 @@
   }
 
   SeMIS.registerModule(MOD, { title: TITLE, render });
-  window.SemisAudDash = { render, kpiHTML, upData, upcomingCard, calData, calCard, cfgPick, trainCard, auditCard, seclogCard, selfcheckCard,
+  window.SemisAudDash = { render, kpiHTML, upData, upcomingCard, calData, calCard, cfgPick, trainCard, auditCard, seclogCard,
     setToday(t) { fixedToday = isISO(t) ? t : ""; }, setCal(ym, sel) { calYM = /^\d{4}-\d{2}$/.test(ym || "") ? ym : ""; calSel = isISO(sel) ? sel : ""; } };
 })();

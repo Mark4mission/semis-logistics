@@ -73,7 +73,7 @@
         : ui.empty(q || typeF || yearF ? "조건에 맞는 기록이 없습니다." : "등록된 기록이 없습니다.")}</div>`;
   }
 
-  const fileChips = (files, del) => (files || []).map((f, i) => `<span class="au-file"><a class="nb-file" href="${esc(f.url)}" target="_blank" rel="noopener">${icon("link", 14)}<span>${esc(f.name || "첨부")}</span></a>${del ? `<button type="button" class="mt-btn danger" data-${del}="${i}" aria-label="첨부 빼기">${icon("x", 14)}</button>` : ""}</span>`).join("");
+  const fileChips = (files, del) => (files || []).map((f, i) => `<span class="au-file"><a class="nb-file" href="${esc(f.url)}" target="_blank" rel="noopener">${icon("link", 14)}<span>${esc(f.name || "첨부")}</span></a>${del ? `<button type="button" class="mt-btn danger" data-${del}="${i}" aria-label="첨부 삭제">${icon("x", 14)}</button>` : ""}</span>`).join("");
   function view(id) {
     const c = list().find(x => x.id === id);
     if (!c) return;
@@ -92,7 +92,7 @@
     if (!window.SemisSync || !SemisSync.uploadFile) { toast("오프라인에서는 올릴 수 없습니다.", true); return; }
     for (const file of Array.from(fl || [])) {
       if (file.size > FILE_MAX) { toast(file.name + ": 50MB를 넘습니다.", true); continue; }
-      toast("올리는 중: " + file.name);
+      toast("업로드 중: " + file.name);
       try { const up = await SemisSync.uploadFile(file, "cases"); files.push({ name: up.name || file.name, size: up.size || file.size || 0, url: up.url }); }
       catch (e) { toast("올리지 못했습니다: " + file.name, true); }
     }
@@ -113,7 +113,7 @@
       <div class="form-grid">${f("start", "시작", "", "time")}${f("end", "종료", "", "time")}</div>
       ${f("result", "처리 결과")}${f("note", "비고")}${f("chk", "확인 필요")}
       <div class="form-row"><label>보고서 · 첨부</label><div class="au-files au-files-edit" id="sf-files"></div><input type="file" id="sf-file" multiple hidden>
-        <button type="button" class="btn btn-ghost btn-sm" id="sf-fbtn">${icon("link", 15)}<span>파일 올리기</span></button></div>
+        <button type="button" class="btn btn-ghost btn-sm" id="sf-fbtn">${icon("link", 15)}<span>파일 첨부</span></button></div>
       <div class="modal-actions">${c ? '<button type="button" class="link-btn danger" data-act="del">삭제</button><span class="spacer" style="flex:1"></span>' : ""}
         <button type="button" class="btn btn-ghost" data-act="cancel">취소</button><button type="button" class="btn btn-primary" data-act="ok">저장</button></div>`, { wide: true });
     const paint2 = () => { $("#sf-files").innerHTML = fileChips(files, "sff"); $$("[data-sff]").forEach(b => b.onclick = () => { files.splice(Number(b.dataset.sff), 1); paint2(); }); };

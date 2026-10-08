@@ -607,7 +607,7 @@
       title: TITLE,
       meta: "X-ray · ETD · WTMD · HHMD",
       actions: `<span class="scr-meta" id="eq-meta">${esc(syncText(s))}</span>
-        <button type="button" class="btn btn-ghost btn-sm" id="eq-refresh" title="CARES에서 다시 읽기">${icon("refresh", 16)}<span>새로고침</span></button>
+        <button type="button" class="btn btn-ghost btn-sm" id="eq-refresh" title="CARES 자료 새로고침">${icon("refresh", 16)}<span>새로고침</span></button>
         ${canWrite ? `<button type="button" class="btn btn-primary" id="eq-add">${icon("plus", 17)}<span>장비 등록</span></button>` : ""}`
     }) + `<div class="eq-tabs" role="tablist" aria-label="검색장비 화면">${TABS.map(([id, lb]) =>
         `<button type="button" role="tab" class="eq-tab" data-etab="${id}" aria-selected="${tab === id}">${esc(lb)}</button>`).join("")}</div>

@@ -317,7 +317,7 @@
         <div class="mn-guide-sub">회의 시작 전에 회의록을 하나 열어두고, 참석자에게는 QR만 보여주면 됩니다.</div>
         <div class="mn-guide-steps">
           <div class="mn-gs"><span class="mn-gs-n">1</span><div>
-            <b>+ 새 회의록</b> — 폴더만 고르면 회차·제목·장소·참석자 명단이 지난 회의에서 자동으로 채워집니다.</div></div>
+            <b>+ 새 회의록</b> — 폴더만 선택하면 회차·제목·장소·참석자 명단이 지난 회의에서 자동으로 채워집니다.</div></div>
           <div class="mn-gs"><span class="mn-gs-n">2</span><div>
             <b>✍️ 서명 받기</b> — 회의록을 열면 <b>QR 코드</b>가 나옵니다. 회의실 화면에 크게 띄우거나 안내문으로 인쇄해 두세요.</div></div>
           <div class="mn-gs"><span class="mn-gs-n">3</span><div>
@@ -325,7 +325,7 @@
           <div class="mn-gs"><span class="mn-gs-n">4</span><div>
             논의 내용과 결정사항을 적고 <b>확정</b>하면, A4 회의록으로 바로 인쇄됩니다.</div></div>
         </div>
-        ${canWrite() ? '<button class="btn btn-primary" id="mn-guide-add">+ 첫 회의록 만들기</button>' : ""}
+        ${canWrite() ? '<button class="btn btn-primary" id="mn-guide-add">+ 첫 회의록 작성</button>' : ""}
       </div>`;
     }
     return `<div class="table-wrap"><table class="tbl mn-list-tbl tbl-cap" style="--cap:1420px"><thead><tr>
@@ -680,8 +680,8 @@
     if (!fs.length) { toast("먼저 폴더를 만들어 주세요.", true); if (canManageFolders()) folderModal(); return; }
     const defFolder = view.folder && folderOf(view.folder) ? view.folder : fs[0].id;
     openModal(`
-      <h3>🗒️ 새 회의록 만들기</h3>
-      <div class="form-hint" style="margin-bottom:10px">폴더를 고르면 <b>회차·제목·장소·주재자·참석자 명단·전차 미결사항</b>이
+      <h3>🗒️ 새 회의록 작성</h3>
+      <div class="form-hint" style="margin-bottom:10px">폴더를 선택하면 <b>회차·제목·장소·주재자·참석자 명단·전차 미결사항</b>이
         직전 회의 기록에서 자동으로 채워집니다. 회의 중에는 논의 내용만 적으면 됩니다.</div>
       <div class="form-row"><label>회의 분류 (폴더)</label>
         <select id="mn-nf">${fs.map(f => `<option value="${esc(f.id)}"${f.id === defFolder ? " selected" : ""}>${esc(f.icon || "🗒")} ${esc(f.name)}</option>`).join("")}</select></div>
@@ -1633,7 +1633,7 @@
       <div class="form-hint" style="margin-bottom:8px">${esc(p.org || "")}${p.role ? " · " + esc(p.role) : ""} — 아래 칸에 손가락 또는 마우스로 서명해 주세요.</div>
       <div class="sign-pad-wrap"><canvas id="mn-sign-cv" class="sign-pad"></canvas></div>
       <div class="modal-actions">
-        <button class="btn btn-ghost" id="mn-sign-clear" style="margin-right:auto">지우기</button>
+        <button class="btn btn-ghost" id="mn-sign-clear" style="margin-right:auto">초기화</button>
         <button class="btn btn-ghost" id="mn-sign-cancel">취소</button>
         <button class="btn btn-primary" id="mn-sign-ok">저장</button>
       </div>`);

@@ -555,7 +555,8 @@
   }
 
   /* ─────── v1.35 점검 일정 연동 (읽기 전용 · 저장하지 않음) ─────── */
-  const INSP_SRC = [["inspection", () => window.SemisSeclog], ["selfcheck", () => window.SemisSelfcheck]];
+  /* v1.42 자체 보안점검(국토부 수검대비)은 선택 실행 — 기한 · 기록을 일정에 넣지 않는다 */
+  const INSP_SRC = [["inspection", () => window.SemisSeclog]];
   let inspCache = {}, inspIdx = {};
   function modCan(module) {
     const mn = SeMIS.menuForModule && SeMIS.menuForModule(module);

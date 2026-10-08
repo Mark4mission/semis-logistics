@@ -205,10 +205,10 @@
     c.node.parentNode.removeChild(c.node);
     if (ed) ed.dispatchEvent(new Event("input", { bubbles: true }));
     list.splice(idx, 1);
-    if (!list.length) { close(); S().toast("첨부를 뺐습니다."); return; }
+    if (!list.length) { close(); S().toast("첨부를 삭제했습니다."); return; }
     idx = Math.min(idx, list.length - 1);
     paint();
-    S().toast("첨부를 뺐습니다.");
+    S().toast("첨부를 삭제했습니다.");
   }
 
   /* ─────── 클릭 위임 — 첨부 칩·이미지 ─────── */

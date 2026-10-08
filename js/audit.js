@@ -431,7 +431,7 @@
   const bar = (pct) => `<span class="au-bar" aria-hidden="true"><i style="width:${Math.max(0, Math.min(100, pct))}%"></i></span>`;
   function fileChips(files, delAttr) {
     return (files || []).map((f, i) => `<span class="au-file"><a class="nb-file" href="${esc(f.url)}" target="_blank" rel="noopener">${icon("link", 14)}<span>${esc(f.name || "첨부")}</span></a>${
-      delAttr ? `<button type="button" class="mt-btn danger" data-${delAttr}="${i}" aria-label="첨부 빼기">${icon("x", 14)}</button>` : ""}</span>`).join("");
+      delAttr ? `<button type="button" class="mt-btn danger" data-${delAttr}="${i}" aria-label="첨부 삭제">${icon("x", 14)}</button>` : ""}</span>`).join("");
   }
   function dueChip(f) {
     if (!isISO(f.due)) return '<span class="cell-sub">기한 없음</span>';
@@ -599,7 +599,7 @@
     if (!ds.length) return "";
     const one = (d) => { const f = (d.files || [])[0]; return `<a class="nb-file ck-doc" href="${esc(f.url)}" target="_blank" rel="noopener" data-name="${esc(f.name || "")}" title="${esc([d.title, d.date].filter(Boolean).join(" · "))}">${icon("doc", 13)}<span>${esc(d.title)}</span>${d.date ? `<small class="mono">${esc(String(d.date).slice(2).replace(/-/g, "."))}</small>` : ""}</a>`; };
     const more = ds.length - DOC_SHOW;
-    return ds.slice(0, DOC_SHOW).map(one).join("") + (more > 0 ? `<button type="button" class="link-btn ck-docmore" data-ck-docs="${esc(c.mid)}">문서 ${more}건 더</button>` : "");
+    return ds.slice(0, DOC_SHOW).map(one).join("") + (more > 0 ? `<button type="button" class="link-btn ck-docmore" data-ck-docs="${esc(c.mid)}">문서 외 ${more}건</button>` : "");
   }
   function docsModal(mid) {
     const ds = window.SemisDocs ? SemisDocs.forMid(mid) : [];
@@ -615,7 +615,7 @@
       <div class="ck-no mono">${esc(c.mid || "·")}</div>
       <div class="ck-main">
         <div class="ck-head"><div class="ck-t">${c.mid ? `<span class="ck-no-m mono">${esc(c.mid)}</span>` : ""}${esc(c.text || "")}</div><span class="ck-state">${ui.chip(st.label, st.tone)}</span></div>
-        ${c.ref ? `<div class="ck-refs">${refChips(c.ref)}</div>` : ""}
+        ${c.ref && !c.mid ? `<div class="ck-refs">${refChips(c.ref)}</div>` : ""}
         <div class="ck-ctl">
           ${scoreHTML(c, "doc", canW)}${scoreHTML(c, "imp", canW)}
           ${canW ? `<button type="button" class="ck-na" data-na="${esc(c.id)}" aria-pressed="${!!c.na}">N/A</button>` : ""}
@@ -761,7 +761,7 @@
             <span class="cl-no mono">${esc(s.no)}.</span><span class="cl-st">${esc(s.title || "")}</span>
             <span class="cl-n mono">${full ? "불러옴" : got ? got + "/" + its.length : its.length}</span></label>`;
         }).join("")}</div>
-        ${unused ? `<label class="au-opt cl-drop"><input type="checkbox" id="cl-drop" checked> 사용하지 않은 기존 항목 ${unused}개 빼기</label>` : ""}`;
+        ${unused ? `<label class="au-opt cl-drop"><input type="checkbox" id="cl-drop" checked> 사용하지 않은 기존 항목 ${unused}개 제외</label>` : ""}`;
       const ok = $("#modal-box [data-act=ok]");
       const picked = () => $$(".cl-sec input:checked", body).map(i => i.value);
       const count = () => {
@@ -874,7 +874,7 @@
     if (!window.SemisSync || !SemisSync.uploadFile) { toast("오프라인에서는 올릴 수 없습니다.", true); return; }
     for (const file of arr) {
       if (file.size > FILE_MAX) { toast(file.name + ": 50MB를 넘습니다.", true); continue; }
-      toast("올리는 중: " + file.name);
+      toast("업로드 중: " + file.name);
       try {
         const up = await SemisSync.uploadFile(file, FOLDER);
         files.push({ name: up.name || file.name, size: up.size || file.size || 0, url: up.url });
@@ -887,7 +887,7 @@
     return `<div class="form-row"><label>첨부</label>
       <div class="au-files au-files-edit" id="${prefix}-files">${fileChips(files, prefix + "-fdel")}</div>
       <input type="file" id="${prefix}-file" multiple hidden>
-      <button type="button" class="btn btn-ghost btn-sm" id="${prefix}-fbtn">${icon("link", 15)}<span>파일 올리기</span></button></div>`;
+      <button type="button" class="btn btn-ghost btn-sm" id="${prefix}-fbtn">${icon("link", 15)}<span>파일 첨부</span></button></div>`;
   }
   function wireFileBox(prefix, files) {
     const paint = () => {

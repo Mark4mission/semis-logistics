@@ -509,7 +509,7 @@
       if (!plain || !looksLikeHtml(plain)) return;
       ev.preventDefault();
       insert(sanitizeHtml(plain));
-      toast("붙여넣은 HTML 서식을 적용했습니다. (되돌리기: Ctrl+Z)");
+      toast("붙여넣은 HTML 서식을 적용했습니다. (실행 취소: Ctrl+Z)");
     });
     ed.addEventListener("dragover", (ev) => ev.preventDefault());
     ed.addEventListener("drop", (ev) => {
@@ -898,7 +898,7 @@
           <option value="frame" ${m && m.open === "frame" ? "selected" : ""}>시스템 내부 화면에서 열기 ▣</option>
           <option value="group" ${m && m.open === "group" ? "selected" : ""}>링크 묶음 — 하위 링크 카드 화면 ⊞</option>
         </select>
-        <div class="form-hint">일부 사이트는 내부 열기(iframe)를 차단합니다. 화면이 비어 보이면 새 탭 방식으로 변경하세요.<br><b>링크 묶음</b>은 메뉴 한 줄로 두고, 눌렀을 때 하위 링크를 카드로 펼쳐 보여 줍니다. 하위 링크는 아래 '소속'에서 이 묶음을 골라 추가하세요.</div></div>
+        <div class="form-hint">일부 사이트는 내부 열기(iframe)를 차단합니다. 화면이 비어 보이면 새 탭 방식으로 변경하세요.<br><b>링크 묶음</b>은 메뉴 한 줄로 두고, 눌렀을 때 하위 링크를 카드로 펼쳐 보여 줍니다. 하위 링크는 아래 '소속'에서 이 묶음을 선택해 추가하세요.</div></div>
       <div class="form-row" id="row-route" style="display:none">
         <label>모듈 ID (라우트)</label><input id="f-route" maxlength="30" placeholder="영문 소문자·숫자·하이픈 (예: dg-check)">
         <div class="form-hint">나중에 같은 ID로 모듈 파일이 등록되면 이 메뉴가 실화면으로 연결됩니다.</div></div>
@@ -911,7 +911,7 @@
           ${groups.map(g => `<option value="${esc(g.id)}" ${parentSel === g.id ? "selected" : ""}>${esc(g.label)}</option>`).join("")}
           ${sets.map(g => `<option value="${esc(g.id)}" ${parentSel === g.id ? "selected" : ""}>⊞ ${esc(g.label)} (링크 묶음)</option>`).join("")}
         </select>
-        <div class="form-hint">링크 묶음을 고르면 사이드바에는 나오지 않고 그 묶음 화면 안의 카드로만 표시됩니다.</div></div>
+        <div class="form-hint">링크 묶음을 선택하면 사이드바에는 나오지 않고 그 묶음 화면 안의 카드로만 표시됩니다.</div></div>
       <div class="form-row" id="row-vis" ${type === "group" ? 'style="display:none"' : ""}>
         <label>접근 권한</label>
         <select id="f-vis">
@@ -1546,14 +1546,14 @@
                   <td>${esc(LABEL[r.key] || r.key)}</td>
                   <td>${r.old_len == null ? "-" : esc(String(r.old_len))} → ${r.new_len == null ? "-" : esc(String(r.new_len))}${drop ? ' <span class="badge badge-red">전량삭제</span>' : ""}</td>
                   <td style="font-size:.85rem;color:var(--text-3)">${esc(r.changed_by || "")}</td>
-                  <td><button class="btn btn-ghost btn-sm" data-hist="${esc(String(r.id))}">되돌리기</button></td></tr>`;
+                  <td><button class="btn btn-ghost btn-sm" data-hist="${esc(String(r.id))}">복원</button></td></tr>`;
               }).join("")
             + "</tbody></table>";
           $$("#hist-body [data-hist]").forEach(b => {
             b.onclick = () => confirmModal("이 시점의 값으로 되돌립니다. 현재 값은 다시 이력에 보관됩니다. 계속하시겠습니까?", () => {
               SemisSync.restoreHistory(b.dataset.hist)
                 .then(k => { toast((LABEL[k] || k) + " 데이터를 되돌렸습니다."); load(); })
-                .catch(() => toast("되돌리기에 실패했습니다.", true));
+                .catch(() => toast("복원에 실패했습니다.", true));
             });
           });
         }).catch(() => { if (body) body.textContent = "변경 이력을 불러오지 못했습니다."; });

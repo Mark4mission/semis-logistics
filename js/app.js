@@ -8,7 +8,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.41.0";
+  const VERSION = "1.42.0";
   const APP_NAME = "SeMIS · Logistics";
   /* v1.15: 데이터 캐시는 이 탭의 sessionStorage 에만 둔다(탭을 닫거나 로그아웃하면 사라짐).
      화면 설정(LS_UI)만 localStorage. */
@@ -267,11 +267,11 @@ const SeMIS = (() => {
       m("aud-dash", "점검 · 교육 대시보드", "📊", "aud-dash", "mgr", "hub-aud"),
       m("audit", "수검 대응 센터", "🗂️", "audit", "mgr", "hub-aud"),
       m("inspection", "보안 기록부", "📒", "inspection", "mgr", "hub-aud"),
-      m("selfcheck", "자체 보안점검", "🧾", "selfcheck", "mgr", "hub-aud"),
       p("car", "시정조치 (CAR)", "📋", "car", "hq", "hub-aud",
         "점검·감사에서 나온 부적합을 접수 → 조치중 → 종결 3단계로 추적하고 기한 경과를 에스컬레이션합니다."),
       m("training", "보안교육 · 자격 관리", "🎓", "training", "mgr", "hub-aud"),
       m("dissem", "보안 전파교육", "📣", "dissem", "mgr", "hub-aud"),
+      m("selfcheck", "자체 보안점검", "🧾", "selfcheck", "mgr", "hub-aud"),     // v1.42 선택 실행 — 허브 맨 아래
 
       h("hub-ops", "협력 · 비상", "users"),
       m("serp", "팀위기대응계획 (SERP)", "🛟", "serp", "mgr", "hub-ops"),
@@ -675,7 +675,7 @@ const SeMIS = (() => {
       if (ds.label === "일일 안전점검") ds.label = "일일 보안 · 안전 순찰일지";
       if (ds.icon === "✅") ds.icon = "📝";
     })();
-    // 자체 보안점검 (v1.32) — 배열 보정 · 기존 메뉴 데이터에 없으면 점검 · 교육 허브의 보안 기록부 바로 아래에 1회 추가(이후 숨김 · 이름은 운영자 설정 유지)
+    // 자체 보안점검 (v1.32) — 배열 보정 · 기존 메뉴 데이터에 없으면 점검 · 교육 허브 맨 아래(v1.42 선택 실행)에 1회 추가(이후 숨김 · 이름은 운영자 설정 유지)
     if (!DATA.selfCheckCfg || typeof DATA.selfCheckCfg !== "object" || Array.isArray(DATA.selfCheckCfg)) DATA.selfCheckCfg = {};
     if (!DATA.selfCheckCfg.forms || typeof DATA.selfCheckCfg.forms !== "object" || Array.isArray(DATA.selfCheckCfg.forms)) DATA.selfCheckCfg.forms = {};
     DATA.selfChecks = (Array.isArray(DATA.selfChecks) ? DATA.selfChecks : []).filter(x => x && typeof x === "object" && x.id);
@@ -683,10 +683,8 @@ const SeMIS = (() => {
       const ins = DATA.menus.find(m => m.type === "module" && m.module === "inspection");
       const hub = DATA.menus.find(m => m.id === "hub-aud" && m.type === "group");
       let seq = DATA.menus.reduce((mx, m) => Math.max(mx, m.seq || 0), 0) + 1;
-      if (ins) {   // 바로 다음 메뉴와의 사이
-        const nx = DATA.menus.filter(m => m.parent === ins.parent && (m.seq || 0) > (ins.seq || 0)).map(m => m.seq || 0);
-        seq = nx.length ? ((ins.seq || 0) + Math.min.apply(null, nx)) / 2 : (ins.seq || 0) + 0.5;
-      }
+      const kids = ins ? DATA.menus.filter(m => m.parent === ins.parent).map(m => m.seq || 0) : [];
+      if (kids.length) seq = Math.max.apply(null, kids) + 0.5;   // 같은 허브의 맨 아래
       DATA.menus.push({ id: DATA.menus.some(m => m.id === "selfcheck") ? "selfcheck-" + Date.now().toString(36) : "selfcheck",
         seq, type: "module", label: "자체 보안점검", icon: "🧾", module: "selfcheck", vis: "mgr",
         parent: ins && ins.parent ? ins.parent : (hub ? "hub-aud" : null) });
@@ -1432,8 +1430,9 @@ const SeMIS = (() => {
         '<span class="pl-dot" aria-hidden="true"></span><span class="nav-lbl">' + esc(m.label) + '</span><span class="nav-tag">예정</span></button>';
     }
     const badge = navBadgeOf(m);
-    return '<' + tag + ' type="button" class="nav-item" data-route="' + esc(m.module) + '" title="' + esc(m.label) + '">' +
-      '<span class="nav-lbl">' + esc(m.label) + '</span>' + (badge ? '<span class="nav-meta">' + esc(badge) + '</span>' : "") + '</' + tag + '>';
+    const def = modules[m.module], opt = !!(def && def.optional);   // v1.42 선택 실행 메뉴(의무 아님 · 통계 제외) — 메뉴에 '선택' 표시
+    return '<' + tag + ' type="button" class="nav-item' + (opt ? " is-opt" : "") + '" data-route="' + esc(m.module) + '" title="' + esc(m.label) + (opt ? " (선택 실행)" : "") + '">' +
+      '<span class="nav-lbl">' + esc(m.label) + '</span>' + (opt ? '<span class="nav-tag is-opt">선택</span>' : badge ? '<span class="nav-meta">' + esc(badge) + '</span>' : "") + '</' + tag + '>';
   }
   function plannedOpenPref(hubId, liveCount) {
     const pref = (navPrefs().plannedOpen || {})[hubId];
