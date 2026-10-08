@@ -19,6 +19,12 @@
    - 관리(hq 이상): semis_logi_edu_links(목록 · 최근 제출) · semis_logi_edu_link_save(만들기 · 끄기 · 연장)
    - 제한: IP별 10분 · 하루 시도 수(사무실 공용 IP 고려해 넉넉히), 잘못된 코드 15분 20회, 표마다 파일 15개 · 120MB, 파일 20MB(PDF · 이미지)
    - 시험 대상: 링크 target 'eduTest'(시스템관리자만 만듦) → 공용 DB 행 eduTest (앱에서 읽기 · 쓰기 불가)
+   v1.39.2 (Mark 요청 — 화면 단순화: 이름 · 사번 · 임명일 · 직무 · 이수증)
+   - 사번(emp) 필수 · 소속 선택(새 사람은 '인천화물팀'). 사람 찾기 = 사번이 같은 재직자 → 없으면 이름이 같은 재직자(다른 사번이 적힌 사람 제외)
+   - 이수증 판독: 파일 함수 op "edu-read" 가 semis_logi_edu_read_ok(서비스 권한만 — 표 · 경로 · 판독 횟수 확인, 과정 목록)를
+     부른 뒤 저장소에서 파일을 읽어 Claude 로 과정 · 수료일 · 기관 · 번호 · 시간을 뽑는다(edu_uploads.reads: 파일당 3회 · 표당 30회)
+   - 적용(2026-10-08): MCP 마이그레이션 semis_logi_security_20_edu_emp(edu_emp_key · edu_merge · reads 열) · _21_edu_read_ok · _22_edu_submit_emp
+     — 운영 함수 본문 md5 = 이 파일(4개 일치) · 권한 확인(read_ok = service_role 만)
    ═══════════════════════════════════════════════════════ */
 
 create table if not exists semis_logi_private.edu_links (
@@ -116,6 +122,12 @@ begin
   return s;
 end $$;
 
+/* 사번 대조 키 — 영문 · 숫자만, 소문자, 앞의 항공사 코드 KJ 는 뺀다 (SeMIS v2 보안서약서와 같은 규칙) */
+create or replace function semis_logi_private.edu_emp_key(p text) returns text
+language sql immutable set search_path = '' as $$
+  select regexp_replace(lower(regexp_replace(coalesce(p, ''), '[^0-9A-Za-z]', '', 'g')), '^kj(?=[0-9])', '')
+$$;
+
 /* IP별 시도 수 제한 — 통과면 null, 아니면 오류 JSON */
 create or replace function semis_logi_private.edu_limit(p_kind text, p_ip text) returns jsonb
 language plpgsql volatile security definer set search_path = '' as $$
@@ -166,7 +178,7 @@ language sql stable set search_path = '' as $$
 $$;
 
 /* ═════════════ 병합 (순수 — 공용 DB를 읽지 않는다) ═════════════
-   t = training 값, p = 확인을 마친 제출 { name, dept, roles[], apt{}, recs[{cid,date,expire,hours,org,certNo,files[]}] },
+   t = training 값, p = 확인을 마친 제출 { name, emp, dept, roles[], apt{}, recs[{cid,date,expire,hours,org,certNo,files[]}] },
    m = { now: ISO 시각, today: YYYY-MM-DD }
    → { t: 새 training, pid, kind(new|updated|dup), person{…}, records[{id,cid,date,expire}](그 사람 전체), ids[](이번 기록) } */
 create or replace function semis_logi_private.edu_merge(t jsonb, p jsonb, m jsonb) returns jsonb
@@ -176,18 +188,35 @@ declare
   recs jsonb := case when jsonb_typeof(t -> 'records') = 'array' then t -> 'records' else '[]'::jsonb end;
   v_nk text := lower(regexp_replace(coalesce(p ->> 'name', ''), '[[:space:]]', '', 'g'));
   v_dk text := regexp_replace(coalesce(p ->> 'dept', ''), '[[:space:]]', '', 'g');
+  v_ek text := semis_logi_private.edu_emp_key(p ->> 'emp');
   v_today text := m ->> 'today';
   v_now text := m ->> 'now';
   cand int[]; cand2 int[];
   v_idx int; v_kind text; v_pid text;
   per jsonb; roles jsonb; apt jsonb; r jsonb; x jsonb; f jsonb; j int; ids jsonb := '[]'::jsonb;
 begin
-  select array_agg((o.ord - 1)::int order by o.ord) into cand
-    from jsonb_array_elements(ppl) with ordinality as o(x, ord)
-   where jsonb_typeof(o.x) = 'object' and coalesce(o.x ->> 'id', '') <> ''
-     and lower(regexp_replace(coalesce(o.x ->> 'name', ''), '[[:space:]]', '', 'g')) = v_nk
-     and not (coalesce(o.x ->> 'left', '') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' and (o.x ->> 'left') <= v_today);
-  if coalesce(array_length(cand, 1), 0) = 1 then
+  /* 1) 사번이 같은 재직자 */
+  if v_ek <> '' then
+    select array_agg((o.ord - 1)::int order by o.ord) into cand
+      from jsonb_array_elements(ppl) with ordinality as o(x, ord)
+     where jsonb_typeof(o.x) = 'object' and coalesce(o.x ->> 'id', '') <> ''
+       and semis_logi_private.edu_emp_key(o.x ->> 'emp') = v_ek
+       and not (coalesce(o.x ->> 'left', '') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' and (o.x ->> 'left') <= v_today);
+    if coalesce(array_length(cand, 1), 0) >= 1 then v_idx := cand[1]; end if;
+  end if;
+  /* 2) 이름이 같은 재직자 — 다른 사번이 적힌 사람은 다른 사람 */
+  cand := null;
+  if v_idx is null then
+    select array_agg((o.ord - 1)::int order by o.ord) into cand
+      from jsonb_array_elements(ppl) with ordinality as o(x, ord)
+     where jsonb_typeof(o.x) = 'object' and coalesce(o.x ->> 'id', '') <> ''
+       and lower(regexp_replace(coalesce(o.x ->> 'name', ''), '[[:space:]]', '', 'g')) = v_nk
+       and (v_ek = '' or semis_logi_private.edu_emp_key(o.x ->> 'emp') in ('', v_ek))
+       and not (coalesce(o.x ->> 'left', '') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' and (o.x ->> 'left') <= v_today);
+  end if;
+  if v_idx is not null then
+    null;
+  elsif coalesce(array_length(cand, 1), 0) = 1 then
     v_idx := cand[1];
   elsif coalesce(array_length(cand, 1), 0) > 1 then
     select array_agg(c) into cand2 from unnest(cand) as c
@@ -207,12 +236,14 @@ begin
     end loop;
     apt := apt || coalesce(p -> 'apt', '{}'::jsonb);
     per := per || jsonb_build_object('dept', coalesce(nullif(p ->> 'dept', ''), per ->> 'dept', ''), 'roles', roles, 'apt', apt,
+                                     'emp', coalesce(nullif(p ->> 'emp', ''), per ->> 'emp', ''),
                                      'selfAt', v_now, 'updatedAt', v_now, 'updatedBy', '본인 등록');
     ppl := jsonb_set(ppl, array[v_idx::text], per);
     v_kind := 'updated';
   else
     v_pid := semis_logi_private.edu_rid('tps');
-    per := jsonb_build_object('id', v_pid, 'name', p ->> 'name', 'dept', coalesce(p ->> 'dept', ''),
+    per := jsonb_build_object('id', v_pid, 'name', p ->> 'name', 'dept', coalesce(nullif(p ->> 'dept', ''), '인천화물팀'),
+                              'emp', coalesce(p ->> 'emp', ''),
                               'roles', coalesce(p -> 'roles', '[]'::jsonb), 'apt', coalesce(p -> 'apt', '{}'::jsonb),
                               'left', '', 'pledge', '', 'pledgeFiles', '[]'::jsonb,
                               'note', case when v_kind = 'dup' then '동명이인 — 본인 등록 확인 필요' else '' end,
@@ -254,7 +285,7 @@ begin
   return jsonb_build_object(
     't', t || jsonb_build_object('people', ppl, 'records', recs),
     'pid', v_pid, 'kind', v_kind,
-    'person', jsonb_build_object('id', v_pid, 'name', per ->> 'name', 'dept', coalesce(per ->> 'dept', ''),
+    'person', jsonb_build_object('id', v_pid, 'name', per ->> 'name', 'dept', coalesce(per ->> 'dept', ''), 'emp', coalesce(per ->> 'emp', ''),
                                  'roles', coalesce(per -> 'roles', '[]'::jsonb), 'apt', coalesce(per -> 'apt', '{}'::jsonb)),
     'records', coalesce((select jsonb_agg(jsonb_build_object('id', z ->> 'id', 'cid', z ->> 'cid', 'date', z ->> 'date',
                                                              'expire', coalesce(z ->> 'expire', '')) order by z ->> 'date')
@@ -331,7 +362,7 @@ language plpgsql volatile security definer set search_path = '' as $$
 declare
   v_ip text := semis_logi_private.client_ip(); v_err jsonb; v_prev jsonb;
   l semis_logi_private.edu_links%rowtype;
-  v_sid text; v_name text; v_dept text; v_today date := semis_logi_private.edu_today();
+  v_sid text; v_name text; v_dept text; v_emp text; v_today date := semis_logi_private.edu_today();
   t jsonb; v_has boolean; okroles text[]; okcids text[];
   v_roles jsonb := '[]'::jsonb; v_apt jsonb := '{}'::jsonb; v_recs jsonb := '[]'::jsonb; v_paths text[] := '{}';
   r jsonb; f jsonb; v_r text; v_a text; v_d date; v_e date; v_files jsonb; v_path text; v_fname text; v_sz bigint; v_h jsonb;
@@ -359,8 +390,10 @@ begin
   /* ─ 본인 정보 ─ */
   v_name := semis_logi_private.edu_str(p ->> 'name', 30);
   v_dept := semis_logi_private.edu_str(p ->> 'dept', 40);
-  if v_name is null or v_dept is null then return jsonb_build_object('ok', false, 'error', 'too_long'); end if;
-  if v_name = '' or v_dept = '' then return jsonb_build_object('ok', false, 'error', 'required'); end if;
+  v_emp := semis_logi_private.edu_str(p ->> 'emp', 20);
+  if v_name is null or v_dept is null or v_emp is null then return jsonb_build_object('ok', false, 'error', 'too_long'); end if;
+  if v_name = '' then return jsonb_build_object('ok', false, 'error', 'required'); end if;
+  if semis_logi_private.edu_emp_key(v_emp) = '' then return jsonb_build_object('ok', false, 'error', 'emp'); end if;
 
   select s.value, true into t, v_has from public.semis_logi_store s where s.key = l.target for update;
   if t is null or jsonb_typeof(t) <> 'object' then t := jsonb_build_object('courses', '[]'::jsonb, 'people', '[]'::jsonb, 'records', '[]'::jsonb, 'sessions', '[]'::jsonb); end if;
@@ -432,7 +465,7 @@ begin
 
   /* ─ 병합 · 저장 ─ */
   mg := semis_logi_private.edu_merge(t,
-          jsonb_build_object('name', v_name, 'dept', v_dept, 'roles', v_roles, 'apt', v_apt, 'recs', v_recs),
+          jsonb_build_object('name', v_name, 'dept', v_dept, 'emp', v_emp, 'roles', v_roles, 'apt', v_apt, 'recs', v_recs),
           jsonb_build_object('now', to_char(v_now at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'today', to_char(v_today, 'YYYY-MM-DD')));
   if v_has then
     update public.semis_logi_store set value = mg -> 't', updated_by = 'edu-self' where key = l.target;
@@ -454,6 +487,30 @@ begin
   values ('edu', 'edu_submit', jsonb_build_object('code', l.code, 'name', v_name, 'pid', mg ->> 'pid', 'kind', mg ->> 'kind',
           'recs', jsonb_array_length(v_recs), 'target', l.target), v_ip);
   return v_res;
+end $$;
+
+/* 이수증 판독 전 확인 — 파일 함수(서비스 권한)만. 표 · 경로(같은 링크) · 판독 횟수(파일 3 · 표 30), 판독에 쓸 과정 목록 */
+alter table semis_logi_private.edu_uploads add column if not exists reads int not null default 0;
+create or replace function public.semis_logi_edu_read_ok(p_ticket text, p_path text) returns jsonb
+language plpgsql volatile security definer set search_path = '' as $$
+declare k semis_logi_private.edu_tickets%rowtype; l semis_logi_private.edu_links%rowtype; u semis_logi_private.edu_uploads%rowtype; n int; t jsonb;
+begin
+  if p_ticket is null or p_ticket !~ '^[0-9a-f]{48}$' then return jsonb_build_object('ok', false, 'error', 'ticket'); end if;
+  select * into k from semis_logi_private.edu_tickets x
+   where x.ticket_hash = encode(extensions.digest(p_ticket, 'sha256'), 'hex') and x.expires_at > now();
+  if not found then return jsonb_build_object('ok', false, 'error', 'ticket'); end if;
+  select * into l from semis_logi_private.edu_links x where x.code = k.code;
+  if not found or not l.active or l.expires_at <= now() then return jsonb_build_object('ok', false, 'error', 'closed'); end if;
+  select * into u from semis_logi_private.edu_uploads x where x.path = p_path and x.code = k.code for update;
+  if not found then return jsonb_build_object('ok', false, 'error', 'path'); end if;
+  if u.reads >= 3 then return jsonb_build_object('ok', false, 'error', 'too_many'); end if;
+  select coalesce(sum(x.reads), 0) into n from semis_logi_private.edu_uploads x where x.ticket_hash = k.ticket_hash;
+  if n >= 30 then return jsonb_build_object('ok', false, 'error', 'too_many'); end if;
+  update semis_logi_private.edu_uploads x set reads = x.reads + 1 where x.path = p_path;
+  select s.value into t from public.semis_logi_store s where s.key = l.target;
+  return jsonb_build_object('ok', true, 'type', u.type, 'size', u.size,
+    'courses', coalesce((select jsonb_agg(jsonb_build_object('id', c ->> 'id', 'name', c ->> 'name', 'kind', c ->> 'kind', 'roles', c -> 'roles'))
+                           from jsonb_array_elements(semis_logi_private.edu_courses(t)) c), '[]'::jsonb));
 end $$;
 
 /* ═════════════ 관리 (안전보안파트 hq 이상) ═════════════ */
@@ -543,6 +600,7 @@ end $$;
 /* ─── 실행 권한 ───
    비공개 보조 함수는 API로 부를 수 없게. 공개 RPC 는 anon · service_role(함수 안에서 링크 · 표 · 세션 확인),
    업로드 기록(claim)은 파일 함수의 서비스 권한만 */
+revoke all on function semis_logi_private.edu_emp_key(text) from public, anon, authenticated;
 revoke all on function semis_logi_private.edu_date(text), semis_logi_private.edu_today(), semis_logi_private.edu_rid(text),
   semis_logi_private.edu_str(text, int), semis_logi_private.edu_limit(text, text), semis_logi_private.edu_link_check(text, text),
   semis_logi_private.edu_courses(jsonb), semis_logi_private.edu_merge(jsonb, jsonb, jsonb), semis_logi_private.edu_admin(),
@@ -554,3 +612,5 @@ grant execute on function public.semis_logi_edu_info(text), public.semis_logi_ed
   public.semis_logi_edu_submit(text, text, jsonb), public.semis_logi_edu_links(), public.semis_logi_edu_link_save(jsonb)
   to anon, service_role;
 grant execute on function public.semis_logi_edu_claim(text, text, text, bigint, text) to service_role;
+revoke execute on function public.semis_logi_edu_read_ok(text, text) from public, anon, authenticated;
+grant execute on function public.semis_logi_edu_read_ok(text, text) to service_role;

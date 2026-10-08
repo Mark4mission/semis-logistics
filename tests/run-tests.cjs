@@ -8021,17 +8021,40 @@ function makeServer(opts = {}) {
     const ESQL = read("tools/sql/semis-logi-edu.sql");
     const EDGE = read("tools/edge/semis-logi-files.ts");
     const C0 = "abcdefghjkmn";
+    /* SQL 선언에서 공개 함수 인자 이름 — 가짜 서버 · 관리 화면 흉내가 부를 때마다 맞춰 본다(v1.39.1 '새 링크' 인자 이름 오류 재발 방지) */
+    const SIGS = {};
+    [ESQL, read("tools/sql/semis-logi-pow.sql")].forEach(src => { for (const m of src.matchAll(/create or replace function public\.(\w+)\(([^)]*)\)/g))
+      SIGS[m[1]] = m[2].split(",").map(x => x.trim()).filter(Boolean).map(x => ({ n: x.split(/\s+/)[0], opt: /\sdefault\s/i.test(x) })); });
+    const sigBad = (name, args) => {
+      const sg = SIGS[name];
+      if (!sg) return name + ": 서버에 없는 함수";
+      const keys = Object.keys(args || {});
+      const extra = keys.filter(k => !sg.some(x => x.n === k)), miss = sg.filter(x => !x.opt && keys.indexOf(x.n) < 0).map(x => x.n);
+      return extra.length || miss.length ? name + ": 인자 " + JSON.stringify({ extra, miss }) : "";
+    };
     /* 가짜 서버 — RPC · 파일 함수 · 업로드 PUT(XHR) */
     function eduServer(o) {
       o = o || {};
-      const srv = { calls: [], puts: [], submits: [], tickets: 0, info: o.info, ticketFail: o.ticketFail || 0, submitTicketFail: o.submitTicketFail || 0, prev: o.prev || [] };
+      const srv = { calls: [], puts: [], submits: [], reads: [], bad: [], tickets: 0, info: o.info, ticketFail: o.ticketFail || 0, submitTicketFail: o.submitTicketFail || 0, prev: o.prev || [] };
       srv.fetch = async (url, opt) => {
         const u = String(url), body = opt && opt.body ? JSON.parse(opt.body) : {};
         srv.calls.push({ url: u, body, headers: (opt && opt.headers) || {} });
         const J = (d, st) => ({ ok: (st || 200) < 300, status: st || 200, json: async () => d });
+        const rm = /\/rest\/v1\/rpc\/(\w+)$/.exec(u);
+        if (rm) { const b = sigBad(rm[1], body); if (b) srv.bad.push(b); }
+        if (/functions\/v1\/semis-logi-files$/.test(u)) { const ex = Object.keys(body).filter(k => k !== "op" && EDGE.indexOf("body." + k) < 0); if (ex.length) srv.bad.push(body.op + ": 파일 함수가 읽지 않는 값 " + ex.join()); }
         if (/rpc\/semis_logi_edu_info$/.test(u)) return J(srv.info || { ok: true, title: "2026 하반기", note: "", expires: "2026-11-07", courses: [], depts: ["인천화물팀"], orgs: ["교육원"] });
         if (/rpc\/semis_logi_challenge$/.test(u)) return J({ ok: true, c: "c".repeat(32) + ".1999999999.1.sig", d: 1 });
         if (/rpc\/semis_logi_edu_ticket$/.test(u)) { srv.tickets++; return J({ ok: true, ticket: String(srv.tickets).repeat(48).slice(0, 48), exp: Math.floor(Date.now() / 1000) + 10800 }); }
+        if (/functions\/v1\/semis-logi-files$/.test(u) && body.op === "edu-read") {
+          srv.reads.push(body);
+          const R = o.read || ((pth) => /sup/.test(pth) ? { cid: "c-sup-r", course: "항공보안 감독자 정기교육", date: "2026-09-30", expire: "", org: "교육원", certNo: "A-1", hours: 8, name: "홍길동", conf: 0.95 }
+            : /dg/.test(pth) ? { cid: "c-dg-r", course: "위험물 정기", date: "2026-01-15", expire: "", org: "KOTI", certNo: "D-7", hours: null, name: "김철수", conf: 0.9 }
+            : /part/.test(pth) ? { cid: "c-dg-r", course: "", date: "", expire: "", org: "", certNo: "", hours: null, name: "", conf: 0.3 } : null);
+          const d = R(String(body.path || ""));
+          if (o.readDelay) await new Promise(r => setTimeout(r, o.readDelay));
+          return J(d ? { ok: true, model: "m", data: d } : { ok: false, error: "parse" });
+        }
         if (/functions\/v1\/semis-logi-files$/.test(u)) {
           if (srv.ticketFail > 0) { srv.ticketFail--; return J({ ok: false, error: "ticket" }, 401); }
           const p = "training/t" + srv.calls.length + "_" + String(body.name).replace(/[^A-Za-z0-9._-]/g, "_");
@@ -8062,7 +8085,7 @@ function makeServer(opts = {}) {
       w.fetch = srv.fetch;
       w.XMLHttpRequest = class { constructor() { this.upload = {}; this.h = {}; } open(m, u) { this.m = m; this.u = u; } setRequestHeader(k, v) { this.h[k] = v; }
         send(b) { srv.puts.push({ m: this.m, u: this.u, h: this.h, name: b && b.name }); setTimeout(() => { if (this.upload.onprogress) this.upload.onprogress({ lengthComputable: true, loaded: 1, total: 1 }); this.status = o.putStatus || 200; this.onload(); }, 0); } };
-      if (o.draft) w.sessionStorage.setItem("semisl:edu:" + C0, JSON.stringify(o.draft));
+      if (o.draft) w.sessionStorage.setItem("semisl:edu2:" + C0, JSON.stringify(o.draft));
       w.eval(EDU_JS);
       w.SemisEdu.setToday("2026-10-08");
       return { dom, w, srv, errors, E: w.SemisEdu, TR: w.SemisTraining };
@@ -8072,6 +8095,8 @@ function makeServer(opts = {}) {
     const fire = (x, el, type) => el.dispatchEvent(new x.w.Event(type, { bubbles: true }));
     const typeIn = (x, sel, v, type) => { const el = $e(x, sel); el.value = v; fire(x, el, type || "input"); return el; };
     const settle = () => tick(30);
+    const F = (x, n, size, type) => { const f = new x.w.File(["x".repeat(Math.min(size, 64))], n, { type }); Object.defineProperty(f, "size", { value: size }); return f; };
+    const putFiles = (x, list) => { const inp = $e(x, "#ed-file"); Object.defineProperty(inp, "files", { value: list, configurable: true }); fire(x, inp, "change"); };
 
     t("ED01 edu.html: CSP(인라인 스크립트 · 외부 스크립트 금지, 연결은 공용 DB만) · 스크립트 순서 · 캐시 스탬프 · 검색 제외 · 리퍼러 없음", () => {
       const csp = /Content-Security-Policy" content="([^"]+)"/.exec(EHTML)[1];
@@ -8092,144 +8117,180 @@ function makeServer(opts = {}) {
       ["js/edu-form.js", "js/edu-shim.js", "edu.html", "css/edu.css"].forEach(n => { const c = read(n);
         ok(c.indexOf("service_role") < 0 && !/["'][0-9a-f]{64}["']/.test(c), n); });
     });
-    await ta("ED03 링크 확인 → 화면: 직무는 당사 과정 대상 직무만(협력사 · SSI 서약 직무 없음) · 직무군 묶음 · 기한 · 인쇄 버튼", async () => {
+    await ta("ED03 링크 → 한 장 화면: 이름 · 사번 · 임명일 · 직무 버튼(당사 과정 직무만) · 이수증 · 제출 · 기한 · 인쇄", async () => {
       const x = makeEdu(); await settle();
       eq(x.srv.calls[0].body.p_k, C0, "코드");
-      ok($e(x, "#ed-name") && $e(x, "#ed-dept") && $e(x, "#ed-print"), "본인 정보 · 인쇄");
+      ok($e(x, "#ed-name") && $e(x, "#ed-emp") && $e(x, "#ed-apt") && $e(x, "#ed-pick") && $e(x, "#ed-submit") && $e(x, "#ed-print"), "칸 · 단추");
+      ok(!$e(x, "#ed-dept") && !$e(x, ".ed-side") && !$e(x, ".ed-mbar"), "소속 칸 · 요약 · 모바일 막대 없음(한 장)");
+      const order = ["#ed-name", "#ed-emp", "#ed-apt", "#ed-roles", "#ed-pick", "#ed-submit"].map(s => $e(x, s));
+      ok(order.every((el, i) => !i || (order[i - 1].compareDocumentPosition(el) & 4)), "순서: 이름 → 사번 → 임명일 → 직무 → 이수증 → 제출");
       ok(/2026\.11\.07 \(토\)/.test($e(x, ".ed-due").textContent) && /D-30/.test($e(x, ".ed-due").textContent), "기한 · 남은 날");
       const roles = $$e(x, "[data-role]").map(b => b.dataset.role);
-      ok(roles.indexOf("항공사보안감독자") >= 0 && roles.indexOf("위험물 취급자") >= 0 && roles.indexOf("방사선안전관리자") >= 0);
+      ok(roles[0] === "항공사보안감독자" && roles.indexOf("보안검색감독자") > 0 && roles.indexOf("위험물 취급자") > 0 && roles.indexOf("방사선안전관리자") > 0, roles.join());
       ok(roles.indexOf("SSI 취급자") < 0 && roles.indexOf("항공사보안책임자") < 0, "서약 직무 · 뺀 직무 없음");
-      eq($$e(x, ".ed-rg").length, 6, "직무군 6묶음");
-      ok(/직무를 고르면/.test($e(x, "#ed-sec-items").textContent), "직무 전 안내");
+      $e(x, '[data-role="보안검색감독자"]').click();
+      eq($e(x, '[data-role="보안검색감독자"]').getAttribute("aria-pressed"), "true");
+      eq(x.E.st.roles.join(), "보안검색감독자");
+      eq(x.srv.bad.join("|"), "", "RPC 인자 = SQL 선언");
       eq(x.errors.length, 0, x.errors.join("|"));
       x.w.close();
     });
-    await ta("ED04 직무 고르기 → 필수 교육 칸 자동(중복 없이) · 빼면 빈 칸만 사라짐 · 적은 칸은 남음 · 임명일 칸", async () => {
-      const x = makeEdu(); await settle();
-      $e(x, '[data-role="보안검색감독자"]').click();
-      eq(x.E.st.items.map(i => i.fam).join(","), "scr,scr-p", "감독자 = 감독자 과정 + 선수 과정");
-      ok($e(x, '[data-apt="보안검색감독자"]'), "임명일 칸");
-      $e(x, '[data-role="위험물 취급자"]').click();
-      eq(x.E.st.items.map(i => i.fam).join(","), "scr,scr-p,dgr");
-      const it = x.E.st.items.find(i => i.fam === "dgr");
-      eq(x.TR.DEF_COURSES.find(c => c.id === it.cid).kind, "정기", "기본은 정기");
-      typeIn(x, "#ed-date-" + it.k, "2026-03-10", "change");
-      $e(x, '[data-role="위험물 취급자"]').click();
-      ok(x.E.st.items.some(i => i.fam === "dgr" && !i.auto), "적은 칸은 남기고 직접 추가 칸으로");
-      $e(x, '[data-role="보안검색감독자"]').click();
-      eq(x.E.st.items.map(i => i.fam).join(","), "dgr", "빈 칸은 사라짐");
-      ok(!$e(x, ".ed-apts"), "직무 없으면 임명일 칸 없음");
-      x.w.close();
-    });
-    await ta("ED05 확인 · 보낼 내용: 빈 칸 오류 · 수료일 넣으면 유효기한 자동(지침 제13조 · 위험물 24개월) · 직접 고친 유효기한만 보냄 · 이수증 필수", async () => {
-      const x = makeEdu(); await settle();
-      eq(x.E.check().map(c => c.f).join(","), "name,dept,roles");
-      typeIn(x, "#ed-name", " 홍  길동 "); typeIn(x, "#ed-dept", "인천화물팀");
-      $e(x, '[data-role="항공사보안감독자"]').click(); $e(x, '[data-role="위험물 취급자"]').click();
-      eq(x.E.check().map(c => c.f).join(","), "apt,apt", "임명일 필수");
-      $$e(x, "[data-apt]").forEach(i => { i.value = "2025-03-02"; fire(x, i, "change"); });
-      eq(x.E.check().length, 0, "교육 없이 인원 · 직무만도 가능");
-      const [sup, dg] = x.E.st.items;
-      typeIn(x, "#ed-date-" + sup.k, "2026-09-30", "change");
-      eq($e(x, "#ed-expire-" + sup.k).value, "2027-09-29", "제13조 1년(수료일 + 12개월 − 1일)");
-      ok(/자동 계산/.test($e(x, "#ed-exph-" + sup.k).textContent));
-      typeIn(x, "#ed-date-" + dg.k, "2026-01-15", "change");
-      eq($e(x, "#ed-expire-" + dg.k).value, "2028-01-14", "위험물 24개월");
-      ok($e(x, '[data-item="' + dg.k + '"]').classList.contains("is-open"), "수료일 넣으면 세부 칸 펼침");
-      eq(x.E.check().map(c => c.f).join(","), "files,files", "이수증 필수");
-      typeIn(x, "#ed-expire-" + dg.k, "2027-12-31", "change");
-      ok(/자동 2028\.01\.14/.test($e(x, "#ed-exph-" + dg.k).textContent), "고치면 자동값 되돌리기 단추");
-      sup.files.push({ path: "training/a_x.pdf", url: "u", name: "a.pdf", size: 10 }); dg.files.push({ path: "training/b_y.pdf", url: "u", name: "b.pdf", size: 10 });
-      typeIn(x, "#ed-hours-" + dg.k, "24");
-      const p = x.E.payload();
-      eq(p.name, "홍 길동", "공백 정리");
-      eq(p.roles.map(r => r.r + ":" + r.apt).join(","), "항공사보안감독자:2025-03-02,위험물 취급자:2025-03-02");
-      eq(p.recs.map(r => r.cid + "|" + r.date + "|" + r.expire + "|" + r.hours).join(","), "c-sup-r|2026-09-30||null,c-dg-r|2026-01-15|2027-12-31|24", "자동값은 비워 보냄(서버가 이어 셈)");
-      eq(JSON.stringify(p.recs[0].files), '[{"path":"training/a_x.pdf","name":"a.pdf"}]', "파일은 경로 · 이름만");
-      typeIn(x, "#ed-date-" + dg.k, "2026-12-01", "change");
-      ok(x.E.check().some(c => c.f === "date"), "앞날 수료일 거절");
-      /* 유효기한 자동 = training.js nextExpire 와 같음 */
-      x.TR.DEF_COURSES.filter(c => !c.vendor && !c.step && c.cycle > 0).forEach(c => ["2024-02-29", "2025-12-31", "2026-03-01"].forEach(d => {
-        eq(x.E.calcExp({ cid: c.id, date: d }), x.TR.calcExpire(d, c.cycle), c.id + " " + d);
-      }));
-      x.w.close();
-    });
-    await ta("ED06 이수증 올리기: 작업증명 → 표 → 파일 함수(edu-upload · 표) → PUT · 형식 · 크기 거절 · 표 만료 시 새 표로 한 번 더", async () => {
+    await ta("ED04 이수증 올리기 → 자동 판독: 표(작업증명) · edu-upload → PUT → edu-read · 한 줄 결과 · 못 읽으면 그 칸만 · 형식 · 크기 거절 · 표 만료 시 새 표", async () => {
       const x = makeEdu({ ticketFail: 1 }); await settle();
-      $e(x, '[data-role="위험물 취급자"]').click();
-      const it = x.E.st.items[0];
-      const inp = $e(x, "#ed-file-" + it.k);
-      const F = (n, size, type) => { const f = new x.w.File(["x".repeat(Math.min(size, 64))], n, { type }); Object.defineProperty(f, "size", { value: size }); return f; };
-      Object.defineProperty(inp, "files", { value: [F("이수증.pdf", 1200, "application/pdf"), F("메모.txt", 10, "text/plain"), F("큰사진.jpg", 21 * 1024 * 1024, "image/jpeg")], configurable: true });
-      fire(x, inp, "change");
-      await tick(150);
-      const fn = x.srv.calls.filter(c => /semis-logi-files/.test(c.url));
-      eq(fn.length, 2, "표 만료 → 새 표로 다시");
-      eq(fn[1].body.op + "|" + fn[1].body.name + "|" + fn[1].body.size, "edu-upload|이수증.pdf|1200");
-      ok(!fn[1].headers["x-semis-token"], "로그인 토큰 없음");
+      $e(x, '[data-role="항공사보안감독자"]').click();
+      putFiles(x, [F(x, "sup.pdf", 1200, "application/pdf"), F(x, "memo.txt", 10, "text/plain"), F(x, "big.jpg", 21 * 1024 * 1024, "image/jpeg"), F(x, "scan.pdf", 900, "application/pdf")]);
+      await tick(200);
+      const ups = x.srv.calls.filter(c => /semis-logi-files/.test(c.url) && c.body.op === "edu-upload");
+      eq(ups.length, 3, "표 만료 → 새 표로 한 번 더 + 두 번째 파일");
+      eq(ups[1].body.name + "|" + ups[1].body.size + "|" + ups[1].body.type, "sup.pdf|1200|application/pdf");
+      ok(ups.every(c => !c.headers["x-semis-token"]), "로그인 토큰 없음");
       eq(x.srv.tickets, 2, "표 2번");
-      ok(x.srv.calls.some(c => /semis_logi_challenge/.test(c.url)), "작업증명 문제");
       const tk = x.srv.calls.find(c => /edu_ticket/.test(c.url)).body;
       ok(tk.p_k === C0 && tk.p_pow && /^\d+$/.test(tk.p_pow.x), "표 = 코드 + 해답");
-      eq(x.srv.puts.length, 1); eq(x.srv.puts[0].m, "PUT"); eq(x.srv.puts[0].h["Content-Type"], "application/pdf");
-      eq(it.files.length, 1); ok(/^training\//.test(it.files[0].path) && it.files[0].name === "이수증.pdf");
-      const errs = $$e(x, ".ed-file.is-err").map(el => el.textContent);
-      ok(errs.some(s => /PDF · 사진만/.test(s)) && errs.some(s => /20MB/.test(s)), "형식 · 크기 거절 표시");
-      ok($e(x, '[data-item="' + it.k + '"]').classList.contains("is-open"), "파일만 올려도 펼침");
+      eq(x.srv.puts.length, 2); ok(x.srv.puts.every(p => p.m === "PUT"));
+      eq(x.srv.reads.length, 2, "올린 이수증마다 판독");
+      ok(x.srv.reads.every(b => /^[0-9a-f]{48}$/.test(b.ticket) && /^training\//.test(b.path) && b.roles.join() === "항공사보안감독자"), "판독 = 표 · 경로 · 고른 직무");
+      const [sup, memo, big, scan] = x.E.st.items;
+      ok(x.E.complete(sup) && sup.cid === "c-sup-r" && sup.date === "2026-09-30" && sup.org === "교육원" && sup.certNo === "A-1" && sup.hours === 8, "판독 결과");
+      const supEl = $e(x, '.ed-fi[data-k="' + sup.k + '"]');
+      ok(supEl.classList.contains("is-ok") && !$e(x, "#ed-cid-" + sup.k), "읽은 이수증 = 한 줄(칸 없음)");
+      ok(/항공사보안책임자 · 감독자 정기/.test(supEl.textContent) && /2026\.09\.30/.test(supEl.textContent) && /교육원/.test(supEl.textContent) && /No\. A-1/.test(supEl.textContent), supEl.textContent);
+      ok(memo.st === "err" && /PDF · 사진만/.test($e(x, '.ed-fi[data-k="' + memo.k + '"]').textContent), "형식 거절");
+      ok(big.st === "err" && /20MB/.test($e(x, '.ed-fi[data-k="' + big.k + '"]').textContent), "크기 거절");
+      const scanEl = $e(x, '.ed-fi[data-k="' + scan.k + '"]');
+      ok(scanEl.classList.contains("is-fix") && $e(x, "#ed-cid-" + scan.k) && $e(x, "#ed-date-" + scan.k), "못 읽으면 과정 · 수료일 칸");
+      ok(/자동으로 읽지 못했습니다/.test(scanEl.textContent) && $e(x, '[data-reread="' + scan.k + '"]'), "다시 읽기(일시 오류)");
+      ok(/<optgroup label="내 직무">[\s\S]*c-sup-r/.test($e(x, "#ed-cid-" + scan.k).innerHTML), "과정 목록 = 내 직무 먼저");
+      $e(x, '[data-reread="' + scan.k + '"]').click(); await tick(60);
+      eq(x.srv.reads.length, 3, "다시 읽기");
+      eq(scan.reads, 2);
+      $e(x, '[data-del="' + memo.k + '"]').click();
+      ok(!$e(x, '.ed-fi[data-k="' + memo.k + '"]') && x.E.st.items.length === 3, "빼기");
+      eq(x.srv.bad.join("|"), "", "RPC 인자 = SQL 선언");
+      eq(x.errors.length, 0, x.errors.join("|"));
       x.w.close();
     });
-    await ta("ED07 제출 → 등록 화면: 접수 번호 · 다음 갱신(이전 기록과 이어 셈 — 이수 기간) · 이번 제출 표시 · 캘린더(.ics 접기) · 작성 내용 지움", async () => {
-      const x = makeEdu({ prev: [{ id: "o1", cid: "c-sup-r", date: "2025-10-17", expire: "" }] }); await settle();
-      typeIn(x, "#ed-name", "홍길동"); typeIn(x, "#ed-dept", "인천화물팀");
-      $e(x, '[data-role="항공사보안감독자"]').click(); $e(x, '[data-role="위험물 취급자"]').click();
-      $$e(x, "[data-apt]").forEach(i => { i.value = "2025-03-02"; fire(x, i, "change"); });
+    await ta("ED05 확인 · 보낼 내용: 빈 칸 · 사번 · 임명일(직무 모두) · 같은 과정 · 수료일 이수증은 한 기록 · 판독 고치기 · 일부만 읽음 · 성명 다름 표시 · 앞날 수료일 거절", async () => {
+      const x = makeEdu(); await settle();
+      eq(x.E.check().map(c => c.f).join(","), "name,emp,apt,roles,files");
+      typeIn(x, "#ed-name", " 홍  길동 "); typeIn(x, "#ed-emp", " kj 123 456 "); typeIn(x, "#ed-apt", "2025-03-02", "change");
+      $e(x, '[data-role="위험물 취급자"]').click(); $e(x, '[data-role="항공사보안감독자"]').click();
+      eq(x.E.st.roles.join(), "항공사보안감독자,위험물 취급자", "직무는 기준 순서");
+      putFiles(x, [F(x, "sup.pdf", 1000, "application/pdf"), F(x, "dg1.jpg", 2000, "image/jpeg"), F(x, "dg2.jpg", 2100, "image/jpeg"), F(x, "part.pdf", 1100, "application/pdf")]);
+      await tick(250);
+      const part = x.E.st.items.find(i => i.name === "part.pdf");
+      ok(part.cid === "c-dg-r" && !part.date && part.rerr === "part", "일부만 읽음");
+      ok(/일부만 읽었습니다/.test($e(x, '.ed-fi[data-k="' + part.k + '"]').textContent) && !$e(x, '[data-reread="' + part.k + '"]'), "일부 = 빈 칸만 채움(다시 읽기 없음)");
+      eq($e(x, "#ed-cid-" + part.k).value, "c-dg-r", "읽은 과정은 채워 둠");
+      eq(x.E.check().map(c => c.f).join(","), "item");
+      typeIn(x, "#ed-date-" + part.k, "2026-12-01", "change");
+      ok(!x.E.complete(part), "앞날 수료일 거절");
+      typeIn(x, "#ed-date-" + part.k, "2025-11-20", "change");
+      ok(x.E.complete(part) && $e(x, '[data-fold="' + part.k + '"]'), "다 채우면 닫기(✓)");
+      eq(x.E.check().length, 0);
+      const dg = x.E.st.items.find(i => i.name === "dg1.jpg");
+      ok(/이수증 성명 김철수/.test($e(x, '.ed-fi[data-k="' + dg.k + '"]').textContent), "이수증 성명이 다르면 표시");
+      ok(!/이수증 성명/.test($e(x, '.ed-fi[data-k="' + x.E.st.items[0].k + '"]').textContent), "같은 이름(띄어쓰기 무시)은 표시 없음");
+      const p = x.E.payload();
+      eq(p.name + "|" + p.emp + "|" + p.dept, "홍 길동|KJ123456|", "공백 정리 · 사번 대문자 · 소속 없음");
+      eq(p.roles.map(r => r.r + ":" + r.apt).join(","), "항공사보안감독자:2025-03-02,위험물 취급자:2025-03-02", "임명일 = 고른 직무 모두");
+      eq(p.recs.map(r => r.cid + "|" + r.date + "|" + r.files.length).join(","), "c-sup-r|2026-09-30|1,c-dg-r|2026-01-15|2,c-dg-r|2025-11-20|1", "같은 과정 · 수료일 2장 = 한 기록");
+      eq(JSON.stringify(p.recs[0]), JSON.stringify({ cid: "c-sup-r", date: "2026-09-30", expire: "", hours: 8, org: "교육원", certNo: "A-1", files: [{ path: x.E.st.items[0].path, name: "sup.pdf" }] }), "유효기한은 비워 보냄(서버 · 화면이 규칙으로 셈) · 파일은 경로 · 이름만");
+      /* 판독 고치기 */
       const sup = x.E.st.items[0];
-      typeIn(x, "#ed-date-" + sup.k, "2026-09-30", "change");
-      sup.files.push({ path: "training/a_x.pdf", url: "u", name: "a.pdf", size: 10 });
-      ok(x.w.sessionStorage.getItem("semisl:edu:" + C0), "작성 중 저장(이 탭)");
+      $e(x, '[data-edit="' + sup.k + '"]').click();
+      const sel = $e(x, "#ed-cid-" + sup.k);
+      eq(sel.value, "c-sup-r");
+      sel.value = "c-sup-i"; fire(x, sel, "change");
+      $e(x, '[data-fold="' + sup.k + '"]').click();
+      ok(/감독자 초기/.test($e(x, '.ed-fi[data-k="' + sup.k + '"]').textContent), "고친 과정");
+      eq(x.E.payload().recs[0].cid, "c-sup-i");
+      typeIn(x, "#ed-emp", "  ");
+      ok(x.E.check().some(c => c.f === "emp"), "사번 필수");
+      typeIn(x, "#ed-emp", "123"); typeIn(x, "#ed-apt", "2027-12-01", "change");
+      ok(x.E.check().some(c => c.f === "apt"), "임명일 180일 넘은 앞날 거절");
+      eq(x.srv.bad.join("|"), "", "RPC 인자 = SQL 선언");
+      eq(x.errors.length, 0, x.errors.join("|"));
+      x.w.close();
+    });
+    await ta("ED06 사진 줄이기: 긴 변 2400px JPEG(투명 → 흰 바탕) · HEIC 도 브라우저가 읽으면 JPEG · 못 읽으면 그대로 · 작은 사진은 그대로", async () => {
+      const x = makeEdu(); await settle();
+      const drawn = [];
+      x.w.createImageBitmap = async (f) => { if (/fail/.test(f.name)) throw new Error("decode"); return { width: /small/.test(f.name) ? 1200 : 4032, height: /small/.test(f.name) ? 900 : 3024, close() {} }; };
+      x.w.HTMLCanvasElement.prototype.getContext = function () { const cv = this; return { fillRect() {}, drawImage(b, a, c, w, h) { drawn.push([cv.width, cv.height, w, h]); } }; };
+      x.w.HTMLCanvasElement.prototype.toBlob = function (cb, type, q) { cb(new x.w.Blob(["j".repeat(5000)], { type })); };
+      typeIn(x, "#ed-name", "홍길동"); $e(x, '[data-role="항공사보안감독자"]').click();
+      putFiles(x, [F(x, "IMG_0001.HEIC", 8 * 1024 * 1024, "image/heic"), F(x, "small.jpg", 300000, "image/jpeg"), F(x, "fail.heic", 2000000, "image/heic")]);
+      await tick(250);
+      const ups = x.srv.calls.filter(c => c.body && c.body.op === "edu-upload").map(c => c.body);
+      eq(ups.map(b => b.name + ":" + b.type + ":" + b.size).join(","), "IMG_0001.jpg:image/jpeg:5000,small.jpg:image/jpeg:300000,fail.heic:image/heic:2000000");
+      eq(JSON.stringify(drawn), JSON.stringify([[2400, 1800, 2400, 1800]]), "긴 변 2400 · 비율 유지");
+      eq(x.E.st.items[0].name, "IMG_0001.jpg", "화면 이름도 JPEG");
+      eq(x.errors.length, 0, x.errors.join("|"));
+      x.w.close();
+    });
+    await ta("ED07 제출 → 등록 화면: 접수 번호 · 다음 교육(이전 기록과 이어 셈 — 이수 기간) · 이번 제출 · 기록 없는 필수 교육 · 제출 정보(사번) · 캘린더(.ics 접기) · 작성 내용 지움 · 이수증 더 등록", async () => {
+      const x = makeEdu({ prev: [{ id: "o1", cid: "c-sup-r", date: "2025-10-17", expire: "" }] }); await settle();
+      typeIn(x, "#ed-name", "홍길동"); typeIn(x, "#ed-emp", "kj1234567"); typeIn(x, "#ed-apt", "2025-03-02", "change");
+      $e(x, '[data-role="항공사보안감독자"]').click(); $e(x, '[data-role="위험물 취급자"]').click();
+      putFiles(x, [F(x, "sup.pdf", 1000, "application/pdf")]);
+      await tick(120);
+      ok(x.w.sessionStorage.getItem("semisl:edu2:" + C0), "작성 중 저장(이 탭)");
+      eq($e(x, "#ed-submit").dataset.ready, "true");
       $e(x, "#ed-submit").click();
       await tick(80);
       eq(x.srv.submits.length, 1);
       const sb = x.srv.submits[0];
       ok(sb.p_k === C0 && sb.p_ticket.length === 48, "코드 · 표");
       ok(/^[A-Za-z0-9-]{8,64}$/.test(sb.p.sid), "제출 id");
-      eq(sb.p.recs.length, 1, "빈 위험물 칸은 보내지 않음");
+      eq(sb.p.emp, "KJ1234567");
+      eq(sb.p.recs.length, 1);
       ok($e(x, ".ed-ok") && /AB12CD34/.test($e(x, ".ed-rcpt").textContent), "접수 번호");
       const rows = $$e(x, ".ed-next li").map(li => li.textContent.replace(/\s+/g, " "));
       ok(rows.some(r => /항공사보안책임자 · 감독자/.test(r) && /2027\.09\.17 ~ 2027\.11\.16/.test(r) && /유효기한 2027\.10\.16/.test(r) && /이번 제출/.test(r)),
         "이수 기간 안 이수 → 종전 유효기한 다음 날부터 1년: " + rows.join(" / "));
       ok(rows.some(r => /위험물 교육/.test(r) && /미이수/.test(r)), "다른 필수 교육 = 기록 없음");
-      eq(x.w.sessionStorage.getItem("semisl:edu:" + C0), null, "작성 내용 지움");
+      const sent = $e(x, ".ed-sent").textContent.replace(/\s+/g, " ");
+      ok(/KJ1234567/.test(sent) && /임명 2025\.03\.02/.test(sent) && /2026\.09\.30 · 교육원 · No\. A-1 · 이수증 1/.test(sent), sent);
+      eq(x.w.sessionStorage.getItem("semisl:edu2:" + C0), null, "작성 내용 지움");
       const ics = x.E.icsText();
       ok(/DTSTART;VALUE=DATE:20270917/.test(ics) && /DTEND;VALUE=DATE:20271117/.test(ics), "이수 기간 하루 종일 일정");
       ok(ics.split("\r\n").every(l => Buffer.byteLength(l, "utf8") <= 75), "75바이트 줄 접기");
       ok($e(x, "#ed-ics") && $e(x, "#ed-dprint"), "캘린더 · 인쇄");
       $e(x, "#ed-again").click();
-      ok($e(x, "#ed-name").value === "홍길동" && x.E.st.roles.length === 2 && x.E.st.items.every(i => !i.date), "추가 등록 = 본인 · 직무 유지, 교육 칸 비움");
+      ok($e(x, "#ed-name").value === "홍길동" && $e(x, "#ed-emp").value === "kj1234567" && $e(x, "#ed-apt").value === "2025-03-02" && x.E.st.roles.length === 2 && !x.E.st.items.length, "더 등록 = 본인 · 직무 유지, 이수증 비움");
       ok(!x.E.st.sid, "새 제출 id");
+      eq(x.srv.bad.join("|"), "", "RPC 인자 = SQL 선언");
       eq(x.errors.length, 0, x.errors.join("|"));
       x.w.close();
     });
-    await ta("ED08 제출 막힘 · 오류: 빈 칸이면 보내지 않고 표시 · 표 만료 → 새 표로 한 번 더 · 제한 안내 · 링크 마감 · 만료 · 잘못된 코드", async () => {
-      const x = makeEdu({ submitTicketFail: 1 }); await settle();
+    await ta("ED08 제출 막힘 · 오류: 빈 칸이면 보내지 않고 표시 · 판독 중이면 대기 · 표 만료 → 새 표로 한 번 더 · 제한 안내 · 링크 마감 · 만료 · 잘못된 코드", async () => {
+      const x = makeEdu({ submitTicketFail: 1, readDelay: 150 }); await settle();
       $e(x, "#ed-submit").click(); await tick(20);
       eq(x.srv.submits.length, 0, "빈 칸이면 서버에 안 보냄");
       eq($e(x, "#ed-name").getAttribute("aria-invalid"), "true"); ok(!$e(x, "#ed-name-e").hidden);
-      ok(/남은 항목/.test($e(x, "#ed-side").textContent) && /성명/.test($e(x, ".ed-miss").textContent));
-      typeIn(x, "#ed-name", "갑"); typeIn(x, "#ed-dept", "인천화물팀");
+      ok(!$e(x, "#ed-roles-e").hidden && !$e(x, "#ed-files-e").hidden && $e(x, "#ed-drop").classList.contains("is-bad"));
+      ok(/남은 항목/.test($e(x, ".ed-miss").textContent) && /이름 · 사번 · 임명일 · 직무 · 이수증/.test($e(x, ".ed-miss").textContent));
+      typeIn(x, "#ed-name", "갑"); typeIn(x, "#ed-emp", "A1"); typeIn(x, "#ed-apt", "2024-01-02", "change");
       $e(x, '[data-role="사내보안교관"]').click();
-      const a = $e(x, "[data-apt]"); a.value = "2024-01-02"; fire(x, a, "change");
+      eq($e(x, "#ed-name").getAttribute("aria-invalid"), "false", "고치면 바로 지움");
+      putFiles(x, [F(x, "sup.pdf", 1000, "application/pdf")]);
+      await tick(60);
+      ok(x.E.check().some(c => c.f === "busy") && /이수증 확인 중/.test($e(x, ".ed-miss").textContent), "판독 중이면 제출 대기");
+      await tick(200);
       $e(x, "#ed-submit").click(); await tick(80);
       eq(x.srv.submits.length, 2, "표 만료 → 새 표로 다시 제출");
       ok($e(x, ".ed-ok"), "등록됨");
+      eq(x.srv.bad.join("|"), "", "RPC 인자 = SQL 선언");
       x.w.close();
       const y = makeEdu({ submitError: "limit" }); await settle();
-      typeIn(y, "#ed-name", "갑"); typeIn(y, "#ed-dept", "팀"); $e(y, '[data-role="ACMR"]').click();
-      const b = $e(y, "[data-apt]"); b.value = "2024-01-02"; fire(y, b, "change");
+      typeIn(y, "#ed-name", "갑"); typeIn(y, "#ed-emp", "9"); typeIn(y, "#ed-apt", "2024-01-02", "change"); $e(y, '[data-role="ACMR"]').click();
+      putFiles(y, [F(y, "sup.pdf", 1000, "application/pdf")]); await tick(100);
       $e(y, "#ed-submit").click(); await tick(60);
       ok(/잠시 후 다시 시도해 주세요 \(10분\)/.test($e(y, ".ed-msg").textContent), "제한 안내");
       y.w.close();
+      const y2 = makeEdu({ submitError: "emp" }); await settle();
+      eq(y2.E.errText({ error: "emp" }), "사번을 확인해 주세요."); y2.w.close();
       const z1 = makeEdu({ info: { ok: false, error: "expired", expires: "2026-10-01" } }); await settle();
       ok(/등록 기간이 끝났습니다/.test($e(z1, ".ed-gone").textContent) && /2026\.10\.01/.test($e(z1, ".ed-gone").textContent));
       z1.w.close();
@@ -8241,12 +8302,13 @@ function makeServer(opts = {}) {
       eq(z4.srv.calls[0].body.p_k, C0, "#k= · 대문자도 읽음"); z4.w.close();
     });
     await ta("ED09 작성 중 내용 복원(이 탭) — 기준표에 없는 직무 · 과정 · training/ 밖 파일은 버림", async () => {
-      const x = makeEdu({ draft: { name: "을", dept: "인천화물팀", sid: "abcdefgh-1234", roles: [{ r: "위험물 취급자", apt: "2025-01-02" }, { r: "없는 직무" }],
-        items: [{ fam: "dgr", cid: "c-dg-r", auto: true, date: "2026-01-15", files: [{ path: "training/a.pdf", name: "a.pdf", size: 1 }, { path: "notices/x.pdf" }] }, { fam: "zz", cid: "zz" }] } });
+      const x = makeEdu({ draft: { name: "을", emp: "a 12", apt: "2025-01-02", sid: "abcdefgh-1234", roles: ["위험물 취급자", "없는 직무"],
+        items: [{ path: "training/a_x.pdf", name: "a.pdf", size: 1, cid: "c-dg-r", date: "2026-01-15" }, { path: "notices/x.pdf" }, { path: "training/b_y.pdf", name: "b.pdf", cid: "zz", date: "2026-01-15" }] } });
       await settle();
-      eq($e(x, "#ed-name").value, "을");
-      eq(x.E.st.roles.map(r => r.r).join(), "위험물 취급자");
-      eq(x.E.st.items.length, 1); eq(x.E.st.items[0].files.length, 1, "training/ 파일만");
+      eq($e(x, "#ed-name").value, "을"); eq($e(x, "#ed-emp").value, "A12"); eq($e(x, "#ed-apt").value, "2025-01-02");
+      eq(x.E.st.roles.join(), "위험물 취급자");
+      eq(x.E.st.items.length, 2, "training/ 파일만");
+      ok(x.E.complete(x.E.st.items[0]) && !x.E.complete(x.E.st.items[1]) && $e(x, "#ed-cid-" + x.E.st.items[1].k), "없는 과정 = 다시 고르기");
       eq(x.E.st.sid, "abcdefgh-1234", "같은 제출 id(재전송 = 같은 결과)");
       x.w.close();
     });
@@ -8265,11 +8327,29 @@ function makeServer(opts = {}) {
       ok(/동명이인/.test(ESQL) && /'left'/.test(ESQL), "동명이인 · 퇴직자 구분");
       ok(/when 'submit' then 60/.test(ESQL), "사무실 공용 IP 고려 제한");
       ok(!/[0-9a-f]{64}/.test(ESQL), "비밀값 없음");
+      /* v1.39.2 — 사번 · 이수증 판독 */
+      ok(ESQL.indexOf("function public.semis_logi_edu_read_ok(p_ticket text, p_path text)") > 0, "판독 확인 RPC");
+      ok(/revoke execute on function public\.semis_logi_edu_read_ok\(text, text\) from public, anon, authenticated;/.test(ESQL)
+        && /grant execute on function public\.semis_logi_edu_read_ok\(text, text\) to service_role;/.test(ESQL), "판독 확인 = 서비스 권한만");
+      ok(/u\.reads >= 3/.test(ESQL) && /n >= 30/.test(ESQL) && /add column if not exists reads int/.test(ESQL), "판독 횟수 제한(파일 3 · 표 30)");
+      ok(/edu_emp_key\(v_emp\) = ''/.test(ESQL) && /1\) 사번이 같은 재직자/.test(ESQL) && /다른 사번이 적힌 사람은 다른 사람/.test(ESQL), "사번 필수 · 사번 먼저 · 다른 사번 동명이인 구분");
+      ok(/'dept', coalesce\(nullif\(p ->> 'dept', ''\), '인천화물팀'\)/.test(ESQL), "소속은 선택 — 새 사람 기본 인천화물팀");
+      ok(/revoke all on function semis_logi_private\.edu_emp_key\(text\) from public, anon, authenticated;/.test(ESQL));
     });
     t("ED11 파일 함수: edu-upload 는 세션 확인 앞 · 표 형식 · PDF/이미지 · 20MB · 서비스 권한 claim · training 폴더", () => {
       ok(EDGE.indexOf('op === "edu-upload"') > 0 && EDGE.indexOf('op === "edu-upload"') < EDGE.indexOf("const w = await whoAmI(req)"), "세션 확인 앞");
       ok(/\^\[0-9a-f\]\{48\}\$/.test(EDGE) && /EDU_MAX = 20 \* 1024 \* 1024/.test(EDGE) && /pdf\|jpe\?g\|png\|webp\|heic\|heif/.test(EDGE));
       ok(/rpc\/semis_logi_edu_claim/.test(EDGE) && /newPath\("training", name\)/.test(EDGE));
+    });
+    t("ED16 파일 함수 edu-read: 세션 확인 앞 · 표 · training/ 경로 · 서비스 권한 확인(semis_logi_edu_read_ok) · 키는 환경 변수 · 모델 대체 · 결과 살균(과정 id · 날짜 · 길이)", () => {
+      ok(EDGE.indexOf('op === "edu-read"') > 0 && EDGE.indexOf('op === "edu-read"') < EDGE.indexOf("const w = await whoAmI(req)"), "세션 확인 앞");
+      ok(/rpc\/semis_logi_edu_read_ok/.test(EDGE) && /p_ticket: ticket, p_path: path/.test(EDGE), "확인 RPC 인자 = SQL 선언");
+      eq(SIGS.semis_logi_edu_read_ok.map(x => x.n).join(), "p_ticket,p_path");
+      ok(/\^training\\\/\[A-Za-z0-9\._-\]\{4,120\}\$/.test(EDGE), "경로 training/ 고정");
+      ok(/Deno\.env\.get\("ANTHROPIC_API_KEY"\)/.test(EDGE) && !/sk-ant-/.test(EDGE), "키는 환경 변수 — 코드에 없음");
+      ok(/LOGI_AI_MODEL/.test(EDGE) && /res\.status !== 404/.test(EDGE), "모델 대체(없는 모델 404 → 다음)");
+      ok(/ids\.includes\(o\.cid\)/.test(EDGE) && /ISO_RE\.test\(o\.date\)/.test(EDGE) && /str\(o\.certNo, 40\)/.test(EDGE), "결과 살균");
+      ok(/AI_MAX_PDF = 15 \* 1024 \* 1024/.test(EDGE) && /AI_MAX_IMG = 5 \* 1024 \* 1024/.test(EDGE), "판독 크기");
     });
     await ta("ED12 관리 화면: hq 만 '이수 등록 링크' · 링크 목록 · 복사 · 메일(제목 · 링크 · 기한) · QR · 마감/연장/새 링크 RPC · 최근 제출 → 개인 화면", () => {
       const e = makeEnv();
@@ -8282,12 +8362,13 @@ function makeServer(opts = {}) {
       ok(q(e, "#tr-edu"), "hq 버튼");
       const calls = [];
       const link = { code: "abcdefghjkmn", title: "2026 하반기", expires: "2026-11-07", active: true, open: true, submits: 3, target: "training" };
-      e.Sync.rpc = async (n, a) => { calls.push([n, a]);
+      const bad = [];
+      e.Sync.rpc = async (n, a) => { calls.push([n, a]); const b = sigBad(n, a); if (b) bad.push(b);
         if (n === "semis_logi_edu_links") return { ok: true, links: [link, { code: "zzzzzzzzzzzz", title: "", expires: "2026-09-01", active: false, open: false, submits: 0 },
           { code: "edutestcode2", title: "운영 시험", expires: "2026-10-08", active: false, open: false, submits: 2, target: "eduTest" }],
           recent: [{ at: "2026-10-08T05:20:00Z", name: "홍길동", dept: "인천화물팀", kind: "updated", n: 1, pid: "p1", code: "abcdefghjkmn" },
             { at: "2026-10-08T05:10:00Z", name: "시험 사용자", dept: "시험", kind: "new", n: 1, pid: "tx", code: "edutestcode2" }] };
-        if (n === "semis_logi_edu_link_save") return { ok: true, link: Object.assign({}, link, a.title ? { code: "newcodenewco" } : {}) };
+        if (n === "semis_logi_edu_link_save") return { ok: true, link: Object.assign({}, link, a.p && a.p.title ? { code: "newcodenewco" } : {}) };
         return { ok: false }; };
       q(e, "#tr-edu").click();
       return tick(20).then(() => {
@@ -8304,18 +8385,19 @@ function makeServer(opts = {}) {
         q(e, '.te-link [data-te="close"]').click();
         return tick(20);
       }).then(() => {
-        ok(calls.some(c => c[0] === "semis_logi_edu_link_save" && c[1].code === "abcdefghjkmn" && c[1].active === false), "마감");
+        ok(calls.some(c => c[0] === "semis_logi_edu_link_save" && c[1].p.code === "abcdefghjkmn" && c[1].p.active === false), "마감 — 인자 { p: … }");
         q(e, '.te-link [data-te="ext"]').click();
         return tick(20);
       }).then(() => {
-        ok(calls.some(c => c[0] === "semis_logi_edu_link_save" && c[1].days === 60), "+30일 = 남은 30일 + 30");
+        ok(calls.some(c => c[0] === "semis_logi_edu_link_save" && c[1].p.days === 60), "+30일 = 남은 30일 + 30");
         q(e, "#te-title").value = "2027 상반기"; q(e, "#te-days").value = "14";
         q(e, "#te-add").click();
         return tick(20);
       }).then(() => {
-        ok(calls.some(c => c[0] === "semis_logi_edu_link_save" && c[1].title === "2027 상반기" && c[1].days === 14), "새 링크");
+        ok(calls.some(c => c[0] === "semis_logi_edu_link_save" && c[1].p.title === "2027 상반기" && c[1].p.days === 14 && !c[1].p.code), "새 링크");
         q(e, "[data-te-pid]").click();
         eq(TR.getState().pid, "p1", "최근 제출 → 개인 화면");
+        eq(bad.join("|"), "", "관리 화면 RPC 인자 = SQL 선언");
         eq(e.errors.length, 0, e.errors.join("|"));
         e.w.close();
       });
@@ -8356,14 +8438,31 @@ function makeServer(opts = {}) {
       const rad = q(e, '#tp-apts input[data-apt="방사선안전관리자"]');
       ok(rad, "직무 고르면 임명일 칸");
       rad.value = "2026-02-01";
+      q(e, "#tp-emp").value = " kj 77 ";
       clickOk(e);
       const p1 = e.S.data.training.people.find(p => p.id === "p1");
       eq(JSON.stringify(p1.apt), JSON.stringify({ "위험물 취급자": "2025-03-02", "방사선안전관리자": "2026-02-01" }));
+      eq(p1.emp, "KJ77", "사번 — 공백 없이 대문자");
+      ok(qa(e, ".tr-dl > div").some(d => /^\s*사번\s*KJ77\s*$/.test(d.textContent)), "개인 화면 기본 정보 — 사번");
+      TR.setState({ pid: "", q: "kj77" }); go(e, "training");
+      eq(qa(e, "#tr-pbody tr[data-tperson]").map(r => r.dataset.tperson).join(), "p1", "사번으로 찾기");
+      TR.setState({ q: "" });
       eq(e.errors.length, 0, e.errors.join("|"));
       e.w.close();
     });
     t("ED14 릴리스 도구: bump-version 이 edu.html 스탬프도 맞춤", () => {
       ok(/edu\.html/.test(read("tools/bump-version.cjs")));
+    });
+    t("ED15 RPC 인자 검사기 자체: SQL 선언을 읽고 틀린 이름 · 빠진 인자를 잡음(v1.39.1 '처리하지 못했습니다' 원인)", () => {
+      eq(SIGS.semis_logi_edu_link_save.map(x => x.n).join(), "p");
+      eq(SIGS.semis_logi_edu_submit.map(x => x.n).join(), "p_k,p_ticket,p");
+      ok(SIGS.semis_logi_edu_ticket.find(x => x.n === "p_pow").opt, "기본값 인자는 선택");
+      eq(SIGS.semis_logi_challenge.length, 0);
+      ok(sigBad("semis_logi_edu_link_save", { title: "x", days: 14 }), "옛 잘못된 호출(감싸지 않은 값)을 잡음");
+      eq(sigBad("semis_logi_edu_link_save", { p: { title: "x" } }), "");
+      ok(sigBad("semis_logi_edu_submit", { p_k: "a", p: {} }), "빠진 인자");
+      ok(sigBad("semis_logi_nope", {}), "없는 함수");
+      ok(/rpc\("semis_logi_edu_link_save", \{ p \}\)/.test(read("js/training.js")), "관리 화면 호출");
     });
   }
 

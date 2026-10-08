@@ -1,4 +1,4 @@
-/* SeMIS · Logistics — Supabase Edge Function "semis-logi-files" (v1.15 · v1.39 edu-upload)
+/* SeMIS · Logistics — Supabase Edge Function "semis-logi-files" (v1.15 · v1.39 edu-upload · edu-read)
    비공개 버킷 semis-logi-files 의 유일한 출입구. 브라우저는 버킷에 직접 접근하지 못한다.
    - 인증: 요청 헤더 x-semis-token (로그인 세션) → public.semis_logi_file_auth() 로 확인
    - op "sign"   : 파일 열람용 서명 URL(1시간) — 폴더별 열람 등급 확인
@@ -7,6 +7,8 @@
    - 회의 서명 세션(signer)은 minutes-sign/ 폴더만 올리고 볼 수 있다
    - op "edu-upload" (v1.39): 보안교육 이수 등록 화면(edu.html, 로그인 없음)의 이수증 — 세션 대신 표(ticket)로 확인.
      PDF · 이미지만, 20MB 이하, training/ 폴더. public.semis_logi_edu_claim(서비스 권한)이 표 · 개수 · 용량을 확인하고 기록한다
+   - op "edu-read" (v1.39.2): 올린 이수증을 Claude(ANTHROPIC_API_KEY · LOGI_AI_MODEL)로 판독 → { cid, course, date, expire, org, certNo, hours, name, conf }.
+     public.semis_logi_edu_read_ok(서비스 권한)가 표 · 경로 · 판독 횟수를 확인하고 과정 목록을 준다. PDF 15MB · 이미지 5MB(jpeg · png · webp · gif)
    - 배포: Supabase MCP deploy_edge_function (verify_jwt false — 위의 세션 확인으로 대신). 이 파일이 원본. */
 
 const SUPA = Deno.env.get("SUPABASE_URL")!;
@@ -34,6 +36,16 @@ const BLOCK_TYPES = /^(text\/html|application\/xhtml\+xml|text\/javascript|appli
 const EDU_MAX = 20 * 1024 * 1024;
 const EDU_EXT = /\.(pdf|jpe?g|png|webp|heic|heif)$/i;
 const EDU_TYPES = /^(application\/pdf|image\/(jpeg|png|webp|heic|heif))$/i;
+const AI_URL = "https://api.anthropic.com/v1/messages";
+const AI_MODELS = ["claude-sonnet-5-5", "claude-sonnet-4-5", "claude-haiku-4-5"];
+const AI_MAX_PDF = 15 * 1024 * 1024, AI_MAX_IMG = 5 * 1024 * 1024;
+const AI_IMG: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif" };
+const AI_SYSTEM = `당신은 항공보안 교육 이수증(수료증 · 이수증명서) 판독기입니다. 첨부 파일에 적힌 사실만 읽어 JSON 객체 하나로만 답합니다. 설명 · 코드펜스 금지.
+형식: {"cid": "과정 목록의 id 또는 null", "course": "이수증에 적힌 과정명", "date": "수료일 YYYY-MM-DD 또는 null", "expire": "이수증에 적힌 유효기한 YYYY-MM-DD 또는 null", "org": "교육기관", "certNo": "이수증 번호", "hours": 교육시간 숫자 또는 null, "name": "이수자 성명", "conf": 0~1}
+규칙:
+- cid: 과정 목록에서 이수증의 교육과 같은 과정(초기 · 정기 · 보수 구분 포함)을 고른다. 보수교육은 정기로 본다. 확실하지 않으면 null.
+- date: 교육 기간이 여러 날이면 마지막 날. 서기 YYYY-MM-DD. 이수일 · 수료일 · 발급일 중 이수(수료)일을 우선.
+- 이수증에 없는 값은 null 또는 빈 문자열. 추측하지 않는다.`;
 
 type Who = { ok: boolean; kind?: string; rank?: number; who?: string };
 
@@ -127,6 +139,77 @@ async function eduUpload(body: Record<string, unknown>, origin: string): Promise
   return json({ ok: true, path, url: PUBLIC_PREFIX + path, upload: await uploadSign(path) }, 200, origin);
 }
 
+/* 이수증 판독 — 표 · 경로 확인(서비스 권한 RPC) → 저장소에서 읽기 → Claude */
+const ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
+function b64(u8: Uint8Array): string {
+  let s = "";
+  for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode(...u8.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+function pickJson(t: string): Record<string, unknown> | null {
+  const a = t.indexOf("{"), b = t.lastIndexOf("}");
+  if (a < 0 || b <= a) return null;
+  try { return JSON.parse(t.slice(a, b + 1)); } catch (_e) { return null; }
+}
+const str = (v: unknown, n: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, n) : "");
+async function eduRead(body: Record<string, unknown>, origin: string): Promise<Response> {
+  const ticket = String(body.ticket || ""), path = String(body.path || "");
+  if (!/^[0-9a-f]{48}$/.test(ticket)) return json({ ok: false, error: "ticket" }, 401, origin);
+  if (!/^training\/[A-Za-z0-9._-]{4,120}$/.test(path)) return json({ ok: false, error: "path" }, 400, origin);
+  const roles = (Array.isArray(body.roles) ? body.roles : []).slice(0, 16).map((r) => str(r, 30)).filter(Boolean);
+  const r0 = await fetch(SUPA + "/rest/v1/rpc/semis_logi_edu_read_ok", {
+    method: "POST", headers: svc({ "Content-Type": "application/json" }), body: JSON.stringify({ p_ticket: ticket, p_path: path })
+  });
+  if (!r0.ok) return json({ ok: false, error: "check " + r0.status }, 502, origin);
+  const chk = await r0.json() as { ok?: boolean; error?: string; courses?: { id: string; name: string; kind: string; roles?: string[] }[] };
+  if (!chk || !chk.ok) return json({ ok: false, error: String((chk && chk.error) || "check") }, 403, origin);
+  const apiKey = Deno.env.get("ANTHROPIC_API_KEY") || "";
+  if (!apiKey) return json({ ok: false, error: "no_key" }, 200, origin);
+  const f = await fetch(STORAGE + "/object/" + BUCKET + "/" + encPath(path), { headers: svc() });
+  if (!f.ok) return json({ ok: false, error: "file" }, 404, origin);
+  const u8 = new Uint8Array(await f.arrayBuffer());
+  const ext = (path.split(".").pop() || "").toLowerCase();
+  let block: Record<string, unknown>;
+  if (ext === "pdf") {
+    if (u8.length > AI_MAX_PDF) return json({ ok: false, error: "too_large" }, 200, origin);
+    block = { type: "document", source: { type: "base64", media_type: "application/pdf", data: b64(u8) } };
+  } else if (AI_IMG[ext]) {
+    if (u8.length > AI_MAX_IMG) return json({ ok: false, error: "too_large" }, 200, origin);
+    block = { type: "image", source: { type: "base64", media_type: AI_IMG[ext], data: b64(u8) } };
+  } else return json({ ok: false, error: "unsupported" }, 200, origin);
+  const courses = Array.isArray(chk.courses) ? chk.courses : [];
+  const list = courses.map((c) => `${c.id} | ${c.name} | ${c.kind} | 대상: ${(c.roles || []).join(", ") || "-"}`).join("\n");
+  const ask = `[과정 목록]\n${list}\n\n[이 사람이 고른 직무]\n${roles.join(", ") || "-"}\n\n첨부한 이수증을 판독해 JSON 으로만 답하세요.`;
+  const envModel = Deno.env.get("LOGI_AI_MODEL");
+  const models = envModel ? [envModel, ...AI_MODELS.filter((m) => m !== envModel)] : AI_MODELS.slice();
+  let res: Response | null = null, model = "";
+  for (const m of models) {
+    model = m;
+    res = await fetch(AI_URL, {
+      method: "POST",
+      headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: m, max_tokens: 500, system: AI_SYSTEM, messages: [{ role: "user", content: [block, { type: "text", text: ask }] }] })
+    });
+    if (res.status !== 404) break;
+  }
+  if (!res) return json({ ok: false, error: "ai" }, 200, origin);
+  if (res.status === 401 || res.status === 403) return json({ ok: false, error: "bad_key" }, 200, origin);
+  if (res.status === 429 || res.status === 529) return json({ ok: false, error: "busy" }, 200, origin);
+  if (!res.ok) return json({ ok: false, error: "ai " + res.status }, 200, origin);
+  const d = await res.json() as { content?: { type: string; text?: string }[] };
+  const o = pickJson((d.content || []).filter((b) => b.type === "text").map((b) => b.text || "").join("\n"));
+  if (!o) return json({ ok: false, error: "parse" }, 200, origin);
+  const ids = courses.map((c) => c.id);
+  const cid = typeof o.cid === "string" && ids.includes(o.cid) ? o.cid : "";
+  const date = typeof o.date === "string" && ISO_RE.test(o.date) ? o.date : "";
+  const expire = typeof o.expire === "string" && ISO_RE.test(o.expire) ? o.expire : "";
+  const h = Number(o.hours);
+  return json({ ok: true, model, data: {
+    cid, course: str(o.course, 80), date, expire, org: str(o.org, 60), certNo: str(o.certNo, 40),
+    hours: isFinite(h) && h > 0 && h < 1000 ? h : null, name: str(o.name, 30), conf: Math.max(0, Math.min(1, Number(o.conf) || 0))
+  } }, 200, origin);
+}
+
 async function signPaths(paths: string[]): Promise<Record<string, string>> {
   const r = await fetch(STORAGE + "/object/sign/" + BUCKET, {
     method: "POST", headers: svc({ "Content-Type": "application/json" }),
@@ -166,8 +249,8 @@ Deno.serve(async (req: Request) => {
   let body: Record<string, unknown>;
   try { body = await req.json(); } catch (_e) { return json({ ok: false, error: "bad_json" }, 400, origin); }
   const op = String(body.op || "");
-  if (op === "edu-upload") {
-    try { return await eduUpload(body, origin); }
+  if (op === "edu-upload" || op === "edu-read") {
+    try { return op === "edu-upload" ? await eduUpload(body, origin) : await eduRead(body, origin); }
     catch (e) { return json({ ok: false, error: String((e as Error).message || e) }, 500, origin); }
   }
   const w = await whoAmI(req);

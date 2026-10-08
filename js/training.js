@@ -29,7 +29,7 @@
      courses[{ id, fam, name, kind(초기|직무|인증|정기|1회), cycle(개월, 0 = 영구), rule(kr|dg|""), step(자격을 주지 않는 단계),
                hours, legal(law|intl|own), basis, org, roles[], all, vendor, who(협력사 과정 대상),
                same[](같은 교육으로 인정하는 다른 과정 id — 그 기록도 이 묶음에 셈) }] — 비면 코드 기본 과정
-     people[{ id, name, dept, roles[], apt{직무: 임명일}, left(퇴직일), pledge(SSI 서약일), pledgeFiles[], note, src, selfAt }]
+     people[{ id, name, emp(사번 — v1.39.2 본인 등록 · 직접 입력), dept, roles[], apt{직무: 임명일}, left(퇴직일), pledge(SSI 서약일), pledgeFiles[], note, src, selfAt }]
      records[{ id, pid, cid, date, expire(비면 규칙으로 계산), hours, score, org, certNo, files[], sessionId, note, src, selfAt, chkAt, chkBy }]
      sessions[{ id, type(own|vendor), cid, title, date, time, hours, place, instructor, evalText, pids[],
                 files{ tt[], roster[], eval[] }, vendor, target, done, note, createdAt/By, updatedAt/By }] }
@@ -666,7 +666,7 @@
       if (rgF && !rolesOf(p).some(r => rgOf(r).id === rgF)) return false;
       if (onlyAct) { const pq = personQuals(p, t); if (!(pq.worst && needAct(pq.worst.st)) && !(isSSI(p) && !pledged(p))) return false; }
       if (onlySelf && !selfRecs(p.id).length) return false;
-      return !q || hay([p.name, p.dept, rolesOf(p).join(" "), p.note]).indexOf(q.toLowerCase()) >= 0;
+      return !q || hay([p.name, p.emp, p.dept, rolesOf(p).join(" "), p.note]).indexOf(q.toLowerCase()) >= 0;
     }).map(p => ({ p, pq: personQuals(p, t) }))
       .sort((a, b) => (onlyAct ? (b.pq.worst ? ST[b.pq.worst.st].lv : 0) - (a.pq.worst ? ST[a.pq.worst.st].lv : 0) : 0) || String(a.p.name).localeCompare(String(b.p.name), "ko"));
   }
@@ -828,6 +828,7 @@
     const infoCard = `<section class="card tr-pcard" aria-label="기본 정보">
         <h2 class="card-title">기본 정보</h2>
         <dl class="tr-dl">
+          <div><dt>사번</dt><dd>${p.emp ? `<span class="mono">${esc(p.emp)}</span>` : "-"}</dd></div>
           <div><dt>소속</dt><dd>${esc(p.dept || "-")}</dd></div>
           <div><dt>상태</dt><dd>${a ? "재직" : `퇴직 · 전출 <span class="mono">${esc(dot(p.left))}</span> · 기록 보관 ~<span class="mono">${esc(dot(addDays(p.left, KEEP_LEFT_DAYS)))}</span>`}</dd></div>
           ${p.selfAt ? `<div><dt>본인 등록</dt><dd><span class="mono">${esc(dot(String(p.selfAt).slice(0, 10)))}</span>${p.src === "self" ? " · 처음 등록" : ""}</dd></div>` : ""}
@@ -1160,12 +1161,13 @@
     if (!SeMIS.canEdit()) return;
     const x = id ? personOf(id) : null;
     if (id && !x) return;
-    const v = Object.assign({ name: "", dept: "인천화물팀", left: "", note: "" }, x || {});
+    const v = Object.assign({ name: "", emp: "", dept: "인천화물팀", left: "", note: "" }, x || {});
     const rs = x ? records().filter(r => r.pid === x.id) : [];
     const depts = uniq(["인천화물팀"].concat(people().map(p => p.dept)));
     openModal(`<h3>${x ? "인원 정보 수정" : "인원 등록"}</h3>
       <div class="form-grid">
         ${fld("tp-name", "이름", `<input id="tp-name" value="${esc(v.name)}" maxlength="30" autocomplete="off">`)}
+        ${fld("tp-emp", "사번", `<input id="tp-emp" value="${esc(v.emp || "")}" maxlength="20" autocomplete="off" spellcheck="false">`)}
         ${fld("tp-dept", "소속", `<input id="tp-dept" value="${esc(v.dept)}" maxlength="40" autocomplete="off" list="tp-dl-dept">`)}
       </div>
       <div class="form-row"><label>직무 ${ui.tip("직무에 맞는 필수 과정이 자격 현황에 표시됩니다. 직무별 근거 · 자격 조건은 '직무 · 과정' 탭에 있습니다.", "직무 설명")}</label>
@@ -1209,7 +1211,7 @@
       $$("#tp-apts input[data-apt]").forEach(i => { aptVals[i.dataset.apt] = i.value; });
       const apt = {};
       roles.forEach(r => { if (isISO(aptVals[r])) apt[r] = aptVals[r]; });
-      const rec = { name: norm($("#tp-name").value), dept: norm($("#tp-dept").value), roles, apt,
+      const rec = { name: norm($("#tp-name").value), emp: String($("#tp-emp").value || "").replace(/\s+/g, "").toUpperCase().slice(0, 20), dept: norm($("#tp-dept").value), roles, apt,
         left: $("#tp-left").value || "", note: norm($("#tp-note").value) };
       if (!rec.name) { toast("이름을 입력하세요.", true); $("#tp-name").focus(); return; }
       const t = T();
@@ -1544,7 +1546,7 @@
     } catch (e) { EDU.err = String((e && e.message) || e); }
   }
   async function eduSave(p) {
-    const d = await window.SemisSync.rpc("semis_logi_edu_link_save", p);
+    const d = await window.SemisSync.rpc("semis_logi_edu_link_save", { p });   // 서버 함수 인자 이름 p
     if (!d || !d.ok) throw new Error((d && d.error) || "save");
     return d.link;
   }
@@ -1755,7 +1757,7 @@
   if (window.SemisSearch) SemisSearch.register({
     id: MOD, group: TITLE, ico: "users", module: MOD,
     items: () => people().map(p => ({ title: p.name, sub: [p.dept, rolesOf(p).join(" · ")].filter(Boolean).join(" · "),
-        text: [p.name, p.dept, rolesOf(p).join(" "), p.note], route: MOD, pick: () => { q = ""; openPerson(p.id); } }))
+        text: [p.name, p.emp, p.dept, rolesOf(p).join(" "), p.note], route: MOD, pick: () => { q = ""; openPerson(p.id); } }))
       .concat(sessions().map(s => ({ title: sessionTitle(s), sub: [s.type === "vendor" ? "협력사 확인" : "당사 실시", dot(s.date)].join(" · "),
         text: [sessionTitle(s), s.place, s.instructor, s.vendor, s.note], route: MOD, pick: () => { q = ""; openSession(s.id); } })))
   });

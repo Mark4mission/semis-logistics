@@ -100,7 +100,8 @@ for (const n of ["f1", "f2", "f3", "f4"]) await obj(n);
 const F = (n) => ({ path: "training/" + n + "_cert.pdf", name: n + ".pdf" });
 
 /* ─ 제출 ─ */
-const sub = (p, code, tk) => rpc("semis_logi_edu_submit", [code || CODE, tk || TK, JSON.stringify(Object.assign({ sid: "sid-" + Math.random().toString(36).slice(2, 12) }, p))]);
+let empSeq = 900000;
+const sub = (p, code, tk) => rpc("semis_logi_edu_submit", [code || CODE, tk || TK, JSON.stringify(Object.assign({ sid: "sid-" + Math.random().toString(36).slice(2, 12), emp: String(++empSeq) }, p))]);
 eq((await sub({ name: "", dept: "x", roles: [{ r: "위험물 취급자" }] })).error, "required", "S01 이름 필수");
 eq((await sub({ name: "a\u0001b", dept: "x", roles: [{ r: "위험물 취급자" }] })).error, "too_long", "S02 제어문자");
 eq((await sub({ name: "홍길동", dept: "인천화물팀", roles: [] })).error, "roles", "S03 직무 1개 이상");
@@ -116,7 +117,7 @@ eq((await sub({ name: "홍길동", dept: "인천화물팀", roles: [{ r: "위험
 
 /* 새 사람 */
 const SID = "sid-newperson-1";
-const p1 = { sid: SID, name: "홍길동", dept: "인천화물팀", roles: [{ r: "위험물 취급자", apt: "2026-03-02" }, { r: "위험물 취급자" }],
+const p1 = { sid: SID, name: "홍길동", dept: "인천화물팀", emp: "KJ300001", roles: [{ r: "위험물 취급자", apt: "2026-03-02" }, { r: "위험물 취급자" }],
   recs: [{ cid: "c-dg-i", date: "2026-03-10", hours: 40, org: "항공위험물교육원", certNo: "DG-1", files: [F("f1")] }] };
 r = await rpc("semis_logi_edu_submit", [CODE, TK, JSON.stringify(p1)]);
 ok(r.ok && r.kind === "new" && /^[A-Z0-9]{8}$/.test(r.receipt), "S13 새 사람 " + JSON.stringify(r));
@@ -136,7 +137,7 @@ eq(T.people.filter(x => x.name === "홍길동").length, 1, "S21 재전송으로 
 eq((await sub({ name: "누구", dept: "x", roles: [{ r: "위험물 취급자" }], recs: [{ cid: "c-dg-r", date: "2026-03-11", files: [F("f1")] }] })).error, "files", "S22 쓴 파일 재사용 거절");
 
 /* 기존 사람 갱신 */
-r = await sub({ name: "김철수", dept: "인천화물팀", roles: [{ r: "위험물 취급자", apt: "2025-01-02" }, { r: "항공사보안감독자", apt: "2024-05-01" }],
+r = await sub({ name: "김철수", dept: "인천화물팀", emp: "KJ100418", roles: [{ r: "위험물 취급자", apt: "2025-01-02" }, { r: "항공사보안감독자", apt: "2024-05-01" }],
   recs: [{ cid: "c-sup-r", date: "2025-10-17", certNo: "S-9", files: [F("f2")] }, { cid: "c-icao", date: "2019-06-01", files: [F("f3")] }] });
 ok(r.ok && r.kind === "updated" && r.person.id === "p1", "S23 이름(공백 무시) 같은 재직자 갱신 " + JSON.stringify(r));
 eq(r.person.roles, ["항공사보안감독자", "위험물 취급자"], "S24 직무 더함(빼지 않음)");
@@ -146,18 +147,39 @@ ok(r1.files.length === 2 && r1.certNo === "S-9" && !("chkAt" in r1) && !("chkBy"
 eq(T.records.filter(x => x.pid === "p1").length, 2, "S26 새 과정 기록 더함");
 eq(r.records.length, 2, "S27 결과 = 그 사람 기록 전체");
 
+/* 사번 */
+eq((await sub({ name: "사번없음", dept: "", emp: "", roles: [{ r: "위험물 취급자" }] })).error, "emp", "P01 사번 필수");
+eq((await sub({ name: "사번없음", dept: "", emp: "-- ", roles: [{ r: "위험물 취급자" }] })).error, "emp", "P02 숫자 · 영문 없는 사번");
+T = await one("select value from public.semis_logi_store where key='training'");
+eq(T.people.find(x => x.id === "p1").emp, "KJ100418", "P03 이름으로 찾은 사람에 사번 기록");
+r = await sub({ name: "김 철 수 ", dept: "", emp: "100418", roles: [{ r: "위험물 취급자" }] });
+ok(r.ok && r.kind === "updated" && r.person.id === "p1" && r.person.dept === "인천화물팀", "P04 사번(KJ 앞자리 무시)으로 찾음 · 소속 비면 그대로 " + JSON.stringify(r.person));
+r = await sub({ name: "김철수", dept: "", emp: "200000", roles: [{ r: "위험물 취급자" }] });
+ok(r.ok && r.kind === "new" && r.person.id !== "p1" && r.person.dept === "인천화물팀" && r.person.emp === "200000", "P05 같은 이름 · 다른 사번 = 새 사람(소속 기본 인천화물팀)");
+r = await sub({ name: "다른이름", dept: "", emp: "200000", roles: [{ r: "항공사보안감독자", apt: "2024-01-01" }] });
+ok(r.kind === "updated" && r.person.name === "김철수", "P06 이름이 달라도 사번이 같으면 그 사람");
+
 /* 동명이인 */
 r = await sub({ name: "이영희", dept: "화물운송팀", roles: [{ r: "위험물 취급자" }] });
 ok(r.ok && r.kind === "updated" && r.person.id === "p3", "S28 동명이인 → 소속으로 가림");
 eq(r.person.apt, {}, "S29 임명일 없음 = 빈 객체");
 r = await sub({ name: "이영희", dept: "본사", roles: [{ r: "위험물 취급자" }] });
-ok(r.ok && r.kind === "dup" && ["p2", "p3"].indexOf(r.person.id) < 0, "S30 못 가리면 새 사람(dup)");
-T = await one("select value from public.semis_logi_store where key='training'");
-ok(/동명이인/.test(T.people.find(x => x.id === r.person.id).note), "S31 동명이인 메모");
+ok(r.ok && r.kind === "updated" && r.person.id === "p2", "S30 다른 사번이 적힌 동명이인(p3)은 빼고 남은 한 사람(p2) " + JSON.stringify(r.person));
 r = await sub({ name: "최동명", dept: "인천화물팀", roles: [{ r: "위험물 취급자" }] });
-eq(r.kind, "dup", "S32 소속이 둘 다 포함되면 못 가림");
+eq(r.kind, "dup", "S32 소속이 둘 다 포함되면 못 가림 → 새 사람");
+T = await one("select value from public.semis_logi_store where key='training'");
+ok(/동명이인/.test(T.people.find(x => x.id === r.person.id).note) && ["p5", "p6"].indexOf(r.person.id) < 0, "S31 동명이인 메모");
 r = await sub({ name: "박민수", dept: "인천화물팀", roles: [{ r: "위험물 취급자" }] });
 ok(r.kind === "new" && r.person.id !== "p4", "S33 퇴직자 같은 이름 → 새 사람");
+
+/* 이수증 판독 확인 */
+const rok = (tk, path) => rpc("semis_logi_edu_read_ok", [tk, path]);
+eq((await rok(TK, "training/zz_none.pdf")).error, "path", "R01 기록 없는 경로");
+eq((await rok("0".repeat(48), "training/f6_cert.pdf")).error, "ticket", "R02 표");
+r = await rok(TK, "training/f6_cert.pdf");
+ok(r.ok && r.courses.length === 5 && r.courses.every(c => c.id && c.name) && r.type === "application/pdf", "R03 과정 목록(협력사 제외) " + JSON.stringify(r).slice(0, 120));
+await rok(TK, "training/f6_cert.pdf"); await rok(TK, "training/f6_cert.pdf");
+eq((await rok(TK, "training/f6_cert.pdf")).error, "too_many", "R04 파일당 3회");
 
 /* 링크 끄기 · 기한 */
 await setCtx(3);

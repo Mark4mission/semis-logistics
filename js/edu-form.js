@@ -1,11 +1,13 @@
 /* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 보안교육 이수 등록 (배포용 화면 edu.html, v1.39)
-   메일로 받은 링크(edu.html#코드)로 로그인 없이 본인 정보 · 직무(임명일) · 이수 교육(수료일 · 이수증)을 등록한다.
+   SeMIS · Logistics — 보안교육 이수 등록 (배포용 화면 edu.html, v1.39.2 한 장 화면)
+   받은 링크(edu.html#코드)를 열면: 이름 · 사번 · 임명일 · 직무 · 이수증 → 제출. 그 뒤 다음 교육 기간.
    - 링크 확인 · 과정 기준: RPC semis_logi_edu_info(코드) — 협력사 과정은 오지 않는다
-   - 업로드 · 제출 표: semis_logi_challenge(작업증명) → semis_logi_edu_ticket(코드, 해답) — 3시간
-   - 이수증: 파일 함수 semis-logi-files op "edu-upload"(표) → 서명 업로드 URL 에 PUT (PDF · 이미지, 20MB)
-   - 제출: semis_logi_edu_submit(코드, 표, 내용) → 서버가 training 에 병합(같은 이름 재직자 = 갱신)하고
-     그 사람의 이수 기록을 돌려준다 → js/training.js 의 personQuals 로 다음 갱신 기간을 보여 준다
+   - 표: semis_logi_challenge(작업증명) → semis_logi_edu_ticket(코드, 해답) — 3시간
+   - 이수증: 사진은 브라우저에서 줄여(JPEG 긴 변 2400px) 파일 함수 op "edu-upload"(표) → 서명 URL 에 PUT
+     → op "edu-read"(표 · 경로)가 이수증을 읽어 과정 · 수료일 · 기관 · 번호를 채운다 — 못 읽은 칸만 직접 입력
+   - 같은 과정 · 수료일 이수증 여러 장은 기록 하나(파일 여러 개)로 묶어 보낸다
+   - 제출: semis_logi_edu_submit(코드, 표, 내용) → 서버가 병합(같은 사번 → 같은 이름 재직자 = 갱신)하고
+     그 사람의 이수 기록을 돌려준다 → js/training.js 의 personQuals 로 다음 교육 기간을 계산해 보여 준다
    - 작성 중인 내용은 이 탭(sessionStorage)에만 둔다 — 새로 고침해도 남고, 제출하면 지운다
    ═══════════════════════════════════════════════════════ */
 "use strict";
@@ -18,8 +20,10 @@
   const FN_FILES = SUPA_URL + "/functions/v1/semis-logi-files";
   const FILE_MAX = 20 * 1024 * 1024;
   const FILE_RE = /\.(pdf|jpe?g|png|webp|heic|heif)$/i;
-  const MAX_ITEMS = 10, MAX_FILES = 5;
-  const DRAFT = "semisl:edu:";
+  const MAX_FILES = 10, MAX_RECS = 10, MAX_PER = 5, MAX_READS = 3;
+  const IMG_SIDE = 2400, IMG_Q = 0.86, IMG_KEEP = 3.5 * 1024 * 1024;
+  const DRAFT = "semisl:edu2:";
+  const PATH_RE = /^training\/[A-Za-z0-9._-]{4,120}$/;
   const WD = ["일", "월", "화", "수", "목", "금", "토"];
 
   const TR = () => window.SemisTraining;
@@ -28,6 +32,8 @@
   const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const norm = (s) => String(s == null ? "" : s).replace(/\s+/g, " ").trim();
+  const empNorm = (s) => String(s == null ? "" : s).replace(/\s+/g, "").toUpperCase().slice(0, 20);
+  const nameKey = (s) => String(s == null ? "" : s).replace(/\s+/g, "");
   const p2 = (n) => String(n).padStart(2, "0");
   const isISO = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || "")) && !isNaN(Date.parse(s + "T00:00:00Z")) && new Date(s + "T00:00:00Z").toISOString().slice(0, 10) === s;
   let fixedToday = "";
@@ -37,24 +43,22 @@
   const addDays = (iso, n) => { const t = new Date(utc(iso) + n * 86400000); return t.getUTCFullYear() + "-" + p2(t.getUTCMonth() + 1) + "-" + p2(t.getUTCDate()); };
   const dot = (s) => String(s || "").replace(/-/g, ".");
   const dotW = (s) => (isISO(s) ? dot(s) + " (" + WD[new Date(utc(s)).getUTCDay()] + ")" : "");
-  const md = (s) => (isISO(s) ? s.slice(5).replace("-", ".") : "");
   const kb = (n) => (n >= 1048576 ? (n / 1048576).toFixed(1) + "MB" : Math.max(1, Math.round(n / 1024)) + "KB");
   const uid = () => {
     try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID(); } catch (e) { /* 아래로 */ }
     return "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
   };
   const famShort = (g) => String((g && g.name) || "").replace(/\s*\(.*\)\s*$/, "");
-  const isPerm = (c) => !!c && !c.step && !(Number(c.cycle) > 0);
 
   /* ─── 상태 ─── */
   const st = {
     view: "load", err: "", errInfo: null, code: "", info: null,
-    ticket: "", ticketExp: 0, ticketBusy: null,
-    name: "", dept: "", roles: [], items: [], sid: "",
-    tried: false, sending: false, msg: "", done: null, ups: {}
+    ticket: "", ticketExp: 0, ticketBusy: null, warm: false,
+    name: "", emp: "", apt: "", roles: [], items: [], sid: "",
+    tried: false, sending: false, msg: "", done: null
   };
   let seq = 0;
-  const key = () => "i" + (++seq) + Math.random().toString(36).slice(2, 6);
+  const key = () => "f" + (++seq) + Math.random().toString(36).slice(2, 6);
 
   /* ─── 서버 ─── */
   const hdr = () => ({ apikey: SUPA_KEY, Authorization: "Bearer " + SUPA_KEY, "Content-Type": "application/json" });
@@ -81,6 +85,12 @@
     })();
     try { return await st.ticketBusy; } finally { st.ticketBusy = null; }
   }
+  /* 처음 손대면 표를 미리 받아 둔다(작업증명은 몇 초 걸린다) */
+  function warm() {
+    if (st.warm || st.ticket) return;
+    st.warm = true;
+    ensureTicket().catch(() => { st.warm = false; });
+  }
 
   /* ─── 과정 기준 (js/training.js) ─── */
   const ownRoles = () => {
@@ -89,50 +99,20 @@
     return TR().sortRoles(s);
   };
   const roleDef = (r) => TR().ROLE_DEF.find(x => x.id === r) || null;
-  const famsOf = () => TR().fams(false);
-  const famOf = (f) => famsOf().find(g => g.fam === f) || null;
-  const courseOf = (id) => TR().courses().find(c => c.id === id) || null;
-  const roleFams = (r) => famsOf().filter(g => g.roles.indexOf(r) >= 0);
-  function defaultCid(g) {
-    return ((g.courses.find(c => c.kind === "정기") || g.courses.find(c => !c.step) || g.courses[0]) || {}).id || "";
-  }
-  /* 직무에서 필요한 묶음 — 고른 직무 순서대로, 중복 없이 */
-  function needFams() {
-    const out = [];
-    st.roles.forEach(x => roleFams(x.r).forEach(g => { if (out.indexOf(g.fam) < 0) out.push(g.fam); }));
-    return out;
-  }
-  /* 직무가 바뀌면 필수 묶음 칸을 맞춘다 — 적은 내용이 있는 칸은 남긴다 */
-  const filled = (it) => !!(it.date || (it.files && it.files.length) || it.org || it.certNo || it.expire);
-  function syncItems() {
-    const need = needFams();
-    st.items = st.items.filter(it => !it.auto || need.indexOf(it.fam) >= 0 || filled(it));
-    st.items.forEach(it => { if (it.auto && need.indexOf(it.fam) < 0) it.auto = false; });
-    need.forEach(f => {
-      if (st.items.some(it => it.fam === f)) return;
-      const g = famOf(f);
-      if (g) st.items.push(newItem(g, defaultCid(g), true));
-    });
-    const rk = new Map(st.items.map((it, n) => { const i = need.indexOf(it.fam); return [it, it.auto && i >= 0 ? i : 1000 + n]; }));
-    st.items.sort((a, b) => rk.get(a) - rk.get(b));
-  }
-  function newItem(g, cid, auto) {
-    return { k: key(), fam: g.fam, cid, auto: !!auto, date: "", expire: "", expTouched: false, org: "", certNo: "", hours: "", files: [] };
-  }
-  /* 이 수료일이면 계산되는 유효기한 — 이전 기록은 모르므로 수료일 기준(제출 뒤 화면은 서버 기록으로 이어 셈) */
-  function calcExp(it) {
-    const c = courseOf(it.cid);
-    if (!c || c.step || isPerm(c) || !isISO(it.date)) return "";
-    return TR().nextExpire(c, it.date, "");
-  }
+  const courseOf = (id) => TR().courses().find(c => c.id === id && !c.vendor) || null;
+  const famOf = (f) => TR().fams(false).find(g => g.fam === f) || null;
+  const dateOk = (d) => isISO(d) && d >= "2000-01-01" && d <= addDays(todayISO(), 1);
+  const aptOk = (d) => isISO(d) && d >= "1970-01-01" && d <= addDays(todayISO(), 180);
+  const empOk = (s) => /[0-9A-Za-z]/.test(empNorm(s));
+  const complete = (it) => it.st === "done" && !!courseOf(it.cid) && dateOk(it.date);
 
   /* ─── 작성 중 내용 (이 탭만) ─── */
   function saveDraft() {
     if (st.view !== "form") return;
     try {
-      sessionStorage.setItem(DRAFT + st.code, JSON.stringify({ name: st.name, dept: st.dept, roles: st.roles, sid: st.sid,
-        items: st.items.map(it => ({ fam: it.fam, cid: it.cid, auto: it.auto, date: it.date, expire: it.expire, expTouched: it.expTouched,
-          org: it.org, certNo: it.certNo, hours: it.hours, files: it.files })) }));
+      sessionStorage.setItem(DRAFT + st.code, JSON.stringify({ name: st.name, emp: st.emp, apt: st.apt, roles: st.roles, sid: st.sid,
+        items: st.items.filter(it => it.st === "done" && it.path).map(it => ({ path: it.path, url: it.url, name: it.name, size: it.size,
+          cid: it.cid, date: it.date, org: it.org, certNo: it.certNo, hours: it.hours, who: it.who, rerr: it.rerr, reads: it.reads })) }));
     } catch (e) { /* 저장소 없음 */ }
   }
   function loadDraft() {
@@ -140,53 +120,52 @@
     try { d = JSON.parse(sessionStorage.getItem(DRAFT + st.code) || "null"); } catch (e) { d = null; }
     if (!d || typeof d !== "object") return false;
     const okRoles = ownRoles();
-    st.name = norm(d.name).slice(0, 30); st.dept = norm(d.dept).slice(0, 40);
-    st.roles = (Array.isArray(d.roles) ? d.roles : []).filter(x => x && okRoles.indexOf(x.r) >= 0).map(x => ({ r: x.r, apt: isISO(x.apt) ? x.apt : "" }));
+    st.name = norm(d.name).slice(0, 30); st.emp = empNorm(d.emp); st.apt = isISO(d.apt) ? d.apt : "";
+    st.roles = (Array.isArray(d.roles) ? d.roles : []).filter((r, i, a) => okRoles.indexOf(r) >= 0 && a.indexOf(r) === i);
     st.sid = /^[A-Za-z0-9-]{8,64}$/.test(String(d.sid || "")) ? d.sid : "";
-    st.items = (Array.isArray(d.items) ? d.items : []).filter(x => x && famOf(x.fam) && courseOf(x.cid)).slice(0, MAX_ITEMS).map(x => ({
-      k: key(), fam: x.fam, cid: x.cid, auto: !!x.auto, date: isISO(x.date) ? x.date : "", expire: isISO(x.expire) ? x.expire : "",
-      expTouched: !!x.expTouched, org: norm(x.org).slice(0, 60), certNo: norm(x.certNo).slice(0, 40), hours: x.hours == null ? "" : String(x.hours).slice(0, 6),
-      files: (Array.isArray(x.files) ? x.files : []).filter(f => f && /^training\//.test(String(f.path || ""))).slice(0, MAX_FILES)
-        .map(f => ({ path: String(f.path), url: String(f.url || ""), name: String(f.name || "이수증").slice(0, 120), size: Number(f.size) || 0 }))
-    }));
+    st.items = (Array.isArray(d.items) ? d.items : []).filter(x => x && PATH_RE.test(String(x.path || ""))).slice(0, MAX_FILES).map(x => {
+      const h = Number(x.hours);
+      return { k: key(), st: "done", pct: 1, err: "", path: String(x.path), url: String(x.url || ""), name: String(x.name || "이수증").slice(0, 120), size: Number(x.size) || 0,
+        cid: courseOf(x.cid) ? x.cid : "", date: isISO(x.date) ? x.date : "", org: norm(x.org).slice(0, 60), certNo: norm(x.certNo).slice(0, 40),
+        hours: x.hours != null && isFinite(h) && h > 0 && h <= 999 ? h : null, who: norm(x.who).slice(0, 30), rerr: String(x.rerr || "").slice(0, 20),
+        reads: Number(x.reads) || 0, open: false };
+    });
     return true;
   }
   function dropDraft() { try { sessionStorage.removeItem(DRAFT + st.code); } catch (e) { /* 저장소 없음 */ } }
 
-  /* ─── 확인 ─── */
-  function itemErrs(it) {
-    const out = {};
-    if (!filled(it)) return out;
-    const t = todayISO();
-    if (!isISO(it.date)) out.date = "수료일을 입력하세요";
-    else if (it.date > addDays(t, 1)) out.date = "오늘 이후 날짜입니다";
-    else if (it.date < "2000-01-01") out.date = "날짜를 확인하세요";
-    if (it.expTouched && it.expire && isISO(it.date) && it.expire <= it.date) out.expire = "수료일보다 뒤여야 합니다";
-    if (!it.files.length) out.files = "이수증을 첨부하세요";
-    if (upsOf(it).some(u => !u.err)) out.files = "올리는 중입니다";
-    const h = it.hours === "" ? null : Number(it.hours);
-    if (h != null && !(h >= 0 && h <= 999)) out.hours = "0~999";
-    return out;
+  /* ─── 묶기 · 확인 ─── */
+  /* 같은 과정 · 수료일은 기록 하나 — 기관 · 번호 · 시간은 먼저 읽힌 값 */
+  function groups() {
+    const m = new Map();
+    st.items.filter(complete).forEach(it => {
+      const k = it.cid + "|" + it.date;
+      let g = m.get(k);
+      if (!g) { g = { cid: it.cid, date: it.date, org: "", certNo: "", hours: null, files: [], items: [] }; m.set(k, g); }
+      if (!g.org && it.org) g.org = it.org;
+      if (!g.certNo && it.certNo) g.certNo = it.certNo;
+      if (g.hours == null && it.hours != null) g.hours = it.hours;
+      g.files.push({ path: it.path, name: it.name });
+      g.items.push(it);
+    });
+    return Array.from(m.values());
   }
   function check() {
     const e = [];
-    if (!norm(st.name)) e.push({ id: "ed-name", msg: "성명", f: "name" });
-    if (!norm(st.dept)) e.push({ id: "ed-dept", msg: "소속", f: "dept" });
-    if (!st.roles.length) e.push({ id: "ed-roles", msg: "직무", f: "roles" });
-    st.roles.forEach(x => { if (!isISO(x.apt)) e.push({ id: "ed-apt-" + slug(x.r), msg: "임명일", f: "apt" }); });
-    st.items.forEach(it => {
-      const ie = itemErrs(it);
-      Object.keys(ie).forEach(k => e.push({ id: "ed-" + k + "-" + it.k, msg: ie[k] === "올리는 중입니다" ? "업로드 중" : ({ date: "수료일", expire: "유효기한", files: "이수증", hours: "교육 시간" })[k], f: k, it }));
-    });
+    if (!norm(st.name)) e.push({ f: "name", id: "ed-name", msg: "이름" });
+    if (!empOk(st.emp)) e.push({ f: "emp", id: "ed-emp", msg: "사번" });
+    if (!aptOk(st.apt)) e.push({ f: "apt", id: "ed-apt", msg: "임명일" });
+    if (!st.roles.length) e.push({ f: "roles", id: "ed-roles", msg: "직무" });
+    const live = st.items.filter(it => it.st !== "err");
+    if (!live.length) e.push({ f: "files", id: "ed-pick", msg: "이수증" });
+    if (live.some(it => it.st === "up" || it.st === "read")) e.push({ f: "busy", id: "ed-pick", msg: "이수증 확인 중" });
+    live.filter(it => it.st === "done" && !complete(it)).forEach(it => e.push({ f: "item", id: (courseOf(it.cid) ? "ed-date-" : "ed-cid-") + it.k, msg: "과정 · 수료일", it }));
+    const g = groups();
+    if (g.length > MAX_RECS) e.push({ f: "many", id: "ed-pick", msg: "교육 " + MAX_RECS + "건까지" });
+    if (g.some(x => x.files.length > MAX_PER)) e.push({ f: "many", id: "ed-pick", msg: "같은 교육 이수증 " + MAX_PER + "장까지" });
     return e;
   }
-  const slug = (r) => Array.from(String(r)).map(c => c.charCodeAt(0).toString(36)).join("");
-  const missText = (errs) => {
-    const c = {};
-    errs.forEach(x => { c[x.msg] = (c[x.msg] || 0) + 1; });
-    return Object.keys(c).map(k => c[k] > 1 ? k + " " + c[k] : k).join(" · ");
-  };
-  const toSubmit = () => st.items.filter(filled);
+  const missText = (errs) => errs.map(x => x.msg).filter((m, i, a) => a.indexOf(m) === i).join(" · ");
 
   /* ═════════ 화면 ═════════ */
   const app = () => document.getElementById("ed-app");
@@ -199,9 +178,10 @@
     edit: '<path d="M4.5 19.5 5 16 15.5 5.5a2.1 2.1 0 0 1 3 3L8 19z"/>',
     alert: '<path d="M12 4 2.8 19.5h18.4z"/><path d="M12 10v4.5M12 17v.01"/>',
     print: '<path d="M7 9V4h10v5"/><rect x="3.5" y="9" width="17" height="8" rx="2"/><path d="M7 14h10v6H7z"/>',
-    back: '<path d="M10 7 5 12l5 5"/><path d="M5.5 12H19"/>'
+    redo: '<path d="M19 12a7 7 0 1 1-2.05-4.95"/><path d="M19 4.5V9h-4.5"/>'
   };
   const rgDot = (g) => `<i class="rg-dot rg-${g.id}" aria-hidden="true"></i>`;
+  const fieldErr = (id, msg) => `<small class="ed-err" id="${id}-e" hidden>${esc(msg)}</small>`;
 
   function heroHTML() {
     const i = st.info || {};
@@ -214,8 +194,7 @@
         ${i.title ? `<p class="ed-sub">${esc(i.title)}</p>` : ""}
         ${i.note ? `<p class="ed-note">${esc(i.note)}</p>` : ""}
       </div>
-      ${exp ? `<dl class="ed-due"><div><dt>등록 기한</dt><dd class="mono">${esc(dotW(exp))}</dd></div>
-        <div><dt>남은 기간</dt><dd class="mono">${left == null ? "-" : left <= 0 ? "오늘까지" : "D-" + left}</dd></div></dl>` : ""}
+      ${exp ? `<div class="ed-due"><span>등록 기한</span><b class="mono">${esc(dotW(exp))}</b><em class="mono">${left == null ? "" : left <= 0 ? "오늘까지" : "D-" + left}</em></div>` : ""}
     </div></section>`;
   }
 
@@ -226,319 +205,330 @@
     if (st.view === "load") { a.innerHTML = `<div class="ed-load"><span class="ed-spin" aria-hidden="true"></span><span>불러오는 중</span></div>`; return; }
     if (st.view === "error") { a.innerHTML = errorHTML(); wireError(); return; }
     if (st.view === "done") { a.innerHTML = heroHTML() + doneHTML(); wireDone(); return; }
+    const t = todayISO();
     a.innerHTML = heroHTML() + `<div class="ed-wrap">
-      <form class="ed-form" id="ed-form" novalidate autocomplete="off">
-        ${secPerson()}
-        <section class="ed-sec" id="ed-sec-roles" aria-labelledby="ed-h-roles"></section>
-        <section class="ed-sec" id="ed-sec-items" aria-labelledby="ed-h-items"></section>
+      <form class="ed-card ed-form" id="ed-form" novalidate autocomplete="off">
+        <div class="ed-row">
+          <label class="ed-f ed-f-name"><span class="ed-l">이름</span>
+            <input id="ed-name" maxlength="30" autocomplete="name" value="${esc(st.name)}" placeholder="홍길동">${fieldErr("ed-name", "이름을 입력하세요")}</label>
+          <label class="ed-f ed-f-emp"><span class="ed-l">사번</span>
+            <input id="ed-emp" maxlength="20" autocomplete="off" autocapitalize="characters" spellcheck="false" value="${esc(st.emp)}" class="mono">${fieldErr("ed-emp", "사번을 입력하세요")}</label>
+          <label class="ed-f ed-f-apt"><span class="ed-l">임명일</span>
+            <input type="date" id="ed-apt" value="${esc(st.apt)}" min="1970-01-01" max="${esc(addDays(t, 180))}">${fieldErr("ed-apt", "임명일을 입력하세요")}</label>
+        </div>
+        <div class="ed-blk" id="ed-blk-roles">${rolesHTML()}</div>
+        <div class="ed-blk" id="ed-blk-files">
+          <span class="ed-l">이수증</span>
+          <div class="ed-drop" id="ed-drop">
+            <div class="ed-flist" id="ed-flist">${st.items.map(itemHTML).join("")}</div>
+            <div id="ed-pickw">${pickHTML()}</div>
+            <input type="file" id="ed-file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,application/pdf,image/*" multiple hidden>
+          </div>
+          ${fieldErr("ed-files", "이수증을 올리세요")}
+        </div>
+        <div class="ed-foot" id="ed-foot"></div>
       </form>
-      <aside class="ed-side" id="ed-side" aria-label="등록 요약"></aside>
-    </div>
-    <div class="ed-mbar" id="ed-mbar"></div>`;
-    wirePerson();
-    paintRoles();
-    paintItems();
-    paintSummary();
+    </div>`;
+    st.items.forEach(barWidth);
+    wireForm();
+    paintFoot();
+    paintErrs();
   }
 
-  const secHead = (n, id, title, done, extra) => `<header class="ed-sh"><span class="ed-num mono${done ? " is-done" : ""}" aria-hidden="true">${done ? svg(IC.check, 16) : p2(n)}</span>
-    <h2 id="${id}">${esc(title)}</h2>${extra || ""}</header>`;
-  const fieldErr = (id, on, msg) => `<small class="ed-err" id="${id}-e"${on ? "" : " hidden"}>${esc(msg || "")}</small>`;
-
-  /* 01 본인 정보 */
-  function secPerson() {
-    const depts = ((st.info && st.info.depts) || []).filter(Boolean);
-    const dn = st.tried && !norm(st.name), dd = st.tried && !norm(st.dept);
-    return `<section class="ed-sec" id="ed-sec-person" aria-labelledby="ed-h-person">
-      ${secHead(1, "ed-h-person", "본인 정보", norm(st.name) && norm(st.dept))}
-      <div class="ed-grid2">
-        <label class="ed-f"><span class="ed-l">성명</span>
-          <input id="ed-name" maxlength="30" autocomplete="name" value="${esc(st.name)}" aria-invalid="${dn}" placeholder="홍길동">
-          ${fieldErr("ed-name", dn, "성명을 입력하세요")}</label>
-        <label class="ed-f"><span class="ed-l">소속</span>
-          <input id="ed-dept" maxlength="40" autocomplete="organization" list="ed-dl-dept" value="${esc(st.dept)}" aria-invalid="${dd}" placeholder="인천화물팀">
-          ${fieldErr("ed-dept", dd, "소속을 입력하세요")}</label>
-      </div>
-      <datalist id="ed-dl-dept">${depts.map(d => `<option value="${esc(d)}">`).join("")}</datalist>
-    </section>`;
-  }
-  function wirePerson() {
-    const n = $("#ed-name"), d = $("#ed-dept");
-    const upd = () => {
-      st.name = n.value; st.dept = d.value;
-      if (st.tried) { n.setAttribute("aria-invalid", String(!norm(st.name))); d.setAttribute("aria-invalid", String(!norm(st.dept)));
-        $("#ed-name-e").hidden = !!norm(st.name); $("#ed-dept-e").hidden = !!norm(st.dept); }
-      const num = $("#ed-sec-person .ed-num");
-      const ok = !!(norm(st.name) && norm(st.dept));
-      if (num) { num.classList.toggle("is-done", ok); num.innerHTML = ok ? svg(IC.check, 16) : "01"; }
-      paintSummary(); saveDraft();
-    };
-    n.addEventListener("input", upd); d.addEventListener("input", upd);
-    n.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && !ev.isComposing) { ev.preventDefault(); d.focus(); } });
-    d.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && !ev.isComposing) { ev.preventDefault(); const c = $(".ed-chip"); if (c) c.focus(); } });
-  }
-
-  /* 02 직무 */
-  function paintRoles() {
-    const box = $("#ed-sec-roles");
-    if (!box) return;
-    const all = ownRoles();
-    const groups = TR().RGROUPS.map(g => ({ g, rs: all.filter(r => TR().rgOf(r) === g) })).filter(x => x.rs.length);
-    const sel = (r) => st.roles.some(x => x.r === r);
-    const noRole = st.tried && !st.roles.length;
-    const aptOk = st.roles.length && st.roles.every(x => isISO(x.apt));
-    box.innerHTML = secHead(2, "ed-h-roles", "직무", aptOk, st.roles.length ? `<span class="ed-sh-m">${st.roles.length}개</span>` : "")
-      + `<div class="ed-rgs" id="ed-roles" role="group" aria-label="직무 고르기" aria-invalid="${noRole}">${groups.map(({ g, rs }) => `
-        <div class="ed-rg rg-${g.id}"><span class="ed-rgl">${rgDot(g)}${esc(g.label)}</span>
-          <div class="ed-chips">${rs.map(r => { const d = roleDef(r);
-            return `<button type="button" class="ed-chip" data-role="${esc(r)}" aria-pressed="${sel(r)}"${d && d.who ? ` title="${esc(d.who)}"` : ""}>${sel(r) ? svg(IC.check, 15) : ""}<span>${esc(r)}</span></button>`; }).join("")}</div>
-        </div>`).join("")}</div>
-      ${fieldErr("ed-roles", noRole, "직무를 하나 이상 고르세요")}
-      ${st.roles.length ? `<div class="ed-apts">
-        <div class="ed-apth"><span>직무 임명일</span>${st.roles.length > 1 ? `<button type="button" class="ed-link" id="ed-aptsame">첫 날짜로 모두 맞춤</button>` : ""}</div>
-        <ul>${TR().sortRoles(st.roles.map(x => x.r)).map(r => { const x = st.roles.find(y => y.r === r), g = TR().rgOf(r), bad = st.tried && !isISO(x.apt);
-          return `<li class="rg-${g.id}"><span class="ed-aptn">${rgDot(g)}<b>${esc(r)}</b></span>
-            <label class="ed-aptd"><span class="sr">${esc(r)} 임명일</span><input type="date" id="ed-apt-${slug(r)}" data-apt="${esc(r)}" value="${esc(x.apt)}" max="${esc(addDays(todayISO(), 180))}" min="1970-01-01" aria-invalid="${bad}"></label>
-            <button type="button" class="ed-x" data-unrole="${esc(r)}" aria-label="${esc(r)} 빼기">${svg(IC.x, 16)}</button>
-            ${fieldErr("ed-apt-" + slug(r), bad, "임명일을 입력하세요")}</li>`; }).join("")}</ul></div>` : ""}`;
-    $$("[data-role]", box).forEach(b => b.addEventListener("click", () => toggleRole(b.dataset.role)));
-    $$("[data-unrole]", box).forEach(b => b.addEventListener("click", () => toggleRole(b.dataset.unrole)));
-    $$("[data-apt]", box).forEach(inp => {
-      const on = () => {
-        const x = st.roles.find(y => y.r === inp.dataset.apt);
-        if (!x) return;
-        x.apt = isISO(inp.value) ? inp.value : "";
-        if (st.tried) { const bad = !x.apt; inp.setAttribute("aria-invalid", String(bad)); const e = $("#" + inp.id + "-e"); if (e) e.hidden = !bad; }
-        const ok = st.roles.every(y => isISO(y.apt)), num = $("#ed-sec-roles .ed-num");
-        if (num) { num.classList.toggle("is-done", ok); num.innerHTML = ok ? svg(IC.check, 16) : "02"; }
-        paintSummary(); saveDraft();
-      };
-      inp.addEventListener("change", on); inp.addEventListener("input", on);
-    });
-    const same = $("#ed-aptsame", box);
-    if (same) same.addEventListener("click", () => {
-      const order = TR().sortRoles(st.roles.map(x => x.r));
-      const first = order.map(r => st.roles.find(y => y.r === r)).find(x => isISO(x.apt));
-      if (!first) { const i = $("[data-apt]", box); if (i) i.focus(); return; }
-      st.roles.forEach(x => { x.apt = first.apt; });
-      paintRoles(); paintSummary(); saveDraft();
-    });
+  /* 직무 */
+  function rolesHTML() {
+    return `<span class="ed-l" id="ed-l-roles">직무</span>
+      <div class="ed-chips" id="ed-roles" role="group" aria-labelledby="ed-l-roles" tabindex="-1">${ownRoles().map(r => {
+        const g = TR().rgOf(r), d = roleDef(r), on = st.roles.indexOf(r) >= 0;
+        return `<button type="button" class="ed-chip rg-${g.id}" data-role="${esc(r)}" aria-pressed="${on}"${d && d.who ? ` title="${esc(d.who)}"` : ""}>${on ? svg(IC.check, 15) : rgDot(g)}<span>${esc(r)}</span></button>`;
+      }).join("")}</div>
+      ${fieldErr("ed-roles", "직무를 고르세요")}`;
   }
   function toggleRole(r) {
-    const i = st.roles.findIndex(x => x.r === r);
-    if (i >= 0) st.roles.splice(i, 1); else st.roles.push({ r, apt: "" });
-    syncItems();
-    paintRoles(); paintItems(); paintSummary(); saveDraft();
+    const i = st.roles.indexOf(r);
+    if (i >= 0) st.roles.splice(i, 1); else st.roles.push(r);
+    st.roles = TR().sortRoles(st.roles);
     const b = $$("[data-role]").find(x => x.dataset.role === r);
-    if (b) b.focus();
+    if (b) {
+      const on = st.roles.indexOf(r) >= 0;
+      b.setAttribute("aria-pressed", String(on));
+      b.innerHTML = (on ? svg(IC.check, 15) : rgDot(TR().rgOf(r))) + `<span>${esc(r)}</span>`;
+    }
+    st.items.filter(it => it.st === "done" && (it.open || !complete(it))).forEach(paintItem);   // 과정 고르기 목록 순서
+    paintErrs(); paintFoot(); saveDraft();
   }
 
-  /* 03 이수 교육 */
-  const upsOf = (it) => Object.keys(st.ups).map(k => st.ups[k]).filter(u => u.item === it.k);
-  function paintItems() {
-    const box = $("#ed-sec-items");
-    if (!box) return;
-    const n = toSubmit().length;
-    const okAll = n > 0 && toSubmit().every(it => !Object.keys(itemErrs(it)).length);
-    const used = st.items.map(it => it.cid);
-    const extra = TR().courses().filter(c => !c.vendor && used.indexOf(c.id) < 0);
-    box.innerHTML = secHead(3, "ed-h-items", "이수 교육", okAll, n ? `<span class="ed-sh-m">${n}건 입력</span>` : "")
-      + (st.items.length ? `<div class="ed-items">${st.items.map(itemHTML).join("")}</div>`
-        : `<div class="ed-empty">${svg(IC.doc, 22)}<span>${st.roles.length ? "이 직무에 지정된 필수 교육이 없습니다." : "직무를 고르면 필수 교육이 나타납니다."}</span></div>`)
-      + (st.items.length < MAX_ITEMS && extra.length ? `<div class="ed-add"><label class="ed-addl">${svg(IC.plus, 16)}<span>다른 교육 추가</span>
-          <select id="ed-addc" aria-label="다른 교육 추가"><option value="">과정 고르기</option>${addOptions(extra)}</select></label></div>` : "");
-    st.items.forEach(wireItem);
-    const add = $("#ed-addc", box);
-    if (add) add.addEventListener("change", () => {
-      const c = courseOf(add.value);
-      if (!c) return;
-      const g = famOf(c.fam || c.id);
-      if (!g) return;
-      const it = newItem(g, c.id, false);
-      st.items.push(it);
-      paintItems(); paintSummary(); saveDraft();
-      const d = $("#ed-date-" + it.k); if (d) d.focus();
-    });
+  /* 이수증 */
+  function pickHTML() {
+    const n = st.items.filter(it => it.st !== "err").length;
+    if (n >= MAX_FILES) return "";
+    return `<button type="button" class="ed-pick" id="ed-pick">${svg(IC.up, 20)}<span class="ed-pick-t">${n ? "이수증 더 올리기" : "이수증 올리기"}</span><small>PDF · 사진${n ? "" : " · 여러 장 가능"}</small></button>`;
   }
-  function addOptions(list) {
-    const grp = (c) => c.fam === "dgr" ? "dg" : (c.legal === "intl" ? "intl" : c.legal === "own" ? "own" : "law");
-    return [["law", "법정 (항공보안법 · 지침)"], ["dg", "위험물"], ["intl", "국제 기준"], ["own", "사내 · 기타"]].map(([k, lb]) => {
-      const xs = list.filter(c => grp(c) === k);
-      return xs.length ? `<optgroup label="${esc(lb)}">${xs.map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join("")}</optgroup>` : "";
-    }).join("");
+  function courseOptions(cur) {
+    const mine = (c) => (c.roles || []).some(r => st.roles.indexOf(r) >= 0);
+    const all = TR().courses().filter(c => !c.vendor);
+    const opt = (c) => `<option value="${esc(c.id)}"${c.id === cur ? " selected" : ""}>${esc(c.name)}</option>`;
+    const a = all.filter(mine), b = all.filter(c => !mine(c));
+    return `<option value="">과정 고르기</option>` + (a.length ? `<optgroup label="내 직무">${a.map(opt).join("")}</optgroup><optgroup label="그 밖의 과정">${b.map(opt).join("")}</optgroup>` : b.map(opt).join(""));
+  }
+  const READ_MSG = (it) => it.rerr === "part" ? "일부만 읽었습니다. 빈 칸을 채워 주세요." : "자동으로 읽지 못했습니다. 직접 입력해 주세요.";
+  const canReread = (it) => it.reads < MAX_READS && /^(busy|net|parse|ai|check|http|file)/.test(it.rerr || "");
+  function itemState(it) {
+    if (it.st === "done") return complete(it) ? "ok" : "fix";
+    return it.st;
+  }
+  function itemIcon(it) {
+    const s = itemState(it);
+    if (s === "up") return svg(IC.up, 18);
+    if (s === "read") return `<span class="ed-spin" aria-hidden="true"></span>`;
+    if (s === "ok") return svg(IC.check, 18);
+    return svg(s === "err" ? IC.alert : IC.doc, 18);
+  }
+  function itemActs(it) {
+    const s = itemState(it);
+    const del = `<button type="button" class="ed-x" data-del="${it.k}" aria-label="${esc(it.name)} 빼기">${svg(IC.x, 16)}</button>`;
+    if (s === "ok" && !it.open) return `<button type="button" class="ed-x ed-x-edit" data-edit="${it.k}" aria-label="고치기">${svg(IC.edit, 16)}</button>` + del;
+    if (s === "ok" && it.open) return `<button type="button" class="ed-x ed-x-ok" data-fold="${it.k}" aria-label="닫기">${svg(IC.check, 16)}</button>` + del;
+    return del;
+  }
+  function whoWarn(it) {
+    return it.who && norm(st.name) && nameKey(it.who) !== nameKey(st.name) ? `<small class="ed-warn">${svg(IC.alert, 14)}<span>이수증 성명 ${esc(it.who)}</span></small>` : "";
+  }
+  function itemBody(it) {
+    const s = itemState(it);
+    if (s === "up") return `<div class="ed-fi-s"><span class="ed-bar"><i id="ed-bar-${it.k}"></i></span><span>올리는 중</span></div>`;
+    if (s === "read") return `<div class="ed-fi-s"><span>이수증 확인 중</span></div>`;
+    if (s === "err") return `<small class="ed-fi-e">${esc(it.err)}</small>`;
+    const c = courseOf(it.cid);
+    if (s === "ok" && !it.open) {
+      return `<div class="ed-fi-r"><b>${esc(c.name)}</b><span class="mono">${esc(dot(it.date))}</span>${it.org ? `<span>${esc(it.org)}</span>` : ""}${it.certNo ? `<span class="mono">No. ${esc(it.certNo)}</span>` : ""}</div>${whoWarn(it)}`;
+    }
+    const bad = (f) => st.tried && (f === "cid" ? !c : !dateOk(it.date));
+    return `${it.rerr && s === "fix" ? `<p class="ed-fi-n">${esc(READ_MSG(it))}${canReread(it) ? ` <button type="button" class="ed-link" data-reread="${it.k}">다시 읽기</button>` : ""}</p>` : ""}
+      <div class="ed-fi-g">
+        <label class="ed-f ed-f-c"><span class="ed-l">과정</span><select id="ed-cid-${it.k}" data-f="cid" aria-invalid="${bad("cid")}">${courseOptions(it.cid)}</select></label>
+        <label class="ed-f"><span class="ed-l">수료일</span><input type="date" id="ed-date-${it.k}" data-f="date" value="${esc(it.date)}" min="2000-01-01" max="${esc(addDays(todayISO(), 1))}" aria-invalid="${bad("date")}"></label>
+        <label class="ed-f"><span class="ed-l">교육기관</span><input id="ed-org-${it.k}" data-f="org" value="${esc(it.org)}" maxlength="60" list="ed-dl-org"></label>
+        <label class="ed-f"><span class="ed-l">이수증 번호</span><input id="ed-certNo-${it.k}" data-f="certNo" value="${esc(it.certNo)}" maxlength="40" class="mono" spellcheck="false"></label>
+      </div>${whoWarn(it)}`;
   }
   function itemHTML(it) {
-    const g = famOf(it.fam), c = courseOf(it.cid);
-    const errs = st.tried ? itemErrs(it) : {};
-    const role = g ? (g.roles.find(r => st.roles.some(x => x.r === r)) || g.roles[0] || "") : "";
-    const rg = role ? TR().rgOf(role) : TR().RGROUPS[TR().RGROUPS.length - 1];
-    const kinds = g ? g.courses : [];
-    const calc = calcExp(it);
-    const exp = it.expTouched ? it.expire : calc;
-    const open = filled(it);
-    const ups = upsOf(it);
-    return `<article class="ed-item rg-${rg.id}${open ? " is-open" : ""}${Object.keys(errs).length ? " is-bad" : ""}" data-item="${it.k}">
-      <div class="ed-ih">
-        <div class="ed-it"><b>${esc(famShort(g) || (c && c.name) || "")}</b><small>${esc(c ? TR().cycleText(c) : "")}</small></div>
-        ${it.auto ? "" : `<button type="button" class="ed-x" data-del="${it.k}" aria-label="이 교육 빼기">${svg(IC.x, 16)}</button>`}
+    return `<div class="ed-fi is-${itemState(it)}${it.open ? " is-open" : ""}" data-k="${it.k}">
+      <span class="ed-fi-ic">${itemIcon(it)}</span>
+      <div class="ed-fi-b">
+        <div class="ed-fi-h"><span class="ed-fn">${esc(it.name)}</span>${it.size ? `<small class="mono">${esc(kb(it.size))}</small>` : ""}</div>
+        ${itemBody(it)}
       </div>
-      ${kinds.length > 1 ? `<div class="ed-seg" role="group" aria-label="과정">${kinds.map(k => `<button type="button" data-kind="${esc(k.id)}" aria-pressed="${k.id === it.cid}">${esc(k.kind)}</button>`).join("")}</div>` : ""}
-      <div class="ed-ig">
-        <label class="ed-f"><span class="ed-l">수료일</span>
-          <input type="date" id="ed-date-${it.k}" data-f="date" value="${esc(it.date)}" max="${esc(addDays(todayISO(), 1))}" min="2000-01-01" aria-invalid="${!!errs.date}">
-          ${fieldErr("ed-date-" + it.k, !!errs.date, errs.date)}</label>
-        <div class="ed-f ed-fexp"><span class="ed-l">유효기한</span>
-          ${c && (c.step || isPerm(c)) ? `<span class="ed-auto">${c.step ? "단계 과정" : "영구 · 1회"}</span>`
-            : `<span class="ed-expw"><input type="date" id="ed-expire-${it.k}" data-f="expire" value="${esc(exp)}" ${it.expTouched ? "" : 'class="is-auto"'} aria-invalid="${!!errs.expire}" aria-describedby="ed-exph-${it.k}">
-              <small class="ed-exph" id="ed-exph-${it.k}">${it.expTouched ? (calc && calc !== it.expire ? `<button type="button" class="ed-link" data-reset="${it.k}">자동 ${esc(dot(calc))}</button>` : "") : calc ? "자동 계산" : ""}</small></span>
-              ${fieldErr("ed-expire-" + it.k, !!errs.expire, errs.expire)}`}
-        </div>
-      </div>
-      <div class="ed-more">
-        <label class="ed-f"><span class="ed-l">교육기관</span><input id="ed-org-${it.k}" data-f="org" value="${esc(it.org)}" maxlength="60" list="ed-dl-org"></label>
-        <label class="ed-f"><span class="ed-l">이수증 번호</span><input id="ed-certNo-${it.k}" data-f="certNo" value="${esc(it.certNo)}" maxlength="40"></label>
-        <label class="ed-f ed-fh"><span class="ed-l">교육 시간</span><input type="number" id="ed-hours-${it.k}" data-f="hours" value="${esc(it.hours)}" min="0" max="999" step="0.5" inputmode="decimal" aria-invalid="${!!errs.hours}"></label>
-      </div>
-      <div class="ed-drop${errs.files ? " is-bad" : ""}" id="ed-files-${it.k}" data-drop="${it.k}">
-        ${it.files.map((f, i) => `<span class="ed-file">${svg(IC.doc, 16)}<span class="ed-fn">${esc(f.name)}</span><small class="mono">${esc(kb(f.size || 0))}</small>
-          <button type="button" class="ed-x" data-fdel="${i}" aria-label="${esc(f.name)} 빼기">${svg(IC.x, 14)}</button></span>`).join("")}
-        ${ups.map(u => `<span class="ed-file is-up${u.err ? " is-err" : ""}" data-up="${u.id}">${svg(u.err ? IC.alert : IC.up, 16)}<span class="ed-fn">${esc(u.name)}</span>
-          ${u.err ? `<small>${esc(u.err)}</small><button type="button" class="ed-x" data-updel="${u.id}" aria-label="닫기">${svg(IC.x, 14)}</button>` : `<span class="ed-bar"><i id="ed-bar-${u.id}"></i></span>`}</span>`).join("")}
-        ${it.files.length + ups.filter(u => !u.err).length < MAX_FILES ? `<button type="button" class="ed-pick" data-pick="${it.k}">${svg(IC.up, 18)}<span>${it.files.length ? "파일 더 올리기" : "이수증 올리기"}</span><small>PDF · 사진 · 끌어 놓기</small></button>` : ""}
-        <input type="file" id="ed-file-${it.k}" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,application/pdf,image/*" multiple hidden>
-        ${fieldErr("ed-files-" + it.k, !!errs.files, errs.files)}
-      </div>
-    </article>`;
+      <div class="ed-fi-a">${itemActs(it)}</div>
+    </div>`;
   }
-  function itemBox(it) { return $(`[data-item="${it.k}"]`); }
-  function repaintItem(it) {
-    const el = itemBox(it);
-    if (!el) { paintItems(); return; }
+  const itemEl = (it) => $(`.ed-fi[data-k="${it.k}"]`);
+  function barWidth(it) {
+    const b = document.getElementById("ed-bar-" + it.k);
+    if (b) b.style.width = Math.round((it.pct || 0) * 100) + "%";
+  }
+  function paintItem(it) {
+    const el = itemEl(it);
+    if (!el) return;
     const tmp = document.createElement("div");
     tmp.innerHTML = itemHTML(it);
     el.replaceWith(tmp.firstElementChild);
-    wireItem(it);
-    paintHeadStates();
+    barWidth(it);
   }
-  function paintHeadStates() {
-    const n = toSubmit().length, num = $("#ed-sec-items .ed-num");
-    const okAll = n > 0 && toSubmit().every(it => !Object.keys(itemErrs(it)).length);
-    if (num) { num.classList.toggle("is-done", okAll); num.innerHTML = okAll ? svg(IC.check, 16) : "03"; }
-    const m = $("#ed-sec-items .ed-sh-m");
-    if (m) m.textContent = n ? n + "건 입력" : "";
-    else if (n) { const h = $("#ed-sec-items .ed-sh"); if (h) h.insertAdjacentHTML("beforeend", `<span class="ed-sh-m">${n}건 입력</span>`); }
-  }
-  function wireItem(it) {
-    const el = itemBox(it);
+  /* 칸에 입력할 때는 입력칸을 다시 만들지 않는다(한글 조합 · 날짜 칸 유지) — 표시만 고친다 */
+  function itemBits(it) {
+    const el = itemEl(it);
     if (!el) return;
-    $$("[data-kind]", el).forEach(b => b.addEventListener("click", () => {
-      it.cid = b.dataset.kind;
-      if (!it.expTouched) it.expire = "";
-      repaintItem(it); paintSummary(); saveDraft();
-    }));
-    $$("[data-f]", el).forEach(inp => {
-      const f = inp.dataset.f;
-      /* 입력칸은 다시 만들지 않는다(날짜 칸 입력 위치 · 한글 조합 유지) — 딸린 부분만 고친다 */
-      const on = () => {
-        if (f === "date") it.date = isISO(inp.value) ? inp.value : "";
-        else if (f === "expire") { it.expire = isISO(inp.value) ? inp.value : ""; it.expTouched = !!inp.value; }
-        else if (f === "hours") it.hours = inp.value;
-        else it[f] = norm(inp.value);
+    el.className = "ed-fi is-" + itemState(it) + (it.open ? " is-open" : "");
+    $(".ed-fi-ic", el).innerHTML = itemIcon(it);
+    $(".ed-fi-a", el).innerHTML = itemActs(it);
+  }
+  function paintPick() { const w = $("#ed-pickw"); if (w) w.innerHTML = pickHTML(); }
+  function appendItem(it) {
+    const l = $("#ed-flist");
+    if (!l) return;
+    l.insertAdjacentHTML("beforeend", itemHTML(it));
+    barWidth(it);
+  }
+  function removeItem(it) {
+    st.items = st.items.filter(x => x !== it);
+    const el = itemEl(it);
+    if (el) el.remove();
+    paintPick(); paintErrs(); paintFoot(); saveDraft();
+  }
+
+  /* 확인 표시 — 제출을 한 번 누른 뒤부터 */
+  function paintErrs() {
+    if (st.view !== "form") return;
+    const errs = st.tried ? check() : [];
+    const has = (f) => errs.some(x => x.f === f);
+    [["name", "#ed-name"], ["emp", "#ed-emp"], ["apt", "#ed-apt"]].forEach(([f, s]) => {
+      const i = $(s), e = $(s + "-e");
+      if (i) i.setAttribute("aria-invalid", String(has(f)));
+      if (e) e.hidden = !has(f);
+    });
+    const r = $("#ed-roles"), re = $("#ed-roles-e");
+    if (r) r.setAttribute("aria-invalid", String(has("roles")));
+    if (re) re.hidden = !has("roles");
+    const fe = $("#ed-files-e"), dr = $("#ed-drop");
+    if (fe) fe.hidden = !has("files");
+    if (dr) dr.classList.toggle("is-bad", has("files"));
+    st.items.filter(it => it.st === "done" && (it.open || !complete(it))).forEach(it => {
+      const c = $("#ed-cid-" + it.k), d = $("#ed-date-" + it.k);
+      if (c) c.setAttribute("aria-invalid", String(st.tried && !courseOf(it.cid)));
+      if (d) d.setAttribute("aria-invalid", String(st.tried && !dateOk(it.date)));
+    });
+  }
+  function paintFoot() {
+    const f = $("#ed-foot");
+    if (!f) return;
+    const errs = check();
+    const ready = !errs.length && !st.sending;
+    f.innerHTML = `${st.msg ? `<p class="ed-msg" role="alert">${svg(IC.alert, 16)}<span>${esc(st.msg)}</span></p>` : ""}
+      ${st.tried && errs.length ? `<p class="ed-miss"><span>남은 항목</span>${esc(missText(errs))}</p>` : ""}
+      <button type="button" class="ed-btn ed-submit" id="ed-submit"${st.sending ? " disabled" : ""} data-ready="${ready}">${st.sending ? "제출하는 중" : "제출"}</button>`;
+  }
+
+  function wireForm() {
+    const form = $("#ed-form");
+    if (!form) return;
+    form.addEventListener("submit", (ev) => ev.preventDefault());
+    const onField = (ev) => {
+      const t = ev.target;
+      if (!t || !t.id) return;
+      warm();
+      if (t.id === "ed-name") { st.name = t.value; st.items.filter(complete).forEach(it => { if (it.who && !it.open) paintItem(it); }); }
+      else if (t.id === "ed-emp") st.emp = t.value;
+      else if (t.id === "ed-apt") st.apt = isISO(t.value) ? t.value : "";
+      else if (t.dataset && t.dataset.f) {
+        const el = t.closest(".ed-fi"), it = el && st.items.find(x => x.k === el.dataset.k);
+        if (!it) return;
+        const f = t.dataset.f;
+        if (f === "date") it.date = isISO(t.value) ? t.value : "";
+        else if (f === "cid") it.cid = courseOf(t.value) ? t.value : "";
+        else it[f] = norm(t.value).slice(0, f === "org" ? 60 : 40);
+        it.open = true;                                               // 고치는 중 — 다 채우면 닫기(✓) 단추
         itemBits(it);
-        if (st.tried) liveErr(it);
-        paintSummary(); saveDraft();
-      };
-      inp.addEventListener("input", on);
-      if (f === "date" || f === "expire") inp.addEventListener("change", on);
+      } else return;
+      paintErrs(); paintFoot(); saveDraft();
+    };
+    form.addEventListener("input", onField);
+    form.addEventListener("change", onField);
+    form.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Enter" || ev.isComposing) return;
+      const t = ev.target;
+      if (t && t.tagName === "INPUT") {
+        ev.preventDefault();
+        const next = { "ed-name": "#ed-emp", "ed-emp": "#ed-apt", "ed-apt": "[data-role]" }[t.id];
+        const n = next && $(next);
+        if (n) n.focus();
+      }
     });
-    const rs = $("[data-reset]", el);
-    if (rs) rs.addEventListener("click", () => { it.expTouched = false; it.expire = ""; repaintItem(it); paintSummary(); saveDraft(); });
-    const del = $("[data-del]", el);
-    if (del) del.addEventListener("click", () => {
-      st.items = st.items.filter(x => x !== it);
-      Object.keys(st.ups).forEach(k => { if (st.ups[k].item === it.k) delete st.ups[k]; });
-      paintItems(); paintSummary(); saveDraft();
+    form.addEventListener("click", (ev) => {
+      const b = ev.target && ev.target.closest ? ev.target.closest("button") : null;
+      if (!b || !form.contains(b)) return;
+      if (b.dataset.role) { warm(); toggleRole(b.dataset.role); return; }
+      if (b.id === "ed-pick") { warm(); const i = $("#ed-file"); if (i) i.click(); return; }
+      if (b.id === "ed-submit") { submit(); return; }
+      const it = st.items.find(x => x.k === (b.dataset.del || b.dataset.edit || b.dataset.fold || b.dataset.reread));
+      if (!it) return;
+      if (b.dataset.del) { removeItem(it); return; }
+      if (b.dataset.edit) { it.open = true; paintItem(it); const c = $("#ed-cid-" + it.k); if (c) c.focus(); return; }
+      if (b.dataset.fold) { it.open = false; paintItem(it); paintErrs(); return; }
+      if (b.dataset.reread) { readCert(it); }
     });
-    $$("[data-fdel]", el).forEach(b => b.addEventListener("click", () => { it.files.splice(Number(b.dataset.fdel), 1); repaintItem(it); paintSummary(); saveDraft(); }));
-    $$("[data-updel]", el).forEach(b => b.addEventListener("click", () => { delete st.ups[b.dataset.updel]; repaintItem(it); paintSummary(); }));
-    const inp = $("#ed-file-" + it.k), pick = $("[data-pick]", el);
-    if (pick && inp) {
-      pick.addEventListener("click", () => inp.click());
-      inp.addEventListener("change", () => { const fl = Array.from(inp.files || []); inp.value = ""; addFiles(it, fl); });
-    }
-    const drop = $("[data-drop]", el);
+    const inp = $("#ed-file");
+    if (inp) inp.addEventListener("change", () => { const fl = Array.from(inp.files || []); inp.value = ""; addFiles(fl); });
+    const drop = $("#ed-drop");
     if (drop) {
       drop.addEventListener("dragover", (ev) => { ev.preventDefault(); drop.classList.add("is-over"); });
-      drop.addEventListener("dragleave", () => drop.classList.remove("is-over"));
+      drop.addEventListener("dragleave", (ev) => { if (!drop.contains(ev.relatedTarget)) drop.classList.remove("is-over"); });
       drop.addEventListener("drop", (ev) => {
         ev.preventDefault(); drop.classList.remove("is-over");
-        addFiles(it, Array.from((ev.dataTransfer && ev.dataTransfer.files) || []));
+        warm();
+        addFiles(Array.from((ev.dataTransfer && ev.dataTransfer.files) || []));
       });
     }
   }
-  /* 유효기한(자동) · 안내 · 펼침만 고친다 */
-  function itemBits(it) {
-    const el = itemBox(it);
-    if (!el) return;
-    el.classList.toggle("is-open", filled(it));
-    const ex = document.getElementById("ed-expire-" + it.k), h = document.getElementById("ed-exph-" + it.k);
-    const calc = calcExp(it);
-    if (ex && !it.expTouched) { ex.value = calc; ex.classList.add("is-auto"); }
-    if (ex && it.expTouched) ex.classList.remove("is-auto");
-    if (h) h.innerHTML = it.expTouched ? (calc && calc !== it.expire ? `<button type="button" class="ed-link" data-reset="${it.k}">자동 ${esc(dot(calc))}</button>` : "") : calc ? "자동 계산" : "";
-    const rs = h && $("[data-reset]", h);
-    if (rs) rs.addEventListener("click", () => { it.expTouched = false; it.expire = ""; repaintItem(it); paintSummary(); saveDraft(); });
-    paintHeadStates();
-  }
-  function liveErr(it) {
-    const errs = itemErrs(it), el = itemBox(it);
-    if (!el) return;
-    ["date", "expire", "files", "hours"].forEach(k => {
-      const e = document.getElementById("ed-" + k + "-" + it.k + "-e");
-      if (e) { e.hidden = !errs[k]; e.textContent = errs[k] || ""; }
-      const i = document.getElementById("ed-" + k + "-" + it.k);
-      if (i && i.tagName === "INPUT") i.setAttribute("aria-invalid", String(!!errs[k]));
-    });
-    el.classList.toggle("is-bad", !!Object.keys(errs).length);
-    paintHeadStates();
-  }
 
-  /* 이수증 올리기 — 표(작업증명) → 업로드 URL → PUT(진행률) */
-  async function addFiles(it, list) {
-    const room = MAX_FILES - it.files.length - upsOf(it).filter(u => !u.err).length;
+  /* ─── 이수증 올리기 · 읽기 ─── */
+  function newItem(file) {
+    return { k: key(), st: "up", pct: 0, err: "", path: "", url: "", name: String((file && file.name) || "이수증").slice(0, 120), size: (file && file.size) || 0,
+      cid: "", date: "", org: "", certNo: "", hours: null, who: "", rerr: "", reads: 0, open: false };
+  }
+  async function addFiles(list) {
+    const room = MAX_FILES - st.items.filter(it => it.st !== "err").length;
     const take = list.slice(0, Math.max(0, room));
     if (!take.length) return;
+    st.msg = "";
     const jobs = take.map(file => {
-      const id = "u" + (++seq);
-      const bad = !FILE_RE.test(file.name || "") ? "PDF · 사진만" : !(file.size > 0) ? "빈 파일" : file.size > FILE_MAX ? "20MB 이하" : "";
-      st.ups[id] = { id, item: it.k, name: file.name || "파일", pct: 0, err: bad };
-      return { id, file, bad };
+      const it = newItem(file);
+      const bad = !FILE_RE.test(file.name || "") ? "PDF · 사진만 올릴 수 있습니다" : !(file.size > 0) ? "빈 파일입니다" : "";
+      if (bad) { it.st = "err"; it.err = bad; }
+      st.items.push(it); appendItem(it);
+      return { it, file };
     });
-    repaintItem(it); paintSummary();
+    paintPick(); paintErrs(); paintFoot();
     for (const j of jobs) {
-      if (j.bad) continue;
-      const u = st.ups[j.id];
-      try {
-        const meta = await claimUpload(j.file);
-        await putFile(meta.upload, j.file, (p) => { if (st.ups[j.id]) { st.ups[j.id].pct = p; const b = document.getElementById("ed-bar-" + j.id); if (b) b.style.width = Math.round(p * 100) + "%"; } });
-        if (!st.ups[j.id]) continue;                          // 그 사이 칸을 뺐다
-        delete st.ups[j.id];
-        if (st.items.indexOf(it) >= 0) it.files.push({ path: meta.path, url: meta.url, name: j.file.name || "이수증", size: j.file.size || 0 });
-      } catch (e) {
-        if (u && st.ups[j.id]) u.err = upErr(e);
-        if (e && (e.code === "closed" || e.code === "expired" || e.code === "invalid")) { linkGone(e.code, e.d); return; }
-      }
-      if (st.items.indexOf(it) >= 0) repaintItem(it);
-      paintSummary(); saveDraft();
+      if (j.it.st === "err") continue;
+      if (await uploadOne(j.it, j.file) === "gone") return;
     }
+  }
+  async function uploadOne(it, file) {
+    let meta;
+    try {
+      const f = await prep(file);
+      if (f !== file) { it.name = String(f.name || it.name).slice(0, 120); it.size = f.size || it.size; paintItem(it); }
+      if (f.size > FILE_MAX) { const e = new Error("too_large"); e.code = "too_large"; throw e; }
+      meta = await claimUpload(f);
+      await putFile(meta.upload, f, (p) => { it.pct = p; barWidth(it); });
+    } catch (e) {
+      if (st.items.indexOf(it) < 0) return "";
+      if (e && (e.code === "closed" || e.code === "expired" || e.code === "invalid")) { linkGone(e.code, e.d); return "gone"; }
+      it.st = "err"; it.err = upErr(e);
+      paintItem(it); paintPick(); paintErrs(); paintFoot();
+      return "";
+    }
+    if (st.items.indexOf(it) < 0) return "";                          // 그 사이 뺐다
+    it.path = meta.path; it.url = meta.url || "";
+    readCert(it);                                                     // 읽는 동안 다음 파일을 올린다
+    return "";
   }
   function upErr(e) {
     const c = String((e && (e.code || e.message)) || "");
     if (/too_many/.test(c)) return "파일이 너무 많습니다";
-    if (/too_large|413/.test(c)) return "20MB 이하";
-    if (/type|415/.test(c)) return "PDF · 사진만";
-    if (/limit|busy/.test(c)) return "잠시 후 다시";
+    if (/too_large|413/.test(c)) return "20MB 이하만 올릴 수 있습니다";
+    if (/type|415/.test(c)) return "PDF · 사진만 올릴 수 있습니다";
+    if (/limit|busy/.test(c)) return "잠시 후 다시 올려 주세요";
     return "올리지 못했습니다";
+  }
+  /* 사진은 긴 변 2400px JPEG 로 줄여 올린다(판독 · 저장 용량) — 줄일 수 없으면 그대로 */
+  async function prep(file) {
+    const nm = String(file.name || "image");
+    const ext = (nm.split(".").pop() || "").toLowerCase();
+    if (!/^(jpe?g|png|webp|heic|heif)$/.test(ext) || typeof createImageBitmap !== "function") return file;
+    const plain = /^(jpe?g|png|webp)$/.test(ext);
+    let bmp = null;
+    try { bmp = await createImageBitmap(file); } catch (e) { return file; }
+    try {
+      const s = Math.min(1, IMG_SIDE / Math.max(bmp.width, bmp.height));
+      if (plain && s === 1 && file.size <= IMG_KEEP) return file;
+      const w = Math.max(1, Math.round(bmp.width * s)), h = Math.max(1, Math.round(bmp.height * s));
+      const cv = document.createElement("canvas");
+      cv.width = w; cv.height = h;
+      const cx = cv.getContext && cv.getContext("2d");
+      if (!cx) return file;
+      cx.fillStyle = "#fff"; cx.fillRect(0, 0, w, h);
+      cx.drawImage(bmp, 0, 0, w, h);
+      const blob = await new Promise((res) => { try { cv.toBlob(res, "image/jpeg", IMG_Q); } catch (e) { res(null); } });
+      if (!blob || !blob.size || (plain && s === 1 && blob.size >= file.size)) return file;
+      const name = (nm.replace(/\.[^.]+$/, "") || "image") + ".jpg";
+      try { return new File([blob], name, { type: "image/jpeg" }); } catch (e) { blob.name = name; return blob; }
+    } catch (e) {
+      return file;
+    } finally {
+      try { bmp.close(); } catch (e) { /* 없음 */ }
+    }
   }
   async function claimUpload(file) {
     for (let i = 0; i < 2; i++) {
@@ -566,44 +556,50 @@
       x.send(file);
     });
   }
-
-  /* 요약 (PC 오른쪽 · 모바일 아래) */
-  function paintSummary() {
-    const side = $("#ed-side"), bar = $("#ed-mbar");
-    if (!side) return;
-    const errs = check(), subs = toSubmit();
-    const ready = !errs.length && !st.sending;
-    const roles = TR().sortRoles(st.roles.map(x => x.r));
-    side.innerHTML = `<div class="ed-tag">
-      <div class="ed-tag-top"><span>등록 요약</span><span class="mono">ICNKF</span></div>
-      <dl class="ed-tag-grid">
-        <div><dt>성명</dt><dd>${norm(st.name) ? esc(norm(st.name)) : '<span class="ed-nil">-</span>'}</dd></div>
-        <div><dt>소속</dt><dd>${norm(st.dept) ? esc(norm(st.dept)) : '<span class="ed-nil">-</span>'}</dd></div>
-      </dl>
-      <div class="ed-tag-sec"><small>직무</small>${roles.length ? `<ul class="ed-tag-roles">${roles.map(r => { const x = st.roles.find(y => y.r === r);
-        return `<li>${rgDot(TR().rgOf(r))}<span>${esc(r)}</span><b class="mono">${x && isISO(x.apt) ? esc(dot(x.apt)) : '<span class="ed-nil">임명일</span>'}</b></li>`; }).join("")}</ul>` : '<p class="ed-nil">-</p>'}</div>
-      <div class="ed-tag-sec"><small>이수 교육</small>${subs.length ? `<ul class="ed-tag-recs">${subs.map(it => { const c = courseOf(it.cid), g = famOf(it.fam);
-        const e = it.expTouched ? it.expire : calcExp(it);
-        return `<li><span>${esc(famShort(g))}<em>${esc(c ? c.kind : "")}</em></span><b class="mono">${isISO(it.date) ? esc(dot(it.date).slice(2)) : "-"}${e ? " → " + esc(dot(e).slice(2)) : ""}</b>
-          <i class="ed-fc${it.files.length ? " is-ok" : ""}" title="이수증 ${it.files.length}개">${svg(IC.doc, 14)}${it.files.length}</i></li>`; }).join("")}</ul>` : '<p class="ed-nil">없음</p>'}</div>
-      <div class="ed-tag-foot">
-        ${st.msg ? `<p class="ed-msg" role="alert">${svg(IC.alert, 16)}<span>${esc(st.msg)}</span></p>` : ""}
-        ${errs.length && (st.tried || norm(st.name)) ? `<p class="ed-miss"><span>남은 항목</span>${esc(missText(errs))}</p>` : ""}
-        <button type="button" class="ed-btn ed-submit" id="ed-submit"${st.sending ? " disabled" : ""} data-ready="${ready}">${st.sending ? "제출하는 중" : "제출"}</button>
-      </div>
-    </div>`;
-    if (bar) bar.innerHTML = `<div class="ed-mbar-in"><span class="ed-mbar-t"><span>${subs.length ? `교육 <b>${subs.length}</b>건` : st.roles.length ? `직무 <b>${st.roles.length}</b>개` : "보안교육 이수 등록"}</span>${errs.length && st.tried ? `<small>${esc(missText(errs))}</small>` : ""}</span>
-      <button type="button" class="ed-btn ed-submit" id="ed-msubmit"${st.sending ? " disabled" : ""} data-ready="${ready}">${st.sending ? "제출하는 중" : "제출"}</button></div>`;
-    $$("#ed-submit, #ed-msubmit").forEach(b => b.addEventListener("click", submit));
+  /* 이수증 판독 — 파일 함수 op "edu-read" */
+  async function readCert(it) {
+    it.st = "read"; it.rerr = ""; it.open = false;
+    paintItem(it); paintErrs(); paintFoot();
+    let d = null;
+    for (let i = 0; i < 2; i++) {
+      try {
+        const tk = await ensureTicket(i > 0);
+        const res = await fetch(FN_FILES, { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ op: "edu-read", ticket: tk, path: it.path, roles: st.roles.slice(0, 16) }) });
+        try { d = await res.json(); } catch (e) { d = null; }
+        if (!d || typeof d !== "object") d = { ok: false, error: "http " + res.status };
+      } catch (e) {
+        d = { ok: false, error: String((e && e.code) || "net") };
+      }
+      if (d.ok || d.error !== "ticket" || i > 0) break;
+      st.ticket = "";
+    }
+    it.reads++;
+    if (st.items.indexOf(it) < 0 || st.view !== "form") return;
+    if (d.error === "closed" || d.error === "expired") { linkGone(d.error, d); return; }
+    if (d.ok && d.data && typeof d.data === "object") applyRead(it, d.data);
+    else it.rerr = String(d.error || "ai").slice(0, 20);
+    it.st = "done";
+    paintItem(it); paintErrs(); paintFoot(); saveDraft();
+  }
+  function applyRead(it, x) {
+    if (courseOf(x.cid)) it.cid = x.cid;
+    if (dateOk(x.date)) it.date = x.date;
+    if (x.org) it.org = norm(x.org).slice(0, 60);
+    if (x.certNo) it.certNo = norm(x.certNo).slice(0, 40);
+    const h = Number(x.hours);
+    it.hours = x.hours != null && isFinite(h) && h > 0 && h <= 999 ? h : null;
+    it.who = norm(x.name).slice(0, 30);
+    it.rerr = courseOf(it.cid) && dateOk(it.date) ? "" : "part";
   }
 
   /* ─── 제출 ─── */
   function errText(d) {
     const code = String((d && d.error) || "");
     const M = {
-      required: "입력하지 않은 칸이 있습니다.", too_long: "입력한 내용이 너무 깁니다.", roles: "직무를 다시 골라 주세요.",
+      required: "입력하지 않은 칸이 있습니다.", too_long: "입력한 내용이 너무 깁니다.", emp: "사번을 확인해 주세요.", roles: "직무를 다시 골라 주세요.",
       date: "날짜를 확인해 주세요.", course: "과정을 다시 골라 주세요.", files: "이수증을 다시 올려 주세요.",
-      dup_rec: "같은 과정 · 수료일이 두 번 들어 있습니다.", too_many: "한 번에 10건까지 등록할 수 있습니다.",
+      dup_rec: "같은 과정 · 수료일이 두 번 들어 있습니다.", too_many: "한 번에 " + MAX_RECS + "건까지 등록할 수 있습니다.",
       catalog: "과정 기준을 불러오지 못했습니다. 안전보안파트에 알려 주세요.", ticket: "보안 확인이 끝났습니다. 다시 제출해 주세요.",
       net: "서버에 연결하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 제출해 주세요."
     };
@@ -613,15 +609,9 @@
   }
   function payload() {
     return {
-      sid: st.sid, name: norm(st.name), dept: norm(st.dept),
-      roles: st.roles.map(x => ({ r: x.r, apt: x.apt })),
-      recs: toSubmit().map(it => {
-        const calc = calcExp(it);
-        const h = it.hours === "" ? null : Number(it.hours);
-        return { cid: it.cid, date: it.date, expire: it.expTouched && isISO(it.expire) && it.expire !== calc ? it.expire : "",
-          hours: h != null && isFinite(h) ? h : null, org: it.org, certNo: it.certNo,
-          files: it.files.map(f => ({ path: f.path, name: f.name })) };
-      })
+      sid: st.sid, name: norm(st.name), emp: empNorm(st.emp), dept: "",
+      roles: TR().sortRoles(st.roles).map(r => ({ r, apt: st.apt })),
+      recs: groups().map(g => ({ cid: g.cid, date: g.date, expire: "", hours: g.hours, org: g.org, certNo: g.certNo, files: g.files.slice(0, MAX_PER) }))
     };
   }
   async function submit() {
@@ -629,16 +619,16 @@
     st.tried = true; st.msg = "";
     const errs = check();
     if (errs.length) {
-      paintRoles(); st.items.forEach(liveErr); paintSummary();
-      const first = errs[0], el = document.getElementById(first.id);
-      const sec = el && el.closest(".ed-sec, .ed-item, .ed-apts");
-      if (sec && sec.scrollIntoView) sec.scrollIntoView({ block: "center", behavior: "smooth" });
-      if (el && el.focus && el.tagName !== "DIV") setTimeout(() => el.focus({ preventScroll: true }), 250);
-      markPerson();
+      st.items.filter(it => it.st === "done" && !complete(it) && !it.open).forEach(paintItem);
+      paintErrs(); paintFoot();
+      const el = document.getElementById(errs[0].id);
+      if (el && el.scrollIntoView) el.scrollIntoView({ block: "center", behavior: "smooth" });
+      if (el && el.focus) setTimeout(() => el.focus({ preventScroll: true }), 250);
       return;
     }
     if (!st.sid) st.sid = uid();
-    st.sending = true; busy(true); paintSummary();
+    saveDraft();
+    st.sending = true; busy(true); paintFoot();
     let d = null;
     try {
       for (let i = 0; i < 2; i++) {
@@ -654,14 +644,7 @@
     if (d && d.ok) { finish(d); return; }
     if (d && (d.error === "closed" || d.error === "expired" || d.error === "invalid")) { linkGone(d.error, d); return; }
     st.msg = errText(d);
-    paintSummary();
-  }
-  function markPerson() {
-    [["ed-name", st.name], ["ed-dept", st.dept]].forEach(([id, v]) => {
-      const i = document.getElementById(id), e = document.getElementById(id + "-e");
-      if (i) i.setAttribute("aria-invalid", String(!norm(v)));
-      if (e) e.hidden = !!norm(v);
-    });
+    paintFoot();
   }
   function busy(on) {
     const b = $("#ed-busy");
@@ -669,13 +652,14 @@
   }
   function linkGone(code, d) {
     st.view = "error"; st.err = code; st.errInfo = d || null;
+    busy(false);
     render();
   }
 
-  /* ═════════ 제출 뒤 — 제출 정보 · 다음 갱신 ═════════ */
+  /* ═════════ 제출 뒤 — 다음 교육 · 제출 정보 ═════════ */
   function finish(d) {
-    const sent = { name: norm(st.name), dept: norm(st.dept), roles: st.roles.map(x => Object.assign({}, x)),
-      recs: toSubmit().map(it => ({ cid: it.cid, date: it.date, files: it.files.length })) };
+    const sent = { name: norm(st.name), emp: empNorm(st.emp), apt: st.apt, roles: TR().sortRoles(st.roles),
+      recs: groups().map(g => ({ cid: g.cid, date: g.date, org: g.org, certNo: g.certNo, files: g.files.length })) };
     st.done = { res: d, sent };
     dropDraft();
     st.view = "done";
@@ -717,36 +701,32 @@
     const gd = guidance(res);
     const kindLb = { new: "새로 등록", updated: "기존 정보 갱신", dup: "새로 등록 · 동명이인 확인 예정" }[res.kind] || "등록";
     const cal = gd.list.filter(x => { const n = nextLine(x); return isISO(n.at) && n.at >= todayISO(); });
-    return `<div class="ed-wrap ed-wrap-done">
-      <section class="ed-ok">
-        <span class="ed-okico" aria-hidden="true">${svg(IC.check, 30)}</span>
-        <div><h2>등록되었습니다</h2><p>${esc(kindLb)}</p></div>
+    return `<div class="ed-wrap">
+      <section class="ed-card ed-ok">
+        <span class="ed-okico" aria-hidden="true">${svg(IC.check, 28)}</span>
+        <div class="ed-ok-t"><h2>등록되었습니다</h2><p>${esc(kindLb)}</p></div>
         <dl class="ed-rcpt"><div><dt>접수 번호</dt><dd class="mono">${esc(res.receipt || "-")}</dd></div><div><dt>제출 시각</dt><dd class="mono">${esc(String(res.at || "").replace(/-/g, "."))}</dd></div></dl>
       </section>
-      <div class="ed-dgrid">
-        <section class="ed-card" aria-labelledby="ed-h-next">
-          <h3 id="ed-h-next">다음 갱신</h3>
-          ${gd.list.length ? `<ul class="ed-next">${gd.list.map(x => { const n = nextLine(x), s = TR().ST[x.st] || { label: "", tone: "gray" };
-            return `<li class="tone-${esc(s.tone)}"><div class="ed-nh"><b>${esc(famShort(x.g))}</b><span class="ed-chipst tone-${esc(s.tone)}">${esc(s.label)}</span>${x.mine ? '<small class="ed-mine">이번 제출</small>' : ""}</div>
-              <div class="ed-nb"><span class="ed-nl">${n.end ? "다음 이수 기간" : n.at ? "다음 일정" : "상태"}</span><b${/\d/.test(n.main) ? ' class="mono"' : ""}>${esc(n.main)}</b>${n.sub ? `<small>${esc(n.sub)}</small>` : ""}</div>
-              ${n.at ? `<span class="ed-dd mono">${esc(dday(n.at))}</span>` : ""}</li>`; }).join("")}</ul>`
-            : `<p class="ed-nil">해당 직무의 필수 교육이 없습니다.</p>`}
-          ${cal.length ? `<button type="button" class="ed-btn ed-btn-soft" id="ed-ics">${svg(IC.cal, 18)}<span>캘린더에 추가</span></button>` : ""}
-        </section>
-        <section class="ed-card" aria-labelledby="ed-h-sent">
-          <h3 id="ed-h-sent">제출 정보</h3>
-          <dl class="ed-sent">
-            <div><dt>성명</dt><dd>${esc(sent.name)}</dd></div>
-            <div><dt>소속</dt><dd>${esc(sent.dept)}</dd></div>
-            <div><dt>직무</dt><dd><ul>${TR().sortRoles(sent.roles.map(x => x.r)).map(r => { const x = sent.roles.find(y => y.r === r);
-              return `<li>${rgDot(TR().rgOf(r))}<span>${esc(r)}</span><small class="mono">임명 ${esc(dot(x.apt))}</small></li>`; }).join("")}</ul></dd></div>
-            <div><dt>이수 교육</dt><dd>${sent.recs.length ? `<ul>${sent.recs.map(r => { const c = courseOf(r.cid);
-              return `<li><span>${esc(c ? c.name : r.cid)}</span><small class="mono">${esc(dot(r.date))} · 이수증 ${r.files}</small></li>`; }).join("")}</ul>` : '<span class="ed-nil">없음</span>'}</dd></div>
-          </dl>
-        </section>
-      </div>
+      <section class="ed-card" aria-labelledby="ed-h-next">
+        <div class="ed-ch"><h3 id="ed-h-next">다음 교육</h3>${cal.length ? `<button type="button" class="ed-btn ed-btn-soft" id="ed-ics">${svg(IC.cal, 17)}<span>캘린더에 추가</span></button>` : ""}</div>
+        ${gd.list.length ? `<ul class="ed-next">${gd.list.map(x => { const n = nextLine(x), s = TR().ST[x.st] || { label: "", tone: "gray" };
+          return `<li class="tone-${esc(s.tone)}"><div class="ed-nh"><b>${esc(famShort(x.g))}</b><span class="ed-chipst tone-${esc(s.tone)}">${esc(s.label)}</span>${x.mine ? '<small class="ed-mine">이번 제출</small>' : ""}</div>
+            <div class="ed-nb"><span class="ed-nl">${n.end ? "다음 이수 기간" : n.at ? "다음 일정" : "상태"}</span><b${/\d/.test(n.main) ? ' class="mono"' : ""}>${esc(n.main)}</b>${n.sub ? `<small>${esc(n.sub)}</small>` : ""}</div>
+            ${n.at ? `<span class="ed-dd mono">${esc(dday(n.at))}</span>` : ""}</li>`; }).join("")}</ul>`
+          : `<p class="ed-nil">해당 직무의 필수 교육이 없습니다.</p>`}
+      </section>
+      <section class="ed-card" aria-labelledby="ed-h-sent">
+        <h3 id="ed-h-sent">제출 정보</h3>
+        <dl class="ed-sent">
+          <div><dt>이름</dt><dd>${esc(sent.name)}</dd></div>
+          <div><dt>사번</dt><dd class="mono">${esc(sent.emp)}</dd></div>
+          <div><dt>직무</dt><dd><ul>${sent.roles.map(r => `<li>${rgDot(TR().rgOf(r))}<span>${esc(r)}</span></li>`).join("")}</ul><small class="mono">임명 ${esc(dot(sent.apt))}</small></dd></div>
+          <div><dt>이수 교육</dt><dd>${sent.recs.length ? `<ul class="ed-srecs">${sent.recs.map(r => { const c = courseOf(r.cid);
+            return `<li><span>${esc(c ? c.name : r.cid)}</span><small class="mono">${esc([dot(r.date), r.org, r.certNo ? "No. " + r.certNo : "", "이수증 " + r.files].filter(Boolean).join(" · "))}</small></li>`; }).join("")}</ul>` : '<span class="ed-nil">없음</span>'}</dd></div>
+        </dl>
+      </section>
       <div class="ed-actions">
-        <button type="button" class="ed-btn ed-btn-ghost" id="ed-again">${svg(IC.plus, 18)}<span>교육 더 등록</span></button>
+        <button type="button" class="ed-btn ed-btn-ghost" id="ed-again">${svg(IC.plus, 18)}<span>이수증 더 등록</span></button>
         <button type="button" class="ed-btn ed-btn-ghost" id="ed-dprint">${svg(IC.print, 18)}<span>Print</span></button>
       </div>
     </div>`;
@@ -755,8 +735,7 @@
     const ics = $("#ed-ics"); if (ics) ics.addEventListener("click", downloadIcs);
     const ag = $("#ed-again");
     if (ag) ag.addEventListener("click", () => {
-      st.items = []; st.sid = ""; st.tried = false; st.msg = ""; st.done = null; st.ups = {};
-      syncItems();
+      st.items = []; st.sid = ""; st.tried = false; st.msg = ""; st.done = null;
       st.view = "form"; render(); saveDraft(); window.scrollTo(0, 0);
     });
     const pr = $("#ed-dprint"); if (pr) pr.addEventListener("click", () => window.print());
@@ -806,8 +785,8 @@
   function errorHTML() {
     const e = st.err, d = st.errInfo || {};
     const T = {
-      nocode: ["링크를 다시 확인해 주세요", "메일로 받은 링크를 그대로 열어 주세요."],
-      invalid: ["링크를 다시 확인해 주세요", "메일로 받은 링크를 그대로 열어 주세요."],
+      nocode: ["링크를 다시 확인해 주세요", "받은 링크를 그대로 열어 주세요."],
+      invalid: ["링크를 다시 확인해 주세요", "받은 링크를 그대로 열어 주세요."],
       closed: ["등록이 마감되었습니다", ""],
       expired: ["등록 기간이 끝났습니다", isISO(d.expires) ? "기한 " + dotW(d.expires) : ""],
       limit: ["잠시 후 다시 열어 주세요", (Number(d.wait) || 10) + "분 뒤"],
@@ -837,11 +816,10 @@
     st.info = d;
     const cs = Array.isArray(d.courses) && d.courses.length ? d.courses : TR().DEF_COURSES.filter(c => !c.vendor).map(c => JSON.parse(JSON.stringify(c)));
     D().training = { courses: cs, people: [], records: [], sessions: [] };
-    if (!loadDraft()) { st.dept = ""; }
-    syncItems();
+    loadDraft();
     st.view = "form";
     render();
-    document.body.insertAdjacentHTML("beforeend", `<datalist id="ed-dl-org">${((d.orgs || [])).map(o => `<option value="${esc(o)}">`).join("")}</datalist>`);
+    if (!$("#ed-dl-org")) document.body.insertAdjacentHTML("beforeend", `<datalist id="ed-dl-org">${((d.orgs || [])).map(o => `<option value="${esc(o)}">`).join("")}</datalist>`);
     const n = $("#ed-name"); if (n && !st.name && window.matchMedia && window.matchMedia("(min-width: 768px)").matches) n.focus();
   }
   function init() {
@@ -852,6 +830,6 @@
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 
-  window.SemisEdu = { st, check, payload, calcExp, syncItems, toggleRole, guidance, nextLine, icsText, codeFromUrl, errText, render,
+  window.SemisEdu = { st, check, payload, groups, complete, applyRead, guidance, nextLine, icsText, codeFromUrl, errText, render, toggleRole,
     setToday(t) { fixedToday = isISO(t) ? t : ""; if (TR() && TR().setToday) TR().setToday(t); } };
 })();
