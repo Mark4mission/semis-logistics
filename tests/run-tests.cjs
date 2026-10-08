@@ -8050,7 +8050,8 @@ function makeServer(opts = {}) {
           srv.reads.push(body);
           const R = o.read || ((pth) => /sup/.test(pth) ? { cid: "c-sup-r", course: "항공보안 감독자 정기교육", date: "2026-09-30", expire: "", org: "교육원", certNo: "A-1", hours: 8, name: "홍길동", conf: 0.95 }
             : /dg/.test(pth) ? { cid: "c-dg-r", course: "위험물 정기", date: "2026-01-15", expire: "", org: "KOTI", certNo: "D-7", hours: null, name: "김철수", conf: 0.9 }
-            : /part/.test(pth) ? { cid: "c-dg-r", course: "", date: "", expire: "", org: "", certNo: "", hours: null, name: "", conf: 0.3 } : null);
+            : /part/.test(pth) ? { cid: "c-dg-r", course: "", date: "", expire: "", org: "", certNo: "", hours: null, name: "", conf: 0.3 }
+            : /hint/.test(pth) ? { cid: "", course: "항공보안 감독자 정기교육", date: "2026-09-30", expire: "", org: "시험교육원", certNo: "제 2026-0931 호", hours: 8, name: "", conf: 0.6 } : null);
           const d = R(String(body.path || ""));
           if (o.readDelay) await new Promise(r => setTimeout(r, o.readDelay));
           return J(d ? { ok: true, model: "m", data: d } : { ok: false, error: "parse" });
@@ -8181,12 +8182,17 @@ function makeServer(opts = {}) {
       const part = x.E.st.items.find(i => i.name === "part.pdf");
       ok(part.cid === "c-dg-r" && !part.date && part.rerr === "part", "일부만 읽음");
       ok(/일부만 읽었습니다/.test($e(x, '.ed-fi[data-k="' + part.k + '"]').textContent) && !$e(x, '[data-reread="' + part.k + '"]'), "일부 = 빈 칸만 채움(다시 읽기 없음)");
+      eq([x.E.certNoNorm("제 2026-0931 호"), x.E.certNoNorm("No. A-12"), x.E.certNoNorm("DG-11873")].join(), "2026-0931,A-12,DG-11873", "이수증 번호 앞뒤 말 빼기");
       eq($e(x, "#ed-cid-" + part.k).value, "c-dg-r", "읽은 과정은 채워 둠");
       eq(x.E.check().map(c => c.f).join(","), "item");
       typeIn(x, "#ed-date-" + part.k, "2026-12-01", "change");
       ok(!x.E.complete(part), "앞날 수료일 거절");
       typeIn(x, "#ed-date-" + part.k, "2025-11-20", "change");
       ok(x.E.complete(part) && $e(x, '[data-fold="' + part.k + '"]'), "다 채우면 닫기(✓)");
+      putFiles(x, [F(x, "hint.pdf", 900, "application/pdf")]); await tick(120);
+      const hint = x.E.st.items.find(i => i.name === "hint.pdf");
+      ok(!x.E.complete(hint) && hint.certNo === "2026-0931" && /이수증 과정명 항공보안 감독자 정기교육/.test($e(x, '.ed-fi[data-k="' + hint.k + '"]').textContent.replace(/\s+/g, " ")), "과정을 못 고르면 읽은 과정명을 보여 줌");
+      $e(x, '[data-del="' + hint.k + '"]').click();
       eq(x.E.check().length, 0);
       const dg = x.E.st.items.find(i => i.name === "dg1.jpg");
       ok(/이수증 성명 김철수/.test($e(x, '.ed-fi[data-k="' + dg.k + '"]').textContent), "이수증 성명이 다르면 표시");

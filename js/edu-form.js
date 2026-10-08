@@ -112,7 +112,7 @@
     try {
       sessionStorage.setItem(DRAFT + st.code, JSON.stringify({ name: st.name, emp: st.emp, apt: st.apt, roles: st.roles, sid: st.sid,
         items: st.items.filter(it => it.st === "done" && it.path).map(it => ({ path: it.path, url: it.url, name: it.name, size: it.size,
-          cid: it.cid, date: it.date, org: it.org, certNo: it.certNo, hours: it.hours, who: it.who, rerr: it.rerr, reads: it.reads })) }));
+          cid: it.cid, date: it.date, org: it.org, certNo: it.certNo, hours: it.hours, who: it.who, course: it.course, rerr: it.rerr, reads: it.reads })) }));
     } catch (e) { /* 저장소 없음 */ }
   }
   function loadDraft() {
@@ -127,7 +127,7 @@
       const h = Number(x.hours);
       return { k: key(), st: "done", pct: 1, err: "", path: String(x.path), url: String(x.url || ""), name: String(x.name || "이수증").slice(0, 120), size: Number(x.size) || 0,
         cid: courseOf(x.cid) ? x.cid : "", date: isISO(x.date) ? x.date : "", org: norm(x.org).slice(0, 60), certNo: norm(x.certNo).slice(0, 40),
-        hours: x.hours != null && isFinite(h) && h > 0 && h <= 999 ? h : null, who: norm(x.who).slice(0, 30), rerr: String(x.rerr || "").slice(0, 20),
+        hours: x.hours != null && isFinite(h) && h > 0 && h <= 999 ? h : null, who: norm(x.who).slice(0, 30), course: norm(x.course).slice(0, 80), rerr: String(x.rerr || "").slice(0, 20),
         reads: Number(x.reads) || 0, open: false };
     });
     return true;
@@ -305,6 +305,7 @@
     }
     const bad = (f) => st.tried && (f === "cid" ? !c : !dateOk(it.date));
     return `${it.rerr && s === "fix" ? `<p class="ed-fi-n">${esc(READ_MSG(it))}${canReread(it) ? ` <button type="button" class="ed-link" data-reread="${it.k}">다시 읽기</button>` : ""}</p>` : ""}
+      ${it.course && !c ? `<p class="ed-fi-c">이수증 과정명 <b>${esc(it.course)}</b></p>` : ""}
       <div class="ed-fi-g">
         <label class="ed-f ed-f-c"><span class="ed-l">과정</span><select id="ed-cid-${it.k}" data-f="cid" aria-invalid="${bad("cid")}">${courseOptions(it.cid)}</select></label>
         <label class="ed-f"><span class="ed-l">수료일</span><input type="date" id="ed-date-${it.k}" data-f="date" value="${esc(it.date)}" min="2000-01-01" max="${esc(addDays(todayISO(), 1))}" aria-invalid="${bad("date")}"></label>
@@ -454,7 +455,7 @@
   /* ─── 이수증 올리기 · 읽기 ─── */
   function newItem(file) {
     return { k: key(), st: "up", pct: 0, err: "", path: "", url: "", name: String((file && file.name) || "이수증").slice(0, 120), size: (file && file.size) || 0,
-      cid: "", date: "", org: "", certNo: "", hours: null, who: "", rerr: "", reads: 0, open: false };
+      cid: "", date: "", org: "", certNo: "", hours: null, who: "", course: "", rerr: "", reads: 0, open: false };
   }
   async function addFiles(list) {
     const room = MAX_FILES - st.items.filter(it => it.st !== "err").length;
@@ -582,11 +583,14 @@
     it.st = "done";
     paintItem(it); paintErrs(); paintFoot(); saveDraft();
   }
+  /* 이수증 번호 — '제 2026-0931 호' · 'No. 12' 의 앞뒤 말은 뺀다 */
+  const certNoNorm = (v) => norm(v).replace(/^(제|No\.?|NO\.?|№)\s*/i, "").replace(/\s*호$/, "").slice(0, 40);
   function applyRead(it, x) {
     if (courseOf(x.cid)) it.cid = x.cid;
     if (dateOk(x.date)) it.date = x.date;
     if (x.org) it.org = norm(x.org).slice(0, 60);
-    if (x.certNo) it.certNo = norm(x.certNo).slice(0, 40);
+    if (x.certNo) it.certNo = certNoNorm(x.certNo);
+    it.course = norm(x.course).slice(0, 80);
     const h = Number(x.hours);
     it.hours = x.hours != null && isFinite(h) && h > 0 && h <= 999 ? h : null;
     it.who = norm(x.name).slice(0, 30);
@@ -830,6 +834,6 @@
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 
-  window.SemisEdu = { st, check, payload, groups, complete, applyRead, guidance, nextLine, icsText, codeFromUrl, errText, render, toggleRole,
+  window.SemisEdu = { st, check, payload, groups, complete, applyRead, certNoNorm, guidance, nextLine, icsText, codeFromUrl, errText, render, toggleRole,
     setToday(t) { fixedToday = isISO(t) ? t : ""; if (TR() && TR().setToday) TR().setToday(t); } };
 })();

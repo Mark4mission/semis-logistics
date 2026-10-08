@@ -138,6 +138,8 @@ input[type="date"] { font-family: var(--mono); letter-spacing: -.01em; font-size
 .ed-fi-r { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; font-size: .88rem; color: var(--text-2); }
 .ed-fi-r b { font-size: .98rem; font-weight: 700; color: var(--text); letter-spacing: -.01em; margin-right: 2px; }
 .ed-fi-n { font-size: .8rem; color: var(--accent-dark); }
+.ed-fi-c { font-size: .8rem; color: var(--text-3); }
+.ed-fi-c b { font-weight: 600; color: var(--text); margin-left: 4px; }
 .ed-fi-g { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 10px 12px; margin-top: 4px; }
 .ed-fi-g input, .ed-fi-g select { height: 44px; font-size: .95rem; }
 .ed-warn { display: inline-flex; align-items: center; gap: 5px; font-size: .78rem; color: var(--accent-dark); font-weight: 500; }
