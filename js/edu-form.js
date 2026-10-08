@@ -1,12 +1,12 @@
 /* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 보안교육 이수 등록 (배포용 화면 edu.html, v1.39.2 한 장 화면)
-   받은 링크(edu.html#코드)를 열면: 이름 · 사번 · 임명일 · 직무 · 이수증 → 제출. 그 뒤 다음 교육 기간.
-   - 링크 확인 · 과정 기준: RPC semis_logi_edu_info(코드) — 협력사 과정은 오지 않는다
+   SeMIS · Logistics — 보안교육 이수 등록 (배포용 화면 edu.html, v1.39.3 상시 등록 화면)
+   대외 교육기관에서 받아 온 이수증을 올리는 화면. 입력 = 이름 · 사번 · 이수증 → 제출. 기한 없음, 주소 하나(edu.html#코드)를 계속 쓴다.
+   - 주소 확인 · 과정 기준: RPC semis_logi_edu_info(코드) — 협력사 과정은 오지 않는다
    - 표: semis_logi_challenge(작업증명) → semis_logi_edu_ticket(코드, 해답) — 3시간
    - 이수증: 사진은 브라우저에서 줄여(JPEG 긴 변 2400px) 파일 함수 op "edu-upload"(표) → 서명 URL 에 PUT
      → op "edu-read"(표 · 경로)가 이수증을 읽어 과정 · 수료일 · 기관 · 번호를 채운다 — 못 읽은 칸만 직접 입력
    - 같은 과정 · 수료일 이수증 여러 장은 기록 하나(파일 여러 개)로 묶어 보낸다
-   - 제출: semis_logi_edu_submit(코드, 표, 내용) → 서버가 병합(같은 사번 → 같은 이름 재직자 = 갱신)하고
+   - 제출: semis_logi_edu_submit(코드, 표, 내용) → 서버가 병합(같은 사번 → 같은 이름 재직자 = 갱신, 직무는 관리 화면에서)하고
      그 사람의 이수 기록을 돌려준다 → js/training.js 의 personQuals 로 다음 교육 기간을 계산해 보여 준다
    - 작성 중인 내용은 이 탭(sessionStorage)에만 둔다 — 새로 고침해도 남고, 제출하면 지운다
    ═══════════════════════════════════════════════════════ */
@@ -24,7 +24,6 @@
   const IMG_SIDE = 2400, IMG_Q = 0.86, IMG_KEEP = 3.5 * 1024 * 1024;
   const DRAFT = "semisl:edu2:";
   const PATH_RE = /^training\/[A-Za-z0-9._-]{4,120}$/;
-  const WD = ["일", "월", "화", "수", "목", "금", "토"];
 
   const TR = () => window.SemisTraining;
   const D = () => window.SeMIS.data;
@@ -42,7 +41,6 @@
   const dayDiff = (a, b) => Math.round((utc(b) - utc(a)) / 86400000);
   const addDays = (iso, n) => { const t = new Date(utc(iso) + n * 86400000); return t.getUTCFullYear() + "-" + p2(t.getUTCMonth() + 1) + "-" + p2(t.getUTCDate()); };
   const dot = (s) => String(s || "").replace(/-/g, ".");
-  const dotW = (s) => (isISO(s) ? dot(s) + " (" + WD[new Date(utc(s)).getUTCDay()] + ")" : "");
   const kb = (n) => (n >= 1048576 ? (n / 1048576).toFixed(1) + "MB" : Math.max(1, Math.round(n / 1024)) + "KB");
   const uid = () => {
     try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID(); } catch (e) { /* 아래로 */ }
@@ -54,7 +52,7 @@
   const st = {
     view: "load", err: "", errInfo: null, code: "", info: null,
     ticket: "", ticketExp: 0, ticketBusy: null, warm: false,
-    name: "", emp: "", apt: "", roles: [], items: [], sid: "",
+    name: "", emp: "", items: [], sid: "",
     tried: false, sending: false, msg: "", done: null
   };
   let seq = 0;
@@ -93,16 +91,8 @@
   }
 
   /* ─── 과정 기준 (js/training.js) ─── */
-  const ownRoles = () => {
-    const s = [];
-    TR().courses().filter(c => !c.vendor).forEach(c => (c.roles || []).forEach(r => { if (r && s.indexOf(r) < 0) s.push(r); }));
-    return TR().sortRoles(s);
-  };
-  const roleDef = (r) => TR().ROLE_DEF.find(x => x.id === r) || null;
   const courseOf = (id) => TR().courses().find(c => c.id === id && !c.vendor) || null;
-  const famOf = (f) => TR().fams(false).find(g => g.fam === f) || null;
   const dateOk = (d) => isISO(d) && d >= "2000-01-01" && d <= addDays(todayISO(), 1);
-  const aptOk = (d) => isISO(d) && d >= "1970-01-01" && d <= addDays(todayISO(), 180);
   const empOk = (s) => /[0-9A-Za-z]/.test(empNorm(s));
   const complete = (it) => it.st === "done" && !!courseOf(it.cid) && dateOk(it.date);
 
@@ -110,7 +100,7 @@
   function saveDraft() {
     if (st.view !== "form") return;
     try {
-      sessionStorage.setItem(DRAFT + st.code, JSON.stringify({ name: st.name, emp: st.emp, apt: st.apt, roles: st.roles, sid: st.sid,
+      sessionStorage.setItem(DRAFT + st.code, JSON.stringify({ name: st.name, emp: st.emp, sid: st.sid,
         items: st.items.filter(it => it.st === "done" && it.path).map(it => ({ path: it.path, url: it.url, name: it.name, size: it.size,
           cid: it.cid, date: it.date, org: it.org, certNo: it.certNo, hours: it.hours, who: it.who, course: it.course, rerr: it.rerr, reads: it.reads })) }));
     } catch (e) { /* 저장소 없음 */ }
@@ -119,9 +109,7 @@
     let d = null;
     try { d = JSON.parse(sessionStorage.getItem(DRAFT + st.code) || "null"); } catch (e) { d = null; }
     if (!d || typeof d !== "object") return false;
-    const okRoles = ownRoles();
-    st.name = norm(d.name).slice(0, 30); st.emp = empNorm(d.emp); st.apt = isISO(d.apt) ? d.apt : "";
-    st.roles = (Array.isArray(d.roles) ? d.roles : []).filter((r, i, a) => okRoles.indexOf(r) >= 0 && a.indexOf(r) === i);
+    st.name = norm(d.name).slice(0, 30); st.emp = empNorm(d.emp);
     st.sid = /^[A-Za-z0-9-]{8,64}$/.test(String(d.sid || "")) ? d.sid : "";
     st.items = (Array.isArray(d.items) ? d.items : []).filter(x => x && PATH_RE.test(String(x.path || ""))).slice(0, MAX_FILES).map(x => {
       const h = Number(x.hours);
@@ -154,8 +142,6 @@
     const e = [];
     if (!norm(st.name)) e.push({ f: "name", id: "ed-name", msg: "이름" });
     if (!empOk(st.emp)) e.push({ f: "emp", id: "ed-emp", msg: "사번" });
-    if (!aptOk(st.apt)) e.push({ f: "apt", id: "ed-apt", msg: "임명일" });
-    if (!st.roles.length) e.push({ f: "roles", id: "ed-roles", msg: "직무" });
     const live = st.items.filter(it => it.st !== "err");
     if (!live.length) e.push({ f: "files", id: "ed-pick", msg: "이수증" });
     if (live.some(it => it.st === "up" || it.st === "read")) e.push({ f: "busy", id: "ed-pick", msg: "이수증 확인 중" });
@@ -180,21 +166,14 @@
     print: '<path d="M7 9V4h10v5"/><rect x="3.5" y="9" width="17" height="8" rx="2"/><path d="M7 14h10v6H7z"/>',
     redo: '<path d="M19 12a7 7 0 1 1-2.05-4.95"/><path d="M19 4.5V9h-4.5"/>'
   };
-  const rgDot = (g) => `<i class="rg-dot rg-${g.id}" aria-hidden="true"></i>`;
   const fieldErr = (id, msg) => `<small class="ed-err" id="${id}-e" hidden>${esc(msg)}</small>`;
 
   function heroHTML() {
-    const i = st.info || {};
-    const exp = i.expires || "";
-    const left = isISO(exp) ? dayDiff(todayISO(), exp) : null;
     return `<section class="ed-hero"><div class="ed-hero-in">
       <div class="ed-hero-t">
         <p class="ed-kicker">인천화물팀 안전보안파트</p>
         <h1>보안교육 이수 등록</h1>
-        ${i.title ? `<p class="ed-sub">${esc(i.title)}</p>` : ""}
-        ${i.note ? `<p class="ed-note">${esc(i.note)}</p>` : ""}
       </div>
-      ${exp ? `<div class="ed-due"><span>등록 기한</span><b class="mono">${esc(dotW(exp))}</b><em class="mono">${left == null ? "" : left <= 0 ? "오늘까지" : "D-" + left}</em></div>` : ""}
     </div></section>`;
   }
 
@@ -205,7 +184,6 @@
     if (st.view === "load") { a.innerHTML = `<div class="ed-load"><span class="ed-spin" aria-hidden="true"></span><span>불러오는 중</span></div>`; return; }
     if (st.view === "error") { a.innerHTML = errorHTML(); wireError(); return; }
     if (st.view === "done") { a.innerHTML = heroHTML() + doneHTML(); wireDone(); return; }
-    const t = todayISO();
     a.innerHTML = heroHTML() + `<div class="ed-wrap">
       <form class="ed-card ed-form" id="ed-form" novalidate autocomplete="off">
         <div class="ed-row">
@@ -213,10 +191,7 @@
             <input id="ed-name" maxlength="30" autocomplete="name" value="${esc(st.name)}" placeholder="홍길동">${fieldErr("ed-name", "이름을 입력하세요")}</label>
           <label class="ed-f ed-f-emp"><span class="ed-l">사번</span>
             <input id="ed-emp" maxlength="20" autocomplete="off" autocapitalize="characters" spellcheck="false" value="${esc(st.emp)}" class="mono">${fieldErr("ed-emp", "사번을 입력하세요")}</label>
-          <label class="ed-f ed-f-apt"><span class="ed-l">임명일</span>
-            <input type="date" id="ed-apt" value="${esc(st.apt)}" min="1970-01-01" max="${esc(addDays(t, 180))}">${fieldErr("ed-apt", "임명일을 입력하세요")}</label>
         </div>
-        <div class="ed-blk" id="ed-blk-roles">${rolesHTML()}</div>
         <div class="ed-blk" id="ed-blk-files">
           <span class="ed-l">이수증</span>
           <div class="ed-drop" id="ed-drop">
@@ -235,41 +210,21 @@
     paintErrs();
   }
 
-  /* 직무 */
-  function rolesHTML() {
-    return `<span class="ed-l" id="ed-l-roles">직무</span>
-      <div class="ed-chips" id="ed-roles" role="group" aria-labelledby="ed-l-roles" tabindex="-1">${ownRoles().map(r => {
-        const g = TR().rgOf(r), d = roleDef(r), on = st.roles.indexOf(r) >= 0;
-        return `<button type="button" class="ed-chip rg-${g.id}" data-role="${esc(r)}" aria-pressed="${on}"${d && d.who ? ` title="${esc(d.who)}"` : ""}>${on ? svg(IC.check, 15) : rgDot(g)}<span>${esc(r)}</span></button>`;
-      }).join("")}</div>
-      ${fieldErr("ed-roles", "직무를 고르세요")}`;
-  }
-  function toggleRole(r) {
-    const i = st.roles.indexOf(r);
-    if (i >= 0) st.roles.splice(i, 1); else st.roles.push(r);
-    st.roles = TR().sortRoles(st.roles);
-    const b = $$("[data-role]").find(x => x.dataset.role === r);
-    if (b) {
-      const on = st.roles.indexOf(r) >= 0;
-      b.setAttribute("aria-pressed", String(on));
-      b.innerHTML = (on ? svg(IC.check, 15) : rgDot(TR().rgOf(r))) + `<span>${esc(r)}</span>`;
-    }
-    st.items.filter(it => it.st === "done" && (it.open || !complete(it))).forEach(paintItem);   // 과정 고르기 목록 순서
-    paintErrs(); paintFoot(); saveDraft();
-  }
-
   /* 이수증 */
   function pickHTML() {
     const n = st.items.filter(it => it.st !== "err").length;
     if (n >= MAX_FILES) return "";
     return `<button type="button" class="ed-pick" id="ed-pick">${svg(IC.up, 20)}<span class="ed-pick-t">${n ? "이수증 더 올리기" : "이수증 올리기"}</span><small>PDF · 사진${n ? "" : " · 여러 장 가능"}</small></button>`;
   }
+  /* 과정 고르기 — 법정 · 위험물 · 국제 · 사내 묶음 */
   function courseOptions(cur) {
-    const mine = (c) => (c.roles || []).some(r => st.roles.indexOf(r) >= 0);
     const all = TR().courses().filter(c => !c.vendor);
+    const grp = (c) => (/^(dgr|dg)/.test(String(c.fam || "")) || /위험물|DGR/.test(String(c.name || "")) ? "dg" : c.legal === "intl" ? "intl" : c.legal === "own" ? "own" : "law");
     const opt = (c) => `<option value="${esc(c.id)}"${c.id === cur ? " selected" : ""}>${esc(c.name)}</option>`;
-    const a = all.filter(mine), b = all.filter(c => !mine(c));
-    return `<option value="">과정 고르기</option>` + (a.length ? `<optgroup label="내 직무">${a.map(opt).join("")}</optgroup><optgroup label="그 밖의 과정">${b.map(opt).join("")}</optgroup>` : b.map(opt).join(""));
+    return `<option value="">과정 고르기</option>` + [["law", "항공보안법 · 교육훈련지침"], ["dg", "위험물"], ["intl", "국제 기준"], ["own", "사내 · 기타"]].map(([k, lb]) => {
+      const xs = all.filter(c => grp(c) === k);
+      return xs.length ? `<optgroup label="${esc(lb)}">${xs.map(opt).join("")}</optgroup>` : "";
+    }).join("");
   }
   const READ_MSG = (it) => it.rerr === "part" ? "일부만 읽었습니다. 빈 칸을 채워 주세요." : "자동으로 읽지 못했습니다. 직접 입력해 주세요.";
   const canReread = (it) => it.reads < MAX_READS && /^(busy|net|parse|ai|check|http|file)/.test(it.rerr || "");
@@ -363,14 +318,11 @@
     if (st.view !== "form") return;
     const errs = st.tried ? check() : [];
     const has = (f) => errs.some(x => x.f === f);
-    [["name", "#ed-name"], ["emp", "#ed-emp"], ["apt", "#ed-apt"]].forEach(([f, s]) => {
+    [["name", "#ed-name"], ["emp", "#ed-emp"]].forEach(([f, s]) => {
       const i = $(s), e = $(s + "-e");
       if (i) i.setAttribute("aria-invalid", String(has(f)));
       if (e) e.hidden = !has(f);
     });
-    const r = $("#ed-roles"), re = $("#ed-roles-e");
-    if (r) r.setAttribute("aria-invalid", String(has("roles")));
-    if (re) re.hidden = !has("roles");
     const fe = $("#ed-files-e"), dr = $("#ed-drop");
     if (fe) fe.hidden = !has("files");
     if (dr) dr.classList.toggle("is-bad", has("files"));
@@ -400,7 +352,6 @@
       warm();
       if (t.id === "ed-name") { st.name = t.value; st.items.filter(complete).forEach(it => { if (it.who && !it.open) paintItem(it); }); }
       else if (t.id === "ed-emp") st.emp = t.value;
-      else if (t.id === "ed-apt") st.apt = isISO(t.value) ? t.value : "";
       else if (t.dataset && t.dataset.f) {
         const el = t.closest(".ed-fi"), it = el && st.items.find(x => x.k === el.dataset.k);
         if (!it) return;
@@ -420,7 +371,7 @@
       const t = ev.target;
       if (t && t.tagName === "INPUT") {
         ev.preventDefault();
-        const next = { "ed-name": "#ed-emp", "ed-emp": "#ed-apt", "ed-apt": "[data-role]" }[t.id];
+        const next = { "ed-name": "#ed-emp", "ed-emp": "#ed-pick" }[t.id];
         const n = next && $(next);
         if (n) n.focus();
       }
@@ -428,7 +379,6 @@
     form.addEventListener("click", (ev) => {
       const b = ev.target && ev.target.closest ? ev.target.closest("button") : null;
       if (!b || !form.contains(b)) return;
-      if (b.dataset.role) { warm(); toggleRole(b.dataset.role); return; }
       if (b.id === "ed-pick") { warm(); const i = $("#ed-file"); if (i) i.click(); return; }
       if (b.id === "ed-submit") { submit(); return; }
       const it = st.items.find(x => x.k === (b.dataset.del || b.dataset.edit || b.dataset.fold || b.dataset.reread));
@@ -566,7 +516,7 @@
       try {
         const tk = await ensureTicket(i > 0);
         const res = await fetch(FN_FILES, { method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ op: "edu-read", ticket: tk, path: it.path, roles: st.roles.slice(0, 16) }) });
+          body: JSON.stringify({ op: "edu-read", ticket: tk, path: it.path, roles: [] }) });
         try { d = await res.json(); } catch (e) { d = null; }
         if (!d || typeof d !== "object") d = { ok: false, error: "http " + res.status };
       } catch (e) {
@@ -603,7 +553,7 @@
   function errText(d) {
     const code = String((d && d.error) || "");
     const M = {
-      required: "입력하지 않은 칸이 있습니다.", too_long: "입력한 내용이 너무 깁니다.", emp: "사번을 확인해 주세요.", roles: "직무를 다시 골라 주세요.",
+      required: "입력하지 않은 칸이 있습니다.", too_long: "입력한 내용이 너무 깁니다.", emp: "사번을 확인해 주세요.", roles: "다시 시도해 주세요.",
       date: "날짜를 확인해 주세요.", course: "과정을 다시 골라 주세요.", files: "이수증을 다시 올려 주세요.",
       dup_rec: "같은 과정 · 수료일이 두 번 들어 있습니다.", too_many: "한 번에 " + MAX_RECS + "건까지 등록할 수 있습니다.",
       catalog: "과정 기준을 불러오지 못했습니다. 안전보안파트에 알려 주세요.", ticket: "보안 확인이 끝났습니다. 다시 제출해 주세요.",
@@ -616,7 +566,6 @@
   function payload() {
     return {
       sid: st.sid, name: norm(st.name), emp: empNorm(st.emp), dept: "",
-      roles: TR().sortRoles(st.roles).map(r => ({ r, apt: st.apt })),
       recs: groups().map(g => ({ cid: g.cid, date: g.date, expire: "", hours: g.hours, org: g.org, certNo: g.certNo, files: g.files.slice(0, MAX_PER) }))
     };
   }
@@ -664,7 +613,7 @@
 
   /* ═════════ 제출 뒤 — 다음 교육 · 제출 정보 ═════════ */
   function finish(d) {
-    const sent = { name: norm(st.name), emp: empNorm(st.emp), apt: st.apt, roles: TR().sortRoles(st.roles),
+    const sent = { name: norm(st.name), emp: empNorm(st.emp),
       recs: groups().map(g => ({ cid: g.cid, date: g.date, org: g.org, certNo: g.certNo, files: g.files.length })) };
     st.done = { res: d, sent };
     dropDraft();
@@ -726,7 +675,6 @@
         <dl class="ed-sent">
           <div><dt>이름</dt><dd>${esc(sent.name)}</dd></div>
           <div><dt>사번</dt><dd class="mono">${esc(sent.emp)}</dd></div>
-          <div><dt>직무</dt><dd><ul>${sent.roles.map(r => `<li>${rgDot(TR().rgOf(r))}<span>${esc(r)}</span></li>`).join("")}</ul><small class="mono">임명 ${esc(dot(sent.apt))}</small></dd></div>
           <div><dt>이수 교육</dt><dd>${sent.recs.length ? `<ul class="ed-srecs">${sent.recs.map(r => { const c = courseOf(r.cid);
             return `<li><span>${esc(c ? c.name : r.cid)}</span><small class="mono">${esc([dot(r.date), r.org, r.certNo ? "No. " + r.certNo : "", "이수증 " + r.files].filter(Boolean).join(" · "))}</small></li>`; }).join("")}</ul>` : '<span class="ed-nil">없음</span>'}</dd></div>
         </dl>
@@ -793,8 +741,8 @@
     const T = {
       nocode: ["링크를 다시 확인해 주세요", "받은 링크를 그대로 열어 주세요."],
       invalid: ["링크를 다시 확인해 주세요", "받은 링크를 그대로 열어 주세요."],
-      closed: ["등록이 마감되었습니다", ""],
-      expired: ["등록 기간이 끝났습니다", isISO(d.expires) ? "기한 " + dotW(d.expires) : ""],
+      closed: ["쓰지 않는 주소입니다", "새 주소는 안전보안파트에 문의해 주세요."],
+      expired: ["쓰지 않는 주소입니다", "새 주소는 안전보안파트에 문의해 주세요."],
       limit: ["잠시 후 다시 열어 주세요", (Number(d.wait) || 10) + "분 뒤"],
       busy: ["잠시 후 다시 열어 주세요", ""],
       net: ["서버에 연결하지 못했습니다", "인터넷 연결을 확인해 주세요."]
@@ -836,6 +784,6 @@
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 
-  window.SemisEdu = { st, check, payload, groups, complete, applyRead, certNoNorm, orgNorm, guidance, nextLine, icsText, codeFromUrl, errText, render, toggleRole,
+  window.SemisEdu = { st, check, payload, groups, complete, applyRead, certNoNorm, orgNorm, guidance, nextLine, icsText, codeFromUrl, errText, render,
     setToday(t) { fixedToday = isISO(t) ? t : ""; if (TR() && TR().setToday) TR().setToday(t); } };
 })();

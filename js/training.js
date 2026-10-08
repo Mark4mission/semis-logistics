@@ -35,7 +35,7 @@
                 files{ tt[], roster[], eval[] }, vendor, target, done, note, createdAt/By, updatedAt/By }] }
    v1.39 — 배포용 이수 등록(edu.html): 메일로 받은 링크에서 본인이 인원 · 직무(임명일) · 이수(수료일 · 이수증)를 등록하면
      서버(semis_logi_edu_submit)가 이 컬렉션에 병합한다. 사람 apt{직무: 임명일} · selfAt, 기록 src 'self' · selfAt,
-     안전보안파트 확인 chkAt · chkBy. 링크는 이 화면 '이수 등록 링크'(hq)에서 만들고 끄고 메일 · QR 로 보낸다(RPC semis_logi_edu_links · _link_save).
+     안전보안파트 확인 chkAt · chkBy. 등록 주소는 이 화면 '이수 등록 페이지'(hq)에서 복사 · 메일 · QR — v1.39.3 부터 상시 주소 하나(RPC semis_logi_edu_links · _link_save).
    권한: 열람 mgr(권한표 training 2) · 편집 hq(3). 파일은 비공개 버킷 training/ 폴더(열람 2 · 올리기 3).
    수검 대응 센터 증빙: window.SemisEvidence.training(mid) → { ok, text } (1.1~1.4 · 2.10 · 3.4 · 8.2 · 9.2 · 9.2.1)
    점검 · 교육 대시보드(js/auddash.js)는 window.SemisTraining 의 집계 함수를 쓴다.
@@ -1510,23 +1510,21 @@
     shell();
   }
 
-  /* ═════════ 이수 등록 링크 — 배포용 edu.html (v1.39) ═════════
-     서버 RPC semis_logi_edu_links(목록 · 최근 제출) · semis_logi_edu_link_save(만들기 · 마감 · 다시 열기 · 연장) — hq 이상.
-     링크 = 이 사이트 주소/edu.html#코드. 메일은 메일 프로그램으로 쓴다(mailto — 받는 사람은 직접). */
+  /* ═════════ 이수 등록 페이지 — 배포용 edu.html (v1.39 · v1.39.3 상시 주소) ═════════
+     대외 교육기관 이수증을 직원이 올리는 상시 화면. 주소 = 이 사이트 주소/edu.html#코드(코드는 공개 저장소에서 주소를 추측하지 못하게).
+     서버 RPC semis_logi_edu_links(주소 · 최근 제출) · semis_logi_edu_link_save(주소 만들기 36500일 · 바꾸기 = 새로 만들고 옛 주소 닫기) — hq 이상.
+     메일은 메일 프로그램으로 쓴다(mailto — 받는 사람은 직접). */
   const EDU = { links: null, recent: [], err: "", qr: "" };
-  const WDK = ["일", "월", "화", "수", "목", "금", "토"];
-  const dotWd = (s) => (isISO(s) ? dot(s) + " (" + WDK[new Date(utc(s)).getUTCDay()] + ")" : "");
   function eduUrl(code) {
     const base = typeof location !== "undefined" ? location.origin + location.pathname.replace(/[^/]*$/, "") : "";
     return base + "edu.html#" + code;
   }
   function eduMail(l) {
-    const subject = "[보안교육] 이수 등록 안내" + (l.title ? " — " + l.title : "");
+    const subject = "[보안교육] 이수증 등록 안내";
     const body = ["안녕하세요. 인천화물팀 안전보안파트입니다.", "",
-      "보안교육 이수 현황 관리를 위해 아래 링크에서 직무와 이수 내용을 등록해 주세요.", "",
-      "▶ 등록 링크: " + eduUrl(l.code), "▶ 등록 기한: " + dotWd(l.expires),
-      "▶ 준비: 직무 임명일, 의무 교육 이수증(PDF 또는 사진)", "",
-      "PC와 휴대폰 모두에서 입력할 수 있습니다.", "", "감사합니다."].join("\n");
+      "교육기관에서 받은 보안교육 이수증을 아래 페이지에 올려 주세요.", "",
+      "▶ 등록 페이지: " + eduUrl(l.code), "▶ 입력: 이름 · 사번 · 이수증(PDF 또는 사진)", "",
+      "이 주소는 계속 쓸 수 있습니다. 새 이수증을 받을 때마다 같은 주소에서 등록해 주세요.", "", "감사합니다."].join("\n");
     return "mailto:?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
   }
   const fmtAt = (iso) => { const d = new Date(iso); return isNaN(d) ? "" : p2(d.getMonth() + 1) + "." + p2(d.getDate()) + " " + p2(d.getHours()) + ":" + p2(d.getMinutes()); };
@@ -1563,10 +1561,14 @@
     if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(txt).then(() => true, fallback);
     return Promise.resolve(fallback());
   }
+  /* 상시 등록 주소 = 열린 training 링크 중 가장 최근 것(시험 링크 eduTest 제외) */
+  const PERM_DAYS = 36500;
+  const eduPerm = () => (EDU.links || []).filter(l => l && l.open && l.target !== "eduTest")
+    .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))[0] || null;
   function eduLinks() {
     if (!SeMIS.canEdit()) return;
     const KIND = { new: ["신규", "blue"], updated: ["갱신", "gray"], dup: ["동명이인", "amber"] };
-    const stOf = (l) => (l.open ? ["열림", "green"] : !l.active ? ["마감", "gray"] : ["기한 지남", "amber"]);
+    let armed = false, armT = 0;
     const act = async (fn, okMsg) => {
       try { await fn(); await eduLoad(); paintM(); if (okMsg) toast(okMsg); }
       catch (e) { toast("처리하지 못했습니다.", true); }
@@ -1575,18 +1577,12 @@
       const box = $("#te-body");
       if (!box) return;
       if (!EDU.links) {
-        box.innerHTML = EDU.err ? ui.empty("링크 목록을 불러오지 못했습니다.", '<button type="button" class="btn btn-soft btn-sm" id="te-retry">다시 시도</button>') : '<p class="au-none">불러오는 중</p>';
+        box.innerHTML = EDU.err ? ui.empty("등록 페이지 정보를 불러오지 못했습니다.", '<button type="button" class="btn btn-soft btn-sm" id="te-retry">다시 시도</button>') : '<p class="au-none">불러오는 중</p>';
         const rt = $("#te-retry", box); if (rt) rt.onclick = () => { EDU.err = ""; paintM(); eduLoad().then(paintM); };
         return;
       }
-      box.innerHTML = `<div class="te-new">
-          <input id="te-title" maxlength="60" placeholder="제목 (예: 2026 하반기 정기교육)" autocomplete="off" aria-label="링크 제목">
-          <select id="te-days" aria-label="등록 기한">${[7, 14, 30, 60, 90].map(n => `<option value="${n}" ${n === 30 ? "selected" : ""}>기한 ${n}일</option>`).join("")}</select>
-          <button type="button" class="btn btn-primary btn-sm" id="te-add">${icon("plus", 15)}<span>새 링크</span></button>
-        </div>
-        ${EDU.links.length ? `<ul class="te-links">${EDU.links.map(l => { const s2 = stOf(l); return `<li class="te-link${l.open ? "" : " is-off"}" data-code="${esc(l.code)}">
-          <div class="te-lh"><b>${esc(l.title || "이수 등록")}</b>${ui.chip(s2[0], s2[1])}${l.target === "eduTest" ? ui.chip("시험", "gray") : ""}
-            <span class="te-lm mono">~${esc(dot(l.expires))} · 제출 ${Number(l.submits) || 0}</span></div>
+      const l = eduPerm();
+      box.innerHTML = (l ? `<div class="te-link" data-code="${esc(l.code)}">
           <div class="te-url mono">${esc(eduUrl(l.code))}</div>
           <div class="te-acts">
             <button type="button" class="btn btn-ghost btn-sm" data-te="copy">${icon("copy", 15)}<span>복사</span></button>
@@ -1594,29 +1590,30 @@
             <button type="button" class="btn btn-ghost btn-sm" data-te="qr" aria-pressed="${EDU.qr === l.code}">QR</button>
             <a class="btn btn-ghost btn-sm" href="${esc(eduUrl(l.code))}" target="_blank" rel="noopener">${icon("external", 15)}<span>열기</span></a>
             <span class="spacer"></span>
-            ${l.open ? `<button type="button" class="btn btn-ghost btn-sm" data-te="ext">+30일</button><button type="button" class="btn btn-ghost btn-sm" data-te="close">마감</button>`
-              : `<button type="button" class="btn btn-soft btn-sm" data-te="open">다시 열기</button>`}
+            <button type="button" class="btn btn-ghost btn-sm te-renew${armed ? " is-armed" : ""}" data-te="renew">${armed ? "한 번 더 누르면 바뀜" : "주소 바꾸기"}</button>
           </div>
           ${EDU.qr === l.code && window.SemisQR ? `<div class="te-qr">${window.SemisQR.svg(eduUrl(l.code), { ecc: "M", size: 176, label: "이수 등록 QR" })}</div>` : ""}
-        </li>`; }).join("")}</ul>` : ui.empty("만든 링크가 없습니다.")}
-        <h4 class="te-h">최근 제출${selfPending() ? `<small>본인 등록 확인 전 ${selfPending()}건</small>` : ""}</h4>
+        </div>` : `<div class="te-link te-none">${ui.empty("등록 페이지 주소가 없습니다.", '<button type="button" class="btn btn-primary btn-sm" id="te-make">주소 만들기</button>')}</div>`)
+        + `<h4 class="te-h">최근 제출${selfPending() ? `<small>본인 등록 확인 전 ${selfPending()}건</small>` : ""}</h4>
         ${EDU.recent.length ? `<ul class="te-recent">${EDU.recent.map(r => { const k = KIND[r.kind] || [String(r.kind || ""), "gray"];
           return `<li><button type="button" class="te-rrow" data-te-pid="${esc(r.pid)}">
             <span class="te-rt mono">${esc(fmtAt(r.at))}</span><b>${esc(r.name)}</b><small>${esc(r.dept || "")}</small>
-            ${ui.chip(k[0], k[1])}<span class="te-rn">교육 ${Number(r.n) || 0}</span></button></li>`; }).join("")}</ul>`
+            ${ui.chip(k[0], k[1])}<span class="te-rn">이수증 ${Number(r.n) || 0}건</span></button></li>`; }).join("")}</ul>`
           : '<p class="au-none">제출 기록이 없습니다.</p>'}`;
-      $("#te-add", box).onclick = () => act(async () => {
-        const l = await eduSave({ title: norm($("#te-title").value), days: Number($("#te-days").value) || 30 });
-        EDU.qr = l && l.code ? l.code : "";
-      }, "링크를 만들었습니다.");
+      const mk = $("#te-make", box);
+      if (mk) mk.onclick = () => act(() => eduSave({ title: "보안교육 이수 등록", days: PERM_DAYS }), "등록 페이지 주소를 만들었습니다.");
       $$("[data-te]", box).forEach(b => b.onclick = () => {
-        const code = b.closest("[data-code]").dataset.code, l = EDU.links.find(x => x.code === code) || {};
+        const code = b.closest("[data-code]").dataset.code;
         const k = b.dataset.te;
-        if (k === "copy") { copyText(eduUrl(code)).then(ok => toast(ok ? "링크를 복사했습니다." : "복사하지 못했습니다.", !ok)); return; }
+        if (k === "copy") { copyText(eduUrl(code)).then(ok => toast(ok ? "주소를 복사했습니다." : "복사하지 못했습니다.", !ok)); return; }
         if (k === "qr") { EDU.qr = EDU.qr === code ? "" : code; paintM(); return; }
-        if (k === "close") act(() => eduSave({ code, active: false }), "마감했습니다.");
-        if (k === "open") act(() => eduSave({ code, active: true, days: 30 }), "다시 열었습니다 (30일).");
-        if (k === "ext") act(() => eduSave({ code, days: Math.min(365, Math.max(1, (isISO(l.expires) ? dayDiff(todayISO(), l.expires) : 0) + 30)) }), "30일 늘렸습니다.");
+        if (k === "renew") {
+          if (!armed) { armed = true; clearTimeout(armT); armT = setTimeout(() => { armed = false; paintM(); }, 5000); paintM(); return; }
+          armed = false; clearTimeout(armT);
+          /* 새 주소를 먼저 만들고 옛 주소를 닫는다 — 중간에 실패해도 등록 화면이 비지 않게 */
+          act(async () => { await eduSave({ title: "보안교육 이수 등록", days: PERM_DAYS }); await eduSave({ code, active: false }); EDU.qr = ""; },
+            "주소를 바꿨습니다. 이전 주소는 더 이상 열리지 않습니다.");
+        }
       });
       $$("[data-te-pid]", box).forEach(b => b.onclick = () => {
         const id = b.dataset.tePid;
@@ -1624,9 +1621,9 @@
         closeModal(); q = ""; openPerson(id);
       });
     };
-    openModal(`<h3>이수 등록 링크</h3><div id="te-body" class="te-body"></div>
+    openModal(`<h3>이수 등록 페이지</h3><div id="te-body" class="te-body"></div>
       <div class="modal-actions"><span class="spacer" style="flex:1"></span><button type="button" class="btn btn-ghost" data-act="cancel">닫기</button></div>`, { wide: true });
-    $("#modal-box [data-act=cancel]").onclick = closeModal;
+    $("#modal-box [data-act=cancel]").onclick = () => { clearTimeout(armT); closeModal(); };
     paintM();
     eduLoad().then(paintM);
   }
@@ -1732,7 +1729,7 @@
     const b = (id, ic, label, primary) => `<button type="button" class="btn ${primary ? "btn-primary" : "btn-ghost"} btn-sm" id="${id}">${icon(ic, 16)}<span>${label}</span></button>`;
     const act = !canW ? "" : tab === "sessions" ? b("tr-sadd", "plus", "교육 기록", true)
       : tab === "catalog" ? b("tr-courses", "sliders", "과정 관리", true)
-      : tab === "pledges" ? "" : b("tr-radd", "plus", "이수 등록", true) + b("tr-padd", "user", "인원 등록") + b("tr-edu", "mail", "이수 등록 링크");
+      : tab === "pledges" ? "" : b("tr-radd", "plus", "이수 등록", true) + b("tr-padd", "user", "인원 등록") + b("tr-edu", "mail", "이수 등록 페이지");
     root.innerHTML = ui.head({ title: TITLE, meta: "인천화물팀 · 협력사 기준", actions: act })
       + `<div class="eq-tabs" role="tablist" aria-label="보안교육 화면">${TABS.map(([id, lb]) =>
         `<button type="button" role="tab" class="eq-tab" data-ttab="${id}" aria-selected="${tab === id}">${esc(lb)}</button>`).join("")}</div>`

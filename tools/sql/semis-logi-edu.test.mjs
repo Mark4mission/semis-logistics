@@ -67,6 +67,10 @@ r = await rpc("semis_logi_edu_link_save", [JSON.stringify({ days: 3, target: "ed
 ok(r.ok && r.link.target === "eduTest", "L04 admin 시험 링크");
 const TCODE = r.link.code;
 eq((await rpc("semis_logi_edu_link_save", [JSON.stringify({ days: 0 })])).error, "invalid", "L05 기한 0일 거절");
+eq((await rpc("semis_logi_edu_link_save", [JSON.stringify({ days: 36501 })])).error, "invalid", "L05b 36500일 넘음 거절");
+r = await rpc("semis_logi_edu_link_save", [JSON.stringify({ days: 36500, title: "상시" })]);
+ok(r.ok && r.link.open && r.link.expires > "2120-01-01", "L05c 상시 주소(36500일) " + JSON.stringify(r).slice(0, 160));
+await rpc("semis_logi_edu_link_save", [JSON.stringify({ code: r.link.code, active: false })]);
 eq((await rpc("semis_logi_edu_link_save", [JSON.stringify({ title: "x".repeat(61) })])).error, "invalid", "L06 제목 길이");
 const exp = await one("select to_char(expires_at at time zone 'Asia/Seoul','HH24:MI:SS') from semis_logi_private.edu_links where code=$1", [CODE]);
 eq(exp, "23:59:59", "L07 기한 = 그날 끝(한국 시각)");
@@ -104,7 +108,9 @@ let empSeq = 900000;
 const sub = (p, code, tk) => rpc("semis_logi_edu_submit", [code || CODE, tk || TK, JSON.stringify(Object.assign({ sid: "sid-" + Math.random().toString(36).slice(2, 12), emp: String(++empSeq) }, p))]);
 eq((await sub({ name: "", dept: "x", roles: [{ r: "위험물 취급자" }] })).error, "required", "S01 이름 필수");
 eq((await sub({ name: "a\u0001b", dept: "x", roles: [{ r: "위험물 취급자" }] })).error, "too_long", "S02 제어문자");
-eq((await sub({ name: "홍길동", dept: "인천화물팀", roles: [] })).error, "roles", "S03 직무 1개 이상");
+eq((await sub({ name: "홍길동", dept: "인천화물팀", roles: [] })).error, "required", "S03 직무도 이수 기록도 없으면 거절");
+eq((await sub({ name: "홍길동", dept: "인천화물팀" })).error, "required", "S03b 직무 없이 빈 제출 거절");
+eq((await sub({ name: "홍길동", roles: "x" })).error, "roles", "S03c 직무 형식");
 r = await sub({ name: "홍길동", dept: "인천화물팀", roles: [{ r: "없는 직무" }] }); eq(r.error, "roles", "S04 기준표 직무만 " + JSON.stringify(r));
 eq((await sub({ name: "홍길동", dept: "인천화물팀", roles: [{ r: "위험물 취급자", apt: "2026-02-30" }] })).error, "date", "S05 없는 날");
 eq((await sub({ name: "홍길동", dept: "인천화물팀", roles: [{ r: "위험물 취급자" }], recs: [{ cid: "v-screen", date: "2026-01-02", files: [F("f1")] }] })).error, "course", "S06 협력사 과정 거절");
@@ -158,6 +164,10 @@ r = await sub({ name: "김철수", dept: "", emp: "200000", roles: [{ r: "위험
 ok(r.ok && r.kind === "new" && r.person.id !== "p1" && r.person.dept === "인천화물팀" && r.person.emp === "200000", "P05 같은 이름 · 다른 사번 = 새 사람(소속 기본 인천화물팀)");
 r = await sub({ name: "다른이름", dept: "", emp: "200000", roles: [{ r: "항공사보안감독자", apt: "2024-01-01" }] });
 ok(r.kind === "updated" && r.person.name === "김철수", "P06 이름이 달라도 사번이 같으면 그 사람");
+eq((await claim(TK, "training/f7_cert.pdf")).ok, true, "P07a 업로드 기록");
+await obj("f7");
+r = await sub({ name: "직무없음", emp: "KJ777001", recs: [{ cid: "c-icao", date: "2026-01-05", org: "교육원", certNo: "77", files: [F("f7")] }] });
+ok(r.ok && r.kind === "new" && JSON.stringify(r.person.roles) === "[]" && r.person.dept === "인천화물팀" && r.records.length === 1, "P07 v1.39.3 이름 · 사번 · 이수증만(직무 없음) " + JSON.stringify(r).slice(0, 220));
 
 /* 동명이인 */
 r = await sub({ name: "이영희", dept: "화물운송팀", roles: [{ r: "위험물 취급자" }] });
@@ -195,7 +205,7 @@ await setCtx(3);
 r = await rpc("semis_logi_edu_link_save", [JSON.stringify({ code: CODE, days: 7 })]);
 ok(r.ok && r.link.open, "L12 연장");
 r = await rpc("semis_logi_edu_links", []);
-ok(r.ok && r.links.length === 2 && r.links.find(x => x.code === CODE).submits >= 6 && r.recent.length >= 6 && r.recent[0].name, "L13 목록 · 최근 제출 " + JSON.stringify(r.recent[0]));
+ok(r.ok && r.links.length === 3 && r.links.find(x => x.code === CODE).submits >= 6 && r.recent.length >= 6 && r.recent[0].name, "L13 목록 · 최근 제출 " + JSON.stringify(r.recent[0]));
 const au = await one("select count(*)::int from semis_logi_private.audit where action in ('edu_submit','edu_link_add','edu_link_edit')");
 ok(au >= 9, "L14 감사 기록 " + au);
 

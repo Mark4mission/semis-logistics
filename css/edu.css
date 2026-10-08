@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════
-   SeMIS · Logistics — 보안교육 이수 등록 (edu.html, v1.39.2 한 장 화면)
+   SeMIS · Logistics — 보안교육 이수 등록 (edu.html, v1.39.3 상시 등록 화면)
    Logistics "Terminal Calm" 문법: 페트롤 머리 · 밝은 작업면 · 둥근 카드
    ═══════════════════════════════════════════ */
 :root {
@@ -33,16 +33,6 @@ ul { list-style: none; }
 ::selection { background: #cdebe5; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: 0ms !important; animation-duration: 0ms !important; } }
 
-/* 직무군 색 — js/training.js RGROUPS · css/main.css .rg-* 와 같은 값 */
-.rg-sup { --rc: #3a4e9d; --rt: #dfe3ef; }
-.rg-scr { --rc: #0d98ce; --rt: #d8eff7; }
-.rg-rel { --rc: #72842b; --rt: #e8ebdd; }
-.rg-tel { --rc: #cb6398; --rt: #f7e6ef; }
-.rg-ins { --rc: #932643; --rt: #eedce1; }
-.rg-etc { --rc: #8a979b; --rt: #eef2f1; }
-.rg-dot { display: inline-block; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--rc, #8a979b); }
-.rg-dot.rg-etc { background: transparent; box-shadow: inset 0 0 0 1.5px var(--rc); }
-
 /* ═══════ 머리 ═══════ */
 .ed-top { position: sticky; top: 0; z-index: 50; background: var(--petrol); color: #fff; }
 .ed-top-in { max-width: var(--w); margin: 0 auto; height: 56px; padding: 0 24px; display: flex; align-items: center; gap: 14px; }
@@ -59,19 +49,12 @@ ul { list-style: none; }
 .ed-hero-in { max-width: var(--w); margin: 0 auto; padding: 0 24px; display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; }
 .ed-kicker { color: #5eead4; font-size: .78rem; font-weight: 600; letter-spacing: .03em; margin-bottom: 4px; }
 .ed-hero h1 { font-size: 1.85rem; line-height: 1.25; font-weight: 700; letter-spacing: -.025em; }
-.ed-sub { margin-top: 6px; color: #d6e4e6; font-size: .96rem; font-weight: 500; }
-.ed-note { margin-top: 2px; color: var(--rail-text); font-size: .84rem; max-width: 560px; }
-.ed-due { flex: none; display: flex; align-items: baseline; gap: 10px; padding: 8px 14px; border-radius: 12px;
-  background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); white-space: nowrap; }
-.ed-due span { font-size: .74rem; color: var(--rail-text); }
-.ed-due b { font-size: .94rem; font-weight: 600; }
-.ed-due em { font-style: normal; font-size: .94rem; font-weight: 700; color: #fbbf24; }
 
 /* ═══════ 작업면 ═══════ */
 .ed-wrap { max-width: var(--w); margin: -42px auto 0; padding: 0 24px 72px; display: flex; flex-direction: column; gap: 14px; }
 .ed-card { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 26px 28px; box-shadow: var(--shadow-md); min-width: 0; }
 .ed-form { display: flex; flex-direction: column; gap: 24px; }
-.ed-row { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+.ed-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
 .ed-blk { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .ed-f { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .ed-l { font-size: .8rem; font-weight: 600; color: var(--text-2); }
@@ -87,18 +70,6 @@ ul { list-style: none; }
 input[type="date"] { font-family: var(--mono); letter-spacing: -.01em; font-size: .95rem; }
 .ed-err { color: var(--danger); font-size: .78rem; font-weight: 500; }
 .ed-err[hidden] { display: none; }
-
-/* 직무 */
-.ed-chips { display: flex; flex-wrap: wrap; gap: 8px; outline: none; }
-.ed-chip { height: 40px; padding: 0 15px 0 13px; display: inline-flex; align-items: center; gap: 8px; border-radius: 999px;
-  border: 1.5px solid var(--border-strong); background: var(--surface); font-size: .92rem; font-weight: 500; white-space: nowrap;
-  transition: transform 140ms var(--ease-out), background-color 150ms ease, border-color 150ms ease; }
-.ed-chip:active { transform: scale(.97); }
-.ed-chip[aria-pressed="true"] { background: var(--rt); border-color: var(--rc); font-weight: 600; }
-.ed-chip[aria-pressed="true"] .ed-ico { color: var(--rc); margin: 0 -2px; }
-.ed-chip.rg-etc[aria-pressed="true"] .ed-ico { color: var(--text-2); }
-@media (hover: hover) and (pointer: fine) { .ed-chip:hover { border-color: var(--rc, var(--primary)); } }
-.ed-chips[aria-invalid="true"] .ed-chip { border-color: #f1b8b2; }
 
 /* 이수증 */
 .ed-drop { display: flex; flex-direction: column; gap: 8px; padding: 8px; border-radius: 14px;
@@ -240,14 +211,10 @@ input[type="date"] { font-family: var(--mono); letter-spacing: -.01em; font-size
   .ed-hero { padding: 18px 0 58px; }
   .ed-hero-in { padding: 0 16px; flex-direction: column; align-items: stretch; gap: 12px; }
   .ed-hero h1 { font-size: 1.5rem; }
-  .ed-due { align-self: flex-start; }
   .ed-wrap { margin-top: -42px; padding: 0 12px 32px; gap: 12px; }
   .ed-card { padding: 20px 16px; border-radius: 16px; }
   .ed-form { gap: 20px; }
   .ed-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px 10px; }
-  .ed-f-apt { grid-column: 1 / -1; }
-  .ed-chips { gap: 7px; }
-  .ed-chip { height: 40px; padding: 0 12px 0 10px; gap: 6px; font-size: .86rem; }
   .ed-fi { grid-template-columns: 30px minmax(0, 1fr) auto; gap: 10px; padding: 10px 4px 10px 10px; }
   .ed-fi-ic { width: 30px; height: 30px; border-radius: 9px; }
   .ed-fi-g { grid-template-columns: minmax(0, 1fr); }
@@ -266,10 +233,7 @@ input[type="date"] { font-family: var(--mono); letter-spacing: -.01em; font-size
   .ed-top, .ed-busy, .ed-pick, .ed-x, .ed-fi-a, .ed-actions, #ed-ics, .ed-submit, .ed-link, input[type="file"] { display: none !important; }
   .ed-hero { background: none; color: var(--text); padding: 0 0 10px; border-bottom: 2px solid var(--text); margin-bottom: 12px; }
   .ed-hero-in, .ed-wrap { max-width: none; padding: 0; }
-  .ed-kicker, .ed-sub, .ed-note { color: var(--text-2); }
-  .ed-due { background: none; border: 1px solid var(--border-strong); }
-  .ed-due span { color: var(--text-3); }
-  .ed-due em { color: var(--text); }
+  .ed-kicker { color: var(--text-2); }
   .ed-wrap { margin: 0; }
   .ed-card { box-shadow: none; border-color: #9aa5a9; break-inside: avoid; }
   .ed-drop { border-style: solid; background: none; }

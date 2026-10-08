@@ -23,6 +23,10 @@
    - 사번(emp) 필수 · 소속 선택(새 사람은 '인천화물팀'). 사람 찾기 = 사번이 같은 재직자 → 없으면 이름이 같은 재직자(다른 사번이 적힌 사람 제외)
    - 이수증 판독: 파일 함수 op "edu-read" 가 semis_logi_edu_read_ok(서비스 권한만 — 표 · 경로 · 판독 횟수 확인, 과정 목록)를
      부른 뒤 저장소에서 파일을 읽어 Claude 로 과정 · 수료일 · 기관 · 번호 · 시간을 뽑는다(edu_uploads.reads: 파일당 3회 · 표당 30회)
+   v1.39.3 (Mark 정정 — "교육을 여는 개념이 아니다. 대외 교육기관에서 받아 온 이수증을 이름 · 사번과 함께 올리면 끝, 기한 · 매번 새 링크 필요 없음")
+   - 등록 화면 = 상시 주소 하나(링크 코드는 유지 — 공개 저장소라 주소 추측 방지, 기한 36500일). 관리 화면은 주소 · 복사 · 메일 · QR · 주소 바꾸기 + 최근 제출
+   - 제출: 직무 · 임명일 선택(없어도 됨) — 직무도 이수 기록도 없으면 required. link_save 기한 1~36500일
+   - 적용(2026-10-08): MCP semis_logi_security_23_edu_simple(submit · link_save)
    - 적용(2026-10-08): MCP 마이그레이션 semis_logi_security_20_edu_emp(edu_emp_key · edu_merge · reads 열) · _21_edu_read_ok · _22_edu_submit_emp
      — 운영 함수 본문 md5 = 이 파일(4개 일치) · 권한 확인(read_ok = service_role 만)
    ═══════════════════════════════════════════════════════ */
@@ -402,11 +406,11 @@ begin
     left join lateral jsonb_array_elements_text(case when jsonb_typeof(c -> 'roles') = 'array' then c -> 'roles' else '[]'::jsonb end) rr on true;
   if okcids is null then return jsonb_build_object('ok', false, 'error', 'catalog'); end if;
 
-  /* ─ 직무 · 임명일 ─ */
-  if jsonb_typeof(p -> 'roles') <> 'array' or jsonb_array_length(p -> 'roles') < 1 or jsonb_array_length(p -> 'roles') > 16 then
+  /* ─ 직무 · 임명일 (v1.39.3 — 선택: 등록 화면은 이름 · 사번 · 이수증만 보낸다) ─ */
+  if (p ? 'roles' and jsonb_typeof(p -> 'roles') <> 'array') or jsonb_array_length(coalesce(p -> 'roles', '[]'::jsonb)) > 16 then
     return jsonb_build_object('ok', false, 'error', 'roles');
   end if;
-  for r in select * from jsonb_array_elements(p -> 'roles') loop
+  for r in select * from jsonb_array_elements(coalesce(p -> 'roles', '[]'::jsonb)) loop
     v_r := btrim(coalesce(r ->> 'r', ''));
     if v_r = '' or not coalesce(v_r = any(okroles), false) then return jsonb_build_object('ok', false, 'error', 'roles'); end if;
     if not v_roles @> jsonb_build_array(v_r) then v_roles := v_roles || jsonb_build_array(v_r); end if;
@@ -462,6 +466,7 @@ begin
     v_recs := v_recs || jsonb_build_array(jsonb_build_object('cid', r ->> 'cid', 'date', r ->> 'date',
       'expire', coalesce(to_char(v_e, 'YYYY-MM-DD'), ''), 'hours', v_h, 'org', v_org, 'certNo', v_no, 'files', v_files));
   end loop;
+  if jsonb_array_length(v_roles) = 0 and jsonb_array_length(v_recs) = 0 then return jsonb_build_object('ok', false, 'error', 'required'); end if;
 
   /* ─ 병합 · 저장 ─ */
   mg := semis_logi_private.edu_merge(t,
@@ -561,7 +566,7 @@ begin
     exception when others then
       return jsonb_build_object('ok', false, 'error', 'invalid');
     end;
-    if v_days < 1 or v_days > 365 then return jsonb_build_object('ok', false, 'error', 'invalid'); end if;
+    if v_days < 1 or v_days > 36500 then return jsonb_build_object('ok', false, 'error', 'invalid'); end if;   -- v1.39.3 상시 주소 = 36500일
     v_exp := ((semis_logi_private.edu_today() + v_days)::timestamp + time '23:59:59') at time zone 'Asia/Seoul';
   end if;
 
