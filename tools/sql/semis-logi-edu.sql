@@ -27,6 +27,11 @@
    - 등록 화면 = 상시 주소 하나(링크 코드는 유지 — 공개 저장소라 주소 추측 방지, 기한 36500일). 관리 화면은 주소 · 복사 · 메일 · QR · 주소 바꾸기 + 최근 제출
    - 제출: 직무 · 임명일 선택(없어도 됨) — 직무도 이수 기록도 없으면 required. link_save 기한 1~36500일
    - 적용(2026-10-08): MCP semis_logi_security_23_edu_simple(submit · link_save)
+   v1.40 (Mark — "기존 자료 · 파일은 하나만, 같은 파일은 다시 등록하지 않고, 갱신 이수증은 기존 교육을 이력으로 남김")
+   - 같은 이수증 = 같은 과정 · 수료일, 또는 같은 묶음 · 같은 이수증 번호(edu_cert_key, 5자 이상). 같은 파일 = 원본 SHA-256 · 주소 · 이름 + 크기
+   - 같은 이수증이면 새 파일만 더하고 빈 칸만 채운다(적힌 값 · 수료일은 그대로, 수료일이 다르면 메모). 바뀐 것이 없으면 기록을 건드리지 않고 결과 same[]
+   - 새 정기교육 이수증(다른 수료일 · 번호)은 새 기록 — 이전 기록은 이력으로 남는다
+   - 적용(2026-10-08): MCP semis_logi_security_24_edu_dedup_merge(edu_cert_key · edu_merge) · _25_edu_submit_sha(submit) — 운영 본문 md5 3개 = 이 파일
    - 적용(2026-10-08): MCP 마이그레이션 semis_logi_security_20_edu_emp(edu_emp_key · edu_merge · reads 열) · _21_edu_read_ok · _22_edu_submit_emp
      — 운영 함수 본문 md5 = 이 파일(4개 일치) · 권한 확인(read_ok = service_role 만)
    ═══════════════════════════════════════════════════════ */
@@ -131,6 +136,12 @@ create or replace function semis_logi_private.edu_emp_key(p text) returns text
 language sql immutable set search_path = '' as $$
   select regexp_replace(lower(regexp_replace(coalesce(p, ''), '[^0-9A-Za-z]', '', 'g')), '^kj(?=[0-9])', '')
 $$;
+/* 이수증 번호 대조 키 (v1.40) — 영문 · 숫자만 소문자, 5자 미만은 대조하지 않음('제 12 호' 같은 짧은 번호는 겹칠 수 있다) */
+create or replace function semis_logi_private.edu_cert_key(p text) returns text
+language sql immutable set search_path = '' as $$
+  select case when length(k) >= 5 then k else '' end
+    from (select lower(regexp_replace(coalesce(p, ''), '[^0-9A-Za-z]', '', 'g')) as k) q
+$$;
 
 /* IP별 시도 수 제한 — 통과면 null, 아니면 오류 JSON */
 create or replace function semis_logi_private.edu_limit(p_kind text, p_ip text) returns jsonb
@@ -198,6 +209,7 @@ declare
   cand int[]; cand2 int[];
   v_idx int; v_kind text; v_pid text;
   per jsonb; roles jsonb; apt jsonb; r jsonb; x jsonb; f jsonb; j int; ids jsonb := '[]'::jsonb;
+  v_fam jsonb; v_ck text; x0 jsonb; nf jsonb; v_note text; same jsonb := '[]'::jsonb;
 begin
   /* 1) 사번이 같은 재직자 */
   if v_ek <> '' then
@@ -257,23 +269,56 @@ begin
     v_kind := coalesce(v_kind, 'new');
   end if;
 
+  /* 과정 → 묶음(fam) — 같은 이수증 번호를 찾을 때 같은 묶음만 본다 */
+  v_fam := coalesce((select jsonb_object_agg(c ->> 'id', coalesce(nullif(c ->> 'fam', ''), c ->> 'id'))
+                       from jsonb_array_elements(case when jsonb_typeof(t -> 'courses') = 'array' then t -> 'courses' else '[]'::jsonb end) c
+                      where jsonb_typeof(c) = 'object' and coalesce(c ->> 'id', '') <> ''), '{}'::jsonb);
   for r in select * from jsonb_array_elements(coalesce(p -> 'recs', '[]'::jsonb)) loop
     j := null;
+    /* 같은 이수증 = ① 같은 과정 · 수료일 ② 같은 묶음 · 같은 이수증 번호(v1.40) */
     select (o.ord - 1)::int into j from jsonb_array_elements(recs) with ordinality as o(x, ord)
      where o.x ->> 'pid' = v_pid and o.x ->> 'cid' = r ->> 'cid' and o.x ->> 'date' = r ->> 'date'
      order by o.ord limit 1;
+    v_ck := semis_logi_private.edu_cert_key(r ->> 'certNo');
+    if j is null and v_ck <> '' then
+      select (o.ord - 1)::int into j from jsonb_array_elements(recs) with ordinality as o(x, ord)
+       where o.x ->> 'pid' = v_pid and semis_logi_private.edu_cert_key(o.x ->> 'certNo') = v_ck
+         and coalesce(v_fam ->> (o.x ->> 'cid'), o.x ->> 'cid') = coalesce(v_fam ->> (r ->> 'cid'), r ->> 'cid')
+       order by o.ord limit 1;
+    end if;
     if j is not null then
-      x := recs -> j;
-      f := case when jsonb_typeof(x -> 'files') = 'array' then x -> 'files' else '[]'::jsonb end;
-      f := f || coalesce((select jsonb_agg(nf) from jsonb_array_elements(coalesce(r -> 'files', '[]'::jsonb)) nf
-                           where not exists (select 1 from jsonb_array_elements(f) ef where ef ->> 'url' = nf ->> 'url')), '[]'::jsonb);
-      x := (x || jsonb_build_object(
-              'expire', coalesce(nullif(r ->> 'expire', ''), x ->> 'expire', ''),
-              'hours', case when jsonb_typeof(r -> 'hours') = 'number' then r -> 'hours' else coalesce(x -> 'hours', 'null'::jsonb) end,
-              'org', coalesce(nullif(r ->> 'org', ''), x ->> 'org', ''),
-              'certNo', coalesce(nullif(r ->> 'certNo', ''), x ->> 'certNo', ''),
-              'files', f, 'selfAt', v_now, 'updatedAt', v_now, 'updatedBy', '본인 등록')) - 'chkAt' - 'chkBy';
-      recs := jsonb_set(recs, array[j::text], x);
+      x0 := recs -> j;
+      x := x0;
+      f := case when jsonb_typeof(x0 -> 'files') = 'array' then x0 -> 'files' else '[]'::jsonb end;
+      /* 같은 파일(내용 해시 · 주소 · 이름 + 크기)은 더하지 않는다 */
+      for nf in select * from jsonb_array_elements(coalesce(r -> 'files', '[]'::jsonb)) loop
+        if not exists (select 1 from jsonb_array_elements(f) ef
+                        where ef ->> 'url' = nf ->> 'url'
+                           or (coalesce(ef ->> 'sha', '') <> '' and ef ->> 'sha' = nf ->> 'sha')
+                           or (coalesce(ef ->> 'name', '') <> '' and ef ->> 'name' = nf ->> 'name'
+                               and coalesce(ef ->> 'size', '') <> '' and ef ->> 'size' = nf ->> 'size')) then
+          f := f || jsonb_build_array(nf);
+        end if;
+      end loop;
+      if f is distinct from coalesce(x0 -> 'files', '[]'::jsonb) and jsonb_array_length(f) > 0 then x := x || jsonb_build_object('files', f); end if;
+      /* 이미 적힌 값은 그대로 — 빈 칸만 채운다 */
+      if coalesce(x0 ->> 'expire', '') = '' and coalesce(r ->> 'expire', '') <> '' then x := x || jsonb_build_object('expire', r ->> 'expire'); end if;
+      if jsonb_typeof(x0 -> 'hours') is distinct from 'number' and jsonb_typeof(r -> 'hours') = 'number' then x := x || jsonb_build_object('hours', r -> 'hours'); end if;
+      if coalesce(x0 ->> 'org', '') = '' and coalesce(r ->> 'org', '') <> '' then x := x || jsonb_build_object('org', r ->> 'org'); end if;
+      if coalesce(x0 ->> 'certNo', '') = '' and coalesce(r ->> 'certNo', '') <> '' then x := x || jsonb_build_object('certNo', r ->> 'certNo'); end if;
+      /* 번호로 찾았는데 수료일이 다르면 기록 날짜는 그대로 두고 메모(안전보안파트가 '본인 등록 확인'에서 대조) */
+      if coalesce(r ->> 'date', '') <> coalesce(x0 ->> 'date', '') then
+        v_note := '본인 등록 수료일 ' || (r ->> 'date');
+        if strpos(coalesce(x0 ->> 'note', ''), v_note) = 0 then
+          x := x || jsonb_build_object('note', btrim(coalesce(x0 ->> 'note', '') || ' · ' || v_note, ' ·'));
+        end if;
+      end if;
+      if x is distinct from x0 then
+        x := (x || jsonb_build_object('selfAt', v_now, 'updatedAt', v_now, 'updatedBy', '본인 등록')) - 'chkAt' - 'chkBy';
+        recs := jsonb_set(recs, array[j::text], x);
+      else
+        same := same || jsonb_build_array(x0 ->> 'id');   -- 이미 등록된 그대로 — 손대지 않음
+      end if;
     else
       x := jsonb_build_object('id', semis_logi_private.edu_rid('trs'), 'pid', v_pid, 'cid', r ->> 'cid', 'date', r ->> 'date',
                               'expire', coalesce(r ->> 'expire', ''),
@@ -294,7 +339,7 @@ begin
     'records', coalesce((select jsonb_agg(jsonb_build_object('id', z ->> 'id', 'cid', z ->> 'cid', 'date', z ->> 'date',
                                                              'expire', coalesce(z ->> 'expire', '')) order by z ->> 'date')
                            from jsonb_array_elements(recs) z where z ->> 'pid' = v_pid), '[]'::jsonb),
-    'ids', ids);
+    'ids', ids, 'same', same);
 end $$;
 
 /* ═════════════ 배포 화면 (로그인 없이) ═════════════ */
@@ -369,7 +414,7 @@ declare
   v_sid text; v_name text; v_dept text; v_emp text; v_today date := semis_logi_private.edu_today();
   t jsonb; v_has boolean; okroles text[]; okcids text[];
   v_roles jsonb := '[]'::jsonb; v_apt jsonb := '{}'::jsonb; v_recs jsonb := '[]'::jsonb; v_paths text[] := '{}';
-  r jsonb; f jsonb; v_r text; v_a text; v_d date; v_e date; v_files jsonb; v_path text; v_fname text; v_sz bigint; v_h jsonb;
+  r jsonb; f jsonb; v_r text; v_a text; v_d date; v_e date; v_files jsonb; v_path text; v_fname text; v_sz bigint; v_h jsonb; v_sha text;
   v_org text; v_no text; v_keys text[] := '{}';
   mg jsonb; v_id text := semis_logi_private.edu_rid('es'); v_res jsonb; v_now timestamptz := now();
   pre text := 'https://mzyuzrxkdcpzxojenwat.supabase.co/storage/v1/object/public/semis-logi-files/';
@@ -461,7 +506,10 @@ begin
        where u.path = v_path and u.code = l.code and u.used_by is null and u.at > now() - interval '1 day';
       if v_sz is null or v_sz > 20971520 then return jsonb_build_object('ok', false, 'error', 'files'); end if;
       v_paths := v_paths || v_path;
-      v_files := v_files || jsonb_build_array(jsonb_build_object('name', v_fname, 'size', v_sz, 'url', pre || v_path));
+      v_sha := lower(coalesce(f ->> 'sha', ''));   -- v1.40 원본 파일 SHA-256(같은 파일 가리기)
+      if v_sha !~ '^[0-9a-f]{64}$' then v_sha := ''; end if;
+      v_files := v_files || jsonb_build_array(jsonb_build_object('name', v_fname, 'size', v_sz, 'url', pre || v_path)
+                                              || case when v_sha <> '' then jsonb_build_object('sha', v_sha) else '{}'::jsonb end);
     end loop;
     v_recs := v_recs || jsonb_build_array(jsonb_build_object('cid', r ->> 'cid', 'date', r ->> 'date',
       'expire', coalesce(to_char(v_e, 'YYYY-MM-DD'), ''), 'hours', v_h, 'org', v_org, 'certNo', v_no, 'files', v_files));
@@ -482,7 +530,7 @@ begin
   end if;
   v_res := jsonb_build_object('ok', true, 'receipt', upper(substr(v_id, 3, 8)),
     'at', to_char(v_now at time zone 'Asia/Seoul', 'YYYY-MM-DD HH24:MI'), 'kind', mg ->> 'kind',
-    'person', mg -> 'person', 'records', mg -> 'records', 'ids', mg -> 'ids');
+    'person', mg -> 'person', 'records', mg -> 'records', 'ids', mg -> 'ids', 'same', coalesce(mg -> 'same', '[]'::jsonb));
   insert into semis_logi_private.edu_submits(id, submit_id, code, at, ip, ua, name, dept, pid, kind, n_recs, result)
   values (v_id, v_sid, l.code, v_now, v_ip, left(coalesce(semis_logi_private.hdr('user-agent'), ''), 300), v_name, v_dept,
           mg ->> 'pid', mg ->> 'kind', jsonb_array_length(v_recs), v_res);
@@ -606,6 +654,7 @@ end $$;
    비공개 보조 함수는 API로 부를 수 없게. 공개 RPC 는 anon · service_role(함수 안에서 링크 · 표 · 세션 확인),
    업로드 기록(claim)은 파일 함수의 서비스 권한만 */
 revoke all on function semis_logi_private.edu_emp_key(text) from public, anon, authenticated;
+revoke all on function semis_logi_private.edu_cert_key(text) from public, anon, authenticated;
 revoke all on function semis_logi_private.edu_date(text), semis_logi_private.edu_today(), semis_logi_private.edu_rid(text),
   semis_logi_private.edu_str(text, int), semis_logi_private.edu_limit(text, text), semis_logi_private.edu_link_check(text, text),
   semis_logi_private.edu_courses(jsonb), semis_logi_private.edu_merge(jsonb, jsonb, jsonb), semis_logi_private.edu_admin(),

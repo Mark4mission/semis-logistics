@@ -101,7 +101,7 @@
     if (st.view !== "form") return;
     try {
       sessionStorage.setItem(DRAFT + st.code, JSON.stringify({ name: st.name, emp: st.emp, sid: st.sid,
-        items: st.items.filter(it => it.st === "done" && it.path).map(it => ({ path: it.path, url: it.url, name: it.name, size: it.size,
+        items: st.items.filter(it => it.st === "done" && it.path).map(it => ({ path: it.path, url: it.url, name: it.name, size: it.size, sha: it.sha,
           cid: it.cid, date: it.date, org: it.org, certNo: it.certNo, hours: it.hours, who: it.who, course: it.course, rerr: it.rerr, reads: it.reads })) }));
     } catch (e) { /* 저장소 없음 */ }
   }
@@ -116,7 +116,7 @@
       return { k: key(), st: "done", pct: 1, err: "", path: String(x.path), url: String(x.url || ""), name: String(x.name || "이수증").slice(0, 120), size: Number(x.size) || 0,
         cid: courseOf(x.cid) ? x.cid : "", date: isISO(x.date) ? x.date : "", org: norm(x.org).slice(0, 60), certNo: norm(x.certNo).slice(0, 40),
         hours: x.hours != null && isFinite(h) && h > 0 && h <= 999 ? h : null, who: norm(x.who).slice(0, 30), course: norm(x.course).slice(0, 80), rerr: String(x.rerr || "").slice(0, 20),
-        reads: Number(x.reads) || 0, open: false };
+        reads: Number(x.reads) || 0, open: false, sha: /^[0-9a-f]{64}$/.test(String(x.sha || "")) ? String(x.sha) : "" };
     });
     return true;
   }
@@ -133,7 +133,7 @@
       if (!g.org && it.org) g.org = it.org;
       if (!g.certNo && it.certNo) g.certNo = it.certNo;
       if (g.hours == null && it.hours != null) g.hours = it.hours;
-      g.files.push({ path: it.path, name: it.name });
+      g.files.push(Object.assign({ path: it.path, name: it.name }, it.sha ? { sha: it.sha } : {}));
       g.items.push(it);
     });
     return Array.from(m.values());
@@ -416,7 +416,16 @@
   /* ─── 이수증 올리기 · 읽기 ─── */
   function newItem(file) {
     return { k: key(), st: "up", pct: 0, err: "", path: "", url: "", name: String((file && file.name) || "이수증").slice(0, 120), size: (file && file.size) || 0,
-      cid: "", date: "", org: "", certNo: "", hours: null, who: "", course: "", rerr: "", reads: 0, open: false };
+      cid: "", date: "", org: "", certNo: "", hours: null, who: "", course: "", rerr: "", reads: 0, open: false, sha: "" };
+  }
+  /* 원본 파일 SHA-256 — 같은 파일을 두 번 올리지 않게(서버도 이 값으로 기존 첨부와 대조) */
+  async function shaOf(file) {
+    try {
+      const sub = window.crypto && window.crypto.subtle;
+      if (!sub || !file || typeof file.arrayBuffer !== "function") return "";
+      const h = await sub.digest("SHA-256", await file.arrayBuffer());
+      return Array.from(new Uint8Array(h)).map(b => b.toString(16).padStart(2, "0")).join("");
+    } catch (e) { return ""; }
   }
   async function addFiles(list) {
     const room = MAX_FILES - st.items.filter(it => it.st !== "err").length;
@@ -433,6 +442,12 @@
     paintPick(); paintErrs(); paintFoot();
     for (const j of jobs) {
       if (j.it.st === "err") continue;
+      j.it.sha = await shaOf(j.file);
+      if (j.it.sha && st.items.some(x => x !== j.it && x.st !== "err" && x.sha === j.it.sha)) {
+        j.it.st = "err"; j.it.err = "같은 파일을 이미 올렸습니다";
+        paintItem(j.it); paintPick(); paintErrs(); paintFoot();
+        continue;
+      }
       if (await uploadOne(j.it, j.file) === "gone") return;
     }
   }
@@ -665,12 +680,17 @@
   function doneHTML() {
     const { res, sent } = st.done;
     const gd = guidance(res);
-    const kindLb = { new: "새로 등록", updated: "기존 정보 갱신", dup: "새로 등록 · 동명이인 확인 예정" }[res.kind] || "등록";
+    /* v1.40 서버가 '이미 등록된 그대로'라고 돌려준 기록(same) — 보낸 순서 = ids 순서 */
+    const ids = Array.isArray(res.ids) ? res.ids : [], same = Array.isArray(res.same) ? res.same : [];
+    const isSame = (i) => !!ids[i] && same.indexOf(ids[i]) >= 0;
+    const allSame = sent.recs.length > 0 && sent.recs.every((r, i) => isSame(i));
+    const kindLb = allSame ? "이미 등록된 이수증입니다 — 바뀐 내용 없음"
+      : ({ new: "새로 등록", updated: "기존 정보 갱신", dup: "새로 등록 · 동명이인 확인 예정" }[res.kind] || "등록");
     const cal = gd.list.filter(x => { const n = nextLine(x); return isISO(n.at) && n.at >= todayISO(); });
     return `<div class="ed-wrap">
       <section class="ed-card ed-ok">
         <span class="ed-okico" aria-hidden="true">${svg(IC.check, 28)}</span>
-        <div class="ed-ok-t"><h2>등록되었습니다</h2><p>${esc(kindLb)}</p></div>
+        <div class="ed-ok-t"><h2>${allSame ? "이미 등록되어 있습니다" : "등록되었습니다"}</h2><p>${esc(kindLb)}</p></div>
         <dl class="ed-rcpt"><div><dt>접수 번호</dt><dd class="mono">${esc(res.receipt || "-")}</dd></div><div><dt>제출 시각</dt><dd class="mono">${esc(String(res.at || "").replace(/-/g, "."))}</dd></div></dl>
       </section>
       <section class="ed-card" aria-labelledby="ed-h-next">
@@ -686,8 +706,8 @@
         <dl class="ed-sent">
           <div><dt>이름</dt><dd>${esc(sent.name)}</dd></div>
           <div><dt>사번</dt><dd class="mono">${esc(sent.emp)}</dd></div>
-          <div><dt>이수 교육</dt><dd>${sent.recs.length ? `<ul class="ed-srecs">${sent.recs.map(r => { const c = courseOf(r.cid);
-            return `<li><span>${esc(c ? c.name : r.cid)}</span><small class="mono">${esc([dot(r.date), r.org, r.certNo ? "No. " + r.certNo : "", "이수증 " + r.files].filter(Boolean).join(" · "))}</small></li>`; }).join("")}</ul>` : '<span class="ed-nil">없음</span>'}</dd></div>
+          <div><dt>이수 교육</dt><dd>${sent.recs.length ? `<ul class="ed-srecs">${sent.recs.map((r, i) => { const c = courseOf(r.cid);
+            return `<li><span>${esc(c ? c.name : r.cid)}${isSame(i) ? '<em class="ed-same">이미 등록됨</em>' : ""}</span><small class="mono">${esc([dot(r.date), r.org, r.certNo ? "No. " + r.certNo : "", "이수증 " + r.files].filter(Boolean).join(" · "))}</small></li>`; }).join("")}</ul>` : '<span class="ed-nil">없음</span>'}</dd></div>
         </dl>
       </section>
       <div class="ed-actions">

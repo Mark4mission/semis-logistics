@@ -169,6 +169,40 @@ await obj("f7");
 r = await sub({ name: "직무없음", emp: "KJ777001", recs: [{ cid: "c-icao", date: "2026-01-05", org: "교육원", certNo: "77", files: [F("f7")] }] });
 ok(r.ok && r.kind === "new" && JSON.stringify(r.person.roles) === "[]" && r.person.dept === "인천화물팀" && r.records.length === 1, "P07 v1.39.3 이름 · 사번 · 이수증만(직무 없음) " + JSON.stringify(r).slice(0, 220));
 
+/* v1.40 같은 이수증 · 같은 파일 */
+r = await rpc("semis_logi_edu_ticket", [CODE, JSON.stringify({ x: "ok" })]);
+ok(r.ok, "D00 새 표 " + JSON.stringify(r));
+const TK3 = r.ticket;
+for (const n of ["d1", "d2", "d3", "d4", "d5", "d6", "d7"]) { eq((await claim(TK3, "training/" + n + "_cert.pdf")).ok, true, "D00 업로드 " + n); await obj(n, n === "d5" ? 777 : 5000); }
+const G = (n, name, sha) => Object.assign({ path: "training/" + n + "_cert.pdf", name: name || n + ".pdf" }, sha ? { sha } : {});
+const SHA = "a".repeat(64);
+r = await sub({ name: "중복시험", emp: "D-777", recs: [{ cid: "c-sup-r", date: "2026-05-10", certNo: "KASI-2026-05-0001", org: "교육원", files: [G("d1", "cert.pdf", SHA)] }] }, CODE, TK3);
+ok(r.ok && r.kind === "new" && JSON.stringify(r.same) === "[]", "D01 첫 등록 " + JSON.stringify(r).slice(0, 160));
+const DPID = r.person.id, DRID = r.ids[0];
+T = await one("select value from public.semis_logi_store where key='training'");
+eq(T.records.find(x => x.id === DRID).files[0].sha, SHA, "D02 파일 해시 저장");
+await db.query(`update public.semis_logi_store set value = jsonb_set(value, '{records}', (select jsonb_agg(case when x->>'id' = $1 then x || '{"chkAt":"2026-05-11","chkBy":"관리"}'::jsonb else x end) from jsonb_array_elements(value->'records') x)) where key='training'`, [DRID]);
+r = await sub({ name: "중복시험", emp: "D-777", recs: [{ cid: "c-sup-r", date: "2026-05-10", certNo: "KASI-2026-05-0001", org: "다른 기관", hours: 9, files: [G("d2", "cert.pdf")] }] }, CODE, TK3);
+T = await one("select value from public.semis_logi_store where key='training'");
+let dr = T.records.find(x => x.id === DRID);
+ok(r.ok && r.same.indexOf(DRID) < 0 && dr.files.length === 1 && dr.hours === 9 && dr.org === "교육원" && !dr.chkAt, "D03 같은 파일(이름 + 크기)은 더하지 않음 · 빈 칸(시간)만 채움 · 적힌 기관 그대로 " + JSON.stringify(dr));
+r = await sub({ name: "중복시험", emp: "D-777", recs: [{ cid: "c-sup-r", date: "2026-05-10", certNo: "KASI-2026-05-0001", hours: 9, files: [G("d3", "다른이름.pdf", SHA)] }] }, CODE, TK3);
+T = await one("select value from public.semis_logi_store where key='training'");
+dr = T.records.find(x => x.id === DRID);
+ok(r.ok && r.same.indexOf(DRID) >= 0 && dr.files.length === 1 && T.records.filter(x => x.pid === DPID).length === 1, "D04 같은 내용(해시) · 바뀐 것 없음 = same, 기록 그대로 " + JSON.stringify(r.same));
+await db.query(`update public.semis_logi_store set value = jsonb_set(value, '{records}', (select jsonb_agg(case when x->>'id' = $1 then x || '{"chkAt":"2026-05-12","chkBy":"관리"}'::jsonb else x end) from jsonb_array_elements(value->'records') x)) where key='training'`, [DRID]);
+r = await sub({ name: "중복시험", emp: "D-777", recs: [{ cid: "c-sup-r", date: "2026-05-03", certNo: "kasi 2026 05 0001", files: [G("d4", "cert.pdf", SHA)] }] }, CODE, TK3);
+T = await one("select value from public.semis_logi_store where key='training'");
+dr = T.records.find(x => x.id === DRID);
+ok(r.ok && T.records.filter(x => x.pid === DPID).length === 1 && dr.date === "2026-05-10" && /본인 등록 수료일 2026-05-03/.test(dr.note) && dr.files.length === 1 && !dr.chkAt,
+  "D05 같은 묶음 · 같은 번호(표기 달라도) = 같은 이수증 — 수료일 그대로 · 메모 · 확인 다시 " + JSON.stringify(dr));
+r = await sub({ name: "중복시험", emp: "D-777", recs: [{ cid: "c-sup-r", date: "2026-09-01", certNo: "KASI-2026-09-0100", files: [G("d5", "cert2026b.pdf")] }] }, CODE, TK3);
+T = await one("select value from public.semis_logi_store where key='training'");
+ok(r.ok && T.records.filter(x => x.pid === DPID).length === 2 && T.records.find(x => x.id === DRID).date === "2026-05-10", "D06 새 정기 이수증 = 새 기록, 이전 기록은 이력으로 남음");
+r = await sub({ name: "중복시험", emp: "D-777", recs: [{ cid: "c-sup-i", date: "2025-01-01", certNo: "0001", files: [G("d6", "x.pdf")] }, { cid: "c-dg-i", date: "2025-02-02", certNo: "KASI-2026-05-0001", files: [G("d7", "y.pdf")] }] }, CODE, TK3);
+T = await one("select value from public.semis_logi_store where key='training'");
+eq(T.records.filter(x => x.pid === DPID).length, 4, "D07 짧은 번호(5자 미만) · 다른 묶음의 같은 번호는 다른 기록");
+
 /* 동명이인 */
 r = await sub({ name: "이영희", dept: "화물운송팀", roles: [{ r: "위험물 취급자" }] });
 ok(r.ok && r.kind === "updated" && r.person.id === "p3", "S28 동명이인 → 소속으로 가림");

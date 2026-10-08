@@ -222,6 +222,14 @@
       sub: "불러오는 중", val: '<b class="mono">·</b>' }));
     if (actions.length) rows.push(todayRow({ go: "minutes", icon: "notes", color: late ? "rose" : "slate", title: "회의 결정사항",
       sub: "미완료 " + actions.length + (late ? " · <em>기한 경과 " + late + "</em>" : ""), val: `<b class="mono">${actions.length}</b>`, tone: late ? "bad" : "" }));
+    /* v1.40 보안교육 자격 — 만료 · 미이수(빨강) · 90일 안 갱신(주황), 있을 때만 */
+    if (window.SemisTraining && SemisTraining.alertSummary && menuOk("training")) {
+      let a = null;
+      try { a = SemisTraining.alertSummary(t); } catch (e) { a = null; }
+      if (a && a.n) rows.push(todayRow({ go: "training", id: "td-train", icon: "shield", color: a.bad ? "rose" : "amber", title: "보안교육 자격",
+        sub: [a.bad ? "<em>만료 · 미이수 " + a.bad + "</em>" : "", a.warn ? SemisTraining.DUE_DAYS + "일 안 " + a.warn : ""].filter(Boolean).join(" · "),
+        val: `<b class="mono">${a.n}</b>`, tone: a.bad ? "bad" : "warn" }));
+    }
     if (!rows.length) return "";
     const d = new Date();
     return `<section class="today-card" aria-label="오늘">

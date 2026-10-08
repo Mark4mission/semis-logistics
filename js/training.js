@@ -426,6 +426,119 @@
     });
     return out;
   }
+  /* ─────── 만료 알림 · 명단(v1.40) ───────
+     만료 · 미이수 · 정지(BAD) = 빨강, 이수 기간 · 유예 · 임박 · 인증 전(WARN) = 주황.
+     목록 = dueList(DUE_DAYS): 조치 필요 + DUE_DAYS 안에 날짜가 오는 칸 */
+  const DUE_DAYS = 90;
+  /* 알릴 날짜 — 이수 기간 · 만료는 유효기한, 유예는 이수 기간 끝, 정지 · 회복 경과는 회복 기한 */
+  function ddDate(c) {
+    if (!c) return "";
+    switch (c.st) {
+      case "none": case "step": case "perm": return "";
+      case "exp": case "win": return c.exp || "";
+      case "grace": return c.winE || "";
+      case "susp": case "lapsed": return c.recE || "";
+      default: return c.at || c.exp || "";
+    }
+  }
+  const ddDays = (c, t) => { const d = ddDate(c); return isISO(d) ? dayDiff(t || todayISO(), d) : null; };
+  function ddLabel(c, t) {
+    if (!c) return "";
+    if (c.st === "none") return "미이수";
+    const k = ddDays(c, t);
+    if (k == null) return "";
+    const s0 = k >= 0 ? "D-" + k : "D+" + (-k);
+    return c.st === "grace" ? "유예 " + s0 : c.st === "susp" ? "회복 " + s0 : s0;
+  }
+  function alertSummary(t) {
+    t = t || todayISO();
+    const list = dueList(DUE_DAYS, t);
+    const bad = list.filter(c => BAD.indexOf(c.st) >= 0).length;
+    return { bad, warn: list.length - bad, n: list.length, people: new Set(list.map(c => c.p.id)).size, list };
+  }
+  /* 인원 탭 위 알림 띠 — 사람 · 교육 · 남은 날(누르면 개인 화면) */
+  function alertStrip(t) {
+    const a = alertSummary(t);
+    if (!a.n) return "";
+    const MAX = 10;
+    return `<section class="tr-alert ${a.bad ? "is-bad" : "is-warn"}" role="status" aria-label="만료 알림">
+      <span class="tr-al-i" aria-hidden="true">${icon("alert", 18)}</span>
+      <div class="tr-al-b">
+        <b class="tr-al-t">${[a.bad ? `만료 · 미이수 <em class="mono is-bad">${a.bad}</em>` : "", a.warn ? `${DUE_DAYS}일 안 갱신 <em class="mono is-warn">${a.warn}</em>` : ""].filter(Boolean).join('<span class="tr-al-sep">·</span>')}<small>${a.people}명</small></b>
+        <div class="tr-al-list">${a.list.slice(0, MAX).map(c => `<button type="button" class="tr-al-c tone-${esc(ST[c.st].tone)}" data-tperson="${esc(c.p.id)}" title="${esc(c.g.name + " · " + ST[c.st].label + " · " + stText(c))}">
+          <b>${esc(c.p.name)}</b><span>${esc(famShort(c.g))}</span><em class="mono">${esc(ddLabel(c, t) || ST[c.st].label)}</em></button>`).join("")}${a.n > MAX ? `<span class="tr-al-more">외 ${a.n - MAX}건</span>` : ""}</div>
+      </div>
+    </section>`;
+  }
+
+  /* ─────── 엑셀(.xlsx) 쓰기 — 외부 라이브러리 없이(ZIP = SemisHwpx.zip) ─────── */
+  const xesc = (v) => String(v == null ? "" : v).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const colName = (i) => { let s = "", n = i + 1; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
+  /* sheet = { name, widths[], freeze(머리 행 수), rows[[{ v, s }|값]] } — s: 0 기본 · 1 제목 · 2 머리 · 3 칸 · 4 빨강 · 5 주황 · 6 흐림 */
+  function xlsxParts(sheet) {
+    const X = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+    const NSM = "http://schemas.openxmlformats.org/spreadsheetml/2006/main", NSR = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+    const PR = "http://schemas.openxmlformats.org/package/2006/relationships";
+    const rows = sheet.rows.map((row, ri) => `<row r="${ri + 1}">${row.map((cell, ci) => {
+      const o = cell && typeof cell === "object" ? cell : { v: cell };
+      const ref = colName(ci) + (ri + 1), st = o.s ? ` s="${o.s}"` : "";
+      if (o.v == null || o.v === "") return o.s ? `<c r="${ref}"${st}/>` : "";
+      if (typeof o.v === "number" && isFinite(o.v)) return `<c r="${ref}"${st}><v>${o.v}</v></c>`;
+      return `<c r="${ref}"${st} t="inlineStr"><is><t xml:space="preserve">${xesc(o.v)}</t></is></c>`;
+    }).join("")}</row>`).join("");
+    const fz = sheet.freeze ? `<pane ySplit="${sheet.freeze}" topLeftCell="A${sheet.freeze + 1}" activePane="bottomLeft" state="frozen"/>` : "";
+    const font = (b, sz, rgb) => `<font>${b ? "<b/>" : ""}<sz val="${sz}"/>${rgb ? `<color rgb="${rgb}"/>` : ""}<name val="맑은 고딕"/><family val="3"/></font>`;
+    const line = '<left style="thin"><color rgb="FFC9D2CF"/></left><right style="thin"><color rgb="FFC9D2CF"/></right><top style="thin"><color rgb="FFC9D2CF"/></top><bottom style="thin"><color rgb="FFC9D2CF"/></bottom><diagonal/>';
+    const xf = (f, fill, b, al) => `<xf numFmtId="0" fontId="${f}" fillId="${fill}" borderId="${b}" xfId="0"${f ? ' applyFont="1"' : ""}${fill ? ' applyFill="1"' : ""}${b ? ' applyBorder="1"' : ""}${al ? ` applyAlignment="1"><alignment ${al}/></xf>` : "/>"}`;
+    return [
+      { name: "[Content_Types].xml", text: X + `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>` },
+      { name: "_rels/.rels", text: X + `<Relationships xmlns="${PR}"><Relationship Id="rId1" Type="${NSR}/officeDocument" Target="xl/workbook.xml"/></Relationships>` },
+      { name: "xl/workbook.xml", text: X + `<workbook xmlns="${NSM}" xmlns:r="${NSR}"><sheets><sheet name="${xesc(String(sheet.name || "Sheet1").replace(/[\\/?*\[\]:]/g, " ").slice(0, 31))}" sheetId="1" r:id="rId1"/></sheets></workbook>` },
+      { name: "xl/_rels/workbook.xml.rels", text: X + `<Relationships xmlns="${PR}"><Relationship Id="rId1" Type="${NSR}/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="${NSR}/styles" Target="styles.xml"/></Relationships>` },
+      { name: "xl/styles.xml", text: X + `<styleSheet xmlns="${NSM}"><fonts count="6">${font(false, 10)}${font(true, 14)}${font(true, 10, "FFFFFFFF")}${font(true, 10, "FFB42318")}${font(true, 10, "FFB45309")}${font(false, 10, "FF5B6B71")}</fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF0F766E"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border>${line}</border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="7">${xf(0, 0, 0)}${xf(1, 0, 0)}${xf(2, 2, 1, 'horizontal="center" vertical="center" wrapText="1"')}${xf(0, 0, 1, 'vertical="center"')}${xf(3, 0, 1, 'vertical="center"')}${xf(4, 0, 1, 'vertical="center"')}${xf(5, 0, 0)}</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>` },
+      { name: "xl/worksheets/sheet1.xml", text: X + `<worksheet xmlns="${NSM}" xmlns:r="${NSR}"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><sheetViews><sheetView workbookViewId="0">${fz}</sheetView></sheetViews><sheetFormatPr defaultRowHeight="16.5"/>${(sheet.widths || []).length ? `<cols>${sheet.widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join("")}</cols>` : ""}<sheetData>${rows}</sheetData><pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.3" footer="0.3"/><pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/></worksheet>` }
+    ];
+  }
+  async function xlsxBytes(sheet) {
+    const Z = window.SemisHwpx;
+    if (!Z || !Z.zip) throw new Error("zip");
+    const te = new TextEncoder();
+    return Z.zip(xlsxParts(sheet).map(p => ({ name: p.name, data: te.encode(p.text) })));
+  }
+  /* 만료 예정 명단 — 조치 필요 + DUE_DAYS 안 (급한 순) */
+  function dueSheet(t) {
+    t = t || todayISO();
+    const a = alertSummary(t);
+    const head = ["상태", "이름", "사번", "소속", "직무", "교육", "최근 이수일", "유효기한", "이수 기간", "남은 날", "남은 날(일)", "비고"];
+    const rows = [[{ v: "보안교육 만료 · 만료 예정 명단", s: 1 }],
+      [{ v: "기준일 " + dot(t) + " · 만료 · 미이수 " + a.bad + "건 · " + DUE_DAYS + "일 안 갱신 " + a.warn + "건 · " + a.people + "명 · 인천화물팀 안전보안파트", s: 6 }],
+      [],
+      head.map(h => ({ v: h, s: 2 }))];
+    a.list.forEach(c => {
+      const tone = BAD.indexOf(c.st) >= 0 ? 4 : 5;
+      const days = ddDays(c, t);
+      rows.push([{ v: ST[c.st].label, s: tone }, { v: c.p.name, s: 3 }, { v: c.p.emp || "", s: 3 }, { v: c.p.dept || "", s: 3 },
+        { v: sortRoles(rolesOf(c.p)).join(", "), s: 3 }, { v: c.g.name, s: 3 }, { v: c.r ? c.r.date : "", s: 3 }, { v: c.exp || "", s: 3 },
+        { v: isISO(c.winS) && isISO(c.winE) ? c.winS + " ~ " + c.winE : "", s: 3 }, { v: ddLabel(c, t), s: tone },
+        { v: days == null ? "" : days, s: 3 }, { v: stText(c), s: 3 }]);
+    });
+    if (!a.list.length) rows.push([{ v: DUE_DAYS + "일 안에 만료되거나 만료된 자격이 없습니다.", s: 3 }]);
+    return { name: "만료 예정", widths: [12, 10, 12, 14, 26, 28, 12, 12, 24, 10, 10, 40], freeze: 4, rows };
+  }
+  async function exportDue() {
+    const t = todayISO();
+    try {
+      const u8 = await xlsxBytes(dueSheet(t));
+      const blob = new Blob([u8], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = "보안교육_만료예정_" + t.replace(/-/g, "") + ".xlsx"; a.rel = "noopener";
+      document.body.appendChild(a); a.click();
+      setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 4000);
+      toast("만료 예정 명단을 내려받았습니다.");
+    } catch (e) { toast("엑셀 파일을 만들지 못했습니다.", true); }
+  }
+
   /* 월별 교육 실시(지난 n개월) — 당사 실시 · 협력사 확인 건수 · 당사 교육 시간 */
   function sessionsByMonth(n, t) {
     t = t || todayISO();
@@ -601,8 +714,19 @@
   const segHTML = (name, items, cur) => `<div class="seg" role="group" aria-label="${esc(name)}">${items.map(([v, lb]) =>
     `<button type="button" class="seg-btn" data-tseg="${esc(name)}" data-v="${esc(v)}" aria-pressed="${String(v) === String(cur)}">${esc(lb)}</button>`).join("")}</div>`;
   const hay = (a) => a.map(v => String(v || "")).join(" ").toLowerCase();
+  /* 같은 파일은 하나만(v1.40) — 주소 · 내용 해시(sha) · 이름 + 크기가 같으면 같은 파일 */
+  function uniqFiles(files) {
+    const out = [];
+    filesOf(files).forEach(f => {
+      if (!f || typeof f !== "object") return;
+      const dup = out.some(o => (f.url && o.url === f.url) || (f.sha && o.sha === f.sha)
+        || (f.name && o.name === f.name && f.size != null && f.size !== "" && o.size != null && Number(o.size) === Number(f.size)));
+      if (!dup) out.push(f);
+    });
+    return out;
+  }
   function fileChips(files) {
-    return filesOf(files).map(f => `<a class="nb-file" href="${esc(f.url)}" target="_blank" rel="noopener">${icon("link", 14)}<span>${esc(f.name || "첨부")}</span></a>`).join("");
+    return uniqFiles(files).map(f => `<a class="nb-file" href="${esc(f.url)}" target="_blank" rel="noopener">${icon("link", 14)}<span>${esc(f.name || "첨부")}</span></a>`).join("");
   }
   const stChip = (c) => ui.chip(ST[c.st].label, ST[c.st].tone);
   function cellChip(c) {
@@ -694,8 +818,9 @@
         <span class="spacer m-hide"></span>
         <span class="m-hide">${segHTML("pstate", [["active", "재직"], ["left", "퇴직 · 전출"], ["all", "전체"]], pState)}</span>
         ${mob() ? "" : segHTML("pview", [["list", "목록"], ["grid", "이수 현황표"]], pView)}
+        <button type="button" class="btn btn-ghost btn-sm tr-xls" id="tr-xls" title="만료 · ${DUE_DAYS}일 안 만료 예정 명단(.xlsx)">${icon("down", 14)}<span>만료 예정 Excel</span></button>
       </div>`;
-    return band + `<section class="card" id="tr-plist">${tools}${all.length ? rgLegend(t) : ""}<div id="tr-pbody">${peopleBody(canW, t)}</div></section>`;
+    return band + (pState === "left" ? "" : alertStrip(t)) + `<section class="card" id="tr-plist">${tools}${all.length ? rgLegend(t) : ""}<div id="tr-pbody">${peopleBody(canW, t)}</div></section>`;
   }
   /* 직무군 범례 = 직무군 걸러 보기(다시 누르면 해제). 숫자 = 지금 재직/퇴직 보기에서 그 군 직무를 가진 사람 수 */
   function rgLegend(t) {
@@ -731,7 +856,7 @@
           <td class="c-q">${!a ? `${leftOver(p, t) ? ui.chip("보관 기한 경과", "amber") : ui.chip("퇴직", "gray")}<div class="cell-sub mono">${esc(dot(p.left))}${leftOver(p, t) ? "" : " · 보관 ~" + esc(dot(addDays(p.left, KEEP_LEFT_DAYS)))}</div>`
             : pq.req.length ? `<div class="tr-qs">${pq.req.map(c => `<span class="tr-qi" data-st="${c.st}" title="${esc(c.g.name + " · " + ST[c.st].label + " · " + stText(c))}"><span class="tr-qn">${esc(famShort(c.g))}</span>${stChip(c)}</span>`).join("")}</div>`
             : '<span class="cell-sub">필수 과정 없음</span>'}</td>
-          <td class="c-next mono">${a && nx ? `${esc(dot(nx.at))}<div class="cell-sub">${esc(nx.st === "susp" ? "회복 기한" : nx.st === "win" || nx.st === "grace" ? "이수 기간 끝" : "유효기한")}</div>` : '<span class="cell-sub">-</span>'}</td>
+          <td class="c-next mono${a && nx ? " tone-" + esc(ST[nx.st].tone) : ""}">${a && nx ? `${esc(dot(ddDate(nx) || nx.at))}${ST[nx.st].lv >= 1 ? `<b class="tr-ndd">${esc(ddLabel(nx, t))}</b>` : ""}<div class="cell-sub">${esc(nx.st === "susp" || nx.st === "lapsed" ? "회복 기한" : nx.st === "grace" ? "이수 기간 끝(유예)" : nx.st === "win" ? "유효기한 · 이수 기간 ~" + md(nx.winE) : "유효기한")}</div>` : '<span class="cell-sub">-</span>'}</td>
           <td class="c-ssi">${ssiCellText(p)}</td>
         </tr>`;
       }).join("")}</tbody></table></div>`;
@@ -799,15 +924,23 @@
         <h2 class="card-title">자격 현황<span class="dc-meta">${pq.req.length ? "필수 " + pq.req.length : "필수 과정 없음"}${pq.held.length ? " · 보유 " + pq.held.length : ""}</span></h2>
         ${quals.length ? `<div class="tr-quals">${quals.map(qual).join("")}</div>` : ui.empty(rolesOf(p).length ? "직무에 해당하는 과정이 없습니다." : "직무를 지정하면 필수 과정이 표시됩니다.")}
       </section>`;
+    /* v1.40 각 묶음의 지금 기록(자격 현황의 기준)은 상태 색 · 남은 날, 그 전 기록은 '이력'(흐리게) */
+    const curOf = {};
+    quals.forEach(q => { if (q.r) curOf[q.r.id] = q; });
+    const famOfRec = (r) => { const c = courseOf(r.cid); return c ? (c.fam || c.id) : r.cid; };
+    const curFams = new Set(Object.keys(curOf).map(id => famOfRec(records().find(r => r.id === id) || {})));
     const histCard = `<section class="card tr-pcard" aria-label="이수 이력">
         <h2 class="card-title">이수 이력<span class="dc-meta">${rs.length}건</span></h2>
         ${rs.length ? `<ul class="tr-hist">${rs.map(r => {
-          const c = courseOf(r.cid), exp = expireOf(r);
+          const c = courseOf(r.cid), exp = expireOf(r), q = curOf[r.id];
+          const past = !q && curFams.has(famOfRec(r));
+          const tone = q ? ST[q.st].tone : "";
           const tag = canW ? "button" : "div";
-          return `<li><${tag}${tag === "button" ? ` type="button" data-rid="${esc(r.id)}"` : ""} class="tr-hrow">
+          const expTxt = c && c.step ? "단계" : exp ? "~" + esc(ymd2(exp)) : "영구";
+          return `<li class="${q ? "is-cur tone-" + esc(tone) : past ? "is-past" : ""}"><${tag}${tag === "button" ? ` type="button" data-rid="${esc(r.id)}"` : ""} class="tr-hrow">
             <span class="tr-hd mono">${esc(dot(r.date))}</span>
             <span class="tr-hn"><b>${esc(c ? c.name : "과정 없음")}${selfOpen(r) ? ' <small class="tr-self">본인 등록</small>' : r.selfAt ? ' <small class="tr-self is-ok" title="' + esc("본인 등록 · 확인 " + (r.chkBy || "")) + '">본인 등록 · 확인</small>' : ""}</b><small>${esc([c ? c.kind : "", r.hours != null && r.hours !== "" ? r.hours + "시간" : "", r.org, r.certNo ? "No. " + r.certNo : "", r.sessionId ? "당사 교육 기록" : ""].filter(Boolean).join(" · "))}</small></span>
-            <span class="tr-he mono">${c && c.step ? "단계" : exp ? "~" + esc(ymd2(exp)) : "영구"}</span>
+            <span class="tr-he mono">${q && q.st !== "ok" && q.st !== "perm" ? `${stChip(q)}<b class="tr-hdd">${esc(ddLabel(q, t))}</b>` : past ? `<small class="tr-past">이력</small>${expTxt}` : expTxt}</span>
           </${tag}>${filesOf(r.files).length ? `<div class="au-files">${fileChips(r.files)}</div>` : ""}</li>`;
         }).join("")}</ul>` : ui.empty("등록된 이수 기록이 없습니다.")}
       </section>`;
@@ -1130,7 +1263,7 @@
       inp.onchange = () => { const fl = Array.from(inp.files || []); inp.value = ""; uploadInto(files, fl, paint); };
     }
   }
-  const copyFiles = (a) => filesOf(a).map(f => Object.assign({}, f));
+  const copyFiles = (a) => uniqFiles(a).map(f => Object.assign({}, f));
   const actions = (canDel) => `<div class="modal-actions">
       ${canDel ? '<button type="button" class="btn btn-danger" data-act="del">삭제</button><span class="spacer" style="flex:1"></span>' : ""}
       <button type="button" class="btn btn-ghost" data-act="cancel">취소</button>
@@ -1323,7 +1456,7 @@
       const cid = $("#tr-c").value;
       const calc = calcNow(), e = $("#tr-e").value || "";
       const rec = { pid: p.id, cid, date, expire: isISO(e) && e !== calc ? e : "", hours: num($("#tr-h").value), score: num($("#tr-s").value),
-        org: norm($("#tr-o").value), certNo: norm($("#tr-n").value), note: norm($("#tr-m").value), files: files.slice() };
+        org: norm($("#tr-o").value), certNo: norm($("#tr-n").value), note: norm($("#tr-m").value), files: uniqFiles(files) };
       const t = T();
       if (x) {
         Object.assign(x, rec);
@@ -1669,6 +1802,7 @@
     const yr = $("#tr-year", box); if (yr) yr.onchange = () => { year = yr.value; paint(); };
     const ac = $("#tr-act", box); if (ac) ac.onclick = () => { onlyAct = !onlyAct; paint(); };
     const sf = $("#tr-self", box); if (sf) sf.onclick = () => { onlySelf = !onlySelf; paint(); };
+    const xl = $("#tr-xls", box); if (xl) xl.onclick = () => exportDue();
     $$("[data-tseg]", box).forEach(b => b.onclick = () => {
       const k = b.dataset.tseg, v = b.dataset.v;
       if (k === "stype") sType = v; else if (k === "pstate") pState = v; else if (k === "pview") pView = v;
@@ -1765,6 +1899,7 @@
     migrate, rolesOf, needAct, loadPledges, pledgeMatch, pledgeInfo, pledgesState: PL,
     syncSessionRecords, personForm, pledgeForm, recordForm, sessionForm, coursesForm, keepOver, leftOver, openPerson, openSession,
     eduLinks, eduUrl, eduMail, selfPending, selfRecs, aptOf, eduState: EDU,
+    uniqFiles, ddLabel, ddDate, alertSummary, dueSheet, xlsxParts, xlsxBytes, exportDue, DUE_DAYS,
     setToday(t) { fixedToday = isISO(t) ? t : ""; },
     getState() { return { tab, q, roleF, rgF, onlyAct, onlySelf, year, sType, pState, pView, pid, sid, plScope, plState }; },
     setState(o) {

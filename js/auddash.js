@@ -119,7 +119,7 @@
       tt: m.y + "년 " + m.label + " · 당사 실시 " + m.own + "건(" + m.hours + "시간) · 협력사 확인 " + m.vendor + "건" }));
     const seTot = se.reduce((n, m) => n + m.own + m.vendor, 0), hrs = se.reduce((n, m) => n + m.hours, 0);
     return `<section class="card sd-card ie-card" aria-label="교육 · 자격">
-      <h2 class="card-title">교육 · 자격<span class="dc-meta">재직 ${st.people}명</span><span class="spacer"></span><button type="button" class="link-btn" data-ie-go="training">보안교육 · 자격 관리</button></h2>
+      <h2 class="card-title">교육 · 자격<span class="dc-meta">재직 ${st.people}명</span><span class="spacer"></span>${TR().exportDue ? `<button type="button" class="link-btn ie-xls" data-ie-xls title="만료 · 만료 예정 명단(.xlsx)">${icon("down", 14)}<span>Excel</span></button>` : ""}<button type="button" class="link-btn" data-ie-go="training">보안교육 · 자격 관리</button></h2>
       <div class="sd-grid ie-grid2">
         <div class="sd-pane">
           <div class="sd-ph"><b>직무별 자격 상태</b>${legend([{ name: "유효", c: STC.good }, { name: "갱신 필요", c: STC.warn }, { name: "정지 · 미이수", c: STC.bad }])}</div>
@@ -495,6 +495,7 @@
       SeMIS.navigate(b.dataset.ieGo);
     });
     $$("[data-ie-person]", root).forEach(b => b.onclick = () => { if (TR()) TR().openPerson(b.dataset.iePerson); });
+    $$("[data-ie-xls]", root).forEach(b => b.onclick = () => { if (TR() && TR().exportDue) TR().exportDue(); });
     $$("[data-ie-aud]", root).forEach(b => b.onclick = () => { if (AU()) AU().open(b.dataset.ieAud); });
     $$("[data-ie-find]", root).forEach(b => b.onclick = () => { if (AU()) AU().setState({ tab: "findings", sel: "", fStF: b.dataset.ieFind }); SeMIS.navigate("audit"); });
     $$("[data-ie-sc]", root).forEach(b => b.onclick = () => { const [id, it] = b.dataset.ieSc.split("|"); if (SC()) SC().openRecord(id, it); });

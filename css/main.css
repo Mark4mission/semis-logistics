@@ -5379,6 +5379,44 @@ button.tr-hrow { cursor: pointer; }
 .tr-hn b { font-size: .92rem; font-weight: 600; }
 .tr-hn small { font-size: .78rem; color: var(--text-3); }
 .tr-he { font-size: .82rem; color: var(--text-2); white-space: nowrap; }
+/* v1.40 이수 이력 — 지금 기록은 상태 색 · 남은 날, 그 전 기록은 이력(흐리게) */
+.tr-hist li.is-cur.tone-red { background: #fff8f7; box-shadow: inset 3px 0 0 var(--danger); }
+.tr-hist li.is-cur.tone-amber { background: #fffaf0; box-shadow: inset 3px 0 0 var(--accent); }
+.tr-hist li.is-cur .tr-he { display: inline-flex; align-items: center; gap: 6px; }
+.tr-hdd { font-family: var(--mono); font-size: .84rem; font-weight: 700; }
+.tone-red .tr-hdd { color: var(--danger); }
+.tone-amber .tr-hdd { color: var(--accent-dark); }
+.tr-hist li.is-past .tr-hd, .tr-hist li.is-past .tr-hn b, .tr-hist li.is-past .tr-he { color: var(--text-3); }
+.tr-hist li.is-past .tr-hn b { font-weight: 500; }
+.tr-past { font-family: var(--font); font-size: .7rem; font-weight: 600; color: var(--text-3); background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 0 6px; margin-right: 6px; }
+/* 인원 목록 '다음 갱신' — 상태 색 · 남은 날 */
+.tr-ptbl td.c-next.tone-red { color: var(--danger); font-weight: 600; }
+.tr-ptbl td.c-next.tone-amber { color: var(--accent-dark); font-weight: 600; }
+.tr-ndd { margin-left: 6px; font-size: .78rem; font-weight: 700; padding: 0 6px; border-radius: 5px; background: var(--accent-soft); }
+.tone-red .tr-ndd { background: var(--danger-soft); }
+/* 만료 알림 띠(인원 탭 위) */
+.tr-alert { display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px; margin-bottom: 14px; border-radius: var(--radius); border: 1px solid #f3d9a8; background: #fffaf0; }
+.tr-alert.is-bad { border-color: #f5c6c0; background: #fff8f7; }
+.tr-al-i { flex: none; width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-dark); }
+.tr-alert.is-bad .tr-al-i { background: var(--danger-soft); color: var(--danger); }
+.tr-al-b { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 8px; }
+.tr-al-t { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; font-size: .92rem; font-weight: 700; }
+.tr-al-t em { font-style: normal; font-family: var(--mono); }
+.tr-al-t em.is-bad { color: var(--danger); }
+.tr-al-t em.is-warn { color: var(--accent-dark); }
+.tr-al-t small { font-size: .78rem; font-weight: 500; color: var(--text-3); }
+.tr-al-sep { color: var(--text-3); font-weight: 400; }
+.tr-al-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.tr-al-c { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); font: inherit; font-size: .82rem; color: var(--text); cursor: pointer; transition: border-color 150ms ease, background-color 150ms ease; }
+.tr-al-c span { color: var(--text-2); }
+.tr-al-c em { font-style: normal; font-weight: 700; font-size: .78rem; }
+.tr-al-c.tone-red { border-color: #f1b8b2; } .tr-al-c.tone-red em { color: var(--danger); }
+.tr-al-c.tone-amber { border-color: #f0d199; } .tr-al-c.tone-amber em { color: var(--accent-dark); }
+@media (hover: hover) and (pointer: fine) { .tr-al-c:hover { background: var(--primary-soft); } }
+.tr-al-more { align-self: center; font-size: .8rem; color: var(--text-3); }
+.tr-xls { gap: 4px; }
+.ie-xls { display: inline-flex; align-items: center; gap: 3px; margin-right: 10px; }
+@media print { .tr-xls { display: none !important; } .tr-al-c { border-color: #9aa5a9 !important; } }
 .tr-dl { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; margin: 0; }
 .tr-dl > div { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px; align-items: baseline; }
 .tr-dl dt { font-size: .8rem; font-weight: 600; color: var(--text-3); }
@@ -5431,6 +5469,7 @@ button.tr-hrow { cursor: pointer; }
 @media screen and (max-width: 767px) {
   .tr-hrow { grid-template-columns: 82px minmax(0, 1fr) auto; }
   .tr-hist li > .au-files { padding-left: 4px; }
+  .tr-hist li.is-cur .tr-he .badge { display: none; }
   .tr-dl > div, .tr-rdl > div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
   .tr-eight li { grid-template-columns: 54px minmax(0, 1fr); }
   .tr-eight li > span:last-child { grid-column: 2; }
