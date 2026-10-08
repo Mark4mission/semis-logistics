@@ -1534,7 +1534,13 @@
     try {
       const d = await S.rpc("semis_logi_edu_links", {});
       if (!d || !d.ok) throw new Error((d && d.error) || "edu");
-      EDU.links = Array.isArray(d.links) ? d.links : []; EDU.recent = Array.isArray(d.recent) ? d.recent : []; EDU.err = "";
+      /* 시험 링크(target eduTest — 시험 행에만 기록)와 그 제출은 시스템관리자에게만 */
+      const admin = !!(SeMIS.user && SeMIS.user.role === "admin");
+      const all = Array.isArray(d.links) ? d.links : [];
+      const test = all.filter(l => l && l.target === "eduTest").map(l => l.code);
+      EDU.links = all.filter(l => l && (admin || l.target !== "eduTest"));
+      EDU.recent = (Array.isArray(d.recent) ? d.recent : []).filter(r => r && (admin || test.indexOf(r.code) < 0));
+      EDU.err = "";
     } catch (e) { EDU.err = String((e && e.message) || e); }
   }
   async function eduSave(p) {

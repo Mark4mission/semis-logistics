@@ -8283,14 +8283,17 @@ function makeServer(opts = {}) {
       const calls = [];
       const link = { code: "abcdefghjkmn", title: "2026 하반기", expires: "2026-11-07", active: true, open: true, submits: 3, target: "training" };
       e.Sync.rpc = async (n, a) => { calls.push([n, a]);
-        if (n === "semis_logi_edu_links") return { ok: true, links: [link, { code: "zzzzzzzzzzzz", title: "", expires: "2026-09-01", active: false, open: false, submits: 0 }],
-          recent: [{ at: "2026-10-08T05:20:00Z", name: "홍길동", dept: "인천화물팀", kind: "updated", n: 1, pid: "p1" }] };
+        if (n === "semis_logi_edu_links") return { ok: true, links: [link, { code: "zzzzzzzzzzzz", title: "", expires: "2026-09-01", active: false, open: false, submits: 0 },
+          { code: "edutestcode2", title: "운영 시험", expires: "2026-10-08", active: false, open: false, submits: 2, target: "eduTest" }],
+          recent: [{ at: "2026-10-08T05:20:00Z", name: "홍길동", dept: "인천화물팀", kind: "updated", n: 1, pid: "p1", code: "abcdefghjkmn" },
+            { at: "2026-10-08T05:10:00Z", name: "시험 사용자", dept: "시험", kind: "new", n: 1, pid: "tx", code: "edutestcode2" }] };
         if (n === "semis_logi_edu_link_save") return { ok: true, link: Object.assign({}, link, a.title ? { code: "newcodenewco" } : {}) };
         return { ok: false }; };
       q(e, "#tr-edu").click();
       return tick(20).then(() => {
         const items = qa(e, ".te-link");
-        eq(items.length, 2);
+        eq(items.length, 2, "시험 링크(eduTest)는 hq 에게 안 보임");
+        eq(qa(e, ".te-rrow").length, 1, "시험 제출도 안 보임");
         ok(/edu\.html#abcdefghjkmn$/.test(q(e, ".te-link .te-url").textContent), "링크 = 사이트/edu.html#코드");
         ok(items[1].classList.contains("is-off") && /마감/.test(items[1].textContent), "마감 링크");
         const mail = q(e, '.te-link a[href^="mailto:"]').getAttribute("href");
