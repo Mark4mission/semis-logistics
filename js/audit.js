@@ -15,8 +15,8 @@
 
    데이터 DATA.audits = [{ id, body(gov|foreign|internal), org, kind, start, end, place, lead, scope, memo,
        outcome(""|"none" 지적 없음), cancelled, linkCal(일정관리 연동, 기본 true), noCalMain(수검 일정만 연동 해제),
-       files[{name,size,url}], checklist[{id,mid(원본 번호),sec,text,ref,owner,note,docScore,impScore(0~4|null),na,files[],links[]?}],
-       chkSecs[{no,title}], chkSrc{title,asOf,ssi},
+       files[{name,size,url}], checklist[{id,mid(원본 번호),sec,text,ref,sop?(v1.43 SSOP 조항),owner,note,docScore,impScore(0~4|null),na,files[],links[]?}],
+       chkSecs[{no,title}], chkSrc{title,asOf,ssi}, sopDoc?(v1.43 SSOP 조항 기준 문서 = docs id),
        findings[{id,type(car|rec|onsite|obs),ref,text,action,owner,due,status(open|doing|done),doneDate,noCal,files[]}],
        createdAt, createdBy, updatedAt, updatedBy }]
    진행 단계는 저장하지 않고 날짜·지적으로 계산한다: 준비 → 수검 중 → (결과 대기) → 조치 중 → 종결 / 취소
@@ -183,6 +183,41 @@
   }
   /* v1.41 증빙 문서(SemisDocs) — 문서 서가에서 이 항목 번호를 단 문서(판 묶음마다 최신 판) */
   const docsOf = (c) => (c && c.mid && typeof window !== "undefined" && window.SemisDocs ? SemisDocs.forMid(c.mid) : []);
+  /* v1.43 SSOP 조항 — 항목마다 지금 시행 중인 SSOP 의 해당 조항 · 별첨(c.sop: "4.2.16 · 별첨 25"),
+     수검마다 기준 문서(a.sopDoc = 문서 서가 id). 그 문서에 pages{조항: PDF 쪽}이 있으면 조항 칩이 그 쪽을 연다(#page=N).
+     조항 번호만 두고 본문은 문서에서 본다(민감보안정보) */
+  const sopTokens = (s) => String(s || "").split(/\s*[·,;\n]\s*/).map(norm).filter(Boolean);
+  const sopJoin = (s) => sopTokens(s).join(" · ");
+  function sopKey(t) {
+    const k = norm(String(t || "").split("~")[0]);
+    const m = /^별첨\s*(.+)$/.exec(k);
+    return m ? "별첨 " + m[1] : k.replace(/^제\s*(\d+)\s*장$/, "제$1장");
+  }
+  function sopDoc(a) {
+    const id = a && a.sopDoc;
+    return id ? ((Array.isArray(D().docs) ? D().docs : []).find(d => d && d.id === id) || null) : null;
+  }
+  const isPdf = (f) => /\.pdf$/i.test(String((f && f.name) || ""));
+  const sopFile = (d) => { const fs = d && Array.isArray(d.files) ? d.files : []; return fs.find(isPdf) || fs[0] || null; };
+  const sopName = (d) => (d && norm(d.short || d.title)) || "SSOP";
+  function sopHref(d, tok) {
+    const rank = SeMIS.roleRank ? SeMIS.roleRank() : 0;
+    if (!d || (d.ssi && rank < 3)) return "";            // 민감보안정보 원본은 안전보안파트 이상
+    const f = sopFile(d);
+    if (!f || !f.url) return "";
+    const p = isPdf(f) && d.pages ? Number(d.pages[sopKey(tok)]) : 0;
+    return f.url + (p > 0 ? "#page=" + Math.round(p) : "");
+  }
+  function sopChips(a, c) {
+    const toks = sopTokens(c && c.sop);
+    if (!toks.length) return "";
+    const d = sopDoc(a), nm = sopName(d);
+    return `<div class="ck-sop"><span class="ck-sop-k">${esc(nm)}</span>${toks.map(t => {
+      const h = sopHref(d, t);
+      return h ? `<a class="ck-sopc" href="${esc(h)}" target="_blank" rel="noopener" title="${esc(nm + " " + t)}">${esc(t)}</a>`
+        : `<span class="ck-sopc">${esc(t)}</span>`;
+    }).join('<span class="ck-sop-sep" aria-hidden="true">·</span>')}</div>`;
+  }
   const hasEvidence = (c) => filesOf(c).length > 0 || docsOf(c).length > 0 || linksOf(c).some(r => routeEv(r, c && c.mid).ok);
   /* 항목 상태 — N/A · 미평가(문서·시행 중 하나라도 비었음) · 보완 필요(3점 미만) · 증빙 없음 · 준비됨 */
   function itemState(c) {
@@ -608,7 +643,7 @@
       <div class="modal-actions"><button type="button" class="btn btn-primary" data-act="cancel">닫기</button></div>`, { wide: true });
     $("#modal-box [data-act=cancel]").onclick = closeModal;
   }
-  function ckRow(c, canW, canB) {
+  function ckRow(c, canW, canB, a) {
     const st = CST[itemState(c)];
     const ev = filesOf(c).length || linksOf(c).length || docsOf(c).length;
     return `<li class="ck-row" data-st="${itemState(c)}" data-cid="${esc(c.id)}">
@@ -616,6 +651,7 @@
       <div class="ck-main">
         <div class="ck-head"><div class="ck-t">${c.mid ? `<span class="ck-no-m mono">${esc(c.mid)}</span>` : ""}${esc(c.text || "")}</div><span class="ck-state">${ui.chip(st.label, st.tone)}</span></div>
         ${c.ref && !c.mid ? `<div class="ck-refs">${refChips(c.ref)}</div>` : ""}
+        ${sopChips(a, c)}
         <div class="ck-ctl">
           ${scoreHTML(c, "doc", canW)}${scoreHTML(c, "imp", canW)}
           ${canW ? `<button type="button" class="ck-na" data-na="${esc(c.id)}" aria-pressed="${!!c.na}">N/A</button>` : ""}
@@ -628,20 +664,20 @@
       </div>
     </li>`;
   }
-  function groupHTML(g, items, canW, canB) {
+  function groupHTML(g, items, canW, canB, a) {
     const t = tally(g.items);
     return `<div class="ck-grp" data-sec="${esc(secKey(g))}">
       <div class="ck-gh"><h4>${esc(secName(g))}</h4>
         <span class="ck-gsum">준비 <b class="mono">${t.ready}/${t.ap}</b><span class="au-sep">·</span>문서 <b class="mono">${avgTxt(t.dAvg)}</b><span class="au-sep">·</span>시행 <b class="mono">${avgTxt(t.iAvg)}</b></span>
         ${bar(t.ap ? Math.round(t.ready / t.ap * 100) : 0)}</div>
-      <ul class="ck-rows">${items.map(c => ckRow(c, canW, canB)).join("")}</ul>
+      <ul class="ck-rows">${items.map(c => ckRow(c, canW, canB, a)).join("")}</ul>
     </div>`;
   }
   const scTxt = (c, key) => (c.na ? "" : sc(c[key]) == null ? "" : String(sc(c[key])));
   /* A4 인쇄 — 점검관용 양식과 같은 열(항목 · 관련근거 · 문서 · 시행 · N/A · 비고), 영역별 소계 */
   function printTable(a, groups) {
     const t = tally(checksOf(a).filter(Boolean)), pr = prep(a);
-    const src = a.chkSrc || {};
+    const src = a.chkSrc || {}, sd = sopDoc(a);
     const sub = (s) => `문서 ${s.dSum}/${s.dN * 4} · 시행 ${s.iSum}/${s.iN * 4} · 평균 ${avgTxt(s.dAvg)} / ${avgTxt(s.iAvg)} · 준비 ${s.ready}/${s.ap}`;
     const remark = (c) => [c.note ? esc(c.note) : "", filesOf(c).length ? "첨부 " + filesOf(c).length : "",
       docsOf(c).length ? "증빙: " + docsOf(c).slice(0, 4).map(d => esc(d.title)).join(", ") + (docsOf(c).length > 4 ? " 외 " + (docsOf(c).length - 4) : "") : "",
@@ -649,6 +685,7 @@
       .filter(Boolean).join("<br>");
     return `<div class="print-only au-print">
       <div class="au-pcap"><b>${esc(src.title || "점검 체크리스트")}${src.asOf ? " (" + esc(src.asOf) + ")" : ""}</b>
+        ${sd ? `<span>SSOP 조항 기준: ${esc(sopName(sd))}${sd.date ? " (" + esc(dot(sd.date)) + ")" : ""}</span>` : ""}
         <span>평가점수: ${SCORES.map((s, i) => esc(s) + " " + i).join(" · ")}</span></div>
       <table class="au-ptbl">
         <colgroup><col style="width:39%"><col style="width:25%"><col style="width:6%"><col style="width:6%"><col style="width:5%"><col style="width:19%"></colgroup>
@@ -656,7 +693,7 @@
         <tbody>${groups.map(g => {
           const s = tally(g.items);
           return `<tr class="au-psec"><td colspan="6"><b>${esc(secName(g))}</b><span>${sub(s)}</span></td></tr>` + g.items.map(c =>
-            `<tr><td class="au-pt">${c.mid ? `<b class="mono">${esc(c.mid)}</b> ` : ""}${esc(c.text || "")}</td><td class="au-pr">${refLines(c.ref).map(esc).join("<br>")}</td>
+            `<tr><td class="au-pt">${c.mid ? `<b class="mono">${esc(c.mid)}</b> ` : ""}${esc(c.text || "")}</td><td class="au-pr">${refLines(c.ref).map(esc).join("<br>")}${sopTokens(c.sop).length ? `<div class="au-psop"><b>${esc(sopName(sd))}</b> ${esc(sopJoin(c.sop))}</div>` : ""}</td>
               <td class="c mono">${scTxt(c, "docScore")}</td><td class="c mono">${scTxt(c, "impScore")}</td><td class="c">${c.na ? "✓" : ""}</td><td class="au-pn">${remark(c)}</td></tr>`).join("");
         }).join("")}
         <tr class="au-ptot"><td colspan="6"><b>합계</b><span>${sub(t)} · 준비율 ${pr.pct}%</span></td></tr></tbody>
@@ -675,10 +712,14 @@
     const shown = vis.reduce((n, x) => n + x.items.length, 0);
     const kpi = (label, val, sub, st, tone) => `<button type="button" class="ck-kpi${tone ? " t-" + tone : ""}" ${st ? `data-ckst="${st}" aria-pressed="${ckSt === st}"` : "disabled"}>
       <span class="ck-kpi-l">${esc(label)}</span><b class="mono">${esc(String(val))}</b>${sub ? `<small class="mono">${esc(sub)}</small>` : ""}</button>`;
-    const src = a.chkSrc && a.chkSrc.title ? `<p class="ck-src">${esc(a.chkSrc.title)}${a.chkSrc.asOf ? " · " + esc(a.chkSrc.asOf) : ""}</p>` : "";
+    const sd = sopDoc(a);
+    const sopLine = sd ? `<span class="ck-src-sop">SSOP 조항 기준 <b>${esc(sopName(sd))}</b>${sd.date ? " " + esc(dot(sd.date)) : ""}</span>` : "";
+    const src = (a.chkSrc && a.chkSrc.title) || sopLine
+      ? `<p class="ck-src">${a.chkSrc && a.chkSrc.title ? esc(a.chkSrc.title) + (a.chkSrc.asOf ? " · " + esc(a.chkSrc.asOf) : "") : ""}${a.chkSrc && a.chkSrc.title && sopLine ? '<span class="au-sep">·</span>' : ""}${sopLine}</p>` : "";
     return `<section class="card au-sec" id="au-checks">
         <div class="au-sh"><h3>점검 체크리스트</h3><span class="au-cnt mono">${pr.done}/${pr.total}</span>${pr.total ? bar(pr.pct) : ""}
           <span class="spacer"></span>
+          ${canW && canB && all.length ? `<button type="button" class="link-btn m-ed" id="au-sop">SSOP 기준</button>` : ""}
           ${canW && canB ? `<button type="button" class="btn btn-ghost btn-sm" id="au-load">${icon("clipboard", 15)}<span>체크리스트 불러오기</span></button>` : ""}
           ${canW ? `<button type="button" class="btn btn-ghost btn-sm" id="au-ck-add">${icon("plus", 15)}<span>항목 추가</span></button>` : ""}
         </div>
@@ -699,7 +740,7 @@
             <span class="ck-shown mono">${shown}/${all.length}</span>
             ${ckSec !== "all" || ckSt !== "all" ? `<button type="button" class="pb-clear" id="ck-clear">조건 해제</button>` : ""}
           </div>
-          <div class="ck-list no-print">${vis.length ? vis.map(({ g, items }) => groupHTML(g, items, canW, canB)).join("")
+          <div class="ck-list no-print">${vis.length ? vis.map(({ g, items }) => groupHTML(g, items, canW, canB, a)).join("")
             : `<p class="au-none">조건에 맞는 항목이 없습니다.</p>`}</div>
           ${printTable(a, groups)}`
         : `<p class="au-none">${canW ? (canB ? "체크리스트를 불러오거나 항목을 추가하세요." : "항목을 추가하세요.") : "등록된 항목이 없습니다."}</p>`}
@@ -780,6 +821,31 @@
       };
     });
   }
+  /* v1.43 SSOP 조항 기준 문서 고르기(hq) — 쪽 연결(pages)이 있는 문서 또는 규정 서가의 SSOP 본문 */
+  function sopForm(aid) {
+    const a = byId(aid);
+    if (!a || !SeMIS.canEdit() || !canMaster()) return;
+    const cands = (Array.isArray(D().docs) ? D().docs : [])
+      .filter(d => d && (d.files || []).length && (d.pages || (d.mod === "reg-sec" && d.grp === "ssop" && /본문/.test(String(d.ser || "")))))
+      .sort((x, y) => String(y.date || "").localeCompare(String(x.date || "")));
+    const cur = sopDoc(a) ? a.sopDoc : "";
+    const opt = (id, name, sub) => `<label class="ck-rc ck-sopopt"><input type="radio" name="au-sopd" value="${esc(id)}" ${id === cur ? "checked" : ""}>
+      <span>${esc(name)}</span>${sub ? `<small>${esc(sub)}</small>` : ""}</label>`;
+    openModal(`<h3>SSOP 조항 기준 문서</h3>
+      <div class="ck-rchoose ck-sopopts">${opt("", "지정 안 함", "")}${cands.map(d =>
+        opt(d.id, sopName(d), [dot(d.date), d.pages ? "쪽 연결 " + Object.keys(d.pages).length : ""].filter(Boolean).join(" · "))).join("")}</div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" data-act="cancel">취소</button>
+        <button type="button" class="btn btn-primary" data-act="ok">저장</button>
+      </div>`);
+    $("#modal-box [data-act=cancel]").onclick = closeModal;
+    $("#modal-box [data-act=ok]").onclick = () => {
+      const pick = $$("#modal-box input[name=au-sopd]").find(i => i.checked);
+      const v = pick ? pick.value : "";
+      if (v) a.sopDoc = v; else delete a.sopDoc;
+      stamp(a); SeMIS.save(); closeModal(); paintChecks(a); toast("저장했습니다.");
+    };
+  }
   /* 근거 본문 요지 (hq) — 원본에서만 읽고 수검 기록에는 남기지 않는다 */
   function basisHTML(b) {
     return String(b || "").split("\n").map(l => l.trim()).filter(Boolean).map(l =>
@@ -819,6 +885,8 @@
     const cssq = (v) => (window.CSS && CSS.escape ? CSS.escape(v) : String(v).replace(/"/g, '\\"'));
     const ld = $("#au-load", sec);
     if (ld) ld.onclick = () => loadForm(a.id);
+    const sp = $("#au-sop", sec);
+    if (sp) sp.onclick = () => sopForm(a.id);
     const ad = $("#au-ck-add", sec);
     if (ad) ad.onclick = () => checkForm(a.id, null);
     const fs = $("#ck-sec", sec), ft = $("#ck-st", sec), cl = $("#ck-clear", sec);
@@ -996,7 +1064,7 @@
     const c = cid ? checksOf(a).find(x => x && x.id === cid) : null;
     if (cid && !c) return;
     const fixed = !!(c && c.mid);                       // 원본 항목 — 문구 · 관련근거는 원본 그대로
-    const v = Object.assign({ text: "", ref: "", owner: "", note: "", docScore: null, impScore: null, na: false }, c || {});
+    const v = Object.assign({ text: "", ref: "", sop: "", owner: "", note: "", docScore: null, impScore: null, na: false }, c || {});
     const files = filesOf(c).map(f => Object.assign({}, f));
     const cur = linksOf(v);
     const def = (fixed && DEF_LINKS[c.mid]) || [];
@@ -1006,6 +1074,8 @@
       ${fixed ? `<div class="ck-fixed"><p class="ck-t">${esc(v.text)}</p>${v.ref ? `<div class="ck-refs">${refChips(v.ref)}</div>` : ""}</div>`
         : fld("ac-text", "항목", `<input id="ac-text" value="${esc(v.text)}" maxlength="200" autocomplete="off">`)
           + fld("ac-ref", "관련근거", `<input id="ac-ref" value="${esc(norm(v.ref))}" maxlength="120" autocomplete="off" list="ac-dl-ref" placeholder="예: ICNKF SSOP 4.2.3">`)}
+      ${fld("ac-sop", "SSOP 조항", `<input id="ac-sop" value="${esc(sopJoin(v.sop))}" maxlength="200" autocomplete="off" placeholder="예: 4.2.16 · 별첨 25">`,
+        "지금 시행 중인 SSOP에서 이 항목을 뒷받침하는 조항 · 별첨입니다. 가운데 점(·)이나 쉼표로 나눕니다.")}
       <div class="form-grid">
         ${fld("ac-doc", "문서", scSel("ac-doc", v.docScore))}
         ${fld("ac-imp", "시행", scSel("ac-imp", v.impScore))}
@@ -1044,6 +1114,8 @@
       if (!Array.isArray(a.checklist)) a.checklist = [];
       const tgt = c || Object.assign({ id: uid("ck") }, { files: [] });
       Object.assign(tgt, rec);
+      const sopV = sopJoin(($("#ac-sop") || {}).value);
+      if (sopV) tgt.sop = sopV; else delete tgt.sop;
       if (same) delete tgt.links; else tgt.links = links;   // 기본 연결과 같으면 기본값을 따른다(메뉴가 늘면 자동 반영)
       if (!c) a.checklist.push(tgt);
       stamp(a); SeMIS.save(); closeModal(); paint(); toast("저장했습니다.");
@@ -1267,6 +1339,7 @@
     phase, dday, ddayText, prep, repeatCount, overdueF, nextAudit, allFindings, auditTitle,
     syncCalendar, syncFromSchedule, unlinkBySchedule, dropCalendar, uploadInto,
     itemState, linksOf, routeEv, tally, groupsOf, applyChecklist, loadForm, loadMaster, basisOf, basisView, cmpMid, unusedItem,
+    sopTokens, sopJoin, sopKey, sopDoc, sopHref, sopForm,
     setMaster(m) { master = validMaster(m) ? m : null; masterErr = ""; masterWait = null; },
     dashHTML, mountDash, dashData, open: openAudit, form: auditForm, checkForm, findingForm,
     setToday(t) { fixedToday = isISO(t) ? t : ""; },

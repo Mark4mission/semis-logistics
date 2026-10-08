@@ -3464,6 +3464,18 @@ button.ck-kpi:not([disabled]):active { transform: scale(.98); }
 .ck-state { flex: none; }
 .ck-refs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
 .ck-refs .au-ref { font-weight: 500; }
+/* v1.43 SSOP 조항 — 지금 SSOP 의 해당 조항 · 별첨(기준 문서 PDF 의 그 쪽으로). 관련근거 칩을 뺀 화면(v1.42)에 맞춰 칩 없이 글자 링크 한 줄 */
+.ck-sop { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 0; margin-top: 4px; font-size: .8rem; line-height: 1.55; }
+.ck-sop-k { margin-right: 8px; font-size: .74rem; font-weight: 600; color: var(--text-3); white-space: nowrap; }
+.ck-sopc { color: var(--primary-dark); font-weight: 600; white-space: nowrap; text-decoration: none; border-radius: 3px; }
+a.ck-sopc { text-underline-offset: 3px; }
+@media (hover: hover) and (pointer: fine) { a.ck-sopc:hover { text-decoration: underline; } }
+a.ck-sopc:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+span.ck-sopc { color: var(--text-2); font-weight: 500; }
+.ck-sop-sep { margin: 0 6px; color: var(--text-3); }
+.ck-src-sop b { color: var(--text-2); font-weight: 600; }
+.ck-sopopt small { margin-left: 6px; font-size: .76rem; color: var(--text-3); }
+@media screen and (max-width: 767px) { .ck-sopc { display: inline-block; padding: 3px 0; } }
 .ck-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 8px; }
 .ck-ctl .spacer { flex: 1; }
 .ck-sc { display: inline-flex; align-items: center; gap: 0; height: 32px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); overflow: hidden; }
@@ -3550,6 +3562,9 @@ button.ck-link:active { transform: scale(.97); }
   .au-ptbl td.c { text-align: center; vertical-align: middle; font-weight: 700; }
   .au-pt { white-space: pre-line; }
   .au-pr { font-size: 7.6pt; color: #333; }
+  .au-psop { margin-top: .8mm; padding-top: .6mm; border-top: 1px dotted #b8c4c3; font-size: 7.4pt; color: #224; }
+  .au-psop b { font-weight: 700; }
+  .ck-sop { display: none; }
   .au-pn { font-size: 7.6pt; color: #333; white-space: pre-line; }
   .au-psec td, .au-ptot td { background: #f1f5f4 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .au-psec td span, .au-ptot td span { float: right; font-size: 7.8pt; color: #333; }

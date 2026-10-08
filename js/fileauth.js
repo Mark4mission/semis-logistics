@@ -40,19 +40,21 @@
     else if (u.indexOf(SIGN) === 0) { rest = u.slice(SIGN.length); signed = true; }
     if (rest === null) return null;
     const h = rest.indexOf("#");
+    const hash = h >= 0 ? rest.slice(h) : "";               // v1.43 #page=N 등 조각은 서명 뒤에도 유지
     if (h >= 0) rest = rest.slice(0, h);
     const q = rest.indexOf("?");
     const path = dec(q >= 0 ? rest.slice(0, q) : rest);
     let params = q >= 0 ? rest.slice(q + 1).split("&").filter(Boolean) : [];
     if (signed) params = params.filter(x => x.indexOf("token=") !== 0);
     if (!path) return null;
-    return { path, extra: params.join("&"), signed };
+    return { path, extra: params.join("&"), signed, hash };
   }
   function fresh(path) {
     const c = cache.get(path);
     return c && c.exp - MARGIN > Date.now() ? c.url : null;
   }
   const withExtra = (signed, extra) => extra ? signed + (signed.indexOf("?") >= 0 ? "&" : "?") + extra : signed;
+  const full = (signed, p) => withExtra(signed, p.extra) + (p.hash || "");
 
   /* ─── 서명 요청 (짧게 모아서 한 번에) ─── */
   function request(paths) {
@@ -85,13 +87,13 @@
     if (!p) return String(url || "");
     if (!fresh(p.path)) await request([p.path]);
     const hit = fresh(p.path);
-    return hit ? withExtra(hit, p.extra) : String(url || "");
+    return hit ? full(hit, p) : String(url || "");
   }
   function resolveSync(url) {
     const p = parse(url);
     if (!p) return String(url || "");
     const hit = fresh(p.path);
-    return hit ? withExtra(hit, p.extra) : null;
+    return hit ? full(hit, p) : null;
   }
 
   /* ─── 화면 요소 변환 ─── */
@@ -105,13 +107,13 @@
     if (!p) return;
     el.setAttribute("data-sf", v);
     const hit = fresh(p.path);
-    if (hit) { el.setAttribute(at, withExtra(hit, p.extra)); return; }
+    if (hit) { el.setAttribute(at, full(hit, p)); return; }
     if (el.tagName === "IMG") el.setAttribute("src", PIXEL);
     else if (el.tagName === "IFRAME" || el.tagName === "EMBED") el.setAttribute("src", "about:blank");
     request([p.path]).then(() => {
       if (el.getAttribute("data-sf") !== v) return;
       const h = fresh(p.path);
-      if (h) el.setAttribute(at, withExtra(h, p.extra));
+      if (h) el.setAttribute(at, full(h, p));
       else if (el.tagName === "IMG") el.setAttribute("alt", el.getAttribute("alt") || "파일을 불러올 수 없습니다");
     });
   }
@@ -130,14 +132,14 @@
     const p = parse(orig);
     if (!p || p.signed) return;
     const hit = fresh(p.path);
-    if (hit) { a.setAttribute("href", withExtra(hit, p.extra)); return; }   // 기본 동작이 새 주소로 진행
+    if (hit) { a.setAttribute("href", full(hit, p)); return; }   // 기본 동작이 새 주소로 진행
     ev.preventDefault();
     let w = null;
     try { w = window.open("", a.getAttribute("target") || "_blank"); } catch (e) { w = null; }
     request([p.path]).then(() => {
       const h = fresh(p.path);
       if (h) {
-        const to = withExtra(h, p.extra);
+        const to = full(h, p);
         if (w) { try { w.opener = null; w.location.href = to; } catch (e) { window.open(to, "_blank", "noopener"); } }
         else window.open(to, "_blank", "noopener");
       } else {

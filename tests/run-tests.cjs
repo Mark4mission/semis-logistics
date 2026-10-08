@@ -4776,6 +4776,15 @@ function makeServer(opts = {}) {
       ok(/attach\/d\.pdf\?token=[^"]+&download=a\.pdf/.test(h), h);
       ok(read("js/minutes.js").indexOf("SemisFileAuth.signHtml(html)") > 0, "회의록 인쇄에 적용");
     });
+    await ta("SEC08 #page 같은 조각은 서명 주소 뒤에 그대로(v1.43 SSOP 조항 → PDF 쪽)", async () => {
+      eq(FA.parse(PUBU + "attach/p.pdf#page=7").path, "attach/p.pdf");
+      eq(FA.parse(PUBU + "attach/p.pdf#page=7").hash, "#page=7");
+      const u = await FA.resolve(PUBU + "attach/p.pdf#page=7");
+      ok(/\/object\/sign\/semis-logi-files\/attach\/p\.pdf\?token=[^#]+#page=7$/.test(u), u);
+      const u2 = await FA.resolve(PUBU + "attach/p.pdf?download=x.pdf#page=3");
+      ok(/\?token=[^#&]+&download=x\.pdf#page=3$/.test(u2), u2);
+      eq(FA.canon('<a href="' + u.replace("#page=7", "") + '#page=7">'), '<a href="' + PUBU + 'attach/p.pdf#page=7">', "저장 전 되돌리기");
+    });
     await ta("SEC06 업로드: 서버가 경로를 정하고 서명 URL로 PUT · 저장값은 표준 주소", async () => {
       const f = new e.w.File(["abc"], "보고 서.pdf", { type: "application/pdf" });
       const up = await e.Sync.uploadFile(f, "attach");
@@ -8706,6 +8715,58 @@ function makeServer(opts = {}) {
       e.w.SemisDeep.partners("edu"); go(e, "partners");
       ok(q(e, '.eq-tab[aria-selected="true"]') && /교육 이력/.test(q(e, '.eq-tab[aria-selected="true"]').textContent), "탭 지정");
       e.w.close();
+    });
+    await ta("TA11 SSOP 조항(v1.43): 항목마다 지금 SSOP 조항 링크 · 기준 문서 PDF 의 그 쪽(#page) · SSI 는 manager 잠김 · 편집 · 인쇄 · 기준 문서 고르기", () => {
+      const SSOPD = { id: "ds1", mod: "reg-sec", grp: "ssop", ser: "SSOP 본문", title: "보안표준업무절차 제1차 개정", short: "KJ SSOP Rev.01", date: "2026-10-13", ssi: true,
+        files: [F("s.docx"), F("s.pdf")], pages: { "4.2.16": 53, "별첨 25": 206 } };
+      const mk = () => [{ id: "a1", body: "internal", org: "항공보안파트", kind: "본사 점검", start: "2026-10-23", end: "", sopDoc: "ds1", findings: [],
+        checklist: [{ id: "c1", mid: "9.12", sec: "9", text: "RFS 즉시 검색", ref: "ACISP 9.B", sop: "4.2.16 · 별첨 25 · 9.9", docScore: 3, impScore: 2, files: [] },
+                    { id: "c2", mid: "9.13", sec: "9", text: "DNL 격리", ref: "ACISP 9.C", docScore: 3, impScore: 2, files: [] }] }];
+      const e = makeEnv(); loginAs(e, "hq");
+      e.S.data.docs = DOCS.concat([SSOPD]); e.S.data.audits = mk();
+      const A = e.w.SemisAudit;
+      eq(A.sopTokens("4.2.16 · 별첨 25, 12.2;  9.9 ").join("|"), "4.2.16|별첨 25|12.2|9.9", "구분자 · , ;");
+      eq(A.sopKey("4.1.9~4.1.12"), "4.1.9"); eq(A.sopKey("별첨25"), "별첨 25"); eq(A.sopKey("제 18 장"), "제18장");
+      ok(/s\.pdf#page=53$/.test(A.sopHref(SSOPD, "4.2.16")), "PDF 를 골라 그 쪽");
+      ok(/s\.pdf$/.test(A.sopHref(SSOPD, "9.9")), "쪽 모르면 PDF 처음");
+      A.setState({ tab: "list", sel: "a1", ckSec: "all", ckSt: "all" }); go(e, "audit");
+      const row = q(e, '.ck-row[data-cid="c1"]');
+      ok(row, "항목");
+      eq(row.querySelector(".ck-sop-k").textContent, "KJ SSOP Rev.01", "기준 문서 짧은 이름");
+      const ch = Array.from(row.querySelectorAll("a.ck-sopc"));
+      eq(ch.length, 3, "칩 3");
+      const hrefOf = (a) => a.getAttribute("data-sf") || a.getAttribute("href");
+      ok(/#page=53$/.test(hrefOf(ch[0])) && /#page=206$/.test(hrefOf(ch[1])), hrefOf(ch[0]));
+      ok(!q(e, '.ck-row[data-cid="c2"] .ck-sop'), "조항 없는 항목은 줄 없음");
+      ok(/KJ SSOP Rev\.01/.test(q(e, ".ck-src").textContent), "체크리스트 머리 기준 문서");
+      ok(/KJ SSOP Rev\.01 4\.2\.16 · 별첨 25 · 9\.9/.test(q(e, ".au-print .au-psop").textContent.replace(/\s+/g, " ")), "인쇄 관련근거 칸");
+      /* 편집 — 구분자 정리 · 비우면 칸 삭제 */
+      q(e, '[data-ck-edit="c1"]').click();
+      eq(q(e, "#ac-sop").value, "4.2.16 · 별첨 25 · 9.9");
+      q(e, "#ac-sop").value = "4.2.16,  별첨 25"; clickOk(e);
+      const c1 = e.S.data.audits[0].checklist[0];
+      eq(c1.sop, "4.2.16 · 별첨 25");
+      q(e, '[data-ck-edit="c1"]').click(); q(e, "#ac-sop").value = "  "; clickOk(e);
+      ok(!("sop" in c1), "비우면 지움");
+      c1.sop = "4.2.16";
+      /* 기준 문서 고르기 */
+      q(e, "#au-sop").click();
+      ok(q(e, '#modal-box input[name=au-sopd][value="ds1"]').checked, "지금 기준 선택됨");
+      ok(!q(e, '#modal-box input[name=au-sopd][value="d4"]'), "SSOP 아닌 문서는 후보 아님");
+      q(e, '#modal-box input[name=au-sopd][value=""]').checked = true; clickOk(e);
+      ok(!("sopDoc" in e.S.data.audits[0]), "지정 안 함");
+      const r2 = q(e, '.ck-row[data-cid="c1"]');
+      eq(r2.querySelector(".ck-sop-k").textContent, "SSOP"); ok(!r2.querySelector("a.ck-sopc") && r2.querySelector("span.ck-sopc"), "문서 없으면 글자만");
+      ok(!/KJ SSOP|Rev\.01|pages\s*:\s*\{\s*"/.test(read("js/audit.js")), "조항 대조 자료 · 쪽 번호는 공용 DB 에만(코드에 없음)");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+      /* manager — 민감보안정보 원본 링크 없음 · 편집 없음 */
+      const m = makeEnv(); loginAs(m, "manager");
+      m.S.data.docs = DOCS.concat([SSOPD]); m.S.data.audits = mk();
+      m.w.SemisAudit.setState({ tab: "list", sel: "a1" }); go(m, "audit");
+      const mr = q(m, '.ck-row[data-cid="c1"]');
+      ok(mr && mr.querySelectorAll("span.ck-sopc").length === 3 && !mr.querySelector("a.ck-sopc"), "SSI → 글자만");
+      ok(!q(m, "#au-sop"), "manager 기준 고르기 없음");
+      eq(m.errors.length, 0, m.errors.join("|")); m.w.close();
     });
     t("TA09 화면 위계: 새 화면 머리말 강조 버튼 ≤ 1 · 관리 동작은 글자 버튼 · 버튼에 그림 문자 없음 · SeMIS.user 는 값(함수 아님)", () => {
       const e = makeEnv(); loginAs(e, "admin");
