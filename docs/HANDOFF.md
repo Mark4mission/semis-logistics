@@ -7,10 +7,10 @@
 
 | 항목 | 값 |
 |---|---|
-| 현재 버전 | **v1.47.1** (2026-10-09) — 메인 데스크(문서 접수 · AI 판독 · 확인 후 반영, v1.47.0) + 사진 머리말 위 글자 버튼 대비. 직전 v1.46.0 — 이름 ARGOS · 메뉴 2판(탭 묶음) |
+| 현재 버전 | **v1.48.0** (2026-10-10) — 디자인 '화물 태그'(Mark 선택 B안) · 지원 시스템 카드(검색 · 메인 데스크 · 아르고) · 공통 패널 모달 · 부엉이 경비대원 '아르고'(3D/SVG) · 메인 데스크 → 패널. 다음은 세션 ② 아르고 AI 도우미(Project 문서 `claude/argos-next-sessions.md`) |
 | 접속 주소 | https://mark4mission.github.io/semis-logistics/ |
 | 저장소 | GitHub `Mark4mission/semis-logistics` (공개) · Mac `~/SeMIS_Logistics` |
-| 테스트 | `npm test` 532건 전부 통과(v1.47.1) |
+| 테스트 | `npm test` 539건 전부 통과(v1.48.0) |
 | 백엔드 | Supabase `mzyuzrxkdcpzxojenwat` — 테이블 `semis_logi_store`(세션 RLS), **비공개** 버킷 `semis-logi-files`, 비공개 스키마 `semis_logi_private`(계정 · 세션 · 로그인 시도 · 접속 기록 · 권한표), RPC `semis_logi_*`, Edge Function `semis-logi-files`(서명 URL · 이수증 판독 · 데스크 판독 · 사본, v11) · `semis-logi-ai`(AI 요약) · `semis-logi-favicon` · `semis-logi-adsb`(운항, pg_cron 2분) |
 
 ## 2. 새 세션 시작
@@ -28,7 +28,8 @@ Claude가 할 일(순서대로):
 1. `git clone --depth 1 https://github.com/Mark4mission/semis-logistics.git /home/claude/logi` (컨테이너에서 clone 가능 — push는 불가)
 2. `cd /home/claude/logi && npm install && npm test` — 기준선 통과 확인
 3. 이 문서 §4 · §6 · §7 확인 후 작업 시작(지난 경위는 `docs/HISTORY.md` 를 grep)
-4. 디자인 작업이면 Impeccable 스킬을 세션에 설치: `git clone --depth 1 https://github.com/pbakaus/impeccable.git /tmp/imp && mkdir -p ~/.claude/skills && cp -r /tmp/imp/.claude/skills/impeccable ~/.claude/skills/` → `~/.claude/skills/impeccable/scripts/impeccable context` (PRODUCT.md 없음 — 좁은 개선은 그대로 진행 가능)
+4. 화면 확인 하네스(v1.48 세션에서 씀 — 저장소 밖 스크래치, 필요하면 다시 만든다): playwright 가 저장소 파일을 `http://logi.local/` 로 내주고 supabase 는 whoami · GET 만 가짜 응답(저장 POST 는 서버로 보내지 않고 성공처럼 답함 · 함수 호출 403), 로그인은 `sessionStorage semisl:tok` + 가짜 whoami. 운영 메뉴 구조는 SQL 로 이름 · 순서 · 숨김만 뽑아 가짜 자료에 넣는다(임시 세션으로 운영 자료 전체를 읽는 방식은 2026-10-10 권한 정책에 막힘)
+5. 디자인 작업이면 Impeccable 스킬을 세션에 설치: `git clone --depth 1 https://github.com/pbakaus/impeccable.git /tmp/imp && mkdir -p ~/.claude/skills && cp -r /tmp/imp/.claude/skills/impeccable ~/.claude/skills/` → `~/.claude/skills/impeccable/scripts/impeccable context` (PRODUCT.md 없음 — 좁은 개선은 그대로 진행 가능)
 
 ## 3. 배포 절차 (컨테이너 → Mac → GitHub Pages)
 
@@ -56,7 +57,8 @@ Claude가 할 일(순서대로):
 | 허브 | 메뉴 (탭 묶음은 [탭 · 탭]) | 들어갈 정보 기준 |
 |---|---|---|
 | (최상위) | 대시보드 | — |
-| 홈 `hub-home` | 메인 데스크(hq) · 일정관리 · 회의록 · 운항 현황 · 바로가기 (+ 링크) | 매일 보는 것 · 문서 접수 |
+| (패널 맨 위) | **지원 카드**(v1.48) — 검색(Ctrl K) · 메인 데스크(hq) · 아르고(모듈이 있을 때, 세션 ②). 패널을 접었을 때 · 태블릿 · 모바일은 상단바 아이콘 3개 | 메뉴가 아니라 어디서나 여는 도구 |
+| 홈 `hub-home` | 일정관리 · 회의록 · 운항 현황 · 바로가기 (+ 링크) | 매일 보는 것 |
 | 화물 보안 `hub-sec` | 화물보안 대시보드 · 보안검색 현황 · 검색장비 관리 · 보안 처리 대장 · 상용화주 · RA · 협력사 · 보안요원 · (예정) 보안구역 출입 | 화물 · 검색 · 장비 · 보안요원 운영 |
 | 점검 · 교육 `hub-aud` | 점검 · 교육 대시보드 · 점검 · 순찰 `bd-check`[보안 기록부 · 순찰일지] · 수검 대응 `bd-audit`[수검 · 지적사항 · 자체 보안점검(선택)] · 보안교육 `bd-edu`[이수 · 자격 · 전파교육] | 주기적으로 기록하는 것 |
 | 비상 · 연락 `hub-ops` | 팀위기대응 (SERP) · 위협전화 대응 · 연락처 `bd-contact`[업무 연락처 · 비상연락망 · 체계도 · 위기대응 조직] | 사람 · 연락처 · 비상 절차 |
@@ -68,6 +70,7 @@ Claude가 할 일(순서대로):
 - 이전(`migrateMenus`, 대시보드 메뉴 `mv: 2` 로 한 번): 시드 메뉴를 시드 자리(소속 · 순서)로, 이름은 옛 기본 이름일 때만 새 이름(`RENAMED`), 운영자가 만든 링크 · 숨김은 그대로. 운영 메뉴 데이터는 시스템관리자(menus 쓰기 4)가 새 버전으로 접속할 때 저장된다
 - 옛 화면이 묶음 소속을 풀어 저장해도 다음 정규화가 시드 묶음으로 되돌린다. 설정에서 묶음을 지우면 안의 메뉴는 허브로 옮겨진다
 - 탭이 하나만 보이면(나머지 숨김 · 권한 밖) 탭 줄은 숨는다. 지금 운영 데이터는 **순찰일지가 숨김**이라 '점검 · 순찰'에 보안 기록부만 보인다
+- **메뉴가 아닌 기능(v1.48)**: `PANEL_ONLY`(지금 desk)는 시드에 없고, 운영 menus 에 남아 있으면 `normalizeData()` 가 지운다(ensureSeedMenus 가 되살리지 않음). 운영 menus 저장은 시스템관리자가 v1.48 로 처음 접속할 때 — 그 전에도 각 화면은 정규화로 메뉴를 숨긴다
 - 새 메뉴: `defaultMenus()` 시드에 한 줄(탭 묶음이면 `parent: "bd-…"`, `tab: "짧은 이름"`) → 운영 데이터에 없으면 `ensureSeedMenus()` 가 시드 자리에 넣는다
 
 ### 4-2. 모듈 (라우트 · 파일 · 권한)
@@ -75,7 +78,9 @@ Claude가 할 일(순서대로):
 | 라우트 | 파일 | 권한 | 내용 |
 |---|---|---|---|
 | dashboard | modules.js · hero3d.js | all | 3D 화물 태그(무재해 · 보안등급) · 오늘 · 띠(검색 환경 · 위협전화 · SERP · 수검 · 운항) · 공지 · 결정사항 · 모듈 구축 현황 |
-| desk | desk.js · docread.js | hq | **메인 데스크** — 문서 올리기(끌어다 놓기 · 다른 화면에서 놓아도 · 모바일 촬영 · 머리말 버튼) → AI 판독 → 반영안 확인 · 수정 → 반영(이수 기록 + 다음 이수 기간 일정 · 일정 · 전파교육 · 수검 지적 · 처리 대장 · 하드카피 집계 · 문서 서가) · 보관만 · 접수 대장 |
+| (패널) desk | desk.js · docread.js | hq | **메인 데스크**(v1.48 부터 라우트 화면이 아니라 공통 패널) — 지원 카드 · 상단바 · 어디서나 끌어다 놓기(보던 화면 그대로) · `#/desk`(대시보드 위에 패널) · 검색 결과로 연다. 탭 [올리기 · 확인 대기][접수 대장 — A4 Print]. 머리 부엉이 표정 = 판독 중 thinking · 반영 직후 happy · 판독 실패 alert. 문서 올리기 → AI 판독 → 반영안 확인 · 수정 → 반영(이수 기록 + 다음 이수 기간 일정 · 일정 · 전파교육 · 수검 지적 · 처리 대장 · 하드카피 집계 · 문서 서가) · 보관만 |
+| (공통) | panel.js | — | **공통 패널 모달** `SeMIS.ui.panel(o)` = `SemisPanel.open(o)` — 검색 · 메인 데스크 · 아르고 |
+| (공통) | argo-owl.js | — | **부엉이 아르고** `SemisOwl.mount(el, { size, state })` · `SemisOwl.svg(state, size)` |
 | schedule | calendar.js | mgr | 일정(담당자 다중 · 12색 · 반복 · 미리알림) · 점검 기한 · 수검 일정 연동 |
 | minutes | minutes.js | mgr | 회의록 · QR 참석 서명 · 결정사항 |
 | flight | flightcore.js · flightops.js | all | 에어제타 화물기 15대 ADS-B 위치 · 인천 입출항 |
@@ -112,7 +117,7 @@ Claude가 할 일(순서대로):
 - **v1.39 보안교육 이수 등록(배포용 edu.html — 새 컬렉션 없음, training 칸 추가)**: people `apt{직무: 임명일}` · `emp`(사번, v1.39.2 — 대조 키 `edu_emp_key` = 영문 · 숫자 소문자, 앞 KJ 뺌) · `src: "self"` · `selfAt` / records `src: "self"` · `selfAt` · `chkAt` · `chkBy`(안전보안파트 확인). 비공개 표 `semis_logi_private.edu_links`(코드 12자 · 제목 · 기한(그날 23:59:59 KST) · active · target training|eduTest) · `edu_tickets`(sha256, 3시간) · `edu_uploads`(경로 · 표 · used_by) · `edu_submits`(제출 원본 결과 — 같은 sid 재전송은 저장된 결과 반환) · `edu_hits`(IP 제한). 공개 RPC(anon): `semis_logi_edu_info(p_k)` · `semis_logi_edu_ticket(p_k, p_pow)`(작업증명 = 로그인과 같은 challenge) · `semis_logi_edu_submit(p_k, p_ticket, p)`, 관리(hq): `semis_logi_edu_links()` · `semis_logi_edu_link_save(p)`, 서비스 권한만: `semis_logi_edu_claim(…)` · `semis_logi_edu_read_ok(p_ticket, p_path)`(v1.39.2 판독 전 확인 · 횟수 · 과정 목록)(파일 함수가 부름). 병합 = 순수 함수 `semis_logi_private.edu_merge(t, p, m)`. 시험 행 `eduTest`(권한표 9/9 — 시스템관리자만 target 'eduTest' 링크를 만들 수 있음). 제출은 계정 세션이 아니라 check_base(409)를 타지 않고, 열린 화면은 변경 알림으로 다시 받는다(updated_by `anon/edu-self`)
 - **v1.35 점검 표시 · 하드카피(새 컬렉션 · 권한표 변경 없음)**: `seclogCfg.vis` = { 양식id: { m: "dim" | "hide", msg? } }(msg 는 기본 '하드카피본 확인'과 다를 때만, 표시는 넣지 않음) · `selfCheckCfg.vis` = { 별표 id: 같은 모양 } · 보안 기록부 하드카피 집계 = `seclog` 안 한 줄 { id: "hc-"+양식id, tid, hc: true, marks{ 주기키: ok | ng | miss }, cnt{ "YYYY-MM": 건수 }(편별 · 수시), updatedAt/By } — 날짜가 없어 `logs()` · 대시보드 기록 집계에 안 잡힘 · 자체 보안점검 하드카피 기록 = `selfChecks` 안 { id, form, hc: true, date, insp, find, open, note, createdAt/By, updatedAt/By } — status 없음, `recs()` 에서 빠지고 `hcRecs()` 로 셈. 쓰기 권한: vis 는 화면에서 admin 만(서버 권한표는 seclogCfg 3 · selfCheckCfg 3 그대로)
 - **CARES 위해물품 월 집계(v1.36)**: `js/cares.js` 묶음 `haz`(10분 캐시, 따로 요청할 때만) = CARES Firestore `hazStats` 목록(GET) → `SemisCares.hazMonth(ym)` · `hazSeries(n)` · `ymKST(off)` · `HAZ_CATS` · `HAZ_URL`. 문서 = { total, cat:{liquid,powder,mixed,other,none}, loc:{'1','2','3',etc}, day, withdrawn, review } — CARES 함수(hazStatsOnWrite)가 만들고 공개 읽기. 기록 원본 `hazFinds`(AWB · 업체 · 근무자)는 CARES 비공개라 Logistics 는 읽지 않는다(테스트 HZ01). 분류 색 #2b59c3 · #d97706 · #9d174d · #0d9488(dataviz 검증기 --pairs all 통과)
-- **메인 데스크(v1.47)**: 컬렉션 `desk`(권한표 3/3, 마이그레이션 `semis_logi_security_26_desk`) = { cfg{ areas{ security · safety · industrial · dg } — 분야별 일정 담당(이름 쉼표 구분 — 공용 DB 에만, 화면 '분야별 담당'), log[최근 500 — { id, at, by, file{ name, size, url, type(pdf · image · docx · hwpx · xlsx · pptx · text · legacy · other) }, status(reading · wait · done · kept), err, type(cert · notice · dissem · audit · special · hardcopy · other), title, summary, ai(확인 대기 중 판독 결과 — 반영 · 보관하면 지움), acts[{ k, label, route }], doneAt, doneBy }] }
+- **메인 데스크(v1.47 · v1.48 패널)**: 컬렉션 `desk`(권한표 3/3, 마이그레이션 `semis_logi_security_26_desk`) = { cfg{ areas{ security · safety · industrial · dg } — 분야별 일정 담당(이름 쉼표 구분 — 공용 DB 에만, 화면 '분야별 담당'), log[최근 500 — { id, at, by, file{ name, size, url, type(pdf · image · docx · hwpx · xlsx · pptx · text · legacy · other) }, status(reading · wait · done · kept), err, type(cert · notice · dissem · audit · special · hardcopy · other), title, summary, ai(확인 대기 중 판독 결과 — 반영 · 보관하면 지움), acts[{ k, label, route }], doneAt, doneBy }] }
   - 파일: 원본은 `desk/`(열람 · 올리기 3). 반영할 때 Edge `copy` 로 대상 폴더에 사본(이수 기록 training · 일정 schedules · 전파교육 dissem · 수검 audits · 처리 대장 cases · 서가 docs / 민감 docs-ssi) — 대상 화면 열람 등급을 따르게
   - 판독: DOCX · HWPX · XLSX · PPTX · TXT 는 화면(`js/docread.js`)이 글을 뽑아(문단 · 표 칸 ` | ` · 엑셀 날짜 서식 · 6만 자) 보내고, PDF(15MB) · 이미지(긴 변 2400px JPEG, 5MB)는 함수가 저장소 원본을 읽는다. HWP · DOC · XLS · PPT 구 형식은 판독 불가(보관 · 수동 반영). AI 에 보내는 목록 = 교육 과정 · 수검 · 기록부 양식 · 처리 유형 · 서가 묶음 · 전파 구분(이름 · 담당자는 보내지 않음). 결과는 화면이 다시 검사(`SemisDesk.clean` — 목록 밖 id · 틀린 날짜 · 시각은 비움)
   - 반영: 이수 기록(사번 → 이름 순으로 재직자 맞춤, 없으면 새 인원 · 같은 사람 · 과정 · 수료일이 있으면 기본 꺼짐 · 유효기한은 계산값과 다를 때만) + 다음 이수 기간 일정(id `dsk_tr_<인원>_<묶음>` — 다시 반영하면 덮어씀, 지침 제13조는 1년 되는 날 30일 전 · 위험물은 만료 3개월 전, 지났으면 오늘) / 일정(색: 회의 파랑 · 교육 초록 · 점검 · 심사 빨강 · 규정 · 절차 갈색 · 기한 빨강 · 행사 · 견학 회색, 회의실 = 장소에 '화물터미널' + '회의실', 담당 = 분야별 담당) / 전파교육(대상 파트 전부) / 수검(기존 또는 새로 + 지적 → 일정 연동) / 처리 대장 / 하드카피 집계(주기 양식은 그 주기 확인 · 이상, 수시 양식은 그 달 건수 더하기) / 문서 서가
@@ -163,6 +168,8 @@ Claude가 할 일(순서대로):
 
 18. **버튼 위계(v1.41, Mark: "동일한 버튼을 여러 개 만들어 헷갈리게 하지 말고 중요한 버튼은 강조, 덜 중요하거나 관리자용은 텍스트화 · 작게" — 사이트 전반)**: 머리말 강조(`.btn-primary`)는 하나. 관리 · 설정 동작(표시 관리 · 양식 · 폴더 관리 · 엑셀 반영 · 기본 정보 · 등록 페이지 등)은 머리말에서 `link-btn head-link`(글자 버튼). 카드 · 행마다 반복되는 동작은 강조하지 않는다(`btn-ghost` 또는 작은 아이콘 `mt-btn`). 같은 동작을 두 곳에 두지 않는다(예: 제목 = 원문 열기, 행 클릭 수정 대신 연필 아이콘 하나). 버튼에 그림 문자(이모지) 금지 — `SeMIS.icon`. 문서 서가의 '문서 추가'는 카드마다 하나(묶음은 등록 창에서 고름). 테스트 TA09
 19. **주석은 '왜'만(v1.45)**: 코드 주석에는 버전 · 날짜 · 결정 경위 · 바뀐 내력을 쓰지 않는다(그건 이 문서 §7 · §8 과 docs/HISTORY.md). 남길 것 = 보안 제약 · 규정 근거 · 브라우저 함정 · 데이터 모양 · 경고. 파일 머리는 역할 1~2줄, 800줄 넘는 파일만 `/* ── 구역 ── */` 한 줄 표지. 새 메뉴는 `defaultMenus()` 에만 넣으면 운영 데이터에 없을 때 `ensureSeedMenus()` 가 시드 순서 자리에 넣는다(예정 메뉴는 넣지 않음)
+20. **공통 패널(v1.48)** — 검색 · 메인 데스크 · 아르고처럼 '어디서나 여는 큰 화면'은 `SeMIS.ui.panel({ id, title, sub, mascot(부엉이 상태) | icon, tabs[{ id, label, badge }], tab, onTab, render(body, h), actions, onActs, print, focus, onClose, cls })`. 폼 입력은 지금처럼 `openModal`(작은 모달). 패널이 열려 있으면 `openModal` · `toast` · 말풍선 · 액션 시트가 패널 안에 붙는다(밖은 inert). 지원 카드 기능은 `SeMIS.registerSupport(id, { ok, badge, open })`, 옛 주소 처리는 `SeMIS.registerPanelRoute(id, fn)`, 원격 변경 때 다시 그리기는 `SeMIS.onRerender(fn)`. 패널 본문의 표 정돈은 `SeMIS.tidyTables(body)`. Esc 는 안쪽 모달 → 패널 순으로 하나씩
+21. **화물 태그 문법(v1.48, Mark 선택 B안)** — 크림 종이(`--tag` · `--tag-2`) · 앰버 띠 · 절취선(`--tag-perf`) · 페트롤 잉크(`--tag-ink`)는 지원 카드 · 패널 · 선택 상태(탭 · 세그먼트 · 메뉴) · 배지 · 표 머리에만. 카드 · 업무 본문은 흰 바탕 그대로. 종이 위 보조 글자도 `--text-2`/`--text-3`. 부엉이는 그림이라 이모지 금지 규칙과 무관하되 메뉴 · 버튼 이름에는 넣지 않는다
 
 ## 7. 미결 · 주의 (열린 일만 — 끝나면 HISTORY.md 로)
 
@@ -176,12 +183,17 @@ Claude가 할 일(순서대로):
 - **공통 도우미**: 모듈마다 비슷한 isISO · uid · telHref · copyText 가 따로 있음(메시지 · 동작이 조금씩 다름) · serp · threat 응대 화면 공통 코드
 - **메인 데스크 실사용 확인**: 실제 이수증 · 공문 · 점검 결과 · 처리 보고서 · 대장 스캔으로 판독 품질을 본 뒤 기본값(문서 구분별 기본 선택 · 일정 색 · 미리알림) 조정. 위험물 분야 담당은 비어 있음(화면 '분야별 담당'). 접수 대장 '지우기'는 시스템관리자만 원본까지 지운다(hq 는 기록만 — 원본은 저장소 관리의 연결 없는 파일)
 - **저장소 정리**: 판독 시험 파일 3건(`desk/…_zz-test-notice.txt` · `desk/…_zz-test-cert.pdf` · `schedules/…_zz-test-notice.txt`) — 시스템 설정 › 저장소 관리(연결 없는 파일)에서 삭제
+- **v1.48 메뉴 저장**: 시스템관리자가 v1.48 로 한 번 접속하면 운영 menus 에서 '메인 데스크' 항목이 지워져 저장된다. 배포 직후 열려 있던 옛 탭은 새로고침
+- **정규화 검증 범위(v1.48)**: 운영 자료 전체 사본으로는 확인하지 못함(임시 세션 생성이 권한 정책에 막힘) — 운영 메뉴 구조(SQL 로 이름 · 순서 · 숨김만)로 옛/새 `normalizeData` 비교: 메인 데스크 1건만 빠지고 나머지 61건 · 다른 컬렉션 동일 · 두 번째 정규화 변화 없음
+- **아르고(세션 ②)**: 지원 카드 · 상단바의 아르고 칸은 `SeMIS.hasModule("argo")` 일 때만 보인다(내부 전 계정, 협력업체 · 서명 세션 제외). 세션 ②에서 `registerModule("argo")` + `registerSupport("argo", { open })` 로 패널을 붙이면 된다(머리 `mascot` 상태 연동)
+- **부엉이 3D**: 48px 이상 자리(패널 머리 · 빈 화면)만 3D — 첫 사용 때 three.js(약 0.6MB, 대시보드 3D 와 같은 파일) 로드. 렌더러 하나를 나눠 쓰고 30fps · 화면 밖/숨은 탭 정지 · 평균 28ms 넘으면 모두 SVG
 - **AI**: 문서 판독은 `semis-logi-files`(desk-read)가 한다. `semis-logi-ai` 요약 함수는 부르는 화면 없음 — 쓰지 않으면 정리 대상
 
 ## 8. 작업 기록 (최근 — 전체는 HISTORY.md §C)
 
 | 버전 | 날짜 | 내용 |
 |---|---|---|
+| v1.48.0 | 10-10 | **디자인 '화물 태그'(B안) · 지원 카드 · 공통 패널 · 아르고** — 허브 패널 맨 위 지원 카드(검색 · 메인 데스크 배지 · 아르고, 권한별) · 패널 접힘/태블릿/모바일은 상단바 아이콘 · 공통 패널 모달 `SeMIS.ui.panel`(dialog · Esc · 바깥 누르기 · 포커스 가두기 · 스크롤 잠금 · 열고 닫는 움직임 · 야경 실루엣 · 모바일 전체 화면 · 더보기 시트 · A4 Print) · 통합 검색과 메인 데스크를 패널로(메뉴 · 라우트 화면 제거, `#/desk` 는 대시보드 위 패널, 끌어다 놓으면 보던 화면 그대로) · 검색어 없을 때 허브별 메뉴 · 제목에 검색어가 모두 있으면 위로 · 부엉이 경비대원 아르고(로우폴리 3D + 같은 모양 SVG, 상태 4종) · 탭 · 세그먼트 · 메뉴 선택 · 배지 · 표 머리 · 폼 모달에 태그 문법 · 모바일 요약 띠 키보드 스크롤. axe WCAG 2.1 AA 12 화면 0건. 테스트 UI01~UI06 · DK12 (539 통과) |
 | v1.47.1 | 10-09 | 사진 머리말(허브 배너) 위 글자 버튼(`head-link` — 폴더 관리 · 분야별 담당 등)이 어두운 사진에 묻히던 것 → 밝은 글자(모바일 흰 머리말은 그대로) |
 | v1.47.0 | 10-09 | **메인 데스크** — 홈 허브 첫 메뉴 · 머리말 버튼(hq). 문서 올리기(어느 화면에서나 끌어다 놓기 · 모바일 촬영) → AI 판독(Edge `desk-read`, 워드 · 한글 · 엑셀 · PPT 는 화면이 글 추출) → 반영안 확인 · 수정 → 반영(이수 기록 + 다음 이수 기간 일정 · 일정 · 전파교육 · 수검 지적 · 처리 대장 · 하드카피 집계 · 문서 서가) · 보관만 · 접수 대장. 서버: 권한표 desk 3/3 · 폴더 desk 3/3 · op copy. 테스트 DK01~DK11 (532 통과) |
 | v1.46.0 | 10-09 | **ARGOS** — 이름 변경(화면 · 인쇄 · 이수 등록 페이지) · 메뉴 2판(탭 묶음 5 · 협력사 → 화물 보안 · 계약 → 규정 · 문서 · 이름 정리 · 현황판 · CAR 삭제 · 예정만 있는 허브 숨김) · 모듈 템플릿 사고 보고로 · 인계서 정리(지난 기록 HISTORY.md) |

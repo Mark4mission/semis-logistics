@@ -3,7 +3,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.47.1";
+  const VERSION = "1.48.0";
   const APP_NAME = "ARGOS";
   /* 데이터 캐시는 탭 sessionStorage 에만(탭 닫기·로그아웃 시 소멸). 화면 설정(LS_UI)만 localStorage */
   const LS_DATA = "semisl:data";
@@ -180,7 +180,6 @@ const SeMIS = (() => {
       m("dashboard", "대시보드", "🏠", "dashboard", "all", null, { mv: MENU_VER }),
 
       h("hub-home", "홈", "home"),
-      m("desk", "메인 데스크", "📥", "desk", "hq", "hub-home"),
       m("schedule", "일정관리", "📅", "schedule", "mgr", "hub-home"),
       m("minutes", "회의록", "🗒️", "minutes", "mgr", "hub-home"),
       m("flight", "운항 현황", "✈️", "flight", "all", "hub-home"),
@@ -253,6 +252,8 @@ const SeMIS = (() => {
     threat: ["테러 위협전화 대응", "위협전화 대응"]
   };
   const menuKey = (m) => m.type === "module" ? "m:" + m.module : "i:" + m.id;
+  /* 메뉴가 아니라 지원 카드 · 패널로 여는 기능 — 운영 메뉴에 남아 있으면 정규화가 지운다 */
+  const PANEL_ONLY = ["desk"];
   function migrateMenus(dash) {
     if (!dash || (Number(dash.mv) || 0) >= MENU_VER) return;
     const seed = defaultMenus();
@@ -397,7 +398,7 @@ const SeMIS = (() => {
   function normalizeData() {
     const before = JSON.stringify(DATA);
     if (!Array.isArray(DATA.menus) || !DATA.menus.length) DATA.menus = defaultMenus();
-    DATA.menus = DATA.menus.filter(m => m && typeof m === "object" && m.id);
+    DATA.menus = DATA.menus.filter(m => m && typeof m === "object" && m.id && !(m.type === "module" && PANEL_ONLY.indexOf(m.module) >= 0));
     // 허브 아이콘 보정 — 알 수 없는 키는 folder
     DATA.menus.forEach(m => { if (m.type === "group" && (!m.ico || !ICONS[m.ico])) m.ico = "folder"; });
     ensureSeedMenus();
@@ -806,9 +807,13 @@ const SeMIS = (() => {
       <div class="ds-ring-c"><span class="ds-ring-p">${p}%</span>${sub ? `<span class="ds-ring-s">${esc(sub)}</span>` : ""}</div>
     </div>`;
   }
+  /* 열린 패널(모달 대화상자)이 있으면 그 안 — 밖은 inert 라 보이지도 눌리지도 않는다 */
+  const layerHost = () => (typeof window !== "undefined" && window.SemisPanel && window.SemisPanel.host()) || document.body;
   function toast(msg, isErr) {
     const wrap = $("#toast-wrap");
     if (!wrap) return;
+    const h = layerHost();
+    if (h && wrap.parentNode !== h) h.appendChild(wrap);
     const t = document.createElement("div");
     t.className = "toast" + (isErr ? " err" : "");
     t.textContent = msg;
@@ -819,6 +824,8 @@ const SeMIS = (() => {
 
   /* ── 모달 ── */
   function openModal(html, opts) {
+    const ov = $("#modal-overlay"), h = layerHost();
+    if (ov && h && ov.parentNode !== h) h.appendChild(ov);
     const box = $("#modal-box");
     box.classList.toggle("wide", !!(opts && opts.wide));
     box.innerHTML = html;
@@ -861,6 +868,13 @@ const SeMIS = (() => {
     return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) +
       " " + p(d.getHours()) + ":" + p(d.getMinutes());
   }
+  function printHeadHTML(title) {
+    return '<div class="ph-sys">' + esc(APP_NAME) + ' <span>에어제타 인천화물팀 안전보안파트</span></div>' +
+      '<div class="ph-title">' + esc(title) + '</div>' +
+      '<div class="ph-meta">출력일시 ' + esc(printStamp()) +
+        ' · 출력자 ' + esc((currentUser && currentUser.name) || "-") +
+        ' · ' + esc((ROLE_LABEL[currentUser && currentUser.role] || "")) + '</div>';
+  }
   function printView(route) {
     const view = $("#view");
     if (!view) return;
@@ -871,12 +885,7 @@ const SeMIS = (() => {
       head.id = "print-head";
       head.className = "print-only";
     }
-    head.innerHTML =
-      '<div class="ph-sys">' + esc(APP_NAME) + ' <span>에어제타 인천화물팀 안전보안파트</span></div>' +
-      '<div class="ph-title">' + esc(title) + '</div>' +
-      '<div class="ph-meta">출력일시 ' + esc(printStamp()) +
-        ' · 출력자 ' + esc((currentUser && currentUser.name) || "-") +
-        ' · ' + esc((ROLE_LABEL[currentUser && currentUser.role] || "")) + '</div>';
+    head.innerHTML = printHeadHTML(title);
     if (view.firstChild !== head) view.insertBefore(head, view.firstChild);
     setTimeout(() => { try { window.print(); } catch (e) { toast("인쇄를 시작할 수 없습니다.", true); } }, 60);
   }
@@ -908,6 +917,61 @@ const SeMIS = (() => {
   const modules = {};
   function registerModule(id, def) { modules[id] = def; }
   function hasModule(id) { return !!modules[id]; }
+
+  /* ── 지원 카드(검색 · 메인 데스크 · 아르고) — 허브 패널 맨 위 카드, 패널을 접었을 때 · 태블릿 · 모바일은 상단바 아이콘.
+     권한: 검색 = 서명 세션 빼고 / 메인 데스크 = 내부 hq 이상 / 아르고 = 내부 전 계정(모듈이 있을 때만) */
+  const support = {};
+  const SUPPORT_IDS = ["search", "desk", "argo"];
+  function registerSupport(id, def) { support[id] = def || {}; if (currentUser) renderSupport(); }
+  function supportOk(id) {
+    const role = currentUser && currentUser.role;
+    if (!currentUser || role === "signer") return false;
+    const internal = role !== "vendor";
+    if (id === "search") return true;
+    if (id === "desk") return internal && roleRank() >= 3 && !!support.desk && !(support.desk.ok && !support.desk.ok());
+    if (id === "argo") return internal && hasModule("argo");
+    return false;
+  }
+  function openSupport(id) {
+    if (!supportOk(id)) return false;
+    const s = support[id];
+    if (s && typeof s.open === "function") s.open();
+    else if (id === "argo") navigate("argo");
+    return true;
+  }
+  const SUP_LABEL = { search: "통합 검색", desk: "메인 데스크", argo: "아르고" };
+  function renderSupport() {
+    if (typeof document === "undefined") return;
+    let n = 0;
+    SUPPORT_IDS.forEach(id => {
+      const ok = supportOk(id);
+      if (ok) n++;
+      const s = support[id] || {};
+      let badge = "";
+      if (ok && typeof s.badge === "function") { try { const v = s.badge(); badge = v ? String(v) : ""; } catch (e) { badge = ""; } }
+      [$("#sup-" + id), $(id === "search" ? "#hdr-search-btn" : "#hdr-" + id)].forEach(b => {
+        if (!b) return;
+        b.hidden = !ok;
+        const nb = b.querySelector(".sup-n");
+        if (nb) { nb.textContent = badge; nb.hidden = !badge; }
+        const lb = SUP_LABEL[id] + (badge ? " — 확인 대기 " + badge + "건" : "") + (id === "search" ? " (Ctrl K)" : "");
+        b.setAttribute("aria-label", lb);
+        b.title = lb;
+        if (id === "argo" && ok && !b.querySelector(".owl-svg") && window.SemisOwl) {
+          const ow = b.querySelector(".sup-owl");
+          if (ow) ow.innerHTML = window.SemisOwl.svg("idle", b.id === "sup-argo" ? 34 : 26);
+        }
+      });
+    });
+    const card = $("#sup-card");
+    if (card) { card.hidden = !n; card.dataset.n = String(n); }
+    const hs = $("#hdr-sup");
+    if (hs) hs.hidden = !n;
+  }
+
+  /* 패널로 여는 주소(#/desk 등) — 옛 링크 · 즐겨찾기로 오면 대시보드를 그리고 그 위에 패널을 연다 */
+  const panelRoutes = {};
+  function registerPanelRoute(id, fn) { panelRoutes[id] = fn; }
 
   function currentRoute() {
     const h = location.hash.replace(/^#\//, "");
@@ -979,9 +1043,22 @@ const SeMIS = (() => {
     if (hub) view.setAttribute("data-hub", hub.id); else view.removeAttribute("data-hub");
   }
 
+  /* 화면을 다시 그린 뒤(원격 변경 · 권한 변경 등) — 열린 패널도 따라 그리게 */
+  const viewHooks = [];
+  function onRerender(fn) { if (typeof fn === "function") viewHooks.push(fn); }
   function renderView() {
+    renderViewNow();
+    viewHooks.forEach(fn => { try { fn(); } catch (e) { /* 패널 다시 그리기 실패는 화면을 막지 않는다 */ } });
+  }
+  function renderViewNow() {
     let route = currentRoute();
     const view = $("#view");
+    const pr = panelRoutes[route];
+    if (pr && currentUser && currentUser.role !== "signer") {
+      try { history.replaceState(null, "", "#/dashboard"); } catch (e) { /* 주소만 못 바꿈 */ }
+      route = currentRoute() === route ? "dashboard" : currentRoute();
+      setTimeout(() => { try { pr(); } catch (e) { /* 열지 못함 */ } }, 0);
+    }
     if (route !== lastViewRoute) { lastViewRoute = route; mEditRoute = ""; view.classList.remove("m-editing"); }   // 화면을 옮기면 편집 모드 끔
     view.innerHTML = "";
     applyViewWidth(view, route);
@@ -1399,8 +1476,7 @@ const SeMIS = (() => {
     if (util) $$(".rail-btn[data-route]", util).forEach(b => { b.onclick = () => navigate(b.dataset.route); });
     renderTabbar();
     highlightNav(currentRoute());
-    const dk = $("#hdr-desk");
-    if (dk) { const mn = menuForModule("desk"); dk.hidden = !(modules.desk && mn && navVisible(mn) && role !== "vendor" && role !== "signer"); }
+    renderSupport();
   }
 
   /* 허브 전환 — 레일 클릭. 좁은 화면·패널 접힘 상태에서는 패널이 떠서 열린다. */
@@ -1540,6 +1616,7 @@ const SeMIS = (() => {
     if (sw) sw.classList.toggle("vendor-hide", lite);
     $$("[data-search-open]").forEach(b => b.classList.toggle("vendor-hide", lite));
     renderSecBadge();
+    renderSupport();
     $("#app-version").textContent = "v" + VERSION;
   }
   function renderSecBadge() {
@@ -1669,6 +1746,7 @@ const SeMIS = (() => {
     const sheetLogout = $("#sheet-logout");
     if (sheetLogout) sheetLogout.addEventListener("click", logout);
     $("#menu-toggle").addEventListener("click", togglePanel);
+    ["desk", "argo"].forEach(id => [$("#sup-" + id), $("#hdr-" + id)].forEach(b => { if (b) b.addEventListener("click", () => openSupport(id)); }));
     $("#sidebar-backdrop").addEventListener("click", closeOverlays);
     const sc = $("#sheet-close");
     if (sc) sc.addEventListener("click", closeOverlays);
@@ -1677,7 +1755,7 @@ const SeMIS = (() => {
     });
     document.addEventListener("keydown", (e) => {
       if (e.key !== "Escape") return;
-      if (!$("#modal-overlay").classList.contains("hidden")) { closeModal(); return; }
+      if (!$("#modal-overlay").classList.contains("hidden")) { e.preventDefault(); closeModal(); return; }
       closeOverlays();
     });
     /* 화면 폭이 바뀌면 떠 있는 패널·시트를 정리 (태블릿 회전 등) */
@@ -1720,6 +1798,8 @@ const SeMIS = (() => {
        SeMIS.icon(name, size)                          선 아이콘 (이모지 대신) */
   const ui = {
     icon,
+    /* 공통 패널 모달(js/panel.js) — 검색 · 메인 데스크 · 아르고 */
+    panel(o) { return typeof window !== "undefined" && window.SemisPanel ? window.SemisPanel.open(o) : null; },
     head(o) {
       o = o || {};
       return '<div class="page-head"><div class="page-title">' + esc(o.title || "") + '</div>' +
@@ -1838,6 +1918,8 @@ const SeMIS = (() => {
   function showTip(btn) {
     clearTimeout(tipTimer);
     const box = tipBox();
+    const h = layerHost();
+    if (h && box.parentNode !== h) h.appendChild(box);
     if (tipFor && tipFor !== btn) tipFor.setAttribute("aria-expanded", "false");
     tipFor = btn;
     box.textContent = btn.getAttribute("data-tip") || "";
@@ -1884,7 +1966,7 @@ const SeMIS = (() => {
       if (b && kb) showTip(b);
     });
     document.addEventListener("focusout", (ev) => { if (ev.target.closest && ev.target.closest(".help-tip")) hideTip(120); });
-    document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && tipEl && tipEl.classList.contains("on")) { ev.stopPropagation(); hideTip(); } }, true);
+    document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && tipEl && tipEl.classList.contains("on")) { ev.stopPropagation(); ev.preventDefault(); hideTip(); } }, true);
     window.addEventListener("scroll", () => { if (tipFor) hideTip(); }, true);
   }
 
@@ -2085,6 +2167,12 @@ const SeMIS = (() => {
     try {
       view.classList.toggle("m-editing", editingNow());
       $$(".page-head", view).forEach(tidyHead);
+      /* 모바일에서 가로로 밀어 보는 요약 띠 — 키보드로도 스크롤할 수 있게(WCAG 2.1.1) */
+      $$(".stat-row", view).forEach(r => {
+        const sc = isMobile() && r.scrollWidth > r.clientWidth + 2;
+        if (sc && r.getAttribute("tabindex") !== "0") { r.setAttribute("tabindex", "0"); r.setAttribute("role", "group"); r.setAttribute("aria-label", "요약 수치"); }
+        else if (!sc && r.hasAttribute("tabindex")) { r.removeAttribute("tabindex"); r.removeAttribute("role"); r.removeAttribute("aria-label"); }
+      });
       tidyTables(view);
       tidyFolds(view);
       tidyTabs(view);
@@ -2134,12 +2222,12 @@ const SeMIS = (() => {
         '<button type="button" class="asheet-item' + (it.danger ? " danger" : "") + '" data-as="' + i + '"' + (it.disabled ? " disabled" : "") + '>' +
         '<span class="asheet-ico" aria-hidden="true">' + (it.icon || "") + '</span><span>' + esc(it.label) + '</span></button>').join("") +
       '</div><button type="button" class="asheet-cancel" data-as-close>취소</button></div>';
-    document.body.appendChild(w);
+    layerHost().appendChild(w);
     $$("[data-as-close]", w).forEach(b => { b.onclick = closeActionSheet; });
     $$("[data-as]", w).forEach(b => {
       b.onclick = () => { const it = items[Number(b.dataset.as)]; sheetBack = null; closeActionSheet(); if (it && it.run) it.run(); };
     });
-    w.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); closeActionSheet(); } });
+    w.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); e.preventDefault(); closeActionSheet(); } });
     const raf = (typeof window !== "undefined" && window.requestAnimationFrame) || ((f) => setTimeout(f, 16));
     raf(() => { w.classList.add("on"); const pn = w.querySelector(".asheet-panel"); if (pn) { try { pn.focus({ preventScroll: true }); } catch (e) {} } });
     return w;
@@ -2157,7 +2245,8 @@ const SeMIS = (() => {
     signCodeFor, signCodeFromHash, signUrlFor, signSubmit,
     setAccounts, sessionLost, sessionUpdated, devSession, restoreSession, login, enterApp,
     renderNav, renderHeader, renderSecBadge, renderView, renderPlannedView,
-    printView, printTitle, attachPrintBtn, markHub,
+    printView, printTitle, printHeadHTML, attachPrintBtn, markHub,
+    registerSupport, renderSupport, openSupport, supportOk, registerPanelRoute, PANEL_ONLY, tidyTables, onRerender,
     icon, ui, ICONS, HUB_ICONS, hubOf, hubOfDeep, hubList, hubEntries, utilEntries, homeHubId,
     isLinkGroup, linkChildren, isIntranet, hostOf, openHub, hubHomeRoute, togglePanel, openSheet,
     LINK_ICONS, LINK_TONES, favOk, linkIconHTML, linkCardHTML, menuForModule,

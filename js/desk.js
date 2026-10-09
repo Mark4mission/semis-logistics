@@ -1,4 +1,5 @@
 /* 메인 데스크 — 업무 문서를 올리면 AI 가 읽고 반영안을 낸다. 확인 · 수정 후 '반영'하면 각 화면 자료에 들어간다.
+   화면은 공통 패널(지원 카드 · 상단바 · 어디서나 끌어다 놓기 · #/desk 주소로 연다): 탭 [올리기 · 확인 대기] [접수 대장(A4 인쇄)].
    교육 이수증 → 이수 기록 + 다음 이수 기간 일정 / 공문 · 회의 · 행사 → 일정 / 전파 통보 → 보안 전파교육 / 점검 결과 → 수검 지적사항 /
    보안 처리 보고서 → 보안 처리 대장 / 기록부 · 대장 스캔 → 하드카피 집계 + 문서 서가 / 그 밖 → 문서 서가.
    DATA.desk = { cfg{ areas{ security, safety, industrial, dg } — 분야별 일정 담당(이름은 공용 DB 에만) },
@@ -348,9 +349,17 @@
   };
   function repaint() {
     if (repaintT) return;
-    repaintT = setTimeout(() => { repaintT = null; if (routeNow() === MOD) SeMIS.renderView(); else if (SeMIS.renderNav) SeMIS.renderNav(); }, 30);
+    repaintT = setTimeout(() => {
+      repaintT = null;
+      if (window.SemisPanel && SemisPanel.isOpen(PID)) SemisPanel.refresh(PID, headPatch());
+      if (SeMIS.renderSupport) SeMIS.renderSupport();
+    }, 30);
   }
-  const routeNow = () => (typeof location !== "undefined" ? location.hash.replace(/^#\//, "") : "") || "dashboard";
+  let mood = "", moodT = null;      // 부엉이 — 반영 직후 happy · 실패 직후 alert (잠깐)
+  function setMood(m) {
+    mood = m; clearTimeout(moodT);
+    moodT = setTimeout(() => { mood = ""; repaint(); }, 2600);
+  }
 
   async function intake(list) {
     if (!canW()) { toast("메인 데스크는 안전보안파트 이상만 쓸 수 있습니다.", true); return; }
@@ -400,7 +409,7 @@
     const e = findLog(id) || (V().log.unshift(e0), e0);
     e.status = "wait";
     if (ai) { e.ai = ai; e.type = ai.type; e.title = ai.title; e.summary = ai.summary; delete e.err; }
-    else { e.ai = null; e.err = err; }
+    else { e.ai = null; e.err = err; setMood("alert"); }
     delete drafts[id]; delete busy[id];
     SeMIS.save(); repaint();
   }
@@ -449,6 +458,7 @@
     Object.assign(cur, { status: "done", acts: done, doneAt: new Date().toISOString(), doneBy: me() });
     delete cur.ai; delete cur.err;
     delete drafts[id]; delete busy[id];
+    setMood("happy");
     SeMIS.save(); repaint();
     toast("반영했습니다 · " + done.length + "건");
   }
@@ -565,16 +575,41 @@
         <button type="button" class="btn btn-primary btn-sm" data-do="apply"${lock || !acts.some(a => a.on) ? " disabled" : ""}>반영</button></footer></article>`;
   }
 
-  /* ── 화면 ── */
+  /* ── 패널 ── */
+  const PID = "desk";
+  let tab = "up";
   const pending = () => logs().filter(e => e.status === "wait" || e.status === "reading");
+  const reading = () => logs().filter(e => (e.status === "reading" && !stale(e)) || busy[e.id] === "read").length + temp.length;
+  function headPatch() {
+    const n = pending().length, r = reading();
+    return {
+      sub: [r ? "판독 중 " + r : "", n ? "확인 대기 " + n : ""].filter(Boolean).join(" · "),
+      mascot: mood || (r ? "thinking" : "idle"),
+      tabs: [{ id: "up", label: "올리기 · 확인 대기", badge: n || "" }, { id: "log", label: "접수 대장" }]
+    };
+  }
+  function open(t) {
+    if (!canW()) { toast("접근 권한이 없습니다.", true); return null; }
+    if (t === "up" || t === "log") tab = t;
+    return SeMIS.ui.panel(Object.assign({
+      id: PID, title: TITLE, tab, cls: "pnl-desk",
+      onTab: (x) => { tab = x; }, render: paint,
+      actions: '<button type="button" class="link-btn head-link" data-dk-areas>분야별 담당</button>',
+      onActs: (box) => { const b = box.querySelector("[data-dk-areas]"); if (b) b.onclick = areasForm; },
+      print: () => TITLE + " — 접수 대장"
+    }, headPatch()));
+  }
+  const close = () => { if (window.SemisPanel) SemisPanel.close(PID); };
+  const isOpen = () => !!(window.SemisPanel && SemisPanel.isOpen(PID));
+
   function logRows() {
     return logs().filter(e => e.status !== "wait" && e.status !== "reading" && (!filterS || e.status === filterS)).slice(0, 200);
   }
   function logHTML() {
     const rs = logRows();
     const segs = [["", "전체"], ["done", "반영"], ["kept", "보관"]];
-    return `<div class="toolbar"><h3 class="dk-h">접수 대장</h3><span class="spacer"></span>
-        <div class="seg" role="group" aria-label="상태">${segs.map(([v, lb]) => `<button type="button" class="seg-btn" data-dks="${v}" aria-pressed="${filterS === v}">${lb}</button>`).join("")}</div></div>
+    return `<div class="toolbar no-print"><div class="seg" role="group" aria-label="처리 상태">${segs.map(([v, lb]) => `<button type="button" class="seg-btn" data-dks="${v}" aria-pressed="${filterS === v}">${lb}</button>`).join("")}</div>
+        <span class="spacer"></span><small class="dk-cnt">${rs.length}건</small></div>
       ${rs.length ? `<div class="table-wrap"><table class="tbl dk-tbl"><thead><tr><th>접수</th><th>파일</th><th>구분</th><th>제목</th><th>반영</th><th>처리</th></tr></thead>
       <tbody>${rs.map(e => { const ty = TYPES[e.type]; return `<tr>
         <td class="mono">${esc(dot(String(e.at || "").slice(0, 10)))}<div class="cell-sub">${esc(e.by || "")}</div></td>
@@ -584,23 +619,30 @@
         <td class="mono">${esc(dot(String(e.doneAt || "").slice(0, 10)))}<div class="cell-sub">${esc(e.doneBy || "")}</div></td></tr>`; }).join("")}</tbody></table></div>`
         : ui.empty("접수 기록이 없습니다.")}`;
   }
-  function render(root) {
-    const w = canW();
+  function upHTML() {
     const pd = pending();
     const asNames = (SeMIS.assignees ? SeMIS.assignees() : []).map(a => a.name);
-    root.innerHTML = ui.head({ title: TITLE, actions: w ? `<button type="button" class="link-btn head-link" id="dk-areas">분야별 담당</button>` : "" })
-      + (w ? `<section class="card dk-drop no-print" id="dk-drop">
+    return `<section class="dk-drop no-print" id="dk-drop">
           <span class="dk-dico">${icon("down", 28)}</span>
           <div class="dk-dt"><b>문서를 끌어다 놓거나 선택하세요</b><small>PDF · 이미지 · 한글(HWPX) · 워드 · 엑셀 · 파워포인트 · 텍스트</small></div>
           <div class="dk-db"><button type="button" class="btn btn-primary btn-sm" id="dk-pick">${icon("plus", 16)}<span>파일 선택</span></button>
             <button type="button" class="btn btn-ghost btn-sm dk-cam" id="dk-cam">${icon("image", 16)}<span>촬영</span></button></div>
-          <input type="file" id="dk-file" multiple hidden><input type="file" id="dk-photo" accept="image/*" capture="environment" hidden></section>` : "")
+          <input type="file" id="dk-file" multiple hidden><input type="file" id="dk-photo" accept="image/*" capture="environment" hidden></section>`
       + (temp.length || pd.length ? `<section class="dk-queue" aria-label="확인 대기">
           ${temp.map(t => `<article class="dk-item is-up"><header class="dk-ih">${icon("doc", 18)}<span class="dk-fn">${esc(t.name)}</span><small class="mono">${esc(fmtSize(t.size))}</small>${ui.chip("올리는 중", "amber")}</header></article>`).join("")}
-          ${pd.map(itemHTML).join("")}</section>` : "")
-      + `<section class="card" id="dk-log">${logHTML()}</section>`
+          ${pd.map(itemHTML).join("")}</section>`
+        : `<div class="dk-none"><span class="dk-owl"></span><p>확인 대기 문서가 없습니다.</p></div>`)
       + `<datalist id="dk-dl-as">${asNames.map(n => `<option value="${esc(n)}"></option>`).join("")}</datalist>`;
-    wire(root);
+  }
+  function paint(body, h) {
+    body.innerHTML = tab === "log" ? `<section class="dk-log" id="dk-log">${logHTML()}</section>` : upHTML();
+    const pb = h && h.el ? h.el.querySelector(".pnl-print") : null;
+    if (pb) pb.hidden = tab !== "log";
+    const ow = body.querySelector(".dk-owl");
+    if (ow && window.SemisOwl) SemisOwl.mount(ow, { size: 96, state: "idle" });
+    wire(body);
+    const raf = window.requestAnimationFrame || ((f) => setTimeout(f, 16));
+    if (SeMIS.tidyTables) raf(() => SeMIS.tidyTables(body));
   }
   function setField(a, el) {
     const f = el.dataset.f;
@@ -624,8 +666,8 @@
       dz.addEventListener("drop", (ev) => { ev.preventDefault(); dz.classList.remove("on"); dragOff(); intake(Array.from((ev.dataTransfer && ev.dataTransfer.files) || [])); });
     }
     const ar = $("#dk-areas", root); if (ar) ar.onclick = areasForm;
-    $$("[data-dks]", root).forEach(b => b.onclick = () => { filterS = b.dataset.dks; SeMIS.renderView(); });
-    $$("[data-go]", root).forEach(b => b.onclick = () => { if (b.dataset.go) SeMIS.navigate(b.dataset.go); });
+    $$("[data-dks]", root).forEach(b => b.onclick = () => { filterS = b.dataset.dks; if (isOpen()) SemisPanel.refresh(PID); });
+    $$("[data-go]", root).forEach(b => b.onclick = () => { if (!b.dataset.go) return; close(); SeMIS.navigate(b.dataset.go); });
     $$(".dk-item[data-dk]", root).forEach(wireItem);
   }
   function wireItem(card) {
@@ -686,7 +728,7 @@
   }
 
   /* ── 어디서나 끌어다 놓기 — 다른 화면의 첨부 칸은 그대로(그 칸이 먼저 처리) ── */
-  const deskOn = () => { const b = document.getElementById("hdr-desk"); const app = document.getElementById("app"); return !!b && !b.hidden && !!app && !app.classList.contains("hidden"); };
+  const deskOn = () => { const app = document.getElementById("app"); return !!SeMIS.supportOk && SeMIS.supportOk("desk") && !!app && !app.classList.contains("hidden"); };
   const modalOpen = () => { const m = document.getElementById("modal-overlay"); return !!m && !m.classList.contains("hidden"); };
   const hasFiles = (ev) => !!ev.dataTransfer && Array.from(ev.dataTransfer.types || []).indexOf("Files") >= 0;
   let dragT = null;
@@ -706,20 +748,22 @@
       ev.preventDefault();
       const l = Array.from(ev.dataTransfer.files || []);
       if (!l.length) return;
-      if (routeNow() !== MOD) SeMIS.navigate(MOD);
+      tab = "up";
+      if (!isOpen()) open("up"); else SemisPanel.setTab(PID, "up");
       intake(l);
     });
-    const hb = document.getElementById("hdr-desk");
-    if (hb) hb.onclick = () => SeMIS.navigate(MOD);
   }
 
-  SeMIS.registerModule(MOD, { title: TITLE, navBadge() { const n = pending().length; return n || ""; }, render });
+  SeMIS.registerSupport("desk", { ok: canW, badge: () => pending().length || "", open: () => open() });
+  SeMIS.registerPanelRoute(MOD, () => open());
+  SeMIS.onRerender(() => { if (isOpen()) repaint(); });
   if (window.SemisSearch) SemisSearch.register({
-    id: MOD, group: TITLE, ico: "doc", module: MOD,
-    items: () => logs().map(e => ({ title: e.title || e.file.name, sub: [(TYPES[e.type] || [""])[0], dot(String(e.at || "").slice(0, 10)), (ST[e.status] || [""])[0]].filter(Boolean).join(" · "),
-      text: [e.title, e.summary, e.file.name], route: MOD }))
+    id: MOD, group: TITLE, ico: "doc", minRank: 3,
+    items: () => [{ title: TITLE, sub: "문서 올리기 · 확인 대기 " + pending().length, text: [TITLE, "문서 올리기", "접수 대장"], route: "", pick: () => open("up") }]
+      .concat(logs().map(e => ({ title: e.title || e.file.name, sub: [(TYPES[e.type] || [""])[0], dot(String(e.at || "").slice(0, 10)), (ST[e.status] || [""])[0]].filter(Boolean).join(" · "),
+        text: [e.title, e.summary, e.file.name], route: "", pick: () => open(e.status === "wait" || e.status === "reading" ? "up" : "log") })))
   });
 
   window.SemisDesk = { TYPES, KINDS, CATS, AREAS, clean, plan, check, commit, catalog, matchPerson, nextTraining, intake, read, apply, keep, folderFor, pathOf, shelfMods,
-    drafts, busy, setToday(t) { fixedToday = isISO(t) ? t : ""; } };
+    drafts, busy, open, close, isOpen, pending, get tab() { return tab; }, setToday(t) { fixedToday = isISO(t) ? t : ""; } };
 })();

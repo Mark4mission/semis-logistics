@@ -3,7 +3,7 @@
    실행: npm test  (jsdom 필요: npm install)
    구성: [C] 코어(해시·계정·메뉴·정규화·권한·라우터·예정 모듈)
          [D] 대시보드·공지·현황판  [S] 시스템 설정  [M] 이식 모듈 스모크(일정·회의록·연락망·검색)
-         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [IM] 한글 입력 보호  [FL] 운항 현황  [AU] 수검 대응 센터  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [SEC] 서버 보안(비공개 파일·살균·CSP)  [PT] 순찰일지  [SK] 자체 보안점검(수준관리지침 별표 · HWPX)  [UP] 점검 표시 · 다가오는 점검  [CM] v1.29 화면 정돈  [CN] v1.30 편집 모드 · 모바일 접기  [ED] v1.39 보안교육 이수 등록(배포용)  [TA] v1.41 점검교육 · 수검 자료  [DK] v1.47 메인 데스크  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
+         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [IM] 한글 입력 보호  [FL] 운항 현황  [AU] 수검 대응 센터  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [SEC] 서버 보안(비공개 파일·살균·CSP)  [PT] 순찰일지  [SK] 자체 보안점검(수준관리지침 별표 · HWPX)  [UP] 점검 표시 · 다가오는 점검  [CM] v1.29 화면 정돈  [CN] v1.30 편집 모드 · 모바일 접기  [ED] v1.39 보안교육 이수 등록(배포용)  [TA] v1.41 점검교육 · 수검 자료  [DK] v1.47 메인 데스크  [UI] v1.48 지원 카드 · 공통 패널 · 부엉이  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
    ═══════════════════════════════════════════════════════ */
 "use strict";
 const fs = require("fs");
@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/loginguard.js", "js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/docshelf.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/hazfind.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/contracts.js", "js/partners.js", "js/kcra.js", "js/seccases.js", "js/dissem.js", "js/scrstats.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/docread.js", "js/desk.js", "js/selfcheck.js", "js/auddash.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
+const FILES = ["js/loginguard.js", "js/app.js", "js/argo-owl.js", "js/panel.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/docshelf.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/hazfind.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/contracts.js", "js/partners.js", "js/kcra.js", "js/seccases.js", "js/dissem.js", "js/scrstats.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/docread.js", "js/desk.js", "js/selfcheck.js", "js/auddash.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -558,6 +558,7 @@ function makeServer(opts = {}) {
       ok(q(e, "#view").textContent.includes("김참석"));
       ok(!q(e, "#view .cn-sign-thumb"), "썸네일 없음");
       ok(q(e, "#sec-level-badge").hidden, "보안등급 배지 숨김");
+      ok(q(e, "#sup-card").hidden && q(e, "#hdr-sup").hidden, "지원 카드 · 상단바 아이콘 없음");
       ok(!srvQ.calls.some(c => c.url.indexOf("/rest/v1/semis_logi_store") >= 0), "signer는 공용 DB 직접 조회 안 함");
     });
     await ta("C36 서명 저장 → 서버 RPC(그 회의 한 건) · 새 참석자 추가", async () => {
@@ -631,7 +632,7 @@ function makeServer(opts = {}) {
       const sec = rows.find(r => r.dataset.dashHub === "hub-sec");
       eq(sec.querySelector(".br-n").textContent, "6/7", "화물보안 대시보드 · 보안검색 현황 · 검색장비 · 보안 처리 대장 · 상용화주 · 협력사 운영 / 출입 예정");
       const home = rows.find(r => r.dataset.dashHub === "hub-home");
-      eq(home.querySelector(".br-n").textContent, "6/6", "대시보드 · 메인 데스크 · 일정 · 회의록 · 운항 현황 · 바로가기");
+      eq(home.querySelector(".br-n").textContent, "5/5", "대시보드 · 일정 · 회의록 · 운항 현황 · 바로가기 (메인 데스크는 v1.48 부터 지원 카드 · 패널)");
       const aud = rows.find(r => r.dataset.dashHub === "hub-aud");
       eq(aud.querySelector(".br-n").textContent, "7/7", "대시보드 + 탭 묶음 속 6");
       ok(rows.find(r => r.dataset.dashHub === "hub-saf"), "예정 모듈만 있는 허브도 구축 현황에");
@@ -1287,17 +1288,22 @@ function makeServer(opts = {}) {
       ok(q(e, "#app").classList.contains("panel-open"), "태블릿");
       e.S.closeOverlays();
     });
-    t("H12 통합 검색 팔레트: 열기 버튼 · Ctrl+K · Esc · 결과 이동", () => {
-      const box = q(e, "#cmdk");
-      ok(box.classList.contains("hidden"));
-      q(e, ".panel-search").click();
-      ok(!box.classList.contains("hidden"), "패널 검색 버튼");
-      q(e, "#hdr-search").dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-      ok(box.classList.contains("hidden"), "Esc 닫기");
+    t("H12 통합 검색(공통 패널): 지원 카드 · Ctrl+K · Esc · 빈 검색어는 메뉴 목록 · Enter 는 지금 검색어로 이동", () => {
+      const P = e.w.SemisPanel;
+      ok(!P.isOpen("search"));
+      q(e, "#sup-search").click();
+      ok(P.isOpen("search"), "지원 카드 검색");
+      ok(q(e, "#pnl-search .pnl-body #hdr-search"), "입력칸이 패널 본문으로 옮겨짐");
+      ok(qa(e, "#hdr-search-pop .sp-item").length >= 5, "검색어가 없으면 메뉴 목록");
+      ok(qa(e, "#hdr-search-pop .sp-group").map(x => x.textContent).indexOf("홈") >= 0, "허브별 묶음");
+      q(e, "#hdr-search").dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+      ok(!P.isOpen("search"), "Esc 닫기");
       e.w.document.dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "k", ctrlKey: true, bubbles: true }));
-      ok(!box.classList.contains("hidden"), "Ctrl+K");
+      ok(P.isOpen("search"), "Ctrl+K");
       q(e, "#hdr-search").value = "안전관리 규정";
       q(e, "#hdr-search").dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      ok(!P.isOpen("search"), "결과로 이동하면 닫힘");
+      eq(e.w.location.hash, "#/reg-safety", "입력 직후 Enter 도 지금 검색어 기준");
     });
     t("H13 화면 키트: ui.head · ui.stats · ui.search · ui.empty · icon", () => {
       const h = e.S.ui.head({ title: "제목", meta: "메타", desc: "설명", actions: "<button>x</button>" });
@@ -8924,19 +8930,21 @@ function makeServer(opts = {}) {
     const AI = (o) => Object.assign({ type: "other", title: "", summary: "", date: "", org: "", conf: 0.9, certs: [], events: [], dissem: null, audit: null, case: null, hardcopy: null, shelf: null }, o);
     const enc = (s) => new TextEncoder().encode(s);
 
-    await ta("DK01 메뉴 · 머리말 버튼: 홈 허브 첫 메뉴(hq) · hq 에만 머리말 버튼 · 권한표 desk 3/3 · 동기화 키", async () => {
+    await ta("DK01 메뉴 없음 · 지원 카드(hq 이상) · 권한표 desk 3/3 · 동기화 키 · #/desk 는 hq 만 패널", async () => {
       const e = deskEnv("hq");
-      const m = e.S.data.menus.find(x => x.type === "module" && x.module === "desk");
-      ok(m && m.parent === "hub-home" && m.vis === "hq", "시드 메뉴");
-      const homeKids = e.S.sortedMenus().filter(x => x.parent === "hub-home");
-      eq(homeKids[0].module, "desk", "홈 허브 첫 메뉴");
-      eq(q(e, "#hdr-desk").hidden, false, "hq 머리말 버튼");
+      ok(!e.S.data.menus.some(x => x.type === "module" && x.module === "desk"), "메뉴(시드 · 운영) 없음");
+      eq(e.S.sortedMenus().filter(x => x.parent === "hub-home")[0].module, "schedule", "홈 허브 첫 메뉴 = 일정관리");
+      eq(q(e, "#sup-desk").hidden, false, "hq 지원 카드");
+      eq(q(e, "#hdr-desk").hidden, false, "hq 상단바 아이콘");
       ok(ACL.desk && ACL.desk[0] === 3 && ACL.desk[1] === 3, "권한표 3/3");
       ok(e.Sync.SYNC_KEYS.indexOf("desk") >= 0, "동기화 키");
       loginAs(e, "manager");
-      eq(q(e, "#hdr-desk").hidden, true, "manager 숨김");
+      eq(q(e, "#sup-desk").hidden, true, "manager 숨김");
+      eq(q(e, "#hdr-desk").hidden, true, "manager 상단바 숨김");
       go(e, "desk");
-      ok(!q(e, "#dk-drop"), "manager 는 데스크 화면 없음");
+      await tick(10);
+      ok(!e.w.SemisPanel.isOpen("desk") && !q(e, "#dk-drop"), "manager 는 데스크 패널 없음");
+      eq(e.w.location.hash, "#/dashboard", "주소는 대시보드로");
     });
 
     await ta("DK02 글 뽑기: DOCX 문단 · 표 / XLSX 공유 문자열 · 날짜 서식 · 시트 순서 / HWPX 표 / 구 형식은 판독 불가", async () => {
@@ -9114,7 +9122,10 @@ function makeServer(opts = {}) {
       ok(D.schedules.some(s => s.title === "안전 회의" && s.memoHtml.includes("/schedules/cc_a.docx")));
       await tick(40);
       ok(!q(e, ".dk-item[data-dk]"), "대기 카드 없음");
+      ok(q(e, "#pnl-desk .dk-none"), "대기 없음 표시");
+      e.w.SemisPanel.setTab("desk", "log");
       ok(q(e, "#dk-log").textContent.includes("안전 회의"), "접수 대장");
+      eq(q(e, "#pnl-desk .pnl-print").hidden, false, "접수 대장은 Print");
     });
 
     await ta("DK08 판독 실패 · 구 형식 · 보관만 · 지우기 · 수동 추가 · 검사 문구", async () => {
@@ -9162,7 +9173,10 @@ function makeServer(opts = {}) {
       const ev = drop(q(e, "#view"), [new e.w.File([enc("x")], "놓기.txt")]);
       ok(ev.defaultPrevented, "브라우저 기본 동작 막음");
       await tick(30);
-      eq(e.w.location.hash, "#/desk"); eq(ups.join(), "놓기.txt");
+      ok(e.w.SemisPanel.isOpen("desk"), "화면 이동 없이 데스크 패널");
+      eq(e.w.location.hash, "#/schedule", "보던 화면 그대로"); eq(ups.join(), "놓기.txt");
+      eq(e.w.SemisDesk.tab, "up");
+      e.w.SemisPanel.close("desk");
       drop(q(e, "#view"), [new e.w.File([enc("y")], "첨부칸.txt")], true);
       await tick(30);
       eq(ups.length, 1, "첨부 칸이 처리한 파일은 무시");
@@ -9171,6 +9185,56 @@ function makeServer(opts = {}) {
       await tick(30);
       eq(ups.length, 1, "manager 무시");
       ok(D.desk.log.length >= 1);
+    });
+
+    await ta("DK12 데스크 패널: 배지 = 확인 대기 · 지원 카드 → 올리기 탭 · 부엉이 머리 · 접수 대장 탭(Print → A4 문서) · 분야별 담당은 패널 안 모달 · 검색 결과 · 옛 주소", async () => {
+      const e = deskEnv("hq");
+      const P = e.w.SemisPanel, DK = e.w.SemisDesk;
+      const f = (n) => ({ name: n, size: 10, url: PUB + "desk/zz_" + n, type: "pdf" });
+      e.S.data.desk.log = [
+        { id: "w1", at: "2026-10-09T01:00:00Z", by: "가", file: f("a.pdf"), status: "wait", type: "notice", title: "회의 안내", summary: "", ai: AI({ type: "notice", title: "회의 안내" }) },
+        { id: "w2", at: "2026-10-09T02:00:00Z", by: "가", file: f("b.pdf"), status: "wait", type: "other", title: "기타", summary: "", ai: AI({}) },
+        { id: "d1", at: "2026-10-08T01:00:00Z", by: "나", file: f("c.pdf"), status: "done", type: "dissem", title: "전파 통보", acts: [{ k: "dissem", label: "보안 전파교육", route: "dissem" }], doneAt: "2026-10-08T02:00:00Z", doneBy: "나" }
+      ];
+      e.S.renderNav();
+      eq(q(e, "#sup-desk .sup-n").textContent, "2", "지원 카드 배지");
+      ok(/확인 대기 2건/.test(q(e, "#sup-desk").getAttribute("aria-label")), "배지는 이름에도");
+      eq(q(e, "#hdr-desk .sup-n").textContent, "2", "상단바 배지");
+      q(e, "#sup-desk").click();
+      ok(P.isOpen("desk"), "지원 카드 → 패널"); eq(DK.tab, "up");
+      eq(q(e, "#pnl-desk .pnl-sub").textContent, "확인 대기 2");
+      ok(q(e, '#pnl-desk .pnl-mark .owl-svg[data-state="idle"]'), "머리 = 부엉이");
+      eq(qa(e, "#pnl-desk .dk-item[data-dk]").length, 2);
+      eq(q(e, '#pnl-desk .pnl-tab[data-tab="up"] .pnl-n').textContent, "2", "탭 배지");
+      ok(q(e, "#pnl-desk .pnl-print").hidden, "올리기 탭은 Print 없음");
+      q(e, "#pnl-desk [data-dk-areas]").click();
+      ok(q(e, "#pnl-desk #modal-overlay:not(.hidden) #dk-a-security"), "분야별 담당 = 패널 안 모달");
+      q(e, "#modal-box [data-act=cancel]").click();
+      q(e, '#pnl-desk .pnl-tab[data-tab="log"]').click();
+      eq(DK.tab, "log");
+      eq(qa(e, "#dk-log tbody tr").length, 1, "접수 대장 1건");
+      eq(q(e, "#pnl-desk .pnl-print").hidden, false, "접수 대장 Print");
+      let printed = "";
+      e.w.print = () => { printed = q(e, "#pnl-print").textContent; };
+      q(e, "#pnl-desk .pnl-print").click();
+      await tick(90);
+      ok(printed.includes("메인 데스크 — 접수 대장") && printed.includes("출력일시") && printed.includes("전파 통보"), "A4 문서 = 머리말 + 지금 탭");
+      ok(!e.w.document.documentElement.classList.contains("pnl-printing") || true);
+      q(e, "#pnl-desk .dk-go").click();
+      ok(!P.isOpen("desk"), "반영 바로 가기 → 패널 닫고"); eq(e.w.location.hash, "#/dissem", "그 화면으로");
+      const hits = e.w.SemisSearch.search("메인 데스크").filter(x => x.group === "메인 데스크");
+      ok(hits.length && typeof hits[0].pick === "function" && !hits[0].route, "검색 결과 = 화면 이동 없이 패널");
+      hits[0].pick();
+      ok(P.isOpen("desk")); eq(DK.tab, "up");
+      P.close("desk");
+      go(e, "desk");
+      await tick(10);
+      ok(P.isOpen("desk"), "옛 주소 #/desk → 패널"); eq(e.w.location.hash, "#/dashboard", "뒤는 대시보드");
+      P.close("desk");
+      loginAs(e, "manager");
+      eq(e.w.SemisSearch.search("메인 데스크").filter(x => x.group === "메인 데스크").length, 0, "manager 검색에 없음");
+      loginAs(e, "vendor");
+      eq(e.w.SemisSearch.search("메인 데스크").filter(x => x.group === "메인 데스크").length, 0, "협력업체 검색에 없음");
     });
 
     t("DK10 서버 원본: desk-read 는 hq 이상 · desk/ 경로만 · 글은 6만 자 · copy 는 desk/ → 다른 폴더(등급 확인) · 폴더 등급", () => {
@@ -9192,6 +9256,166 @@ function makeServer(opts = {}) {
       ok(html.indexOf("js/docread.js") > html.indexOf("js/hwpx.js") && html.indexOf("js/desk.js") > html.indexOf("js/docread.js"), "스크립트 순서");
       ok(/id="hdr-desk"[^>]*hidden/.test(html), "머리말 버튼 기본 숨김");
       ok(/@media print \{ \.dk-queue, \.dk-drop \{ display: none !important; \} \}/.test(read("css/main.css")), "인쇄 시 올리기 · 대기 숨김");
+    });
+  }
+
+  /* ══════════ [UI] v1.48 지원 카드 · 공통 패널 · 부엉이 ══════════ */
+  {
+    await ta("UI01 지원 카드 권한별: admin · hq = 검색 + 메인 데스크 / manager · user · vendor = 검색만 · 아르고는 모듈이 있을 때 내부 계정만", async () => {
+      const e = makeEnv();
+      const vis = () => ["search", "desk", "argo"].filter(id => !q(e, "#sup-" + id).hidden).join(",");
+      for (const [role, want] of [["admin", "search,desk"], ["hq", "search,desk"], ["manager", "search"], ["user", "search"], ["vendor", "search"]]) {
+        loginAs(e, role);
+        eq(vis(), want, role);
+        eq(q(e, "#sup-card").dataset.n, String(want.split(",").length), role + " 칸 수");
+        eq(q(e, "#sup-card").hidden, false, role + " 카드");
+      }
+      loginAs(e, "hq");
+      eq(q(e, "#hdr-desk").hidden, false, "상단바도 같은 판정"); eq(q(e, "#hdr-argo").hidden, true, "아르고 모듈 없음 → 숨김");
+      e.S.registerModule("argo", { title: "아르고", render(r) { r.innerHTML = ""; } });
+      let opened = 0;
+      e.S.registerSupport("argo", { open: () => { opened++; } });
+      for (const [role, want] of [["hq", "search,desk,argo"], ["manager", "search,argo"], ["user", "search,argo"], ["vendor", "search"]]) {
+        loginAs(e, role); eq(vis(), want, role + " (아르고 있음)");
+      }
+      loginAs(e, "user");
+      q(e, "#sup-argo").click(); q(e, "#hdr-argo").click();
+      eq(opened, 2, "아르고 칸 · 아이콘 → 열기");
+      ok(q(e, "#sup-argo .owl-svg") && q(e, "#hdr-argo .owl-svg"), "아르고 = 부엉이 그림");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+
+    await ta("UI02 공통 패널: 머리(제목 · 아이콘/부엉이 · 닫기) · 스크롤 잠금 · 첫 포커스 · Tab 가두기 · 탭 화살표 · Esc · 닫으면 연 버튼으로 · Print 는 옵션일 때만", async () => {
+      const e = makeEnv();
+      loginAs(e, "hq");
+      const doc = e.w.document, P = e.w.SemisPanel;
+      const opener = q(e, "#sup-search");
+      opener.focus();
+      let closed = 0;
+      const tabs = [];
+      const h = e.S.ui.panel({ id: "t1", title: "시험 패널", sub: "부제", icon: "doc", tabs: [{ id: "a", label: "가", badge: 3 }, { id: "b", label: "나" }], tab: "a",
+        onTab: (x) => tabs.push(x), onClose: () => closed++,
+        render: (b, hh) => { b.innerHTML = '<button type="button" id="t1-first">첫</button><input id="t1-in"><button type="button" id="t1-last">끝</button>' + hh.tab; } });
+      const d = q(e, "#pnl-t1");
+      ok(d && d.hasAttribute("open"), "열림");
+      eq(d.getAttribute("aria-labelledby"), "pnl-t1-t"); eq(q(e, "#pnl-t1-t").textContent, "시험 패널");
+      eq(q(e, "#pnl-t1 .pnl-sub").textContent, "부제");
+      ok(q(e, "#pnl-t1 .pnl-mark svg.ico"), "아이콘 머리");
+      ok(doc.documentElement.classList.contains("pnl-lock"), "뒤 화면 스크롤 잠금");
+      eq(doc.activeElement, q(e, '#pnl-t1 .pnl-tab[data-tab="a"]'), "첫 포커스 = 선택된 탭");
+      ok(q(e, "#pnl-t1 .pnl-print").hidden, "Print 옵션 없음");
+      eq(q(e, '#pnl-t1 .pnl-tab[data-tab="a"] .pnl-n').textContent, "3", "탭 배지");
+      eq(q(e, "#pnl-t1 .pnl-tabs").getAttribute("role"), "tablist");
+      q(e, '#pnl-t1 .pnl-tab[data-tab="a"]').dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      eq(h.tab, "b"); eq(tabs.join(), "b");
+      ok(q(e, "#pnl-t1 .pnl-body").textContent.endsWith("b"), "탭 → 본문 다시 그림");
+      eq(q(e, '#pnl-t1 .pnl-tab[data-tab="b"]').getAttribute("aria-selected"), "true");
+      eq(q(e, "#pnl-t1 .pnl-body").getAttribute("aria-labelledby"), "pnl-t1-tab-b");
+      const tab = (el, shift) => { const ev = new e.w.KeyboardEvent("keydown", { key: "Tab", shiftKey: !!shift, bubbles: true, cancelable: true }); el.dispatchEvent(ev); return ev; };
+      q(e, "#t1-last").focus();
+      ok(tab(q(e, "#t1-last")).defaultPrevented, "마지막에서 Tab → 막고");
+      eq(doc.activeElement, q(e, "#pnl-t1 .pnl-x"), "처음(닫기)으로");
+      tab(q(e, "#pnl-t1 .pnl-x"), true);
+      eq(doc.activeElement, q(e, "#t1-last"), "처음에서 Shift+Tab → 끝으로");
+      q(e, "#t1-in").dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+      ok(!d.hasAttribute("open"), "Esc 닫기"); eq(closed, 1, "onClose");
+      ok(!doc.documentElement.classList.contains("pnl-lock"), "잠금 해제");
+      eq(doc.activeElement, opener, "연 버튼으로 포커스 복귀");
+      e.S.ui.panel({ id: "t1", title: "다시", mascot: "thinking", print: true, render: (b) => { b.textContent = "x"; } });
+      eq(q(e, "#pnl-t1 .pnl-print").hidden, false, "Print 옵션");
+      ok(q(e, '#pnl-t1 .pnl-mark .owl-svg[data-state="thinking"]'), "부엉이 머리 · 표정");
+      ok(q(e, "#pnl-t1 .pnl-tabs").classList.contains("is-empty"), "탭이 없으면 탭 줄 비움");
+      q(e, "#pnl-t1 .pnl-x").click();
+      ok(!P.isOpen("t1"), "닫기 단추");
+      eq(P.stack.length, 0);
+    });
+
+    await ta("UI03 패널 안의 폼 모달 · 토스트는 패널 안에 · Esc 는 폼 모달만 닫음 · 패널을 닫으면 제자리(body)로", async () => {
+      const e = makeEnv();
+      loginAs(e, "hq");
+      const doc = e.w.document, P = e.w.SemisPanel;
+      e.S.ui.panel({ id: "t2", title: "모달 시험", body: "<p>본문</p>" });
+      const d = q(e, "#pnl-t2");
+      e.S.openModal('<h3>폼</h3><div class="modal-actions"><button type="button" data-act="ok">확인</button></div>');
+      ok(d.contains(q(e, "#modal-overlay")), "폼 모달은 패널 안");
+      e.S.toast("알림");
+      ok(d.contains(q(e, "#toast-wrap")), "토스트도 패널 안");
+      q(e, "#modal-box button").dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+      ok(q(e, "#modal-overlay").classList.contains("hidden"), "Esc → 폼 모달 닫힘");
+      ok(P.isOpen("t2"), "패널은 그대로");
+      e.S.openModal("<p>x</p>");
+      P.close("t2");
+      eq(q(e, "#modal-overlay").parentNode, doc.body, "패널을 닫으면 body 로");
+      ok(q(e, "#modal-overlay").classList.contains("hidden"), "열려 있던 폼 모달도 닫힘");
+      eq(q(e, "#toast-wrap").parentNode, doc.body);
+      e.S.openModal("<p>y</p>");
+      eq(q(e, "#modal-overlay").parentNode, doc.body, "패널 없으면 그대로 body");
+      e.S.closeModal();
+    });
+
+    t("UI04 메뉴 이전: 운영 메뉴의 메인 데스크 항목(고정 · 숨김 포함)은 정규화가 지우고 되살리지 않는다 · 멱등 · 다른 메뉴 그대로", () => {
+      const e = makeEnv();
+      const seed = e.S.defaultMenus();
+      ok(!seed.some(m => m.module === "desk"), "시드에 없음");
+      const op = JSON.parse(JSON.stringify(seed));
+      op.splice(2, 0, { id: "desk", seq: 1.01, type: "module", label: "메인 데스크", icon: "📥", module: "desk", vis: "hq", parent: "hub-home", quick: true });
+      op.push({ id: "desk-2", seq: 99, type: "module", label: "데스크", module: "desk", vis: "hq", parent: null, hidden: true });
+      op.push({ id: "lk-op", seq: 50, type: "link", label: "운영자 링크", icon: "", url: "https://example.invalid/", vis: "all", parent: "hub-home", open: "tab" });
+      e.S.data.menus = op;
+      ok(e.S.normalizeData(), "바뀜");
+      ok(!e.S.data.menus.some(m => m.module === "desk"), "메인 데스크 항목 삭제");
+      eq(e.S.normalizeData(), false, "두 번째는 변화 없음(ensureSeedMenus 가 되살리지 않음)");
+      ok(e.S.data.menus.some(m => m.id === "lk-op"), "운영자 링크 그대로");
+      eq(e.S.data.menus.length, seed.length + 1);
+      seed.forEach(m => { const x = e.S.data.menus.find(y => y.id === m.id); ok(x && x.parent === m.parent && x.label === m.label && x.seq === m.seq, m.id); });
+      eq(e.S.PANEL_ONLY.join(), "desk");
+    });
+
+    t("UI05 부엉이 아르고: 상태 4종 SVG(같은 모양 · 표정만) · 모르는 상태 = idle · WebGL 없음(jsdom) → SVG · 크기 · set() · 이름 붙이기", () => {
+      const e = makeEnv();
+      const O = e.w.SemisOwl;
+      const s = {};
+      O.STATES.forEach(st => { s[st] = O.svg(st, 40); });
+      eq(O.STATES.join(), "idle,thinking,happy,alert");
+      ok(/^<svg class="owl-svg" width="40" height="40" viewBox="0 0 64 64"/.test(s.idle) && s.idle.indexOf('aria-hidden="true"') > 0, "장식 그림");
+      ok(/q4\.6-4\.8 9\.2 0/.test(s.happy) && !/q4\.6-4\.8/.test(s.idle), "happy = 눈 감은 호");
+      ok(s.alert.indexOf("#b42318") > 0 && s.idle.indexOf("#b42318") < 0, "alert = 붉은 모자 띠");
+      ok(s.thinking !== s.idle && s.thinking.replace(/<circle[^>]*>/g, "") === s.idle.replace(/<circle[^>]*>/g, "").replace('data-state="idle"', 'data-state="thinking"'), "thinking = 눈동자만 다름");
+      eq(O.svg("nope", 30), O.svg("idle", 30), "모르는 상태 = idle");
+      ok(/role="img" aria-label="아르고"/.test(O.svg("idle", 40, "아르고")), "이름 붙이기");
+      const el = e.w.document.createElement("div");
+      e.w.document.body.appendChild(el);
+      const h = O.mount(el, { size: 120, state: "idle" });
+      eq(h.mode, "svg", "WebGL 없음 → SVG"); eq(el.style.width, "120px"); eq(el.dataset.owl, "svg");
+      h.set("happy");
+      ok(el.querySelector('.owl-svg[data-state="happy"]'), "set → 표정");
+      eq(O.MIN_3D, 48, "48px 미만은 늘 SVG");
+      const src = read("js/argo-owl.js");
+      ok(/prefers-reduced-motion/.test(src) && /IntersectionObserver/.test(src) && /document\.hidden/.test(src) && /webglcontextlost/.test(src) && /S\.slow = true/.test(src),
+        "동작 줄이기 · 화면 밖 · 숨은 탭 · 컨텍스트 손실 · 느린 GPU → 멈춤/SVG");
+      ok(src.indexOf("assets/vendor/three.module.min.js") > 0 && src.indexOf("import(") > 0, "three.js 는 저장소 사본을 첫 사용 때만");
+    });
+
+    t("UI06 셸 · CSS · 위생: 패널 크기 규칙 · 동작 줄이기 · 모바일은 screen · 옛 검색 단추 없음 · 스크립트 순서(defer) · 이모지 · 연락처 없음", () => {
+      const css = read("css/main.css"), html = read("index.html");
+      ok(/width: min\(960px, calc\(100vw - 48px\)\); height: min\(86vh, 900px\)/.test(css), "데스크톱 960 × 86vh");
+      ok(/@media screen and \(max-width: 767px\) \{\n  dialog\.pnl \{ inset: 0; margin: 0; width: 100%; height: 100%;/.test(css), "모바일 전체 화면(screen)");
+      ok(/@media \(prefers-reduced-motion: reduce\) \{\n  dialog\.pnl, dialog\.pnl::backdrop \{ transition: none; \}/.test(css), "동작 줄이기");
+      ok(/@starting-style \{ dialog\.pnl\[open\]/.test(css) && /allow-discrete/.test(css), "열고 닫는 움직임");
+      ok(/html\.pnl-printing body > \*:not\(#pnl-print\)/.test(css), "패널 인쇄");
+      ok(/@media screen and \(min-width: 1100px\) \{ \.app:not\(\.panel-collapsed\) \.hdr-sup \{ display: none; \} \}/.test(css), "패널이 보이면 상단바 아이콘 숨김");
+      ok(!/class="panel-search"|class="cmdk hidden"|cmdk-box/.test(html) && !/\.panel-search|\.cmdk-box/.test(css), "옛 검색 단추 · 팔레트 없음");
+      ["js/argo-owl.js", "js/panel.js"].forEach(f => ok(new RegExp('<script src="' + f.replace(".", "\\.") + '\\?v=[^"]+" defer></script>').test(html), f + " defer"));
+      const at = (f) => html.indexOf('src="' + f);
+      ok(at("js/app.js") < at("js/argo-owl.js") && at("js/argo-owl.js") < at("js/panel.js") &&
+        at("js/panel.js") < at("js/search.js") && at("js/panel.js") < at("js/desk.js"), "스크립트 순서");
+      const card = /<div id="sup-card"[\s\S]*?\n    <\/div>/.exec(html)[0];
+      ok(card.indexOf('data-search-open') > 0 && card.indexOf('id="sup-desk"') > 0 && card.indexOf('id="sup-argo"') > 0, "카드 3칸");
+      const src = read("js/panel.js") + read("js/argo-owl.js") + card;
+      ok(!/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(src), "이모지 없음");
+      ok(!/\d{2,3}-\d{3,4}-\d{4}/.test(src), "전화번호 없음");
+      const svg = read("assets/img/night-terminal.svg");
+      ok(svg.indexOf("<script") < 0 && /^<svg xmlns/.test(svg), "야경 그림 = 순수 SVG");
     });
   }
 

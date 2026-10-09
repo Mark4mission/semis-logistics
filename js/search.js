@@ -1,4 +1,4 @@
-/* 전역 통합 검색(#cmdk 팔레트). 결과마다 해당 메뉴의 권한을 그대로 적용하고 대외비는 minRank로 한 번 더 막는다.
+/* 전역 통합 검색(공통 패널 — 처음 열 때 #cmdk 의 입력 · 결과 묶음을 패널 본문으로 옮긴다). 결과마다 해당 메뉴의 권한을 그대로 적용하고 대외비는 minRank로 한 번 더 막는다.
    신규 모듈은 SemisSearch.register 로 프로바이더를 등록한다. */
 "use strict";
 
@@ -53,6 +53,7 @@ const SemisSearch = (() => {
     const title = String(it.title || "").toLowerCase();
     let sc = 1;
     if (ts.some(t => title.indexOf(t) >= 0)) sc += 2;
+    if (ts.length > 1 && ts.every(t => title.indexOf(t) >= 0)) sc += 2;   // 검색어가 모두 제목에 있으면 위로
     if (ts.some(t => title.indexOf(t) === 0)) sc += 1;
     return sc;
   }
@@ -212,22 +213,21 @@ const SemisSearch = (() => {
     const k = it.ico || (it.url ? "external" : GROUP_ICO[it.group]) || "doc";
     return S().icon ? S().icon(k, 18) : esc(it.icon || "▪");
   }
-  let pop = null, input = null, wrap = null, items = [], active = -1;
+  let pop = null, input = null, wrap = null, items = [], active = -1, lastQ = null;
+  const PID = "search";
+  const isOpen = () => !!(window.SemisPanel && SemisPanel.isOpen(PID));
 
-  /* 열기·닫기는 애니메이션 없이 즉시(자주 쓰는 키보드 동작) */
+  /* 공통 패널로 연다 — 자주 쓰는 키보드 동작이라 입력칸에 바로 포커스 */
   function openPalette() {
     const u = S().user;
-    if (!u || u.role === "signer") return;
-    const box = document.getElementById("cmdk");
-    if (box) box.classList.remove("hidden");
+    if (!u || u.role === "signer" || !wrap) return;
     if (S().closeOverlays) S().closeOverlays();
-    if (input) { input.focus(); input.select(); if (input.value.trim()) renderPop(input.value); }
+    if (!isOpen()) S().ui.panel({ id: PID, title: "통합 검색", icon: "search", body: wrap, focus: "#hdr-search", cls: "pnl-search" });
+    if (input) { input.focus(); input.select(); }
+    renderPop(input ? input.value : "");
   }
   function closePalette() {
-    closePop();
-    const box = document.getElementById("cmdk");
-    if (box) box.classList.add("hidden");
-    if (input) input.blur();
+    if (window.SemisPanel) SemisPanel.close(PID);
   }
   function goItem(it) {
     closePalette();
@@ -235,39 +235,64 @@ const SemisSearch = (() => {
     if (typeof it.pick === "function") { try { it.pick(); } catch (e) { /* 화면 상태 지정 실패는 이동만 */ } }
     if (it.route) S().navigate(it.route);
   }
+  function closePop() { active = -1; }
 
-  function closePop() {
-    if (pop) pop.classList.add("hidden");
-    active = -1;
-  }
-
-  function renderPop(q) {
-    if (!pop) return;
-    const u = S().user;
-    if (!u || u.role === "signer") { closePop(); return; }
-    const ts = terms(q);
-    if (!ts.length) { closePop(); return; }
-    items = search(q);
-    active = -1;
-    if (!items.length) {
-      pop.innerHTML = '<div class="sp-empty">"' + esc(q.trim()) + '" 검색 결과가 없습니다.</div>';
-      pop.classList.remove("hidden");
-      return;
+  /* 검색어가 없을 때 — 보이는 메뉴를 허브별로(바로 이동) */
+  function homeItems() {
+    const u = S().user, out = [];
+    if (!u || u.role === "signer") return out;
+    if (isVendor()) {
+      vendorRoutes().forEach(r => {
+        const mn = S().menuForModule(r);
+        if (mn && !S().menuHidden(mn)) out.push({ group: "메뉴", title: mn.label, route: r, ico: "chevron" });
+      });
+      return out;
     }
+    (S().hubList ? S().hubList() : []).forEach(g => {
+      S().hubEntries(g.id).forEach(m => {
+        if (m.type === "bundle") {
+          const ms = S().bundleMembers(m);
+          if (ms[0]) out.push({ group: g.label, title: m.label, sub: ms.map(x => x.tab || x.label).join(" · "), route: ms[0].module, ico: "chevron" });
+        } else if (m.type === "module" && !(m.planned && !S().hasModule(m.module))) {
+          out.push({ group: g.label, title: m.label, route: m.module, ico: "chevron" });
+        }
+      });
+    });
+    return out;
+  }
+  function listHTML(list, ts) {
     let html = "", lastGroup = null;
-    items.forEach((it, i) => {
-      if (it.group !== lastGroup) {
-        html += '<div class="sp-group">' + esc(it.group) + "</div>";
-        lastGroup = it.group;
-      }
+    list.forEach((it, i) => {
+      if (it.group !== lastGroup) { html += '<div class="sp-group">' + esc(it.group) + "</div>"; lastGroup = it.group; }
       html += '<button type="button" class="sp-item" data-i="' + i + '">' +
         '<span class="sp-ico">' + icoOf(it) + "</span>" +
         '<span class="sp-txt"><span class="sp-title">' + hl(it.title, ts) + "</span>" +
         (it.sub ? '<span class="sp-sub">' + hl(snip(it.sub, ts), ts) + "</span>" : "") +
         "</span></button>";
     });
-    pop.innerHTML = html;
-    pop.classList.remove("hidden");
+    return html;
+  }
+  function renderPop(q) {
+    if (!pop) return;
+    const u = S().user;
+    if (!u || u.role === "signer") { pop.innerHTML = ""; return; }
+    const ts = terms(q);
+    active = -1;
+    lastQ = String(q == null ? "" : q);
+    if (!ts.length) {
+      items = homeItems();
+      pop.innerHTML = '<p class="sr-only" aria-live="polite"></p>' + listHTML(items, []);
+    } else {
+      items = search(q);
+      if (!items.length) {
+        pop.innerHTML = '<div class="sp-empty"><span class="sp-owl"></span><p>"' + esc(q.trim()) + '" 검색 결과가 없습니다.</p></div>' +
+          '<p class="sr-only" aria-live="polite">검색 결과 없음</p>';
+        const ow = pop.querySelector(".sp-owl");
+        if (ow && window.SemisOwl) SemisOwl.mount(ow, { size: 88, state: "thinking" });
+        return;
+      }
+      pop.innerHTML = '<p class="sr-only" aria-live="polite">' + items.length + "건</p>" + listHTML(items, ts);
+    }
     Array.prototype.forEach.call(pop.querySelectorAll(".sp-item"), el => {
       el.onclick = () => goItem(items[Number(el.dataset.i)]);
     });
@@ -292,19 +317,18 @@ const SemisSearch = (() => {
       clearTimeout(debTimer);
       debTimer = setTimeout(() => renderPop(input.value), 120);
     });
-    input.addEventListener("focus", () => { if (input.value.trim()) renderPop(input.value); });
     input.addEventListener("keydown", (e) => {
       if (e.key === "ArrowDown") { e.preventDefault(); setActive(active + 1); }
       else if (e.key === "ArrowUp") { e.preventDefault(); setActive(active - 1); }
       else if (e.key === "Enter") {
         e.preventDefault();
+        if (input.value !== lastQ) { clearTimeout(debTimer); renderPop(input.value); }
         if (active >= 0 && items[active]) goItem(items[active]);
-        else if (items.length) goItem(items[0]);
-      } else if (e.key === "Escape") { e.stopPropagation(); closePalette(); }
+        else if (terms(input.value).length && items.length) goItem(items[0]);
+      } else if (e.key === "Escape") {      // 검색칸의 기본 동작(글자 지우기) 대신 바로 닫는다
+        e.preventDefault(); e.stopPropagation(); closePalette();
+      }
     });
-
-    const box = document.getElementById("cmdk");
-    if (box) box.addEventListener("click", (e) => { if (e.target === box) closePalette(); });
 
     document.addEventListener("keydown", (e) => {
       const u = S().user;
@@ -319,9 +343,10 @@ const SemisSearch = (() => {
 
     Array.prototype.forEach.call(document.querySelectorAll("[data-search-open]"), b =>
       b.addEventListener("click", openPalette));
+    if (S().registerSupport) S().registerSupport("search", { open: openPalette });
   }
 
-  return { init, search, register, terms, open: openPalette, close: closePalette };
+  return { init, search, register, terms, open: openPalette, close: closePalette, isOpen, homeItems };
 })();
 
 if (typeof window !== "undefined") window.SemisSearch = SemisSearch;
