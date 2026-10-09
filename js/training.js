@@ -13,9 +13,14 @@
    v1.38 — 직무 · 과정 기준표를 인천화물팀 · 화물 협력사 기준으로 추림(Mark 결정 2026-10-07).
    - 범위: 항공보안 + 위험물. 여객 · 기내식 · 청소 업무와 화물 안전 필수교육(화물직무 · 지상안전 · W&B — 사내 AL-LEARNING · CSI 관리)은 넣지 않음
    - 뺀 직무: 항공사보안책임자(사내 절차상 본사 안전보안실장 · 항공보안팀장) · 항공보안교관(교육기관 강사 — 과정은 사내보안교관 자격 경로로 남김)
-   - 더한 것: 보안검색감독자 선수 과정(검색요원 초기 수료 — 지침 제18조①) · 방사선안전관리자(사내 절차 3.6)
+   - 더한 것: 보안검색요원 초기 (감독자 요건)(검색요원 초기 수료 — 지침 제18조①) · 방사선안전관리자(사내 절차 3.6)
    - 사내 근거: 「항공보안교육훈련절차」(안전보안실, 2025-09-30 개정) · 「화물서비스 교육훈련절차」(2026-02-06 개정) — 절 번호만 적는다
    - 화면: 공통 규칙 → 인천화물팀(직무군 색 순서) → 협력사 · 조업사(업체별 확인) → 그 밖의 과정
+
+   v1.44 — 팀에 해당자가 없는 직무군을 뺌(Mark 결정 2026-10-09): 보안 유관부서(관리자 · 일반요원) · 전화 접수 · 안내.
+   - 과정 c-mgr-i · c-mgr-r · c-gen-i · c-aware · c-bomb 도 기본 과정에서 뺌(기록 · 교육 기록이 가리키면 이전 때 남김)
+   - 협력사 확인 과정 '보안 유관부서 일반요원 교육 (협력사)'(지침 제29조② — 조업사 · 용역사)은 그대로
+   - '보안검색감독자 선수 과정'(법령 · 지침에 없는 말) → '보안검색요원 초기 (감독자 요건)': 감독자 지정 요건인 보안검색요원 초기과정 수료(지침 제18조①)
 
    화면
    - 인원(기본): 사람별 자격 상태 · 다음 갱신 · SSI 서약 (PC는 목록 / 이수 현황표, 모바일은 한 줄 카드)
@@ -25,7 +30,7 @@
    - SSI 서약: SeMIS v2 보안서약서 명단 조회(RPC semis_logi_pledges — 사번 · 서명 없음)
 
    데이터 DATA.training = {
-     catVer(과정 정의 판 — 2 = v1.31 정식 명칭 · 3 = v1.38 인천화물팀 기준),
+     catVer(과정 정의 판 — 2 = v1.31 정식 명칭 · 3 = v1.38 인천화물팀 기준 · 4 = v1.42 표기 · 5 = v1.44 직무군 정리),
      courses[{ id, fam, name, kind(초기|직무|인증|정기|1회), cycle(개월, 0 = 영구), rule(kr|dg|""), step(자격을 주지 않는 단계),
                hours, legal(law|intl|own), basis, org, roles[], all, vendor, who(협력사 과정 대상),
                same[](같은 교육으로 인정하는 다른 과정 id — 그 기록도 이 묶음에 셈) }] — 비면 코드 기본 과정
@@ -54,7 +59,7 @@
   const KR_WIN = 30, KR_SUSP = 6;                       // 지침 제13조: 전후 30일 · 정지 후 6개월
   const DG_WIN = 3;                                     // 기술기준 제12조②: 만료 3개월 안
   const KEEP_YEARS = 3, KEEP_LEFT_DAYS = 90;            // 지침 제32조: 기록 3년 · 퇴직 후 90일
-  const CAT_VER = 4;
+  const CAT_VER = 5;
   const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const p2 = (n) => String(n).padStart(2, "0");
   const toISO = (d) => d.getFullYear() + "-" + p2(d.getMonth() + 1) + "-" + p2(d.getDate());
@@ -104,15 +109,9 @@
     { id: "항공보안장비 유지보수요원", grp: "law", basis: "교육훈련지침 제2조17호 · 제23조, 항공보안장비 종류, 운영 및 유지관리 등에 관한 기준 제9 · 10조", who: "보안검색장비 운용자가 지정",
       qual: "초기교육(제작사 · 설치업체 교육 이수자는 초기 인정) 후 정기교육 연 1회",
       duty: "보안검색장비(X-ray · ETD 등) 관리 · 유지" },
-    { id: "보안 유관부서 관리자", grp: "law", basis: "교육훈련지침 제29조① · 사내 절차 1.3.5 · 3.3", who: "보안 유관 부서의 장 · 중간관리자",
-      qual: "초기 2시간↑ · 정기 연 2시간↑, 평가 80점↑ (미달 시 그해 재교육)", duty: "보안 유관 업무 관리 · 위기 시 대응 관리" },
-    { id: "보안 유관부서 일반요원", grp: "law", basis: "교육훈련지침 제29조② · 사내 절차 1.3.6 · 3.4", who: "화물터미널 운영 요원 · 지상조업 요원 등 (위탁업체 직원 포함)",
-      qual: "초기 2시간↑ · 정기 연 2시간↑, 평가 80점↑. 협력사 직원은 자체 교육 후 팀이 결과를 정기 확인", duty: "화물터미널 운영 · 지상조업 등 보안 유관 일반 업무 (탑재 후 항공기 감시 포함)" },
-    { id: "전화 접수자 · 안내요원", grp: "law", basis: "교육훈련지침 제28조 · 별표 17", who: "폭발물 위협전화를 받을 수 있는 직원 (녹음 가능 전화 담당 등)",
-      qual: "폭발물 위협대응 교육 1회 (정기교육 없음)", duty: "폭발물 위협전화 접수 · 대응 · 보고" },
     { id: "사내보안교관", grp: "law", basis: "교육훈련지침 제2조11호 · 제14조③ · 사내 절차 1.3.3 · 2.4", who: "소속 기관의 장이 임명 (사내 보안강사)",
       qual: "지침: 교관과정 이수 + 항공보안 경력 1년↑, 또는 해당 분야 실무 2년↑ (보안검색요원 교육은 제외). 사내 절차: 항공사 보안감독자 과정 또는 항공보안교관 과정 수료자, 또는 해당 직종 2년↑ 중 추천자",
-      duty: "자체 보안교육 실시 (화물보안 업무요원 · 보안 유관부서 등) · 교육 기록 관리" },
+      duty: "자체 보안교육 실시 (화물보안 업무요원 등) · 교육 기록 관리" },
     { id: "DGR", grp: "dg", basis: "항공안전법 제72조 · 항공위험물운송기술기준 제12 · 14조 · IATA DGR 1.5 · 화물 절차 2.9", who: "화물 운송서비스 직원(로드마스터 등 수출입 담당) · 지점 영업 담당",
       qual: "업무 배치 전 초기교육, 24개월 이내 보수교육 (만료 3개월 안 이수 시 기존 만료일 기준 연장), 24개월이 지나면 초기교육 다시. Function 7.3 = 외부 기관 집체(초기 40시간 · 보수 24시간), 7.4 = 온라인",
       duty: "위험물 접수 · 취급 · 보관 · 탑재 (기술기준 표 1-1)" },
@@ -129,13 +128,11 @@
   /* v1.31 옛 직무 이름 → 정식 명칭 (읽을 때 바꾸고, 데이터는 이전(migrate)에서 고친다) */
   const ROLE_ALIAS = { "보안감독자": "항공사보안감독자", "화물보안 요원": "화물보안 업무요원", "장비 운용자": "항공보안장비 유지보수요원", "위험물 취급자": "DGR", "SSI 취급자": "SSI" };
   const roleDef = (r) => ROLE_DEF.find(x => x.id === r) || null;
-  /* v1.37 직무군 색 (Mark 지정 5군 — v1.38 에서 책임자 · 항공보안교관을 뺌) — 그 밖(위험물 · 방사선 · SSI · ACMR · ACC3 · 사내 직무)은 '기타' 기본색.
+  /* v1.37 직무군 색 (Mark 지정 5군 — v1.38 에서 책임자 · 항공보안교관을, v1.44 에서 보안 유관부서 · 전화 접수 · 안내를 뺌) — 그 밖(위험물 · 방사선 · SSI · ACMR · ACC3 · 사내 직무)은 '기타' 기본색.
      색은 css `.rg-*` (dataviz 검증기 --pairs all 통과 · 상태 색(초록 · 호박 · 빨강 · 틸) 색상 피함), 글자는 본문 잉크 */
   const RGROUPS = [
     { id: "sup", label: "항공사 보안관리", roles: ["항공사보안감독자"] },
     { id: "scr", label: "보안검색 · 화물보안", roles: ["보안검색감독자", "보안검색요원", "항공보안장비 유지보수요원", "화물보안 업무요원"] },
-    { id: "rel", label: "보안 유관부서", roles: ["보안 유관부서 관리자", "보안 유관부서 일반요원"] },
-    { id: "tel", label: "전화 접수 · 안내", roles: ["전화 접수자 · 안내요원"] },
     { id: "ins", label: "보안교관", roles: ["사내보안교관"], fams: ["inst", "inh"], held: "항공보안교관 과정 · 사내보안교관 임명 이수자" },
     { id: "etc", label: "기타", roles: [] }
   ];
@@ -162,12 +159,16 @@
   const C = (id, fam, name, kind, cycle, o) => Object.assign({ id, fam, name, kind, cycle, rule: "", hours: "", legal: "law", basis: "", org: "", roles: [] }, o || {});
   const RAD_BASIS = "원자력안전법 · 사내 절차 3.6";
   const SUP = ["항공사보안감독자"];
+  /* 보안검색감독자 지정 요건 — 보안검색요원 초기과정 수료(지침 제18조①). '자격'은 검색요원 자격인증(OJT 후)과 헷갈려 쓰지 않음 */
+  const SCR_P = { name: "보안검색요원 초기 (감독자 요건)", hours: "40시간↑ · 평가 — 보안검색요원 초기 수료증",
+    basis: "교육훈련지침 제18조① · 별표 8 — 보안검색요원 초기과정 수료자를 감독자로 지정" };
+  const SCR_P_V3 = { name: "보안검색감독자 선수 과정", hours: "보안검색요원 초기교육 40시간↑ · 평가 (수료증)", basis: "교육훈련지침 제18조① · 별표 8 — 검색요원 초기 이수자를 감독자로" };
   const DEF_COURSES = [
     C("c-sup-i", "sup", "항공사보안감독자 초기", "초기", 12, { rule: "kr", hours: "16시간↑ · 평가 80점↑", basis: "교육훈련지침 제17조① · 별표 5 · 사내 절차 3.1.1", org: TRN_ORG, roles: SUP }),
     C("c-sup-r", "sup", "항공사보안감독자 정기", "정기", 12, { rule: "kr", hours: "연 1회 8시간↑", basis: "교육훈련지침 제17조③ · 별표 5의2 · 사내 절차 3.1.2", org: TRN_ORG, roles: SUP }),
     C("c-scr-i", "scr", "보안검색감독자 초기", "초기", 12, { rule: "kr", hours: "8시간↑ · 평가", basis: "항공보안법 제28조② · 교육훈련지침 제18조① · 별표 6", org: SCR_ORG, roles: ["보안검색감독자"] }),
     C("c-scr-r", "scr", "보안검색감독자 정기", "정기", 12, { rule: "kr", hours: "연 1회 8시간↑", basis: "교육훈련지침 제18조② · 별표 6의2", org: SCR_ORG, roles: ["보안검색감독자"] }),
-    C("c-scr-p", "scr-p", "보안검색감독자 선수 과정", "1회", 0, { hours: "보안검색요원 초기교육 40시간↑ · 평가 (수료증)", basis: "교육훈련지침 제18조① · 별표 8 — 검색요원 초기 이수자를 감독자로", org: SCR_ORG, roles: ["보안검색감독자"], same: ["c-scn-i"] }),
+    C("c-scr-p", "scr-p", SCR_P.name, "1회", 0, { hours: SCR_P.hours, basis: SCR_P.basis, org: SCR_ORG, roles: ["보안검색감독자"], same: ["c-scn-i"] }),
     C("c-scn-i", "scn", "보안검색요원 초기", "초기", 0, { step: true, hours: "40시간↑ · 평가", basis: "항공보안법 제28조② · 교육훈련지침 제20조① · 별표 8", org: SCR_ORG, roles: ["보안검색요원"] }),
     C("c-scn-o", "scn", "보안검색요원 직무(OJT)", "직무", 0, { step: true, hours: "80시간↑", basis: "교육훈련지침 제20조① · 별표 8의2", org: "소속 공항운영자등", roles: ["보안검색요원"] }),
     C("c-scn-c", "scn", "보안검색요원 자격인증", "인증", 12, { rule: "kr", hours: "OJT 후 3개월 안", basis: "교육훈련지침 제12조의2 · 제20조②", org: SCR_ORG, roles: ["보안검색요원"] }),
@@ -176,11 +177,6 @@
     C("c-cargo-r", "cargo", "화물보안 업무요원 정기", "정기", 12, { rule: "kr", hours: "연 1회 2시간↑ · 평가 80점↑", basis: "교육훈련지침 제24조 · 별표 13의2 · 사내 절차 3.2", org: "자체 또는 보안검색교육기관", roles: ["화물보안 업무요원"] }),
     C("c-equip", "equip", "항공보안장비 유지보수요원 초기", "초기", 12, { rule: "kr", hours: "40시간↑ (제작사 · 설치업체 교육 이수자는 초기 인정)", basis: "교육훈련지침 제23조 · 별표 12", org: "보안검색교육기관 (예: 한국공항공사 항공기술훈련원)", roles: ["항공보안장비 유지보수요원"] }),
     C("c-mnt-r", "equip", "항공보안장비 유지보수요원 정기", "정기", 12, { rule: "kr", hours: "연 1회 8시간↑", basis: "교육훈련지침 제23조 · 별표 12의2 · 장비 기준 제10조", org: "보안검색교육기관", roles: ["항공보안장비 유지보수요원"] }),
-    C("c-mgr-i", "mgr", "보안 유관부서 관리자 초기", "초기", 12, { rule: "kr", hours: "2시간↑", basis: "교육훈련지침 제29조① · 별표 18 · 사내 절차 3.3", org: "자체", roles: ["보안 유관부서 관리자"] }),
-    C("c-mgr-r", "mgr", "보안 유관부서 관리자 정기", "정기", 12, { rule: "kr", hours: "연 1회 2시간↑", basis: "교육훈련지침 제29조① · 별표 18의2 · 사내 절차 3.3", org: "자체", roles: ["보안 유관부서 관리자"] }),
-    C("c-gen-i", "aware", "보안 유관부서 일반요원 초기", "초기", 12, { rule: "kr", hours: "2시간↑", basis: "교육훈련지침 제29조② · 별표 18의3 · 사내 절차 3.4", org: "자체", roles: ["보안 유관부서 일반요원"] }),
-    C("c-aware", "aware", "보안 유관부서 일반요원 정기", "정기", 12, { rule: "kr", hours: "연 1회 2시간↑", basis: "교육훈련지침 제29조② · 별표 18의4 · 사내 절차 3.4", org: "자체", roles: ["보안 유관부서 일반요원"] }),
-    C("c-bomb", "bomb", "폭발물 위협대응 교육", "1회", 0, { hours: "2시간↑", basis: "교육훈련지침 제28조 · 별표 17", org: "자체", roles: ["전화 접수자 · 안내요원"] }),
     C("c-inh", "inh", "사내보안교관 임명", "1회", 0, { hours: "교관과정 + 경력 1년↑ 또는 실무 2년↑", basis: "교육훈련지침 제14조③ · 사내 절차 2.4", org: "소속 기관 (임명)", roles: ["사내보안교관"] }),
     C("c-dg-i", "dgr", "DGR 초기", "초기", 24, { rule: "dg", hours: DG_HRS_I, basis: DG_BASIS, org: DG_ORG, roles: ["DGR"] }),
     C("c-dg-r", "dgr", "DGR 정기", "정기", 24, { rule: "dg", hours: DG_HRS_R, basis: DG_BASIS, org: DG_ORG, roles: ["DGR"] }),
@@ -270,7 +266,7 @@
   }
   function chain(pid, g) {
     const ids = g.courses.map(c => c.id);
-    /* same: 다른 묶음 과정의 기록을 이 묶음 과정으로 인정(예: 검색요원 초기 → 보안검색감독자 선수) */
+    /* same: 다른 묶음 과정의 기록을 이 묶음 과정으로 인정(예: 검색요원 초기 → 보안검색요원 초기 (감독자 요건)) */
     const alias = {};
     g.courses.forEach(c => (Array.isArray(c.same) ? c.same : []).forEach(s => { if (ids.indexOf(s) < 0 && !alias[s]) alias[s] = c; }));
     const rs = records().filter(r => r.pid === pid && (ids.indexOf(r.cid) >= 0 || alias[r.cid]) && isISO(r.date))
@@ -579,12 +575,14 @@
     return m % 12 === 0 ? (m / 12) + "년" : m + "개월";
   }
 
-  /* ─────── 데이터 이전(멱등) — v1.31 정식 명칭 · v1.38 인천화물팀 기준 ───────
+  /* ─────── 데이터 이전(멱등) — v1.31 정식 명칭 · v1.38 인천화물팀 기준 · v1.44 직무군 정리 ───────
      코드 기본 과정 id 는 코드 정의로 바꾸고, 직접 넣은 과정 중 위험물(DGR)은 24개월 · dg 규칙, 교관은 1회(영구) · 직무 없음(보유)으로.
      기준표에서 뺀 직무(RETIRED_ROLES)는 과정의 대상 직무에서만 지운다(사람의 직무는 그대로 — 남아 있으면 '기타' 사내 직무로 보임).
      같은 묶음 · 구분이 없는 기본 과정은 덧붙인다. 옛 직무 이름은 정식 명칭으로.
      SeMIS v2 에서 옮긴 기록(src semis-v2)의 고정 유효기한(13개월 근사)은 지워 규칙으로 다시 셈한다. */
-  const RETIRED_ROLES = ["항공사보안책임자", "항공보안교관"];
+  const RETIRED_ROLES = ["항공사보안책임자", "항공보안교관", "보안 유관부서 관리자", "보안 유관부서 일반요원", "전화 접수자 · 안내요원"];
+  /* v1.44 (catVer 5) 기본 과정에서 뺀 과정 — 기록 · 교육 기록이 가리키지 않을 때만 지운다(가리키면 남겨 '그 밖의 과정'으로) */
+  const RETIRED_COURSES = ["c-mgr-i", "c-mgr-r", "c-gen-i", "c-aware", "c-bomb"];
   /* v1.42 (catVer 4) 표기 정리 — 책임자 없음(감독자만) · 위험물 → DGR. 과정 내용(시간 · 기관 · 근거)은 그대로, 이름만 */
   const NAME_V4 = [[/항공사보안책임자\s*·\s*감독자/g, "항공사보안감독자"], [/(^|[^가-힣])책임자\s*·\s*감독자/g, "$1항공사보안감독자"],
     [/^\s*(IATA\s*)?(DGR\s*)?위험물\s*교육(?=\s|$)/, "DGR"]];
@@ -637,6 +635,14 @@
       });
     });
     if (from < 3) (Array.isArray(t.records) ? t.records : []).forEach(r => { if (r && r.src === "semis-v2" && r.expire) r.expire = ""; });
+    if (from < 5 && Array.isArray(t.courses)) {
+      const refs = [].concat(Array.isArray(t.records) ? t.records : [], Array.isArray(t.sessions) ? t.sessions : []);
+      const used = (id) => refs.some(x => x && x.cid === id);
+      t.courses = t.courses.filter(c => !(c && RETIRED_COURSES.indexOf(c.id) >= 0 && !used(c.id)));
+      t.courses.forEach(c => { if (c && Array.isArray(c.roles)) c.roles = c.roles.filter(r => RETIRED_ROLES.indexOf(r) < 0); });
+      const p = t.courses.find(c => c && c.id === "c-scr-p");
+      if (p) ["name", "hours", "basis"].forEach(k => { if (p[k] === SCR_P_V3[k]) p[k] = SCR_P[k]; });
+    }
     t.catVer = CAT_VER;
     return JSON.stringify(t) !== before;
   }
@@ -914,7 +920,7 @@
     if (!ps.length) return ui.empty("재직 인원이 없습니다.");
     const ssiCol = ps.some(isSSI);
     return `<div class="table-wrap"><table class="tbl tbl-cap tr-gtbl" data-no-stack style="--cap:1480px">
-      <thead><tr><th>이름</th>${gs.map(x => `<th>${esc(famShort(x))}</th>`).join("")}${ssiCol ? "<th>SSI 서약</th>" : ""}</tr></thead>
+      <thead><tr><th>이름</th>${gs.map(x => `<th${famShort(x) !== x.name ? ` title="${esc(x.name)}"` : ""}>${esc(famShort(x))}</th>`).join("")}${ssiCol ? "<th>SSI 서약</th>" : ""}</tr></thead>
       <tbody>${ps.filter(p => ids.indexOf(p.id) >= 0).map(p => `<tr data-pid="${esc(p.id)}">
         <td class="c-name"><button type="button" class="tbl-open" data-tperson="${esc(p.id)}">${esc(p.name)}</button><div class="tr-rmini">${sortRoles(rolesOf(p)).map(r => `<span>${rgDot(rgOf(r))}${esc(r)}</span>`).join("")}${heldOnly(p).map(({ g, names }) => names.map(nm => `<span class="is-held">${rgDot(g)}${esc(nm)} (보유)</span>`).join("")).join("")}</div></td>
         ${gs.map(x => { const c = g.cells.find(k => k.p === p && k.g === x);

@@ -6003,12 +6003,10 @@ button.hc-d:focus-visible { outline: 2px solid var(--primary); outline-offset: 1
 }
 
 /* ═════════ v1.37 보안교육 · 자격 관리 — 직무군 색 (js/training.js RGROUPS) ═════════
-   5군 + 기타. 색 = dataviz 검증기 --pairs all 통과(CVD 10.2 · 정상 시각 19.6) · 상태 색(초록 · 호박 · 빨강 · 틸) 색상 피함.
+   3군 + 기타(v1.44 보안 유관부서 · 전화 접수 · 안내 뺌). 색 = dataviz 검증기 --pairs all 통과(CVD 10.2 · 정상 시각 19.6) · 상태 색(초록 · 호박 · 빨강 · 틸) 색상 피함.
    표식은 점(8px) + 옅은 바탕, 글자는 본문 잉크. 기타는 기본색 + 빈 고리(색이 아니라 모양으로도 구분) */
 .rg-sup { --rc: #3a4e9d; --rt: #dfe3ef; --rs: #ebedf5; --rb: #c4cae2; }
 .rg-scr { --rc: #0d98ce; --rt: #d8eff7; --rs: #e7f5fa; --rb: #b6e0f0; }
-.rg-rel { --rc: #72842b; --rt: #e8ebdd; --rs: #f1f3ea; --rb: #d5dabf; }
-.rg-tel { --rc: #cb6398; --rt: #f7e6ef; --rs: #faeff5; --rb: #efd0e0; }
 .rg-ins { --rc: #932643; --rt: #eedce1; --rs: #f4e9ec; --rb: #dfbec7; }
 .rg-etc { --rc: #8a979b; --rt: #eef2f1; --rs: #f5f7f6; --rb: #d6dedb; }
 .rg-dot { display: inline-block; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--rc, #8a979b); vertical-align: middle; }
