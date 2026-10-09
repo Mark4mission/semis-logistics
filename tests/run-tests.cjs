@@ -321,8 +321,6 @@ function makeServer(opts = {}) {
   /* ══════════ [C] 코어 — 해시·계정 ══════════ */
   {
     const e = makeEnv();
-    t("C01 sha256 표준 벡터(abc)", () => eq(e.S.sha256("abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"));
-    t("C02 pwHash = sha256(SeMISv2::pw) — v2와 동일 SALT(관리자 암호 공유)", () => eq(e.S.pwHash("xyz"), e.S.sha256("SeMISv2:" + ":" + "xyz")));
     t("C03 코드에 계정 해시·암호 없음(서버 전용) — BASE_USERS 제거", () => {
       eq(e.S.BASE_USERS, undefined);
       FILES.forEach(f => ok(!/["'][0-9a-f]{64}["']/.test(read(f)), f + ": 64자리 해시 문자열"));
@@ -1119,52 +1117,18 @@ function makeServer(opts = {}) {
 
   /* ══════════ [H] 허브 내비게이션 (v1.8) — 마이그레이션 · 레일 · 패널 · 모바일 탭/시트 · 화면 키트 ══════════ */
   {
-    /* v1.7 이하 메뉴 구조(그룹 8개) 픽스처 */
-    const OLD = () => {
-      const g = (id, label, seq, extra) => Object.assign({ id, seq, type: "group", label }, extra || {});
-      const m = (id, module, parent, seq, extra) => Object.assign({ id, seq, type: "module", label: id, icon: "▪", module, vis: "mgr", parent }, extra || {});
-      return [
-        m("dashboard", "dashboard", null, 0, { vis: "all" }), m("schedule", "schedule", null, 1), m("minutes", "minutes", null, 2),
-        m("board", "board", null, 3, { planned: true, desc: "현황판 설명 열 글자 이상", hidden: true }),
-        g("grp-rule", "규정 / 기준", 4), m("reg-sec", "reg-sec", "grp-rule", 5, { hidden: true }), m("reg-safety", "reg-safety", "grp-rule", 6), m("reg-dg", "reg-dg", "grp-rule", 7),
-        g("grp-cargo", "화물 보안", 8), m("scr-status", "scr-status", "grp-cargo", 9, { planned: true, desc: "x".repeat(12) }),
-        g("grp-safety", "안전 관리", 10), m("risk", "risk", "grp-safety", 11, { planned: true, desc: "x".repeat(12) }),
-        g("grp-inspect", "점검", 12), m("car", "car", "grp-inspect", 13, { planned: true, desc: "x".repeat(12) }),
-        g("grp-edu", "교육", 14), m("training", "training", "grp-edu", 15, { planned: true, desc: "x".repeat(12) }),
-        g("grp-partner", "협력사", 16), m("partners", "partners", "grp-partner", 17, { planned: true, desc: "x".repeat(12) }),
-        g("grp-emergency", "비상", 18), m("contacts", "contacts", "grp-emergency", 19, { quick: true }),
-        g("grp-ref", "참고", 20, { hidden: true }),
-        { id: "ref-semis", seq: 21, type: "link", label: "SeMIS v2", icon: "🛡️", url: "https://semis.pe.kr/", vis: "all", parent: "grp-ref", quick: true },
-        { id: "my-sheet", seq: 22, type: "link", label: "내 시트", icon: "🔗", url: "https://docs.google.com/y", vis: "all", parent: "grp-ref" },
-        { id: "top-link", seq: 23, type: "link", label: "최상위 링크", icon: "🔗", url: "https://example.com/", vis: "all", parent: null },
-        m("vault", "vault", null, 24, { vis: "hq" }), m("settings", "settings", null, 25, { vis: "admin" })
-      ];
-    };
-    const eM = makeEnv({ preData: { version: 1, menus: OLD() } });
-    const mn = (id) => eM.S.data.menus.find(x => x.id === id);
-    t("H01 v1.7 메뉴 → 허브 구조 마이그레이션 (그룹 8개 → 허브 6개, 소속 재배치)", () => {
-      const groups = eM.S.data.menus.filter(x => x.type === "group").map(x => x.id);
-      eq(groups.join(","), "hub-home,hub-sec,hub-saf,hub-aud,hub-ops,hub-doc");
-      eq(mn("schedule").parent, "hub-home"); eq(mn("board").parent, "hub-home");
-      eq(mn("reg-safety").parent, "hub-doc"); eq(mn("scr-status").parent, "hub-sec"); eq(mn("risk").parent, "hub-saf");
-      eq(mn("car").parent, "hub-aud"); eq(mn("training").parent, "hub-aud");
-      eq(mn("partners").parent, "hub-ops"); eq(mn("contacts").parent, "hub-ops");
-      eq(mn("my-sheet").parent, "hub-doc", "운영자가 만든 링크도 이동");
-      eq(mn("top-link").parent, "hub-home", "최상위 사용자 항목은 홈 허브로");
-      ["dashboard", "vault", "settings"].forEach(id => eq(mn(id).parent, null, id + " 최상위 유지"));
-    });
-    t("H02 마이그레이션: 숨김·바로가기 보존, 숨긴 구버전 그룹의 하위는 개별 숨김으로", () => {
-      eq(mn("board").hidden, true); eq(mn("reg-sec").hidden, true);
-      eq(mn("ref-semis").hidden, true); eq(mn("my-sheet").hidden, true);
-      eq(mn("contacts").quick, true);
-      ok(!mn("reg-safety").hidden);
-    });
-    t("H03 마이그레이션 멱등 · 허브 순서(seq) = 시드 순서", () => {
-      eq(eM.S.normalizeData(), false);
-      const seqOf = (id) => mn(id).seq;
-      ok(seqOf("dashboard") < seqOf("hub-home") && seqOf("hub-home") < seqOf("schedule") && seqOf("schedule") < seqOf("hub-sec"));
-      ok(seqOf("hub-doc") < seqOf("reg-safety") && seqOf("my-sheet") > seqOf("ref-semis"), "사용자 항목은 허브 끝");
-      ok(seqOf("settings") > seqOf("vault"));
+    t("H01 시드 메뉴 보장: 없어진 실모듈 메뉴는 시드 순서상 앞 메뉴 뒤에 다시 · 예정 메뉴는 다시 넣지 않음 · 멱등", () => {
+      const menus = makeEnv({ boot: false }).S.defaultMenus().filter(x => ["phonebook", "scr-equip", "board", "car"].indexOf(x.module) < 0);
+      menus.find(x => x.module === "training").label = "우리 교육";
+      const eS = makeEnv({ preData: { version: 1, menus } });
+      const mn = (mod) => eS.S.data.menus.find(x => x.module === mod);
+      ok(mn("phonebook") && mn("phonebook").parent === "hub-ops" && !mn("phonebook").planned, "업무 연락처 복구");
+      ok(mn("phonebook").seq > mn("crisis").seq && mn("phonebook").seq < mn("partners").seq, "위기대응 담당자 뒤");
+      ok(mn("scr-equip") && mn("scr-equip").parent === "hub-sec" && mn("scr-equip").seq > mn("sec-cases").seq, "검색장비 복구");
+      ok(!mn("board") && !mn("car"), "예정 메뉴는 넣지 않음");
+      eq(mn("training").label, "우리 교육", "운영자가 바꾼 이름 유지");
+      eq(eS.S.normalizeData(), false, "멱등");
+      eS.w.close();
     });
 
     const e = makeEnv();
@@ -1376,7 +1340,7 @@ function makeServer(opts = {}) {
     const e = makeEnv({ fetch: server.fetch });
     const { Sync } = e;
     t("Y01 SYNC_KEYS 구성(계정 자료 제외)", () =>
-      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,chatRooms,vault,regulations,equipment,crisis,fleet,audits,phonebook,training,seclog,seclogCfg,serp,serpRuns,threat,threatRuns,threatChecks,patrol,patrolCfg,patrolPeople,secPost,secPostImg,selfChecks,selfCheckCfg,docs,partners,contracts,kcra,secCases,dissem,scrStats"));
+      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,vault,regulations,equipment,crisis,fleet,audits,phonebook,training,seclog,seclogCfg,serp,serpRuns,threat,threatRuns,threatChecks,patrol,patrolCfg,patrolPeople,secPost,secPostImg,selfChecks,selfCheckCfg,docs,partners,contracts,kcra,secCases,dissem,scrStats"));
     t("Y02 SYNC_KEYS는 모두 freshData 컬렉션에 존재", () => Sync.SYNC_KEYS.forEach(k => ok(e.S.data[k] !== undefined, k)));
     await ta("Y03 로그인 전에는 서버를 부르지 않음 · 로그인 후 초기 pull + 쓰기 권한 있는 컬렉션만 시드", async () => {
       await Sync.start();
@@ -1681,17 +1645,14 @@ function makeServer(opts = {}) {
       });
       ok(e.Sync.SYNC_KEYS.includes("regulations"), "SYNC_KEYS 포함");
     });
-    t("RG02 구버전 데이터 마이그레이션: planned 해제 · vis=all → mgr · scope 보정 (멱등)", () => {
+    t("RG02 규정 데이터 보정: 알 수 없는 scope → safety · ideas 배열 (멱등)", () => {
       const e2 = makeEnv();
-      const mn = e2.S.data.menus.find(m => m.module === "reg-safety");
-      mn.planned = true; mn.desc = "준비 중"; mn.vis = "all";
       e2.S.data.regulations = [{ id: "x1", scope: "bogus" }];
       eq(e2.S.normalizeData(), true);
-      const mn2 = e2.S.data.menus.find(m => m.module === "reg-safety");
-      eq(!!mn2.planned, false); eq(mn2.desc, undefined); eq(mn2.vis, "mgr");
       eq(e2.S.data.regulations[0].scope, "safety", "알 수 없는 scope는 safety로");
       ok(Array.isArray(e2.S.data.regulations[0].ideas), "ideas 배열 보정");
       eq(e2.S.normalizeData(), false, "멱등");
+      e2.w.close();
     });
     t("RG03 3개 화면 렌더 · 통계 · 인쇄 버튼", () => {
       ["reg-sec", "reg-safety", "reg-dg"].forEach(r => {
@@ -2973,14 +2934,11 @@ function makeServer(opts = {}) {
       q(e, "#eqd-edit").click(); q(e, "#e-del").click(); clickOk(e);
       ok(!e.S.data.equipment.some(x => x.serial === "W-2"));
     });
-    t("SC16 메뉴: 화물 보안 허브 2개 운영 · 구버전 데이터의 예정 플래그 해제(멱등) · SYNC 키", () => {
+    t("SC16 메뉴: 화물 보안 허브 실메뉴 · 출입 관리는 예정 · SYNC 키", () => {
       const mn = (id) => e.S.data.menus.find(m => m.module === id);
       ok(!mn("scr-status").planned && !mn("scr-equip").planned);
       ok(!mn("kc-ra").planned && mn("access").planned);   // v1.41 상용화주 · RA 실모듈
-      mn("scr-equip").planned = true; mn("scr-equip").desc = "준비";
-      e.S.normalizeData();
-      eq(mn("scr-equip").planned, undefined); eq(mn("scr-equip").desc, undefined);
-      eq(e.S.normalizeData(), false, "두 번째는 변화 없음");
+      eq(e.S.normalizeData(), false, "변화 없음");
       ok(e.w.SemisSync.SYNC_KEYS.indexOf("equipment") >= 0);
     });
     t("SC17 통합 검색: 검색장비 대장 · 공개 저장소에 연동 키 없음", () => {
@@ -5359,21 +5317,10 @@ function makeServer(opts = {}) {
     const st = (p, f) => TR.famStatus(p, fam(f));
     const setW = (w) => Object.defineProperty(e.w, "innerWidth", { value: w, configurable: true });
     TR.setToday("2026-10-01"); A.setToday("2026-10-01");
-    t("TR01 메뉴: 점검 · 교육 허브 실메뉴 · 옛 예정 메뉴(교육 관리 · 이수증 관리) 자동 전환(멱등)", () => {
+    t("TR01 메뉴: 점검 · 교육 허브 실메뉴 · 이수증 관리 메뉴 없음", () => {
       const m = e.S.data.menus.find(x => x.module === "training");
       ok(m && !m.planned && m.parent === "hub-aud" && m.vis === "mgr"); eq(m.label, "보안교육 · 자격 관리");
       ok(!e.S.data.menus.some(x => x.module === "certs"), "이수증 관리 메뉴 없음");
-      const old = e.S.defaultMenus().map(x => x.module === "training" ? Object.assign({}, x, { label: "안전보안 교육 관리", planned: true, desc: "x" }) : x);
-      old.push({ id: "certs", seq: 99, type: "module", label: "이수증 관리", icon: "c", module: "certs", vis: "mgr", parent: "hub-aud", planned: true, desc: "y" });
-      const o = makeEnv({ preData: { version: 1, menus: old } });
-      const m2 = o.S.data.menus.find(x => x.module === "training");
-      ok(!m2.planned && !m2.desc && m2.label === "보안교육 · 자격 관리", "옛 예정 메뉴 → 실메뉴");
-      ok(!o.S.data.menus.some(x => x.module === "certs"), "이수증 관리 예정 메뉴 제거");
-      eq(o.S.normalizeData(), false, "멱등");
-      const renamed = e.S.defaultMenus().map(x => x.module === "training" ? Object.assign({}, x, { label: "우리 교육", planned: true }) : x);
-      const o2 = makeEnv({ preData: { version: 1, menus: renamed } });
-      eq(o2.S.data.menus.find(x => x.module === "training").label, "우리 교육", "운영자가 바꾼 이름 유지");
-      o.w.close(); o2.w.close();
     });
     t("TR02 데이터 · 권한표 · 파일 폴더 · 유효기한 셈 · 정식 직무 · 과정 기준", () => {
       ok(data() && Array.isArray(data().people) && Array.isArray(data().sessions));
@@ -6244,15 +6191,9 @@ function makeServer(opts = {}) {
     const rec = (tid, date, extra) => Object.assign({ id: "r" + tid + date + Math.random().toString(36).slice(2, 5), tid, date, time: "09:00", by: "점검자", checks: [], result: "ok", note: "", action: "", files: [], rounds: [] }, extra || {});
     SL.setToday("2026-10-10", "14:30"); A.setToday("2026-10-10");
 
-    t("SL01 메뉴: 예정 '안전보안 점검 일정' → 실모듈 '보안 기록부'(점검 · 교육 허브 · mgr) · 멱등 · 데이터 · 권한표 · 파일 폴더", () => {
+    t("SL01 메뉴: 보안 기록부(점검 · 교육 허브 · mgr) · 데이터 · 권한표 · 파일 폴더", () => {
       const mn = e.S.data.menus.find(m => m.type === "module" && m.module === "inspection");
       ok(mn && !mn.planned && mn.label === "보안 기록부" && mn.vis === "mgr" && mn.parent === "hub-aud");
-      const legacy = e.S.defaultMenus().map(m => m.module === "inspection" ? Object.assign({}, m, { label: "안전보안 점검 일정", icon: "🕵️", planned: true, desc: "x" }) : m);
-      const e2 = makeEnv({ preData: { version: 1, menus: legacy } });
-      const m2 = e2.S.data.menus.find(m => m.module === "inspection");
-      ok(!m2.planned && !m2.desc && m2.label === "보안 기록부" && m2.icon === "📒", "옛 예정 메뉴 전환");
-      eq(e2.S.normalizeData(), false, "멱등");
-      e2.w.close();
       ok(Array.isArray(e.S.data.seclog) && Array.isArray(e.S.data.seclogCfg.templates), "기본 데이터");
       eq(ACL.seclog.join(","), "2,2"); eq(ACL.seclogCfg.join(","), "2,3");
       const edge = read("tools/edge/semis-logi-files.ts");
@@ -6690,17 +6631,9 @@ function makeServer(opts = {}) {
     const rec = (d, o) => Object.assign({ id: "r" + d, date: d, am: null, pm: null, sup: null, off: null, note: "", ng: [], createdAt: "2026-09-01T00:00:00Z" }, o || {});
     P.setToday("2026-09-30", "09:40");
 
-    t("PT01 메뉴: 예정 '일일 안전점검' → 실모듈(안전 관리 허브 · mgr) · 옛 데이터 전환(멱등) · 데이터 · 동기화 키 · 권한표 · 파일 폴더", () => {
+    t("PT01 메뉴: 순찰일지(안전 관리 허브 · mgr) · 데이터 · 동기화 키 · 권한표 · 파일 폴더", () => {
       const m = e.S.data.menus.find(x => x.module === "daily-safety");
       ok(m && m.type === "module" && !m.planned && !m.desc); eq(m.parent, "hub-saf"); eq(m.vis, "mgr"); eq(m.label, "일일 보안 · 안전 순찰일지");
-      const legacy = e.S.defaultMenus().map(x => x.module === "daily-safety" ? Object.assign({}, x, { label: "일일 안전점검", icon: "✅", planned: true, desc: "x" }) : x);
-      const e2 = makeEnv({ preData: { version: 1, menus: legacy } });
-      const m2 = e2.S.data.menus.find(x => x.module === "daily-safety");
-      ok(!m2.planned && !m2.desc && m2.label === "일일 보안 · 안전 순찰일지" && m2.icon === "📝", "옛 예정 메뉴 전환");
-      eq(e2.S.normalizeData(), false, "멱등");
-      const e3 = makeEnv({ preData: { version: 1, menus: legacy.map(x => x.module === "daily-safety" ? Object.assign({}, x, { label: "순찰일지(현장)" }) : x) } });
-      eq(e3.S.data.menus.find(x => x.module === "daily-safety").label, "순찰일지(현장)", "운영자가 바꾼 이름 유지");
-      e2.w.close(); e3.w.close();
       ok(Array.isArray(e.S.data.patrol) && Array.isArray(e.S.data.patrolPeople) && e.S.data.patrolCfg && !Array.isArray(e.S.data.patrolCfg), "기본 데이터");
       ["patrol", "patrolCfg", "patrolPeople"].forEach(k => ok(e.Sync.SYNC_KEYS.indexOf(k) >= 0, k));
       eq(ACL.patrol.join(","), "2,2"); eq(ACL.patrolCfg.join(","), "2,3"); eq(ACL.patrolPeople.join(","), "2,2");

@@ -5,7 +5,7 @@
 "use strict";
 
 (() => {
-  const { $, $$, esc, toast, openModal, closeModal, confirmModal, ui, icon } = SeMIS;
+  const { $, $$, esc, toast, openModal, closeModal, ui, icon } = SeMIS;
   const KEY = "secPost", IKEY = "secPostImg", ROUTE = "sec-dash";
   /* 유형 — 원본 배치도 범례 4종. 색은 CVD 검증(인접 ΔE ≥ 8) 통과값이고, 지점 이름이 늘 함께 보인다 */
   const KINDS = [

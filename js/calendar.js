@@ -957,7 +957,6 @@
   function chipHTML(e, dayIso, canWrite, compact, noTag) {
     const cont = (e.start < dayIso ? "‹" : "");
     const cont2 = ((e.end || e.start) > dayIso ? "›" : "");
-    const isLastDay = dayIso === (e.end || e.start);
     const timeTxt = (!e.allDay && e.time && e.start === dayIso)
       ? `<span class="chip-time">${esc(e.time)}</span>` : "";
     if (isInsp(e)) return inspBarHTML(e, "", "cal-chip", 2);

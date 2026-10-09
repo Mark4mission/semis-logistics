@@ -21,7 +21,6 @@
   const TR = () => window.SemisTraining;
   const D = () => window.SeMIS.data;
   const $ = (s, r) => (r || document).querySelector(s);
-  const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const norm = (s) => String(s == null ? "" : s).replace(/\s+/g, " ").trim();
   const empNorm = (s) => String(s == null ? "" : s).replace(/\s+/g, "").toUpperCase().slice(0, 20);
@@ -643,7 +642,7 @@
     const person = Object.assign({ id: "me", name: "", dept: "", roles: [], left: "" }, res.person || {});
     const t = D().training;
     t.people = [person];
-    t.records = (Array.isArray(res.records) ? res.records : []).map(r => Object.assign({ pid: person.id }, r, { pid: person.id }));
+    t.records = (Array.isArray(res.records) ? res.records : []).map(r => Object.assign({}, r, { pid: person.id }));
     const pq = TR().personQuals(person);
     const mine = (Array.isArray(res.ids) ? res.ids : []);
     const mark = (x) => t.records.some(r => mine.indexOf(r.id) >= 0 && x.g.courses.some(c => c.id === r.cid || (Array.isArray(c.same) && c.same.indexOf(r.cid) >= 0)));

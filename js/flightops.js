@@ -4,7 +4,7 @@
 "use strict";
 
 (() => {
-  const { $, $$, esc, toast, openModal, closeModal, confirmModal, ui, icon } = SeMIS;
+  const { $, $$, esc, toast, openModal, closeModal, ui, icon } = SeMIS;
   const F = window.SemisFlightCore;
   const MOD = "flight";
   const TITLE = "운항 현황";
@@ -188,7 +188,7 @@
   function paintMap(kind) {
     const m = maps[kind];
     if (!m || !m.el.isConnected) return;
-    const { L, layer, map } = m;
+    const { L, layer } = m;
     layer.clearLayers();
     m.marks = {};
     m.lbl = [];

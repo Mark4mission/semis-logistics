@@ -51,11 +51,6 @@
   const bno = (f) => "별표 " + String(f.id).slice(1);
   const fname = (f) => `[${bno(f)}] ${f.title}`;
   const fileName = (f, iso) => (fname(f) + (iso ? "_" + ymd(iso) : "")).replace(/[\\/:*?"<>|]/g, "_") + ".hwpx";
-  const BASIS = {
-    b1: "제15~18조 현장보안확인 · 제16조 3호 항공화물터미널운영자",
-    insp: "제23~24조 보안점검 · 제8조 4항 자체 보안점검",
-    b15: "제53~56조 결과 분석 · 문제점 분포 · 증감률"
-  };
   const REG_PDF = "assets/regs/nas-217.pdf";   // 지침 본문 + 화물 관련 별표 9종(규정 자료에도 같은 파일)
   /* 별표는 항공보안감독관이 쓰는 점검표 — 이 메뉴의 기록은 '국토부 수검대비 자체 점검'으로 표시해 구분한다 */
   const MARK = "국토부 수검대비 자체 점검";
@@ -84,7 +79,6 @@
     const pick = (k) => norm(o[k]) || b[k];
     return { by: pick("by"), target: pick("target"), cyc: pick("cyc"), ref: b.ref };
   }
-  const basisOf = (f) => BASIS[f.id] || (f.kind === "insp" ? BASIS.insp : "");
   const ITEMS = {};
   function itemsOf(f) {
     if (!f) return [];

@@ -5,7 +5,7 @@
 "use strict";
 
 (() => {
-  const { $, $$, esc, ui, icon } = SeMIS;
+  const { $$, esc, ui, icon } = SeMIS;
   const S = () => { const v = SeMIS.data.scrStats; return v && typeof v === "object" && !Array.isArray(v) ? v : {}; };
   const isYM = (s) => /^\d{4}-\d{2}$/.test(String(s || ""));
   const fmt = (v, dec) => (v == null || v === "" ? "-" : Number(v).toLocaleString("ko-KR", { minimumFractionDigits: dec || 0, maximumFractionDigits: dec || 0 }));

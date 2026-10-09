@@ -148,10 +148,7 @@
     };
   }
   function paint() {
-    if (routeNow() !== MOD) return;
-    const box = document.getElementById("kt-card");
-    if (!box) { SeMIS.renderView(); return; }
-    SeMIS.renderView();
+    if (routeNow() === MOD) SeMIS.renderView();
   }
   function stats() {
     const all = list();

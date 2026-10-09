@@ -3,65 +3,18 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.44.0";
+  const VERSION = "1.45.0";
   const APP_NAME = "SeMIS · Logistics";
   /* 데이터 캐시는 탭 sessionStorage 에만(탭 닫기·로그아웃 시 소멸). 화면 설정(LS_UI)만 localStorage */
   const LS_DATA = "semisl:data";
   const LS_UI   = "semisl:ui";
   const SS_OWNER = "semisl:owner";   // 캐시 주인 — 다른 계정이 로그인하면 캐시를 비운다
-  /* 암호 확인은 서버(RPC semis_logi_login) — 서버는 SHA-256(SALT) 값을 bcrypt 로 한 번 더 감싸 보관.
-     pwHash 는 규칙 확인(테스트)용 */
-  const SALT = "SeMISv2:";
   const store = {
     get(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } },
     set(k, v) { try { sessionStorage.setItem(k, v); return true; } catch (e) { return false; } },
     del(k) { try { sessionStorage.removeItem(k); } catch (e) { /* 무시 */ } }
   };
 
-  /* ── SHA-256 (순수 JS · 동기) ── */
-  function sha256(str) {
-    const msg = unescape(encodeURIComponent(str));
-    const K = [
-      0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
-      0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
-      0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
-      0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
-      0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
-      0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
-      0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
-      0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
-    let H = [0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
-    const l = msg.length;
-    const w = [];
-    for (let i = 0; i < l; i++) w[i >> 2] = (w[i >> 2] || 0) | (msg.charCodeAt(i) << (24 - (i % 4) * 8));
-    w[l >> 2] = (w[l >> 2] || 0) | (0x80 << (24 - (l % 4) * 8));
-    const wlen = ((((l + 8) >> 6) + 1) << 4);
-    for (let i = w.length; i < wlen; i++) w[i] = 0;
-    w[wlen - 1] = (l * 8) >>> 0;
-    w[wlen - 2] = Math.floor((l * 8) / 4294967296);
-    const rotr = (x, n) => (x >>> n) | (x << (32 - n));
-    for (let j = 0; j < wlen; j += 16) {
-      const W = w.slice(j, j + 16);
-      for (let i = 16; i < 64; i++) {
-        const s0 = rotr(W[i-15],7) ^ rotr(W[i-15],18) ^ (W[i-15] >>> 3);
-        const s1 = rotr(W[i-2],17) ^ rotr(W[i-2],19) ^ (W[i-2] >>> 10);
-        W[i] = (W[i-16] + s0 + W[i-7] + s1) | 0;
-      }
-      let [a,b,c,d,e,f,g,hh] = H;
-      for (let i = 0; i < 64; i++) {
-        const S1 = rotr(e,6) ^ rotr(e,11) ^ rotr(e,25);
-        const ch = (e & f) ^ (~e & g);
-        const t1 = (hh + S1 + ch + K[i] + W[i]) | 0;
-        const S0 = rotr(a,2) ^ rotr(a,13) ^ rotr(a,22);
-        const mj = (a & b) ^ (a & c) ^ (b & c);
-        const t2 = (S0 + mj) | 0;
-        hh = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;
-      }
-      H = [ (H[0]+a)|0,(H[1]+b)|0,(H[2]+c)|0,(H[3]+d)|0,(H[4]+e)|0,(H[5]+f)|0,(H[6]+g)|0,(H[7]+hh)|0 ];
-    }
-    return H.map(x => (x >>> 0).toString(16).padStart(8, "0")).join("");
-  }
-  const pwHash = (pw) => sha256(SALT + ":" + pw);
 
   /* ── 계정 ──
      계정·암호는 서버 전용 표(semis_logi_private.accounts)에만 — 코드와 공용 데이터에 두지 않는다 */
@@ -285,39 +238,6 @@ const SeMIS = (() => {
     ];
   }
 
-  /* ── 옛 그룹(grp-*) → 허브 구조 이전(멱등) ──
-     운영자가 바꾼 숨김·권한·이름·바로가기는 두고 소속만 새 허브로. 숨긴 옛 그룹의 하위 메뉴는 개별 숨김으로 이어받는다 */
-  const OLD_GROUP_HUB = {
-    "grp-rule": "hub-doc", "grp-cargo": "hub-sec", "grp-safety": "hub-saf", "grp-inspect": "hub-aud",
-    "grp-edu": "hub-aud", "grp-partner": "hub-ops", "grp-emergency": "hub-ops", "grp-ref": "hub-doc"
-  };
-  const RAIL_TOP = ["dashboard", "vault", "settings"];   // 허브로 옮기지 않는 최상위 모듈
-  function migrateHubs() {
-    const menus = DATA.menus;
-    if (!menus.some(m => m.type === "group" && OLD_GROUP_HUB[m.id])) return false;
-    const seed = defaultMenus();
-    seed.filter(g => g.type === "group").forEach(g => {
-      if (!menus.some(m => m.id === g.id)) menus.push(Object.assign({}, g));
-    });
-    menus.forEach(m => {
-      if (m.type === "group") return;
-      const to = m.parent && OLD_GROUP_HUB[m.parent];
-      if (to) {
-        const g = menus.find(x => x.id === m.parent);
-        if (g && g.hidden === true && canHide(m)) m.hidden = true;
-        m.parent = to;
-      } else if (!m.parent && !(m.type === "module" && RAIL_TOP.indexOf(m.module) >= 0)) {
-        m.parent = "hub-home";
-      }
-    });
-    DATA.menus = menus.filter(m => !(m.type === "group" && OLD_GROUP_HUB[m.id]));
-    const order = {};
-    seed.forEach((x, i) => { order[x.id] = i; });
-    const key = (m) => order[m.id] !== undefined ? order[m.id] : 1000 + (Number(m.seq) || 0);
-    DATA.menus.sort((a, b) => key(a) - key(b)).forEach((m, i) => { m.seq = i; });
-    return true;
-  }
-
   /* ── 일정 담당자 카테고리 ──
      일정관리 담당자 태그 목록(시스템 설정 → 담당자 관리). 목록에 없는 이름도 일정 폼에서 자유 입력 가능 */
   function seedAssignees() {
@@ -376,8 +296,7 @@ const SeMIS = (() => {
       kcra: {},          // 상용화주 · RA 관리
       secCases: [],      // 보안 처리 대장
       dissem: {},        // 보안 전파교육
-      scrStats: {},      // 화물 보안검색 실적 (월별 합계)
-      chatRooms: []      // (예약) 팀 채팅방
+      scrStats: {}       // 화물 보안검색 실적 (월별 합계)
     };
   }
 
@@ -392,127 +311,40 @@ const SeMIS = (() => {
     save();
   }
 
+  /* 시드의 실모듈 메뉴가 데이터에 없으면 시드 순서상 바로 앞 메뉴 뒤에 넣는다 — 있는 메뉴(이름 · 숨김 · 위치)는 그대로 */
+  function ensureSeedMenus() {
+    const menus = DATA.menus;
+    const keyOf = (m) => m.type === "module" ? "m:" + m.module : "i:" + m.id;
+    const seed = defaultMenus();
+    seed.forEach((s, i) => {
+      if (s.type !== "module" || s.planned || menus.some(m => keyOf(m) === keyOf(s))) return;
+      const parent = s.parent && menus.some(m => m.id === s.parent && m.type === "group") ? s.parent : null;
+      let prev = null;
+      for (let j = i - 1; j >= 0 && !prev; j--) {
+        const p = seed[j];
+        if ((p.parent || null) === s.parent) prev = menus.find(m => keyOf(m) === keyOf(p)) || null;
+      }
+      if (!prev && parent) prev = menus.find(m => m.id === parent) || null;
+      let seq = menus.reduce((mx, m) => Math.max(mx, Number(m.seq) || 0), 0) + 1;
+      if (prev) {
+        const p0 = Number(prev.seq) || 0;
+        const nx = menus.map(m => Number(m.seq) || 0).filter(v => v > p0);
+        seq = nx.length ? (p0 + Math.min.apply(null, nx)) / 2 : p0 + 0.5;
+      }
+      const id = menus.some(m => m.id === s.id) ? s.id + "-" + Date.now().toString(36) : s.id;
+      menus.push(Object.assign({}, s, { id, seq, parent }));
+    });
+  }
+
   /* 데이터 정규화·마이그레이션(멱등) — load() 와 동기화 pull·원격 반영 뒤에도 호출되어
      서버의 옛 형식 데이터가 로컬 마이그레이션을 되돌리지 않게 한다. 변경 여부 반환 */
   function normalizeData() {
     const before = JSON.stringify(DATA);
     if (!Array.isArray(DATA.menus) || !DATA.menus.length) DATA.menus = defaultMenus();
     DATA.menus = DATA.menus.filter(m => m && typeof m === "object" && m.id);
-    migrateHubs();
     // 허브 아이콘 보정 — 알 수 없는 키는 folder
     DATA.menus.forEach(m => { if (m.type === "group" && (!m.ico || !ICONS[m.ico])) m.ico = "folder"; });
-    // 필수 메뉴 보장(대시보드·암호 관리·시스템 설정) — 삭제·유실 시 복구
-    const ensureModuleMenu = (menuId, grpId, label, icon, moduleId, vis, extra) => {
-      if (DATA.menus.some(m => m.type === "module" && m.module === moduleId)) return;
-      const grp = grpId ? DATA.menus.find(m => m.id === grpId && m.type === "group") : null;
-      const children = grp ? DATA.menus.filter(m => m.parent === grpId) : [];
-      const seq = children.length ? Math.min.apply(null, children.map(c => c.seq || 0)) - 0.5
-        : DATA.menus.reduce((mx, m) => Math.max(mx, m.seq || 0), 0) + 1;
-      DATA.menus.push(Object.assign({ id: menuId, seq, type: "module", label, icon, module: moduleId,
-        vis: vis || "all", parent: grp ? grpId : null }, extra || {}));
-    };
-    ensureModuleMenu("dashboard", null, "대시보드", "🏠", "dashboard", "all");
-    ensureModuleMenu("vault", null, "암호 관리", "🔐", "vault", "hq");
-    ensureModuleMenu("settings", null, "시스템 설정", "⚙️", "settings", "admin");
-    // 아래 모듈별 메뉴 블록: 메뉴 데이터에 없을 때만 지정 위치에 추가 — 있으면 운영자 설정(숨김·이름·위치) 유지
-    // 운항 현황 — 홈 허브 일정관리 바로 위
-    if (!DATA.menus.some(m => m.type === "module" && m.module === "flight")) {
-      const sc = DATA.menus.find(m => m.type === "module" && m.module === "schedule");
-      const hub = DATA.menus.find(m => m.id === "hub-home" && m.type === "group");
-      DATA.menus.push({ id: DATA.menus.some(m => m.id === "flight") ? "flight-" + Date.now().toString(36) : "flight",
-        seq: sc ? (sc.seq || 0) - 0.5 : DATA.menus.reduce((mx, m) => Math.max(mx, m.seq || 0), 0) + 1,
-        type: "module", label: "운항 현황", icon: "✈️", module: "flight", vis: "all",
-        parent: sc && sc.parent ? sc.parent : (hub ? "hub-home" : null) });
-    }
-    // 위기대응 담당자 — 비상연락망 바로 아래
-    if (!DATA.menus.some(m => m.type === "module" && m.module === "crisis")) {
-      const ct = DATA.menus.find(m => m.type === "module" && m.module === "contacts");
-      const hub = DATA.menus.find(m => m.id === "hub-ops" && m.type === "group");
-      DATA.menus.push({ id: "crisis", seq: ct ? (ct.seq || 0) + 0.5 : DATA.menus.reduce((mx, m) => Math.max(mx, m.seq || 0), 0) + 1,
-        type: "module", label: "위기대응 담당자", icon: "🧭", module: "crisis", vis: "mgr",
-        parent: ct && ct.parent ? ct.parent : (hub ? "hub-ops" : null) });
-    }
-    // 팀위기대응계획 — 비상연락망 바로 위
-    if (!DATA.menus.some(m => m.type === "module" && m.module === "serp")) {
-      const ct = DATA.menus.find(m => m.type === "module" && m.module === "contacts");
-      const hub = DATA.menus.find(m => m.id === "hub-ops" && m.type === "group");
-      let seq = DATA.menus.reduce((mx, m) => Math.max(mx, m.seq || 0), 0) + 1;
-      if (ct) {   // 바로 앞 메뉴(없으면 허브)와의 사이
-        const pv = DATA.menus.filter(m => m.parent === ct.parent && m.id !== ct.id && (m.seq || 0) < (ct.seq || 0)).map(m => m.seq || 0);
-        const grp = DATA.menus.find(m => m.id === ct.parent);
-        const lo = pv.length ? Math.max.apply(null, pv) : (grp ? (grp.seq || 0) : (ct.seq || 0) - 1);
-        seq = (lo + (ct.seq || 0)) / 2;
-      }
-      DATA.menus.push({ id: DATA.menus.some(m => m.id === "serp") ? "serp-" + Date.now().toString(36) : "serp",
-        seq, type: "module", label: "팀위기대응계획 (SERP)", icon: "🛟", module: "serp", vis: "mgr",
-        parent: ct && ct.parent ? ct.parent : (hub ? "hub-ops" : null) });
-    }
-    // 테러 위협전화 대응 — 팀위기대응계획 바로 아래(없으면 비상연락망 바로 위)
-    if (!DATA.menus.some(m => m.type === "module" && m.module === "threat")) {
-      const sp = DATA.menus.find(m => m.type === "module" && m.module === "serp");
-      const ct = DATA.menus.find(m => m.type === "module" && m.module === "contacts");
-      const hub = DATA.menus.find(m => m.id === "hub-ops" && m.type === "group");
-      const ref = sp || ct;
-      let seq = DATA.menus.reduce((mx, m) => Math.max(mx, m.seq || 0), 0) + 1;
-      if (sp) {          // 바로 다음 메뉴와의 사이
-        const nx = DATA.menus.filter(m => m.parent === sp.parent && (m.seq || 0) > (sp.seq || 0)).map(m => m.seq || 0);
-        seq = nx.length ? ((sp.seq || 0) + Math.min.apply(null, nx)) / 2 : (sp.seq || 0) + 0.5;
-      } else if (ct) {   // 바로 앞 메뉴(없으면 허브)와의 사이
-        const pv = DATA.menus.filter(m => m.parent === ct.parent && m.id !== ct.id && (m.seq || 0) < (ct.seq || 0)).map(m => m.seq || 0);
-        const grp = DATA.menus.find(m => m.id === ct.parent);
-        const lo = pv.length ? Math.max.apply(null, pv) : (grp ? (grp.seq || 0) : (ct.seq || 0) - 1);
-        seq = (lo + (ct.seq || 0)) / 2;
-      }
-      DATA.menus.push({ id: DATA.menus.some(m => m.id === "threat") ? "threat-" + Date.now().toString(36) : "threat",
-        seq, type: "module", label: "테러 위협전화 대응", icon: "📞", module: "threat", vis: "mgr",
-        parent: ref && ref.parent ? ref.parent : (hub ? "hub-ops" : null) });
-    }
-    // 업무 연락처 — 위기대응 담당자 바로 아래
-    if (!DATA.menus.some(m => m.type === "module" && m.module === "phonebook")) {
-      const cr = DATA.menus.find(m => m.type === "module" && m.module === "crisis")
-        || DATA.menus.find(m => m.type === "module" && m.module === "contacts");
-      const hub = DATA.menus.find(m => m.id === "hub-ops" && m.type === "group");
-      let seq = DATA.menus.reduce((mx, m) => Math.max(mx, m.seq || 0), 0) + 1;
-      if (cr) {   // 바로 다음 메뉴와의 사이
-        const nx = DATA.menus.filter(m => m.parent === cr.parent && (m.seq || 0) > (cr.seq || 0)).map(m => m.seq || 0);
-        seq = nx.length ? ((cr.seq || 0) + Math.min.apply(null, nx)) / 2 : (cr.seq || 0) + 0.5;
-      }
-      DATA.menus.push({ id: DATA.menus.some(m => m.id === "phonebook") ? "phonebook-" + Date.now().toString(36) : "phonebook",
-        seq, type: "module", label: "업무 연락처", icon: "📇", module: "phonebook", vis: "mgr",
-        parent: cr && cr.parent ? cr.parent : (hub ? "hub-ops" : null) });
-    }
-    // 수검 대응 센터 — 보안 기록부(inspection) 바로 위
-    if (!DATA.menus.some(m => m.type === "module" && m.module === "audit")) {
-      const ins = DATA.menus.find(m => m.type === "module" && m.module === "inspection");
-      const hub = DATA.menus.find(m => m.id === "hub-aud" && m.type === "group");
-      DATA.menus.push({ id: DATA.menus.some(m => m.id === "audit") ? "audit-" + Date.now().toString(36) : "audit",
-        seq: ins ? (ins.seq || 0) - 0.5 : DATA.menus.reduce((mx, m) => Math.max(mx, m.seq || 0), 0) + 1,
-        type: "module", label: "수검 대응 센터", icon: "🗂️", module: "audit", vis: "mgr",
-        parent: ins && ins.parent ? ins.parent : (hub ? "hub-aud" : null) });
-    }
-    // 바로가기 — 홈 허브 회의록 게시판 바로 아래
-    if (!DATA.menus.some(m => m.type === "module" && m.module === "shortcuts")) {
-      const mi = DATA.menus.find(m => m.type === "module" && m.module === "minutes");
-      const hub = DATA.menus.find(m => m.id === "hub-home" && m.type === "group");
-      let seq = DATA.menus.reduce((mx, m) => Math.max(mx, m.seq || 0), 0) + 1;
-      if (mi) {
-        const nx = DATA.menus.filter(m => m.parent === mi.parent && (m.seq || 0) > (mi.seq || 0)).map(m => m.seq || 0);
-        seq = nx.length ? ((mi.seq || 0) + Math.min.apply(null, nx)) / 2 : (mi.seq || 0) + 0.5;
-      }
-      DATA.menus.push({ id: DATA.menus.some(m => m.id === "shortcuts") ? "shortcuts-" + Date.now().toString(36) : "shortcuts",
-        seq, type: "module", label: "바로가기", icon: "🔗", module: "shortcuts", vis: "all",
-        parent: mi && mi.parent ? mi.parent : (hub ? "hub-home" : null) });
-    }
-    // 화물보안 대시보드 — 화물 보안 허브 맨 위
-    if (!DATA.menus.some(m => m.type === "module" && m.module === "sec-dash")) {
-      const hub = DATA.menus.find(m => m.id === "hub-sec" && m.type === "group");
-      const kids = hub ? DATA.menus.filter(m => m.parent === "hub-sec").map(m => m.seq || 0) : [];
-      const first = kids.length ? Math.min.apply(null, kids) : null;
-      const seq = hub ? (first == null ? (hub.seq || 0) + 0.5 : ((hub.seq || 0) < first ? ((hub.seq || 0) + first) / 2 : first - 0.5))
-        : DATA.menus.reduce((mx, m) => Math.max(mx, m.seq || 0), 0) + 1;
-      DATA.menus.push({ id: DATA.menus.some(m => m.id === "sec-dash") ? "sec-dash-" + Date.now().toString(36) : "sec-dash",
-        seq, type: "module", label: "화물보안 대시보드", icon: "📊", module: "sec-dash", vis: "mgr", parent: hub ? "hub-sec" : null });
-    }
+    ensureSeedMenus();
     const dash = DATA.menus.find(m => m.type === "module" && m.module === "dashboard");
     if (dash) { dash.vis = "all"; dash.parent = null; if (dash.seq !== 0) dash.seq = Math.min(0, dash.seq || 0); }
     const st = DATA.menus.find(m => m.type === "module" && m.module === "settings");
@@ -536,7 +368,6 @@ const SeMIS = (() => {
     DATA.notices = Array.isArray(DATA.notices) ? DATA.notices : [];
     // 옛 캐시의 계정 자료 제거 — 계정은 서버 전용
     delete DATA.pwOverrides; delete DATA.userOverrides; delete DATA.customUsers;
-    if (!Array.isArray(DATA.chatRooms)) DATA.chatRooms = [];
     if (!Array.isArray(DATA.levelHistory) || !DATA.levelHistory.length) {
       DATA.levelHistory = [{ id: "lv0", date: new Date().toISOString().slice(0, 10), level: "평시",
         note: "시스템 개설", by: "시스템", at: new Date().toISOString() }];
@@ -587,121 +418,29 @@ const SeMIS = (() => {
       if (typeof a.seq !== "number") a.seq = i + 1;
     });
 
-    // 비상연락망
-    if (!DATA.contacts || typeof DATA.contacts !== "object" || Array.isArray(DATA.contacts)) DATA.contacts = { sections: [] };
-    if (!Array.isArray(DATA.contacts.sections)) DATA.contacts.sections = [];
-    if (!Array.isArray(DATA.fleet)) DATA.fleet = [];
-    // 점검 · 교육 대시보드 — 없으면 점검 · 교육 허브 맨 위에 추가
-    if (!DATA.menus.some(m => m.type === "module" && m.module === "aud-dash")) {
-      const hub = DATA.menus.find(m => m.id === "hub-aud" && m.type === "group");
-      const kids = hub ? DATA.menus.filter(m => m.parent === "hub-aud").map(m => m.seq || 0) : [];
-      const first = kids.length ? Math.min.apply(null, kids) : null;
-      const seq = hub ? (first == null ? (hub.seq || 0) + 0.5 : ((hub.seq || 0) < first ? ((hub.seq || 0) + first) / 2 : first - 0.5))
-        : DATA.menus.reduce((mx, m) => Math.max(mx, m.seq || 0), 0) + 1;
-      DATA.menus.push({ id: DATA.menus.some(m => m.id === "aud-dash") ? "aud-dash-" + Date.now().toString(36) : "aud-dash",
-        seq, type: "module", label: "점검 · 교육 대시보드", icon: "📊", module: "aud-dash", vis: "mgr", parent: hub ? "hub-aud" : null });
-    }
-    DATA.fleet = DATA.fleet.filter(f => f && typeof f === "object" && f.hex);
-    if (!DATA.crisis || typeof DATA.crisis !== "object" || Array.isArray(DATA.crisis)) DATA.crisis = { rows: [] };
-    if (!Array.isArray(DATA.crisis.rows)) DATA.crisis.rows = [];
-    // 업무 연락처 — 구조만 보정
-    if (!DATA.phonebook || typeof DATA.phonebook !== "object" || Array.isArray(DATA.phonebook)) DATA.phonebook = { groups: [], rows: [] };
-    if (!Array.isArray(DATA.phonebook.groups)) DATA.phonebook.groups = [];
-    if (!Array.isArray(DATA.phonebook.rows)) DATA.phonebook.rows = [];
-    // 팀위기대응계획 — 구조만 보정(빈 값은 모듈이 기본값으로 읽음)
-    if (!DATA.serp || typeof DATA.serp !== "object" || Array.isArray(DATA.serp)) DATA.serp = {};
-    DATA.serpRuns = (Array.isArray(DATA.serpRuns) ? DATA.serpRuns : []).filter(x => x && typeof x === "object" && x.id);
-    // 테러 위협전화 대응 — 구조만 보정
-    if (!DATA.threat || typeof DATA.threat !== "object" || Array.isArray(DATA.threat)) DATA.threat = {};
-    DATA.threatRuns = (Array.isArray(DATA.threatRuns) ? DATA.threatRuns : []).filter(x => x && typeof x === "object" && x.id);
-    DATA.threatChecks = (Array.isArray(DATA.threatChecks) ? DATA.threatChecks : []).filter(x => x && typeof x === "object" && x.id);
-    // 경비대원 배치도 — 구조만 보정(빈 값은 모듈이 기본값으로 읽음)
-    ["secPost", "secPostImg"].forEach(k => { if (!DATA[k] || typeof DATA[k] !== "object" || Array.isArray(DATA[k])) DATA[k] = {}; });
-    // 규정 관리 — 배열 · scope 보정
+    // 컬렉션 구조 보정 — 빈 값은 각 모듈이 기본값으로 읽는다
+    const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+    const obj = (k, def) => { if (!isObj(DATA[k])) DATA[k] = def; return DATA[k]; };
+    const arr = (o, k) => { if (!Array.isArray(o[k])) o[k] = []; };
+    const rows = (k) => { DATA[k] = (Array.isArray(DATA[k]) ? DATA[k] : []).filter(x => x && typeof x === "object" && x.id); };
+    arr(obj("contacts", { sections: [] }), "sections");
+    arr(obj("crisis", { rows: [] }), "rows");
+    const pb = obj("phonebook", { groups: [], rows: [] });
+    arr(pb, "groups"); arr(pb, "rows");
+    const tr = obj("training", { courses: [], people: [], records: [], sessions: [] });
+    ["courses", "people", "records", "sessions"].forEach(k => arr(tr, k));
+    arr(obj("seclogCfg", { since: "", templates: [] }), "templates");
+    const sc = obj("selfCheckCfg", {});
+    if (!isObj(sc.forms)) sc.forms = {};
+    ["serp", "threat", "secPost", "secPostImg", "patrolCfg", "partners", "kcra", "dissem", "scrStats"].forEach(k => obj(k, {}));
+    ["serpRuns", "threatRuns", "threatChecks", "equipment", "audits", "seclog", "patrol", "patrolPeople",
+      "selfChecks", "docs", "contracts", "secCases"].forEach(rows);
+    DATA.equipment.forEach(x => { if (!Array.isArray(x.logs)) x.logs = []; });
+    DATA.fleet = (Array.isArray(DATA.fleet) ? DATA.fleet : []).filter(f => f && typeof f === "object" && f.hex);
     DATA.regulations = (Array.isArray(DATA.regulations) ? DATA.regulations : []).filter(r => r && r.id);
     DATA.regulations.forEach(r => {
       if (["sec", "safety", "dg"].indexOf(r.scope) < 0) r.scope = "safety";
       if (!Array.isArray(r.ideas)) r.ideas = [];
-    });
-    // 검색장비 대장 — 배열 보정만. 실데이터는 공용 DB(SeMIS v2 대장 이관분)
-    DATA.equipment = (Array.isArray(DATA.equipment) ? DATA.equipment : []).filter(x => x && typeof x === "object" && x.id);
-    // 수검 대응 센터 — 배열 보정만(항목 내부 빈 값은 모듈이 기본값으로 읽음)
-    DATA.audits = (Array.isArray(DATA.audits) ? DATA.audits : []).filter(x => x && typeof x === "object" && x.id);
-    // 보안교육 · 자격 관리 — 구조만 보정
-    if (!DATA.training || typeof DATA.training !== "object" || Array.isArray(DATA.training)) DATA.training = { courses: [], people: [], records: [], sessions: [] };
-    ["courses", "people", "records", "sessions"].forEach(k => { if (!Array.isArray(DATA.training[k])) DATA.training[k] = []; });
-    // 예정 메뉴 '안전보안 교육 관리' → 실모듈 전환, 예정 '이수증 관리(certs)'는 제거(운영자가 바꾼 이름은 유지)
-    (() => {
-      const tr = DATA.menus.find(m => m.type === "module" && m.module === "training");
-      if (tr) { if (tr.planned) { delete tr.planned; delete tr.desc; } if (tr.label === "안전보안 교육 관리") tr.label = "보안교육 · 자격 관리"; }
-      const ci = DATA.menus.findIndex(m => m.type === "module" && m.module === "certs" && m.planned);
-      if (ci >= 0) DATA.menus.splice(ci, 1);
-    })();
-    // 보안 기록부 — 구조 보정 · 예정 메뉴 '안전보안 점검 일정' → 실모듈 전환(운영자가 바꾼 이름은 유지)
-    DATA.seclog = (Array.isArray(DATA.seclog) ? DATA.seclog : []).filter(x => x && typeof x === "object" && x.id);
-    if (!DATA.seclogCfg || typeof DATA.seclogCfg !== "object" || Array.isArray(DATA.seclogCfg)) DATA.seclogCfg = { since: "", templates: [] };
-    if (!Array.isArray(DATA.seclogCfg.templates)) DATA.seclogCfg.templates = [];
-    (() => {
-      const ins = DATA.menus.find(m => m.type === "module" && m.module === "inspection");
-      if (!ins) return;
-      if (ins.planned) { delete ins.planned; delete ins.desc; }
-      if (ins.label === "안전보안 점검 일정") ins.label = "보안 기록부";
-      if (ins.icon === "🕵️") ins.icon = "📒";
-    })();
-    // 일일 보안 · 안전 순찰일지 — 구조 보정 · 예정 메뉴 '일일 안전점검' → 실모듈 전환(운영자가 바꾼 이름은 유지)
-    DATA.patrol = (Array.isArray(DATA.patrol) ? DATA.patrol : []).filter(x => x && typeof x === "object" && x.id);
-    if (!DATA.patrolCfg || typeof DATA.patrolCfg !== "object" || Array.isArray(DATA.patrolCfg)) DATA.patrolCfg = {};
-    DATA.patrolPeople = (Array.isArray(DATA.patrolPeople) ? DATA.patrolPeople : []).filter(x => x && typeof x === "object" && x.id);
-    (() => {
-      const ds = DATA.menus.find(m => m.type === "module" && m.module === "daily-safety");
-      if (!ds) return;
-      if (ds.planned) { delete ds.planned; delete ds.desc; }
-      if (ds.label === "일일 안전점검") ds.label = "일일 보안 · 안전 순찰일지";
-      if (ds.icon === "✅") ds.icon = "📝";
-    })();
-    // 자체 보안점검 — 배열 보정 · 없으면 점검 · 교육 허브 맨 아래에 추가
-    if (!DATA.selfCheckCfg || typeof DATA.selfCheckCfg !== "object" || Array.isArray(DATA.selfCheckCfg)) DATA.selfCheckCfg = {};
-    if (!DATA.selfCheckCfg.forms || typeof DATA.selfCheckCfg.forms !== "object" || Array.isArray(DATA.selfCheckCfg.forms)) DATA.selfCheckCfg.forms = {};
-    DATA.selfChecks = (Array.isArray(DATA.selfChecks) ? DATA.selfChecks : []).filter(x => x && typeof x === "object" && x.id);
-    if (!DATA.menus.some(m => m.type === "module" && m.module === "selfcheck")) {
-      const ins = DATA.menus.find(m => m.type === "module" && m.module === "inspection");
-      const hub = DATA.menus.find(m => m.id === "hub-aud" && m.type === "group");
-      let seq = DATA.menus.reduce((mx, m) => Math.max(mx, m.seq || 0), 0) + 1;
-      const kids = ins ? DATA.menus.filter(m => m.parent === ins.parent).map(m => m.seq || 0) : [];
-      if (kids.length) seq = Math.max.apply(null, kids) + 0.5;   // 같은 허브의 맨 아래
-      DATA.menus.push({ id: DATA.menus.some(m => m.id === "selfcheck") ? "selfcheck-" + Date.now().toString(36) : "selfcheck",
-        seq, type: "module", label: "자체 보안점검", icon: "🧾", module: "selfcheck", vis: "mgr",
-        parent: ins && ins.parent ? ins.parent : (hub ? "hub-aud" : null) });
-    }
-    // 협력·계약·RA·처리대장 등 — 구조 보정 + 예정 메뉴 실모듈 전환(운영자가 바꾼 이름 · 숨김 유지) + 없으면 추가
-    ["docs", "contracts", "secCases"].forEach(k => { DATA[k] = (Array.isArray(DATA[k]) ? DATA[k] : []).filter(x => x && typeof x === "object" && x.id); });
-    ["partners", "kcra", "dissem", "scrStats"].forEach(k => { if (!DATA[k] || typeof DATA[k] !== "object" || Array.isArray(DATA[k])) DATA[k] = {}; });
-    [["partners", "조업사 · 협력사 현황", "협력사 · 보안요원"], ["contracts", "계약서 관리", "계약 · 협약 관리"], ["kc-ra", "", ""]].forEach(([id, from, to]) => {
-      const mn = DATA.menus.find(m => m.type === "module" && m.module === id);
-      if (!mn) return;
-      if (mn.planned) { delete mn.planned; delete mn.desc; }
-      if (from && mn.label === from) mn.label = to;
-    });
-    const addAfter = (mod, after, hubId, label, icon, vis) => {
-      if (DATA.menus.some(m => m.type === "module" && m.module === mod)) return;
-      const ref = DATA.menus.find(m => m.type === "module" && m.module === after);
-      const hub = DATA.menus.find(m => m.id === hubId && m.type === "group");
-      let seq = DATA.menus.reduce((mx, m) => Math.max(mx, m.seq || 0), 0) + 1;
-      if (ref) {
-        const nx = DATA.menus.filter(m => m.parent === ref.parent && (m.seq || 0) > (ref.seq || 0)).map(m => m.seq || 0);
-        seq = nx.length ? ((ref.seq || 0) + Math.min.apply(null, nx)) / 2 : (ref.seq || 0) + 0.5;
-      }
-      DATA.menus.push({ id: DATA.menus.some(m => m.id === mod) ? mod + "-" + Date.now().toString(36) : mod,
-        seq, type: "module", label, icon, module: mod, vis, parent: ref && ref.parent ? ref.parent : (hub ? hubId : null) });
-    };
-    addAfter("sec-cases", "kc-ra", "hub-sec", "보안 처리 대장", "🗃️", "mgr");
-    addAfter("dissem", "training", "hub-aud", "보안 전파교육", "📣", "mgr");
-    DATA.equipment.forEach(x => { if (!Array.isArray(x.logs)) x.logs = []; });
-    ["reg-sec", "reg-safety", "reg-dg", "scr-status", "scr-equip"].forEach(id => {
-      const mn = DATA.menus.find(m => m.type === "module" && m.module === id);
-      if (!mn) return;
-      if (mn.planned) { delete mn.planned; delete mn.desc; }
-      if (mn.vis === "all") mn.vis = "mgr";
     });
     // 암호 관리 저장소 — 구조만 보정(암호문은 건드리지 않는다)
     if (!DATA.vault || typeof DATA.vault !== "object" || Array.isArray(DATA.vault))
@@ -2282,14 +2021,14 @@ const SeMIS = (() => {
     get user() { return currentUser; },
     allUsers, isAdmin, roleRank, canEdit, canDelete, canConfid, canSee, navVisible, menuHidden, canHide,
     VENDOR_ACCESS, vendorAccess, vendorHome,
-    pwHash, sha256, signCodeFor, signCodeFromHash, signUrlFor, signSubmit,
+    signCodeFor, signCodeFromHash, signUrlFor, signSubmit,
     setAccounts, sessionLost, sessionUpdated, devSession, restoreSession, login, enterApp,
     renderNav, renderHeader, renderSecBadge, renderView, renderPlannedView,
     printView, printTitle, attachPrintBtn, markHub,
     icon, ui, ICONS, HUB_ICONS, hubOf, hubOfDeep, hubList, hubEntries, utilEntries, homeHubId,
     isLinkGroup, linkChildren, isIntranet, hostOf, openHub, hubHomeRoute, togglePanel, openSheet,
     LINK_ICONS, LINK_TONES, favOk, linkIconHTML, linkCardHTML, menuForModule,
-    closeSidebar, closeOverlays, migrateHubs,
+    closeSidebar, closeOverlays,
     isMobile, actionSheet, closeActionSheet, tidyView, labelTable, setEditMode, mfToggle,
     get editing() { return editingNow(); },
     openModal, closeModal, confirmModal, toast,

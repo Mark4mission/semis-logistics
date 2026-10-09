@@ -3,7 +3,7 @@
 "use strict";
 
 (() => {
-  const { $, $$, esc, toast, openModal, closeModal, confirmModal } = SeMIS;
+  const { $, $$, esc, toast, openModal, closeModal } = SeMIS;
   const D = () => SeMIS.data;
   const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 

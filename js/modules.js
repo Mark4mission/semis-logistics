@@ -85,27 +85,11 @@
       live: utilMods.filter(m => SeMIS.hasModule(m.module) || !m.planned).length, total: utilMods.length });
     return rows;
   }
-  /* 대시보드의 지도·띠는 해당 메뉴를 볼 수 있을 때만(권한·숨김 따름) */
-  function fltVisible() {
-    const mn = (D().menus || []).find(m => m.type === "module" && m.module === "flight");
-    return !!(mn && SeMIS.navVisible(mn) && SeMIS.hasModule("flight") && window.SemisFlight);
-  }
-  function audVisible() {
-    const mn = (D().menus || []).find(m => m.type === "module" && m.module === "audit");
-    return !!(mn && SeMIS.navVisible(mn) && SeMIS.hasModule("audit") && window.SemisAudit);
-  }
-  function serpVisible() {
-    const mn = (D().menus || []).find(m => m.type === "module" && m.module === "serp");
-    return !!(mn && SeMIS.navVisible(mn) && SeMIS.hasModule("serp") && window.SemisSerp);
-  }
-  function threatVisible() {
-    const mn = (D().menus || []).find(m => m.type === "module" && m.module === "threat");
-    return !!(mn && SeMIS.navVisible(mn) && SeMIS.hasModule("threat") && window.SemisThreat);
-  }
-  function scrVisible() {
-    const mn = (D().menus || []).find(m => m.type === "module" && m.module === "scr-status");
-    return !!(mn && SeMIS.navVisible(mn) && SeMIS.hasModule("scr-status"));
-  }
+  /* 대시보드 카드 · 띠는 그 메뉴를 볼 수 있을 때만(권한 · 숨김 따름) */
+  const menuOk = (mod, api) => {
+    const mn = (D().menus || []).find(m => m.type === "module" && m.module === mod);
+    return !!(mn && SeMIS.navVisible(mn) && SeMIS.hasModule(mod) && (!api || window[api]));
+  };
   const LV_TONE = { "평시": "ok", "관심": "info", "주의": "warn", "경계": "high", "심각": "crit" };
   const lvColor = (l) => ({ "평시": "badge-green", "관심": "badge-blue", "주의": "badge-amber",
     "경계": "badge-orange", "심각": "badge-red" }[l] || "badge-gray");
@@ -175,10 +159,6 @@
   }
 
   /* '오늘' 카드 — 지금 챙길 것만 한 장에(행을 누르면 그 화면) */
-  const menuOk = (mod) => {
-    const mn = (D().menus || []).find(m => m.type === "module" && m.module === mod);
-    return !!(mn && SeMIS.navVisible(mn) && SeMIS.hasModule(mod));
-  };
   function todayRow(o) {
     return `<button type="button" class="td-row${o.tone ? " tone-" + o.tone : ""}" data-go="${esc(o.go)}"${o.id ? ` id="${esc(o.id)}"` : ""}>
       <span class="td-ico t-${esc(o.color || "teal")}" aria-hidden="true">${ico(o.icon, 19)}</span>
@@ -207,7 +187,7 @@
         sub: tod.length ? tod.slice(0, 2).map(s => esc(s.title)).join(" · ") + (tod.length > 2 ? " 외 " + (tod.length - 2) : "") : "예정 없음",
         val: `<b class="mono">${tod.length}</b>` }));
     }
-    if (fltVisible()) rows.push(todayRow({ go: "flight", id: "td-flt", icon: "plane", color: "amber", title: "인천 접근",
+    if (menuOk("flight", "SemisFlight")) rows.push(todayRow({ go: "flight", id: "td-flt", icon: "plane", color: "amber", title: "인천 접근",
       sub: "불러오는 중", val: '<b class="mono">·</b>' }));
     if (actions.length) rows.push(todayRow({ go: "minutes", icon: "notes", color: late ? "rose" : "slate", title: "회의 결정사항",
       sub: "미완료 " + actions.length + (late ? " · <em>기한 경과 " + late + "</em>" : ""), val: `<b class="mono">${actions.length}</b>`, tone: late ? "bad" : "" }));
@@ -330,11 +310,11 @@
           ${acts ? `<div class="head-acts">${acts}</div>` : ""}
         </div>
         ${cardVis("status") || todayCard ? `<div class="dash-top${guest ? " guest" : ""}${todayCard ? " has-today" : ""}">${cardVis("status") ? ticketHTML(canWrite) : ""}${todayCard}</div>` : ""}
-        ${!guest && cardVis("threat") && threatVisible() ? SemisThreat.dashHTML() : ""}
-        ${!guest && cardVis("serp") && serpVisible() ? SemisSerp.dashHTML() : ""}
-        ${!guest && cardVis("screen") && window.SemisScreen && scrVisible() ? SemisScreen.dashHTML() : ""}
-        ${!guest && cardVis("audit") && audVisible() ? SemisAudit.dashHTML() : ""}
-        ${cardVis("flight") && fltVisible() ? SemisFlight.dashHTML() : ""}
+        ${!guest && cardVis("threat") && menuOk("threat", "SemisThreat") ? SemisThreat.dashHTML() : ""}
+        ${!guest && cardVis("serp") && menuOk("serp", "SemisSerp") ? SemisSerp.dashHTML() : ""}
+        ${!guest && cardVis("screen") && window.SemisScreen && menuOk("scr-status") ? SemisScreen.dashHTML() : ""}
+        ${!guest && cardVis("audit") && menuOk("audit", "SemisAudit") ? SemisAudit.dashHTML() : ""}
+        ${cardVis("flight") && menuOk("flight", "SemisFlight") ? SemisFlight.dashHTML() : ""}
         ${guest ? `<section class="dash-card">${noticeCol}</section>`
           : `<div class="dash-sheet-wrap"><div class="dash-sheet cols-${[upcomingCard, noticeCol, actionCol].filter(Boolean).length}">${upcomingCard}${noticeCol}${actionCol}</div></div>${buildCol}`}`;
       if (window.SemisHero3D && $("#dash-3d")) SemisHero3D.mount($("#dash-3d"));
@@ -1502,7 +1482,7 @@
       const KEYS = (window.SemisSync && SemisSync.SYNC_KEYS) || [];
       const LABEL = { menus: "메뉴", notices: "공지사항", schedules: "일정", assignees: "담당자",
         minutes: "회의록", minuteFolders: "회의록 폴더", levelHistory: "보안등급 이력",
-        safetyBoard: "현황판", contacts: "비상연락망", gcal: "구글 캘린더", chatRooms: "대화방", assigneesSeeded: "담당자 시드",
+        safetyBoard: "현황판", contacts: "비상연락망", gcal: "구글 캘린더", assigneesSeeded: "담당자 시드",
         vault: "암호 관리", regulations: "규정", equipment: "검색장비", crisis: "위기대응 담당자", fleet: "기체 목록",
         audits: "수검 대응", phonebook: "업무 연락처" };
       if (sel) sel.innerHTML = '<option value="">전체 컬렉션</option>'

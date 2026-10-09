@@ -418,7 +418,7 @@ window.SemisHero3D = (() => {
     const platform = new T.Group();
     loader.add(platform);
     add(platform, new T.BoxGeometry(2.75, 0.1, 1.36), mat.gse, -0.05, -0.05, 0);
-    const railTop = new T.BoxGeometry(2.7, 0.05, 0.05), railHalf = new T.BoxGeometry(1.3, 0.05, 0.05), post = new T.BoxGeometry(0.05, 0.34, 0.05);
+    const railTop = new T.BoxGeometry(2.7, 0.05, 0.05), post = new T.BoxGeometry(0.05, 0.34, 0.05);
     add(platform, railTop, mat.rail, -0.05, 0.34, -0.68);
     add(platform, new T.BoxGeometry(0.4, 0.05, 0.05), mat.rail, -1.2, 0.34, 0.68);         // 우현은 옆 이송구 — 앞쪽 짧은 난간만
     [-1.35, -0.7, -0.05, 0.6, 1.25].forEach(x => add(platform, post, mat.rail, x, 0.17, -0.68));

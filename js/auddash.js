@@ -29,7 +29,6 @@
 
   /* 가로 누적 막대 — 칸 사이 2px, 값은 오른쪽 글자 */
   function sbar(label, parts, total, sub, tt) {
-    const tot = total || parts.reduce((n, p) => n + p.v, 0) || 1;
     return `<div class="ie-sb"${tt ? ` data-tt="${esc(tt)}" tabindex="0"` : ""}>
       <span class="ie-sb-l">${esc(label)}</span>
       <span class="ie-sb-t">${parts.filter(p => p.v > 0).map(p => `<i style="flex:${p.v};--c:${p.c}"></i>`).join("")}</span>
@@ -170,9 +169,9 @@
   function seclogCard(t) {
     const S = SL();
     const ts = S.templates();
-    const logs = S.logs ? S.logs() : (Array.isArray(SeMIS.data.seclog) ? SeMIS.data.seclog : []).filter(r => r && r.id && isISO(r.date));   // 숨긴 양식 · 하드카피 집계 줄 제외
+    const logs = S.logs();   // 숨긴 양식 · 하드카피 집계 줄 제외
     const from = addDays(t, -29);
-    const ng30 = logs.filter(r => r.date >= from && r.date <= t && S.isNG(r)).length + (S.hcNgIn ? S.hcNgIn(from, t) : 0);
+    const ng30 = logs.filter(r => r.date >= from && r.date <= t && S.isNG(r)).length + S.hcNgIn(from, t);
     const n30 = logs.filter(r => r.date >= from && r.date <= t).length;
     const rows = ts.map(x => {
       const s = S.status(x, t);

@@ -14,7 +14,6 @@
   const dot = (s) => (isISO(s) ? s.slice(2).replace(/-/g, ".") : String(s || ""));
   const norm = (s) => String(s == null ? "" : s).replace(/\s+/g, " ").trim();
   const uid = () => "kc" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-  const routeNow = () => String(location.hash || "").replace(/^#\/?/, "").split(/[?/]/)[0];
   let fixedToday = "";
   const todayISO = () => fixedToday || (() => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); })();
   const dayDiff = (a, b) => Math.round((new Date(b + "T00:00:00Z") - new Date(a + "T00:00:00Z")) / 864e5);

@@ -83,7 +83,6 @@
     opts = opts || {};
     const canW = opts.canEdit === undefined ? SeMIS.canEdit() : !!opts.canEdit;
     const ss = series(mod, grp);
-    if (!ss.length && !canW) return opts.emptyText === null ? "" : `<p class="dk-empty">${esc(opts.emptyText || "등록된 문서가 없습니다.")}</p>`;
     if (!ss.length) return opts.emptyText === null ? "" : `<p class="dk-empty">${esc(opts.emptyText || "등록된 문서가 없습니다.")}</p>`;
     return `<ul class="dk-list" data-dk-mod="${esc(mod)}" data-dk-grp="${esc(grp || "")}">${ss.map(s => seriesHTML(s, canW)).join("")}</ul>`;
   }

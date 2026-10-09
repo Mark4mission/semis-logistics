@@ -21,7 +21,6 @@
   const md = (s) => String(s || "").slice(5).replace("-", ".");
   const dot = (s) => String(s || "").replace(/-/g, ".");
   const me = () => (SeMIS.user && SeMIS.user.name) || "";
-  const localDay = (iso) => { const d = new Date(iso); return isNaN(d) ? String(iso || "").slice(0, 10) : toISO(d); };
   const norm = (s) => String(s == null ? "" : s).replace(/\s+/g, " ").trim();
 
   /* ── 구분 · 유형 ── */
@@ -43,7 +42,6 @@
      불러온 항목은 text · ref 만 수검(audits)으로 복사한다 — 근거 요지는 원본에서만 본다(hq). */
   const MASTER_KEY = "auditMaster";
   const SCORES = ["시정조치", "개선권고", "현장시정-보완", "적합", "우수"];   // 0 ~ 4 (점검관용 평가점수)
-  const SCORE_TONE = ["red", "amber", "amber", "green", "blue"];
   const READY_MIN = 3;                                                     // 적합 이상
   /* 구분별 기본 영역 — 국토부 1~8 · 해외 당국(TSA) 6 · 7 · 9 · 사내 전체 */
   const PRESET = { gov: ["1", "2", "3", "4", "5", "6", "7", "8"], foreign: ["6", "7", "9"], internal: null };
@@ -115,7 +113,6 @@
     Object.keys(MID_LINKS).forEach(mid => MID_LINKS[mid].forEach(r => { (out[r] = out[r] || []).push(mid); }));
     return out;
   })();
-  const DEF_LINKS = MID_LINKS;
   /* 연결 화면 이름 — 준비 중인 메뉴는 앞으로 열릴 이름으로 */
   const ROUTE_NAME = {
     dashboard: "보안등급 이력", audit: "수검 지적 관리", inspection: "보안 기록부",
@@ -146,7 +143,7 @@
     return out;
   }
   const sc = (v) => (Number.isInteger(v) && v >= 0 && v <= 4 ? v : null);
-  const linksOf = (c) => (c && Array.isArray(c.links) ? c.links : (c && c.mid && DEF_LINKS[c.mid]) || []).filter(r => typeof r === "string" && r);
+  const linksOf = (c) => (c && Array.isArray(c.links) ? c.links : (c && c.mid && MID_LINKS[c.mid]) || []).filter(r => typeof r === "string" && r);
   /* 연결 화면의 증빙 판단 — 화면이 window.SemisEvidence[route](mid) 를 내놓으면 실제 기록으로({ ok, text }),
      없으면 화면이 열려 있는 것만으로 증빙으로 본다 */
   function routeEv(r, mid) {
@@ -1049,7 +1046,7 @@
     const v = Object.assign({ text: "", ref: "", sop: "", owner: "", note: "", docScore: null, impScore: null, na: false }, c || {});
     const files = filesOf(c).map(f => Object.assign({}, f));
     const cur = linksOf(v);
-    const def = (fixed && DEF_LINKS[c.mid]) || [];
+    const def = (fixed && MID_LINKS[c.mid]) || [];
     const scSel = (idn, val) => `<select id="${idn}"><option value="">-</option>${SCORES.map((t, i) =>
       `<option value="${i}" ${sc(val) === i ? "selected" : ""}>${i} ${esc(t)}</option>`).join("")}</select>`;
     openModal(`<h3>${c ? "항목 수정" : "항목 추가"}${fixed ? ` <small class="au-mh mono">${esc(c.mid)}</small>` : ""}</h3>

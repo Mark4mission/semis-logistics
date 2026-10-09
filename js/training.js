@@ -239,9 +239,7 @@
     return rs.map(r => {
       const c = (ids.indexOf(r.cid) >= 0 ? courseOf(r.cid) : alias[r.cid]) || {};
       let exp = "";
-      if (c.step) exp = "";
-      else if (isISO(r.expire)) exp = r.expire;
-      else exp = nextExpire(c, r.date, prev);
+      if (!c.step) exp = isISO(r.expire) ? r.expire : nextExpire(c, r.date, prev);
       if (!c.step) prev = exp;
       return { r, c, exp };
     });
@@ -1792,13 +1790,6 @@
     const has = records().some(r => r.pid === p0 && g.courses.some(c => c.id === r.cid && !c.step));
     const pick = (has && g.courses.find(c => c.kind === "정기")) || g.courses.find(c => !c.step) || g.courses[0];
     recordForm(p0, "", pick && pick.id);
-  }
-  function inner(canW) {
-    if (tab === "people") return document.getElementById("tr-pbody");
-    if (tab === "sessions") return document.getElementById("tr-sbody");
-    if (tab === "catalog") return document.getElementById("tr-cbody");
-    if (tab === "pledges") return document.getElementById("tr-plbody");
-    return null;
   }
   function wire(box) {
     const canW = SeMIS.canEdit();
