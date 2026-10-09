@@ -1,40 +1,28 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 새 업무 모듈 템플릿 (v1.8 "Terminal Calm" 모듈 화면 키트)
-   ※ 참고용 파일 — 앱에 로드되지 않는다. js/<module>.js 로 복사해 이름만 바꿔 쓴다.
+/* 새 업무 모듈 템플릿 — 참고용(앱에 로드되지 않음). js/<module>.js 로 복사해 이름만 바꿔 쓴다.
+   같은 module id 의 예정 메뉴가 있으면 등록 즉시 운영 메뉴가 되고(허브가 숨어 있었으면 레일에 나타남),
+   대시보드 '모듈 구축 현황' · A4 인쇄 버튼 · 모바일 시트 · 권한 · 숨김은 코어가 맞춘다.
 
-   이 템플릿대로 만들면 코드 한 줄 더 쓰지 않아도 다음이 자동으로 맞춰진다.
-   - 메뉴: 같은 module id의 "예정" 메뉴가 허브 패널의 '준비 중인 모듈'에서 운영 목록으로 올라간다.
-   - 대시보드: '모듈 구축 현황'의 해당 허브 막대가 올라간다.
-   - 머리말: A4 인쇄 버튼이 .page-head 오른쪽에 자동 부착된다.
-   - 모바일: 전체 메뉴 시트·하단 탭·반응형 레이아웃이 그대로 적용된다.
-   - 권한·숨김: 메뉴의 vis / hidden 설정을 코어가 처리한다.
-
-   체크리스트 (README "신규 모듈 추가 체크리스트"와 동일)
-   1) 이 파일 복사 → MOD / KEY / 제목 수정
-   2) js/app.js  freshData()에 KEY 기본값, normalizeData()에 배열 보정(멱등)
-                 필요 시 VIEW_WIDTH[MOD] = "mid" | "wide"
-   3) js/sync.js SYNC_KEYS에 KEY 추가 → tests Y01 기대 문자열 갱신
-      + 서버 권한표에 KEY 등록(읽기·쓰기 등급): semis_logi_private.key_acl — tools/sql/semis-logi-security.sql 에도 같은 줄
-        (등록 안 하면 기본값 읽기 2(manager)·쓰기 3(hq). 테스트 C05가 SQL과 SYNC_KEYS를 대조한다)
-      + 파일을 올리면 Edge Function(tools/edge/semis-logi-files.ts) READ_RANK/WRITE_RANK 에 폴더 추가 후 재배포
-   4) index.html <script src="js/<module>.js?v=..."> 추가 → tests FILES 배열에도 추가
+   체크리스트
+   1) 이 파일 복사 → MOD / KEY / TITLE 수정
+   2) js/app.js  defaultMenus() 에 메뉴 한 줄(운영 데이터에 없으면 ensureSeedMenus 가 시드 자리에 넣음)
+                 비슷한 화면과 묶으려면 탭 묶음(type "bundle") 아래에 두고 tab(짧은 이름) 지정
+                 freshData() 기본값 · normalizeData() 의 obj / rows 표에 KEY 한 줄 · 필요 시 VIEW_WIDTH[MOD]
+   3) js/sync.js SYNC_KEYS 에 KEY → tests Y01 갱신 + 서버 권한표 semis_logi_private.key_acl
+      (tools/sql/semis-logi-security.sql 에도 같은 줄, 없으면 읽기 2 · 쓰기 3). 파일을 올리면
+      tools/edge/semis-logi-files.ts READ_RANK / WRITE_RANK 에 폴더 추가 후 재배포
+   4) index.html <script src="js/<module>.js?v=..." defer> → tests FILES 배열에도
    5) npm run bump <ver> → npm test → 배포 (HANDOFF §3)
 
-   디자인 규칙
-   - 화면 제목·버튼에 이모지 쓰지 않는다 → SeMIS.icon(name) 선 아이콘 (키 목록: SeMIS.ICONS)
-   - 화면 구성 순서: ui.head → ui.stats(선택) → .card( .toolbar + 표 ) — 카드 안에 카드를 넣지 않는다
-   - 숫자·날짜·코드만 .mono (IBM Plex Mono). 본문은 기본 글꼴
-   - 색은 토큰만: --primary(틸) · --accent(앰버, 강조 1곳) · 상태 배지 badge-green/amber/red/blue/gray
-   - 안내 문구는 꼭 필요한 한 줄만 (권한상 자명한 "○○ 전용" 문구 금지)
-   - 검색 입력칸은 절대 다시 만들지 않는다 (한글 조합 깨짐) → ui.searchValue + ui.repaintKeep
-   ═══════════════════════════════════════════════════════ */
+   디자인: 제목 · 버튼에 이모지 금지(SeMIS.icon) · ui.head → ui.stats → .card(.toolbar + 표), 카드 안에 카드 금지 ·
+   숫자 · 날짜만 .mono · 색은 토큰만 · 안내 문구 최소 · 검색칸은 다시 만들지 않는다(ui.searchValue + ui.repaintKeep).
+   주석은 '왜'만 — 버전 · 날짜 · 바뀐 내력은 쓰지 않는다 */
 "use strict";
 
 (() => {
   const { $, $$, esc, toast, openModal, closeModal, confirmModal, ui, icon } = SeMIS;
-  const MOD = "car";      // 메뉴 module id — 예정 메뉴와 같게 두면 자동으로 실화면 대체
-  const KEY = "cars";     // 데이터 컬렉션 SeMIS.data.cars
-  const TITLE = "시정조치 (CAR)";
+  const MOD = "incident";     // 메뉴 module id — 예정 메뉴와 같게 두면 자동으로 실화면 대체
+  const KEY = "incidents";    // 데이터 컬렉션 SeMIS.data.incidents
+  const TITLE = "사고 · 아차사고 보고";
   const list = () => (Array.isArray(SeMIS.data[KEY]) ? SeMIS.data[KEY] : []);
   const today = () => new Date().toISOString().slice(0, 10);
   let query = "";
@@ -60,7 +48,7 @@
     root.innerHTML =
       ui.head({
         title: TITLE,
-        desc: "점검·감사 부적합 → 조치 → 종결 추적",
+        desc: "보고 → 조치 → 종결 추적",
         actions: canWrite ? `<button type="button" class="btn btn-primary" id="x-add">${icon("plus", 17)}<span>등록</span></button>` : ""
       }) +
       ui.stats([
@@ -70,8 +58,7 @@
       ]) +
       `<section class="card" id="x-list">${listHTML()}</section>`;
 
-    /* 검색: 화면 전체를 다시 그리면 입력칸이 새로 만들어져 한글 조합이 자모로 풀린다(v1.13.1).
-       ui.searchValue로 조합 중 자모를 떼고, ui.repaintKeep으로 입력칸은 그대로 둔 채 목록만 바꾼다. */
+    /* 화면을 통째로 다시 그리면 입력칸이 새로 만들어져 한글 조합이 자모로 풀린다 — 목록만 바꾼다 */
     const q = $("#x-q", root);
     if (q) q.oninput = () => {
       const v = ui.searchValue(q.value);
@@ -92,7 +79,7 @@
 
   /* 통합 검색(Ctrl K) 프로바이더 — ico 는 선 아이콘 키 */
   if (window.SemisSearch) SemisSearch.register({
-    id: MOD, group: TITLE, ico: "clipboard", module: MOD,
+    id: MOD, group: TITLE, ico: "alert", module: MOD,
     items: () => list().map(r => ({ title: r.title, sub: r.no, route: MOD }))
   });
 })();

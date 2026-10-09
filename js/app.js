@@ -3,8 +3,8 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.45.0";
-  const APP_NAME = "SeMIS · Logistics";
+  const VERSION = "1.46.0";
+  const APP_NAME = "ARGOS";
   /* 데이터 캐시는 탭 sessionStorage 에만(탭 닫기·로그아웃 시 소멸). 화면 설정(LS_UI)만 localStorage */
   const LS_DATA = "semisl:data";
   const LS_UI   = "semisl:ui";
@@ -165,38 +165,37 @@ const SeMIS = (() => {
   }
 
   /* ── 기본 메뉴 시드 ──
-     허브(그룹)는 레일(왼쪽 아이콘 줄), 하위 메뉴는 허브 패널. 대시보드는 최상위(parent null)지만 홈 허브 첫 항목으로 표시,
-     나머지 최상위(암호 관리 · 시스템 설정)는 레일 하단 유틸리티.
-     planned:true = 모듈 js 가 아직 없는 예정 모듈 — 같은 module id 로 registerModule() 되면 실화면으로 대체 */
+     허브(group)는 레일, 하위 메뉴는 허브 패널. 탭 묶음(bundle)은 패널에 한 줄 — 누르면 첫 화면, 화면 위 탭으로 서로 이동.
+     대시보드는 최상위지만 홈 허브 첫 항목, 나머지 최상위(암호 관리 · 시스템 설정)는 레일 아래 유틸리티.
+     planned:true = 모듈 js 가 아직 없는 예정 모듈 — 같은 module id 로 registerModule() 되면 실화면 */
   function defaultMenus() {
     let seq = 0;
     const h  = (id, label, ico) => ({ id, seq: seq++, type: "group", label, ico });
     const m  = (id, label, icon, module, vis, parent, opts) => Object.assign(
       { id, seq: seq++, type: "module", label, icon, module, vis: vis || "all", parent: parent || null }, opts || {});
     const p  = (id, label, icon, module, vis, parent, desc) => m(id, label, icon, module, vis, parent, { planned: true, desc });
+    const b  = (id, label, parent) => ({ id, seq: seq++, type: "bundle", label, vis: "all", parent });
     const lk = (id, label, icon, url, parent, opts) => Object.assign({ id, seq: seq++, type: "link", label, icon, url, vis: "all", parent: parent || null }, opts || {});
     return [
-      m("dashboard", "대시보드", "🏠", "dashboard"),
+      m("dashboard", "대시보드", "🏠", "dashboard", "all", null, { mv: MENU_VER }),
 
       h("hub-home", "홈", "home"),
-      m("flight", "운항 현황", "✈️", "flight", "all", "hub-home"),
       m("schedule", "일정관리", "📅", "schedule", "mgr", "hub-home"),
-      m("minutes", "회의록 게시판", "🗒️", "minutes", "mgr", "hub-home"),
+      m("minutes", "회의록", "🗒️", "minutes", "mgr", "hub-home"),
+      m("flight", "운항 현황", "✈️", "flight", "all", "hub-home"),
       m("shortcuts", "바로가기", "🔗", "shortcuts", "all", "hub-home"),
-      p("board", "안전보안 현황판", "📊", "board", "mgr", "hub-home",
-        "무재해 경과일·점검 완료율·미결 시정조치·교육 이수율 등 파트 핵심 지표를 한 화면에 모은 현황판. 각 업무 모듈이 쌓이면 자동 집계로 전환합니다."),
 
       h("hub-sec", "화물 보안", "scan"),
       m("sec-dash", "화물보안 대시보드", "📊", "sec-dash", "mgr", "hub-sec"),
-      m("scr-status", "화물 보안검색 현황", "🔎", "scr-status", "mgr", "hub-sec"),
-      m("kc-ra", "상용화주 · RA 관리", "🏷️", "kc-ra", "hq", "hub-sec"),
+      m("scr-status", "보안검색 현황", "🔎", "scr-status", "mgr", "hub-sec"),
+      m("scr-equip", "검색장비 관리", "🔧", "scr-equip", "mgr", "hub-sec"),
       m("sec-cases", "보안 처리 대장", "🗃️", "sec-cases", "mgr", "hub-sec"),
-      m("scr-equip", "검색장비 유지관리", "🔧", "scr-equip", "mgr", "hub-sec"),
+      m("kc-ra", "상용화주 · RA", "🏷️", "kc-ra", "hq", "hub-sec"),
+      m("partners", "협력사 · 보안요원", "🤝", "partners", "mgr", "hub-sec"),
       p("access", "보안구역 출입 관리", "🪪", "access", "mgr", "hub-sec",
         "화물터미널 보호구역 출입증·차량 출입·임시 출입 현황과 만료 도래 알림을 관리합니다."),
 
       h("hub-saf", "안전 관리", "hardhat"),
-      m("daily-safety", "일일 보안 · 안전 순찰일지", "📝", "daily-safety", "mgr", "hub-saf"),
       p("risk", "위험성 평가", "⚠️", "risk", "hq", "hub-saf",
         "작업별 유해·위험요인 발굴, 5×5 위험도 평가, 감소 대책과 재평가 이력을 관리합니다."),
       p("incident", "사고 · 아차사고 보고", "🚨", "incident", "mgr", "hub-saf",
@@ -206,27 +205,30 @@ const SeMIS = (() => {
 
       h("hub-aud", "점검 · 교육", "clipboard"),
       m("aud-dash", "점검 · 교육 대시보드", "📊", "aud-dash", "mgr", "hub-aud"),
-      m("audit", "수검 대응 센터", "🗂️", "audit", "mgr", "hub-aud"),
-      m("inspection", "보안 기록부", "📒", "inspection", "mgr", "hub-aud"),
-      p("car", "시정조치 (CAR)", "📋", "car", "hq", "hub-aud",
-        "점검·감사에서 나온 부적합을 접수 → 조치중 → 종결 3단계로 추적하고 기한 경과를 에스컬레이션합니다."),
-      m("training", "보안교육 · 자격 관리", "🎓", "training", "mgr", "hub-aud"),
-      m("dissem", "보안 전파교육", "📣", "dissem", "mgr", "hub-aud"),
-      m("selfcheck", "자체 보안점검", "🧾", "selfcheck", "mgr", "hub-aud"),     // 선택 실행 모듈 — 허브 맨 아래
+      b("bd-check", "점검 · 순찰", "hub-aud"),
+      m("inspection", "보안 기록부", "📒", "inspection", "mgr", "bd-check", { tab: "보안 기록부" }),
+      m("daily-safety", "일일 보안 · 안전 순찰일지", "📝", "daily-safety", "mgr", "bd-check", { tab: "순찰일지" }),
+      b("bd-audit", "수검 대응", "hub-aud"),
+      m("audit", "수검 대응 센터", "🗂️", "audit", "mgr", "bd-audit", { tab: "수검 · 지적사항" }),
+      m("selfcheck", "자체 보안점검", "🧾", "selfcheck", "mgr", "bd-audit", { tab: "자체 보안점검" }),
+      b("bd-edu", "보안교육", "hub-aud"),
+      m("training", "보안교육 · 자격 관리", "🎓", "training", "mgr", "bd-edu", { tab: "이수 · 자격" }),
+      m("dissem", "보안 전파교육", "📣", "dissem", "mgr", "bd-edu", { tab: "전파교육" }),
 
-      h("hub-ops", "협력 · 비상", "users"),
-      m("serp", "팀위기대응계획 (SERP)", "🛟", "serp", "mgr", "hub-ops"),
-      m("threat", "테러 위협전화 대응", "📞", "threat", "mgr", "hub-ops"),
-      Object.assign(m("contacts", "비상연락망 · 보고체계", "☎️", "contacts", "mgr", "hub-ops"), { quick: true }),
-      m("crisis", "위기대응 담당자", "🧭", "crisis", "mgr", "hub-ops"),
-      m("phonebook", "업무 연락처", "📇", "phonebook", "mgr", "hub-ops"),
-      m("partners", "협력사 · 보안요원", "🤝", "partners", "mgr", "hub-ops"),
-      m("contracts", "계약 · 협약 관리", "💼", "contracts", "hq", "hub-ops"),
+      h("hub-ops", "비상 · 연락", "users"),
+      m("serp", "팀위기대응 (SERP)", "🛟", "serp", "mgr", "hub-ops"),
+      m("threat", "위협전화 대응", "📞", "threat", "mgr", "hub-ops"),
+      b("bd-contact", "연락처", "hub-ops"),
+      m("phonebook", "업무 연락처", "📇", "phonebook", "mgr", "bd-contact", { tab: "업무 연락처" }),
+      m("contacts", "비상연락망 · 보고체계", "☎️", "contacts", "mgr", "bd-contact", { tab: "비상연락망 · 체계도", quick: true }),
+      m("crisis", "위기대응 담당자", "🧭", "crisis", "mgr", "bd-contact", { tab: "위기대응 조직" }),
 
-      h("hub-doc", "규정 · 자료", "book"),
-      m("reg-sec", "항공보안 규정", "📘", "reg-sec", "mgr", "hub-doc"),
-      m("reg-safety", "안전관리 규정", "🦺", "reg-safety", "mgr", "hub-doc"),
-      m("reg-dg", "위험물(DG) 기준", "☢️", "reg-dg", "mgr", "hub-doc"),
+      h("hub-doc", "규정 · 문서", "book"),
+      b("bd-regs", "규정", "hub-doc"),
+      m("reg-sec", "항공보안 규정", "📘", "reg-sec", "mgr", "bd-regs", { tab: "항공보안" }),
+      m("reg-safety", "안전관리 규정", "🦺", "reg-safety", "mgr", "bd-regs", { tab: "안전관리" }),
+      m("reg-dg", "위험물(DG) 기준", "☢️", "reg-dg", "mgr", "bd-regs", { tab: "위험물" }),
+      m("contracts", "계약 · 협약", "💼", "contracts", "hq", "hub-doc"),
       lk("ref-semis", "SeMIS v2 (항공보안파트)", "🛡️", "https://semis.pe.kr/", "hub-doc", { quick: true }),
       lk("ref-cares", "CARES (보안장비 관제)", "🛰", "https://airzeta-security-system.web.app", "hub-doc", { quick: true }),
       lk("ref-icn", "인천공항공사", "🛫", "https://www.airport.kr/", "hub-doc"),
@@ -236,6 +238,48 @@ const SeMIS = (() => {
       m("vault", "암호 관리", "🔐", "vault", "hq"),
       m("settings", "시스템 설정", "⚙️", "settings", "admin")
     ];
+  }
+
+  /* ── 메뉴 구조 2판(탭 묶음 · 허브 재배치) — 대시보드 메뉴의 mv 로 한 번만.
+     시드에 있는 메뉴는 시드 자리(소속 · 순서)로 옮기고, 이름은 운영자가 바꾸지 않았을 때만 새 이름으로.
+     시드에 없는 메뉴(운영자가 만든 링크 등)는 그대로. 예정 '현황판' · 'CAR' 는 지운다 */
+  const MENU_VER = 2;
+  const RENAMED = {
+    "hub-ops": ["협력 · 비상", "비상 · 연락"], "hub-doc": ["규정 · 자료", "규정 · 문서"],
+    minutes: ["회의록 게시판", "회의록"], "scr-status": ["화물 보안검색 현황", "보안검색 현황"],
+    "scr-equip": ["검색장비 유지관리", "검색장비 관리"], "kc-ra": ["상용화주 · RA 관리", "상용화주 · RA"],
+    contracts: ["계약 · 협약 관리", "계약 · 협약"], serp: ["팀위기대응계획 (SERP)", "팀위기대응 (SERP)"],
+    threat: ["테러 위협전화 대응", "위협전화 대응"]
+  };
+  const menuKey = (m) => m.type === "module" ? "m:" + m.module : "i:" + m.id;
+  function migrateMenus(dash) {
+    if (!dash || (Number(dash.mv) || 0) >= MENU_VER) return;
+    const seed = defaultMenus();
+    let menus = DATA.menus.filter(m => !(m.type === "module" && m.planned && (m.module === "board" || m.module === "car") && !modules[m.module]));
+    seed.filter(s => s.type === "bundle").forEach(s => {
+      if (!menus.some(m => m.id === s.id)) menus.push(Object.assign({}, s));
+    });
+    const bySeedKey = {};
+    menus.forEach(m => { bySeedKey[menuKey(m)] = m; });
+    const kids = {};
+    seed.forEach(s => {
+      if (s.type === "link" || s.type === "group") return;
+      const m = bySeedKey[menuKey(s)];
+      if (!m || !s.parent) return;
+      m.parent = s.parent;
+      (kids[s.parent] = kids[s.parent] || []).push(m);
+      if (s.tab && !m.tab) m.tab = s.tab;
+    });
+    const seqOf = (id) => { const x = menus.find(m => m.id === id); return x ? Number(x.seq) || 0 : 0; };
+    const place = (pid, step) => (kids[pid] || []).forEach((m, k) => { m.seq = Math.round((seqOf(pid) + (k + 1) * step) * 1e4) / 1e4; });
+    seed.filter(s => s.type === "group").forEach(g => place(g.id, 0.01));
+    seed.filter(s => s.type === "bundle").forEach(bd => place(bd.id, 0.001));
+    menus.forEach(m => {
+      const r = RENAMED[m.type === "module" ? m.module : m.id];
+      if (r && m.label === r[0]) m.label = r[1];
+    });
+    DATA.menus = menus;
+    dash.mv = MENU_VER;
   }
 
   /* ── 일정 담당자 카테고리 ──
@@ -255,17 +299,17 @@ const SeMIS = (() => {
       menus: defaultMenus(),
       notices: [{
         id: "n" + Date.now(),
-        title: "SeMIS · Logistics 오픈 안내",
-        body: "인천화물팀 안전보안파트의 화물터미널 안전보안 관리 정보시스템이 열렸습니다.\n\n- 좌측 메뉴에서 각 업무 화면으로 이동할 수 있습니다.\n- '예정' 표시가 있는 메뉴는 준비 중인 업무 모듈로, 순차적으로 열립니다.\n- 문의: 인천화물팀 안전보안파트",
+        title: "ARGOS 오픈 안내",
+        body: "인천화물팀 안전보안 종합정보 플랫폼 ARGOS가 열렸습니다.\n\n- 좌측 메뉴에서 각 업무 화면으로 이동할 수 있습니다.\n- '예정' 표시가 있는 메뉴는 준비 중인 업무 모듈로, 순차적으로 열립니다.\n- 문의: 인천화물팀 안전보안파트",
         author: "시스템관리자", pinned: true, created: new Date().toISOString()
       }],
       levelHistory: [{ id: "lv0", date: new Date().toISOString().slice(0, 10), level: "평시",
-        note: "SeMIS · Logistics 개설", by: "시스템", at: new Date().toISOString() }],
+        note: "ARGOS 개설", by: "시스템", at: new Date().toISOString() }],
       safetyBoard: { since: "", note: "" }, // 무재해 기준일(대시보드 현황판)
       schedules: [],     // 일정관리
       assignees: [],     // 일정 담당자 카테고리 — normalize 가 기본값 시드
       gcal: { enabled: false, calendarId: "", apiKey: "" },
-      minutes: [],       // 회의록 게시판
+      minutes: [],       // 회의록
       minuteFolders: [], // 회의록 폴더 — normalize가 기본 폴더 시드
       contacts: { sections: [] }, // 비상연락망 (실데이터는 공용 DB만 — 코드 미시드)
       crisis: { rows: [] },        // 위기대응 담당자 (명단은 공용 DB만 — 코드 미시드)
@@ -292,8 +336,8 @@ const SeMIS = (() => {
       selfChecks: [],    // 자체 보안점검 — 국가항공보안 수준관리지침 별표 점검표 기록 (js/selfcheck.js)
       docs: [],          // 증빙 문서 서가 (js/docshelf.js, 문서 목록은 공용 DB만)
       partners: {},      // 협력사 · 보안요원 (명부는 공용 DB만)
-      contracts: [],     // 계약 · 협약 관리
-      kcra: {},          // 상용화주 · RA 관리
+      contracts: [],     // 계약 · 협약
+      kcra: {},          // 상용화주 · RA
       secCases: [],      // 보안 처리 대장
       dissem: {},        // 보안 전파교육
       scrStats: {}       // 화물 보안검색 실적 (월별 합계)
@@ -311,14 +355,24 @@ const SeMIS = (() => {
     save();
   }
 
+  /* 시드상 소속이 지금 데이터에 있으면 그대로, 탭 묶음이 없어졌으면 그 묶음의 허브 */
+  function seedParent(s, seed) {
+    let pid = s.parent || null;
+    for (let i = 0; pid && i < 3; i++) {
+      if (DATA.menus.some(m => m.id === pid && (m.type === "group" || m.type === "bundle"))) return pid;
+      const up = seed.find(x => x.id === pid);
+      pid = up ? up.parent || null : null;
+    }
+    return null;
+  }
   /* 시드의 실모듈 메뉴가 데이터에 없으면 시드 순서상 바로 앞 메뉴 뒤에 넣는다 — 있는 메뉴(이름 · 숨김 · 위치)는 그대로 */
   function ensureSeedMenus() {
     const menus = DATA.menus;
-    const keyOf = (m) => m.type === "module" ? "m:" + m.module : "i:" + m.id;
+    const keyOf = menuKey;
     const seed = defaultMenus();
     seed.forEach((s, i) => {
       if (s.type !== "module" || s.planned || menus.some(m => keyOf(m) === keyOf(s))) return;
-      const parent = s.parent && menus.some(m => m.id === s.parent && m.type === "group") ? s.parent : null;
+      const parent = seedParent(s, seed);
       let prev = null;
       for (let j = i - 1; j >= 0 && !prev; j--) {
         const p = seed[j];
@@ -346,6 +400,15 @@ const SeMIS = (() => {
     DATA.menus.forEach(m => { if (m.type === "group" && (!m.ico || !ICONS[m.ico])) m.ico = "folder"; });
     ensureSeedMenus();
     const dash = DATA.menus.find(m => m.type === "module" && m.module === "dashboard");
+    migrateMenus(dash);
+    // 탭 묶음 소속이 풀린 메뉴(옛 화면이 저장한 경우 등)는 시드 자리로
+    const seedAll = defaultMenus();
+    DATA.menus.forEach(m => {
+      if (m.type !== "module" || m.parent) return;
+      const s = seedAll.find(x => x.type === "module" && x.module === m.module);
+      const sp = s && s.parent ? seedAll.find(x => x.id === s.parent) : null;
+      if (sp && sp.type === "bundle") m.parent = seedParent(s, seedAll);
+    });
     if (dash) { dash.vis = "all"; dash.parent = null; if (dash.seq !== 0) dash.seq = Math.min(0, dash.seq || 0); }
     const st = DATA.menus.find(m => m.type === "module" && m.module === "settings");
     if (st) { st.vis = "admin"; st.parent = null; }
@@ -361,7 +424,7 @@ const SeMIS = (() => {
     DATA.menus.forEach(m => {
       if (!m.parent) return;
       const p = DATA.menus.find(x => x.id === m.parent);
-      if (!p || (p.type !== "group" && p.type !== "link")) { m.parent = null; return; }
+      if (!p || (p.type !== "group" && p.type !== "link" && p.type !== "bundle") || (p.type === "bundle" && m.type !== "module")) { m.parent = null; return; }
       if (p.type === "link" && p.open !== "group") p.open = "group";
     });
 
@@ -452,7 +515,7 @@ const SeMIS = (() => {
     if (!DATA.vault.personal || typeof DATA.vault.personal !== "object" || Array.isArray(DATA.vault.personal))
       DATA.vault.personal = {};   // 멤버별 개인용 항목 암호문 { memberId: {iv, ct} }
 
-    // 회의록 게시판 — 폴더 기본 시드는 minutes.js가 제공
+    // 회의록 — 폴더 기본 시드는 minutes.js가 제공
     if (!Array.isArray(DATA.minutes)) DATA.minutes = [];
     if (!Array.isArray(DATA.minuteFolders)) DATA.minuteFolders = [];
     if (!DATA.minuteFolders.length && typeof window !== "undefined" && window.SemisMinutes && window.SemisMinutes.seedFolders)
@@ -692,14 +755,20 @@ const SeMIS = (() => {
   function menuHidden(menu) {
     if (!menu) return false;
     if (menu.hidden && canHide(menu)) return true;
-    if (menu.parent && DATA && Array.isArray(DATA.menus)) {
-      const p = DATA.menus.find(m => m.id === menu.parent);
-      if (p && p.hidden) return true;
+    let pid = menu.parent;
+    for (let i = 0; pid && i < 3 && DATA && Array.isArray(DATA.menus); i++) {
+      const p = DATA.menus.find(m => m.id === pid);
+      if (!p) break;
+      if (p.hidden) return true;
+      pid = p.parent;
     }
     return false;
   }
-  /* 화면 노출 = 권한 통과 && 숨김 아님 */
-  function navVisible(menu) { return !!menu && canSee(menu) && !menuHidden(menu); }
+  /* 화면 노출 = 권한 통과 && 숨김 아님 (탭 묶음은 보이는 화면이 하나라도 있을 때) */
+  function navVisible(menu) {
+    if (!menu || !canSee(menu) || menuHidden(menu)) return false;
+    return menu.type !== "bundle" || bundleMembers(menu).length > 0;
+  }
 
   /* ── 유틸 ── */
   const $ = (sel, el) => (el || document).querySelector(sel);
@@ -866,7 +935,7 @@ const SeMIS = (() => {
     const desc = menu.desc || "이 메뉴는 업무 모듈로 순차 개발될 예정입니다.";
     const hub = hubOf(menu);
     const g = hub ? DATA.menus.find(x => x.id === hub) : null;
-    const sibs = hub ? hubEntries(hub).filter(m => m.type === "module" && m.id !== menu.id) : [];
+    const sibs = hub ? hubModules(hub).filter(m => m.id !== menu.id) : [];
     root.innerHTML = `
       <div class="page-head">
         <div class="page-title">${esc(menu.label)}</div>
@@ -917,6 +986,7 @@ const SeMIS = (() => {
       if (allow.indexOf(route) < 0) route = vendorHome(currentUser);
       applyViewWidth(view, route);
       const def = modules[route] || modules.dashboard;
+      renderSubtabs("");
       def.render(view);
       attachPrintBtn(view, route);
       highlightNav(route);
@@ -926,19 +996,24 @@ const SeMIS = (() => {
     if (currentUser && currentUser.role === "signer") {
       view.classList.remove("view-wide"); view.classList.remove("view-mid");
       const def = modules.minutes || modules.dashboard;
+      renderSubtabs("");
       def.render(view);
       highlightNav("minutes");
       closeSidebar();
       return;
     }
     if (route.indexOf("embed/") === 0) {
+      renderSubtabs("");
       renderEmbedView(view, route.slice(6));
     } else if (route.indexOf("links/") === 0) {
+      renderSubtabs("");
       renderLinkGroup(view, route.slice(6));
     } else {
       let def = modules[route];
       const menu = menuForModule(route);
-      if (menu && !canSee(menu)) { toast("접근 권한이 없습니다.", true); def = modules.dashboard; markHub(view, "dashboard"); }
+      const denied = !!menu && !canSee(menu);
+      renderSubtabs(denied ? "" : route);
+      if (denied) { toast("접근 권한이 없습니다.", true); def = modules.dashboard; markHub(view, "dashboard"); }
       else if (!def && menu && menu.type === "module") {
         // 예정 모듈 — 모듈 js가 아직 없으면 안내 화면
         renderPlannedView(view, menu);
@@ -955,6 +1030,25 @@ const SeMIS = (() => {
     closeSidebar();
     watchView();
     queueTidy();
+  }
+  /* 탭 묶음에 속한 화면이면 본문 위에 묶음 탭(보이는 화면이 둘 이상일 때) */
+  function renderSubtabs(route) {
+    const nav = $("#subtabs");
+    if (!nav) return;
+    const bd = route ? bundleOf(menuForModule(route)) : null;
+    const ms = bd && !menuHidden(bd) ? bundleMembers(bd) : [];
+    if (ms.length < 2) { nav.hidden = true; nav.innerHTML = ""; return; }
+    const view = $("#view");
+    nav.className = "subtabs" + (view.classList.contains("view-wide") ? " view-wide" : view.classList.contains("view-mid") ? " view-mid" : "");
+    nav.hidden = false;
+    nav.setAttribute("aria-label", bd.label);
+    nav.innerHTML = '<span class="sbt-name">' + esc(bd.label) + '</span><div class="sbt-list">' + ms.map(m => {
+      const on = m.module === route, badge = navBadgeOf(m), opt = !!(modules[m.module] && modules[m.module].optional);
+      return '<button type="button" class="sbt-tab' + (on ? " on" : "") + '"' + (on ? ' aria-current="page"' : "") + ' data-route="' + esc(m.module) + '"' +
+        (opt ? ' title="선택 실행"' : "") + '><span>' + esc(m.tab || m.label) + '</span>' +
+        (opt ? '<i class="sbt-opt">선택</i>' : badge ? '<b class="sbt-n">' + esc(badge) + '</b>' : "") + '</button>';
+    }).join("") + '</div>';
+    $$(".sbt-tab", nav).forEach(b => { b.onclick = () => { if (b.dataset.route !== currentRoute()) navigate(b.dataset.route); }; });
   }
   /* 떠 있는 허브 패널·모바일 시트 닫기 (스크롤 유지) */
   function closeOverlays() {
@@ -1098,8 +1192,28 @@ const SeMIS = (() => {
   function hubEntries(hubId) {
     return sortedMenus().filter(m => m.type !== "group" && hubOf(m) === hubId && navVisible(m));
   }
-  function hubList() {
-    return sortedMenus().filter(g => g.type === "group" && !menuHidden(g) && hubEntries(g.id).length);
+  /* 레일에 보일 허브 — 운영 화면(모듈 · 묶음 · 링크)이 하나라도 있을 때. withPlanned 면 예정 모듈만 있는 허브도 */
+  function hubList(withPlanned) {
+    return sortedMenus().filter(g => g.type === "group" && !menuHidden(g) &&
+      hubEntries(g.id).some(m => withPlanned || m.type !== "module" || isLive(m)));
+  }
+  /* ── 탭 묶음(bundle) — 비슷한 화면을 메뉴 한 줄로 묶고 화면 위 탭으로 오간다. 주소(#/모듈)는 그대로 ── */
+  function bundleOf(mn) {
+    if (!mn || !mn.parent || !DATA) return null;
+    const p = DATA.menus.find(x => x.id === mn.parent);
+    return p && p.type === "bundle" ? p : null;
+  }
+  function bundleMembers(bd) {
+    return sortedMenus().filter(m => m.type === "module" && m.parent === bd.id && canSee(m) && !menuHidden(m) && !isPlannedMenu(m));
+  }
+  /* 허브 안 모듈 — 탭 묶음 속 모듈까지 */
+  function hubModules(hubId) {
+    const out = [];
+    hubEntries(hubId).forEach(m => {
+      if (m.type === "module") out.push(m);
+      else if (m.type === "bundle") out.push.apply(out, bundleMembers(m));
+    });
+    return out;
   }
   function utilEntries() {
     return sortedMenus().filter(m => m.type !== "group" && !m.parent &&
@@ -1121,7 +1235,18 @@ const SeMIS = (() => {
       (app && app.classList.contains("panel-collapsed")));
   };
 
+  function bundleBadge(bd) {
+    let n = 0, txt = "";
+    bundleMembers(bd).forEach(m => { const v = navBadgeOf(m); if (/^\d+$/.test(v)) n += Number(v); else if (v && !txt) txt = v; });
+    return txt || (n ? String(n) : "");
+  }
   function navItemHTML(m) {
+    if (m.type === "bundle") {
+      const ms = bundleMembers(m), badge = bundleBadge(m);
+      return '<button type="button" class="nav-item nav-bundle" data-route="' + esc(ms[0] ? ms[0].module : "") + '" data-routes="' +
+        esc(ms.map(x => x.module).join(" ")) + '" title="' + esc(m.label + " — " + ms.map(x => x.tab || x.label).join(" · ")) + '">' +
+        '<span class="nav-lbl">' + esc(m.label) + '</span>' + (badge ? '<span class="nav-meta">' + esc(badge) + '</span>' : "") + '</button>';
+    }
     const tag = m.type === "link" ? "a" : "button";
     if (isLinkGroup(m)) {
       const kn = linkChildren(m.id).length;
@@ -1154,7 +1279,7 @@ const SeMIS = (() => {
   }
   const LINKS_SHOWN = 5;   // 허브 패널 바로가기는 5개까지, 나머지는 펼쳐 보기
   function hubSectionHTML(g, entries) {
-    const live = entries.filter(m => m.type === "module" && isLive(m));
+    const live = entries.filter(m => m.type === "bundle" || (m.type === "module" && isLive(m)));
     const planned = entries.filter(isPlannedMenu);
     const links = entries.filter(m => m.type === "link");
     const pins = g.id === homeHubId()
@@ -1371,14 +1496,15 @@ const SeMIS = (() => {
     const g = hub ? DATA.menus.find(x => x.id === hub) : null;
     const hubName = g ? g.label : (mn && !mn.parent ? "관리" : "");
     const leaf = mn ? mn.label : ((modules[route] && modules[route].title) || "");
-    const up = mn && mn.parent ? DATA.menus.find(x => x && x.id === mn.parent && x.type === "link") : null;
+    const up = mn && mn.parent ? DATA.menus.find(x => x && x.id === mn.parent && (x.type === "link" || x.type === "bundle")) : null;
     el.innerHTML = (hubName && hubName !== leaf ? '<span class="cr-hub">' + esc(hubName) + '</span>' + icon("chevron", 14) : "") +
       (up && up.label !== leaf ? '<span class="cr-hub">' + esc(up.label) + '</span>' + icon("chevron", 14) : "") +
       '<b class="cr-leaf">' + esc(leaf) + '</b>';
   }
   function highlightNav(route) {
     route = String(route || "");
-    $$(".nav-item").forEach(el => el.classList.toggle("active", el.dataset.route === route));
+    $$(".nav-item").forEach(el => el.classList.toggle("active", el.dataset.route === route ||
+      (!!el.dataset.routes && el.dataset.routes.split(" ").indexOf(route) >= 0)));
     $$(".rail-btn.util").forEach(el => el.classList.toggle("active", el.dataset.route === route));
     const role = currentUser && currentUser.role;
     const mn = (route.indexOf("embed/") === 0 || route.indexOf("links/") === 0)
@@ -2028,7 +2154,7 @@ const SeMIS = (() => {
     icon, ui, ICONS, HUB_ICONS, hubOf, hubOfDeep, hubList, hubEntries, utilEntries, homeHubId,
     isLinkGroup, linkChildren, isIntranet, hostOf, openHub, hubHomeRoute, togglePanel, openSheet,
     LINK_ICONS, LINK_TONES, favOk, linkIconHTML, linkCardHTML, menuForModule,
-    closeSidebar, closeOverlays,
+    closeSidebar, closeOverlays, bundleOf, bundleMembers, hubModules, renderSubtabs,
     isMobile, actionSheet, closeActionSheet, tidyView, labelTable, setEditMode, mfToggle,
     get editing() { return editingNow(); },
     openModal, closeModal, confirmModal, toast,

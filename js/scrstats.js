@@ -69,7 +69,7 @@
   if (window.SemisDocs) SemisDocs.define("scr-status", [
     { id: "stats", label: "보안검색 통계 · 실적" }, { id: "haz", label: "위해물품 · 비인가자 적발 보고" }, { id: "proc", label: "검색 절차 · 기준" }, { id: "misc", label: "기타" }
   ]);
-  /* 화물 보안검색 현황 화면의 증빙: 6.7 · 6.8 = 실적, 그 밖(8.1 · 8.3 등) = CARES 연동 화면 */
+  /* 보안검색 현황 화면의 증빙: 6.7 · 6.8 = 실적, 그 밖(8.1 · 8.3 등) = CARES 연동 화면 */
   window.SemisEvidence = window.SemisEvidence || {};
   window.SemisEvidence["scr-status"] = (mid) => (mid === "6.7" || mid === "6.8" ? evidence(mid) : { ok: true, text: "" });
   window.SemisScrStats = { cardHTML, wire, evidence, monthsOf };

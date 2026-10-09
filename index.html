@@ -7,14 +7,14 @@
 <meta name="robots" content="noindex">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta http-equiv="Content-Security-Policy" content="script-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
-<script src="js/loginguard.js?v=1.45.0"></script>
-<title>SeMIS · Logistics — 인천화물팀 안전보안</title>
+<script src="js/loginguard.js?v=1.46.0"></script>
+<title>ARGOS — 인천화물팀 안전보안 종합정보</title>
 <link rel="icon" type="image/svg+xml" href="assets/mark.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
 <link rel="preload" as="image" href="assets/img/login-dusk.webp" type="image/webp" fetchpriority="high" media="(min-width: 861px)">
-<link rel="stylesheet" href="css/main.css?v=1.45.0">
+<link rel="stylesheet" href="css/main.css?v=1.46.0">
 </head>
 <body>
 
@@ -22,25 +22,25 @@
 <div id="login-overlay" class="login-overlay">
   <div class="login-shell">
     <aside class="login-brand">
-      <div class="lb-brand"><img src="assets/mark.svg" alt="" width="44" height="44"><span>SeMIS <b>Logistics</b></span></div>
+      <div class="lb-brand"><img src="assets/mark.svg" alt="" width="44" height="44"><span>ARGOS</span></div>
       <div class="lb-body">
-        <h1 class="lb-title">화물터미널<br>안전보안 관리<br>정보시스템</h1>
+        <h1 class="lb-title">인천화물터미널<br>안전 · 보안<br>종합정보</h1>
         <div class="lb-tag" aria-hidden="true">
           <div class="lb-tag-top"><span>안전 · 보안</span><span class="mono">ICNKF</span></div>
           <div class="lb-tag-grid">
             <div><small>운영사</small><b>에어제타</b></div>
             <div><small>소속</small><b>인천화물팀</b></div>
             <div><small>부서</small><b>안전보안파트</b></div>
-            <div><small>시스템</small><b>SeMIS · Logistics</b></div>
+            <div><small>시스템</small><b>ARGOS</b></div>
           </div>
-          <div class="lb-tag-foot">Cargo Terminal Safety &amp; Security Management</div>
+          <div class="lb-tag-foot">Air-cargo Risk &amp; Guard Operations System</div>
         </div>
       </div>
       <div class="lb-foot">에어제타 인천화물팀 안전보안파트</div>
     </aside>
     <div class="login-main">
       <form id="login-form" class="login-card" autocomplete="off">
-        <div class="login-mhead"><img src="assets/mark.svg" alt="" width="40" height="40"><span>SeMIS <b>Logistics</b></span></div>
+        <div class="login-mhead"><img src="assets/mark.svg" alt="" width="40" height="40"><span>ARGOS</span></div>
         <h2 class="login-title">로그인</h2>
         <label class="login-label" for="login-pw">접속 암호</label>
         <div class="login-input-wrap">
@@ -67,7 +67,7 @@
 
   <aside id="sidebar" class="sidebar panel" aria-label="메뉴">
     <div class="panel-brand">
-      <div class="pb-text"><span class="pb-name">SeMIS <b>Logistics</b></span><span class="pb-sub">인천화물팀 안전보안파트</span></div>
+      <div class="pb-text"><span class="pb-name">ARGOS</span><span class="pb-sub">인천화물팀 안전보안 종합정보</span></div>
       <button type="button" id="sheet-close" class="icon-btn sheet-only" aria-label="메뉴 닫기"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
     </div>
     <button type="button" class="panel-search" data-search-open>
@@ -85,7 +85,7 @@
 
   <header class="header">
     <button id="menu-toggle" class="icon-btn" type="button" aria-label="메뉴 패널 접기·펼치기" title="메뉴 패널 접기·펼치기"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M9.5 4.5v15"/></svg></button>
-    <a class="brand" href="#/dashboard"><img src="assets/mark.svg" alt="" width="30" height="30"><span class="brand-text">SeMIS <b>Logistics</b></span></a>
+    <a class="brand" href="#/dashboard"><img src="assets/mark.svg" alt="" width="30" height="30"><span class="brand-text">ARGOS</span></a>
     <nav id="crumbs" class="crumbs" aria-label="현재 위치"></nav>
     <div class="header-right">
       <button id="hdr-search-btn" class="icon-btn search-btn-m" type="button" data-search-open aria-label="통합 검색" title="통합 검색 (Ctrl K)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg></button>
@@ -96,6 +96,7 @@
   </header>
 
   <main id="main" class="main">
+    <nav id="subtabs" class="subtabs" hidden></nav>
     <div id="view" class="view"></div>
   </main>
 
@@ -123,49 +124,49 @@
 <div id="toast-wrap" class="toast-wrap"></div>
 
 <script src="assets/vendor/supabase-js-2.117.2.min.js" defer></script>
-<script src="js/app.js?v=1.45.0" defer></script>
-<script src="js/qr.js?v=1.45.0" defer></script>
-<script src="js/hero3d.js?v=1.45.0" defer></script>
-<script src="js/modules.js?v=1.45.0" defer></script>
-<script src="js/shortcuts.js?v=1.45.0" defer></script>
-<script src="js/files.js?v=1.45.0" defer></script>
-<script src="js/docshelf.js?v=1.45.0" defer></script>
-<script src="js/calendar.js?v=1.45.0" defer></script>
-<script src="js/minutes.js?v=1.45.0" defer></script>
-<script src="js/contacts.js?v=1.45.0" defer></script>
-<script src="js/flowpdf.js?v=1.45.0" defer></script>
-<script src="js/vault.js?v=1.45.0" defer></script>
-<script src="js/regulations.js?v=1.45.0" defer></script>
-<script src="js/search.js?v=1.45.0" defer></script>
-<script src="js/cares.js?v=1.45.0" defer></script>
-<script src="js/hazfind.js?v=1.45.0" defer></script>
-<script src="js/screening.js?v=1.45.0" defer></script>
-<script src="js/equipment.js?v=1.45.0" defer></script>
-<script src="js/secpost.js?v=1.45.0" defer></script>
-<script src="js/secdash.js?v=1.45.0" defer></script>
-<script src="js/crisis.js?v=1.45.0" defer></script>
-<script src="js/serp.js?v=1.45.0" defer></script>
-<script src="js/threat.js?v=1.45.0" defer></script>
-<script src="js/phonebook.js?v=1.45.0" defer></script>
-<script src="js/contracts.js?v=1.45.0" defer></script>
-<script src="js/partners.js?v=1.45.0" defer></script>
-<script src="js/kcra.js?v=1.45.0" defer></script>
-<script src="js/seccases.js?v=1.45.0" defer></script>
-<script src="js/dissem.js?v=1.45.0" defer></script>
-<script src="js/scrstats.js?v=1.45.0" defer></script>
-<script src="js/audit.js?v=1.45.0" defer></script>
-<script src="js/training.js?v=1.45.0" defer></script>
-<script src="js/seclog.js?v=1.45.0" defer></script>
-<script src="js/patrol.js?v=1.45.0" defer></script>
-<script src="js/hwpx.js?v=1.45.0" defer></script>
-<script src="js/nasforms.js?v=1.45.0" defer></script>
-<script src="js/selfcheck.js?v=1.45.0" defer></script>
-<script src="js/auddash.js?v=1.45.0" defer></script>
-<script src="js/flightcore.js?v=1.45.0" defer></script>
-<script src="js/flightops.js?v=1.45.0" defer></script>
-<script src="js/sync.js?v=1.45.0" defer></script>
-<script src="js/pow.js?v=1.45.0" defer></script>
-<script src="js/fileauth.js?v=1.45.0" defer></script>
-<script src="js/main.js?v=1.45.0" defer></script>
+<script src="js/app.js?v=1.46.0" defer></script>
+<script src="js/qr.js?v=1.46.0" defer></script>
+<script src="js/hero3d.js?v=1.46.0" defer></script>
+<script src="js/modules.js?v=1.46.0" defer></script>
+<script src="js/shortcuts.js?v=1.46.0" defer></script>
+<script src="js/files.js?v=1.46.0" defer></script>
+<script src="js/docshelf.js?v=1.46.0" defer></script>
+<script src="js/calendar.js?v=1.46.0" defer></script>
+<script src="js/minutes.js?v=1.46.0" defer></script>
+<script src="js/contacts.js?v=1.46.0" defer></script>
+<script src="js/flowpdf.js?v=1.46.0" defer></script>
+<script src="js/vault.js?v=1.46.0" defer></script>
+<script src="js/regulations.js?v=1.46.0" defer></script>
+<script src="js/search.js?v=1.46.0" defer></script>
+<script src="js/cares.js?v=1.46.0" defer></script>
+<script src="js/hazfind.js?v=1.46.0" defer></script>
+<script src="js/screening.js?v=1.46.0" defer></script>
+<script src="js/equipment.js?v=1.46.0" defer></script>
+<script src="js/secpost.js?v=1.46.0" defer></script>
+<script src="js/secdash.js?v=1.46.0" defer></script>
+<script src="js/crisis.js?v=1.46.0" defer></script>
+<script src="js/serp.js?v=1.46.0" defer></script>
+<script src="js/threat.js?v=1.46.0" defer></script>
+<script src="js/phonebook.js?v=1.46.0" defer></script>
+<script src="js/contracts.js?v=1.46.0" defer></script>
+<script src="js/partners.js?v=1.46.0" defer></script>
+<script src="js/kcra.js?v=1.46.0" defer></script>
+<script src="js/seccases.js?v=1.46.0" defer></script>
+<script src="js/dissem.js?v=1.46.0" defer></script>
+<script src="js/scrstats.js?v=1.46.0" defer></script>
+<script src="js/audit.js?v=1.46.0" defer></script>
+<script src="js/training.js?v=1.46.0" defer></script>
+<script src="js/seclog.js?v=1.46.0" defer></script>
+<script src="js/patrol.js?v=1.46.0" defer></script>
+<script src="js/hwpx.js?v=1.46.0" defer></script>
+<script src="js/nasforms.js?v=1.46.0" defer></script>
+<script src="js/selfcheck.js?v=1.46.0" defer></script>
+<script src="js/auddash.js?v=1.46.0" defer></script>
+<script src="js/flightcore.js?v=1.46.0" defer></script>
+<script src="js/flightops.js?v=1.46.0" defer></script>
+<script src="js/sync.js?v=1.46.0" defer></script>
+<script src="js/pow.js?v=1.46.0" defer></script>
+<script src="js/fileauth.js?v=1.46.0" defer></script>
+<script src="js/main.js?v=1.46.0" defer></script>
 </body>
 </html>

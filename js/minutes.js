@@ -1,4 +1,4 @@
-/* 회의록 게시판 — 회의마다 빈 회의록을 만들어 그 자리에서 기록한다. 직전 회의에서 회차·참석자·미결사항을 승계하고,
+/* 회의록 — 회의마다 빈 회의록을 만들어 그 자리에서 기록한다. 직전 회의에서 회차·참석자·미결사항을 승계하고,
    6자리 코드·QR로 참석자 서명, A4 회의록·QR 안내문 인쇄. */
 
 /* DATA.minuteFolders = [{ id, name, icon, desc, place, chair, seq }]
@@ -264,7 +264,7 @@
       // 회의록은 있는데 본인에게 보이는 게 없을 때 — 왜 비었는지 알린다
       if (all().length && !visibleAll().length) return `<div class="mn-guide">
         <div class="mn-guide-h">🔒 열람 가능한 회의록이 없습니다</div>
-        <div class="mn-guide-sub">회의록 게시판은 누구나 열 수 있지만, 회의 내용은 <b>본인이 참석한 회의</b>만 보입니다.</div>
+        <div class="mn-guide-sub">회의록은 누구나 열 수 있지만, 회의 내용은 <b>본인이 참석한 회의</b>만 보입니다.</div>
         <div class="mn-guide-crit">본인 참석 여부는 이렇게 확인합니다 —
           ① 로그인 계정 이름이 참석자 명단과 일치하거나
           ② <b>지금 이 기기에서 QR 참석 서명한 이름</b>이거나 (공통 계정 사용자는 이 방법)
@@ -475,7 +475,7 @@
 
   /* ── 모듈 렌더 ── */
   SeMIS.registerModule("minutes", {
-    title: "회의록 게시판",
+    title: "회의록",
     render(root) {
       const u = SeMIS.user;
       if (u && u.role === "signer" && u.signMinuteId) { renderSigning(root, u.signMinuteId); return; }
@@ -489,7 +489,7 @@
 
       root.innerHTML = `
         <div class="page-head">
-          <div class="page-title">회의록 게시판</div>
+          <div class="page-title">회의록</div>
           <span class="spacer"></span>
           ${canManageFolders() ? '<button type="button" class="link-btn head-link" id="mn-folders">폴더 관리</button>' : ""}
           ${canWrite() ? '<button class="btn btn-primary" id="mn-add">+ 새 회의록</button>' : ""}
@@ -1389,7 +1389,7 @@
       <th style="width:74px">담당</th><th style="width:80px">기한</th></tr></thead><tbody>${decRows}</tbody></table></div>
   ${nextTxt ? `<div class="sec"><div class="sec-h">차기 회의</div><div class="ptext">${esc(nextTxt)}</div></div>` : ""}
   <div class="foot">
-    <span>SeMIS · Logistics (인천화물팀 안전보안파트) · 회의록 게시판</span>
+    <span>ARGOS (인천화물팀 안전보안파트) · 회의록</span>
     <span>출력 ${esc(today)}${SeMIS.user ? " · " + esc(SeMIS.user.name) : ""}</span>
   </div>
 </body></html>`, "회의록");
@@ -1400,7 +1400,7 @@
     const o = opts || {};
     const x = o.rec || all().find(c => c.id === id);
     if (!x) return;
-    if (!o.rec && !canSeeRec(x)) return;   // 회의록 게시판 경로만 검사(o.rec = 협의회 등 외부 호출)
+    if (!o.rec && !canSeeRec(x)) return;   // 회의록 화면 경로만 검사(o.rec = 협의회 등 외부 호출)
     const url = o.url || signUrl(x), code = o.code || signCode(x);
     const qr = qrSvg(url, 420);
     const title = o.title || x.title || "회의";
@@ -1441,7 +1441,7 @@
       <div>③ 명단에서 <b>본인 이름</b>을 찾아 [서명하기]를 누릅니다.</div>
       <div>④ 명단에 없으면 <b>[직접 입력 후 서명]</b>으로 등록하고 서명합니다.</div>
     </div>
-    <div class="foot">SeMIS · Logistics — 이 종이는 회의 종료 후 폐기하세요.</div>
+    <div class="foot">ARGOS — 이 종이는 회의 종료 후 폐기하세요.</div>
   </div>
 </body></html>`, "QR 안내문");
   }

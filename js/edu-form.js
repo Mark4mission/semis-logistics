@@ -731,7 +731,7 @@
         "BEGIN:VALARM", "ACTION:DISPLAY", "DESCRIPTION:" + escI("보안교육 갱신 — " + famShort(x.g)), "TRIGGER:-P7D", "END:VALARM",
         "END:VEVENT"].join("\r\n");
     });
-    const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//AirZeta//SeMIS Logistics//KO", "CALSCALE:GREGORIAN", "METHOD:PUBLISH"].concat(ev, ["END:VCALENDAR"]).join("\r\n").split("\r\n");
+    const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//AirZeta//ARGOS//KO", "CALSCALE:GREGORIAN", "METHOD:PUBLISH"].concat(ev, ["END:VCALENDAR"]).join("\r\n").split("\r\n");
     return lines.map(fold).join("\r\n") + "\r\n";
   }
   /* RFC 5545 줄 접기 — 75바이트(UTF-8) 넘으면 다음 줄을 공백으로 시작 */

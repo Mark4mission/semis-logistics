@@ -1,4 +1,4 @@
-/* 검색장비 유지관리(라우트 scr-equip) — 장비 대장(DATA.equipment) + CARES 상태 · 고장 · 점검(읽기 전용, S/N 매칭). 탭: 장비 대장 · 고장·수리 이력 · 가동 분석.
+/* 검색장비 관리(라우트 scr-equip) — 장비 대장(DATA.equipment) + CARES 상태 · 고장 · 점검(읽기 전용, S/N 매칭). 탭: 장비 대장 · 고장·수리 이력 · 가동 분석.
    DATA.equipment = [{ id, type, name, serial, location, vendor, installed, mfgDate, lifeYears, replaceDue(비면 도입일 + 내용연수), price, cert, status, logs[{id,date,kind,text,by}], note }]
    구입가(price)는 대외비(canConfid) — hq 이상만 보이고 입력. */
 "use strict";
@@ -8,7 +8,7 @@
   const C = () => window.SemisCares;
   const D = () => SeMIS.data;
   const MOD = "scr-equip";
-  const TITLE = "검색장비 유지관리";
+  const TITLE = "검색장비 관리";
   const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const todayISO = () => C().todayKey();
 

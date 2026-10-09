@@ -75,8 +75,8 @@
   }
   /* 허브별 모듈 구축 현황 — 보이는 모듈 메뉴 기준(운영 = 모듈 js 등록 완료) */
   function buildStatus() {
-    const rows = SeMIS.hubList().map(g => {
-      const mods = SeMIS.hubEntries(g.id).filter(m => m.type === "module");
+    const rows = SeMIS.hubList(true).map(g => {
+      const mods = SeMIS.hubModules(g.id);
       const live = mods.filter(m => SeMIS.hasModule(m.module) || !m.planned).length;
       return { id: g.id, label: g.label, ico: g.ico, live, total: mods.length };
     }).filter(r => r.total);
@@ -720,6 +720,7 @@
     const menus = SeMIS.sortedMenus();
     const typeBadge = (m) =>
       m.type === "group" ? '<span class="badge badge-gray mt-type">허브</span>'
+      : m.type === "bundle" ? '<span class="badge badge-blue mt-type">탭 묶음</span>'
       : m.type === "link" ? (m.open === "group"
         ? '<span class="badge badge-blue mt-type">링크 묶음 ⊞</span>'
         : m.open === "frame"
@@ -731,8 +732,8 @@
 
     const row = (m, depth, grp) => `
       <div class="menu-tree-item ${depth ? "is-child" : ""}${depth > 1 ? " is-sub" : ""}${m.hidden ? " is-hidden" : ""}${grp ? " mf-h" : ""}" data-id="${esc(m.id)}">
-        <span class="mt-ico">${m.type === "group" ? SeMIS.icon(m.ico, 18) : m.type === "link" ? SeMIS.linkIconHTML(m, "mt-lki") : esc(m.icon || "▪")}</span>
-        <span class="mt-label">${esc(m.label)}
+        <span class="mt-ico">${m.type === "group" ? SeMIS.icon(m.ico, 18) : m.type === "bundle" ? SeMIS.icon("panel", 18) : m.type === "link" ? SeMIS.linkIconHTML(m, "mt-lki") : esc(m.icon || "▪")}</span>
+        <span class="mt-label">${esc(m.label)}${m.tab && m.tab !== m.label ? ` <small class="mt-tab">탭: ${esc(m.tab)}</small>` : ""}
           ${m.hidden ? '<span class="badge badge-gray mt-type">숨김</span>' : ""}
           ${m.quick ? '<span class="badge badge-amber mt-type">고정</span>' : ""}</span>
         ${m.type === "link" && m.url
@@ -741,7 +742,7 @@
             ? `<span class="mt-url col-ext mt-url-mod" title="라우트 #/${esc(m.module)}">#/${esc(m.module)}</span>`
             : ""}
         ${typeBadge(m)}
-        ${m.type === "group" ? "" : `<span class="badge badge-gray mt-type">${esc(SeMIS.VIS_LABEL[m.vis || "all"] || "전체")}</span>`}
+        ${m.type === "group" || m.type === "bundle" ? "" : `<span class="badge badge-gray mt-type">${esc(SeMIS.VIS_LABEL[m.vis || "all"] || "전체")}</span>`}
         <span class="mt-actions">
           <button type="button" class="mt-btn" data-up="${esc(m.id)}" title="위로" aria-label="위로">${SeMIS.icon("chevup", 16)}</button>
           <button type="button" class="mt-btn" data-down="${esc(m.id)}" title="아래로" aria-label="아래로">${SeMIS.icon("chevdown", 16)}</button>
@@ -799,13 +800,18 @@
     $$("#menu-tree [data-del]").forEach(b => b.onclick = () => {
       const m = D().menus.find(x => x.id === b.dataset.del);
       const kids = D().menus.filter(x => x.parent === m.id).length;
-      const msg = m.type === "group"
+      const msg = m.type === "bundle"
+        ? `탭 묶음 "${m.label}"을(를) 삭제하시겠습니까? 안의 메뉴 ${kids}개는 허브로 옮겨집니다.`
+        : m.type === "group"
         ? `허브 "${m.label}"와 하위 메뉴가 모두 삭제됩니다. 계속하시겠습니까?`
         : kids
           ? `"${m.label}"와 하위 링크 ${kids}개가 모두 삭제됩니다. 계속하시겠습니까?`
           : `메뉴 "${m.label}"을(를) 삭제하시겠습니까?`;
       confirmModal(msg, () => {
-        D().menus = D().menus.filter(x => x.id !== m.id && x.parent !== m.id);
+        if (m.type === "bundle") {
+          D().menus.forEach(x => { if (x.parent === m.id) x.parent = m.parent || null; });
+          D().menus = D().menus.filter(x => x.id !== m.id);
+        } else D().menus = D().menus.filter(x => x.id !== m.id && x.parent !== m.id);
         SeMIS.save(); SeMIS.renderNav(); renderMenuTab($("#tab-body")); toast("삭제되었습니다.");
       });
     });
@@ -832,6 +838,7 @@
     const m = id ? D().menus.find(x => x.id === id) : null;
     const groups = SeMIS.sortedMenus().filter(x => x.type === "group");
     const sets = SeMIS.sortedMenus().filter(x => x.type === "link" && x.open === "group" && (!m || x.id !== m.id));
+    const bundles = SeMIS.sortedMenus().filter(x => x.type === "bundle");
     const isCore = m && m.type === "module";
     const lockLink = !m && opts.type === "link";
     const type = m ? m.type : "link";
@@ -843,10 +850,11 @@
         <select id="f-type">
           <option value="link">외부 링크 (웹주소 등록)</option>
           <option value="group">허브 (업무 묶음)</option>
+          <option value="bundle">탭 묶음 (메뉴 여러 개를 한 줄 · 화면 위 탭으로)</option>
           <option value="planned">예정 모듈 (준비 중 안내 화면)</option>
         </select></div>`}
       <div class="form-row"><label>이름</label><input id="f-label" value="${esc(m ? m.label : "")}" maxlength="40" placeholder="메뉴 이름"></div>
-      <div class="form-row" id="row-icon" ${type === "group" || (type === "link" && SC) ? 'style="display:none"' : ""}>
+      <div class="form-row" id="row-icon" ${type === "group" || type === "bundle" || (type === "link" && SC) ? 'style="display:none"' : ""}>
         <label>아이콘 (검색·관리 화면용 이모지)</label><input id="f-icon" value="${esc(m ? m.icon || "" : "🔗")}" maxlength="4"></div>
       <div class="form-row" id="row-ico" ${type === "group" ? "" : 'style="display:none"'}>
         <label>허브 아이콘</label>
@@ -870,14 +878,17 @@
       <div class="form-row" id="row-desc" ${m && m.planned ? "" : 'style="display:none"'}>
         <label>모듈 개요 (준비 중 화면에 표시)</label><textarea id="f-desc" maxlength="400">${esc(m && m.desc ? m.desc : "")}</textarea></div>
       <div class="form-row" id="row-parent" ${type === "group" ? 'style="display:none"' : ""}>
-        <label>소속 (허브 · 링크 묶음)</label>
+        <label>소속 (허브 · 묶음)</label>
         <select id="f-parent">
           <option value="">(허브 없음 · 아이콘 줄 아래 관리)</option>
           ${groups.map(g => `<option value="${esc(g.id)}" ${parentSel === g.id ? "selected" : ""}>${esc(g.label)}</option>`).join("")}
-          ${sets.map(g => `<option value="${esc(g.id)}" ${parentSel === g.id ? "selected" : ""}>⊞ ${esc(g.label)} (링크 묶음)</option>`).join("")}
+          ${type === "link" || !m ? sets.map(g => `<option value="${esc(g.id)}" ${parentSel === g.id ? "selected" : ""}>⊞ ${esc(g.label)} (링크 묶음)</option>`).join("") : ""}
+          ${m && m.type === "module" ? bundles.map(g => `<option value="${esc(g.id)}" ${parentSel === g.id ? "selected" : ""}>▤ ${esc(g.label)} (탭 묶음)</option>`).join("") : ""}
         </select>
-        <div class="form-hint">링크 묶음을 선택하면 사이드바에는 나오지 않고 그 묶음 화면 안의 카드로만 표시됩니다.</div></div>
-      <div class="form-row" id="row-vis" ${type === "group" ? 'style="display:none"' : ""}>
+        <div class="form-hint">${m && m.type === "module" ? "탭 묶음을 고르면 메뉴는 묶음 한 줄로 모이고 화면 위 탭으로 오갑니다." : "링크 묶음을 고르면 사이드바에는 나오지 않고 그 묶음 화면 안의 카드로만 표시됩니다."}</div></div>
+      <div class="form-row" id="row-tab" ${m && m.type === "module" ? "" : 'style="display:none"'}>
+        <label>탭 이름 (탭 묶음 안에서 쓰는 짧은 이름)</label><input id="f-tab" value="${esc(m && m.tab ? m.tab : "")}" maxlength="20" placeholder="비우면 메뉴 이름"></div>
+      <div class="form-row" id="row-vis" ${type === "group" || type === "bundle" ? 'style="display:none"' : ""}>
         <label>접근 권한</label>
         <select id="f-vis">
           <option value="all" ${!m || m.vis === "all" ? "selected" : ""}>전체 사용자</option>
@@ -885,7 +896,7 @@
           <option value="hq" ${m && m.vis === "hq" ? "selected" : ""}>안전보안파트 이상 (편집그룹)</option>
           <option value="admin" ${m && m.vis === "admin" ? "selected" : ""}>시스템관리자만</option>
         </select></div>
-      <div class="form-row" id="row-quick" ${type === "group" ? 'style="display:none"' : ""}>
+      <div class="form-row" id="row-quick" ${type === "group" || type === "bundle" ? 'style="display:none"' : ""}>
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
           <input type="checkbox" id="f-quick" style="width:auto" ${m && m.quick ? "checked" : ""}> 홈 허브 '고정한 메뉴'에 표시</label></div>
       <div class="form-row" id="row-hide" ${m && !SeMIS.canHide(m) ? 'style="display:none"' : ""}>
@@ -905,9 +916,9 @@
       $("#row-route").style.display = t === "planned" ? "" : "none";
       $("#row-desc").style.display = t === "planned" ? "" : "none";
       $("#row-parent").style.display = t === "group" ? "none" : "";
-      $("#row-vis").style.display = t === "group" ? "none" : "";
-      $("#row-quick").style.display = t === "group" ? "none" : "";
-      $("#row-icon").style.display = t === "group" || (t === "link" && SC) ? "none" : "";
+      $("#row-vis").style.display = t === "group" || t === "bundle" ? "none" : "";
+      $("#row-quick").style.display = t === "group" || t === "bundle" ? "none" : "";
+      $("#row-icon").style.display = t === "group" || t === "bundle" || (t === "link" && SC) ? "none" : "";
       $("#row-ico").style.display = t === "group" ? "" : "none";
       if ($("#row-lki")) $("#row-lki").style.display = t === "link" ? "" : "none";
     };
@@ -952,6 +963,12 @@
         const ico = pick ? pick.value : "folder";
         if (m) applyHidden(Object.assign(m, { label, ico }));
         else D().menus.push(applyHidden({ id: uid("g"), seq: nextSeq(), type: "group", label, ico }));
+      } else if (t === "bundle") {
+        const par = $("#f-parent").value || null;
+        const pp = par ? D().menus.find(x => x.id === par) : null;
+        if (!pp || pp.type !== "group") { toast("탭 묶음은 허브 안에 둡니다. 소속 허브를 선택하세요.", true); return; }
+        if (m) applyHidden(Object.assign(m, { label, parent: par }));
+        else D().menus.push(applyHidden({ id: uid("bd"), seq: nextSeq(), type: "bundle", label, vis: "all", parent: par }));
       } else if (t === "planned") {
         const route = $("#f-route").value.trim().toLowerCase();
         if (!/^[a-z0-9][a-z0-9-]{1,29}$/.test(route)) { toast("모듈 ID는 영문 소문자·숫자·하이픈 2~30자입니다.", true); return; }
@@ -962,6 +979,8 @@
       } else if (isCore) {
         applyHidden(Object.assign(m, { label, icon, parent: $("#f-parent").value || null, vis: $("#f-vis").value,
           quick: $("#f-quick") ? $("#f-quick").checked : !!m.quick }));
+        const tab = $("#f-tab") ? $("#f-tab").value.trim() : "";
+        if (tab) m.tab = tab; else delete m.tab;
         if (m.planned) m.desc = $("#f-desc").value.trim();
         if (m.module === "dashboard") { m.vis = "all"; m.parent = null; }
         if (m.module === "settings") { m.vis = "admin"; m.parent = null; }

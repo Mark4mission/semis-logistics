@@ -1,4 +1,4 @@
-/* 화물 보안검색 현황(라우트 scr-status) — CARES 실시간 읽기 전용. 요약 띠 · 검색 라인 배치 · 일일점검 이행 · 검색 환경 · 최근 고장.
+/* 보안검색 현황(라우트 scr-status) — CARES 실시간 읽기 전용. 요약 띠 · 검색 라인 배치 · 일일점검 이행 · 검색 환경 · 최근 고장.
    대시보드 띠도 여기서 만든다: 메인은 검색 환경(dashHTML), 화물보안 대시보드는 검색 라인 · 오늘 점검 · 장비 고장(opsHTML). */
 "use strict";
 
@@ -6,7 +6,7 @@
   const { $, $$, esc, ui, icon } = SeMIS;
   const C = () => window.SemisCares;
   const MOD = "scr-status";
-  const TITLE = "화물 보안검색 현황";
+  const TITLE = "보안검색 현황";
   const DAYS = 28;
   const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
   const route = () => (location.hash.replace(/^#\//, "") || "dashboard");

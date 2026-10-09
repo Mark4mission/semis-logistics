@@ -1,4 +1,4 @@
-/* 계약 · 협약 관리 — 안전 · 보안 관련 계약의 상대방 · 기간 · 해지 조건 · 계약서. 만료가 가까운 계약이 위로.
+/* 계약 · 협약 — 안전 · 보안 관련 계약의 상대방 · 기간 · 해지 조건 · 계약서. 만료가 가까운 계약이 위로.
    SeMIS.data.contracts = [{ id, no, kind(안전|보안), title, party, period(원문), from, to, open(자동 연장),
      terminate, owner, dept, scope, note, files[], prev[](이전 계약서), at, by }] — 공용 DB 에만 */
 "use strict";
@@ -6,7 +6,7 @@
 (() => {
   const { $, $$, esc, toast, openModal, closeModal, confirmModal, ui, icon } = SeMIS;
   const MOD = "contracts";
-  const TITLE = "계약 · 협약 관리";
+  const TITLE = "계약 · 협약";
   const D = () => SeMIS.data;
   const list = () => (Array.isArray(D().contracts) ? D().contracts : []).filter(Boolean);
   const isISO = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ""));

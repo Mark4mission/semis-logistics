@@ -1,4 +1,4 @@
-/* SeMIS · Logistics 디자인 시스템 "Terminal Calm" — 페트롤 레일 · 틸 포인트 · 시그널 앰버 · 뉴트럴 바탕.
+/* ARGOS 디자인 시스템 "Terminal Calm" — 페트롤 레일 · 틸 포인트 · 시그널 앰버 · 뉴트럴 바탕.
    구조: 레일(허브) + 허브 패널 + 상단바 + 본문 / 모바일: 앱바 + 하단 탭 + 메뉴 시트 */
 :root {
   --bg: #f2f4f3;
@@ -66,7 +66,7 @@ kbd { font-family: var(--mono); font-size: .68rem; padding: 1px 6px; border: 1px
   background: var(--sidebar-bg); color: #fff; padding: 52px 60px;
   display: flex; flex-direction: column; justify-content: space-between; gap: 40px;
 }
-.lb-brand { display: flex; align-items: center; gap: 14px; font-size: 1.25rem; font-weight: 700; letter-spacing: -.01em; }
+.lb-brand { display: flex; align-items: center; gap: 14px; font-size: 1.3rem; font-weight: 700; letter-spacing: .08em; }
 .lb-brand b { color: #5eead4; font-weight: 700; }
 .lb-body { display: flex; flex-direction: column; gap: 30px; }
 .lb-title { font-size: 2.55rem; font-weight: 700; line-height: 1.25; letter-spacing: -.025em; text-wrap: balance; }
@@ -149,7 +149,7 @@ kbd { font-family: var(--mono); font-size: .68rem; padding: 1px 6px; border: 1px
   border-bottom: 1px solid var(--border);
 }
 .pb-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
-.pb-name { font-size: 1.04rem; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; }
+.pb-name { font-size: 1.08rem; font-weight: 700; letter-spacing: .08em; white-space: nowrap; }
 .pb-name b { color: var(--primary); font-weight: 700; }
 .pb-sub { font-size: .74rem; color: var(--text-3); white-space: nowrap; }
 .panel-search {
@@ -235,7 +235,7 @@ kbd { font-family: var(--mono); font-size: .68rem; padding: 1px 6px; border: 1px
 @media (hover: hover) and (pointer: fine) { .icon-btn:hover { background: var(--surface-2); color: var(--text); } }
 .brand { display: none; align-items: center; gap: 10px; color: var(--text); }
 .brand img { display: block; }
-.brand-text { font-size: 1rem; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; }
+.brand-text { font-size: 1.02rem; font-weight: 700; letter-spacing: .08em; white-space: nowrap; }
 .brand-text b { color: var(--primary); font-weight: 700; }
 .crumbs { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: .86rem; color: var(--text-3); }
 .crumbs .ico { color: var(--border-strong); }
@@ -5808,3 +5808,30 @@ button.hc-d:focus-visible { outline: 2px solid var(--primary); outline-offset: 1
 /* 증빙 연결 칩 — 긴 증빙 설명은 칩 안에서 줄바꿈(모바일 가로 넘침 방지) */
 .ck-link { max-width: 100%; flex-wrap: wrap; text-align: left; }
 .ck-link small { white-space: normal; overflow-wrap: anywhere; }
+
+/* ── 탭 묶음 — 메뉴 한 줄 안의 화면들을 본문 위 탭으로 오간다(모듈 안 탭과 구분되게 밑줄형) ── */
+.subtabs { display: flex; align-items: flex-end; gap: 18px; max-width: 1240px; margin: 0 auto; padding: 20px 36px 0; }
+.subtabs.view-wide { max-width: 2100px; }
+.subtabs.view-mid { max-width: 1560px; }
+.subtabs[hidden] { display: none; }
+.subtabs + .view { padding-top: 18px; }
+.sbt-name { flex: none; padding-bottom: 11px; font-size: .81rem; font-weight: 600; color: var(--text-3); white-space: nowrap; }
+.sbt-list { display: flex; flex: 1; min-width: 0; gap: 22px; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
+.sbt-list::-webkit-scrollbar { display: none; }
+.sbt-tab { position: relative; flex: none; display: inline-flex; align-items: center; gap: 7px; padding: 8px 2px 11px; border: 0; background: none;
+  font-size: .95rem; font-weight: 600; color: var(--text-3); white-space: nowrap; transition: color .15s var(--ease-out); }
+.sbt-tab::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; border-radius: 2px; background: transparent; }
+.sbt-tab.on { color: var(--text); }
+.sbt-tab.on::after { background: var(--primary); }
+.sbt-n { min-width: 20px; padding: 0 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-dark); font-size: .74rem; font-weight: 700; line-height: 20px; text-align: center; font-variant-numeric: tabular-nums; }
+.sbt-opt { padding: 0 6px; border: 1px solid var(--border-strong); border-radius: 6px; color: var(--text-3); font-size: .72rem; font-style: normal; font-weight: 600; line-height: 18px; }
+@media (hover: hover) and (pointer: fine) { .sbt-tab:hover { color: var(--text); } }
+.sbt-tab:active { transform: scale(.97); }
+@media screen and (max-width: 767px) {
+  .subtabs { padding: 10px 16px 0; }
+  .subtabs + .view { padding-top: 12px; }
+  .sbt-name { display: none; }
+  .sbt-list { gap: 18px; }
+  .sbt-tab { font-size: .92rem; padding: 8px 1px 10px; }
+}
+@media print { .subtabs { display: none !important; } .subtabs + .view { padding-top: 0; } }

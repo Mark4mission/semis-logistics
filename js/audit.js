@@ -116,7 +116,7 @@
   /* 연결 화면 이름 — 준비 중인 메뉴는 앞으로 열릴 이름으로 */
   const ROUTE_NAME = {
     dashboard: "보안등급 이력", audit: "수검 지적 관리", inspection: "보안 기록부",
-    partners: "협력사 · 보안요원", "sec-cases": "보안 처리 대장", "kc-ra": "상용화주 · RA 관리", contracts: "계약 · 협약 관리", dissem: "보안 전파교육",
+    partners: "협력사 · 보안요원", "sec-cases": "보안 처리 대장", "kc-ra": "상용화주 · RA", contracts: "계약 · 협약", dissem: "보안 전파교육",
     "partners:staff": "보안요원 현황", "partners:edu": "보안요원 교육 이력", "partners:vendor": "협력사 점검 · 증빙",
     "inspection:docs": "보안 기록부 · 보고서", "scr-equip:docs": "검색장비 인증서 · 절차"
   };

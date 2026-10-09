@@ -1,4 +1,4 @@
-/* 상용화주 · RA 관리 — 지정 현황, 보안검색업무 협약(계약 · 협약 관리 연결), 현장점검, 월별 반입 통계.
+/* 상용화주 · RA — 지정 현황, 보안검색업무 협약(계약 · 협약 화면 연결), 현장점검, 월별 반입 통계.
    SeMIS.data.kcra = { asOf, list[{ id, name, alias[](협약 상대방 대조용 별칭), kind(상용화주|RA), code(협약 번호), site, desig, desigDate, until, lastCheck, note }],
      stats{ title, cols[], rows[{ m, v[] }], note } } — 업체 · 수치는 공용 DB 에만 */
 "use strict";
@@ -6,7 +6,7 @@
 (() => {
   const { $, $$, esc, toast, openModal, closeModal, confirmModal, ui, icon } = SeMIS;
   const MOD = "kc-ra";
-  const TITLE = "상용화주 · RA 관리";
+  const TITLE = "상용화주 · RA";
   const D = () => SeMIS.data;
   const K = () => { const v = D().kcra; return v && typeof v === "object" && !Array.isArray(v) ? v : {}; };
   const list = () => (Array.isArray(K().list) ? K().list : []).filter(Boolean);
@@ -23,7 +23,7 @@
     { id: "std", label: "보안기준 · 절차" }, { id: "stats", label: "통계" }, { id: "misc", label: "기타" }
   ]);
 
-  /* 협약 — 계약 · 협약 관리의 상용화주 협약 중 상대방 이름이 같은 것 */
+  /* 협약 — 계약 · 협약 화면의 상용화주 협약 중 상대방 이름이 같은 것 */
   const keyName = (s) => norm(s).replace(/[()㈜\s]/g, "").replace(/주식회사|코리아/g, "").toLowerCase();
   function agreementOf(k) {
     const cs = window.SemisContracts ? SemisContracts.list() : (Array.isArray(D().contracts) ? D().contracts : []);
@@ -78,7 +78,7 @@
     openModal(`<h3>${esc(k.name)} <small class="au-mh">${esc(k.kind || "상용화주")}</small></h3>
       <dl class="pn-dl">
         ${k.site ? `<div><dt>터미널 · 지역</dt><dd>${esc(k.site)}</dd></div>` : ""}
-        <div><dt>협약</dt><dd>${c ? `${esc(c.title)} · <span class="mono">${esc(dot(c.from))}~${esc(dot(c.to))}</span> ${agreeChip(c)}` : "계약 · 협약 관리에 협약 없음"}</dd></div>
+        <div><dt>협약</dt><dd>${c ? `${esc(c.title)} · <span class="mono">${esc(dot(c.from))}~${esc(dot(c.to))}</span> ${agreeChip(c)}` : "계약 · 협약에 협약 없음"}</dd></div>
         <div><dt>협약 번호</dt><dd class="mono">${esc(k.code || "-")}</dd></div>
         <div><dt>지정</dt><dd>${esc([k.desig, dot(k.desigDate), k.until ? "유효 " + dot(k.until) : ""].filter(Boolean).join(" · ") || "-")}</dd></div>
         <div><dt>최근 현장점검</dt><dd class="mono">${esc(dot(lastCheckOf(k)) || "-")}</dd></div>
