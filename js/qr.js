@@ -1,23 +1,13 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — QR 코드 생성기 (SeMIS v2 이식)
-   외부 라이브러리·CDN 없이 동작하는 순수 JS QR 인코더.
-   (사내망/CDN 차단 환경에서도 서명 QR이 반드시 떠야 하므로 자체 구현)
-
-   지원: QR Model 2 / 8-bit Byte 모드(UTF-8) / 버전 1~10 / ECC L·M·Q·H
-        마스크 0~7 자동 선택(ISO/IEC 18004 벌점 규칙)
-   용도: 회의 서명 접속 URL(≈40자)·짧은 링크 — 버전 3 이하로 충분
-
-   API:
-     SemisQR.matrix(text, {ecc})      → { size, get(r,c) } 불리언 모듈 배열
-     SemisQR.svg(text, {ecc,size,margin,dark,light,label})  → SVG 문자열
-   ═══════════════════════════════════════════════════════ */
+/* 순수 JS QR 인코더 — 사내망/CDN 차단 환경에서도 서명 QR 이 떠야 하므로 외부 라이브러리 없이 자체 구현.
+   지원: Model 2 · Byte 모드(UTF-8) · 버전 1~10 · ECC L/M/Q/H · 마스크 0~7 자동 선택(ISO/IEC 18004 벌점 규칙).
+   API: SemisQR.matrix(text, {ecc}) → { size, get(r,c) } · SemisQR.svg(text, {ecc,size,margin,dark,light,label}) → SVG 문자열 */
 "use strict";
 
 (() => {
-  /* ─── 버전별 총 코드워드 수 (데이터+ECC) ─── */
+  /* 버전별 총 코드워드 수(데이터 + ECC) */
   const TOTAL_CW = [0, 26, 44, 70, 100, 134, 172, 196, 242, 292, 346];
 
-  /* ─── 버전·ECC별 블록 구성: [ecPerBlock, blocks1, data1, blocks2, data2] ─── */
+  /* 버전 · ECC별 블록 구성: [ecPerBlock, blocks1, data1, blocks2, data2] */
   const ECB = {
     L: [null,
       [7, 1, 19], [10, 1, 34], [15, 1, 55], [20, 1, 80], [26, 1, 108],
@@ -33,17 +23,17 @@
       [28, 4, 15], [26, 4, 13, 1, 14], [26, 4, 14, 2, 15], [24, 4, 12, 4, 13], [28, 6, 15, 2, 16]]
   };
 
-  /* ─── 정렬 패턴 중심 좌표 (버전 1~10) ─── */
+  /* 정렬 패턴 중심 좌표(버전 1~10) */
   const ALIGN = [[], [], [6, 18], [6, 22], [6, 26], [6, 30], [6, 34],
     [6, 22, 38], [6, 24, 42], [6, 26, 46], [6, 28, 50]];
 
-  /* ─── 버전 정보 18비트 (버전 7~10) ─── */
+  /* 버전 정보 18비트(버전 7~10) */
   const VER_INFO = { 7: 0x07C94, 8: 0x085BC, 9: 0x09A99, 10: 0x0A4D3 };
 
-  /* ─── ECC 지시자 2비트 ─── */
+  /* ECC 지시자 2비트 */
   const ECC_BITS = { L: 1, M: 0, Q: 3, H: 2 };
 
-  /* ══════════ GF(256) 산술 ══════════ */
+  /* GF(256) 산술 */
   const EXP = new Uint8Array(512), LOG = new Uint8Array(256);
   (function initGF() {
     let x = 1;
@@ -65,7 +55,7 @@
         np[j] ^= gmul(p[j], 1);            // ×x 항
         np[j + 1] ^= gmul(p[j], EXP[i]);
       }
-      // 위 루프는 (p*x) + (p*α^i) 를 계산 — 자리 이동 보정
+      // 결과: p·x + p·α^i = p·(x − α^i) (GF(256)에서 덧셈 = 뺄셈)
       p = np;
     }
     return p;
@@ -82,7 +72,6 @@
     return res;
   }
 
-  /* ══════════ 인코딩 ══════════ */
   function utf8Bytes(str) {
     const s = String(str);
     if (typeof TextEncoder !== "undefined") return Array.from(new TextEncoder().encode(s));
@@ -158,7 +147,6 @@
     return out;
   }
 
-  /* ══════════ 매트릭스 배치 ══════════ */
   function newGrid(size) {
     const m = [], f = [];
     for (let i = 0; i < size; i++) { m.push(new Array(size).fill(0)); f.push(new Array(size).fill(false)); }
@@ -310,7 +298,6 @@
     return score;
   }
 
-  /* ══════════ 공개 API ══════════ */
   function matrix(text, opts) {
     const o = opts || {};
     const ecc = ECB[o.ecc] ? o.ecc : "M";

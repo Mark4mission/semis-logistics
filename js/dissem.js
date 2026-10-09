@@ -1,11 +1,6 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 보안 전파교육 (v1.41, 화면 id dissem · 점검 · 교육 허브)
-   규정 개정 · 보안등급 · 보고체계 · TSA 등 본사(TA · CY) 통보를 팀 각 파트와 조업사 · 보안협력사까지 전파 · 회람교육한 기록.
-   한 건 = 통보(원문) + 파트별 교육 실시 결과(회람지 · 교육일지). 표에서 건 × 파트로 이행을 한눈에.
-   데이터 SeMIS.data.dissem = { depts[{ id, label, vendor }], events[{ id, date, title, kind, src, notice[](통보 원문),
-     docs[](회람지 등), res{ 파트id: { date, files[], note } }, note, chk }] } — 공용 DB 에만
-   수검 체크리스트 증빙: 2.2 · 2.3 · 2.6 (window.SemisEvidence.dissem)
-   ═══════════════════════════════════════════════════════ */
+/* 보안 전파교육 — 본사 통보(규정 개정 · 보안등급 · 보고체계 · TSA 등)를 파트 · 협력사에 전파 · 회람교육한 기록. 건 × 파트 이행 표.
+   SeMIS.data.dissem = { depts[{ id, label, vendor }], events[{ id, date, title, kind, src, notice[](통보 원문),
+     docs[](회람지 등), targets[], res{ 파트id: { date, files[], note } }, note, chk }] } — 공용 DB 에만 */
 "use strict";
 
 (() => {
@@ -30,7 +25,7 @@
   const dayDiff = (a, b) => Math.round((new Date(b + "T00:00:00Z") - new Date(a + "T00:00:00Z")) / 864e5);
   const FILE_MAX = 50 * 1024 * 1024;
 
-  /* 이 건의 대상 파트 — 결과가 하나라도 있는 파트 + (건에 따로 적은) 대상. 대상을 적지 않았으면 결과가 있는 파트만 셈 */
+  /* 대상 파트 — e.targets, 비어 있으면 결과가 있는 파트 */
   const resOf = (e) => (e && e.res && typeof e.res === "object" ? e.res : {});
   const done = (e, d) => { const r = resOf(e)[d]; return !!(r && (isISO(r.date) || (r.files || []).length || r.ok)); };
   const targets = (e) => (Array.isArray(e.targets) && e.targets.length ? e.targets : Object.keys(resOf(e)));

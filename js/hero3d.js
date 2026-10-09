@@ -1,13 +1,5 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 대시보드 3D 장면 (v1.9)
-   에어제타 B747-400F(흰 동체 · AIRZETA · 파란 꼬리 · 빨간 윙렛)가 기수 화물문을 들어 올리고
-   로더가 긴 화물(목재 상자 · 헬기 동체)을 번갈아 싣는 장면을 로우폴리로 그린다. (v1.10.3)
-   - Three.js r170 (assets/vendor, 대시보드에 처음 들어올 때만 지연 로드)
-   - 캔버스 하나를 계속 재사용: 대시보드가 다시 그려지면 새 자리로 옮겨 붙인다
-   - 화면 밖·다른 탭·다른 화면에서는 렌더링을 멈춘다
-   - prefers-reduced-motion: 정지 화면 한 장만 그린다
-   - WebGL이 없으면 사진(assets/img/dusk-wide.webp)으로 대체
-   ═══════════════════════════════════════════════════════ */
+/* 대시보드 3D 장면 — B747-400F 기수 화물문으로 긴 화물을 싣는 로우폴리 장면(Three.js, 첫 진입 때 지연 로드).
+   화면 밖·다른 탭에서는 렌더링을 멈추고, reduced-motion·느린 GPU는 정지 화면, WebGL이 없으면 대체 사진. */
 "use strict";
 
 window.SemisHero3D = (() => {
@@ -23,7 +15,7 @@ window.SemisHero3D = (() => {
     if (/jsdom/i.test(navigator.userAgent || "")) return false;
     return true;
   }
-  /* 대체 사진으로 바꾸고 이유를 남긴다 (host.dataset.h3d / SemisHero3D.state.reason) */
+  /* 대체 사진으로 바꾸고 이유를 남긴다(host.dataset.h3d / SemisHero3D.state.reason) */
   function fallback(host, reason) {
     S.reason = reason || S.reason || "unknown";
     if (!host) return;
@@ -31,10 +23,9 @@ window.SemisHero3D = (() => {
     host.classList.remove("h3d-on");
     host.dataset.h3d = S.reason;
   }
-  /* 파일 주소에 버전을 붙여 배포 직후 CDN에 남은 옛 응답(404)을 피한다.
-     불러오기 실패는 일시적일 수 있으므로 영구 실패로 두지 않고 다음 대시보드 진입 때 다시 시도한다. */
+  /* 버전 쿼리로 배포 직후 CDN에 남은 404 응답을 피한다. 실패는 일시적일 수 있어 다음 진입 때 재시도 */
   const THREE_URL = "assets/vendor/three.module.min.js?v=r170";
-  /* 동체 글자(AIRZETA)를 캔버스에 그리기 전에 글꼴을 기다린다(최대 1.5초) */
+  /* 동체 글자를 캔버스에 그리기 전에 글꼴을 기다린다(최대 1.5초) */
   function fontReady() {
     try {
       if (!document.fonts || !document.fonts.load) return Promise.resolve();
@@ -53,10 +44,8 @@ window.SemisHero3D = (() => {
     return S.loading;
   }
 
-  /* ─────────── 장면: 에어제타 B747-400F 기수 화물문 탑재 ───────────
-     단위 1 = 약 3.4m. 기수 = +X, 우현(카메라 쪽) = +Z.
-     실측 비율: 전장 70.6m(20.6) · 날개폭 64.4m(18.9) · 꼬리 높이 19.4m(5.7) · 동체 지름 6.5m(1.9)
-     도장: 흰 동체 + 전방 동체 "AIRZETA"(남색) + 파란 꼬리·후방 동체 + 빨간 윙렛 + 꼬리 로고 */
+  /* 단위 1 ≈ 3.4m. 기수 = +X, 우현(카메라 쪽) = +Z.
+     실측 비율: 전장 70.6m(20.6) · 날개폭 64.4m(18.9) · 꼬리 높이 19.4m(5.7) · 동체 지름 6.5m(1.9) */
   const AZ = { white: "#f3f5f6", navy: "#27348b", blue: "#22379a", red: "#e23a3f" };
   const hex = (s) => parseInt(s.slice(1), 16);
 
@@ -69,7 +58,7 @@ window.SemisHero3D = (() => {
     const g = cv.getContext("2d");
     const X = (x) => (x - xmin) * px;
     g.fillStyle = AZ.white; g.fillRect(0, 0, W, H);
-    // 후방 동체 파란 도장 — 위(수직꼬리 앞전)에서 아래로 갈수록 뒤로 물러나는 곡선
+    // 후방 파란 도장: 아래로 갈수록 뒤로 물러나는 곡선
     g.fillStyle = AZ.blue;
     g.beginPath(); g.moveTo(0, 0);
     for (let i = 0; i <= 96; i++) {
@@ -77,7 +66,7 @@ window.SemisHero3D = (() => {
       g.lineTo(X(-5.35 - 2.5 * Math.pow(d, 1.35)), y);
     }
     g.lineTo(0, H); g.closePath(); g.fill();
-    // 회사 이름 — 우현은 그대로, 좌현은 180° 돌려 그려야 바르게 읽힌다
+    // 좌현 글자는 180° 돌려 그려야 바르게 읽힌다
     const word = (cy, flip) => {
       g.save();
       g.translate(X(3.55), cy);
@@ -88,7 +77,7 @@ window.SemisHero3D = (() => {
       const letters = "AIRZETA".split(""), gap = 0.2 * size;
       const ws = letters.map(ch => g.measureText(ch).width);
       const total = ws.reduce((a, b) => a + b, 0) + gap * (letters.length - 1);
-      const sx = Math.min(1.25, (6.5 * px) / total);           // 글자 길이 약 6.5(22m)로 맞춤
+      const sx = Math.min(1.25, (6.5 * px) / total);           // 글자 길이 ≈ 6.5(22m)
       g.scale(sx, 1);
       let x = -total / 2;
       letters.forEach((ch, i) => { g.fillText(ch, x + ws[i] / 2, 0); x += ws[i] + gap; });
@@ -104,8 +93,7 @@ window.SemisHero3D = (() => {
       g.moveTo(x0 + r, y0); g.arcTo(x0 + w, y0, x0 + w, y0 + h, r); g.arcTo(x0 + w, y0 + h, x0, y0 + h, r);
       g.arcTo(x0, y0 + h, x0, y0, r); g.arcTo(x0, y0, x0 + w, y0, r); g.closePath(); g.stroke();
     });
-    // 기수 아래 회사 로고 — 화물문(바이저)이 아니라 문 경계 바로 뒤 고정 동체 아래쪽(앞바퀴 위)에 있어
-    // 기수를 들어 올려도 아래에 남는다(실기 사진 기준). 좌현은 180° 돌려 그린다.
+    // 기수 아래 로고는 바이저가 아닌 고정 동체 쪽이라 기수를 들어도 남는다. 좌현은 180° 돌려 그린다.
     [[0.75 + NOSE_LOGO.dv, 0], [0.25 - NOSE_LOGO.dv, Math.PI]].forEach(([v, rot]) => {
       g.save();
       g.translate(X(NOSE_LOGO.x), v * H);
@@ -115,12 +103,11 @@ window.SemisHero3D = (() => {
     });
     return cv;
   }
-  /* 회사 로고 — 제공받은 로고 이미지를 윤곽 추출한 좌표(0~1). 빨강 위 · 파랑 아래 조각이 엇갈린 계단형.
-     파란 꼬리 위에서는 파랑 조각을 흰색으로(실기 도장과 같음) */
+  /* 로고 윤곽 좌표(0~1). 파란 꼬리 위에서는 파랑 조각을 흰색으로 */
   const LOGO_RED = [[0.846, 0.151], [0.613, 0.151], [0.109, 0.551], [0.372, 0.551], [0.372, 0.389], [0.65, 0.389]];
   const LOGO_BLUE = [[0.861, 0.418], [0.673, 0.418], [0.673, 0.632], [0.395, 0.632], [0.126, 0.879], [0.524, 0.879]];
   const LOGO_C = { red: "#df4552", blue: "#1b3088" };
-  const NOSE_LOGO = { x: 7.6, dv: 0.085, size: 0.56 };   // 동체 길이 위치 · 옆면 중심선 아래 둘레 비율 · 크기
+  const NOSE_LOGO = { x: 7.6, dv: 0.085, size: 0.56 };   // 길이 위치 · 옆면 중심선 아래 둘레 비율 · 크기
   function drawLogo(g, size, lower) {
     const poly = (pts, c) => {
       g.fillStyle = c; g.beginPath();
@@ -175,7 +162,7 @@ window.SemisHero3D = (() => {
     const M = (color, o) => new T.MeshStandardMaterial(Object.assign({ color, roughness: 0.6, metalness: 0.1 }, o || {}));
     const MB = (color) => new T.MeshBasicMaterial({ color });
     const R = 0.95, CY = 1.86;                       // 동체 반지름 · 중심 높이
-    const XT = -10.4, XN = 9.62, NX = 8.0;           // 꼬리 끝 · 기수 끝 · 기수 화물문 경계 (기수 길이 1.62 ≈ 5.5m)
+    const XT = -10.4, XN = 9.62, NX = 8.0;           // 꼬리 끝 · 기수 끝 · 기수 화물문 경계(기수 길이 1.62 ≈ 5.5m)
     const livery = tex(liveryCanvas(XT, NX, R), { flipY: false });
     const apron = tex(apronCanvas(), { wrapS: T.RepeatWrapping, wrapT: T.RepeatWrapping });
     apron.repeat.set(45, 30);
@@ -224,7 +211,7 @@ window.SemisHero3D = (() => {
     };
     const extrude = (shape, depth) => new T.ExtrudeGeometry(shape, { depth, bevelEnabled: true, bevelThickness: 0.025, bevelSize: 0.025, bevelSegments: 1 });
     const shape = (pts) => { const s = new T.Shape(); pts.forEach(([a, b], i) => i ? s.lineTo(a, b) : s.moveTo(a, b)); s.closePath(); return s; };
-    /* 날개 단면(NACA 4자리 두께 분포)을 스팬 방향으로 이어 붙인 로프트 — 뿌리는 두껍고 끝으로 갈수록 얇다.
+    /* 날개 단면(NACA 4자리 두께 분포)을 스팬 방향으로 이은 로프트. 뿌리는 두껍고 끝으로 갈수록 얇다.
        stations: [{ z, le, te, t, dy }]  (z = 스팬, le/te = 앞·뒷전 x, t = 두께비) */
     const loft = (stations, nc) => {
       const xs = [];
@@ -268,7 +255,7 @@ window.SemisHero3D = (() => {
     flat(0.07, 2.2, mat.lineR, 8.05, 2.2);              // 적색 안전 구역선
     flat(5.2, 0.07, mat.lineR, 10.6, 3.3);
 
-    /* ── 동체 (꼬리 올림 · 기수 약간 처짐) ── */
+    /* 동체: 꼬리 올림 · 기수 약간 처짐 */
     const ac = new T.Group();
     scene.add(ac);
     const XTC = -4.9, XNC = 7.25;
@@ -278,7 +265,7 @@ window.SemisHero3D = (() => {
       return R;
     };
     const liftAt = (x) => { const r = rAt(x); return x < XTC ? (R - r) * 0.86 : x > XNC ? -(R - r) * 0.22 : 0; };
-    /* 길이 방향으로 고르게 나눈 회전체 — u/v를 바꿔 u=길이, v=둘레 로 만든다 */
+    /* 길이 방향으로 고르게 나눈 회전체 — u=길이, v=둘레 로 바꾼다 */
     const hull = (x0, x1, n, seg) => {
       const pts = [];
       for (let j = 0; j <= n; j++) { const x = x0 + (x1 - x0) * j / n; pts.push(new T.Vector2(rAt(x), x)); }
@@ -314,7 +301,7 @@ window.SemisHero3D = (() => {
     const sleeve = new T.CylinderGeometry(R * 0.965, R * 0.965, NX - 5.1, 40, 1, true).rotateZ(Math.PI / 2);
     add(ac, sleeve, new T.MeshStandardMaterial({ color: 0x3a342c, roughness: 0.85, side: T.BackSide }), (NX + 5.1) / 2, CY, 0, false);
 
-    /* ── 2층 조종실 혹(-400F 단축형) — 위쪽 로브가 뒤로 갈수록 동체 속으로 가라앉는 페어링 ── */
+    /* 2층 조종실 혹(-400F 단축형): 위쪽 로브가 뒤로 갈수록 동체 속으로 가라앉는 페어링 */
     const HX0 = 1.3, HX1 = 8.02, HF = 7.25, HFULL = 4.3;
     const HA = R * 0.7, HB = R * 0.7, HFLOOR = CY + R * 0.7;
     const domeAt = (x) => x > HF ? Math.sqrt(Math.max(0, 1 - Math.pow(Math.min(1, (x - HF) / (HX1 - HF)), 2))) : 1;
@@ -342,7 +329,7 @@ window.SemisHero3D = (() => {
     [6.55, 6.2, 5.85].forEach(x => [1, -1].forEach(sg =>
       add(ac, new T.BoxGeometry(0.1, 0.13, 0.02), mat.glass, x, HC + 0.06, sg * (HA + 0.004), false)));
 
-    /* ── 날개 · 엔진 4기 · 윙렛 (한쪽을 만들고 좌우 대칭) ── */
+    /* 날개 · 엔진 4기 · 윙렛 — 한쪽을 만들고 좌우 대칭 */
     const WY = CY - R * 0.52, DIH = 0.105;
     const leAt = (z) => 2.0 - z * (7.55 / 9.45);
     const wingGeo = loft([
@@ -393,7 +380,7 @@ window.SemisHero3D = (() => {
     };
     makeSide(1); makeSide(-1);
 
-    /* ── 수직꼬리(파란색 + 로고) ── */
+    /* 수직꼬리(파란색 + 로고) */
     const finGeo = extrude(shape([[-5.7, 0], [-8.75, 2.95], [-9.85, 2.95], [-9.75, 0]]), 0.14);
     finGeo.translate(0, 0, -0.07);
     const FINY = CY + R * 0.84;
@@ -403,7 +390,7 @@ window.SemisHero3D = (() => {
     const logoP = add(ac, logoGeo, mat.logo, -8.45, FINY + 1.6, -0.1, false);
     logoP.rotation.y = Math.PI;
 
-    /* ── 착륙장치: 앞바퀴 1 · 날개 2 · 동체 2 (보기 4바퀴) ── */
+    /* 착륙장치: 앞바퀴 1 · 날개 2 · 동체 2(보기 4바퀴) */
     const tyreGeo = new T.CylinderGeometry(0.19, 0.19, 0.13, 18).rotateX(Math.PI / 2);
     const legGeo = new T.CylinderGeometry(0.06, 0.06, 1, 8);
     const gearLeg = (x, z, h, wheels) => {
@@ -418,7 +405,7 @@ window.SemisHero3D = (() => {
     const beaconTop = add(ac, new T.SphereGeometry(0.09, 10, 8), mat.beacon, 1.2, CY + R + 0.04, 0, false);
     const beaconBot = add(ac, new T.SphereGeometry(0.09, 10, 8), mat.beacon, 0.6, CY - R - 0.04, 0, false);
 
-    /* ── 주 화물칸 로더(기수 앞) ── */
+    /* 주 화물칸 로더(기수 앞) */
     const LOW = 0.26, HIGH = floorY, LX = 9.5;
     const loader = new T.Group();
     loader.position.set(LX, 0, 0);
@@ -433,7 +420,7 @@ window.SemisHero3D = (() => {
     add(platform, new T.BoxGeometry(2.75, 0.1, 1.36), mat.gse, -0.05, -0.05, 0);
     const railTop = new T.BoxGeometry(2.7, 0.05, 0.05), railHalf = new T.BoxGeometry(1.3, 0.05, 0.05), post = new T.BoxGeometry(0.05, 0.34, 0.05);
     add(platform, railTop, mat.rail, -0.05, 0.34, -0.68);
-    add(platform, new T.BoxGeometry(0.4, 0.05, 0.05), mat.rail, -1.2, 0.34, 0.68);         // 우현은 옆 이송구(긴 화물) — 앞쪽 짧은 난간만
+    add(platform, new T.BoxGeometry(0.4, 0.05, 0.05), mat.rail, -1.2, 0.34, 0.68);         // 우현은 옆 이송구 — 앞쪽 짧은 난간만
     [-1.35, -0.7, -0.05, 0.6, 1.25].forEach(x => add(platform, post, mat.rail, x, 0.17, -0.68));
     [-1.35, -1.02].forEach(x => add(platform, post, mat.rail, x, 0.17, 0.68));
     const legs = [];
@@ -449,9 +436,8 @@ window.SemisHero3D = (() => {
     };
     setLift(LOW);
 
-    /* ── 긴 화물(Long cargo) · 20ft 돌리 · 토잉카 ──
-       기수 화물문은 메인 도어로 못 싣는 긴 화물용 — 20ft 팔레트 위 긴 목재 상자와 포장한 헬기 동체를 번갈아 싣는다 */
-    const CL = 2.5;                                        // 화물 길이 약 8.5m
+    /* 긴 화물 · 20ft 돌리 · 토잉카 — 메인 도어로 못 싣는 긴 목재 상자와 포장한 헬기 동체를 번갈아 싣는다 */
+    const CL = 2.5;                                        // ≈ 8.5m
     const makeCargo = (kind) => {
       const u = new T.Group();
       add(u, new T.BoxGeometry(CL + 0.1, 0.045, 0.72), mat.uldEdge, 0, 0.022, 0);        // 20ft 팔레트
@@ -462,13 +448,13 @@ window.SemisHero3D = (() => {
         const t = new T.Mesh(new T.PlaneGeometry(0.34, 0.16), mat.tagA);
         t.position.set(0.9, 0.36, 0.305); u.add(t);
       } else {
-        // 헬기(주 회전날개를 떼어 낸 상태) — 옆모습 윤곽을 둥글게 압출한 동체 · 큰 조종석 창 · 엔진 덮개 · 꼬리 붐 · 스키드
+        // 헬기(주 회전날개 뗀 상태) — 옆모습 윤곽을 둥글게 압출한 동체 · 조종석 창 · 엔진 덮개 · 꼬리 붐 · 스키드
         const ex = (pts, depth, bev) => {
           const g = new T.ExtrudeGeometry(shape(pts), { depth, bevelEnabled: true, bevelThickness: bev, bevelSize: bev, bevelSegments: 3, curveSegments: 4 });
           g.translate(0, 0, -depth / 2);
           return g;
         };
-        const hx = 0.2;                                    // 전체 길이 약 2.6 이 팔레트 위에 오도록
+        const hx = 0.2;                                    // 전체 길이 ≈ 2.6 이 팔레트 위에 오도록
         const cabin = [[-0.35, 0.07], [0.75, 0.07], [0.97, 0.16], [1.07, 0.3], [1.02, 0.46], [0.82, 0.6], [0.35, 0.64],
           [0.3, 0.73], [-0.2, 0.75], [-0.36, 0.6], [-0.56, 0.47], [-0.56, 0.34]].map(([x, y]) => [x + hx, y + 0.08]);
         add(u, ex(cabin, 0.42, 0.06), mat.wrap, 0, 0, 0);
@@ -512,13 +498,12 @@ window.SemisHero3D = (() => {
     const movers = { crate: makeCargo("crate"), heli: makeCargo("heli") };
     Object.values(movers).forEach(m => scene.add(m));
 
-    /* ── 투광등 ── */
+    /* 투광등 */
     [-16, 2, 20].forEach((x, i) => {
       add(scene, new T.CylinderGeometry(0.12, 0.16, 7.0, 8), mat.mast, x, 3.5, -26 - i * 1.2, false);
       add(scene, new T.BoxGeometry(1.0, 0.32, 0.32), mat.lamp, x, 7.0, -25.8 - i * 1.2, false);
     });
 
-    /* ── 조명 ── */
     scene.add(new T.HemisphereLight(0xd6efea, 0x0b1f26, 1.3));
     const sun = new T.DirectionalLight(0xffe2b8, 2.2);
     sun.position.set(10, 18, 14);
@@ -535,11 +520,11 @@ window.SemisHero3D = (() => {
     holdLight.position.set(7.0, CY + 0.2, 0);
     scene.add(holdLight);
 
-    /* ── 카메라 — 우현 앞쪽 3/4 시점 ── */
+    /* 카메라 — 우현 앞쪽 3/4 시점 */
     const camera = new T.PerspectiveCamera(28, 2, 0.5, 160);
     const target = new T.Vector3(2.0, 2.6, 0.6);
     const AZ0 = 0.92, POL0 = 1.37;
-    // 화면에 반드시 들어올 기준점(꼬리·기수 화물문·로더·첫 돌리). 가까운 날개 끝은 왼쪽 가림막 쪽으로 잘려도 된다
+    // 화면에 반드시 들어올 기준점(꼬리·기수 화물문·로더·첫 돌리). 가까운 날개 끝은 잘려도 된다
     const FIT = [[-10.45, CY + 0.3, 0], [-9.85, FINY + 2.95, 0], [-6.8, WY + 1.2, -9.5],
       [XN, 0.3, 0], [LX + 1.4, 0.3, -0.7], [PX + 1.3, 0.3, DZ], [PX - 1.3, 0.3, DZ]]
       .map(p => new T.Vector3(p[0], p[1], p[2]));
@@ -549,7 +534,7 @@ window.SemisHero3D = (() => {
     const UP = new T.Vector3(0, 1, 0);
     const camDir = (az, pol) => new T.Vector3(Math.sin(pol) * Math.sin(az), Math.cos(pol), Math.sin(pol) * Math.cos(az));
     /* 화면 비율에 맞춰 모든 기준점이 들어오는 최소 거리.
-       sx·sy = 화면 이동량(setViewOffset) — 오른쪽·위로 민 만큼 반대쪽 여유를 더 준다 */
+       sx·sy = setViewOffset 이동량 — 민 만큼 반대쪽 여유를 더 준다 */
     function fitDist(aspect, fov, sx, sy) {
       const tv = Math.tan(fov * Math.PI / 360), th = tv * aspect;
       sx = sx || 0; sy = sy || 0;
@@ -569,7 +554,7 @@ window.SemisHero3D = (() => {
       return best;
     }
 
-    /* ── 애니메이션 (10초 주기, 긴 상자·헬기 동체 번갈아) ── */
+    /* 애니메이션: 10초 주기, 긴 상자·헬기 동체 번갈아 */
     const smooth = (a, b, t) => { const x = Math.min(1, Math.max(0, (t - a) / (b - a))); return x * x * (3 - 2 * x); };
     const KINDS = ["crate", "heli"];
     function update(t, pr) {
@@ -584,7 +569,7 @@ window.SemisHero3D = (() => {
         const xIn = 5.1 - CL / 2 - 0.2;                    // 칸막이 뒤로 완전히 들어가는 위치
         m.position.set(PX + (xIn - PX) * load, c < 1.8 ? BED : platform.position.y, DZ * (1 - slide));
       });
-      // 첫 돌리: 옮기는 동안 비었다가 8.2–10초에 다음 화물이 내려앉음 · 둘째 돌리는 그다음 차례
+      // 첫 돌리는 옮기는 동안 비었다가 8.2–10초에 다음 화물이 내려앉음 · 둘째 돌리는 그다음 차례
       const drop = smooth(8.2, 9.7, c);
       Object.entries(dollies[0].us).forEach(([k, u]) => {
         u.visible = k === next && c >= 8.2;
@@ -608,7 +593,6 @@ window.SemisHero3D = (() => {
     } };
   }
 
-  /* ─────────── 렌더 루프 ─────────── */
   function resize() {
     if (!S.renderer || !S.host) return;
     const w = Math.max(1, S.host.clientWidth), h = Math.max(1, S.host.clientHeight);
@@ -616,7 +600,7 @@ window.SemisHero3D = (() => {
     const cam = S.rig.camera, asp = w / h;
     cam.aspect = asp;
     cam.fov = asp < 1.3 ? 34 : 28;
-    // 넓은 카드(데스크톱)는 왼쪽에 숫자가 있으므로 장면을 오른쪽으로, 아래 돌리가 보이도록 위로 조금 민다
+    // 넓은 카드(데스크톱)는 왼쪽에 숫자가 있어 장면을 오른쪽으로, 아래 돌리가 보이도록 위로 조금 민다
     const sx = asp > 2 ? 0.07 : 0, sy = 0.06;
     S.dist = Math.max(14, Math.min(60, S.rig.fitDist(asp, cam.fov, sx, sy)));
     cam.setViewOffset(w, h, -w * sx, h * sy, w, h);
@@ -637,7 +621,7 @@ window.SemisHero3D = (() => {
     if (!S.canvas || !S.canvas.isConnected) { stop(); return; }
     if (S.visible && document.visibilityState !== "hidden") {
       frame(now);
-      // 처음 90프레임 평균이 45ms를 넘으면(느린 PC) 정지 화면으로 전환
+      // 처음 90프레임 평균이 45ms를 넘으면(느린 PC) 정지 화면으로
       if (S.probe && S.probe.n < 90) {
         if (S.probe.last) S.probe.sum += now - S.probe.last;
         S.probe.last = now; S.probe.n++;
@@ -666,7 +650,7 @@ window.SemisHero3D = (() => {
   }
   function onLeave() { S.ptr.x = 0; S.ptr.y = 0; }
 
-  /* 대시보드가 그려질 때마다 호출 — host는 3D가 들어갈 자리(.tk-stage) */
+  /* 대시보드가 그려질 때마다 호출 — host = 3D가 들어갈 자리(.tk-stage) */
   function mount(host) {
     if (!host) return;
     if (!webglOK()) { fallback(host, "no-webgl"); return; }
@@ -687,7 +671,7 @@ window.SemisHero3D = (() => {
         r.shadowMap.type = T.PCFSoftShadowMap;
         r.setClearColor(0x000000, 0);
         S.renderer = r;
-        // 소프트웨어 렌더링(GPU 없음)이면 움직임 없이 정지 화면만 — CPU 점유 방지
+        // 소프트웨어 렌더링(GPU 없음)이면 정지 화면만 — CPU 점유 방지
         try {
           const gl = r.getContext(), ext = gl.getExtension("WEBGL_debug_renderer_info");
           const name = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : "";

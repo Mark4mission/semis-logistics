@@ -1,31 +1,25 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — Modules
-   대시보드(공지 · 안전보안 현황) · 시스템 설정
-   ═══════════════════════════════════════════════════════ */
+/* 대시보드(공지 · 안전보안 현황)와 시스템 설정 화면 */
 "use strict";
 
 (() => {
   const { $, $$, esc, fmtDate, toast, openModal, closeModal, confirmModal } = SeMIS;
   const D = () => SeMIS.data;
-  const todayISO = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };   // v1.29: 현지 날짜(UTC로 자르면 오전 9시 전엔 어제가 됨)
+  const todayISO = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };   // 현지 날짜(UTC로 자르면 오전 9시 전엔 어제가 됨)
   const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
-  /* ════════════════ 대시보드 (v1.8 — Terminal Calm) ════════════════
-     구성: 머리말(빠른 실행) · 화물 태그 카드(무재해 경과일 + 국가 항공보안등급) · 다가오는 일정
-           · 하단 시트(공지사항 | 회의 결정사항 | 모듈 구축 현황)
-     카드별 표시 권한 — 새 카드를 추가할 때는 반드시 여기에 등록하고 vis를 지정할 것.
-     vis: "all" | "mgr"(관리자 이상) | "hq"(안전보안파트 이상) | "adm" */
+  /* ── 대시보드 ── */
+  /* 카드별 표시 권한 — 새 카드는 반드시 여기에 등록. vis: "all" | "mgr"(관리자 이상) | "hq"(안전보안파트 이상) | "adm" */
   const DASH_CARDS = {
-    status:   "all",  // 무재해 경과일 · 보안등급 (화물 태그 카드)
-    notice:   "all",  // 공지사항
-    upcoming: "mgr",  // 다가오는 일정
-    actions:  "mgr",  // 회의 결정사항 (미완료 · 기한 경과)
-    flight:   "all",  // 운항 현황 — 항공기 위치 지도 + 인천 접근 중 (js/flightops.js)
-    screen:   "mgr",  // 검색 환경 띠 (CARES 센서 3곳 + 결로 판정) — v1.28 검색 라인 · 오늘 점검 · 고장은 화물보안 대시보드로
-    serp:     "mgr",  // 위기대응 띠 — SERP 대응(실제 · 훈련) 진행 중일 때만 (js/serp.js)
-    threat:   "mgr",  // 위협전화 응대 띠 — 응대(실제 · 훈련) 진행 중일 때만 (js/threat.js)
-    audit:    "mgr",  // 수검 대응 띠 — 60일 안의 수검 D-day · 준비율 · 미결 지적 (js/audit.js, 해당 없으면 숨김)
-    build:    "hq"    // 모듈 구축 현황 (허브별 운영/전체)
+    status:   "all",  // 무재해 경과일 · 보안등급
+    notice:   "all",
+    upcoming: "mgr",
+    actions:  "mgr",  // 회의 결정사항(미완료 · 기한 경과)
+    flight:   "all",  // 항공기 위치 지도 + 인천 접근 중 (js/flightops.js)
+    screen:   "mgr",  // 검색 환경 띠(CARES 센서 3곳 + 결로 판정)
+    serp:     "mgr",  // 위기대응 띠 — SERP 진행 중일 때만 (js/serp.js)
+    threat:   "mgr",  // 위협전화 응대 띠 — 응대 진행 중일 때만 (js/threat.js)
+    audit:    "mgr",  // 수검 대응 띠 — 60일 안 수검이 있을 때만 (js/audit.js)
+    build:    "hq"
   };
   const cardVis = (id) => {
     const v = DASH_CARDS[id] || "all";
@@ -38,14 +32,14 @@
   const md = (iso) => String(iso || "").slice(5).replace("-", ".");
   const dotDate = (iso) => String(iso || "").replace(/-/g, ".");
 
-  /* 무재해 경과일 — safetyBoard.since(기준일) 로부터 오늘까지 */
+  /* 무재해 경과일 — safetyBoard.since(기준일)부터 오늘까지 */
   function zeroDays() {
     const sb = D().safetyBoard || {};
     if (!sb.since) return null;
     const n = Math.round((new Date(todayISO()) - new Date(sb.since)) / 86400000);
     return Number.isFinite(n) && n >= 0 ? n : null;
   }
-  /* 회의 결정사항 중 미완료 (열람 가능한 회의록만) */
+  /* 회의 결정사항 중 미완료(열람 가능한 회의록만) */
   function openActions() {
     if (!window.SemisMinutes || !SemisMinutes.visibleAll) return [];
     let list = [];
@@ -62,7 +56,7 @@
       return String(a.due || "9999").localeCompare(String(b.due || "9999"));
     });
   }
-  /* 다가오는 일정 (반복 일정은 다음 회차) */
+  /* 다가오는 일정(반복 일정은 다음 회차) */
   function upcomingList() {
     const out = [];
     (D().schedules || []).forEach(s => {
@@ -79,7 +73,7 @@
     });
     return out.sort((a, b) => String(a.start).localeCompare(String(b.start)));
   }
-  /* 허브별 모듈 구축 현황 — 화면에 보이는 모듈 메뉴 기준 (운영 = 모듈 js 등록 완료) */
+  /* 허브별 모듈 구축 현황 — 보이는 모듈 메뉴 기준(운영 = 모듈 js 등록 완료) */
   function buildStatus() {
     const rows = SeMIS.hubList().map(g => {
       const mods = SeMIS.hubEntries(g.id).filter(m => m.type === "module");
@@ -91,27 +85,23 @@
       live: utilMods.filter(m => SeMIS.hasModule(m.module) || !m.planned).length, total: utilMods.length });
     return rows;
   }
-  /* 운항 현황 지도 — 운항 현황 메뉴를 볼 수 있을 때만(권한·숨김 따름) */
+  /* 대시보드의 지도·띠는 해당 메뉴를 볼 수 있을 때만(권한·숨김 따름) */
   function fltVisible() {
     const mn = (D().menus || []).find(m => m.type === "module" && m.module === "flight");
     return !!(mn && SeMIS.navVisible(mn) && SeMIS.hasModule("flight") && window.SemisFlight);
   }
-  /* 수검 대응 띠 — 수검 대응 센터 메뉴를 볼 수 있을 때만(권한·숨김 따름) */
   function audVisible() {
     const mn = (D().menus || []).find(m => m.type === "module" && m.module === "audit");
     return !!(mn && SeMIS.navVisible(mn) && SeMIS.hasModule("audit") && window.SemisAudit);
   }
-  /* 위기대응 띠 — 팀위기대응계획 메뉴를 볼 수 있을 때만(권한·숨김 따름) */
   function serpVisible() {
     const mn = (D().menus || []).find(m => m.type === "module" && m.module === "serp");
     return !!(mn && SeMIS.navVisible(mn) && SeMIS.hasModule("serp") && window.SemisSerp);
   }
-  /* 위협전화 응대 띠 — 테러 위협전화 대응 메뉴를 볼 수 있을 때만(권한·숨김 따름) */
   function threatVisible() {
     const mn = (D().menus || []).find(m => m.type === "module" && m.module === "threat");
     return !!(mn && SeMIS.navVisible(mn) && SeMIS.hasModule("threat") && window.SemisThreat);
   }
-  /* 검색 환경 띠 — 보안검색 현황 메뉴를 볼 수 있을 때만(권한·숨김 따름) */
   function scrVisible() {
     const mn = (D().menus || []).find(m => m.type === "module" && m.module === "scr-status");
     return !!(mn && SeMIS.navVisible(mn) && SeMIS.hasModule("scr-status"));
@@ -184,8 +174,7 @@
       }));
   }
 
-  /* ═════ v1.29 '오늘' — 지금 챙길 것만 한 장에(행을 누르면 그 화면) ═════
-     순찰(오늘 상태 · 확인 대기) · 오늘 일정(완료 제외) · 인천 접근(운항 현황 자료가 오면 채움) · 회의 결정 미완료 */
+  /* '오늘' 카드 — 지금 챙길 것만 한 장에(행을 누르면 그 화면) */
   const menuOk = (mod) => {
     const mn = (D().menus || []).find(m => m.type === "module" && m.module === mod);
     return !!(mn && SeMIS.navVisible(mn) && SeMIS.hasModule(mod));
@@ -222,7 +211,7 @@
       sub: "불러오는 중", val: '<b class="mono">·</b>' }));
     if (actions.length) rows.push(todayRow({ go: "minutes", icon: "notes", color: late ? "rose" : "slate", title: "회의 결정사항",
       sub: "미완료 " + actions.length + (late ? " · <em>기한 경과 " + late + "</em>" : ""), val: `<b class="mono">${actions.length}</b>`, tone: late ? "bad" : "" }));
-    /* v1.40 보안교육 자격 — 만료 · 미이수(빨강) · 90일 안 갱신(주황), 있을 때만 */
+    /* 보안교육 자격 — 만료·미이수(빨강) · DUE_DAYS 안 갱신(주황), 있을 때만 */
     if (window.SemisTraining && SemisTraining.alertSummary && menuOk("training")) {
       let a = null;
       try { a = SemisTraining.alertSummary(t); } catch (e) { a = null; }
@@ -271,7 +260,7 @@
       const notices = d.notices.slice().sort((a, b) =>
         (b.pinned - a.pinned) || String(b.created).localeCompare(String(a.created)));
       const upcomingAll = upcomingList();
-      const upcoming = upcomingAll.filter(s => !s.done);   // v1.29: 끝낸 일정은 빼고
+      const upcoming = upcomingAll.filter(s => !s.done);
       const wk = (() => { const d = new Date(Date.now() + 7 * 86400000); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); })();
       const soon = upcoming.filter(s => String(s.start) <= wk).length;
       const upShow = upcoming.slice(0, 4);
@@ -320,7 +309,7 @@
         </section>` : "";
       const build = cardVis("build") ? buildStatus() : [];
       const bLive = build.reduce((n, r) => n + r.live, 0), bTot = build.reduce((n, r) => n + r.total, 0);
-      /* v1.29: 개발 진행 현황은 업무 정보가 아니므로 맨 아래 접힌 줄로 */
+      /* 개발 진행 현황은 업무 정보가 아니므로 맨 아래 접힌 줄로 */
       const buildCol = build.length ? `<details class="dash-build" aria-label="모듈 구축 현황">
           <summary><span>모듈 구축 현황</span><span class="dc-meta mono"><b>${bLive}</b> / ${bTot}</span></summary>
           <div class="build-list" id="dash-build">${build.map(r => `
@@ -361,7 +350,6 @@
       if (window.SemisSerp && $("#dash-serp")) SemisSerp.mountDash();
       if (window.SemisThreat && $("#dash-threat")) SemisThreat.mountDash();
 
-      // 공지 리스트
       const nl = $("#notice-list");
       if (nl) {
         if (!notices.length) nl.innerHTML = '<div class="empty">등록된 공지가 없습니다.</div>';
@@ -389,7 +377,6 @@
           }));
       }
 
-      // 회의 결정사항 미완료
       if ($("#actions-box")) {
         const t = todayISO();
         $("#actions-box").innerHTML = actions.length
@@ -421,8 +408,7 @@
     }
   });
 
-  /* ───── 공지 HTML 살균 (script/이벤트핸들러/javascript: 제거) ─────
-     v1.15: <template> 로 파싱해 살균 중에 이미지를 불러오거나 onerror 가 실행되지 않게 하고,
+  /* 공지 HTML 살균(script·이벤트 핸들러·javascript: 제거). <template> 로 파싱해 살균 중 이미지 로드·onerror 실행을 막는다.
      비공개 파일의 서명 URL·임시 그림은 표준 주소로 되돌린다(저장·표시 공통). */
   function sanitizeHtml(html) {
     const FA = window.SemisFileAuth;
@@ -696,7 +682,6 @@
     };
   }
 
-  /* 무재해 기준일 설정 */
   function zeroForm() {
     const sb = D().safetyBoard || { since: "", note: "" };
     openModal(`
@@ -717,7 +702,7 @@
     };
   }
 
-  /* ════════════════ 시스템 설정 (관리자 전용) ════════════════ */
+  /* ── 시스템 설정(관리자 전용) ── */
   SeMIS.registerModule("settings", {
     title: "시스템 설정",
     render(root) {
@@ -750,7 +735,7 @@
     }
   });
 
-  /* ───── 메뉴 관리 탭 ───── */
+  /* ── 메뉴 관리 탭 ── */
   function renderMenuTab(box) {
     const menus = SeMIS.sortedMenus();
     const typeBadge = (m) =>
@@ -796,7 +781,7 @@
           <button class="btn btn-primary btn-sm" id="btn-add-menu">+ 메뉴 추가</button></div>
         <p class="form-hint m-hide" style="margin-bottom:12px"><b>허브</b>는 왼쪽 아이콘 줄에 표시되는 업무 묶음입니다. 허브 없는 항목은 아이콘 줄 아래(관리)에 놓입니다. 숨기기는 권한과 별개입니다.</p>
         <div id="menu-tree">`;
-    /* v1.30 모바일: 허브는 제목 줄만(누르면 하위 메뉴) — PC는 그대로 */
+    /* 모바일: 허브는 제목 줄만(누르면 하위 메뉴) */
     const walk = (m, depth) => {
       const kids = depth < 2 ? menus.filter(c => c.parent === m.id) : [];
       const grp = depth === 0 && m.type === "group" && kids.length > 0;
@@ -810,7 +795,7 @@
     box.innerHTML = html;
 
     $("#btn-add-menu").onclick = () => menuForm(null);
-    /* v1.30 모바일: 줄마다 '…' → 액션 시트(위로 · 아래로 · 숨기기 · 수정 · 삭제 — 원래 단추를 누른다) */
+    /* 모바일: 줄마다 '…' → 액션 시트. 시트 항목은 줄의 원래 단추를 누른다 */
     $$("#menu-tree [data-mt-more]").forEach(b => b.onclick = () => {
       const rowEl = b.closest(".menu-tree-item");
       const acts = $$(".mt-actions .mt-btn", rowEl);
@@ -1012,7 +997,7 @@
     return D().menus.reduce((mx, m) => Math.max(mx, m.seq || 0), 0) + 1;
   }
 
-  /* ───── 사용자 / 암호 탭 (admin이 전 계정 완전 관리) ───── */
+  /* ── 사용자 · 암호 탭 ── */
   const ROLE_BADGE = { admin: "badge-red", hq: "badge-amber", manager: "badge-blue", user: "badge-gray", vendor: "badge-green" };
   const ROLE_OPTS = [
     ["user", "일반사용자 (화물팀 직원·조업사 — 일반·안내 열람)"],
@@ -1043,8 +1028,7 @@
     const upd = () => { $("#row-vendor").style.display = sel.value === "vendor" ? "" : "none"; };
     sel.addEventListener("change", upd); upd();
   }
-  /* ═════════════ 사용자 · 암호 (v1.15 — 서버 계정) ═════════════
-     계정·암호는 서버 전용 표에만 있다. 이 화면은 시스템관리자 RPC로 읽고 바꾼다. */
+  /* 계정·암호는 서버 전용 표에만 있다. 이 화면은 시스템관리자 RPC로 읽고 바꾼다. */
   const USER_ERR = {
     forbidden: "시스템관리자만 할 수 있습니다.",
     bad_id: "계정 ID는 영문·숫자·-·_ 2~20자입니다.",
@@ -1220,7 +1204,7 @@
     };
   }
 
-  /* ═════════════ 보안 — 자동 접속 방어 · 접속 중인 세션 · 접속 기록 (시스템관리자, v1.16) ═════════════ */
+  /* ── 보안: 자동 접속 방어 · 접속 중인 세션 · 접속 기록(시스템관리자) ── */
   const SEC_ACTION = {
     login: "로그인", login_fail: "로그인 실패", login_locked: "로그인 제한", logout: "로그아웃",
     sign_open: "회의 서명 접속", sign: "회의 서명", sign_info: "서명 정보 수정", sign_paused: "서명 코드 일시 중지",
@@ -1284,13 +1268,12 @@
       }).join("")}</tbody></table></div>` : '<div class="empty">기록이 없습니다.</div>';
   }
 
-  /* 일정의 담당자 문자열(", " 구분 다중) → 이름 배열. calendar.js 와 같은 규칙. */
+  /* 일정 담당자 문자열(쉼표 등 구분 다중) → 이름 배열. calendar.js 와 같은 규칙 */
   const splitNames = (v) => String(v == null ? "" : v).split(/\s*[,、·]\s*/).map(x => x.trim()).filter(Boolean);
   const joinNames = (arr) => Array.from(new Set((arr || []).map(x => String(x).trim()).filter(Boolean))).join(", ");
 
-  /* ═════════════ 담당자 관리 탭 (일정관리 담당자 카테고리) ═════════════
-     일정관리의 담당자 칩·필터·선택 버튼에 쓰이는 목록(DATA.assignees)을
-     시스템관리자가 직접 관리한다. 여기서 바꾼 내용은 공용 DB로 즉시 공유된다. */
+  /* ── 담당자 관리 탭 ── */
+  /* 일정관리 담당자 칩·필터·선택 버튼의 목록(DATA.assignees). 바꾼 내용은 공용 DB로 즉시 공유된다. */
   function renderAssigneeTab(box) {
     const list = SeMIS.assignees();
     const used = {};
@@ -1398,7 +1381,7 @@
         const rec = D().assignees.find(x => x.id === a.id);
         const oldName = rec.name;
         Object.assign(rec, patch);
-        /* 이름을 바꾸면 이미 배정된 일정의 담당자도 함께 바꿔 준다(따로 손대지 않아도 되도록) */
+        /* 이름을 바꾸면 이미 배정된 일정의 담당자도 함께 바꾼다 */
         if (oldName !== name) {
           (D().schedules || []).forEach(sc => {
             if (!sc || !sc.assignee) return;
@@ -1415,7 +1398,7 @@
     };
   }
 
-  /* ───── 데이터 관리 탭 ───── */
+  /* ── 데이터 관리 탭 ── */
   function renderDataTab(box) {
     box.innerHTML = `
       <div class="card">
@@ -1589,7 +1572,7 @@
     }
   }
 
-  /* ═════════════ 저장소 관리 탭 (시스템관리자 전용) ═════════════ */
+  /* ── 저장소 관리 탭(시스템관리자 전용) ── */
   const STORE_LIMIT = 1024 * 1024 * 1024;
   const DB_LIMIT = 500 * 1024 * 1024;
   const FRESH_MS = 24 * 3600 * 1000;

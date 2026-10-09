@@ -1,14 +1,5 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 비공개 파일 주소 변환 (v1.15)
-   첨부 파일 버킷(semis-logi-files)은 비공개다. 저장 데이터에는 표준 주소
-   (…/object/public/semis-logi-files/경로)만 두고, 화면에 그 주소가 나타나면
-   로그인 세션으로 받은 서명 URL(1시간)로 바꿔 끼운다.
-
-   - img · iframe · source · embed · video · audio · object · a 요소를 자동 변환 (MutationObserver)
-   - 아직 서명 전인 링크를 누르면 서명을 받은 뒤 새 창으로 연다
-   - canon(html): 편집기 내용을 저장하기 전에 서명 URL을 표준 주소로 되돌린다
-   - signHtml(html): 인쇄용 별도 문서(iframe)에 넣을 HTML의 주소를 미리 서명
-   ═══════════════════════════════════════════════════════ */
+/* 비공개 첨부 버킷 주소 변환 — 데이터에는 표준 public 주소만 저장하고,
+   화면에 나타나면 세션 서명 URL(1시간)로 바꿔 끼운다(MutationObserver). 저장 전엔 canon() 으로 되돌림 */
 "use strict";
 
 (() => {
@@ -23,7 +14,7 @@
   const PIXEL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
   const PUB_RE = /https:\/\/mzyuzrxkdcpzxojenwat\.supabase\.co\/storage\/v1\/object\/public\/semis-logi-files\/([^\s"'<>?#\\]+)((?:\?[^\s"'<>#\\]*)?)/g;
   const SIGN_RE = /https:\/\/mzyuzrxkdcpzxojenwat\.supabase\.co\/storage\/v1\/object\/sign\/semis-logi-files\/([^\s"'<>?#\\]+)\?token=[A-Za-z0-9._-]+((?:&(?:amp;)?[^\s"'<>#\\]*)?)/g;
-  const MARGIN = 5 * 60 * 1000;          // 만료 5분 전부터는 새로 받는다
+  const MARGIN = 5 * 60 * 1000;          // 만료 5분 전부터 재서명
 
   const cache = new Map();               // 경로 → { url, exp }
   const denied = new Set();
@@ -40,7 +31,7 @@
     else if (u.indexOf(SIGN) === 0) { rest = u.slice(SIGN.length); signed = true; }
     if (rest === null) return null;
     const h = rest.indexOf("#");
-    const hash = h >= 0 ? rest.slice(h) : "";               // v1.43 #page=N 등 조각은 서명 뒤에도 유지
+    const hash = h >= 0 ? rest.slice(h) : "";               // #page=N 등 조각은 서명 뒤에도 유지
     if (h >= 0) rest = rest.slice(0, h);
     const q = rest.indexOf("?");
     const path = dec(q >= 0 ? rest.slice(0, q) : rest);
@@ -56,7 +47,7 @@
   const withExtra = (signed, extra) => extra ? signed + (signed.indexOf("?") >= 0 ? "&" : "?") + extra : signed;
   const full = (signed, p) => withExtra(signed, p.extra) + (p.hash || "");
 
-  /* ─── 서명 요청 (짧게 모아서 한 번에) ─── */
+  /* 서명 요청 — 25ms 모아 일괄 */
   function request(paths) {
     const need = (paths || []).filter(p => p && !fresh(p) && !denied.has(p));
     if (!need.length) return Promise.resolve();
@@ -96,7 +87,6 @@
     return hit ? full(hit, p) : null;
   }
 
-  /* ─── 화면 요소 변환 ─── */
   function fixEl(el) {
     if (!el || el.nodeType !== 1) return;
     const at = ATTR[el.tagName];
@@ -149,7 +139,7 @@
     });
   }
 
-  /* ─── 저장 전 되돌리기 · 인쇄용 서명 ─── */
+  /* 저장 전 서명 URL → 표준 주소. signHtml: 인쇄용 iframe HTML 미리 서명 */
   function canon(html) {
     return String(html == null ? "" : html).replace(SIGN_RE, (m, path, rest) =>
       PUB + path + (rest ? "?" + rest.replace(/^&(amp;)?/, "") : ""));

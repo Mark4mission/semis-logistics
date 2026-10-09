@@ -1,14 +1,7 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 증빙 문서 서가 (v1.41)
-   업무 화면마다 붙는 '관련 문서' 묶음. 같은 문서의 여러 판(개정 · 연도별)은 최신 판만 크게,
-   이전 판은 접어서 보여 준다. 원본은 비공개 버킷(docs/ · 민감보안정보는 docs-ssi/ — hq 이상 열람).
-
-   데이터 SeMIS.data.docs = [{ id, mod(화면 id), grp(묶음), title, date(YYYY-MM-DD), ser(같은 문서의 판 묶음 키),
-     org, note, ssi(민감보안정보), files[{name,size,url}], src(원본 위치 메모), at, by }]
-   - 화면은 SemisDocs.define(mod, [{ id, label }]) 로 묶음 순서 · 이름을 정하고
-     SemisDocs.card(mod) / SemisDocs.shelf(mod, grp) 로 그린 뒤 SemisDocs.wire(box) 를 부른다.
-   - 문서 · 판 이름은 공용 DB 에만(코드에는 묶음 뼈대만).
-   ═══════════════════════════════════════════════════════ */
+/* 증빙 문서 서가 — 화면마다 붙는 '관련 문서' 묶음. 같은 문서의 여러 판(ser)은 최신 판만 보이고 이전 판은 접는다.
+   원본은 비공개 버킷(docs/ · 민감보안정보는 docs-ssi/ — hq 이상 열람). 문서 · 판 이름은 공용 DB 에만.
+   SeMIS.data.docs = [{ id, mod, grp, title, date, ser, org, note, ssi, mids[], files[{name,size,url}], src, at, by }]
+   사용: define(mod, [{ id, label }]) → card(mod) / shelf(mod, grp) → wire(box) */
 "use strict";
 
 (() => {
@@ -40,7 +33,7 @@
     return Array.from(m.values()).map(v => ({ cur: v[0], old: v.slice(1) }));
   }
   function latest(mod, grp) { return list(mod, grp)[0] || null; }
-  /* 수검 체크리스트 항목 번호로 — 판 묶음마다 최신 판만(이전 판은 증빙 칩에서 뺀다) */
+  /* 체크리스트 항목 번호로 찾기 — 판 묶음마다 최신 판만 */
   const midsOf = (d) => (Array.isArray(d.mids) ? d.mids.map(String) : []);
   function forMid(mid) {
     const m = String(mid || "");
@@ -60,7 +53,6 @@
     return { ok: true, text: "문서 " + hit.length + "건 · 최근 " + (dot(top.date) || "-") };
   }
 
-  /* ─────── 그리기 ─────── */
   const ext = (f) => { const m = /\.([A-Za-z0-9]{1,5})$/.exec(String((f && f.name) || "")); return m ? m[1].toUpperCase() : "FILE"; };
   function fileLink(f, label, cls) {
     return `<a class="nb-file ${cls || ""}" href="${esc(f.url)}" target="_blank" rel="noopener" data-name="${esc(f.name || "")}">${esc(label || f.name || "첨부")}</a>`;
@@ -87,7 +79,6 @@
       + (s.old.length ? `<button type="button" class="link-btn dk-old-btn" data-dk-old="${esc(k)}" aria-expanded="${on}">이전 판 ${s.old.length}</button>` : "")
       + `</li>` + (s.old.length && on ? `<li class="dk-olds"><ul>${s.old.map(d => rowHTML(d, canW, true)).join("")}</ul></li>` : "");
   }
-  /* 한 묶음 */
   function shelf(mod, grp, opts) {
     opts = opts || {};
     const canW = opts.canEdit === undefined ? SeMIS.canEdit() : !!opts.canEdit;
@@ -96,7 +87,7 @@
     if (!ss.length) return opts.emptyText === null ? "" : `<p class="dk-empty">${esc(opts.emptyText || "등록된 문서가 없습니다.")}</p>`;
     return `<ul class="dk-list" data-dk-mod="${esc(mod)}" data-dk-grp="${esc(grp || "")}">${ss.map(s => seriesHTML(s, canW)).join("")}</ul>`;
   }
-  /* 문서 추가 — 화면(카드)마다 한 곳에만, 글자 버튼으로(묶음은 등록 창에서 고른다) */
+  /* 문서 추가 — 화면마다 한 곳(묶음은 등록 창에서 고른다) */
   const addBtn = (mod, grp) => `<button type="button" class="link-btn dk-add m-ed" data-dk-add="${esc(mod)}|${esc(grp || "")}">${icon("plus", 14)}<span>문서 추가</span></button>`;
   /* 화면 전체 묶음 — 정의된 묶음 순서대로(정의 밖 묶음은 뒤에) */
   function groupsHTML(mod, opts) {
@@ -120,7 +111,6 @@
     return `<section class="card dk-card" data-dk-card="${esc(mod)}"><div class="card-title">${icon("folder", 18)}<span>${esc(opts.title || "관련 문서")}</span>${canW ? `<span class="spacer"></span>${addBtn(mod, "")}` : ""}</div>${body}</section>`;
   }
 
-  /* ─────── 동작 ─────── */
   let onChange = null;
   function wire(box, after) {
     if (!box) return;
@@ -130,7 +120,7 @@
     $$("[data-dk-add]", box).forEach(b => b.onclick = () => { const [m, g] = b.dataset.dkAdd.split("|"); form("", { mod: m, grp: g }); });
   }
   function repaint() {
-    if (typeof onChange === "function") { try { onChange(); return; } catch (e) { /* 화면 전체로 */ } }
+    if (typeof onChange === "function") { try { onChange(); return; } catch (e) { /* 실패 시 화면 전체 다시 그리기 */ } }
     if (SeMIS.renderView) SeMIS.renderView();
   }
 
@@ -209,13 +199,12 @@
     };
   }
 
-  /* 통합 검색 — 문서 이름 · 기관 */
   const modVisible = (mod) => {
     const mn = SeMIS.menuForModule ? SeMIS.menuForModule(mod) : null;
     if (!mn || !(SeMIS.hasModule && SeMIS.hasModule(mod))) return false;
     return SeMIS.navVisible ? SeMIS.navVisible(mn) : SeMIS.canSee(mn);
   };
-  /* 통합 검색은 search.js 보다 먼저 읽히므로(규정 화면이 묶음을 정의할 수 있게) 준비되면 등록한다 */
+  /* 이 파일은 search.js 보다 먼저 읽히므로(화면이 묶음을 먼저 정의하도록) 준비되면 검색에 등록 */
   (function regSearch(n) {
     if (!window.SemisSearch) { if (n < 200) setTimeout(() => regSearch(n + 1), 0); return; }
     SemisSearch.register({

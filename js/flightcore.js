@@ -1,14 +1,7 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 운항 현황 계산 계층 (v1.14)
-   화면 없이 계산만 한다 — 공항 좌표 · 대권 거리/방위 · 기체 상태 판정 · 입출항 기록 정리.
-   화면은 js/flightops.js 가 그린다.
-
-   데이터: Supabase Edge Function "semis-logi-adsb" (adsb.lol ADS-B, ODbL)
-     ac[]     기체별 마지막 상태 { hex, reg, type, flight, lat, lon, alt, gnd, gnd_inferred, gs, trk, vr, sqk, emg,
-                                   pos_at, seen_at, gnd_since, air_since, trail? }
-     events[] 입출항 기록 { hex, reg, flight, kind: dep|arr, apt, at, inferred } — 지상↔공중 전환을 서버가 감지
-   스케줄 파일에 기대지 않는다(매달 바뀌는 스케줄을 손으로 넣지 않도록). 기체 목록만 관리한다.
-   ═══════════════════════════════════════════════════════ */
+/* 운항 현황 계산 계층 — 화면 없이 계산만(공항 좌표 · 대권 거리/방위 · 기체 상태 판정 · 입출항 기록). 화면은 js/flightops.js.
+   데이터: Supabase Edge Function "semis-logi-adsb"(adsb.lol ADS-B 중계, ODbL). 스케줄은 쓰지 않고 기체 목록만 관리한다.
+   ac[]     기체별 마지막 상태 { hex, reg, type, flight, lat, lon, alt, gnd, gnd_inferred, gs, trk, vr, sqk, emg, pos_at, seen_at, gnd_since, air_since, trail? }
+   events[] 입출항 기록 { hex, reg, flight, kind: dep|arr, apt, at, inferred } — 지상↔공중 전환을 서버가 감지 */
 "use strict";
 
 (() => {
@@ -92,7 +85,7 @@
     return m ? "KJ" + m[1] + m[2] : s;
   };
 
-  /* ─────────── 시각 (한국 시간) ─────────── */
+  /* ── 시각 (KST) ── */
   const KST = 9 * 3600000;
   const kstISO = (ms) => new Date(ms + KST).toISOString().slice(0, 10);
   const kstHM = (ms) => new Date(ms + KST).toISOString().slice(11, 16);
@@ -106,7 +99,7 @@
     if (h < 24) return h + "시간" + (m % 60 && h < 6 ? " " + (m % 60) + "분" : "") + " 전";
     return Math.floor(h / 24) + "일 전";
   }
-  /* 오늘이면 시:분, 어제면 "어제 시:분", 그 전이면 "월.일 시:분" (v1.24.1 — 지난 도착 시각이 오늘처럼 보이던 문제) */
+  /* 오늘이면 시:분, 어제면 "어제 시:분", 그 전이면 "월.일 시:분" */
   function kstWhen(ms, now) {
     if (!Number.isFinite(ms)) return "";
     const d0 = kstDayStart(now || Date.now());
@@ -127,7 +120,7 @@
     return m < 60 ? m + "분" : Math.floor(m / 60) + "시간 " + (m % 60) + "분";
   };
 
-  /* ─────────── 대권 항로 ─────────── */
+  /* ── 대권 항로 ── */
   const R = 6371.0088, rad = Math.PI / 180, deg = 180 / Math.PI;
   function dist(a, b) {
     const p1 = a.lat * rad, p2 = b.lat * rad, dp = p2 - p1, dl = (b.lon - a.lon) * rad;
@@ -157,7 +150,7 @@
   const DIR8 = ["북", "북동", "동", "남동", "남", "남서", "서", "북서"];
   const dir8 = (b) => DIR8[Math.round(((b % 360) + 360) % 360 / 45) % 8];
 
-  /* ─────────── 기체 상태 판정 ───────────
+  /* ── 기체 상태 판정 ──
      code: emg 비상 부호 · appr 인천 접근 중 · air 비행 중 · gnd 지상 · lost 신호 없음(마지막이 비행 중) · none 수신 기록 없음
      인천 접근 중 = 비행 중 · 인천 250km 안 · 인천 쪽으로 진행(방위 차 60° 이하) · 강하 중(-300ft/min 이하)이거나 15,000ft 이하(상승 중 제외) */
   const LIVE_MS = 4 * 60000;

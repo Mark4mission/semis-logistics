@@ -1,20 +1,5 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 전역 통합 검색 (SeMIS v2 search 이식)
-   헤더 상단 중앙 검색창: 포탈 전체(메뉴·링크·공지·일정·점검·연락망·지점·
-   출입증·장비·교육·이수증·계약·규정·청구 …)를 한 번에 검색.
-
-   설계 원칙
-   - 권한: 결과마다 해당 메뉴의 vis(SeMIS.canSee)를 그대로 적용 —
-     접속 계정의 권한 범위 안에서만 노출. 대외비(계약·유지보수 비용·청구)는
-     추가로 minRank(hq 이상) 이중 게이트.
-   - vendor(협력업체, v2.46): 검색 제공하되 허용 라우트(vendorAccess) 안의
-     모듈만 대상. 자기 업체 격리 모듈(청구·유지보수 계약/비용)은 모듈의
-     격리 뷰(visible/visContracts)를 그대로 사용해 검색으로 우회 불가.
-   - 확장성: 메뉴/링크는 DATA.menus를 검색 시점에 실시간 스캔 —
-     이후 메뉴를 추가·변경해도 즉시 검색됨. 데이터는 프로바이더 레지스트리
-     (SemisSearch.register)로 신규 모듈이 스스로 등록 가능.
-   - 검색어: 공백 구분 다중 단어 AND 매칭, 대소문자 무시.
-   ═══════════════════════════════════════════════════════ */
+/* 전역 통합 검색(#cmdk 팔레트). 결과마다 해당 메뉴의 권한을 그대로 적용하고 대외비는 minRank로 한 번 더 막는다.
+   신규 모듈은 SemisSearch.register 로 프로바이더를 등록한다. */
 "use strict";
 
 const SemisSearch = (() => {
@@ -22,11 +7,8 @@ const SemisSearch = (() => {
   const D = () => S().data;
   const esc = (s) => S().esc(s);
 
-  /* ─────── 프로바이더 레지스트리 ───────
-     { id, group, icon, module?, minRank?, items() => [{title, sub?, text?, route?, url?}] }
-     - module: 권한 게이트(해당 모듈 메뉴의 vis) + 기본 이동 라우트
-     - minRank: 추가 권한 하한 (대외비 이중 게이트 / module 없을 때 단독 게이트)
-     - text: 검색 대상 필드 배열(없으면 title+sub) */
+  /* 프로바이더: { id, group, icon, module?, minRank?, items() => [{title, sub?, text?, route?, url?}] }
+     module = 권한 게이트(해당 모듈 메뉴의 vis) + 기본 이동 라우트, minRank = 추가 권한 하한, text = 검색 대상(없으면 title+sub) */
   const providers = [];
   function register(p) {
     if (!p || !p.id || typeof p.items !== "function") return;
@@ -34,17 +16,14 @@ const SemisSearch = (() => {
     if (i >= 0) providers[i] = p; else providers.push(p);
   }
 
-  /* v2.46: vendor 계정 판정 + 허용 라우트 */
   const isVendor = () => !!(S().user && S().user.role === "vendor");
   function vendorRoutes() {
     try { return S().vendorAccess(S().user).routes || []; } catch (e) { return []; }
   }
   function canUseProvider(p) {
     if (isVendor()) {
-      // 협력업체: 허용 라우트 안의 모듈만. 데이터 격리는 각 프로바이더의
-      // 격리 뷰가 담당하므로 minRank(대외비 게이트)는 라우트 허용으로 갈음.
-      // v2.48: 단 대외비 프로바이더(minRank 3+, 유지보수 계약·비용 등)는
-      // confid 없는 업체(제조사·기술지원)에 검색 경로로도 열리지 않는다.
+      // 협력업체: 허용 라우트의 모듈만. 데이터 격리는 각 프로바이더의 격리 뷰가 맡는다.
+      // 대외비(minRank 3+)는 confid 없는 업체(제조사·기술지원)에 검색으로도 열지 않는다.
       if (p.minRank >= 3 && S().canConfid && !S().canConfid()) return false;
       return !!(p.module && vendorRoutes().indexOf(p.module) >= 0);
     }
@@ -52,13 +31,12 @@ const SemisSearch = (() => {
     if (p.minRank && rank < p.minRank) return false;
     if (p.module) {
       const mn = (D().menus || []).find(m => m && m.type === "module" && m.module === p.module);
-      if (mn) return S().navVisible ? S().navVisible(mn) : S().canSee(mn);   // 숨긴 메뉴는 검색 결과에서도 제외
-      return rank >= 4; // 메뉴가 제거된 모듈은 관리자만 (보수적)
+      if (mn) return S().navVisible ? S().navVisible(mn) : S().canSee(mn);   // 숨긴 메뉴도 제외
+      return rank >= 4; // 메뉴가 제거된 모듈은 관리자만
     }
     return true;
   }
 
-  /* ─────── 매칭/하이라이트 ─────── */
   const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   function terms(q) {
     return String(q || "").trim().toLowerCase().split(/\s+/).filter(Boolean).slice(0, 5);
@@ -98,7 +76,6 @@ const SemisSearch = (() => {
     return "…" + s.slice(start, start + len) + "…";
   }
 
-  /* ─────── 검색 실행 (권한 범위 내) ─────── */
   const PER_GROUP = 8, TOTAL_MAX = 60;
   function search(q) {
     const ts = terms(q);
@@ -106,8 +83,7 @@ const SemisSearch = (() => {
     if (!ts.length || !u || u.role === "signer") return [];
     const out = [];
 
-    /* 1) 메뉴/링크 — DATA.menus 실시간 스캔 (메뉴 추가·변경 즉시 반영)
-       vendor는 허용 라우트의 모듈 메뉴 + 업체 전용 링크(vendorAccess.links)만 */
+    /* 메뉴/링크는 검색 시점에 DATA.menus 를 직접 스캔. vendor는 허용 라우트 모듈 + vendorAccess.links 만 */
     const menuHits = [];
     if (isVendor()) {
       const routes = vendorRoutes();
@@ -140,7 +116,6 @@ const SemisSearch = (() => {
     menuHits.sort((a, b) => b.score - a.score);
     out.push.apply(out, menuHits.slice(0, PER_GROUP));
 
-    /* 2) 데이터 프로바이더 */
     providers.forEach(p => {
       if (!canUseProvider(p)) return;
       let items = [];
@@ -160,7 +135,6 @@ const SemisSearch = (() => {
     return out.slice(0, TOTAL_MAX);
   }
 
-  /* ─────── 기본 프로바이더 (현행 전 모듈) ─────── */
   const A = (v) => Array.isArray(v) ? v : [];
 
   register({ id: "notices", group: "공지사항", icon: "📢", module: "dashboard",
@@ -173,14 +147,13 @@ const SemisSearch = (() => {
       text: [e.level, e.note, e.date], route: "dashboard" })) });
 
   register({ id: "schedules", group: "일정관리", icon: "📅", module: "schedule",
-    // v2.37: 다른 계정의 "나에게만 보이기" 일정은 검색에서도 제외
+    // 다른 계정의 "나에게만 보이기" 일정 제외
     items: () => A(D().schedules).filter(s =>
       !window.SemisCalendar || SemisCalendar.canSeePriv(s)).map(s => ({
       title: s.title, sub: [s.start + (s.end && s.end !== s.start ? "~" + s.end : ""), s.assignee, s.memo].filter(Boolean).join(" · "),
       text: [s.title, s.memo, s.assignee] })) });
 
-  /* v2.40: 회의록 게시판 — 제목·본문·참석자·결정사항·태그 통합 검색
-     v2.40.2: 검색으로 열람 제한을 우회하지 못하도록 모듈의 열람 판정(visibleAll)을 그대로 사용 */
+  /* 열람 제한 우회 방지: 모듈의 열람 판정(visibleAll)을 그대로 쓴다 */
   register({ id: "minutes", group: "회의록", icon: "🗒️", module: "minutes",
     items: () => (window.SemisMinutes ? SemisMinutes.visibleAll() : A(D().minutes)).map(x => {
       const fn = window.SemisMinutes ? SemisMinutes.folderName(x.folder) : "";
@@ -210,7 +183,7 @@ const SemisSearch = (() => {
         else outc.push({
           title: r.items || sec.title || "", sub: r.to || "", text: [r.no, r.items, r.to, sec.title] });
       }));
-      // v1.10 보고 체계도 (사고 유형별) — 체계도 자체 + 연락처 행
+      // 보고 체계도(사고 유형별) — 체계도 자체 + 연락처 행
       A(D().contacts && D().contacts.flows).forEach(f => {
         outc.push({ title: f.title || "보고 체계도", sub: "보고 체계도" + (f.ver ? " · Ver." + f.ver : ""),
           text: [f.title, f.short, "보고 체계도", f.steps] });
@@ -222,9 +195,7 @@ const SemisSearch = (() => {
       return outc;
     } });
 
-
-  /* ─────── UI ─────── */
-  /* 결과 아이콘 — 선 아이콘(SeMIS.icon). 프로바이더는 ico 키로 지정할 수 있다. */
+  /* 프로바이더는 ico 키로 선 아이콘을 지정할 수 있다 */
   const GROUP_ICO = { "공지사항": "megaphone", "보안등급": "alert", "일정관리": "calendar", "회의록": "notes",
     "비상연락망": "phone", "위기대응 담당자": "users", "규정": "book", "메뉴 · 링크": "chevron" };
   function icoOf(it) {
@@ -233,7 +204,7 @@ const SemisSearch = (() => {
   }
   let pop = null, input = null, wrap = null, items = [], active = -1;
 
-  /* v1.8: 통합 검색 팔레트(#cmdk) — 열기·닫기는 애니메이션 없이 즉시 (자주 쓰는 키보드 동작) */
+  /* 열기·닫기는 애니메이션 없이 즉시(자주 쓰는 키보드 동작) */
   function openPalette() {
     const u = S().user;
     if (!u || u.role === "signer") return;
@@ -322,11 +293,9 @@ const SemisSearch = (() => {
       } else if (e.key === "Escape") { e.stopPropagation(); closePalette(); }
     });
 
-    // 팔레트 바깥(배경) 클릭 시 닫기
     const box = document.getElementById("cmdk");
     if (box) box.addEventListener("click", (e) => { if (e.target === box) closePalette(); });
 
-    // 단축키: Ctrl/Cmd+K 또는 "/" (입력 중이 아닐 때)
     document.addEventListener("keydown", (e) => {
       const u = S().user;
       if (!u || u.role === "signer") return;
@@ -338,7 +307,6 @@ const SemisSearch = (() => {
       }
     });
 
-    // 검색 열기 버튼 (허브 패널 · 모바일 상단바)
     Array.prototype.forEach.call(document.querySelectorAll("[data-search-open]"), b =>
       b.addEventListener("click", openPalette));
   }

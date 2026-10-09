@@ -1,13 +1,6 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 협력사 · 보안요원 (v1.41, 예정 메뉴 partners 대체)
-   보안검색 · 항공경비 위탁업체(프로에스콤 등)의 요원 편성 · 교육 이력과 업체 증빙(인허가 · 계약 · 점검 · SeMS).
-   - 요원 현황: 반(A · B · C) · 검색팀(조) 편성표, 감독자(★) · 감독자 예정(☆), 변동 사항 · 교육 중
-   - 교육 이력: 초기 · 직무(OJT) · 인증평가 · 정기교육(연도별) → 다음 정기교육 기한(교육훈련지침 제13조: 1년 · 전후 30일)
-     항공경비요원은 지침 제21조②에 따라 특수경비원 직무교육으로 정기교육을 갈음(원본 표기)
-   - 업체 · 점검: 업체 카드 + 관련 문서(인허가 · 지정 / 계약 / 정기 · 불시 점검 / 교육 확인 / SeMS)
-   데이터 SeMIS.data.partners = { asOf, src, vendors[], staff[], moves[], trainees{guard[],screen[]} } — 명단은 공용 DB 에만
-   수검 체크리스트 증빙: window.SemisEvidence.partners(mid, sub)
-   ═══════════════════════════════════════════════════════ */
+/* 협력사 · 보안요원 — 위탁업체(보안검색 · 항공경비) 요원 편성 · 교육 이력과 업체 증빙.
+   SeMIS.data.partners = { asOf, src, vendors[], staff[], moves[], trainees{guard[],screen[]} } — 명단은 공용 DB 에만
+   staff: { id, vid, name, job(screen|guard), unit, team, pos, sup(sup|plan), init · ojt · cert{text,start,end}, regs{연도: 날짜}, note, chk, left } */
 "use strict";
 
 (() => {
@@ -37,16 +30,15 @@
   const UNITS = ["A반", "B반", "C반"];
   const TEAMS = ["A조", "B조", "C조", "일근"];
 
-  /* 증빙 문서 묶음 */
   if (window.SemisDocs) SemisDocs.define(MOD, [
     { id: "license", label: "인허가 · 지정" }, { id: "roster", label: "요원 현황 제출자료" }, { id: "inspect", label: "정기 · 불시 점검" },
     { id: "edu", label: "교육 확인" }, { id: "tsa", label: "TSA 교육 확인" }, { id: "drug", label: "향정신성 물질 교육" },
     { id: "sems", label: "보안관리체계 (SeMS)" }, { id: "misc", label: "기타" }
   ]);
 
-  /* ─────── 교육 상태 ───────
-     정기교육 묶음을 날짜순으로 이어 셈한다(교육훈련지침 제13조): 직전 만료 다음 날(1년 되는 날) 전후 30일 안 이수 → 그날부터 1년.
-     시작점 = 인증평가(검색요원) 또는 초기교육(감독자). 항공경비요원(감독자 제외)은 정기교육을 특수경비원 직무교육으로 갈음 */
+  /* 정기교육 만료 — 교육훈련지침 제13조: 1년 되는 날 전후 30일 안 이수면 기존 기한에서 1년 연장, 아니면 이수일부터 1년.
+     시작점 = 인증평가(검색요원) 또는 초기교육(감독자). 이수 기간 경과 후 SUSP_M 개월까지 자격 정지, 그 뒤는 회복 기한 경과.
+     항공경비요원(감독자 제외)은 지침 제21조②에 따라 특수경비원 직무교육으로 갈음 */
   const regDates = (s) => Object.keys(s.regs || {}).map(y => s.regs[y]).filter(isISO).sort();
   const baseDate = (s) => (s.cert && isISO(s.cert.end) ? s.cert.end : s.init && isISO(s.init.end) ? s.init.end : "");
   const exempt = (s) => s.job === "guard" && !s.sup && !regDates(s).length;
@@ -90,7 +82,6 @@
       plan: ss.filter(s => s.sup === "plan").length, act: act.length, qual: qual.length, chk: ss.filter(s => s.chk).length };
   }
 
-  /* ─────── 상태 ─────── */
   let tab = "staff", q = "", jobF = "", onlyAct = false;
   const TABS = [["staff", "요원 현황"], ["edu", "교육 이력"], ["vendor", "업체 · 점검"]];
   const hay = (a) => a.map(v => String(v || "")).join(" ").toLowerCase();
@@ -99,7 +90,6 @@
     `<button type="button" class="seg-btn" data-pseg="${esc(name)}" data-v="${esc(v)}" aria-pressed="${String(v) === String(cur)}">${esc(lb)}</button>`).join("")}</div>`;
   const sortStaff = (a, b) => (POS_ORDER[a.pos] ?? 3) - (POS_ORDER[b.pos] ?? 3) || (a.no || 999) - (b.no || 999) || String(a.name).localeCompare(String(b.name), "ko");
 
-  /* ═════════ 요원 현황 (편성표) ═════════ */
   function personChip(s) {
     const st = status(s);
     const dotCls = st.st === "exempt" ? "" : ` is-${ST[st.st][1]}`;
@@ -134,7 +124,6 @@
       ${movesHTML || trList.length ? `<div class="pn-foot">${movesHTML ? `<div><h4>변동 사항</h4>${movesHTML}</div>` : ""}${trList.length ? `<div><h4>교육 중</h4>${trList.map(([k, v]) => `<div class="pn-mv"><b>${k}</b><span>${esc(v.join(", "))}</span></div>`).join("")}</div>` : ""}</div>` : ""}`;
   }
 
-  /* ═════════ 교육 이력 ═════════ */
   const years = () => Array.from(new Set([].concat(...staff().map(s => Object.keys(s.regs || {}))))).filter(y => /^\d{4}$/.test(y)).sort().slice(-3);
   const spanTxt = (x) => (x && (x.text || "") && x.text !== "-" ? (isISO(x.end) && x.start !== x.end ? dot(x.start) + "~" + dot(x.end).slice(3) : dot(x.end || x.start) || x.text) : "-");
   function eduRows() {
@@ -162,7 +151,6 @@
         : ui.empty(q || onlyAct || jobF ? "조건에 맞는 요원이 없습니다." : "등록된 요원이 없습니다.")}</div>`;
   }
 
-  /* ═════════ 업체 · 점검 ═════════ */
   function vendorHTML(canW) {
     const vs = vendors();
     const inspDocs = window.SemisDocs ? SemisDocs.list(MOD, "inspect") : [];
@@ -177,7 +165,6 @@
       ${window.SemisDocs ? SemisDocs.card(MOD, { title: "업체 증빙 문서" }) : ""}`;
   }
 
-  /* ═════════ 요원 상세 · 수정 ═════════ */
   function personView(id) {
     const s = arr("staff").find(x => x && x.id === id);
     if (!s) return;
@@ -290,7 +277,6 @@
     };
   }
 
-  /* ═════════ 화면 ═════════ */
   function bodyHTML(canW) {
     if (tab === "edu") return `<section class="card">${eduHTML()}</section>`;
     if (tab === "vendor") return vendorHTML(canW);
@@ -357,7 +343,7 @@
       .concat(vendors().map(v => ({ title: v.name, sub: v.svc || "협력사", route: MOD, pick: () => { tab = "vendor"; } })))
   });
 
-  /* ─────── 수검 체크리스트 증빙 ─────── */
+  /* 수검 체크리스트 증빙 */
   const DOC = (g, days) => (window.SemisDocs ? SemisDocs.evid(MOD, g, days) : { ok: false, text: "" });
   function evidence(mid) {
     const t = stats();

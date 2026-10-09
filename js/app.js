@@ -1,22 +1,16 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — Core Engine
-   인천화물팀 안전보안파트 · 화물터미널 안전보안 관리 정보시스템
-   인증 · 저장소 · 메뉴 엔진 · 권한 · 라우터
-   (SeMIS v2 코어를 이어받아 데이터·메뉴·팔레트를 독립 구성)
-   ═══════════════════════════════════════════════════════ */
+/* 코어 — 인증 · 저장소 · 메뉴 엔진 · 권한 · 라우터 (SeMIS v2 코어에서 분기, 데이터·메뉴 독립) */
 "use strict";
 
 const SeMIS = (() => {
 
   const VERSION = "1.44.0";
   const APP_NAME = "SeMIS · Logistics";
-  /* v1.15: 데이터 캐시는 이 탭의 sessionStorage 에만 둔다(탭을 닫거나 로그아웃하면 사라짐).
-     화면 설정(LS_UI)만 localStorage. */
+  /* 데이터 캐시는 탭 sessionStorage 에만(탭 닫기·로그아웃 시 소멸). 화면 설정(LS_UI)만 localStorage */
   const LS_DATA = "semisl:data";
   const LS_UI   = "semisl:ui";
   const SS_OWNER = "semisl:owner";   // 캐시 주인 — 다른 계정이 로그인하면 캐시를 비운다
-  /* 암호 확인은 서버(RPC semis_logi_login)가 한다. SeMIS v2와 같은 규칙(SHA-256 · SALT)으로
-     만든 값을 서버가 bcrypt로 한 번 더 감싸 보관 — 아래 함수는 규칙 확인(테스트)용으로만 남긴다. */
+  /* 암호 확인은 서버(RPC semis_logi_login) — 서버는 SHA-256(SALT) 값을 bcrypt 로 한 번 더 감싸 보관.
+     pwHash 는 규칙 확인(테스트)용 */
   const SALT = "SeMISv2:";
   const store = {
     get(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } },
@@ -24,7 +18,7 @@ const SeMIS = (() => {
     del(k) { try { sessionStorage.removeItem(k); } catch (e) { /* 무시 */ } }
   };
 
-  /* ─────────── SHA-256 (pure JS, 동기, 어디서나 동작) ─────────── */
+  /* ── SHA-256 (순수 JS · 동기) ── */
   function sha256(str) {
     const msg = unescape(encodeURIComponent(str));
     const K = [
@@ -69,9 +63,8 @@ const SeMIS = (() => {
   }
   const pwHash = (pw) => sha256(SALT + ":" + pw);
 
-  /* ─────────── 계정 ───────────
-     계정·암호는 서버 전용 표(semis_logi_private.accounts)에만 있다. 코드와 공용 데이터에는 두지 않는다.
-     기본 계정: mark3464(시스템관리자) · cargo-ss(안전보안파트) · cargo-mgr(화물팀 관리자) · cargo-user(화물팀 사용자) */
+  /* ── 계정 ──
+     계정·암호는 서버 전용 표(semis_logi_private.accounts)에만 — 코드와 공용 데이터에 두지 않는다 */
   const ROLE_LABEL = { admin: "시스템관리자", hq: "안전보안파트", manager: "화물팀 관리자", user: "일반사용자", vendor: "협력업체", signer: "서명 참석자" };
   /* 권한 서열: admin(4) > hq(3) > manager(2) > user(1)
      - admin:   모든 기능 + 시스템 설정
@@ -82,8 +75,7 @@ const SeMIS = (() => {
      - signer:  회의록 참석 서명 전용 세션 (QR / 6자리 코드) */
   const ROLE_RANK  = { admin: 4, hq: 3, manager: 2, user: 1, vendor: 1, signer: 0 };
 
-  /* ─────── 협력업체(vendor) 접근 범위 — 업체명별 화이트리스트 ───────
-     초기에는 비어 있음. 조업사·유지보수 업체 계정을 만들 때 여기에 한 줄 추가하면 된다.
+  /* 협력업체(vendor) 접근 범위 — 업체명별 화이트리스트(없으면 VENDOR_DEFAULT)
      예) "○○조업": { routes: ["contacts"], links: [], edit: false, confid: false } */
   const VENDOR_ACCESS = {};
   const VENDOR_DEFAULT = { routes: ["dashboard"], links: [], edit: false, confid: false };
@@ -103,7 +95,7 @@ const SeMIS = (() => {
   function vendorHome(u) { return vendorAccess(u).routes[0]; }
   const VIS_LABEL  = { all: "전체", mgr: "관리자 이상", hq: "안전보안파트 이상", admin: "시스템관리자" };
 
-  /* ─────────── 국가 항공보안등급 (5단계) — 화물터미널도 동일 등급 체계 적용 ─────────── */
+  /* ── 국가 항공보안등급(5단계) — 화물터미널도 동일 체계 ── */
   const SEC_LEVELS = ["평시", "관심", "주의", "경계", "심각"];
   const todayStr = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
   function levelSorted() {
@@ -119,9 +111,8 @@ const SeMIS = (() => {
     return levelSorted().find(e => e.date > todayStr()) || null;
   }
 
-  /* ─────────── 선 아이콘 (v1.8 · 1.75px stroke) ───────────
-     이모지 대신 쓰는 공통 아이콘. SeMIS.icon(name, size) 로 SVG 문자열을 얻는다.
-     허브(그룹) 메뉴는 ico 필드에 이 키를 지정한다. 새 아이콘은 여기에 한 줄 추가. */
+  /* ── 선 아이콘(1.75px stroke) ──
+     SeMIS.icon(name, size) → SVG 문자열. 허브(그룹) 메뉴는 ico 필드에 이 키를 지정 */
   const ICONS = {
     home: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h5v-6h4v6h5V9.5"/>',
     scan: '<path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8"/><path d="M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8"/><path d="M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16"/><path d="M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16"/><path d="M8.5 10 12 8.2l3.5 1.8v4L12 15.8 8.5 14z"/><path d="M8.5 10 12 11.8l3.5-1.8M12 11.8v4"/>',
@@ -169,7 +160,7 @@ const SeMIS = (() => {
     plane: '<path d="M12 2.8c.9 0 1.4.9 1.4 2v4.7l6.8 4v1.9l-6.8-2v4.1l2.1 1.5v1.6L12 19.8l-3.5.8V19l2.1-1.5v-4.1l-6.8 2v-1.9l6.8-4V4.8c0-1.1.5-2 1.4-2z"/>',
     palette: '<path d="M12 3.5a8.5 8.5 0 1 0 0 17c1.2 0 1.8-.8 1.8-1.7 0-1.3-1-1.5-1-2.6 0-1 .8-1.7 1.8-1.7h2.1a3.8 3.8 0 0 0 3.8-3.8c0-4-3.8-7.2-8.5-7.2z"/><circle cx="7.8" cy="11" r="1"/><circle cx="10.5" cy="7.5" r="1"/><circle cx="15" cy="8" r="1"/>'
   };
-  /* v1.23 바로가기 아이콘 — 링크 메뉴에서 고르는 선 아이콘 */
+  /* 링크 메뉴에서 고르는 선 아이콘 */
   Object.assign(ICONS, {
     globe: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17"/><path d="M12 3.5c2.4 2.4 3.6 5.2 3.6 8.5s-1.2 6.1-3.6 8.5c-2.4-2.4-3.6-5.2-3.6-8.5S9.6 5.9 12 3.5z"/>',
     monitor: '<rect x="3" y="4" width="18" height="12.5" rx="2"/><path d="M8.5 20.5h7M12 16.5v4"/>',
@@ -195,7 +186,7 @@ const SeMIS = (() => {
   });
   /* 허브 선택용 아이콘 목록 (시스템 설정 → 메뉴 관리) */
   const HUB_ICONS = ["home", "scan", "hardhat", "clipboard", "users", "book", "folder", "calendar", "notes", "alert", "link", "doc"];
-  /* v1.23 바로가기(링크 메뉴) 아이콘 — 우선순위: 사이트 아이콘(fav, 64px PNG data URL) → 선 아이콘(ico + tone) → 이모지(icon) → 기본 */
+  /* 링크 메뉴 아이콘 우선순위: 사이트 아이콘(fav, 64px PNG data URL) → 선 아이콘(ico + tone) → 이모지(icon) → 기본 */
   const LINK_ICONS = ["link", "globe", "monitor", "plane", "box", "truck", "building", "shield", "scan", "xray", "etd", "chart",
     "database", "doc", "folder", "book", "calendar", "clock", "mail", "phone", "users", "user", "shirt", "star", "map", "wrench",
     "car", "bell", "lock", "alert"];
@@ -220,13 +211,10 @@ const SeMIS = (() => {
       ' stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + d + '</svg>';
   }
 
-  /* ─────────── 기본 메뉴 시드 (인천화물팀 안전보안파트 업무 체계) ───────────
-     v1.8: 6개 업무 허브(그룹) — 레일(왼쪽 아이콘 줄)에 허브, 허브 패널에 하위 메뉴.
-       홈 · 화물 보안 · 안전 관리 · 점검·교육 · 협력·비상 · 규정·자료
-     - 대시보드는 최상위(parent null)이지만 항상 홈 허브의 첫 항목으로 표시된다.
-     - 나머지 최상위 항목(암호 관리 · 시스템 설정)은 레일 하단 유틸리티.
-     planned:true 항목은 아직 모듈 js가 없는 "예정 모듈" — 라우트가 준비 중 안내 화면을 그린다.
-     같은 module id로 SeMIS.registerModule()이 호출되는 순간 실화면으로 자동 대체된다. */
+  /* ── 기본 메뉴 시드 ──
+     허브(그룹)는 레일(왼쪽 아이콘 줄), 하위 메뉴는 허브 패널. 대시보드는 최상위(parent null)지만 홈 허브 첫 항목으로 표시,
+     나머지 최상위(암호 관리 · 시스템 설정)는 레일 하단 유틸리티.
+     planned:true = 모듈 js 가 아직 없는 예정 모듈 — 같은 module id 로 registerModule() 되면 실화면으로 대체 */
   function defaultMenus() {
     let seq = 0;
     const h  = (id, label, ico) => ({ id, seq: seq++, type: "group", label, ico });
@@ -271,7 +259,7 @@ const SeMIS = (() => {
         "점검·감사에서 나온 부적합을 접수 → 조치중 → 종결 3단계로 추적하고 기한 경과를 에스컬레이션합니다."),
       m("training", "보안교육 · 자격 관리", "🎓", "training", "mgr", "hub-aud"),
       m("dissem", "보안 전파교육", "📣", "dissem", "mgr", "hub-aud"),
-      m("selfcheck", "자체 보안점검", "🧾", "selfcheck", "mgr", "hub-aud"),     // v1.42 선택 실행 — 허브 맨 아래
+      m("selfcheck", "자체 보안점검", "🧾", "selfcheck", "mgr", "hub-aud"),     // 선택 실행 모듈 — 허브 맨 아래
 
       h("hub-ops", "협력 · 비상", "users"),
       m("serp", "팀위기대응계획 (SERP)", "🛟", "serp", "mgr", "hub-ops"),
@@ -297,9 +285,8 @@ const SeMIS = (() => {
     ];
   }
 
-  /* ─────────── v1.7 이하 메뉴 구조 → v1.8 허브 구조 (1회 마이그레이션) ───────────
-     구버전 그룹(grp-*)이 남아 있을 때만 실행된다(멱등). 운영자가 바꾼 숨김·권한·이름·바로가기는
-     그대로 두고 소속만 새 허브로 옮긴다. 숨겨 두었던 구버전 그룹의 하위 메뉴는 개별 숨김으로 이어받는다. */
+  /* ── 옛 그룹(grp-*) → 허브 구조 이전(멱등) ──
+     운영자가 바꾼 숨김·권한·이름·바로가기는 두고 소속만 새 허브로. 숨긴 옛 그룹의 하위 메뉴는 개별 숨김으로 이어받는다 */
   const OLD_GROUP_HUB = {
     "grp-rule": "hub-doc", "grp-cargo": "hub-sec", "grp-safety": "hub-saf", "grp-inspect": "hub-aud",
     "grp-edu": "hub-aud", "grp-partner": "hub-ops", "grp-emergency": "hub-ops", "grp-ref": "hub-doc"
@@ -331,10 +318,8 @@ const SeMIS = (() => {
     return true;
   }
 
-  /* ─────────── 일정 담당자 카테고리 ───────────
-     일정관리의 담당자 태그(칩·필터·버튼) 목록. 시스템 설정 → 담당자 관리에서
-     시스템관리자가 추가·수정·삭제·순서변경한다(공용 DB 동기화).
-     목록에 없는 이름도 일정 폼에서 자유 입력할 수 있다. */
+  /* ── 일정 담당자 카테고리 ──
+     일정관리 담당자 태그 목록(시스템 설정 → 담당자 관리). 목록에 없는 이름도 일정 폼에서 자유 입력 가능 */
   function seedAssignees() {
     return [{ id: "as-csi", seq: 1, name: "최상일", title: "안전보안파트", emoji: "🛡️", short: "최" }];
   }
@@ -343,7 +328,7 @@ const SeMIS = (() => {
       .slice().sort((a, b) => (a.seq || 0) - (b.seq || 0));
   }
 
-  /* ─────────── 저장소 ─────────── */
+  /* ── 저장소 ── */
   function freshData() {
     return {
       version: 1,
@@ -356,42 +341,42 @@ const SeMIS = (() => {
       }],
       levelHistory: [{ id: "lv0", date: new Date().toISOString().slice(0, 10), level: "평시",
         note: "SeMIS · Logistics 개설", by: "시스템", at: new Date().toISOString() }],
-      safetyBoard: { since: "", note: "" }, // 무재해 기준일 (대시보드 현황판)
+      safetyBoard: { since: "", note: "" }, // 무재해 기준일(대시보드 현황판)
       schedules: [],     // 일정관리
-      assignees: [],     // 일정 담당자 카테고리 (시스템 설정에서 관리) — normalize가 기본값 시드
+      assignees: [],     // 일정 담당자 카테고리 — normalize 가 기본값 시드
       gcal: { enabled: false, calendarId: "", apiKey: "" },
       minutes: [],       // 회의록 게시판
       minuteFolders: [], // 회의록 폴더 — normalize가 기본 폴더 시드
       contacts: { sections: [] }, // 비상연락망 (실데이터는 공용 DB만 — 코드 미시드)
       crisis: { rows: [] },        // 위기대응 담당자 (명단은 공용 DB만 — 코드 미시드)
-      phonebook: { groups: [], rows: [] }, // 업무 연락처 (v1.18 — 연락처는 공용 DB만, 코드 미시드)
-      serp: {},          // 팀위기대응계획 (v1.25 — 계획 원문 · 명단은 공용 DB만, 코드 미시드)
+      phonebook: { groups: [], rows: [] }, // 업무 연락처 (공용 DB만 — 코드 미시드)
+      serp: {},          // 팀위기대응계획 (계획 원문 · 명단은 공용 DB만 — 코드 미시드)
       serpRuns: [],      // SERP 대응 기록 (실제 · 훈련)
-      threat: {},        // 테러 위협전화 대응 (v1.26 — 절차 원문 · 번호는 공용 DB만, 코드 미시드)
+      threat: {},        // 테러 위협전화 대응 (절차 원문 · 번호는 공용 DB만 — 코드 미시드)
       threatRuns: [],    // 위협전화 접수 기록 (실제 · 훈련)
       threatChecks: [],  // 녹음 전화 점검 기록
-      secPost: {},       // 경비대원 배치도 — 지점 목록 (v1.28 — 민감보안정보: 공용 DB만, 코드 미시드)
+      secPost: {},       // 경비대원 배치도 — 지점 목록 (민감보안정보: 공용 DB만 — 코드 미시드)
       secPostImg: {},    // 경비대원 배치도 — 바탕 도면(WebP data URL, 공용 DB만)
       vault: { v: 1, members: [], data: null, personal: {}, updated: "" }, // 암호 관리 (클라이언트 AES-256 암호화)
       regulations: [],   // 규정 관리 (항공보안 / 안전관리 / 위험물 DG)
       fleet: [],         // 운항 현황 기체 목록 [{reg, hex, type, model}] — 비어 있으면 기본 15대(js/flightcore.js)
       equipment: [],     // 검색장비 대장 (상태·고장·점검은 CARES 실시간 — js/cares.js)
-      audits: [],        // 수검 대응 센터 (v1.17 — js/audit.js)
-      training: { courses: [], people: [], records: [], sessions: [] }, // 보안교육 · 자격 관리 (v1.20 — 명부는 공용 DB만)
-      seclog: [],                                   // 보안 기록부 기록 (v1.22 — js/seclog.js)
+      audits: [],        // 수검 대응 센터 (js/audit.js)
+      training: { courses: [], people: [], records: [], sessions: [] }, // 보안교육 · 자격 관리 (명부는 공용 DB만)
+      seclog: [],                                   // 보안 기록부 기록 (js/seclog.js)
       seclogCfg: { since: "", templates: [] },      // 보안 기록부 점검 양식 (비면 코드 뼈대 — 점검 항목은 공용 DB만)
-      patrol: [],        // 일일 보안 · 안전 순찰일지 하루 기록 (v1.27 — js/patrol.js)
+      patrol: [],        // 일일 보안 · 안전 순찰일지 하루 기록 (js/patrol.js)
       patrolCfg: {},     // 순찰일지 양식 (점검사항 문구는 공용 DB만 — 코드는 구분 뼈대)
       patrolPeople: [],  // 순찰자 · 보안감독자와 등록 서명 (명단은 공용 DB만)
-      selfCheckCfg: {},  // 자체 보안점검 안내 — 주체 · 대상 · 주기 덮어쓰기 (v1.34 — 비면 코드 기본값)
-      selfChecks: [],    // 자체 보안점검 — 국가항공보안 수준관리지침 별표 점검표 기록 (v1.32 — js/selfcheck.js)
-      docs: [],          // 증빙 문서 서가 (v1.41 — js/docshelf.js, 문서 목록은 공용 DB만)
-      partners: {},      // 협력사 · 보안요원 (v1.41 — 명부는 공용 DB만)
-      contracts: [],     // 계약 · 협약 관리 (v1.41)
-      kcra: {},          // 상용화주 · RA 관리 (v1.41)
-      secCases: [],      // 보안 처리 대장 (v1.41)
-      dissem: {},        // 보안 전파교육 (v1.41)
-      scrStats: {},      // 화물 보안검색 실적 (월별 합계, v1.41)
+      selfCheckCfg: {},  // 자체 보안점검 안내 — 주체 · 대상 · 주기 덮어쓰기 (비면 코드 기본값)
+      selfChecks: [],    // 자체 보안점검 — 국가항공보안 수준관리지침 별표 점검표 기록 (js/selfcheck.js)
+      docs: [],          // 증빙 문서 서가 (js/docshelf.js, 문서 목록은 공용 DB만)
+      partners: {},      // 협력사 · 보안요원 (명부는 공용 DB만)
+      contracts: [],     // 계약 · 협약 관리
+      kcra: {},          // 상용화주 · RA 관리
+      secCases: [],      // 보안 처리 대장
+      dissem: {},        // 보안 전파교육
+      scrStats: {},      // 화물 보안검색 실적 (월별 합계)
       chatRooms: []      // (예약) 팀 채팅방
     };
   }
@@ -407,9 +392,8 @@ const SeMIS = (() => {
     save();
   }
 
-  /* 데이터 정규화/마이그레이션 (idempotent).
-     load() 및 동기화 pull/원격 반영 이후에도 호출되어, 서버의 구버전 데이터가
-     로컬 마이그레이션을 되돌리지 않도록 보장. 변경 여부를 반환. */
+  /* 데이터 정규화·마이그레이션(멱등) — load() 와 동기화 pull·원격 반영 뒤에도 호출되어
+     서버의 옛 형식 데이터가 로컬 마이그레이션을 되돌리지 않게 한다. 변경 여부 반환 */
   function normalizeData() {
     const before = JSON.stringify(DATA);
     if (!Array.isArray(DATA.menus) || !DATA.menus.length) DATA.menus = defaultMenus();
@@ -417,7 +401,7 @@ const SeMIS = (() => {
     migrateHubs();
     // 허브 아이콘 보정 — 알 수 없는 키는 folder
     DATA.menus.forEach(m => { if (m.type === "group" && (!m.ico || !ICONS[m.ico])) m.ico = "folder"; });
-    // 필수 메뉴 보장 (대시보드·시스템 설정) — 삭제·유실 시 복구
+    // 필수 메뉴 보장(대시보드·암호 관리·시스템 설정) — 삭제·유실 시 복구
     const ensureModuleMenu = (menuId, grpId, label, icon, moduleId, vis, extra) => {
       if (DATA.menus.some(m => m.type === "module" && m.module === moduleId)) return;
       const grp = grpId ? DATA.menus.find(m => m.id === grpId && m.type === "group") : null;
@@ -430,7 +414,8 @@ const SeMIS = (() => {
     ensureModuleMenu("dashboard", null, "대시보드", "🏠", "dashboard", "all");
     ensureModuleMenu("vault", null, "암호 관리", "🔐", "vault", "hq");
     ensureModuleMenu("settings", null, "시스템 설정", "⚙️", "settings", "admin");
-    // v1.14 운항 현황 — 기존 메뉴 데이터에 없으면 홈 허브의 일정관리 바로 위에 1회 추가(이후 숨김·이름은 운영자 설정 유지)
+    // 아래 모듈별 메뉴 블록: 메뉴 데이터에 없을 때만 지정 위치에 추가 — 있으면 운영자 설정(숨김·이름·위치) 유지
+    // 운항 현황 — 홈 허브 일정관리 바로 위
     if (!DATA.menus.some(m => m.type === "module" && m.module === "flight")) {
       const sc = DATA.menus.find(m => m.type === "module" && m.module === "schedule");
       const hub = DATA.menus.find(m => m.id === "hub-home" && m.type === "group");
@@ -439,7 +424,7 @@ const SeMIS = (() => {
         type: "module", label: "운항 현황", icon: "✈️", module: "flight", vis: "all",
         parent: sc && sc.parent ? sc.parent : (hub ? "hub-home" : null) });
     }
-    // v1.13 위기대응 담당자 — 기존 메뉴 데이터에 없으면 비상연락망 바로 아래에 1회 추가(이후 숨김·이름은 운영자 설정 유지)
+    // 위기대응 담당자 — 비상연락망 바로 아래
     if (!DATA.menus.some(m => m.type === "module" && m.module === "crisis")) {
       const ct = DATA.menus.find(m => m.type === "module" && m.module === "contacts");
       const hub = DATA.menus.find(m => m.id === "hub-ops" && m.type === "group");
@@ -447,7 +432,7 @@ const SeMIS = (() => {
         type: "module", label: "위기대응 담당자", icon: "🧭", module: "crisis", vis: "mgr",
         parent: ct && ct.parent ? ct.parent : (hub ? "hub-ops" : null) });
     }
-    // v1.25 팀위기대응계획 — 기존 메뉴 데이터에 없으면 협력 · 비상 허브의 비상연락망 바로 위에 1회 추가(이후 숨김·이름은 운영자 설정 유지)
+    // 팀위기대응계획 — 비상연락망 바로 위
     if (!DATA.menus.some(m => m.type === "module" && m.module === "serp")) {
       const ct = DATA.menus.find(m => m.type === "module" && m.module === "contacts");
       const hub = DATA.menus.find(m => m.id === "hub-ops" && m.type === "group");
@@ -462,7 +447,7 @@ const SeMIS = (() => {
         seq, type: "module", label: "팀위기대응계획 (SERP)", icon: "🛟", module: "serp", vis: "mgr",
         parent: ct && ct.parent ? ct.parent : (hub ? "hub-ops" : null) });
     }
-    // v1.26 테러 위협전화 대응 — 기존 메뉴 데이터에 없으면 팀위기대응계획 바로 아래(없으면 비상연락망 바로 위)에 1회 추가(이후 숨김·이름은 운영자 설정 유지)
+    // 테러 위협전화 대응 — 팀위기대응계획 바로 아래(없으면 비상연락망 바로 위)
     if (!DATA.menus.some(m => m.type === "module" && m.module === "threat")) {
       const sp = DATA.menus.find(m => m.type === "module" && m.module === "serp");
       const ct = DATA.menus.find(m => m.type === "module" && m.module === "contacts");
@@ -482,7 +467,7 @@ const SeMIS = (() => {
         seq, type: "module", label: "테러 위협전화 대응", icon: "📞", module: "threat", vis: "mgr",
         parent: ref && ref.parent ? ref.parent : (hub ? "hub-ops" : null) });
     }
-    // v1.18 업무 연락처 — 기존 메뉴 데이터에 없으면 위기대응 담당자 바로 아래에 1회 추가(이후 숨김·이름은 운영자 설정 유지)
+    // 업무 연락처 — 위기대응 담당자 바로 아래
     if (!DATA.menus.some(m => m.type === "module" && m.module === "phonebook")) {
       const cr = DATA.menus.find(m => m.type === "module" && m.module === "crisis")
         || DATA.menus.find(m => m.type === "module" && m.module === "contacts");
@@ -496,7 +481,7 @@ const SeMIS = (() => {
         seq, type: "module", label: "업무 연락처", icon: "📇", module: "phonebook", vis: "mgr",
         parent: cr && cr.parent ? cr.parent : (hub ? "hub-ops" : null) });
     }
-    // v1.17 수검 대응 센터 — 기존 메뉴 데이터에 없으면 점검 · 교육 허브 맨 위(안전보안 점검 일정 바로 위)에 1회 추가
+    // 수검 대응 센터 — 보안 기록부(inspection) 바로 위
     if (!DATA.menus.some(m => m.type === "module" && m.module === "audit")) {
       const ins = DATA.menus.find(m => m.type === "module" && m.module === "inspection");
       const hub = DATA.menus.find(m => m.id === "hub-aud" && m.type === "group");
@@ -505,7 +490,7 @@ const SeMIS = (() => {
         type: "module", label: "수검 대응 센터", icon: "🗂️", module: "audit", vis: "mgr",
         parent: ins && ins.parent ? ins.parent : (hub ? "hub-aud" : null) });
     }
-    // v1.23 바로가기 — 기존 메뉴 데이터에 없으면 홈 허브의 회의록 게시판 바로 아래에 1회 추가(이후 숨김·이름은 운영자 설정 유지)
+    // 바로가기 — 홈 허브 회의록 게시판 바로 아래
     if (!DATA.menus.some(m => m.type === "module" && m.module === "shortcuts")) {
       const mi = DATA.menus.find(m => m.type === "module" && m.module === "minutes");
       const hub = DATA.menus.find(m => m.id === "hub-home" && m.type === "group");
@@ -518,7 +503,7 @@ const SeMIS = (() => {
         seq, type: "module", label: "바로가기", icon: "🔗", module: "shortcuts", vis: "all",
         parent: mi && mi.parent ? mi.parent : (hub ? "hub-home" : null) });
     }
-    // v1.28 화물보안 대시보드 — 기존 메뉴 데이터에 없으면 화물 보안 허브 맨 위에 1회 추가(이후 숨김·이름은 운영자 설정 유지)
+    // 화물보안 대시보드 — 화물 보안 허브 맨 위
     if (!DATA.menus.some(m => m.type === "module" && m.module === "sec-dash")) {
       const hub = DATA.menus.find(m => m.id === "hub-sec" && m.type === "group");
       const kids = hub ? DATA.menus.filter(m => m.parent === "hub-sec").map(m => m.seq || 0) : [];
@@ -534,7 +519,7 @@ const SeMIS = (() => {
     if (st) { st.vis = "admin"; st.parent = null; }
     const vt = DATA.menus.find(m => m.type === "module" && m.module === "vault");
     if (vt) { vt.parent = null; if (st && (vt.seq || 0) > (st.seq || 0)) vt.seq = (st.seq || 0) - 0.5; }
-    // 예정 모듈 플래그 보정 (문자열 등 오염 방지)
+    // 예정 모듈 플래그 보정(문자열 등 오염 방지)
     DATA.menus.forEach(m => { if (m.planned !== undefined) m.planned = !!m.planned; });
     // 숨김 플래그 정규화 — true 일 때만 보관(멱등). 대시보드·시스템 설정은 숨길 수 없다.
     DATA.menus.forEach(m => {
@@ -549,7 +534,7 @@ const SeMIS = (() => {
     });
 
     DATA.notices = Array.isArray(DATA.notices) ? DATA.notices : [];
-    // v1.14 이전 캐시에 남은 계정 자료는 버린다(계정은 서버 전용)
+    // 옛 캐시의 계정 자료 제거 — 계정은 서버 전용
     delete DATA.pwOverrides; delete DATA.userOverrides; delete DATA.customUsers;
     if (!Array.isArray(DATA.chatRooms)) DATA.chatRooms = [];
     if (!Array.isArray(DATA.levelHistory) || !DATA.levelHistory.length) {
@@ -586,8 +571,7 @@ const SeMIS = (() => {
     }).filter(Boolean);
     if (!DATA.gcal || typeof DATA.gcal !== "object") DATA.gcal = { enabled: false, calendarId: "", apiKey: "" };
 
-    /* 일정 담당자 카테고리 — 최초 1회만 기본값 시드(이후 전부 삭제해도 되살아나지 않도록 플래그 사용),
-       필드 보정은 매번(멱등). */
+    /* 일정 담당자 — 기본값 시드는 최초 1회만(전부 삭제해도 되살아나지 않게 플래그), 필드 보정은 매번 */
     if (!Array.isArray(DATA.assignees)) DATA.assignees = [];
     if (!DATA.assigneesSeeded) {
       if (!DATA.assignees.length) DATA.assignees = seedAssignees();
@@ -607,7 +591,7 @@ const SeMIS = (() => {
     if (!DATA.contacts || typeof DATA.contacts !== "object" || Array.isArray(DATA.contacts)) DATA.contacts = { sections: [] };
     if (!Array.isArray(DATA.contacts.sections)) DATA.contacts.sections = [];
     if (!Array.isArray(DATA.fleet)) DATA.fleet = [];
-    // v1.31 점검 · 교육 대시보드 — 기존 메뉴 데이터에 없으면 점검 · 교육 허브 맨 위에 1회 추가(이후 숨김·이름은 운영자 설정 유지)
+    // 점검 · 교육 대시보드 — 없으면 점검 · 교육 허브 맨 위에 추가
     if (!DATA.menus.some(m => m.type === "module" && m.module === "aud-dash")) {
       const hub = DATA.menus.find(m => m.id === "hub-aud" && m.type === "group");
       const kids = hub ? DATA.menus.filter(m => m.parent === "hub-aud").map(m => m.seq || 0) : [];
@@ -620,40 +604,40 @@ const SeMIS = (() => {
     DATA.fleet = DATA.fleet.filter(f => f && typeof f === "object" && f.hex);
     if (!DATA.crisis || typeof DATA.crisis !== "object" || Array.isArray(DATA.crisis)) DATA.crisis = { rows: [] };
     if (!Array.isArray(DATA.crisis.rows)) DATA.crisis.rows = [];
-    // 업무 연락처 (v1.18) — 구조만 보정
+    // 업무 연락처 — 구조만 보정
     if (!DATA.phonebook || typeof DATA.phonebook !== "object" || Array.isArray(DATA.phonebook)) DATA.phonebook = { groups: [], rows: [] };
     if (!Array.isArray(DATA.phonebook.groups)) DATA.phonebook.groups = [];
     if (!Array.isArray(DATA.phonebook.rows)) DATA.phonebook.rows = [];
-    // 팀위기대응계획 (v1.25) — 구조만 보정(내용은 모듈이 없는 값을 기본값으로 읽는다)
+    // 팀위기대응계획 — 구조만 보정(빈 값은 모듈이 기본값으로 읽음)
     if (!DATA.serp || typeof DATA.serp !== "object" || Array.isArray(DATA.serp)) DATA.serp = {};
     DATA.serpRuns = (Array.isArray(DATA.serpRuns) ? DATA.serpRuns : []).filter(x => x && typeof x === "object" && x.id);
-    // 테러 위협전화 대응 (v1.26) — 구조만 보정
+    // 테러 위협전화 대응 — 구조만 보정
     if (!DATA.threat || typeof DATA.threat !== "object" || Array.isArray(DATA.threat)) DATA.threat = {};
     DATA.threatRuns = (Array.isArray(DATA.threatRuns) ? DATA.threatRuns : []).filter(x => x && typeof x === "object" && x.id);
     DATA.threatChecks = (Array.isArray(DATA.threatChecks) ? DATA.threatChecks : []).filter(x => x && typeof x === "object" && x.id);
-    // 경비대원 배치도 (v1.28) — 구조만 보정(내용은 모듈이 없는 값을 기본값으로 읽는다)
+    // 경비대원 배치도 — 구조만 보정(빈 값은 모듈이 기본값으로 읽음)
     ["secPost", "secPostImg"].forEach(k => { if (!DATA[k] || typeof DATA[k] !== "object" || Array.isArray(DATA[k])) DATA[k] = {}; });
-    // 규정 관리 — 배열 보정 + 실모듈 전환(구버전 데이터의 planned 플래그 제거)
+    // 규정 관리 — 배열 · scope 보정
     DATA.regulations = (Array.isArray(DATA.regulations) ? DATA.regulations : []).filter(r => r && r.id);
     DATA.regulations.forEach(r => {
       if (["sec", "safety", "dg"].indexOf(r.scope) < 0) r.scope = "safety";
       if (!Array.isArray(r.ideas)) r.ideas = [];
     });
-    // 검색장비 대장 (v1.12) — 배열 보정만. 실데이터는 공용 DB(SeMIS v2 대장 이관분)
+    // 검색장비 대장 — 배열 보정만. 실데이터는 공용 DB(SeMIS v2 대장 이관분)
     DATA.equipment = (Array.isArray(DATA.equipment) ? DATA.equipment : []).filter(x => x && typeof x === "object" && x.id);
-    // 수검 대응 센터 (v1.17) — 배열 보정만(항목 내부는 모듈이 없는 값을 기본값으로 읽는다)
+    // 수검 대응 센터 — 배열 보정만(항목 내부 빈 값은 모듈이 기본값으로 읽음)
     DATA.audits = (Array.isArray(DATA.audits) ? DATA.audits : []).filter(x => x && typeof x === "object" && x.id);
-    // 보안교육 · 자격 관리 (v1.20) — 구조만 보정
+    // 보안교육 · 자격 관리 — 구조만 보정
     if (!DATA.training || typeof DATA.training !== "object" || Array.isArray(DATA.training)) DATA.training = { courses: [], people: [], records: [], sessions: [] };
     ["courses", "people", "records", "sessions"].forEach(k => { if (!Array.isArray(DATA.training[k])) DATA.training[k] = []; });
-    // v1.20 예정 메뉴 '안전보안 교육 관리' → 실모듈 '보안교육 · 자격 관리', '이수증 관리(certs)'는 합쳐져 빠진다(운영자가 바꾼 이름은 유지)
+    // 예정 메뉴 '안전보안 교육 관리' → 실모듈 전환, 예정 '이수증 관리(certs)'는 제거(운영자가 바꾼 이름은 유지)
     (() => {
       const tr = DATA.menus.find(m => m.type === "module" && m.module === "training");
       if (tr) { if (tr.planned) { delete tr.planned; delete tr.desc; } if (tr.label === "안전보안 교육 관리") tr.label = "보안교육 · 자격 관리"; }
       const ci = DATA.menus.findIndex(m => m.type === "module" && m.module === "certs" && m.planned);
       if (ci >= 0) DATA.menus.splice(ci, 1);
     })();
-    // 보안 기록부 (v1.22) — 구조만 보정 · 예정 메뉴 '안전보안 점검 일정' → 실모듈 '보안 기록부'(운영자가 바꾼 이름은 유지)
+    // 보안 기록부 — 구조 보정 · 예정 메뉴 '안전보안 점검 일정' → 실모듈 전환(운영자가 바꾼 이름은 유지)
     DATA.seclog = (Array.isArray(DATA.seclog) ? DATA.seclog : []).filter(x => x && typeof x === "object" && x.id);
     if (!DATA.seclogCfg || typeof DATA.seclogCfg !== "object" || Array.isArray(DATA.seclogCfg)) DATA.seclogCfg = { since: "", templates: [] };
     if (!Array.isArray(DATA.seclogCfg.templates)) DATA.seclogCfg.templates = [];
@@ -664,7 +648,7 @@ const SeMIS = (() => {
       if (ins.label === "안전보안 점검 일정") ins.label = "보안 기록부";
       if (ins.icon === "🕵️") ins.icon = "📒";
     })();
-    // 일일 보안 · 안전 순찰일지 (v1.27) — 구조만 보정 · 예정 메뉴 '일일 안전점검' → 실모듈(운영자가 바꾼 이름은 유지)
+    // 일일 보안 · 안전 순찰일지 — 구조 보정 · 예정 메뉴 '일일 안전점검' → 실모듈 전환(운영자가 바꾼 이름은 유지)
     DATA.patrol = (Array.isArray(DATA.patrol) ? DATA.patrol : []).filter(x => x && typeof x === "object" && x.id);
     if (!DATA.patrolCfg || typeof DATA.patrolCfg !== "object" || Array.isArray(DATA.patrolCfg)) DATA.patrolCfg = {};
     DATA.patrolPeople = (Array.isArray(DATA.patrolPeople) ? DATA.patrolPeople : []).filter(x => x && typeof x === "object" && x.id);
@@ -675,7 +659,7 @@ const SeMIS = (() => {
       if (ds.label === "일일 안전점검") ds.label = "일일 보안 · 안전 순찰일지";
       if (ds.icon === "✅") ds.icon = "📝";
     })();
-    // 자체 보안점검 (v1.32) — 배열 보정 · 기존 메뉴 데이터에 없으면 점검 · 교육 허브 맨 아래(v1.42 선택 실행)에 1회 추가(이후 숨김 · 이름은 운영자 설정 유지)
+    // 자체 보안점검 — 배열 보정 · 없으면 점검 · 교육 허브 맨 아래에 추가
     if (!DATA.selfCheckCfg || typeof DATA.selfCheckCfg !== "object" || Array.isArray(DATA.selfCheckCfg)) DATA.selfCheckCfg = {};
     if (!DATA.selfCheckCfg.forms || typeof DATA.selfCheckCfg.forms !== "object" || Array.isArray(DATA.selfCheckCfg.forms)) DATA.selfCheckCfg.forms = {};
     DATA.selfChecks = (Array.isArray(DATA.selfChecks) ? DATA.selfChecks : []).filter(x => x && typeof x === "object" && x.id);
@@ -689,7 +673,7 @@ const SeMIS = (() => {
         seq, type: "module", label: "자체 보안점검", icon: "🧾", module: "selfcheck", vis: "mgr",
         parent: ins && ins.parent ? ins.parent : (hub ? "hub-aud" : null) });
     }
-    // v1.41 점검교육 · 수검대응 자료 취합 — 구조 보정 + 예정 메뉴 실모듈 전환(운영자가 바꾼 이름 · 숨김은 유지) + 새 메뉴 1회 추가
+    // 협력·계약·RA·처리대장 등 — 구조 보정 + 예정 메뉴 실모듈 전환(운영자가 바꾼 이름 · 숨김 유지) + 없으면 추가
     ["docs", "contracts", "secCases"].forEach(k => { DATA[k] = (Array.isArray(DATA[k]) ? DATA[k] : []).filter(x => x && typeof x === "object" && x.id); });
     ["partners", "kcra", "dissem", "scrStats"].forEach(k => { if (!DATA[k] || typeof DATA[k] !== "object" || Array.isArray(DATA[k])) DATA[k] = {}; });
     [["partners", "조업사 · 협력사 현황", "협력사 · 보안요원"], ["contracts", "계약서 관리", "계약 · 협약 관리"], ["kc-ra", "", ""]].forEach(([id, from, to]) => {
@@ -737,7 +721,7 @@ const SeMIS = (() => {
     if (typeof window !== "undefined" && window.SemisMinutes && window.SemisMinutes.normalizeDecisions) {
       try { window.SemisMinutes.normalizeDecisions(); } catch (e) { /* 보정 실패가 로딩을 막지 않도록 */ }
     }
-    // 이스케이프된 채 굳은 서식 본문 1회 복구 (공지·회의록)
+    // 이스케이프된 채 굳은 서식 본문 복구(공지·회의록)
     if (typeof document !== "undefined" && window.SemisNotice && window.SemisNotice.repairEscapedRich) {
       const fix = window.SemisNotice.repairEscapedRich;
       try {
@@ -774,10 +758,9 @@ const SeMIS = (() => {
     setUiState({ navPrefs: all });
   }
 
-  /* ─────────── 인증 (v1.15 — 서버 세션) ───────────
-     암호 확인과 권한은 서버가 결정한다(RPC semis_logi_login · semis_logi_whoami).
-     이 앱은 로그인 응답의 사용자 정보만 들고, 데이터 권한은 서버 RLS가 강제한다.
-     토큰·권한 정보는 이 탭의 sessionStorage(SemisSync.auth)에만 있다. */
+  /* ── 인증 — 서버 세션 ──
+     암호 확인·권한은 서버(RPC semis_logi_login · semis_logi_whoami), 데이터 권한은 서버 RLS 가 강제.
+     토큰·권한 정보는 탭 sessionStorage(SemisSync.auth)에만 */
   let currentUser = null;
   let accountsCache = [];          // 시스템 설정 › 사용자 탭이 서버에서 받아 둔 목록
   let relogin = null;              // 세션 만료 뒤 다시 로그인 중 { owner }
@@ -960,10 +943,9 @@ const SeMIS = (() => {
     if (vis === "hq") return roleRank() >= 3;
     return roleRank() >= 4;
   }
-  /* ─── 메뉴 숨김 (권한과 별개) ───
-     menu.hidden = true 이면 어떤 권한으로 접속해도 사이드바·통합검색·대시보드 카드에
-     나타나지 않는다. 기능 자체는 살아 있어 라우트(#/module)로는 그대로 동작한다.
-     그룹을 숨기면 그 하위 메뉴도 함께 숨겨진다. 대시보드·시스템 설정은 숨길 수 없다. */
+  /* ── 메뉴 숨김(권한과 별개) ──
+     hidden = true 면 사이드바·통합검색·대시보드 카드에서 빠지지만 라우트(#/module)로는 동작.
+     그룹을 숨기면 하위도 숨김. 대시보드·시스템 설정은 숨길 수 없다 */
   const UNHIDABLE = ["dashboard", "settings"];
   function canHide(menu) {
     return !!menu && !(menu.type === "module" && UNHIDABLE.indexOf(menu.module) >= 0);
@@ -980,7 +962,7 @@ const SeMIS = (() => {
   /* 화면 노출 = 권한 통과 && 숨김 아님 */
   function navVisible(menu) { return !!menu && canSee(menu) && !menuHidden(menu); }
 
-  /* ─────────── 유틸 ─────────── */
+  /* ── 유틸 ── */
   const $ = (sel, el) => (el || document).querySelector(sel);
   const $$ = (sel, el) => Array.from((el || document).querySelectorAll(sel));
   function esc(s) {
@@ -1022,7 +1004,7 @@ const SeMIS = (() => {
     setTimeout(() => t.remove(), 2600);
   }
 
-  /* ─────────── 모달 ─────────── */
+  /* ── 모달 ── */
   function openModal(html, opts) {
     const box = $("#modal-box");
     box.classList.toggle("wide", !!(opts && opts.wide));
@@ -1047,12 +1029,9 @@ const SeMIS = (() => {
     $("#modal-box [data-act=cancel]").onclick = closeModal;
   }
 
-  /* ═════════════ A4 인쇄 (전 화면 공통) ═════════════
-     모든 화면(대시보드·모듈·예정 모듈 안내·내부 링크)에 "Print" 버튼을 자동으로 붙여
-     지금 보고 있는 화면을 그대로 A4 보고용으로 출력한다. 화면 머리말(.ds-head/.page-head)이
-     있으면 그 오른쪽에, 없으면 화면 맨 위 인쇄 바에 넣는다.
-     인쇄 시에는 헤더·사이드바·버튼이 빠지고(css @media print), 문서 머리말
-     (시스템명 · 화면명 · 출력일시 · 출력자)이 자동으로 붙는다. */
+  /* ── A4 인쇄(전 화면 공통) ──
+     모든 화면 머리말(.ds-head/.page-head) 오른쪽, 없으면 맨 위 인쇄 바에 Print 버튼 자동 부착.
+     인쇄 시 헤더·사이드바·버튼은 빠지고(@media print) 문서 머리말(시스템명·화면명·출력일시·출력자)이 붙는다 */
   function printTitle(route) {
     const mn = menuForModule(route);
     if (mn) return mn.label;
@@ -1112,7 +1091,7 @@ const SeMIS = (() => {
     }
   }
 
-  /* ─────────── 모듈 레지스트리 & 라우터 ─────────── */
+  /* ── 모듈 레지스트리 & 라우터 ── */
   const modules = {};
   function registerModule(id, def) { modules[id] = def; }
   function hasModule(id) { return !!modules[id]; }
@@ -1173,9 +1152,8 @@ const SeMIS = (() => {
     $$("[data-go]", root).forEach(el => el.onclick = () => navigate(el.dataset.go));
   }
 
-  /* v1.9: 허브 화면의 머리말을 사진 배너로 — #view[data-hub] 로 CSS가 허브별 사진을 고른다.
-     대시보드(3D 장면)·관리 메뉴(허브 없음)·외부 링크 화면은 제외. 모듈이 내부적으로 다시 그려도
-     #view 속성은 남으므로 배너가 유지된다. */
+  /* 허브 화면 머리말 사진 배너 — #view[data-hub] 로 CSS 가 허브별 사진 선택.
+     대시보드·관리 메뉴·외부 링크 화면 제외. 모듈이 다시 그려도 #view 속성은 남아 배너 유지 */
   function markHub(view, route) {
     let hub = null;
     const rt = String(route || "");
@@ -1191,7 +1169,7 @@ const SeMIS = (() => {
   function renderView() {
     let route = currentRoute();
     const view = $("#view");
-    if (route !== lastViewRoute) { lastViewRoute = route; mEditRoute = ""; view.classList.remove("m-editing"); }   // v1.30 편집 모드는 화면을 옮기면 끔
+    if (route !== lastViewRoute) { lastViewRoute = route; mEditRoute = ""; view.classList.remove("m-editing"); }   // 화면을 옮기면 편집 모드 끔
     view.innerHTML = "";
     applyViewWidth(view, route);
     markHub(view, currentUser && (currentUser.role === "vendor" || currentUser.role === "signer") ? "" : route);
@@ -1275,10 +1253,9 @@ const SeMIS = (() => {
     $$("[data-go]", root).forEach(el => el.onclick = () => navigate(el.dataset.go));
   }
 
-  /* ═════════════ 링크 묶음 (v1.12.2) ═════════════
-     열기 방식이 "group" 인 링크는 메뉴에서 한 줄만 차지하고, 눌렀을 때 하위 링크를
-     카드로 펼쳐 보여 주는 전용 화면(#/links/<메뉴id>)을 연다. 하위 링크는 parent 가
-     그 링크의 id 인 링크 메뉴들이며, 허브 목록(hubEntries)에는 잡히지 않는다. */
+  /* ── 링크 묶음 ──
+     open: "group" 링크는 메뉴에서 한 줄, 누르면 하위 링크 카드 화면(#/links/<메뉴id>).
+     하위 링크 = parent 가 그 링크 id 인 링크 메뉴 — 허브 목록(hubEntries)에는 잡히지 않음 */
   const isLinkGroup = (m) => !!m && m.type === "link" && m.open === "group";
   function linkChildren(id) {
     return sortedMenus().filter(c => c && c.type === "link" && c.parent === id && navVisible(c));
@@ -1342,14 +1319,11 @@ const SeMIS = (() => {
     });
   }
 
-  /* ═════════════ 허브 내비게이션 (v1.8) ═════════════
-     구조:  레일(#rail, 허브 아이콘) + 허브 패널(#sidebar, 현재 허브의 메뉴)
-            모바일(<768px): 하단 탭(#tabbar) + 전체 메뉴 시트(#sidebar 가 시트로 전환)
-     - 허브 = 최상위 그룹 메뉴. 새 그룹을 만들면 레일에 자동으로 생긴다.
-     - 허브 패널은 모든 허브 섹션을 DOM에 두고 현재 허브(.hub.on)만 보인다.
-       모바일 시트에서는 모든 섹션이 세로로 이어진다(같은 마크업, CSS만 다름).
-     - 예정 모듈은 "준비 중인 모듈" 블록에 모이고, registerModule 되는 순간 위 목록으로 올라온다.
-     - 모듈이 def.navBadge() 를 제공하면 메뉴 오른쪽에 숫자가 붙는다(예: 규정 건수). */
+  /* ── 허브 내비게이션 ──
+     레일(#rail, 허브 아이콘) + 허브 패널(#sidebar, 현재 허브 메뉴). 모바일(<768px): 하단 탭(#tabbar) + 전체 메뉴 시트.
+     - 허브 = 최상위 그룹 메뉴. 패널은 모든 허브 섹션을 DOM 에 두고 현재 허브(.hub.on)만 보임(시트에선 전부 세로로)
+     - 예정 모듈은 "준비 중인 모듈" 블록에 모이고 registerModule 되면 위 목록으로
+     - def.navBadge() 가 있으면 메뉴 오른쪽에 숫자 */
   function sortedMenus() {
     return DATA.menus.slice().sort((a, b) => (a.seq || 0) - (b.seq || 0));
   }
@@ -1430,7 +1404,7 @@ const SeMIS = (() => {
         '<span class="pl-dot" aria-hidden="true"></span><span class="nav-lbl">' + esc(m.label) + '</span><span class="nav-tag">예정</span></button>';
     }
     const badge = navBadgeOf(m);
-    const def = modules[m.module], opt = !!(def && def.optional);   // v1.42 선택 실행 메뉴(의무 아님 · 통계 제외) — 메뉴에 '선택' 표시
+    const def = modules[m.module], opt = !!(def && def.optional);   // 선택 실행 모듈(의무 아님 · 통계 제외) — '선택' 표시
     return '<' + tag + ' type="button" class="nav-item' + (opt ? " is-opt" : "") + '" data-route="' + esc(m.module) + '" title="' + esc(m.label) + (opt ? " (선택 실행)" : "") + '">' +
       '<span class="nav-lbl">' + esc(m.label) + '</span>' + (opt ? '<span class="nav-tag is-opt">선택</span>' : badge ? '<span class="nav-meta">' + esc(badge) + '</span>' : "") + '</' + tag + '>';
   }
@@ -1439,7 +1413,7 @@ const SeMIS = (() => {
     if (typeof pref === "boolean") return pref;
     return !isMobile() && liveCount === 0;
   }
-  const LINKS_SHOWN = 5;   // v1.29 허브 패널 바로가기는 5개까지 보이고 나머지는 펼쳐 보기
+  const LINKS_SHOWN = 5;   // 허브 패널 바로가기는 5개까지, 나머지는 펼쳐 보기
   function hubSectionHTML(g, entries) {
     const live = entries.filter(m => m.type === "module" && isLive(m));
     const planned = entries.filter(isPlannedMenu);
@@ -1462,7 +1436,7 @@ const SeMIS = (() => {
       '<button type="button" class="hub-block-t hub-toggle" data-toggle-planned="' + esc(g.id) + '" aria-expanded="' + (open ? "true" : "false") + '">' +
       '<span>준비 중인 모듈</span><b class="soon-n">' + planned.length + '</b><span class="chev">' + icon("chevdown", 15) + '</span></button>' +
       '<div class="planned-list">' + planned.map(navItemHTML).join("") + '</div></div>';
-    /* v1.23 바로가기 블록 — 전체 화면(#/shortcuts)으로 가는 버튼, 시스템관리자는 이 허브에 바로 추가 */
+    /* 바로가기 블록 — 전체 화면(#/shortcuts) 버튼, 시스템관리자는 이 허브에 바로 추가 */
     const scMenu = modules.shortcuts ? menuForModule("shortcuts") : null;
     const scOk = !!scMenu && canSee(scMenu);
     const addOk = scOk && isAdmin();
@@ -1567,8 +1541,8 @@ const SeMIS = (() => {
       b.setAttribute("aria-pressed", on ? "true" : "false");
     });
   }
-  /* v1.28 허브 대시보드 — 레일에서 이 허브를 누르면 오른쪽 화면이 허브 대시보드로 바뀐다(권한 · 숨김 따름).
-     이미 그 화면이면 예전처럼 허브 패널만 연다(좁은 화면에서 하위 메뉴로 가는 길). */
+  /* 허브 대시보드 — 레일에서 허브를 누르면 허브 대시보드로 이동(권한·숨김 따름).
+     이미 그 화면이면 허브 패널만 연다(좁은 화면에서 하위 메뉴로 가는 길) */
   const HUB_HOME = { "hub-sec": "sec-dash", "hub-aud": "aud-dash" };
   function hubHomeRoute(id) {
     const r = HUB_HOME[id];
@@ -1617,8 +1591,8 @@ const SeMIS = (() => {
     $("#sidebar-backdrop").classList.add("show");
   }
 
-  /* 모바일 하단 탭 — 권한·숨김에 맞춰 보이는 것만. hub 지정 탭은 그 허브의 첫 운영 모듈로 */
-  /* v1.29: 현장에서 매일 쓰는 순서 — 홈 · 일정 · 순찰(순찰일지 서명) · 운항 (연락망 · 규정은 전체 · 검색으로) */
+  /* 모바일 하단 탭 — 권한·숨김에 맞춰 보이는 것만, hub 지정 탭은 그 허브의 첫 운영 모듈로.
+     현장에서 매일 쓰는 순서(연락망·규정은 전체·검색으로) */
   const MOBILE_TABS = [
     { label: "홈", ico: "home", route: "dashboard" },
     { label: "일정", ico: "calendar", route: "schedule" },
@@ -1682,7 +1656,7 @@ const SeMIS = (() => {
     renderCrumbs(route, mn, hub);
   }
 
-  /* ─────────── 헤더 위젯 ─────────── */
+  /* ── 헤더 위젯 ── */
   function renderHeader() {
     const name = currentUser.name || "";
     const roleLabel = ROLE_LABEL[currentUser.role] || currentUser.role;
@@ -1711,7 +1685,7 @@ const SeMIS = (() => {
       (nxt ? " / 예약: " + nxt.date + "부터 [" + nxt.level + "]" : "");
   }
 
-  /* ─────────── 부팅 ─────────── */
+  /* ── 부팅 ── */
   function enterApp() {
     $("#login-overlay").classList.add("hidden");
     $("#app").classList.remove("hidden");
@@ -1741,7 +1715,7 @@ const SeMIS = (() => {
     pow: () => "접속 확인에 실패했습니다. 다시 시도해 주세요.",
     invalid: () => "암호가 올바르지 않습니다."
   };
-  /* v1.16: pow · pow_expired · pow_used 는 같은 안내 */
+  /* pow · pow_expired · pow_used 는 같은 안내 */
   const loginMsg = (d) => {
     const code = String((d && d.error) || "invalid");
     const fn = LOGIN_MSG[code] || (/^pow/.test(code) ? LOGIN_MSG.pow : LOGIN_MSG.invalid);
@@ -1799,7 +1773,7 @@ const SeMIS = (() => {
       if (errEl) errEl.textContent = "서버에 연결할 수 없습니다. 네트워크를 확인한 뒤 [로그인]을 눌러 주세요.";
     });
   }
-  /* v1.14 이전 버전이 localStorage 에 남긴 데이터 캐시 · 옛 세션 정리 */
+  /* localStorage 에 남은 옛 데이터 캐시·세션 키 제거 — 데이터는 탭 sessionStorage 에만 둔다 */
   function cleanupLegacy() {
     try {
       ["semisl:data", "semisl:pendingSync", "semisl:forcePush", "semisl:gcalCache"].forEach(k => localStorage.removeItem(k));
@@ -1841,7 +1815,7 @@ const SeMIS = (() => {
       if (mode !== lastMode) {
         const crossed = lastMode && (lastMode === "m") !== (mode === "m");
         lastMode = mode; closeOverlays(); closeActionSheet();
-        if (crossed && currentUser) { resetStack(); renderView(); }   // 모바일 ↔ PC 전환: 화면 구성이 다른 모듈(일정 등)을 다시 그림
+        if (crossed && currentUser) { resetStack(); renderView(); }   // 모바일 ↔ PC 전환 — 화면 구성이 다른 모듈(일정 등) 다시 그림
       }
     });
     window.addEventListener("hashchange", () => { if (currentUser) renderView(); });
@@ -1865,8 +1839,7 @@ const SeMIS = (() => {
     flushQueuedLogin();
   }
 
-  /* ═════════════ 모듈 화면 키트 (v1.8) ═════════════
-     새 업무 모듈은 아래 조각으로 화면을 구성하면 전체 디자인과 자동으로 맞는다.
+  /* ── 모듈 화면 키트 ── 새 모듈은 아래 조각으로 그리면 공통 디자인과 맞는다
        SeMIS.ui.head({ title, meta, desc, actions })   화면 머리말 (A4 인쇄 버튼은 코어가 자동 부착)
        SeMIS.ui.stats([{ label, value, sub, tone }])  요약 수치 띠 (tone: ok · warn · bad · muted)
        SeMIS.ui.search(id, placeholder, value)         검색 입력
@@ -1896,8 +1869,8 @@ const SeMIS = (() => {
       return '<div class="empty-state">' + icon("folder", 26) + '<p>' + esc(text || "등록된 항목이 없습니다.") + '</p>' + (actions || "") + '</div>';
     },
     chip(text, tone) { return '<span class="badge badge-' + esc(tone || "gray") + '">' + esc(text) + '</span>'; },
-    /* v1.13.1 한글 입력(IME) 보호 — 검색어 입력 중 화면을 다시 그리면 입력칸이 새로 만들어져
-       조합 중이던 글자가 "ㅊㅗㅣ" 처럼 자모로 풀린다. 아래 두 조각으로 입력칸은 그대로 두고 나머지만 바꾼다.
+    /* 한글 입력(IME) 보호 — 입력 중 화면을 다시 그리면 입력칸이 새로 만들어져
+       조합 중 글자가 "ㅊㅗㅣ" 처럼 자모로 풀린다. 입력칸은 그대로 두고 나머지만 바꾼다.
        searchValue(v): 끝에 붙은 조합 중 자모(ㄱ~ㅣ)를 떼고 검색에 쓸 값을 돌려준다("최ㅅ" → "최").
        repaintKeep(box, html, keepEl): box 내용을 html로 바꾸되 keepEl(입력칸)과 그 조상은 옮기지 않고
        주변 형제만 새것으로 교체한다. keepEl을 찾을 수 없으면 통째로 바꾸고 false. */
@@ -1934,7 +1907,7 @@ const SeMIS = (() => {
       return '<button type="button" class="help-tip" data-tip="' + esc(text) + '" aria-label="' + esc(label || "설명") +
         '" aria-expanded="false">' + icon("info", 16) + '</button>';
     },
-    /* v1.30 모바일 접기 — 묶음(카드)에 붙이는 속성 문자열. 모바일(<768px)에서는 머리(.mf-h)만 보이고 누르면 펼친다.
+    /* 모바일 접기 — 묶음(카드)에 붙이는 속성 문자열. 모바일(<768px)에서는 머리(.mf-h)만 보이고 누르면 펼친다.
        force: 검색 · 필터 중처럼 늘 펼칠 때. 펼친 상태는 화면(라우트)별로 기억(탭을 닫을 때까지). PC는 늘 펼침.
        사용: `<section class="card"${ui.mf("org:" + id, !!query)}><header class="mf-h">…</header>…</section>` */
     mf(key, force) {
@@ -1942,7 +1915,7 @@ const SeMIS = (() => {
       return ' data-mf="' + esc(k) + '"' + (force || mfOpen.has(currentRoute() + "|" + k) ? " data-mf-on" : "");
     },
     mfSet(el, on) { mfToggle(el, on); },
-    /* v1.35 점검 표시 관리(시스템관리자) — 표시 · 흐리게 · 숨김.
+    /* 점검 표시 관리(시스템관리자) — 표시 · 흐리게 · 숨김.
        rows[{ id, name, sub, m(""|"dim"|"hide"), msg }] · onSave(map): map = { id: { m, msg? } }(표시는 넣지 않음 · msg 는 기본 문구와 다를 때만) */
     VIS_MSG: "하드카피본 확인",
     visForm(o) {
@@ -2043,8 +2016,8 @@ const SeMIS = (() => {
     window.addEventListener("scroll", () => { if (tipFor) hideTip(); }, true);
   }
 
-  /* ═════════════ v1.29 화면 정돈 "Calm" ═════════════
-     모듈 코드를 건드리지 않고 화면을 가볍게 만든다. 모듈이 다시 그릴 때마다(MutationObserver) 멱등으로 실행.
+  /* ── 화면 정돈 ──
+     모듈 코드를 건드리지 않고 화면을 가볍게 만든다. 모듈이 다시 그릴 때마다(MutationObserver) 멱등 실행.
      ① 머리말 버튼: 주 버튼(.btn-primary 첫 번째) 하나만 두고 나머지는 ph-hide 표시 + '더보기' 버튼.
         숨김은 CSS가 모바일(<768px)에서만 적용하므로 PC 화면은 그대로다. 더보기 항목은 원래 버튼을
         click() 해서 모듈의 동작 · 권한 판정을 그대로 탄다(Print 포함).
@@ -2057,7 +2030,7 @@ const SeMIS = (() => {
       !b.closest(".ph-more") && !b.hasAttribute("data-keep") && !b.closest("[data-keep]") &&
       !b.classList.contains("hidden") && !b.hidden && b.style.display !== "none");
   }
-  /* v1.30 편집 모드(모바일) — 편집 전용 단추(.m-ed)는 모바일에서 평소 숨기고, 더보기 › '편집'을 누르면 보인다.
+  /* 편집 모드(모바일) — 편집 전용 단추(.m-ed)는 모바일에서 평소 숨기고, 더보기 › '편집'을 누르면 보인다.
      켜진 동안 머리말에 '완료'. 화면(라우트)을 옮기면 꺼진다. PC는 늘 보임(CSS가 모바일에서만 숨김). */
   let mEditRoute = "", lastViewRoute = "";
   const hasEdits = (view) => !!(view && view.querySelector(".m-ed"));
@@ -2115,7 +2088,7 @@ const SeMIS = (() => {
       head.appendChild(more);
     }
   }
-  /* v1.30 모바일 접기 — ui.mf() 로 표시한 묶음. 머리 끝에 펼침 단추(키보드 · 화면낭독용)를 붙이고 상태를 맞춘다 */
+  /* 모바일 접기 — ui.mf() 로 표시한 묶음. 머리 끝에 펼침 단추(키보드 · 화면낭독용)를 붙이고 상태를 맞춘다 */
   const mfOpen = new Set();
   function mfToggle(sec, on) {
     if (!sec || !sec.hasAttribute || !sec.hasAttribute("data-mf")) return;
@@ -2224,7 +2197,7 @@ const SeMIS = (() => {
       if (!t.dataset.lbl) t.dataset.lbl = labelTable(t) ? "1" : "0";
       else if (t.dataset.lbl === "1") labelTable(t);   // 나중에 붙은 행(더 보기 등)도 표시
       if (t.dataset.lbl !== "1" || !mob || t.dataset.stk) return;
-      if (!t.getClientRects().length) return;   // v1.30 접힌 묶음 · 숨은 탭 안의 표는 펼칠 때 판정
+      if (!t.getClientRects().length) return;   // 접힌 묶음 · 숨은 탭 안의 표는 펼칠 때 판정
       t.classList.remove("tbl-stack");
       const st = needsStack(t);
       t.classList.toggle("tbl-stack", st);
@@ -2300,7 +2273,7 @@ const SeMIS = (() => {
     return w;
   }
 
-  /* ─────────── 공개 API ─────────── */
+  /* ── 공개 API ── */
   return {
     boot, registerModule, hasModule, navigate,
     get data() { return DATA; },
@@ -2327,5 +2300,5 @@ const SeMIS = (() => {
   };
 })();
 
-// 전역 노출 (테스트 및 외부 모듈 접근용)
+// 전역 노출(테스트 · 외부 모듈 접근용)
 if (typeof window !== "undefined") window.SeMIS = SeMIS;

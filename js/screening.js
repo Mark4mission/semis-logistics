@@ -1,15 +1,5 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 화물 보안검색 현황 (v1.12, 라우트 scr-status)
-   인천화물터미널 B동 보안검색 현장의 "지금" — CARES 실시간 읽기 전용.
-
-   화면 구성
-   - 요약 띠: X-ray 가동 · ETD 가동 · 오늘 일일점검 · 진행 중 고장 · 환경 기준 초과
-   - 검색 라인 배치: X-ray 1~3호기와 옆에 배치된 ETD(CARES equipments.location), 환적·예비 구역
-   - 일일점검 이행: 장비 × 최근 28일 (점검 · 미점검 · 고장/수리) + 주간·월간 최근일
-   - 검색 환경: 센서 3곳 × 지표 표 (CARES 기기별 임계치) + 지점 간 결로 판정
-   - 최근 고장·수리 5건 → 검색장비 유지관리 › 고장·수리 이력
-   대시보드: 메인에는 검색 환경 띠(dashHTML), 화물보안 대시보드에는 검색 라인 · 오늘 점검 · 장비 고장 띠(opsHTML) — v1.28
-   ═══════════════════════════════════════════════════════ */
+/* 화물 보안검색 현황(라우트 scr-status) — CARES 실시간 읽기 전용. 요약 띠 · 검색 라인 배치 · 일일점검 이행 · 검색 환경 · 최근 고장.
+   대시보드 띠도 여기서 만든다: 메인은 검색 환경(dashHTML), 화물보안 대시보드는 검색 라인 · 오늘 점검 · 장비 고장(opsHTML). */
 "use strict";
 
 (() => {
@@ -22,7 +12,7 @@
   const route = () => (location.hash.replace(/^#\//, "") || "dashboard");
   const fmtN = (v, dec) => v == null ? "-" : Number(v).toLocaleString("ko-KR", { minimumFractionDigits: dec, maximumFractionDigits: dec });
 
-  /* ─────── 공통 조각 ─────── */
+  /* ── 공통 조각 ── */
   function metaText(s) {
     if (s.loading && !s.ts) return "CARES 불러오는 중";
     if (s.err) return "CARES 연동 불가";
@@ -60,7 +50,7 @@
     return Object.keys(c).sort((a, b) => (b === "배치") - (a === "배치") || (a === "예비") - (b === "예비")).map(k => k + " " + c[k]).join(" · ");
   }
 
-  /* ─────── 요약 띠 ─────── */
+  /* ── 요약 띠 ── */
   function statsHTML(m) {
     const K = C();
     const xrOk = m.xr.filter(u => u.state === "ok").length, etOk = m.etd.filter(u => u.state === "ok").length;
@@ -75,7 +65,7 @@
     ]);
   }
 
-  /* ─────── 검색 라인 배치 ─────── */
+  /* ── 검색 라인 배치 ── */
   function tileHTML(u, idx) {
     const K = C();
     const ins = todayInsp(idx, u);
@@ -119,7 +109,7 @@
     </section>`;
   }
 
-  /* ─────── 일일점검 이행 (장비 × 최근 28일) ─────── */
+  /* ── 일일점검 이행 (장비 × 최근 28일) ── */
   function heatHTML(m) {
     const K = C();
     if (!K.has("history")) return `<section class="card scr-heat" aria-label="일일점검 이행"><h2 class="card-title">일일점검 이행</h2>
@@ -180,7 +170,7 @@
     </section>`;
   }
 
-  /* ─────── 검색 환경 (지점 × 지표) ─────── */
+  /* ── 검색 환경 (지점 × 지표) ── */
   function envHTML(m) {
     const K = C();
     const rows = m.rows;
@@ -209,7 +199,7 @@
     </section>`;
   }
 
-  /* ─────── 최근 고장·수리 ─────── */
+  /* ── 최근 고장·수리 ── */
   function faultsHTML(m) {
     const K = C();
     if (!K.has("repairs")) return `<section class="card scr-faults" aria-label="최근 고장·수리"><h2 class="card-title">최근 고장·수리</h2>
@@ -231,7 +221,7 @@
     </section>`;
   }
 
-  /* v1.41 보안검색 실적(월별) · 관련 문서 — CARES 와 무관한 공용 DB 자료라 CARES 를 못 읽어도 보인다 */
+  /* 보안검색 실적(월별) · 관련 문서 — CARES 와 무관한 공용 DB 자료라 CARES 를 못 읽어도 보인다 */
   const extraHTML = () => (window.SemisScrStats ? SemisScrStats.cardHTML() : "") + (window.SemisDocs && SemisDocs.list(MOD).length ? SemisDocs.card(MOD) : "");
   function bodyHTML(s) {
     if (!s.ts && !s.err) return `<div class="scr-wait" role="status"><span class="cfe-spin" aria-hidden="true"></span>CARES에서 장비·점검·센서 정보를 불러오는 중입니다.</div>` + extraHTML();
@@ -241,7 +231,7 @@
     return statsHTML(m) + laneHTML(m) + `<div class="scr-grid">${envHTML(m)}${faultsHTML(m)}</div>` + heatHTML(m) + extraHTML();
   }
 
-  /* ─────── 조작 연결 ─────── */
+  /* ── 조작 연결 ── */
   function goEquip(tab, opts) {
     if (window.SemisEquip) SemisEquip.setTab(tab || "list", opts);
     SeMIS.navigate("scr-equip");
@@ -307,9 +297,7 @@
     ensureTimer();
   }
 
-  /* ═════════ 대시보드 띠 ═════════
-     v1.28: 메인 대시보드에는 검색 환경(센서 3곳 + 결로 판정)만 남기고, 검색 라인 · 오늘 일일점검 · 장비 고장은
-     화물보안 대시보드(sec-dash)의 '화물 보안검색' 띠로 옮겼다. 같은 칸 조각을 두 곳이 나눠 쓴다. */
+  /* ── 대시보드 띠 (메인 · 화물보안 대시보드 공용 칸 조각) ── */
   function monthBars(n) {
     const K = C();
     const now = K.todayKey();

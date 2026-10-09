@@ -1,25 +1,9 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 일정관리 캘린더 모듈 (SeMIS v2 calendar 이식)
-   기간(시작-종료) · 종일/시간 · 14색 · 완료/차량/회의실 · 팀 태그
-   리마인더(2주/1주/1일/1시간 전) · 구글캘린더 연동
-   반복 일정(매일/매주/2주/매월/매년 + 종료일) · 리치 메모(링크/이미지/파일)
-   반복 일정 완료는 회차별 처리: 이 일정만 / 이후의 일정 모두 / 전체 일정 (범위 선택 모달)
-   구글캘린더식 렌더링: 기간 일정 한 줄 연결(스패닝 바), 시간 일정 투명 칩
-   보기: 일 / 주 / 2주 / 월 / 년 · 포인터 드래그로 일정 이동(고스트 미리보기)
+/* 일정관리 캘린더 — 일/주/2주/월/년 보기, 반복 일정(회차별 완료), 리마인더, 구글캘린더 표시, 포인터 드래그 이동.
+   점검·수검 연동 일정은 그릴 때마다 각 모듈에서 받아 함께 표시만 한다(저장 안 함). */
 
-   개인 일정(나에게만 보이기) · 자동 연기 / 자동 연장 (v2.37)
-
-   v1.35 점검 일정 연동 — 보안 기록부(주 · 월 · 분기 · 연 양식의 주기 마감일, 매일 양식은 날마다 '매일 점검' 한 건)와
-   자체 보안점검(다음 기한 · 완료한 점검)이 계산한 일정을 그릴 때마다 받아 함께 표시한다(저장하지 않음 · 읽기 전용 · 숨긴 점검 제외).
-   점검 일정과 수검 연동 일정(aud_ · audf_)에는 점검표 · 대시보드로 가는 작은 아이콘 버튼(chip-go)이 붙는다.
-
-   데이터 스키마: { id, title, memo, memoHtml?, start, end, allDay, time, timeEnd,
-                    color, done, assignee, vehicle, room, reminders[],
-                    repeat?: { freq: none|daily|weekly|2week|monthly|yearly, until },
-                    doneFrom?: ISO, doneDates?: ISO[], undoneDates?: ISO[], gcalId?,
-                    priv?: bool, owner?: 계정 origId,
-                    autoDefer?: bool, autoExtend?: bool, autoRolledAt?: ISO }
-   ═══════════════════════════════════════════════════════ */
+/* 일정 레코드: { id, title, memo, memoHtml?, start, end, allDay, time, timeEnd, color, done, assignee, vehicle, room,
+   reminders[], repeat?: { freq: none|daily|weekly|2week|monthly|yearly, until }, doneFrom?, doneDates?[], undoneDates?[],
+   gcalId?, priv?, owner?(계정 origId), autoDefer?, autoExtend?, autoRolledAt? } */
 "use strict";
 
 (() => {
@@ -27,7 +11,7 @@
   const D = () => SeMIS.data;
   const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
-  /* ─────── 날짜 유틸 ─────── */
+  /* ── 날짜 유틸 ── */
   const p2 = (n) => String(n).padStart(2, "0");
   const toISO = (d) => d.getFullYear() + "-" + p2(d.getMonth() + 1) + "-" + p2(d.getDate());
   const fromISO = (s) => { const [y, m, d] = String(s).split("-").map(Number); return new Date(y, m - 1, d); };
@@ -38,9 +22,8 @@
   const DOW = ["일", "월", "화", "수", "목", "금", "토"];
   const dowName = (iso) => DOW[fromISO(iso).getDay()];
 
-  /* ─────── 색상 팔레트 (14색) ─────── */
-  /* v1.9: 12색 — 서로 뚜렷이 구분되도록 재설계(색차 ΔE2000 최소 18 이상, 글자 대비 4.5:1 이상).
-     예전 id(lime·amber·indigo)는 가까운 색으로 그려지고 선택지에서만 빠진다(COLOR_ALIAS). */
+  /* ── 색상 팔레트 ── */
+  /* 12색: 색차 ΔE2000 ≥ 18, 글자 대비 ≥ 4.5:1. 선택지에서 뺀 id(lime·amber·indigo)는 COLOR_ALIAS로 가까운 색에 그린다 */
   const COLORS = [
     { id: "red",    label: "빨강" }, { id: "orange", label: "주황" },
     { id: "yellow", label: "노랑" }, { id: "green",  label: "초록" },
@@ -52,10 +35,8 @@
   const COLOR_ALIAS = { lime: "green", amber: "orange", indigo: "blue" };
   const pickColor = (c) => COLOR_ALIAS[c] || (COLORS.some(x => x.id === c) ? c : "blue");
 
-  /* ─────── 담당자 카테고리 ───────
-     목록은 코드가 아니라 데이터(DATA.assignees)에 있고, 시스템 설정 → 담당자 관리에서
-     시스템관리자가 추가·수정·삭제·순서변경한다. 목록에 없는 이름도 자유 입력 가능
-     (입력한 이름은 자동 완성 목록에 축적). */
+  /* ── 담당자 ── */
+  /* 목록은 데이터(DATA.assignees, 시스템 설정 › 담당자 관리)에 있다. 목록에 없는 이름도 자유 입력 가능 */
   const team = () => SeMIS.assignees();
   const memberOf = (name) => team().find(t => t.name === name);
   const tagOf = (name) => {
@@ -63,8 +44,7 @@
     const m = memberOf(name);
     return m ? m.short : name.slice(0, 1);
   };
-  /* 담당자는 여러 명일 수 있다 — 저장은 ", " 로 이어 붙인 한 문자열(e.assignee).
-     기존 1명 데이터와 그대로 호환되고, 검색·대시보드·ICS 등 문자열을 쓰는 곳도 손댈 필요가 없다. */
+  /* 여러 담당자는 ", " 로 이어 붙인 한 문자열(e.assignee)로 저장 — 검색·대시보드·ICS 등 문자열 소비처와 호환 */
   const splitNames = (v) => String(v == null ? "" : v).split(/\s*[,、·]\s*/).map(x => x.trim()).filter(Boolean);
   const joinNames = (arr) => Array.from(new Set((arr || []).map(x => String(x).trim()).filter(Boolean))).join(", ");
   const namesOf = (e) => splitNames(e && e.assignee);
@@ -84,7 +64,7 @@
     }).join(sep || ", ");
   }
 
-  /* ─────── 반복 일정 ─────── */
+  /* ── 반복 일정 ── */
   const REPEAT_DEFS = [
     { id: "none",    label: "반복 안 함" },
     { id: "daily",   label: "매일" },
@@ -160,7 +140,7 @@
     return null;
   }
 
-  /* ─────── 반복 회차 열거 (start 기준 스텝 전개) ─────── */
+  /* 반복 회차 열거(start 기준 스텝 전개) */
   function stepOccurrence(e, occ) {
     const freq = e.repeat.freq;
     if (freq === "daily")  return addDays(occ, 1);
@@ -206,13 +186,10 @@
     return out;
   }
 
-  /* ─────── 회차별 완료 처리 ───────
-     반복 일정은 마스터 1건으로 저장되므로 완료 상태를 3중 구조로 관리:
-       done            : 전체 회차 완료(기준선)
-       doneFrom(ISO)   : 해당 일자 이후 회차 완료(기준선)
-       doneDates[]     : 개별 완료 회차
-       undoneDates[]   : 기준선 완료를 개별로 해제한 회차
-     판정 우선순위: undoneDates > doneDates > done > doneFrom            */
+  /* ── 회차별 완료 ── */
+  /* 반복 일정은 마스터 1건이라 완료 상태를 겹쳐 둔다:
+     done(전체 기준선) · doneFrom(그 날 이후 기준선) · doneDates[](개별 완료) · undoneDates[](기준선 개별 해제)
+     판정 우선순위: undoneDates > doneDates > done > doneFrom */
   const dList = (e, k) => (Array.isArray(e[k]) ? e[k] : []);
   function occDone(e, occIso) {
     if (!e) return false;
@@ -231,7 +208,7 @@
   ];
   const uniqSort = (a) => Array.from(new Set(a)).sort().slice(0, 2000);
 
-  /* scope: one | future | all , flag: true(완료) / false(해제) — 저장/렌더 포함 */
+  /* scope: one | future | all, flag: true(완료) / false(해제) — 저장·렌더 포함 */
   function setOccDone(id, occIso, scope, flag) {
     const e = D().schedules.find(x => x.id === id);
     if (!e) return false;
@@ -296,10 +273,8 @@
     return null;
   }
 
-  /* ─────── v2.37: 개인 일정 (나에게만 보이기) ───────
-     소유 기준 = 로그인 "계정"(origId 고정 — 계정명이 바뀌어도 소유권 유지).
-     같은 계정 암호를 공유하는 사람끼리는 서로 보입니다(계정 단위 비공개).
-     owner 가 비어 있는 과거 데이터는 안전하게 공개로 취급합니다. */
+  /* ── 개인 일정(나에게만 보이기) ── */
+  /* 소유 기준은 계정 origId(계정명이 바뀌어도 유지). 같은 계정을 쓰는 사람끼리는 서로 보인다. owner 없는 데이터는 공개로 취급 */
   function meKey() {
     const u = (SeMIS && SeMIS.user) || null;
     return u ? String(u.origId || u.id || "") : "";
@@ -310,12 +285,9 @@
   }
   const isMinePriv = (e) => !!(e && e.priv && String(e.owner || "") === meKey());
 
-  /* ─────── v2.37: 자동 연기 / 자동 연장 ───────
-     자동 연기(autoDefer) : 종료일까지 완료 체크를 못하면 시작일·종료일을 하루씩 미룸(기간 유지)
-     자동 연장(autoExtend): 종료일만 하루씩 늘림(시작일 고정)
-     - 며칠 지난 뒤 접속해도 "하루씩" 누적 적용한 결과(= 종료일이 오늘)가 되도록 한 번에 보정
-     - 반복 일정은 회차별 완료 구조와 충돌하므로 적용하지 않음
-     - 완료된 일정 · 오늘 이내로 아직 기한이 남은 일정은 대상 아님 */
+  /* ── 자동 연기 / 자동 연장 ── */
+  /* autoDefer: 종료일까지 완료 못하면 시작·종료일을 하루씩 미룸(기간 유지). autoExtend: 종료일만 하루씩 늘림.
+     며칠 뒤 접속해도 누적 결과(종료일 = 오늘)로 한 번에 보정. 반복 일정·완료 일정·기한이 남은 일정은 대상 아님 */
   function autoRollOne(e, today) {
     if (!e || isRepeat(e)) return 0;
     if (!e.autoDefer && !e.autoExtend) return 0;
@@ -338,8 +310,8 @@
     if (n) SeMIS.save();
     return n;
   }
-  /* 편집 권한이 있는 접속자만 데이터를 갱신 (열람 전용 계정은 공용 데이터 변경 금지)
-     v1.24: 잠자기에서 막 깨어나 아직 서버 값을 다시 받지 못한 화면은 미룬다(옛 데이터로 저장하지 않게) */
+  /* 편집 권한이 있는 접속자만 갱신(열람 전용 계정은 공용 데이터 변경 금지).
+     잠자기에서 막 깨어나 서버 값을 아직 다시 받지 못한 화면은 미룬다(낡은 데이터로 저장 방지) */
   function autoRollIfAllowed() {
     try {
       if (window.SemisSync && typeof SemisSync.isStale === "function" && SemisSync.isStale()) return 0;
@@ -347,7 +319,7 @@
     } catch (e) { return 0; }
   }
 
-  /* ─────── 리마인더 ─────── */
+  /* ── 리마인더 ── */
   const REMINDER_DEFS = [
     { id: "2w", label: "2주일 전", ms: 14 * 86400000 },
     { id: "1w", label: "1주일 전", ms: 7 * 86400000 },
@@ -381,7 +353,7 @@
     const out = [];
     D().schedules.forEach(e => {
       if (!Array.isArray(e.reminders) || !e.reminders.length) return;
-      if (!canSeePriv(e)) return;                            // v2.37: 타 계정 비공개 일정 제외
+      if (!canSeePriv(e)) return;                            // 타 계정 비공개 일정 제외
       if (!isRepeat(e) && e.done) return;
       const cands = [];
       if (!isRepeat(e)) cands.push(e.start);
@@ -406,11 +378,11 @@
   }
   let remLast = 0;
   function checkReminders() {
-    /* v1.24: 1분 주기가 몇 분씩 밀렸으면(절전 · 잠자기 탭에서 깨어남) 이번 회차의 자동 연기는 건너뛴다 —
+    /* 1분 주기가 몇 분씩 밀렸으면(절전·잠자기 탭에서 깨어남) 이번 회차의 자동 연기는 건너뛴다 —
        동기화가 서버 값을 다시 받은 뒤 다음 회차에 처리 */
     const now = Date.now(), woke = remLast && now - remLast > 150000;
     remLast = now;
-    if (!woke) autoRollIfAllowed();                          // v2.37: 자동 연기/연장 (날짜 변경도 자동 반영)
+    if (!woke) autoRollIfAllowed();                          // 자동 연기/연장(날짜 변경도 자동 반영)
     dueReminders().forEach(d => {
       const when = d.occStart + (d.event.allDay ? " (종일)" : " " + (d.event.time || ""));
       try { toast("⏰ " + d.label + " 알림: " + d.event.title + " — " + when); } catch (e) {}
@@ -429,8 +401,7 @@
   }
   function stopReminders() { if (remTimer) { clearInterval(remTimer); remTimer = null; } }
 
-  /* ─────── 구글캘린더 연동 (Google → SeMIS 표시) ─────── */
-  /* v1.15: SeMIS v2 일정의 ICS 구독 주소(토큰 포함)가 여기 남아 있어 제거 — Logistics 일정과 무관한 v2 자료였다 */
+  /* ── 구글캘린더 연동(Google → SeMIS 표시) ── */
   const GCOLOR = { "1": "indigo", "2": "green", "3": "purple", "4": "pink", "5": "yellow",
                    "6": "orange", "7": "sky", "8": "gray", "9": "blue", "10": "teal", "11": "red" };
   let gcalEvents = (() => {
@@ -482,7 +453,7 @@
       .catch(() => { gcalLoading = false; return false; });
   }
 
-  /* ─────── 뷰 상태 ─────── */
+  /* ── 보기 상태 ── */
   const VIEWS = [
     { id: "day",   label: "일" }, { id: "week",  label: "주" },
     { id: "2week", label: "2주" }, { id: "month", label: "월" },
@@ -495,13 +466,12 @@
   let anchor = todayISO();
   let fAssignee = ui().calAssignee || "";
   let fHideDone = !!ui().calHideDone;
-  let fullscreen = false; // 전체화면(넓게 보기) 모드 — 세션 내 임시 상태
-  /* v1.29 모바일(<768px): iOS 캘린더식 — 월 달력은 색 점, 고른 날의 일정은 아래 목록. 보기는 '월 · 목록' 둘 */
+  let fullscreen = false; // 전체화면(넓게 보기) — 세션 내 임시 상태
+  /* 모바일(<768px): 월 달력은 색 점, 고른 날의 일정은 아래 목록. 보기는 '월 · 목록' */
   let mView = ui().calMView === "list" ? "list" : "month";
   let mSel = "";
 
-  // 전체화면: Esc 로 해제. 단, 모달(일정 등록/수정 등)이 열려 있으면 모달 닫기가 우선.
-  // 캡처 단계에서 처리하여 app.js 의 모달 Esc 핸들러보다 먼저 판단.
+  // 전체화면 Esc 해제. 모달이 열려 있으면 모달 닫기가 우선 — 캡처 단계라 app.js 모달 Esc 핸들러보다 먼저 판단
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || !fullscreen) return;
     if (dragState) return;                                  // 드래그 취소가 우선
@@ -519,10 +489,10 @@
     setUi({ calAssignee: fAssignee, calHideDone: fHideDone });
   }
 
-  /* ─────── 이벤트 질의 (반복 occurrence 전개 포함) ─────── */
+  /* ── 이벤트 질의(반복 회차 전개 포함) ── */
   function filteredEvents() {
     // 반복 일정은 회차별 완료 상태가 다르므로 완료 숨기기는 eventsOnDay 에서 회차 단위로 판정
-    // v2.37: 다른 계정이 "나에게만 보이기"로 등록한 일정은 제외
+    // 다른 계정의 "나에게만 보이기" 일정 제외
     return D().schedules.filter(e => canSeePriv(e) &&
       (!fAssignee || hasName(e, fAssignee)) && (!fHideDone || isRepeat(e) || !e.done));
   }
@@ -554,8 +524,8 @@
     return native.concat(gcalOnDay(iso), inspOnDay(iso)).sort(evCompare);
   }
 
-  /* ─────── v1.35 점검 일정 연동 (읽기 전용 · 저장하지 않음) ─────── */
-  /* v1.42 자체 보안점검(국토부 수검대비)은 선택 실행 — 기한 · 기록을 일정에 넣지 않는다 */
+  /* ── 점검 일정 연동(읽기 전용 · 저장 안 함) ── */
+  /* 자체 보안점검(국토부 수검대비)은 선택 실행이라 기한·기록을 일정에 넣지 않는다 */
   const INSP_SRC = [["inspection", () => window.SemisSeclog]];
   let inspCache = {}, inspIdx = {};
   function modCan(module) {
@@ -630,10 +600,9 @@
     return team().map(t => t.name).concat(extra);
   }
 
-  /* ─────── 데이터 조작 ─────── */
-  /* v2.36.4: 보안점검 연동 일정("insp_*")을 일정관리에서 옮기거나 완료 처리하면
-     보안점검 일정관리에도 되반영한다(원본은 점검 모듈 — 제목·색은 그쪽 값이 유지됨). */
-  /* v1.17: 수검 대응 센터 연동 일정("aud_*" 수검 기간 · "audf_*" 지적 조치 기한)도 같은 방식으로 되반영한다. */
+  /* ── 데이터 조작 ── */
+  /* 연동 일정(insp_* 보안점검, aud_* 수검 기간, audf_* 지적 조치 기한)을 옮기거나 완료 처리하면 원본 모듈에도 되반영한다.
+     제목·색은 원본 값이 유지된다. */
   const LINKED = [
     { pre: ["insp_"], api: () => window.SemisInspection, note: "보안점검 연동이 해제됩니다. 점검 기록 자체는 남습니다." },
     { pre: ["aud_", "audf_"], api: () => window.SemisAudit, note: "수검 대응 센터 연동이 해제됩니다. 수검 기록 자체는 남습니다.",
@@ -722,10 +691,8 @@
     });
   }
 
-  /* ─────── 일정 드래그 이동 (포인터 기반)
-     HTML5 DnD 대신 pointerdown/move/up 으로 직접 구현 —
-     커서를 따라오는 고스트 + 드롭 대상 셀 하이라이트로 이동이 눈에 보이게 처리.
-     마우스/펜만 대상(터치는 화면 스크롤 보존). ─────── */
+  /* ── 일정 드래그 이동 ── */
+  /* HTML5 DnD 대신 pointer 이벤트로 직접 구현(고스트 + 드롭 셀 하이라이트). 마우스/펜만 — 터치는 화면 스크롤 보존 */
   let dragState = null;
   let dragEndedAt = 0;                                    // 드래그 직후 click(수정 모달) 억제용
   const justDragged = () => Date.now() - dragEndedAt < 300;
@@ -857,13 +824,12 @@
     anchor = toISO(d);
   }
 
-  /* ─────── 그리드 (주 단위 레인 배치 — 구글캘린더식) ─────── */
+  /* ── 그리드(주 단위 레인 배치, 구글캘린더식) ── */
   const evIcons = (e) => (e.priv ? "🔒" : "") + (e.vehicle ? "🚗" : "") + (e.room ? "🏢" : "") +
     ((e.reminders || []).length ? "⏰" : "") + (isRepeat(e) ? "🔁" : "") +
     (e.autoDefer ? "⏩" : "") + (e.autoExtend ? "↔️" : "");
 
-  /* 완료 체크: 완료 시 ✓(항상 표시) / 미완료 시 ○(호버 시에만 노출, 클릭으로 완료 처리)
-     반복 일정은 회차(occ) 단위로 판정·토글 */
+  /* 완료 체크: 완료 ✓(항상) / 미완료 ○(호버 시 노출, 클릭으로 완료). 반복 일정은 회차 단위 */
   function checkHTML(e, canWrite, occIso) {
     const occ = occIso || e.start;
     const rep = isRepeat(e);
@@ -872,7 +838,7 @@
     return canWrite ? `<span class="chip-check todo"${attr} title="완료 표시${rep ? " (범위 선택)" : ""}">○</span>` : "";
   }
 
-  /* v1.35 점검 일정 칩 — 읽기 전용(끌기 · 완료 체크 없음), 눌러 상세 · 아이콘으로 바로 가기 */
+  /* 점검 일정 칩 — 읽기 전용(끌기·완료 체크 없음), 눌러 상세 · 아이콘으로 바로 가기 */
   function inspBarHTML(e, style, cls, max) {
     return `<div class="${cls} ev-${esc(pickColor(e.color))} is-insp${e.done ? " done" : ""}${e.late ? " late" : ""}${e.soft ? " soft" : ""}"${style ? ` style="${style}"` : ""}
         data-ik="${esc(e.ik)}" role="button" tabindex="0" title="${esc(e.title)}${e.sub ? "\n" + esc(e.sub) : ""}">
@@ -987,7 +953,7 @@
     return out;
   }
 
-  /* ─────── 일(日) 뷰 ─────── */
+  /* ── 일 보기 ── */
   function chipHTML(e, dayIso, canWrite, compact, noTag) {
     const cont = (e.start < dayIso ? "‹" : "");
     const cont2 = ((e.end || e.start) > dayIso ? "›" : "");
@@ -1039,7 +1005,7 @@
     </div>`;
   }
 
-  /* ─────── 년(年) 뷰 ─────── */
+  /* ── 년 보기 ── */
   function yearHTML() {
     const y = fromISO(anchor).getFullYear();
     const today = todayISO();
@@ -1060,7 +1026,7 @@
     return html + "</div>";
   }
 
-  /* ─────── 일정 등록/수정 폼 ─────── */
+  /* ── 일정 등록/수정 폼 ── */
   function eventForm(id, presetDay, occIso) {
     const e = id ? D().schedules.find(x => x.id === id) : null;
     const start = e ? e.start : (presetDay || todayISO());
@@ -1180,7 +1146,7 @@
     $("#f-allday").onchange = () => {
       $("#row-time").style.display = $("#f-allday").checked ? "none" : "";
     };
-    /* v2.37: 자동 연기/연장은 상호 배타 + 반복 일정에는 사용 불가 */
+    /* 자동 연기/연장은 상호 배타, 반복 일정에는 사용 불가 */
     const defEl = $("#f-autodefer"), extEl = $("#f-autoextend");
     function syncAuto(changed) {
       const rep = $("#f-repeat").value !== "none";
@@ -1308,7 +1274,7 @@
     };
   }
 
-  /* ─────── 일정 상세 (읽기 전용) ─────── */
+  /* ── 일정 상세(읽기 전용) ── */
   function eventDetail(id, occIso) {
     const e = D().schedules.find(x => x.id === id);
     if (!e) return;
@@ -1353,7 +1319,7 @@
     $("#f-close").onclick = closeModal;
   }
 
-  /* ─────── 구글 연동 설정 모달 ─────── */
+  /* ── 구글 연동 설정 모달 ── */
   function gcalForm() {
     const cfg = gcalCfg();
     openModal(`
@@ -1386,8 +1352,7 @@
     };
   }
 
-  /* ─────── 모듈 렌더 ─────── */
-  /* ─────── 모바일 달력 (v1.29) ─────── */
+  /* ── 모바일 달력 ── */
   function mEvRow(e, dayIso, canWrite) {
     if (isInsp(e)) return `<div class="calm-ev ev-${esc(pickColor(e.color))} is-insp has-go${e.done ? " done" : ""}${e.late ? " late" : ""}" data-ik="${esc(e.ik)}" role="button" tabindex="0">
       <span class="calm-bar" aria-hidden="true"></span>
@@ -1522,8 +1487,8 @@
     title: "일정관리",
     render(root) {
       const canWrite = SeMIS.canEdit();
-      inspReset();                                           // v1.35: 점검 일정은 그릴 때마다 새로 계산
-      autoRollIfAllowed();                                   // v2.37: 화면 진입 시 자동 연기/연장 보정
+      inspReset();                                           // 점검 일정은 그릴 때마다 새로 계산
+      autoRollIfAllowed();                                   // 화면 진입 시 자동 연기/연장 보정
       const assignees = assigneeList();
       if (SeMIS.isMobile && SeMIS.isMobile()) { renderMobile(root, canWrite, assignees); return; }
       root.innerHTML = `
@@ -1558,7 +1523,6 @@
           <div id="cal-body"></div>
         </div>`;
 
-      // 본문
       const body = $("#cal-body");
       if (view === "day") body.innerHTML = dayHTML(canWrite);
       else if (view === "week") body.innerHTML = gridHTML(daysRange(startOfWeek(anchor), 7), null, canWrite, 12, "view-week");
@@ -1569,7 +1533,6 @@
         body.innerHTML = gridHTML(daysRange(startOfWeek(first), 42), anchor.slice(0, 7), canWrite, 5, "view-month");
       }
 
-      /* ── 툴바 ── */
       $("#cal-today").onclick = () => { anchor = todayISO(); SeMIS.renderView(); };
       $("#cal-prev").onclick = () => { moveAnchor(-1); SeMIS.renderView(); };
       $("#cal-next").onclick = () => { moveAnchor(1); SeMIS.renderView(); };
@@ -1582,13 +1545,11 @@
         if (add2) add2.onclick = () => eventForm(null, view === "day" ? anchor : todayISO());
       }
 
-      /* ── 필터 ── */
       $$(".cal-fchip[data-assignee]").forEach(b => b.onclick = () => {
         setFilter(b.dataset.assignee, undefined); SeMIS.renderView();
       });
       $("#cal-hidedone").onclick = () => { setFilter(undefined, !fHideDone); SeMIS.renderView(); };
 
-      /* ── 클릭: 완료 토글 · 수정/상세 · 더보기 · 년뷰 이동 ── */
       $$("[data-donetoggle]", body).forEach(el => el.onclick = (ev) => {
         ev.stopPropagation(); askDoneScope(el.dataset.donetoggle, el.dataset.occ);
       });
@@ -1611,22 +1572,20 @@
         setAnchor(el.dataset.goday); setView("day"); SeMIS.renderView();
       });
 
-      /* ── 빈 칸 클릭 → 신규 등록 ── */
       if (canWrite) $$(".cal-cell", body).forEach(cell => cell.onclick = (ev) => {
         if (justDragged()) return;
         if (ev.target.closest(".cal-more,[data-ev],[data-gcal],[data-ik]")) return;
         eventForm(null, cell.dataset.day);
       });
 
-      /* ── 드래그 이동 (포인터 기반) ── */
       if (canWrite) wireDragMove(body);
 
-      /* ── 구글캘린더 새로고침 (백그라운드) ── */
+      /* 구글캘린더 백그라운드 새로고침 */
       fetchGcal(false);
     }
   });
 
-  /* ─────── 테스트/외부 노출 API ─────── */
+  /* ── 외부·테스트용 공개 API ── */
   window.SemisCalendar = {
     setView, getView: () => view,
     setAnchor, getAnchor: () => anchor,

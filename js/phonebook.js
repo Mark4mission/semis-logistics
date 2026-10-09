@@ -1,15 +1,5 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 업무 연락처 (v1.18)
-   현장·협력사·유관기관 업무용 연락처를 구역(색)별로 한 화면에 모은다.
-   보기 3가지: 구역별(카드) · 빠른 연락(전화 · 문자 · 메일 큰 버튼) · 표(전체 항목)
-   전화는 tel:, 문자는 sms:, 메일은 mailto:, 내선은 누르면 복사. 구역 전체 메일 작성.
-   원문이 불확실한 항목은 '확인 필요'(메모) 표시 → 필터로 모아 보고 고친다.
-   hq: 연락처 추가 · 수정 · 삭제 · 구역 관리(이름 · 색 · 순서) · 기본 정보
-
-   데이터: DATA.phonebook = { asOf, notes[], groups: [{ id, name, color }],
-             rows: [{ id, group, org, dept, name, title, duty, ext, office, mobile, email, note, check, verify }] }
-   ※ 연락처는 공개 저장소 코드에 넣지 않는다 — 공용 DB(semis_logi_store "phonebook")에만.
-   ═══════════════════════════════════════════════════════ */
+/* 업무 연락처 — 현장 · 협력사 · 유관기관 연락처를 구역(색)별로(구역별 카드 · 빠른 연락 · 표), 원문이 불확실한 항목은 '확인 필요' 표시.
+   ※ 연락처는 공개 저장소에 넣지 않는다 — 공용 DB(semis_logi_store "phonebook")에만. */
 "use strict";
 
 (() => {
@@ -20,6 +10,8 @@
   const PALETTE = ["#d42a1e", "#1f4fd6", "#0f766e", "#178236", "#9b35c4", "#f58220", "#0369a1", "#a16207", "#d0306a", "#6f4323", "#646b73"];
   const VIEWS = [["group", "구역별"], ["quick", "빠른 연락"], ["table", "표"]];
 
+  /* DATA.phonebook = { asOf, notes[], groups: [{ id, name, color }],
+       rows: [{ id, group, org, dept, name, title, duty, ext, office, mobile, email, note, check, verify }] } */
   const P = () => {
     const v = SeMIS.data[KEY];
     return v && typeof v === "object" && !Array.isArray(v) ? v : { groups: [], rows: [] };
@@ -28,7 +20,6 @@
   const groups = () => (Array.isArray(P().groups) ? P().groups : []).filter(g => g && g.id);
   const notes = () => (Array.isArray(P().notes) ? P().notes : []).filter(Boolean);
 
-  /* 화면 상태 (모듈 메모리) */
   let view = "group", grp = "", query = "", onlyCheck = false;
 
   const norm = (s) => String(s == null ? "" : s).replace(/\s+/g, " ").trim();
@@ -37,7 +28,6 @@
   const label = (r) => r.name || r.dept || r.org || "(이름 없음)";
   const sub = (r) => [r.org, r.dept].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i && v !== label(r)).join(" · ");
 
-  /* ─────── 번호 ─────── */
   function telHref(num) {
     const s = String(num || "").split(/[,/~]/)[0].trim();
     const d = s.replace(/[^\d]/g, "");
@@ -59,7 +49,6 @@
     return s;
   }
 
-  /* ─────── 검색 ─────── */
   const FIELDS = ["org", "dept", "name", "title", "duty", "ext", "office", "mobile", "email", "note", "verify"];
   function matches(r, q) {
     if (!q) return true;
@@ -87,7 +76,6 @@
     return out.filter(x => x.rs.length);
   }
 
-  /* ─────── 조각 ─────── */
   const dot = (c) => `<i class="pb-dot" style="--gc:${esc(c)}"></i>`;
   const flag = (r) => r.check ? `<span class="pb-flag" title="${esc(r.verify || "확인 필요")}">${icon("alert", 13)}<span>확인 필요</span></span>` : "";
   function acts(r, q) {
@@ -119,10 +107,9 @@
     return ms.length > 1 ? `<a class="pb-mailall mf-x" href="mailto:${esc(ms.join(","))}" title="이 구역 ${ms.length}명에게 메일">${icon("notes", 14)}<span>전체 메일</span></a>` : "";
   }
 
-  /* v1.30 모바일: 구역은 제목 줄만 — 검색 · 구역 고르기 · 확인 필요 필터 중에는 펼침 */
+  /* 모바일: 구역은 제목 줄만 — 검색 · 구역 고르기 · 확인 필요 필터 중에는 펼침 */
   const isNarrow = () => !!(grp || query || onlyCheck);
 
-  /* ─────── 보기별 본문 ─────── */
   function groupView(list, canWrite) {
     return `<div class="pb-grid">${byGroup(list).map(({ g, rs }) => `<section class="card pb-sec" style="--gc:${esc(g.color || "#646b73")}" data-group="${esc(g.id)}"${ui.mf("g:" + g.id, isNarrow())}>
       <header class="pb-sechead mf-h"><h3>${esc(g.name)}</h3><span class="pb-cnt mono">${rs.length}</span><span class="spacer"></span>${mailAll(rs)}</header>
@@ -172,7 +159,6 @@
     return `<section class="card pb-notes"${ui.mf("notes")}><h3 class="mf-h">참고</h3><ul>${ns.map(n => `<li>${esc(n)}</li>`).join("")}</ul></section>`;
   }
 
-  /* ─────── 렌더 ─────── */
   function render(root) {
     const all = rows();
     const canWrite = SeMIS.canEdit();
@@ -259,7 +245,6 @@
     else fallback();
   }
 
-  /* ─────── 편집 (hq) ─────── */
   function ensureStore() {
     let v = SeMIS.data[KEY];
     if (!v || typeof v !== "object" || Array.isArray(v)) v = SeMIS.data[KEY] = { groups: [], rows: [] };

@@ -1,28 +1,5 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 수검 대응 센터 (v1.17, 라우트 audit)
-   외부·사내 점검을 "받는" 쪽의 준비 → 수검 → 지적 조치 → 종결을 한 화면에서 관리한다.
-
-   대상: 국토부 · 지방항공청 / 해외 당국 · 화주(TSA · EU ACC3 · 화주 감사) / 사내 심사(내부심사 · IOSA · 교차심사)
-
-   화면
-   - 수검 일정: 요약(다음 수검 D-day · 준비 진행 · 미결 지적 · 기한 경과 · 올해 수검) + 목록(구분 · 진행 필터, 검색)
-   - 지적사항: 모든 수검의 지적을 한 표로(미결 · 완료 · 구분 필터, 검색) — 같은 조항이 다른 수검에서도 나오면 '재발'
-   - 상세: 기본 정보 · 공문/결과 첨부 · 점검 체크리스트(v1.19) · 지적사항(유형 · 조항 · 조치 · 기한)
-     점검 체크리스트: 점검관용 CHK-LIST 원본(auditMaster, hq 열람)에서 영역을 골라 항목을 만들고, 항목마다
-     문서 · 시행 점수(0 시정조치 ~ 4 우수) · N/A · 의견 · 증빙(파일 · 연결 화면)을 관리한다.
-     준비됨 = 증빙 있음 + 문서 · 시행 모두 3점 이상. 영역별 소계 · 평균 · 준비율, A4 인쇄는 점검관용 양식과 같은 열.
-   - 대시보드 띠(mgr): 60일 안의 다음 수검 D-day · 준비율 · 미결 지적 — 해당 없으면 띠를 그리지 않는다
-
-   데이터 DATA.audits = [{ id, body(gov|foreign|internal), org, kind, start, end, place, lead, scope, memo,
-       outcome(""|"none" 지적 없음), cancelled, linkCal(일정관리 연동, 기본 true), noCalMain(수검 일정만 연동 해제),
-       files[{name,size,url}], checklist[{id,mid(원본 번호),sec,text,ref,sop?(v1.43 SSOP 조항),owner,note,docScore,impScore(0~4|null),na,files[],links[]?}],
-       chkSecs[{no,title}], chkSrc{title,asOf,ssi}, sopDoc?(v1.43 SSOP 조항 기준 문서 = docs id),
-       findings[{id,type(car|rec|onsite|obs),ref,text,action,owner,due,status(open|doing|done),doneDate,noCal,files[]}],
-       createdAt, createdBy, updatedAt, updatedBy }]
-   진행 단계는 저장하지 않고 날짜·지적으로 계산한다: 준비 → 수검 중 → (결과 대기) → 조치 중 → 종결 / 취소
-   일정관리 연동: 수검 기간 "aud_<id>", 지적 기한 "audf_<id>"(src "aud:<id>"). 일정관리에서 옮기거나 완료하면
-   calendar.js 가 syncFromSchedule 로 되반영한다. 첨부는 비공개 버킷 audits/ 폴더(열람 mgr · 올리기 hq).
-   ═══════════════════════════════════════════════════════ */
+/* 수검 대응 센터(라우트 audit) — 외부 · 사내 점검을 받는 쪽의 준비 → 수검 → 지적 조치 → 종결 관리.
+   대상: 국토부 · 지방항공청 / 해외 당국 · 화주(TSA · EU ACC3) / 사내 심사(내부심사 · IOSA · 교차심사). 첨부: 비공개 버킷 audits/(열람 mgr · 올리기 hq). */
 "use strict";
 
 (() => {
@@ -47,7 +24,7 @@
   const localDay = (iso) => { const d = new Date(iso); return isNaN(d) ? String(iso || "").slice(0, 10) : toISO(d); };
   const norm = (s) => String(s == null ? "" : s).replace(/\s+/g, " ").trim();
 
-  /* ─────── 구분 · 유형 ─────── */
+  /* ── 구분 · 유형 ── */
   const BODIES = {
     gov: { label: "국토부 · 지방항공청", short: "국토부", tone: "blue",
       kinds: ["정기점검", "불시점검", "항공보안 감독", "특별점검"], orgs: ["국토교통부", "서울지방항공청", "부산지방항공청", "제주지방항공청"] },
@@ -59,9 +36,9 @@
   const BODY_KEYS = ["gov", "foreign", "internal"];
   const bodyOf = (a) => BODIES[a && a.body] || BODIES.gov;
 
-  /* ─────── 점검 체크리스트 원본 (v1.19) ───────
+  /* ── 점검 체크리스트 원본 ──
      원본(점검관용 CHK-LIST — 영역 · 항목 · 관련근거 · 근거 본문 요지)은 민감보안정보라 코드에 두지 않는다.
-     공용 DB 행 auditMaster(권한표 읽기 3 · 쓰기 9 — 등록은 SQL로만)를 hq 이상만 필요할 때 받아 메모리에만 둔다.
+     공용 DB 행 auditMaster(읽기 3 · 쓰기 9, 등록은 SQL로만)를 hq 이상만 필요할 때 받아 메모리에만 둔다.
      { title, source, asOf, ssi, scoreScale[5], sections[{ no, title, items[{ no, text, ref, basis }] }] }
      불러온 항목은 text · ref 만 수검(audits)으로 복사한다 — 근거 요지는 원본에서만 본다(hq). */
   const MASTER_KEY = "auditMaster";
@@ -110,10 +87,9 @@
     return "";
   }
 
-  /* ─────── 증빙 화면 연결 (evidence map) ───────
-     항목 번호 → 그 항목을 증명하는 Logistics 화면. 메뉴가 새로 열리면(registerModule) 자동으로 '증빙 있음'이 된다.
-     항목별로 바꾸면 그 항목의 links[] 가 우선(수검마다 따로). 번호와 화면 이름만 있어 민감정보가 아니다. */
-  /* v1.41: 항목 → 화면(또는 '화면:탭') — 수검 대응 센터가 한 번에 증빙 화면으로 데려간다. 문서 증빙(SemisDocs.forMid)은 따로 붙는다 */
+  /* ── 증빙 화면 연결 ──
+     항목 번호 → 그 항목을 증명하는 화면(또는 '화면:탭'). 메뉴가 열리면(registerModule) 자동으로 '증빙 있음'.
+     항목의 links[] 가 있으면 우선(수검마다 따로). 번호와 화면 이름만 있어 민감정보가 아니다. 문서 증빙(SemisDocs.forMid)은 따로 붙는다. */
   const MID_LINKS = {
     "1.1": ["training"], "1.2": ["training", "dissem"], "1.3": ["partners:vendor", "training", "dissem"], "1.4": ["training"],
     "2.1": ["dashboard"], "2.2": ["dashboard", "dissem", "reg-sec"], "2.2.1": ["dashboard", "dissem"],
@@ -133,7 +109,7 @@
     "9.3": ["sec-cases"], "9.4": ["inspection"], "9.5": ["reg-sec"], "9.6": ["inspection"], "9.7": ["reg-sec"], "9.8": ["sec-cases"], "9.9": ["kc-ra"],
     "9.10": ["reg-sec", "scr-status"], "9.11": ["reg-sec"], "9.12": ["sec-cases"], "9.13": ["sec-cases"]
   };
-  /* 화면 → 항목 번호 (예전 EVIDENCE 모양 — 테스트 · 대시보드가 쓴다) */
+  /* 화면 → 항목 번호 (테스트 · 대시보드가 쓴다) */
   const EVIDENCE = (() => {
     const out = {};
     Object.keys(MID_LINKS).forEach(mid => MID_LINKS[mid].forEach(r => { (out[r] = out[r] || []).push(mid); }));
@@ -181,11 +157,10 @@
     }
     return { ok: live, text: "", live };
   }
-  /* v1.41 증빙 문서(SemisDocs) — 문서 서가에서 이 항목 번호를 단 문서(판 묶음마다 최신 판) */
+  /* 증빙 문서(SemisDocs) — 문서 서가에서 이 항목 번호를 단 문서(판 묶음마다 최신 판) */
   const docsOf = (c) => (c && c.mid && typeof window !== "undefined" && window.SemisDocs ? SemisDocs.forMid(c.mid) : []);
-  /* v1.43 SSOP 조항 — 항목마다 지금 시행 중인 SSOP 의 해당 조항 · 별첨(c.sop: "4.2.16 · 별첨 25"),
-     수검마다 기준 문서(a.sopDoc = 문서 서가 id). 그 문서에 pages{조항: PDF 쪽}이 있으면 조항 칩이 그 쪽을 연다(#page=N).
-     조항 번호만 두고 본문은 문서에서 본다(민감보안정보) */
+  /* SSOP 조항 — 항목마다 시행 중인 SSOP 의 해당 조항 · 별첨(c.sop: "4.2.16 · 별첨 25"), 수검마다 기준 문서(a.sopDoc = 문서 서가 id).
+     그 문서에 pages{ 조항: PDF 쪽 }이 있으면 조항 칩이 그 쪽을 연다(#page=N). 조항 번호만 두고 본문은 문서에서 본다(민감보안정보) */
   const sopTokens = (s) => String(s || "").split(/\s*[·,;\n]\s*/).map(norm).filter(Boolean);
   const sopJoin = (s) => sopTokens(s).join(" · ");
   function sopKey(t) {
@@ -232,7 +207,7 @@
     ready: { label: "준비됨", tone: "green" }, noev: { label: "증빙 없음", tone: "amber" }, low: { label: "보완 필요", tone: "red" },
     todo: { label: "미평가", tone: "gray" }, na: { label: "N/A", tone: "gray" }
   };
-  /* 사용 흔적이 없는 항목(v1.17 기본 문구 등) — 체크리스트를 불러올 때 빼도 잃을 것이 없다 */
+  /* 사용 흔적이 없는 항목(초기 기본 문구 등) — 체크리스트를 불러올 때 빼도 잃을 것이 없다 */
   const unusedItem = (c) => !!c && !c.mid && !c.done && !filesOf(c).length && !norm(c.ref) && !norm(c.note) && !norm(c.owner)
     && sc(c.docScore) == null && sc(c.impScore) == null && !c.na;
 
@@ -247,7 +222,14 @@
     action: { label: "조치 중", tone: "red" }, closed: { label: "종결", tone: "green" }, cancel: { label: "취소", tone: "gray" }
   };
 
-  /* ─────── 데이터 계산 ─────── */
+  /* ── 데이터 ──
+     audits = [{ id, body(gov|foreign|internal), org, kind, start, end, place, lead, scope, memo,
+       outcome(""|"none" 지적 없음), cancelled, linkCal(일정관리 연동, 기본 true), noCalMain(수검 일정만 연동 해제),
+       files[{ name, size, url }], checklist[{ id, mid(원본 번호), sec, text, ref, sop?(SSOP 조항), owner, note, docScore, impScore(0~4|null), na, files[], links[]? }],
+       chkSecs[{ no, title }], chkSrc{ title, asOf, ssi }, sopDoc?(SSOP 조항 기준 문서 = docs id),
+       findings[{ id, type(car|rec|onsite|obs), ref, text, action, owner, due, status(open|doing|done), doneDate, noCal, files[] }],
+       createdAt, createdBy, updatedAt, updatedBy }]
+     진행 단계는 저장하지 않고 날짜 · 지적으로 계산한다: 준비 → 수검 중 → (결과 대기) → 조치 중 → 종결 / 취소 */
   const list = () => (Array.isArray(D()[KEY]) ? D()[KEY] : []);
   const store = () => { if (!Array.isArray(D()[KEY])) D()[KEY] = []; return D()[KEY]; };
   const findingsOf = (a) => (a && Array.isArray(a.findings) ? a.findings : []);
@@ -337,7 +319,7 @@
   }
   function stamp(a) { a.updatedAt = new Date().toISOString(); a.updatedBy = me(); }
 
-  /* ─────── 일정관리 연동 ─────── */
+  /* ── 일정관리 연동 ── */
   const SID = (id) => "aud_" + id;
   const FID = (id) => "audf_" + id;
   const SRC = (id) => "aud:" + id;
@@ -412,7 +394,7 @@
     return false;
   }
 
-  /* ─────── 화면 상태 ─────── */
+  /* ── 화면 상태 ── */
   let tab = "list", sel = "", query = "", bodyF = "all", stF = "active";
   let fq = "", fStF = "open", fBodyF = "all";
   const routeNow = () => (typeof location !== "undefined" ? location.hash.replace(/^#\//, "") : "") || "dashboard";
@@ -459,7 +441,7 @@
     });
   }
 
-  /* ─────── 조각 ─────── */
+  /* ── 조각 ── */
   const phaseChip = (a) => { const p = PH[phase(a)]; return ui.chip(p.label, p.tone); };
   const bodyChip = (a) => ui.chip(bodyOf(a).short, bodyOf(a).tone);
   const range = (a) => !isISO(a.start) ? "일정 미정" : endOf(a) !== a.start ? dot(a.start) + " – " + md(endOf(a)) : dot(a.start);
@@ -475,7 +457,7 @@
     return `<span class="mono">${esc(md(f.due))}</span> ${d < 0 ? ui.chip("D+" + (-d), "red") : d <= 7 ? ui.chip(d ? "D-" + d : "D-Day", "amber") : ""}`;
   }
 
-  /* ═════════ 수검 일정 (목록) ═════════ */
+  /* ── 수검 일정 (목록) ── */
   function listHTML() {
     const t = todayISO();
     const nx = nextAudit(t);
@@ -516,7 +498,7 @@
     </section>`;
   }
 
-  /* ═════════ 지적사항 (전체) ═════════ */
+  /* ── 지적사항 (전체) ── */
   function findingsHTML() {
     const t = todayISO();
     const all = allFindings().filter(x => !x.a.cancelled);
@@ -558,7 +540,7 @@
     </tr>`;
   }
 
-  /* ═════════ 상세 ═════════ */
+  /* ── 상세 ── */
   function detailHTML(a) {
     const canW = SeMIS.canEdit();
     const b = bodyOf(a), fs = findingsOf(a);
@@ -601,7 +583,7 @@
       </section>`;
   }
 
-  /* ═════════ 점검 체크리스트 (v1.19 — 점검관용 양식: 문서 · 시행 0~4점 · N/A · 비고) ═════════ */
+  /* ── 점검 체크리스트 — 점검관용 양식: 문서 · 시행 0~4점 · N/A · 비고 ── */
   let ckSec = "all", ckSt = "all";
   const CK_ST = [["all", "전체"], ["open", "미준비"], ["low", "보완 필요"], ["noev", "증빙 없음"], ["todo", "미평가"], ["ready", "준비됨"], ["na", "N/A"]];
   function ckMatch(c) {
@@ -821,7 +803,7 @@
       };
     });
   }
-  /* v1.43 SSOP 조항 기준 문서 고르기(hq) — 쪽 연결(pages)이 있는 문서 또는 규정 서가의 SSOP 본문 */
+  /* SSOP 조항 기준 문서 고르기(hq) — 쪽 연결(pages)이 있는 문서 또는 규정 서가의 SSOP 본문 */
   function sopForm(aid) {
     const a = byId(aid);
     if (!a || !SeMIS.canEdit() || !canMaster()) return;
@@ -919,7 +901,7 @@
     $$("[data-ck-edit]", sec).forEach(b => b.onclick = () => checkForm(a.id, b.dataset.ckEdit));
   }
 
-  /* ═════════ 폼 ═════════ */
+  /* ── 폼 ── */
   const fld = (idn, label, html, tip) => `<div class="form-row"><label for="${idn}">${esc(label)}${tip ? " " + ui.tip(tip, label + " 설명") : ""}</label>${html}</div>`;
   const dl = (id, vals) => `<datalist id="${id}">${vals.filter(Boolean).map(v => `<option value="${esc(v)}">`).join("")}</datalist>`;
   const people = () => {
@@ -1128,7 +1110,7 @@
     const f = fid ? findingsOf(a).find(x => x.id === fid) : null;
     if (fid && !f) return;
     const v = Object.assign({ type: "car", ref: "", text: "", action: "", owner: "", due: "", status: "open", doneDate: "", cat: "", term: "" }, f || {});
-    /* v1.32 국가항공보안 수준관리지침 — 문제점 분야(제54조 · 별표 15)와 이행 시기(제55조 4항) */
+    /* 국가항공보안 수준관리지침 — 문제점 분야(제54조 · 별표 15)와 이행 시기(제55조 4항) */
     const SC = window.SemisSelfcheck;
     const catOpts = SC ? SC.cats().map(c => `<optgroup label="${esc(c.n)}">${c.items.map(it => `<option value="${esc(it.id)}" ${v.cat === it.id ? "selected" : ""}>${esc(it.t)}</option>`).join("")}</optgroup>`).join("") : "";
     const files = filesOf(f).map(x => Object.assign({}, x));
@@ -1199,7 +1181,7 @@
     };
   }
 
-  /* ═════════ 렌더 ═════════ */
+  /* ── 렌더 ── */
   const TABS = [["list", "수검 일정"], ["findings", "지적사항"]];
   function bodyHTML() {
     const a = sel ? byId(sel) : null;
@@ -1233,7 +1215,7 @@
     const liveSearch = (id, set) => {
       const el = $("#" + id, box);
       if (!el) return;
-      /* v1.13.1 — 입력칸은 그대로 두고 나머지만 다시 그린다(한글 조합 보호) */
+      /* 입력칸은 그대로 두고 나머지만 다시 그린다(한글 조합 보호) */
       el.oninput = () => {
         set(ui.searchValue(el.value));
         const b = document.getElementById("au-body");
@@ -1282,7 +1264,7 @@
     wire(root);
   }
 
-  /* ═════════ 대시보드 띠 (mgr) — 60일 안의 수검 또는 미결 지적이 있을 때만 ═════════ */
+  /* ── 대시보드 띠(mgr) — 60일 안의 수검 또는 미결 지적이 있을 때만 ── */
   const DASH_DAYS = 60;
   function dashData() {
     const t = todayISO();

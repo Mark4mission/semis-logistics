@@ -1,17 +1,6 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 규정 관리 모듈
-   항공보안 규정(reg-sec) · 안전관리 규정(reg-safety) · 위험물(DG) 기준(reg-dg)
-
-   SeMIS v2 regulations.js 를 화물팀 문서 체계에 맞게 이식.
-   데이터: DATA.regulations = [{ id, scope: "sec"|"safety"|"dg",
-     title, rev, date, org, lang, linkUrl, fileUrl, fileName,
-     diffUrl, diffName,           ← 신구대조표 PDF (선택)
-     note, ideas: [{ id, loc, kind, content, status, author, created }],
-     updated }]
-   - 열람: 업로드 PDF(웹 뷰어 모달/새 탭) 또는 외부 링크
-   - 개정 아이디어 노트: 규정 위치 + 신규/변경/삭제 검토 내용 (열람 mgr+, 편집 hq+)
-   - 편집: hq 이상 (canEdit)
-   ═══════════════════════════════════════════════════════ */
+/* 규정 관리 — 항공보안(reg-sec) · 안전관리(reg-safety) · 위험물 기준(reg-dg) 규정 열람(PDF · 외부 링크)과 개정 아이디어 노트(열람 mgr+, 편집 hq+).
+   DATA.regulations = [{ id, scope: "sec"|"safety"|"dg", title, rev, date, org, lang, linkUrl, fileUrl, fileName,
+     diffUrl, diffName(신구대조표 PDF, 선택), note, ideas: [{ id, loc, kind, content, status, author, created }], updated }] */
 "use strict";
 
 (() => {
@@ -64,7 +53,6 @@
         || String(a.title).localeCompare(String(b.title), "ko"));
   }
 
-  /* ─────── PDF 업로드 (Supabase Storage → 공개 URL, 웹 열람) ─────── */
   async function uploadPdf(file, prefix, cb) {
     if (!file) return;
     const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name || "");
@@ -79,7 +67,6 @@
     } catch (e) { toast("업로드 실패 — 네트워크를 확인하세요.", true); }
   }
 
-  /* ─────── PDF 웹 뷰어 (모달 iframe + 새 탭) ─────── */
   function viewPdf(url, title) {
     openModal(`
       <h3 style="display:flex;align-items:center;gap:8px">📄 <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(title)}</span></h3>
@@ -91,7 +78,6 @@
     $("#rg-view-close").onclick = closeModal;
   }
 
-  /* ─────── 규정 등록/수정 폼 (hq+) ─────── */
   function regForm(scope, id) {
     const sc = SCOPES[scope];
     const x = id ? list().find(r => r.id === id) : null;
@@ -174,9 +160,7 @@
       let saved;
       if (x) { Object.assign(x, rec); saved = x; }
       else { saved = Object.assign({ id: uid("rg"), scope, ideas: [] }, rec); D().regulations.push(saved); }
-      /* 검색어가 걸린 채로 등록하면 방금 저장한 규정이 목록에서 빠져 "사라진 것처럼" 보인다.
-         (검색어는 모듈 메모리에 남아 화면을 옮겨도 유지되고 새로고침해야 초기화됐다)
-         → 저장한 규정이 현재 검색어에 걸리지 않으면 검색어를 풀고 알린다. */
+      /* 검색어가 걸린 채로 저장하면 방금 저장한 규정이 목록에서 빠져 사라진 것처럼 보인다 → 검색어에 안 걸리면 검색어를 풀고 알린다 */
       const cleared = !!query[scope] && !matchQ(saved, query[scope].toLowerCase());
       if (cleared) query[scope] = "";
       SeMIS.save(); closeModal(); SeMIS.renderView();
@@ -184,7 +168,7 @@
     };
   }
 
-  /* ─────── 개정 아이디어 노트 (열람 mgr+ · 편집 hq+) ─────── */
+  /* 개정 아이디어 노트 — 열람 mgr+ · 편집 hq+ */
   function ideaList(regId) {
     const r = list().find(v => v.id === regId);
     if (!r) return;
@@ -262,7 +246,6 @@
     };
   }
 
-  /* ─────── 목록 테이블 (관리번호 → 제목 순 정렬) ─────── */
   function tableHTML(scope) {
     const items = filtered(scope);
     const showIdeas = canSeeIdeas();
@@ -298,7 +281,6 @@
       </tr>`; }).join("")}</tbody></table></div>`;
   }
 
-  /* ─────── 페이지 렌더 ─────── */
   function renderPage(root, scope) {
     const sc = SCOPES[scope];
     const canWrite = SeMIS.canEdit();
@@ -356,8 +338,7 @@
         regForm(scope, b.dataset.rgEdit);
       });
     };
-    /* 검색 중이면 "검색 결과 N / 전체 M"과 해제 버튼을 보여 준다 — 필터가 켜져 있는 줄 모르고
-       "등록한 규정이 안 보인다"고 오해하는 일을 막는다. */
+    /* 검색 중이면 "검색 결과 N / 전체 M"과 해제 버튼 — 필터가 켜진 줄 모르고 "규정이 안 보인다"고 오해하지 않게 */
     const paintFilter = () => {
       const q = query[scope], note = $("#rg-fnote"), btn = $("#rg-clear");
       if (!note || !btn) return;
@@ -388,7 +369,7 @@
     });
   });
 
-  /* ─────── 테스트/외부 노출 ─────── */
+  /* 외부 노출(테스트 겸용) */
   window.SemisRegs = {
     SCOPES, LANGS, IDEA_KINDS, IDEA_STATUS,
     list, byScope, stats, filtered, matchQ, ideasOf, canSeeIdeas,

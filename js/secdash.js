@@ -1,17 +1,5 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 화물보안 대시보드 (v1.28, 라우트 sec-dash)
-   레일의 '화물 보안' 허브를 누르면 열리는 허브 대시보드. CARES 읽기 전용 + 배치도(js/secpost.js).
-
-   화면 구성
-   - 요약 지표: 가동률(12개월) · 고장 신고(12개월) · 평균 복구 시간 · 일일점검 이행률(28일) · 경비 지점
-   - 화물 보안검색 띠: 검색 라인 · 오늘 일일점검 · 장비 고장(메인 대시보드에서 옮김 — js/screening.js opsHTML)
-   - 경비대원 배치도(js/secpost.js)
-   - 장비 가동 · 고장 추이: 월별 고장 신고 12개월(X-ray · ETD) · 장비별 가동률 12개월 · 평균 고장 간격
-   - 점검 이행 분석: 주별 일일점검 이행률 12주(X-ray · ETD) · 점검 시각 분포 · 점검자별 건수(28일) · 정기점검 경과 · 점검 이상 항목
-   - 위해물품 적발 일지(v1.36, js/hazfind.js): 이번 달 합계 · 분류 · 호기 + 12개월 — CARES 월 집계만
-   - 검색 환경 24시간: 온도 · 습도 · 결로 여유 추이(지점 3곳) · 기준 초과 시간 · 표로 보기
-   차트는 SVG(선) + HTML(막대 · 축 글자) — 화면 폭에 따라 글자가 줄어들지 않게. 색은 CVD 검증 통과값.
-   ═══════════════════════════════════════════════════════ */
+/* 화물보안 대시보드(라우트 sec-dash) — '화물 보안' 허브 첫 화면. CARES 읽기 전용 + 배치도(js/secpost.js) · 위해물품 월 집계(js/hazfind.js).
+   차트는 SVG(선) + HTML(막대 · 축 글자) — 화면 폭에 따라 글자가 줄지 않게. 색은 CVD 검증 통과값. */
 "use strict";
 
 (() => {
@@ -33,7 +21,7 @@
     return h ? h + "시간" + (m ? " " + m + "분" : "") : m + "분";
   }
 
-  /* ═════════ 통계 계산 ═════════ */
+  /* ── 통계 계산 ── */
   function equipStats(now) {
     const K = C();
     now = now || Date.now();
@@ -194,7 +182,7 @@
     return { ids, ser, margin, over, overKeys, t0, t1, n };
   }
 
-  /* ═════════ 차트 조각 ═════════ */
+  /* ── 차트 조각 ── */
   const charts = {};
   function niceTicks(lo, hi, n) {
     if (!(hi > lo)) { hi = lo + 1; }
@@ -276,7 +264,7 @@
   const wait = (t) => `<div class="scr-wait" role="status"><span class="cfe-spin" aria-hidden="true"></span>${esc(t)}</div>`;
   const failBox = (t) => `<div class="dscr-err sd-fail">${esc(t)}<button type="button" class="link-btn" data-sd-retry>다시 시도</button></div>`;
 
-  /* ═════════ 카드 ═════════ */
+  /* ── 카드 ── */
   function kpiHTML(s) {
     const K = C();
     const SP = window.SemisSecPost;
@@ -448,7 +436,7 @@
     return window.SemisScreen && SemisScreen.metaText ? SemisScreen.metaText(C().state) : "CARES";
   }
 
-  /* ═════════ 말풍선(차트 값) — 문서에 하나 ═════════ */
+  /* ── 말풍선(차트 값) — 문서에 하나 ── */
   let tt = null;
   function ttBox() {
     if (tt && document.body.contains(tt)) return tt;
@@ -506,7 +494,7 @@
     });
   }
 
-  /* ═════════ 그리기 · 불러오기 ═════════ */
+  /* ── 그리기 · 불러오기 ── */
   function wire(root) {
     $$("[data-sd-go]", root).forEach(b => b.onclick = () => SeMIS.navigate(b.dataset.sdGo));
     $$("[data-sd-equip]", root).forEach(b => b.onclick = () => { if (window.SemisEquip) SemisEquip.setTab(b.dataset.sdEquip); SeMIS.navigate("scr-equip"); });

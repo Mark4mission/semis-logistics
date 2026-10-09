@@ -1,21 +1,5 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 테러 위협전화 대응 (v1.26)
-   폭발 · 테러 협박 전화(메일 · 편지)를 받았을 때의 응대 → 보고 → 후속조치를 한 화면에서.
-   근거 문서(보안 위해 상황 비상대책 · 응대요령 및 보고절차 · 폭발물 위협 보고양식)의 원문 · 번호는 데이터.
-
-   계획 탭 5개: 응대 가이드(STEP · 응대 요령 · 보고 순서 · 미주편 TSOC) / 관리 절차(원문 · 임시 통제반 · 원문 확인 필요)
-     / 녹음 전화(녹음 가능 자리 · 업무 전화 · 녹취 열람 · 녹음 작동 · 양식 비치 점검) / 보고양식(미리보기 · 빈 양식 · 비치용 A4 가로) / 접수 기록
-   응대 화면(실제 · 훈련): 경과 시계 · STEP 체크(시각 · 기록자) · 보고양식 바로 입력(선택지는 눌러서) · 통화 종료
-     → 보고 · 전파(바로 걸기 · 완료 시각 · 보고 문자 복사/공유/문자 · 미주편 TSOC · 임시 통제반) → 기록 · 첨부(녹취 파일 등) → 종료 → A4 보고서
-   대시보드 띠 · 메뉴 배지(응대 중) · 통합 검색 · 수검 체크리스트 증빙(SemisEvidence.threat) · hq 편집 · 녹취 암호는 암호 관리(SemisVault.request)
-
-   데이터: DATA.threat       = 절차 원문 · 보고 순서 · 녹음 전화 · 보고양식 정의 — 권한표 읽기 2 · 쓰기 3
-           DATA.threatRuns   = 접수 기록 [{ id, kind(real|drill), start, callEnd, end, recv{name,dept}, line, caller, rec, steps[](사본), st{key:{at,by,note}},
-                                form[](양식 사본), ans{fid | fid:etc}, chain[](사본), rep{id:{at,by,note}}, us, tsoc{pos}, cmd{lead,rank,place,at,by},
-                                log[], files[], result, createdBy, createdAt, updatedAt }] — 읽기 2 · 쓰기 2
-           DATA.threatChecks = 녹음 전화 점검 [{ id, date, by, rows{phoneId:{rec,form}}, note, createdAt }] — 읽기 2 · 쓰기 2
-   ※ 원문 · 번호 · 이름은 공개 저장소 코드에 넣지 않는다 — 공용 DB(semis_logi_store "threat")에만.
-   ═══════════════════════════════════════════════════════ */
+/* 테러 위협전화 대응 — 협박 전화(메일 · 편지) 접수 시 응대 → 보고 → 후속조치(근거: 보안 위해 상황 비상대책 · 응대요령 및 보고절차 · 폭발물 위협 보고양식).
+   ※ 원문 · 번호 · 이름은 공개 저장소에 넣지 않는다 — 공용 DB(semis_logi_store "threat")에만. */
 "use strict";
 
 (() => {
@@ -29,7 +13,12 @@
   const obj = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : {});
   const clone = (v) => JSON.parse(JSON.stringify(v == null ? null : v));
 
-  /* ─────── 데이터 ─────── */
+  /* ── 데이터 ──
+     DATA.threat       절차 원문 · 보고 순서 · 녹음 전화 · 보고양식 정의 (읽기 2 · 쓰기 3)
+     DATA.threatRuns   [{ id, kind(real|drill), start, callEnd, end, recv{name,dept}, line, caller, rec, steps[](사본), st{key:{at,by,note}},
+                          form[](양식 사본), ans{fid | fid:etc}, chain[](사본), rep{id:{at,by,note}}, us, tsoc{pos}, cmd{lead,rank,place,at,by},
+                          log[], files[], result, createdBy, createdAt, updatedAt }] (읽기 2 · 쓰기 2)
+     DATA.threatChecks 녹음 전화 점검 [{ id, date, by, rows{phoneId:{rec,form}}, note, createdAt }] (읽기 2 · 쓰기 2) */
   const P = () => obj(SeMIS.data[KEY]);
   const steps = () => arr(P().steps).filter(s => s && s.id);
   const chain = () => arr(P().chain).filter(c => c && c.id);
@@ -49,7 +38,6 @@
     return SeMIS.data[k];
   }
 
-  /* ─────── 시간 ─────── */
   const pad = (n) => String(n).padStart(2, "0");
   const nowISO = () => new Date().toISOString();
   function hm(iso) { const d = new Date(iso); return isNaN(d) ? "-" : pad(d.getHours()) + ":" + pad(d.getMinutes()); }
@@ -80,7 +68,6 @@
     return (n.getFullYear() - d.getFullYear()) * 12 + (n.getMonth() - d.getMonth()) - (n.getDate() < d.getDate() ? 1 : 0);
   }
 
-  /* ─────── 전화 · 문자 ─────── */
   function telHref(num) {
     const s = String(num || "").split(/[,/~]/)[0].trim();
     const d = s.replace(/[^\d]/g, "");
@@ -99,7 +86,6 @@
     return norm(v);
   }
 
-  /* ─────── 화면 상태 (모듈 메모리) ─────── */
   const TABS = [["guide", "응대 가이드"], ["proc", "관리 절차"], ["phones", "녹음 전화"], ["form", "보고양식"], ["runs", "접수 기록"]];
   const RTABS = [["call", "통화 중"], ["report", "보고 · 전파"], ["log", "기록 · 첨부"]];
   let tab = "guide", runSel = "", runTab = "call";
@@ -118,7 +104,7 @@
   function paras(body) { return String(body || "").split("\n").map(norm).filter(Boolean).map(p => `<p>${esc(p)}</p>`).join(""); }
   const kindChip = (run) => run.kind === "drill" ? ui.chip("훈련", "amber") : ui.chip("실제 상황", "red");
 
-  /* ═════════════ 응대 기록 계산 ═════════════ */
+  /* ── 응대 기록 계산 ── */
   /* 체크 단위: 단계에 세부 항목이 있으면 세부 항목, 없으면 단계 자체 + 단계 뒤 전달 사항(after) */
   function stepUnits(list) {
     const out = [];
@@ -165,7 +151,7 @@
     return v.join(", ");
   }
 
-  /* ═════════════ 계획 화면 ═════════════ */
+  /* ── 계획 화면 ── */
   function quickBar() {
     const run = activeRun();
     if (run) {
@@ -390,7 +376,7 @@
         : ui.empty("접수 기록이 없습니다.")}</section>`;
   }
 
-  /* ═════════════ 응대 화면 ═════════════ */
+  /* ── 응대 화면 ── */
   const fieldOf = (run, id) => { for (const s of arr(run.form)) { const f = arr(s.fields).find(x => x && x.id === id); if (f) return f; } return null; };
   const fieldText = (run, id) => { const f = fieldOf(run, id); return f ? ansText(run, f) : norm(ansOf(run)[id]); };
   const recvText = (run) => [obj(run.recv).dept, obj(run.recv).name].map(norm).filter(Boolean).join(" ");
@@ -596,7 +582,7 @@
       <div class="print-only sp-report tc-report">${reportHTML(run)}</div>`;
   }
 
-  /* ═════════════ 렌더 ═════════════ */
+  /* ── 렌더 ── */
   function render(root) {
     const focus = captureFocus(root);
     const run = runSel ? runs().find(r => r.id === runSel) : null;
@@ -657,7 +643,7 @@
     els.forEach(el => { el.textContent = "T+" + dur(now - Date.parse(el.dataset.tcT0)); });
   }
 
-  /* ═════════════ 동작 ═════════════ */
+  /* ── 동작 ── */
   function wire(root) {
     $$("[data-ttab]", root).forEach(b => b.onclick = () => { tab = b.dataset.ttab; runSel = ""; SeMIS.renderView(); });
     $$("[data-rtab]", root).forEach(b => b.onclick = () => { runTab = b.dataset.rtab; SeMIS.renderView(); });
@@ -723,7 +709,7 @@
     copyText(text, "공유를 지원하지 않는 브라우저라 복사했습니다.");
   }
 
-  /* ── 응대 시작 · 종료 — 전화를 받는 중이므로 묻지 않고 바로 연다(시각 · 접수자는 화면에서 고침) ── */
+  /* 응대 시작 — 전화를 받는 중이므로 묻지 않고 바로 연다(시각 · 접수자는 화면에서 고침) */
   function startRun(kind) {
     if (!canRun()) return;
     const act = activeRun();
@@ -982,7 +968,7 @@
     };
   }
 
-  /* ═════════════ 인쇄 문서 (숨김 iframe) — 비치용 A4 가로 · 빈 보고양식 ═════════════ */
+  /* ── 인쇄 문서(숨김 iframe) — 비치용 A4 가로 · 빈 보고양식 ── */
   const PRINT_CSS = `
   * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   body { font-family: -apple-system, "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", sans-serif; color: #111; margin: 0; font-size: 9.2pt; line-height: 1.35; }
@@ -1086,7 +1072,7 @@
     } catch (e) { toast("인쇄 대화상자를 열 수 없습니다.", true); }
   }
 
-  /* ═════════════ hq 편집 ═════════════ */
+  /* ── hq 편집 ── */
   function wireEdit(root) {
     if (!canW()) return;
     const on = (sel, fn) => { const b = $(sel, root); if (b) b.onclick = fn; };
@@ -1330,7 +1316,7 @@
     });
   }
 
-  /* ═════════════ 대시보드 띠 · 메뉴 · 검색 · 증빙 ═════════════ */
+  /* ── 대시보드 띠 · 메뉴 · 검색 · 증빙 ── */
   function dashHTML() {
     const run = activeRun();
     if (!run) return "";

@@ -1,11 +1,7 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 화물 보안검색 실적 (v1.41, 화물 보안검색 현황 화면 아래 카드)
-   B터미널 수출 보안검색 기록(MAWB 단위)을 월별로 모은 실적과, 서울지방항공청 월간 보고(위해물품 확인 · 적발 · 비인가자 진입) 수치.
-   원본 기록(운송장 · 품명)은 화면에 두지 않고 월별 합계만 공용 DB 에 둔다.
-   데이터 SeMIS.data.scrStats = { asOf, src, months{ "YYYY-MM": { mawb, pcs, wt(톤), xray, etd, both, visual, doc, us, kj, oz, tk, oth } },
-     haz{ "YYYY-MM": { chk, find, intrude } }, note }
-   수검 체크리스트 증빙: 6.7 · 6.8 (window.SemisScrStats.evidence)
-   ═══════════════════════════════════════════════════════ */
+/* 화물 보안검색 실적 카드 — 월별 수출 검색 합계와 서울지방항공청 월간 보고(위해물품 · 비인가자) 수치.
+   원본 기록(운송장 · 품명)은 두지 않고 월별 합계만 저장.
+   SeMIS.data.scrStats = { asOf, src, months{ "YYYY-MM": { mawb, pcs, wt(톤), xray, etd, both, visual, doc, us, kj, oz, tk, oth } },
+     haz{ "YYYY-MM": { chk, find, intrude } }, note } */
 "use strict";
 
 (() => {

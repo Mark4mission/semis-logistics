@@ -1,21 +1,11 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 점검 · 교육 대시보드 (v1.31, 라우트 aud-dash)
-   레일의 '점검 · 교육' 허브를 누르면 열리는 허브 대시보드(화물보안 대시보드와 같은 방식 — app.js HUB_HOME).
-   데이터는 각 모듈이 계산한 값을 그대로 쓴다(읽기만):
-   - 교육 · 자격: window.SemisTraining (stats · roleStats · dueList · expiryByMonth · sessionsByMonth)
-   - 수검 대응: window.SemisAudit (nextAudit · prep · phase · allFindings · overdueF · repeatCount)
-   - 보안 기록부: window.SemisSeclog (templates · status · isNG)
-   - 자체 보안점검(국토부 수검대비)은 v1.42 부터 선택 실행 — 이 대시보드 · 통계 · 달력에 넣지 않는다(팀 이름만 그 설정에서 읽음)
-   - 위해물품 적발 일지: window.SemisHaz (CARES 월 집계 한 줄, 보안 기록부 카드 안) — v1.36
-   v1.35: 숨긴 점검(시스템관리자 '표시 관리')은 각 모듈 API 에서 이미 빠져 있고, 흐리게 한 점검은 하드카피 집계 · 기록이 통계에 들어온다
-   메뉴가 숨겨졌거나 권한 밖인 모듈의 카드는 그리지 않는다. 색: 상태 3색(유효 · 갱신 필요 · 정지 · 미이수)과
-   교육 실시 2색(당사 · 협력사) — dataviz 검증기(CVD ΔE ≥ 8) 통과값.
-   ═══════════════════════════════════════════════════════ */
+/* 점검 · 교육 대시보드(라우트 aud-dash) — '점검 · 교육' 허브 홈. 값은 각 모듈 API(SemisTraining · SemisAudit · SemisSeclog · SemisHaz)에서 읽기만 한다.
+   점검 셈은 모듈 API를 거칠 것(숨김 · 하드카피 줄 제외가 API 안에 있음). 자체 보안점검은 선택 실행이라 통계 · 달력에서 뺀다(팀 이름만 읽음). */
 "use strict";
 
 (() => {
   const { $, $$, esc, ui, icon } = SeMIS;
   const MOD = "aud-dash", TITLE = "점검 · 교육 대시보드";
+  /* 상태 3색 · 교육 실시 2색(당사 · 협력사) — dataviz 검증기(CVD ΔE ≥ 8) 통과값 */
   const STC = { good: "#2f8f5b", warn: "#d99a0b", bad: "#c2402f" };
   const KIND = { own: "#2b59c3", vendor: "#d97706" };
   const TR = () => window.SemisTraining, AU = () => window.SemisAudit, SL = () => window.SemisSeclog, SC = () => window.SemisSelfcheck;
@@ -37,7 +27,6 @@
     return !!(mn && SeMIS.navVisible && SeMIS.navVisible(mn) && SeMIS.hasModule && SeMIS.hasModule(module));
   }
 
-  /* ═════════ 차트 조각 ═════════ */
   /* 가로 누적 막대 — 칸 사이 2px, 값은 오른쪽 글자 */
   function sbar(label, parts, total, sub, tt) {
     const tot = total || parts.reduce((n, p) => n + p.v, 0) || 1;
@@ -61,7 +50,6 @@
   }
   const legend = (items) => `<span class="sd-legend">${items.map(x => `<span><i style="--c:${x.c}"></i>${esc(x.name)}</span>`).join("")}</span>`;
 
-  /* ═════════ 요약 지표 ═════════ */
   function kpiHTML(t) {
     const tiles = [];
     if (can("training") && TR()) {
@@ -87,7 +75,6 @@
     return tiles.length ? ui.stats(tiles) : "";
   }
 
-  /* ═════════ 교육 · 자격 ═════════ */
   function trainCard(t) {
     const T = TR();
     const rs = T.roleStats(t);
@@ -139,7 +126,6 @@
     </section>`;
   }
 
-  /* ═════════ 수검 대응 ═════════ */
   function auditCard(t) {
     const A = AU();
     const list = (Array.isArray(SeMIS.data.audits) ? SeMIS.data.audits : []).filter(a => a && a.id);
@@ -181,11 +167,10 @@
     </section>`;
   }
 
-  /* ═════════ 보안 기록부 ═════════ */
   function seclogCard(t) {
     const S = SL();
     const ts = S.templates();
-    const logs = S.logs ? S.logs() : (Array.isArray(SeMIS.data.seclog) ? SeMIS.data.seclog : []).filter(r => r && r.id && isISO(r.date));   // v1.35 숨긴 양식 · 하드카피 집계 줄 제외
+    const logs = S.logs ? S.logs() : (Array.isArray(SeMIS.data.seclog) ? SeMIS.data.seclog : []).filter(r => r && r.id && isISO(r.date));   // 숨긴 양식 · 하드카피 집계 줄 제외
     const from = addDays(t, -29);
     const ng30 = logs.filter(r => r.date >= from && r.date <= t && S.isNG(r)).length + (S.hcNgIn ? S.hcNgIn(from, t) : 0);
     const n30 = logs.filter(r => r.date >= from && r.date <= t).length;
@@ -215,7 +200,7 @@
     </section>`;
   }
 
-  /* ═════════ 다가오는 점검 (v1.33 → v1.42) — ICNKF 수검(우리 팀이 받는 점검) · ICNKF 실행(우리 팀이 하는 점검) 두 구역 ═════════
+  /* 다가오는 점검 — ICNKF 수검(우리 팀이 받는 점검) · ICNKF 실행(우리 팀이 하는 점검) 두 구역.
      실행: 대상별 묶음 · 가까운 날짜 순 · 30일 안 강조 · 점검표 바로 가기 / 수검: 수검 대응 센터 일정 */
   const SOON = 30;
   const canW = () => !!SeMIS.user && SeMIS.roleRank() >= 2 && SeMIS.user.role !== "vendor";
@@ -322,7 +307,7 @@
   }
   function pickCfg(k) { if (k === "sl" && SL()) SL().templatesForm(); }
 
-  /* ═════════ 점검 일정 달력 (v1.34) — 이번 달 기본 · ‹ › 로 앞뒤 달 ═════════
+  /* 점검 일정 달력 — 이번 달 기본 · ‹ › 로 앞뒤 달.
      ICNKF 수검(수검 기간) · ICNKF 실행 기한(기록 없는 주기의 마지막 날) · 완료(기록한 날) */
   let calYM = "", calSel = "";
   const ymOf = (iso) => iso.slice(0, 7);
@@ -395,7 +380,6 @@
     wire(box);
   }
 
-  /* ═════════ 말풍선 · 연결 ═════════ */
   let tt = null;
   function ttBox() {
     if (tt && document.body.contains(tt)) return tt;

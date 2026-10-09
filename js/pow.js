@@ -1,14 +1,6 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 로그인 작업증명(PoW) (v1.16, SeMIS v2 와 같은 파일)
-   서버가 서명한 문제 c 와 난이도 d 를 받아, sha256(c + ":" + x) 의 앞 d 비트가 0 인
-   정수 x 를 찾는다. 자동 대입 공격의 비용을 올리려는 것이고, 사람에게는 보이지 않는다
-   (로그인 창이 뜨면 암호를 입력하는 동안 미리 푼다).
-
-   - 이 파일 하나가 두 역할을 한다: 화면에서는 window.SemisPow, Web Worker 안에서는 계산기.
-     (CSP script-src 'self' — 같은 출처 파일이라 Worker 로 다시 불러올 수 있다)
-   - 앞부분(c 의 첫 64바이트)은 한 번만 계산해 두고, 후보마다 뒷부분 블록만 계산한다.
-   - Worker 를 쓸 수 없으면 화면에서 잘게 나눠 계산한다(화면이 멈추지 않게).
-   ═══════════════════════════════════════════════════════ */
+/* 로그인 작업증명(PoW) — sha256(c + ":" + x) 의 앞 d 비트가 0 인 x 탐색(자동 대입 비용 증가).
+   한 파일이 화면(window.SemisPow)과 Worker 계산기 겸용 — CSP script-src 'self' 라 같은 파일을 Worker 로 재사용.
+   SeMIS v2 와 같은 파일 */
 "use strict";
 
 (function (root) {
@@ -106,7 +98,7 @@
     return Array.from(h, v => (v >>> 0).toString(16).padStart(8, "0")).join("");
   }
 
-  /* ─── Web Worker 로 실행 중이면: 계산기 ─── */
+  /* Worker 안: 계산기 */
   const inWorker = typeof root.importScripts === "function" && typeof root.document === "undefined";
   if (inWorker) {
     root.onmessage = function (ev) {
@@ -125,7 +117,7 @@
     return;
   }
 
-  /* ─── 화면: SemisPow.solve(c, d) → Promise<x> ─── */
+  /* 화면: SemisPow.solve(c, d) → Promise<x>. Worker 불가 시 잘게 나눠 계산(화면 멈춤 방지) */
   function solveInline(c, d, from) {
     const P = prep(c);
     let x = from || 0;

@@ -1,18 +1,5 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 비상연락망 · 보고체계 모듈 (SeMIS v2 contacts 이식)
-   기존 구글시트(8개 탭)를 랜딩페이지형 모듈로 내재화:
-   30분 이내 SMS 보고 강조 배너 + 보고 절차 + 사건별 보고처 +
-   기관별 연락처 카드(전화/문자/메일 원터치, 복사) + 통합 검색 + 관리자 편집
-
-   데이터: DATA.contacts = { sections: [{ id, type, title, icon, duty?, note?, accent?, rows[] }] }
-     - type "procedure": rows { id, title, body }
-     - type "incidents": rows { id, no, items, to }
-     - type "people":    rows { id, role, name, mobile, office, duty, note }
-     - type "emails":    rows { id, name, email }
-     flows (v1.10 보고 체계도): [{ id, title, short, ver, steps, memo, fileUrl, fileName, imgUrl, thumbUrl,
-                                  rows: [{ id, grp, role, office, mobile, note }] }]
-   ※ 연락처 실데이터·파일 주소는 코드에 시드하지 않음(개인정보) — 공용 DB(semis_logi_store "contacts")에서 동기화.
-   ═══════════════════════════════════════════════════════ */
+/* 비상연락망 · 보고체계 — 30분 이내 SMS 보고 배너 · 보고 절차 · 사건별 보고처 · 기관별 연락처 카드 · 보고 체계도.
+   ※ 연락처 실데이터 · 파일 주소는 코드에 시드하지 않는다(개인정보) — 공용 DB(semis_logi_store "contacts")에서 동기화. */
 "use strict";
 
 (() => {
@@ -20,12 +7,18 @@
   const D = () => SeMIS.data;
   const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
+  /* DATA.contacts = { sections: [{ id, type, title, icon, duty?, note?, accent?, rows[] }], flows: [...] }
+       type "procedure": rows { id, title, body }
+       type "incidents": rows { id, no, items, to }
+       type "people":    rows { id, role, name, mobile, office, duty, note }
+       type "emails":    rows { id, name, email }
+       flows: [{ id, title, short, ver, steps, memo, fileUrl, fileName, imgUrl, thumbUrl, rows: [{ id, grp, role, office, mobile, note }] }] */
   const C = () => (D().contacts && Array.isArray(D().contacts.sections) ? D().contacts : { sections: [] });
   const secs = () => C().sections;
 
-  let query = ""; // 통합 검색어 (모듈 내 상태)
+  let query = ""; // 통합 검색어
 
-  /* ─────── 전화/문자 링크 ─────── */
+  /* ── 전화/문자 링크 ── */
   function telHref(num) {
     // "032-740-2107, 2108" 같은 복수 표기는 첫 번호로 연결
     // "032-000-1000~2" 같은 범위 표기도 첫 번호로
@@ -43,7 +36,7 @@
   }
   const isMobile = (num) => /^01\d/.test(String(num || "").replace(/[^\d]/g, ""));
 
-  /* ─────── 검색 매칭 / 하이라이트 ─────── */
+  /* ── 검색 매칭 / 하이라이트 ── */
   function rowText(row) {
     return Object.keys(row).filter(k => k !== "id").map(k => String(row[k] == null ? "" : row[k])).join(" ");
   }
@@ -65,7 +58,7 @@
   }
   const nl2br = (text, q) => hl(text, q).replace(/\n/g, "<br>");
 
-  /* ─────── 복사 ─────── */
+  /* ── 복사 ── */
   function copyText(txt) {
     const done = () => toast("복사되었습니다: " + (txt.length > 30 ? txt.slice(0, 30) + "…" : txt));
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -81,10 +74,10 @@
     } catch (e) { toast("복사에 실패했습니다.", true); }
   }
 
-  /* ─────── 연락처 액션 버튼 (전화/문자/복사) ─────── */
+  /* ── 연락처 액션 버튼(전화/문자/복사) ── */
   function numHTML(num, kind, q) {
     if (!num) return "";
-    /* v1.30: 이모지 → 선 아이콘(휴대폰은 색으로 구분) · 복사 단추는 모바일에서 숨김(길게 눌러 복사) */
+    /* 휴대폰은 색으로 구분 · 복사 단추는 모바일에서 숨김(길게 눌러 복사) */
     const ico = SeMIS.icon(kind === "fax" ? "doc" : "phone", 14);
     const tel = kind === "fax" ? "" : telHref(num);
     const sms = kind === "mobile" && isMobile(num) ? smsHref(num) : "";
@@ -103,7 +96,7 @@
   const secIcon = (sec) => `<span class="ct-sico">${SeMIS.icon(SEC_ICO[String(sec.icon || "").trim()] || TYPE_ICO[sec.type] || "phone", 17)}</span>`;
   const edBtn = (id) => `<button type="button" class="btn btn-ghost btn-sm ct-edit m-ed" data-ct-edit="${esc(id)}" title="편집" aria-label="편집">${SeMIS.icon("edit", 15)}</button>`;
 
-  /* ─────── 섹션 렌더 ─────── */
+  /* ── 섹션 렌더 ── */
   function peopleRow(r, q) {
     return `<div class="ct-row">
       <div class="ct-who">
@@ -148,7 +141,7 @@
     if (q && !rows.length) return "";
     const editBtn = canWrite ? edBtn(sec.id) : "";
     const duty = sec.duty ? `<a class="ct-duty" href="${esc(telHref(sec.duty))}" title="당직실 전화">${SeMIS.icon("phone", 14)}<span>당직실</span><span class="ct-dnum">${hl(sec.duty, q)}</span></a>` : "";
-    /* v1.30 모바일: 섹션은 제목 줄만(검색 중엔 펼침) · 빈 섹션은 모바일에서 숨김(편집 권한자는 편집 모드에서) */
+    /* 모바일: 섹션은 제목 줄만(검색 중엔 펼침) · 빈 섹션은 모바일에서 숨김(편집 권한자는 편집 모드에서) */
     const fold = SeMIS.ui.mf("sec:" + sec.id, !!q);
     const empty = !(sec.rows || []).length && !q ? (canWrite ? " m-ed" : " m-hide") : "";
 
@@ -203,7 +196,7 @@
   }
 
 
-  /* ─────── 화물팀 기본 구성 (빈 서식 — 개인정보 미포함) ─────── */
+  /* ── 화물팀 기본 구성(빈 서식 — 개인정보 미포함) ── */
   function seedSections() {
     return [
       { id: "cs-proc", type: "procedure", icon: "📋", title: "보고 절차", rows: [
@@ -255,7 +248,7 @@
     };
   }
 
-  /* ─────── 편집 (hq+) ─────── */
+  /* ── 편집(hq+) ── */
   const FIELD_DEFS = {
     procedure: [["title", "구분", "input"], ["body", "절차 내용", "textarea"]],
     incidents: [["no", "그룹", "input-sm"], ["items", "보고 대상 행위", "textarea"], ["to", "보고처 (SMS)", "textarea"]],
@@ -351,12 +344,11 @@
     };
   }
 
-  /* ═════════ 보고 체계도 (v1.10) ═════════
-     사고 유형별 탭(보안사고 · 안전사고 · 위험물사고 …) — 탭마다 체계도 미리보기(누르면 전체 화면 뷰어),
-     보고 순서, 구분별 연락처(원터치 전화·문자·복사). 파일은 semis-logi-files/contacts/ (공개 URL). */
+  /* ── 보고 체계도 ──
+     사고 유형별 탭 — 탭마다 체계도 미리보기(누르면 전체 화면 뷰어) · 보고 순서 · 구분별 연락처. 파일은 semis-logi-files/contacts/. */
   const flows = () => (Array.isArray(C().flows) ? C().flows : []);
   const flowRows = (f) => (f && Array.isArray(f.rows) ? f.rows : []);
-  let flowTab = "";      // 선택한 체계도 id (모듈 내 상태)
+  let flowTab = "";      // 선택한 체계도 id
   const FLOW_DEFS = [["grp", "구분", "input-md"], ["role", "기관 · 직책", "input"], ["office", "유선", "input"],
                      ["mobile", "휴대전화(SMS)", "input"], ["note", "비고", "input"]];
   const FILE_MAX = 25 * 1024 * 1024;
@@ -469,7 +461,7 @@
     if (canWrite) $$("[data-ctf-edit]", root).forEach(b => b.onclick = () => editFlow(b.dataset.ctfEdit));
   }
 
-  /* ─────── 체계도 전체 화면 뷰어 (<dialog> · 이미지 우선, 없으면 PDF) ───────
+  /* ── 체계도 전체 화면 뷰어(<dialog> · 이미지 우선, 없으면 PDF) ──
      누르면 확대(누른 지점 기준) · 다시 누르면 화면 맞춤 · ←/→ 로 다른 체계도 · Esc/바깥 누르면 닫기 */
   let vwId = "", vwZoom = false, vwPushed = false;   // vwPushed: 휴대폰 '뒤로'로 닫기 위해 넣은 기록 1칸
   const viewable = () => flows().filter(f => f.imgUrl || f.fileUrl);
@@ -611,7 +603,7 @@
     }
   }
 
-  /* ─────── 체계도 추가 · 편집 (hq+) ─────── */
+  /* ── 체계도 추가 · 편집(hq+) ── */
   async function uploadTo(file, kind) {
     const ok = kind === "pdf"
       ? (file.type === "application/pdf" || /\.pdf$/i.test(file.name || ""))
@@ -634,7 +626,7 @@
     const rows = flowRows(f).map(r => Object.assign({}, r));
     let file = f.fileUrl ? { url: f.fileUrl, name: f.fileName || "체계도.pdf" } : null;
     let img = f.imgUrl ? { url: f.imgUrl, thumb: f.thumbUrl || f.imgUrl, name: f.imgName || "미리보기 이미지" } : null;
-    let imgFresh = false;   // 이번 편집에서 이미지를 새로 올렸는지 (PDF만 바꾸면 옛 이미지는 뗀다)
+    let imgFresh = false;   // 이번 편집에서 이미지를 새로 올렸는지 (PDF만 바꾸면 기존 이미지는 뗀다)
     const tip = SeMIS.ui.tip;
 
     openModal(`<div class="cfe">
@@ -682,7 +674,7 @@
       });
     }
     paintFiles();
-    /* ── 개정 PDF: 올리기 + 읽기(번호·미리보기 이미지) → 비교 목록 → 고른 항목만 반영 ── */
+    /* 개정 PDF: 올리기 + 읽기(번호 · 미리보기 이미지) → 비교 목록 → 고른 항목만 반영 */
     let review = null;
     const FL = { office: "유선", mobile: "휴대전화" };
     const reviewBox = () => $("#cfe-review");
@@ -863,8 +855,8 @@
     };
   }
 
-  /* ─────── 모듈 렌더 ─────── */
-  /* v1.13 위기대응 담당자 화면으로 가는 버튼 — 메뉴가 보이는 사용자에게만 */
+  /* ── 모듈 렌더 ── */
+  /* 위기대응 담당자 화면으로 가는 버튼 — 메뉴가 보이는 사용자에게만 */
   function crisisLink() {
     if (!SeMIS.hasModule("crisis")) return false;
     const mn = (SeMIS.data.menus || []).find(m => m.type === "module" && m.module === "crisis");
@@ -920,7 +912,7 @@
     wireFlows(canWrite);
   }
 
-  /* ─────── 테스트/외부 노출 ─────── */
+  /* ── 외부 노출(테스트 겸용) ── */
   window.SemisContacts = { seedSections,
     telHref, smsHref, isMobile, matches, rowText,
     sections: secs, editSection,

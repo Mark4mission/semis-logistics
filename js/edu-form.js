@@ -1,20 +1,13 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 보안교육 이수 등록 (배포용 화면 edu.html, v1.39.3 상시 등록 화면)
-   대외 교육기관에서 받아 온 이수증을 올리는 화면. 입력 = 이름 · 사번 · 이수증 → 제출. 기한 없음, 주소 하나(edu.html#코드)를 계속 쓴다.
-   - 주소 확인 · 과정 기준: RPC semis_logi_edu_info(코드) — 협력사 과정은 오지 않는다
-   - 표: semis_logi_challenge(작업증명) → semis_logi_edu_ticket(코드, 해답) — 3시간
-   - 이수증: 사진은 브라우저에서 줄여(JPEG 긴 변 2400px) 파일 함수 op "edu-upload"(표) → 서명 URL 에 PUT
-     → op "edu-read"(표 · 경로)가 이수증을 읽어 과정 · 수료일 · 기관 · 번호를 채운다 — 못 읽은 칸만 직접 입력
-   - 같은 과정 · 수료일 이수증 여러 장은 기록 하나(파일 여러 개)로 묶어 보낸다
-   - 제출: semis_logi_edu_submit(코드, 표, 내용) → 서버가 병합(같은 사번 → 같은 이름 재직자 = 갱신, 직무는 관리 화면에서)하고
-     그 사람의 이수 기록을 돌려준다 → js/training.js 의 personQuals 로 다음 교육 기간을 계산해 보여 준다
-   - 작성 중인 내용은 이 탭(sessionStorage)에만 둔다 — 새로 고침해도 남고, 제출하면 지운다
-   ═══════════════════════════════════════════════════════ */
+/* 보안교육 이수 등록(edu.html) — 로그인 없는 공개 화면. 이름 · 사번 · 이수증 → 제출, 주소 하나(edu.html#코드)를 계속 쓴다.
+   보안: 링크 코드 확인(semis_logi_edu_info, 협력사 과정 제외) 뒤 작업증명 표(semis_logi_challenge → semis_logi_edu_ticket, 3시간)로만 업로드 · 판독 · 제출.
+   이수증: op "edu-upload" → 서명 URL PUT → op "edu-read" 판독(못 읽은 칸만 입력). 같은 과정 · 수료일은 기록 하나로 묶는다.
+   제출(semis_logi_edu_submit): 서버가 병합(같은 사번 → 같은 이름 재직자 = 갱신)하고 그 사람 기록을 돌려주면 training.js personQuals 로 다음 교육 기간 계산.
+   작성 중 내용은 sessionStorage(이 탭)에만 두고 제출하면 지운다. */
 "use strict";
 
 (function () {
   const SUPA_URL = "https://mzyuzrxkdcpzxojenwat.supabase.co";
-  // anon(publishable) key — 공개용 키(js/sync.js 와 같은 값). 이 화면이 부르는 것은 링크 확인 · 표 · 제출 RPC 뿐이다.
+  // anon(publishable) 공개 키(sync.js 와 같은 값) — 이 화면은 링크 확인 · 표 · 제출 RPC 만 부른다
   const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im16eXV6cnhrZGNwenhvamVud2F0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQxMTQ1MTYsImV4cCI6MjA5OTY5MDUxNn0.YqcCnEY8Bn-Bc2cbUHWl4m9GLMIifZbH5KqrbamU0YI";
   const RPC = SUPA_URL + "/rest/v1/rpc/";
   const FN_FILES = SUPA_URL + "/functions/v1/semis-logi-files";
@@ -48,7 +41,7 @@
   };
   const famShort = (g) => String((g && g.name) || "").replace(/\s*\(.*\)\s*$/, "");
 
-  /* ─── 상태 ─── */
+  /* ── 상태 ── */
   const st = {
     view: "load", err: "", errInfo: null, code: "", info: null,
     ticket: "", ticketExp: 0, ticketBusy: null, warm: false,
@@ -58,7 +51,7 @@
   let seq = 0;
   const key = () => "f" + (++seq) + Math.random().toString(36).slice(2, 6);
 
-  /* ─── 서버 ─── */
+  /* ── 서버 ── */
   const hdr = () => ({ apikey: SUPA_KEY, Authorization: "Bearer " + SUPA_KEY, "Content-Type": "application/json" });
   async function rpc(name, body) {
     const res = await fetch(RPC + name, { method: "POST", headers: hdr(), body: JSON.stringify(body || {}) });
@@ -83,20 +76,20 @@
     })();
     try { return await st.ticketBusy; } finally { st.ticketBusy = null; }
   }
-  /* 처음 손대면 표를 미리 받아 둔다(작업증명은 몇 초 걸린다) */
+  /* 처음 손대면 표를 미리 받아 둔다(작업증명은 몇 초 걸림) */
   function warm() {
     if (st.warm || st.ticket) return;
     st.warm = true;
     ensureTicket().catch(() => { st.warm = false; });
   }
 
-  /* ─── 과정 기준 (js/training.js) ─── */
+  /* ── 과정 기준 (training.js) ── */
   const courseOf = (id) => TR().courses().find(c => c.id === id && !c.vendor) || null;
   const dateOk = (d) => isISO(d) && d >= "2000-01-01" && d <= addDays(todayISO(), 1);
   const empOk = (s) => /[0-9A-Za-z]/.test(empNorm(s));
   const complete = (it) => it.st === "done" && !!courseOf(it.cid) && dateOk(it.date);
 
-  /* ─── 작성 중 내용 (이 탭만) ─── */
+  /* ── 작성 중 내용 (이 탭만) ── */
   function saveDraft() {
     if (st.view !== "form") return;
     try {
@@ -122,7 +115,7 @@
   }
   function dropDraft() { try { sessionStorage.removeItem(DRAFT + st.code); } catch (e) { /* 저장소 없음 */ } }
 
-  /* ─── 묶기 · 확인 ─── */
+  /* ── 묶기 · 확인 ── */
   /* 같은 과정 · 수료일은 기록 하나 — 기관 · 번호 · 시간은 먼저 읽힌 값 */
   function groups() {
     const m = new Map();
@@ -153,7 +146,7 @@
   }
   const missText = (errs) => errs.map(x => x.msg).filter((m, i, a) => a.indexOf(m) === i).join(" · ");
 
-  /* ═════════ 화면 ═════════ */
+  /* ── 화면 ── */
   const app = () => document.getElementById("ed-app");
   const svg = (p, s) => `<svg class="ed-ico" width="${s || 18}" height="${s || 18}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
   const IC = {
@@ -210,7 +203,6 @@
     paintErrs();
   }
 
-  /* 이수증 */
   function pickHTML() {
     const n = st.items.filter(it => it.st !== "err").length;
     if (n >= MAX_FILES) return "";
@@ -313,7 +305,7 @@
     paintPick(); paintErrs(); paintFoot(); saveDraft();
   }
 
-  /* 확인 표시 — 제출을 한 번 누른 뒤부터 */
+  /* 오류 표시는 제출을 한 번 누른 뒤부터 */
   function paintErrs() {
     if (st.view !== "form") return;
     const errs = st.tried ? check() : [];
@@ -333,7 +325,7 @@
     });
   }
   /* 제출 단추는 한 번만 만들고 속성만 고친다 — 입력칸을 떠나며(change) 다시 그리면 그 순간 누른 클릭이 사라진다 */
-  const LAST = new WeakMap();                                         // 마지막으로 넣은 HTML(브라우저 직렬화와 비교하지 않는다)
+  const LAST = new WeakMap();                                         // 마지막으로 넣은 HTML(브라우저 직렬화와 비교하지 않음)
   function setHTML(el, html) { if (!el || LAST.get(el) === html) return; LAST.set(el, html); el.innerHTML = html; }
   function paintFoot() {
     const f = $("#ed-foot");
@@ -413,12 +405,12 @@
     }
   }
 
-  /* ─── 이수증 올리기 · 읽기 ─── */
+  /* ── 이수증 올리기 · 읽기 ── */
   function newItem(file) {
     return { k: key(), st: "up", pct: 0, err: "", path: "", url: "", name: String((file && file.name) || "이수증").slice(0, 120), size: (file && file.size) || 0,
       cid: "", date: "", org: "", certNo: "", hours: null, who: "", course: "", rerr: "", reads: 0, open: false, sha: "" };
   }
-  /* 원본 파일 SHA-256 — 같은 파일을 두 번 올리지 않게(서버도 이 값으로 기존 첨부와 대조) */
+  /* 원본 SHA-256 — 같은 파일 중복 방지(서버도 이 값으로 기존 첨부와 대조) */
   async function shaOf(file) {
     try {
       const sub = window.crypto && window.crypto.subtle;
@@ -479,7 +471,7 @@
     if (/limit|busy/.test(c)) return "잠시 후 다시 첨부해 주세요";
     return "올리지 못했습니다";
   }
-  /* 사진은 긴 변 2400px JPEG 로 줄여 올린다(판독 · 저장 용량) — 줄일 수 없으면 그대로 */
+  /* 사진은 긴 변 2400px JPEG 로 줄인다(판독 · 저장 용량) — 줄일 수 없으면 그대로 */
   async function prep(file) {
     const nm = String(file.name || "image");
     const ext = (nm.split(".").pop() || "").toLowerCase();
@@ -533,7 +525,6 @@
       x.send(file);
     });
   }
-  /* 이수증 판독 — 파일 함수 op "edu-read" */
   async function readCert(it) {
     it.st = "read"; it.rerr = ""; it.open = false;
     paintItem(it); paintErrs(); paintFoot();
@@ -575,7 +566,7 @@
     it.rerr = courseOf(it.cid) && dateOk(it.date) ? "" : "part";
   }
 
-  /* ─── 제출 ─── */
+  /* ── 제출 ── */
   function errText(d) {
     const code = String((d && d.error) || "");
     const M = {
@@ -637,7 +628,7 @@
     render();
   }
 
-  /* ═════════ 제출 뒤 — 다음 교육 · 제출 정보 ═════════ */
+  /* ── 제출 뒤 — 다음 교육 · 제출 정보 ── */
   function finish(d) {
     const sent = { name: norm(st.name), emp: empNorm(st.emp),
       recs: groups().map(g => ({ cid: g.cid, date: g.date, org: g.org, certNo: g.certNo, files: g.files.length })) };
@@ -680,7 +671,7 @@
   function doneHTML() {
     const { res, sent } = st.done;
     const gd = guidance(res);
-    /* v1.40 서버가 '이미 등록된 그대로'라고 돌려준 기록(same) — 보낸 순서 = ids 순서 */
+    /* same = 서버가 '이미 등록된 그대로'라고 판단한 기록 id. 보낸 순서 = ids 순서 */
     const ids = Array.isArray(res.ids) ? res.ids : [], same = Array.isArray(res.same) ? res.same : [];
     const isSame = (i) => !!ids[i] && same.indexOf(ids[i]) >= 0;
     const allSame = sent.recs.length > 0 && sent.recs.every((r, i) => isSame(i));
@@ -767,7 +758,7 @@
     } catch (e) { /* 내려받기 불가 환경 */ }
   }
 
-  /* ═════════ 링크 오류 ═════════ */
+  /* ── 링크 오류 ── */
   function errorHTML() {
     const e = st.err, d = st.errInfo || {};
     const T = {
@@ -787,7 +778,7 @@
   }
   function wireError() { const r = $("#ed-retry"); if (r) r.addEventListener("click", () => { st.view = "load"; render(); start(); }); }
 
-  /* ═════════ 시작 ═════════ */
+  /* ── 시작 ── */
   function codeFromUrl() {
     const h = String(location.hash || "").replace(/^#/, ""), q = /[?&]k=([A-Za-z0-9]+)/.exec(location.search || "");
     const m = /(?:^|[&?]|k=)([a-z2-9]{12})(?:$|&)/i.exec(h) || (q ? [0, q[1]] : null);

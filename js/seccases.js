@@ -1,10 +1,6 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 보안 처리 대장 (v1.41, 화면 id sec-cases)
-   화물 보안 처리 사례를 한 대장에: 특별보안검색 · DIP 개봉검색 면제 · 의심화물 · 대형화물 개봉검색 · 외부인사 탑승(MCL) ·
-   대체보안조치(ASM) · ACAS RFS · ACAS DNL · 보안사고 · 준사고. 사례마다 운송장 · 편명 · 수량 · 대리점 · 화주 · 작업 시간 · 처리 결과 · 보고서.
-   데이터 SeMIS.data.secCases = [{ id, type, date, ref(MAWB), flight, pcs, uld, agent, shipper, region, start, end, by, result, note, files[], chk, at, who }]
-   — 운송장 · 업체는 공용 DB 에만. 수검 체크리스트 증빙: 6.3 · 6.3.1 · 6.4 · 6.6 · 6.10 · 9.3 · 9.8 · 9.12 · 9.13 · 2.6
-   ═══════════════════════════════════════════════════════ */
+/* 보안 처리 대장 — 특별보안검색 · DIP 면제 · 의심화물 · MCL · ASM · ACAS RFS/DNL · 보안사고 등 처리 사례 기록.
+   SeMIS.data.secCases = [{ id, type, date, ref(MAWB), flight, pcs, uld, agent, shipper, region, start, end, by, result, note, files[], chk, at, who }]
+   — 운송장 · 업체는 공용 DB 에만 */
 "use strict";
 
 (() => {
@@ -23,7 +19,7 @@
   const dayDiff = (a, b) => Math.round((new Date(b + "T00:00:00Z") - new Date(a + "T00:00:00Z")) / 864e5);
   const FILE_MAX = 50 * 1024 * 1024;
 
-  /* 유형 — 색은 칩 톤만(상태색과 구분은 이름 글자로) */
+  /* 유형 — mids: 증빙하는 수검 체크리스트 항목 */
   const TYPES = [
     { id: "special", label: "특별보안검색", tone: "blue", mids: ["6.3", "6.3.1"] },
     { id: "dip", label: "DIP 개봉검색 면제", tone: "gray", mids: ["6.4"] },

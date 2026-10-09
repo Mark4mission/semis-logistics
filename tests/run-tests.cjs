@@ -3796,7 +3796,7 @@ function makeServer(opts = {}) {
     });
     t("CR10 공개 저장소 위생: crisis.js에 전화번호·명단 없음 · 동기화 키", () => {
       const s = read("js/crisis.js");
-      ok(!/01\d-\d{3,4}-\d{4}/.test(s)); ok(s.indexOf("rows: [{") < 0 || s.indexOf("데이터:") > 0);
+      ok(!/01\d-\d{3,4}-\d{4}/.test(s)); ok(s.indexOf("rows: [{") < 0 || s.indexOf("DATA.crisis = {") > 0);
       ok(e.Sync.SYNC_KEYS.indexOf("crisis") >= 0);
       const c = read("css/main.css");
       ok(c.indexOf(".cr-home") > 0 && c.indexOf(".cr-line") > 0 && c.indexOf(".cr-mxt") > 0);
@@ -7042,7 +7042,7 @@ function makeServer(opts = {}) {
     });
     t("CM07 하단 탭 아이콘 · 모바일 CSS는 화면 한정(인쇄 폭이 max-width 조건에 걸리지 않게)", () => {
       ok(q(e, '#tabbar [data-route="daily-safety"] svg') && q(e, '#tabbar [data-route="flight"] svg'));
-      const css = read("css/main.css"), k = css.indexOf('v1.29 "Calm"');
+      const css = read("css/main.css"), k = css.indexOf("── 화면 정돈 (모바일 우선)");
       ok(k > 0);
       const tail = css.slice(k);
       ok(!/@media \(max-width: 767px\)/.test(tail), "v1.29 모바일 규칙은 screen 한정");
@@ -7229,7 +7229,7 @@ function makeServer(opts = {}) {
     });
     t("CN10 위협전화: 영문 병기는 모바일 CSS로 숨김 · STEP 은 늘 펼침 · 응대 요령 · TSOC · 보고 순서는 접기 · 편집 단추 m-ed", () => {
       const css = read("css/main.css");
-      const tail = css.slice(css.indexOf("v1.30 화면 정돈 2단계"));
+      const tail = css.slice(css.indexOf("── 화면 정돈 2단계"));
       ok(/@media screen and \(max-width: 767px\)[\s\S]*#view \.tc-en \{ display: none/.test(tail), "영문 숨김(화면 한정)");
       ok(/#view:not\(\.m-editing\) \.m-ed/.test(tail) && /\[data-mf\]:not\(\[data-mf-on\]\) > :not\(\.mf-h\)/.test(tail));
       e.S.data.threat = { title: "위협", trigger: "협박 전화", quick: [{ label: "가", num: "032-000-0001" }],
@@ -7829,7 +7829,7 @@ function makeServer(opts = {}) {
         ok(!/class="[^"]*\b(ad|ads|adv|advert|sponsor)[-_][a-z]/i.test(src) && !/data-ad-/.test(src), f);
       });
       ok(!/["\s]up-[a-z]/.test(read("js/auddash.js")), "대시보드는 uc-");
-      const css = read("css/main.css"), k = css.indexOf("v1.33 점검 표시");
+      const css = read("css/main.css"), k = css.indexOf("── 점검 표시(주체 → 대상");
       ok(k > 0 && !/\.up-[a-z]/.test(css.slice(k)), "v1.33 이후 규칙은 홈 up- 를 건드리지 않음");
       eq(e.errors.length, 0, e.errors.join(" | "));
     });

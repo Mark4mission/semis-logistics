@@ -1,20 +1,6 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 검색장비 유지관리 (v1.12, 라우트 scr-equip)
-   SeMIS v2 equipment.js 이식 — 인천화물터미널 B동 보안검색장비 대장 + CARES 실시간 연동.
-
-   탭
-   - 장비 대장: 대장(DATA.equipment) + CARES 상태·배치·고장 건수(S/N 매칭) + 내용연수
-   - 고장·수리 이력: CARES repairLogs (연도·유형·검색) → 상세(처리 단계·원인·부품·사진)
-   - 가동 분석: 장비별 가동률(정상 가동일 ÷ 기간 일수) · 다운타임 · 평균 복구 · 원인 분류
-
-   데이터
-   - DATA.equipment = [{ id, type, name, serial, location, vendor, installed, mfgDate, lifeYears,
-       replaceDue(직접 지정 — 비면 도입일 + 내용연수), price, cert, status, logs[{id,date,kind,text,by}], note }]  (v2 스키마 그대로)
-     2026-09-22 SeMIS v2 대장 22대를 복사(이후 두 시스템은 따로 관리)
-   - 장비 상태·고장·점검의 마스터는 CARES — 여기서는 읽기만(수정은 CARES에서)
-   - 구입가는 대외비(canConfid) — hq 이상만 보이고 입력
-   v2에서 옮기지 않은 것: 유지보수 계약·비용 기록·대금 청구(항공보안파트 업무)
-   ═══════════════════════════════════════════════════════ */
+/* 검색장비 유지관리(라우트 scr-equip) — 장비 대장(DATA.equipment) + CARES 상태 · 고장 · 점검(읽기 전용, S/N 매칭). 탭: 장비 대장 · 고장·수리 이력 · 가동 분석.
+   DATA.equipment = [{ id, type, name, serial, location, vendor, installed, mfgDate, lifeYears, replaceDue(비면 도입일 + 내용연수), price, cert, status, logs[{id,date,kind,text,by}], note }]
+   구입가(price)는 대외비(canConfid) — hq 이상만 보이고 입력. */
 "use strict";
 
 (() => {
@@ -40,7 +26,7 @@
   const list = () => (Array.isArray(D().equipment) ? D().equipment : []);
   const kindOfLedger = (x) => C().kindOf(x && x.type);
 
-  /* ─────── 내용연수 (v2 규칙) ─────── */
+  /* ── 내용연수 ── */
   function addMonths(dateStr, months) {
     if (!dateStr || !months) return "";
     const y = Number(dateStr.slice(0, 4)), m = Number(dateStr.slice(5, 7)), day = Number(dateStr.slice(8, 10));
@@ -50,7 +36,7 @@
     return t.toISOString().slice(0, 10);
   }
   const daysLeft = (d) => d ? Math.round((new Date(d) - new Date(todayISO())) / 86400000) : null;
-  /* 기산일 = 도입(설치)일 — 비었을 때만 제조일 (v1.24.2, Mark 기준: 2024-01 도입 X-ray → 2034-01) */
+  /* 기산일 = 도입(설치)일, 비었을 때만 제조일 (예: 2024-01 도입 X-ray → 2034-01) */
   const lifeBase = (x) => x.installed || x.mfgDate || "";
   const lifeYearsOf = (x) => (x.lifeYears != null && x.lifeYears !== "") ? Number(x.lifeYears) : (TYPE_LIFE[x.type] || 0);
   /* 규칙 날짜(기산일 + 내용연수) — 교체 예정일을 직접 지정했으면 그 날짜가 우선 */
@@ -71,7 +57,7 @@
     return ui.chip("잔여 " + (d / 365).toFixed(1) + "년", "gray");
   }
 
-  /* ─────── CARES 연결 (S/N) ─────── */
+  /* ── CARES 연결 (S/N) ── */
   function unitOf(x) {
     const k = C().normSN(x && x.serial);
     return k ? (C().units().find(u => C().normSN(u.serial) === k) || null) : null;
@@ -91,7 +77,7 @@
     return C().units().filter(u => !sns[C().normSN(u.serial)]);
   }
 
-  /* ─────── 화면 상태 ─────── */
+  /* ── 화면 상태 ── */
   let tab = "list", query = "", kindF = "all", stF = "all";
   let rYear = "", rKind = "all", rQuery = "";
   let aYear = 0;
@@ -129,7 +115,7 @@
   const segHTML = (name, items, cur) => `<div class="seg" role="group" aria-label="${esc(name)}">${items.map(([v, lb]) =>
     `<button type="button" class="seg-btn" data-seg="${esc(name)}" data-v="${esc(v)}" aria-pressed="${String(v) === String(cur)}">${esc(lb)}</button>`).join("")}</div>`;
 
-  /* ═════════ 장비 대장 ═════════ */
+  /* ── 장비 대장 ── */
   function ledgerHTML() {
     const s = ledgerStats();
     const items = filtered();
@@ -342,7 +328,7 @@
     };
   }
 
-  /* ═════════ 고장 · 수리 이력 ═════════ */
+  /* ── 고장 · 수리 이력 ── */
   function repairRow(r) {
     const K = C();
     const u = K.unitById(r.equipmentId);
@@ -460,7 +446,7 @@
     }).catch(() => { const b2 = document.getElementById("rp-photos"); if (b2) b2.innerHTML = ""; });
   }
 
-  /* ═════════ 가동 분석 ═════════ */
+  /* ── 가동 분석 ── */
   function analysisHTML() {
     const K = C();
     const years = K.repairYears();
@@ -521,7 +507,7 @@
       <section class="card"><h2 class="card-title">장비별 지표</h2>${table}</section>`;
   }
 
-  /* ═════════ 렌더 ═════════ */
+  /* ── 렌더 ── */
   function syncText(s) {
     if (s.loading && !s.ts) return "CARES 불러오는 중";
     if (s.err) return "CARES 연동 불가 — 대장만 표시";
@@ -563,7 +549,7 @@
     const liveSearch = (id, set) => {
       const el = $("#" + id, box);
       if (!el) return;
-      // v1.13.1: 입력칸은 그대로 두고 나머지만 다시 그린다 — 다시 만들면 한글 조합이 자모로 풀림
+      // 입력칸은 그대로 두고 나머지만 다시 그린다 — 다시 만들면 한글 조합이 자모로 풀림
       el.oninput = () => {
         set(ui.searchValue(el.value));
         const b = document.getElementById("eq-body");

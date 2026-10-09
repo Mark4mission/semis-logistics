@@ -1,23 +1,10 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 암호 관리 모듈 (메뉴 vis: hq)
-   인천화물팀 안전보안파트 전용 공용 암호 저장소.
-   SeMIS v2 vault 모듈의 보안 설계를 그대로 이식하되 데이터는 완전히 분리
-   (semis_logi_store.vault — v2의 semis_store 와 무관).
-
-   ◆ 보안 설계 (서버에 평문이 절대 저장되지 않음):
-   - 항목 데이터는 AES-256-GCM으로 클라이언트에서 암호화 후 동기화.
-     공용 DB에는 암호문(iv+ct)과 래핑된 키만 저장되므로 anon 키로 읽어도 해독 불가.
-   - 엔벨로프 암호화: 무작위 vaultKey(32B)가 데이터를 암호화하고,
-     멤버별 개인 비밀번호에서 PBKDF2(SHA-256, 31만회)로 유도한 KEK가
-     vaultKey를 각각 래핑. 개인 비밀번호는 어디에도 저장되지 않으며
-     GCM 인증 태그로 검증(언랩 실패 = 잘못된 비밀번호).
-   - 복호화된 데이터는 메모리에만 존재. localStorage/DB에 평문 기록 없음.
-   - 모듈 진입 시마다 개인 비밀번호 재입력, 해제 5분 후 자동 잠금 +
-     대시보드 이동, 다른 화면으로 이동 시 즉시 잠금(키 제로화).
-
-   데이터: DATA.vault = { v, members:[{id,name,salt,iter,wrap:{iv,ct}}],
-                          data:{iv,ct}|null, updated }
-   ═══════════════════════════════════════════════════════ */
+/* 암호 관리(hq) — 인천화물팀 안전보안파트 공용 암호 저장소. 데이터는 semis_logi_store.vault(SeMIS v2 semis_store 와 분리).
+   보안 설계 — 서버에 평문을 두지 않는다:
+   - 항목은 클라이언트에서 AES-256-GCM 으로 암호화해 동기화. DB 에는 암호문(iv+ct)과 래핑된 키만 있어 anon 키로 읽어도 해독 불가.
+   - 엔벨로프 암호화: 무작위 vaultKey(32B)가 데이터를 암호화하고, 멤버별 개인 비밀번호에서 PBKDF2(SHA-256, 31만회)로
+     유도한 KEK 가 vaultKey 를 각각 래핑. 개인 비밀번호는 어디에도 저장하지 않고 GCM 인증 태그로 검증(언랩 실패 = 잘못된 비밀번호).
+   - 복호화된 데이터는 메모리에만. 진입마다 재입력, 해제 5분 후 자동 잠금 + 대시보드 이동, 다른 화면으로 가면 즉시 잠금(키 제로화).
+   DATA.vault = { v, members:[{id,name,salt,iter,wrap:{iv,ct},pwrap?}], data:{iv,ct}|null, personal:{멤버id:{iv,ct}}, updated } */
 "use strict";
 
 (() => {
@@ -25,7 +12,7 @@
   const D = () => SeMIS.data;
   const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
-  const AUTO_LOCK_MS = 5 * 60 * 1000;   // 5분 자동 잠금
+  const AUTO_LOCK_MS = 5 * 60 * 1000;
   const PBKDF2_ITER = 310000;
   const CATS = ["시스템", "웹사이트", "장비", "문서/파일", "기타"];
   const LS_LAST = "semisl:vaultLast";   // 마지막으로 해제한 멤버 id (비민감 — 편의용)
@@ -33,7 +20,7 @@
   const hasCrypto = () => typeof crypto !== "undefined" && !!crypto.subtle && !!crypto.getRandomValues;
   const V = () => D().vault;
 
-  /* ─────── 인코딩 헬퍼 (TextEncoder 미의존 — 구형/테스트 환경 호환) ─────── */
+  /* 인코딩 헬퍼 — TextEncoder 미의존(구형/테스트 환경 호환) */
   function strBytes(s) {
     const bin = unescape(encodeURIComponent(String(s)));
     const u = new Uint8Array(bin.length);
@@ -57,7 +44,6 @@
     return u;
   }
 
-  /* ─────── 암호화 프리미티브 ─────── */
   const importRaw = (raw) => crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]);
   async function deriveKEK(pw, salt, iter) {
     const km = await crypto.subtle.importKey("raw", strBytes(pw), "PBKDF2", false, ["deriveKey"]);
@@ -75,7 +61,7 @@
     return new Uint8Array(pt);
   }
 
-  /* ─────── 해제 세션 (메모리 전용 — 어디에도 직렬화 금지) ─────── */
+  /* 해제 세션 — 메모리 전용, 어디에도 직렬화 금지 */
   let pendingReq = null;  // 다른 화면이 요청한 항목 { pre, at } — 해제되면 찾아 보여 주거나 채운 추가 폼을 연다(10분 유효)
   let rawKey = null;      // Uint8Array(32) vaultKey — 공용 항목용
   let pKey = null;        // Uint8Array(32) 개인 키 — 해제한 멤버의 개인용 항목 전용
@@ -110,7 +96,7 @@
     if (lockTimer) clearTimeout(lockTimer);
     lockTimer = setTimeout(onExpire, AUTO_LOCK_MS);
   }
-  function extend() { // 잠금 시간 5분 연장 (지금부터 5분으로 재설정)
+  function extend() { // 지금부터 5분으로 재설정
     if (!isUnlocked()) return;
     startLockTimer();
     const el = typeof document !== "undefined" && document.getElementById("vault-timer");
@@ -131,7 +117,7 @@
     });
   }
 
-  /* ─────── 저장(암호화 후 동기화) ───────
+  /* 저장(암호화 후 동기화)
      공용 항목 → V().data (vaultKey, 멤버 전원 해독 가능)
      개인용 항목 → V().personal[멤버id] (해당 멤버의 개인 키, 본인만 해독 가능) */
   const P = () => { if (!V().personal || typeof V().personal !== "object") V().personal = {}; return V().personal; };
@@ -161,7 +147,6 @@
     }
   }
 
-  /* ─────── 핵심 동작: 설정/해제/멤버 ─────── */
   async function makeMember(name, pw) { // vaultKey 래핑까지 — KEK를 함께 돌려준다
     const salt = crypto.getRandomValues(new Uint8Array(16));
     const kek = await deriveKEK(pw, salt, PBKDF2_ITER);
@@ -234,7 +219,6 @@
     return null;
   }
 
-  /* ─────── 유틸 ─────── */
   function copyText(txt, label) {
     const done = () => toast((label || "내용") + " 복사됨 — 사용 후 다른 내용을 복사해 지우세요.");
     if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
@@ -254,7 +238,6 @@
   };
   const lastMemberId = () => { try { return localStorage.getItem(LS_LAST) || ""; } catch (e) { return ""; } };
 
-  /* ─────── 항목 편집 폼 ─────── */
   function entryForm(id, pre) {
     const loc = id ? locate(id) : null;
     const x = loc ? loc.en : (pre ? { category: CATS.indexOf(pre.category) >= 0 ? pre.category : CATS[0], title: pre.title || "",
@@ -332,7 +315,6 @@
     };
   }
 
-  /* ─────── 멤버 관리 모달 ─────── */
   function membersModal() {
     if (!isUnlocked()) return;
     openModal(`
@@ -391,7 +373,6 @@
     });
   }
 
-  /* ─────── 잠금 화면 (개선된 해제 UI) ─────── */
   function pwFieldHTML(id, ph, ac) {
     return `<div class="v-pwwrap">
         <input type="password" id="${id}" class="v-input" placeholder="${esc(ph)}" autocomplete="${ac}" spellcheck="false">
@@ -462,7 +443,6 @@
     if (pw) pw.focus();
   }
 
-  /* ─────── 목록 (기본 정렬: 제목) ─────── */
   const SORTS = [
     { key: "category", label: "분류", w: "118px" },
     { key: "title", label: "제목", w: "" },
@@ -520,7 +500,6 @@
       <tbody>${items.map(({ en, scope }) => rowHTML(en, scope)).join("")}</tbody></table></div>`;
   }
 
-  /* ─────── 모듈 렌더 ─────── */
   SeMIS.registerModule("vault", {
     title: "암호 관리",
     render(root) {
@@ -647,7 +626,7 @@
     }
   });
 
-  /* ─────── 테스트/외부 노출 (키·평문은 노출하지 않음) ─────── */
+  /* 외부 노출 — 키 · 평문은 노출하지 않는다 */
   window.SemisVault = {
     CATS, AUTO_LOCK_MS, PBKDF2_ITER,
     isUnlocked, lock, extend, setup, unlock, addMember, removeMember, changeMemberPw,

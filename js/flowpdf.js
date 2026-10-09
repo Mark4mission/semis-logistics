@@ -1,12 +1,5 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 보고 체계도 PDF 분석 (v1.11 개정 반자동 반영)
-   개정 PDF를 올리면
-     ① 1쪽 글자·위치를 읽어 전화번호와 그 옆/위의 이름(라벨)을 찾고
-     ② 지금 등록된 연락처와 번호를 대조해 그대로 · 바뀜 · 새 번호 · 못 찾음으로 나누고
-     ③ 1쪽을 미리보기 이미지(1800px · 640px)로 만든다.
-   반영은 사람이 확인해 고른 항목만 한다(contacts.js 편집 모달).
-   PDF 읽기는 pdf.js(assets/vendor/pdfjs, legacy 빌드)를 필요할 때만 불러온다.
-   ═══════════════════════════════════════════════════════ */
+/* 보고 체계도 개정 PDF 분석 — 1쪽 글자 · 위치에서 번호와 라벨을 뽑아 등록 연락처와 대조(그대로 · 바뀜 · 새 번호 · 못 찾음)하고 미리보기 이미지를 만든다.
+   반영은 사람이 고른 항목만(contacts.js 편집 모달). pdf.js(assets/vendor/pdfjs, legacy 빌드)는 필요할 때만 불러온다. */
 "use strict";
 
 (() => {
@@ -14,7 +7,6 @@
   const LIB_URL = "assets/vendor/pdfjs/pdf.min.mjs?v=" + PDFJS_VER;
   const WORKER_URL = "assets/vendor/pdfjs/pdf.worker.min.mjs?v=" + PDFJS_VER;
 
-  /* ─────── 번호 인식 ─────── */
   // 032-270-0700 · 270-0800 · 02-6026-1359, 1363 · 032-741-3906~8 · 1-734-484-0088 · 080-004 4949 · 740-2700,4,16
   const PHONE_RE = /(?:\+?\d{1,3}-)?(?:\d{2,4}[- ]){1,2}\d{4}(?:\s*~\s*\d{1,4})?(?:\s*,\s*\d{1,4})*/g;
   const SYMBOLS = /[☎☏📞📱✆℡]/g;
@@ -39,7 +31,7 @@
   const clean = (t) => String(t || "").replace(SYMBOLS, " ").replace(/[\/·|]+/g, " ")
     .replace(/\(\s*\)/g, " ").replace(/\s+/g, " ").trim();
 
-  /* ─────── 글자 조각 → 줄 조각(segment) ───────
+  /* 글자 조각 → 줄 조각(segment)
      items: [{ s, x, y, w, h }] — y 는 위에서부터(글자 기준선). 같은 높이라도 멀리 떨어진 글자는 다른 상자로 본다. */
   function buildSegments(items) {
     const list = (items || []).filter(i => i && String(i.s || "").trim()).slice()
@@ -126,7 +118,7 @@
     return m ? m[1].replace(/\s+/g, "") : "";
   }
 
-  /* ─────── 등록 연락처와 대조 ───────
+  /* 등록 연락처와 대조
      rows: [{ id, grp, role, office, mobile, note }] · phones: extractPhones 결과
      → { same:[{ri,f}], changed:[{ri,f,old,num,label}], added:[{num,label,note,grp}], missing:[{ri,f,old}] } */
   const nrm = (t) => String(t || "").replace(/\([^)]*\)/g, "").replace(/[\s·\-_/]+/g, "").toLowerCase();
@@ -210,7 +202,6 @@
     return out;
   }
 
-  /* ─────── pdf.js (필요할 때만) ─────── */
   let libP = null;
   function loadLib() {
     if (!libP) {

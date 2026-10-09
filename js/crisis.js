@@ -1,17 +1,5 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 위기대응 담당자 (v1.13)
-   회사 위기대응 조직(초동조치센터 등)별 임무와 팀별 담당자(정 · 부)를 한 화면에서 찾는다.
-   보기 4가지: 조직별 · 팀별 · 담당자별 · 매트릭스(팀 × 조직). 우리 팀 임무는 맨 위 띠로 고정.
-   이름을 누르면 그 사람의 임무 전체, 비상연락망에 같은 이름이 한 명뿐이면 전화 버튼.
-   hq: 엑셀(연간 명단 원본) 올려 대조 후 반영 · 행 추가/수정/삭제 · 기본 정보
-   v1.25 연락처 편집: 번호 없는 이름 옆 '+ 번호' · 담당자 카드 ✎ · '연락처 입력'(한 표에서 일괄) · '번호 없음' 필터.
-     번호 찾는 순서 = 이 화면에서 입력한 번호(crisis.people) → 비상연락망(동명 1명) → 업무 연락처(동명 1명)
-
-   데이터: DATA.crisis = { title, asOf, homeTeam, notes[], fileUrl, fileName, updatedAt,
-                           rows: [{ id, div, team, org, task, main, sub }],
-                           people: { 이름: { mobile, office, email, note } } }   ← v1.25 담당자 연락처
-   ※ 명단(이름)은 공개 저장소 코드에 넣지 않는다 — 공용 DB(semis_logi_store "crisis")에만.
-   ═══════════════════════════════════════════════════════ */
+/* 위기대응 담당자 — 회사 위기대응 조직별 임무와 팀별 담당자(정 · 부) 조회, hq 는 연간 명단(엑셀) 대조 반영.
+   ※ 명단(이름)은 공개 저장소에 넣지 않는다 — 공용 DB(semis_logi_store "crisis")에만. */
 "use strict";
 
 (() => {
@@ -21,6 +9,9 @@
   const FILE_MAX = 10 * 1024 * 1024;
   const uid = () => "cr" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
+  /* DATA.crisis = { title, asOf, homeTeam, notes[], fileUrl, fileName, updatedAt,
+                     rows: [{ id, div, team, org, task, main, sub }],
+                     people: { 이름: { mobile, office, email, note } } } */
   const C = () => {
     const v = SeMIS.data[KEY];
     return v && typeof v === "object" && !Array.isArray(v) ? v : { rows: [] };
@@ -29,7 +20,6 @@
   const notes = () => (Array.isArray(C().notes) ? C().notes : []).filter(Boolean);
   const homeTeam = () => C().homeTeam || HOME_DEFAULT;
 
-  /* 화면 상태 (모듈 메모리) */
   let view = "org", org = "", query = "", noNum = false;
 
   /* 위기대응 조직 표시 순서 · 표식 색(일정 12색 팔레트 재사용 — 점 표식에만 사용) */
@@ -67,7 +57,7 @@
     return out;
   }
 
-  /* ─────── 검색 ─────── */
+  /* ── 검색 ── */
   function matches(r, q) {
     if (!q) return true;
     const s = q.toLowerCase().replace(/\s+/g, "");
@@ -83,7 +73,7 @@
     } catch (err) { return e; }
   }
 
-  /* ─────── 사람 색인 ─────── */
+  /* ── 사람 색인 ── */
   function people(list) {
     const map = {};
     (list || all()).forEach(r => {
@@ -124,7 +114,7 @@
     return d ? "tel:" + d : "";
   }
 
-  /* ─────── 조각 ─────── */
+  /* ── 조각 ── */
   function personHTML(n, q) {
     n = norm(n);
     if (!n) return '<span class="cr-none">-</span>';
@@ -161,10 +151,10 @@
   }
   const thead = (first, second, canWrite) => `<div class="cr-th${canWrite ? " has-edit" : ""}" aria-hidden="true"><span>${first}</span><span>${second}</span><span>정</span><span>부</span></div>`;
 
-  /* v1.30 모바일: 묶음은 제목 줄만 — 검색 · 조직 고르기 · 번호 없음 필터 중에는 펼침 */
+  /* 모바일: 묶음은 제목 줄만 — 검색 · 조직 고르기 · 번호 없음 필터 중에는 펼침 */
   const isNarrow = () => !!(org || query || noNum);
 
-  /* ─────── 보기별 본문 ─────── */
+  /* ── 보기별 본문 ── */
   function orgView(list, canWrite) {
     return orgs(list).map(o => {
       const rs = list.filter(r => r.org === o);
@@ -231,7 +221,7 @@
       <tbody>${body}</tbody></table></div></section>`;
   }
 
-  /* ─────── 우리 팀 띠 ─────── */
+  /* ── 우리 팀 띠 ── */
   function homeBand() {
     const t = homeTeam();
     const rs = all().filter(r => r.team === t);
@@ -257,7 +247,7 @@
     return `<section class="card cr-notes" id="cr-notes"${ui.mf("notes")}><h3 class="mf-h">참고</h3><ol>${ns.map(n => `<li>${link(n)}</li>`).join("")}</ol></section>`;
   }
 
-  /* ─────── 렌더 ─────── */
+  /* ── 렌더 ── */
   function render(root) {
     const rows = all();
     const canWrite = SeMIS.canEdit();
@@ -324,7 +314,7 @@
   function wire(root, canWrite) {
     const qi = $("#cr-q", root);
     if (qi) qi.oninput = () => {
-      // 한글 조합 중에도 입력칸을 새로 만들지 않는다 — 조합이 깨져 자모로 풀리는 문제(v1.13.1)
+      // 한글 조합 중에도 입력칸을 새로 만들지 않는다 — 조합이 깨져 자모로 풀린다
       const v = ui.searchValue(qi.value);
       if (v === query) return;
       query = v;
@@ -357,7 +347,7 @@
     if (b && b.scrollIntoView) try { b.scrollIntoView({ block: "start" }); } catch (e) { /* jsdom */ }
   }
 
-  /* ─────── 담당자 연락처 (hq) — crisis.people[이름] ─────── */
+  /* ── 담당자 연락처(hq) — crisis.people[이름] ── */
   function missing() { return people().filter(p => !numOf(contactOf(p.name))); }
   function fmtNum(v) { return window.SemisPhonebook && SemisPhonebook.fmtPhone ? SemisPhonebook.fmtPhone(v) : norm(v); }
   const telOk = (v) => !v || /^[+\d][\d\s\-~,/()]{5,}$/.test(v);
@@ -465,7 +455,7 @@
     };
   }
 
-  /* ─────── 행 편집 (hq) ─────── */
+  /* ── 행 편집(hq) ── */
   function datalist(id, vals) { return `<datalist id="${id}">${vals.map(v => `<option value="${esc(v)}">`).join("")}</datalist>`; }
   function editRow(id) {
     const r = id ? all().find(x => x.id === id) : null;
@@ -549,7 +539,7 @@
     };
   }
 
-  /* ═════════════ 엑셀(.xlsx) 읽기 — 외부 라이브러리 없이 ZIP + XML ═════════════ */
+  /* ── 엑셀(.xlsx) 읽기 — 외부 라이브러리 없이 ZIP + XML ── */
   let inflateRaw = async (u8) => {
     if (typeof DecompressionStream === "undefined") throw new Error("inflate");
     const ds = new DecompressionStream("deflate-raw");

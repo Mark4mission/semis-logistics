@@ -1,19 +1,6 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — CARES 연동 계층 (v1.12)
-   CARES(airzeta-security-system, Firebase/Firestore)의 보안검색장비 데이터를
-   REST로 읽어 화물 보안 허브(보안검색 현황 · 검색장비 유지관리)와 대시보드가 함께 쓴다.
-
-   원칙
-   - 장비 상태·배치·고장·점검·환경센서의 마스터는 CARES — Logistics는 읽기만 한다(쓰기 없음).
-   - 공개 읽기 컬렉션만 사용: equipments · repairLogs · inspectionLogs · sensorLogs · sensorThresholds
-     (deployLogs · locationStates는 로그인 전용이라 쓰지 않는다 — 배치는 equipments.location)
-   - Firebase 웹 키는 코드(공개 저장소)에 두지 않고 공용 DB(semis_logi_store "caresCfg")에서 읽는다.
-   - repairLogs의 사진(data URL)은 수 MB라 목록 조회에서 제외(select 투영), 상세에서만 1건씩 불러온다.
-   - 묶음별 캐시(live 60초 · repairs 10분 · history 15분 · env 5분) · 화면 여러 곳이 동시에 불러도 요청은 한 번.
-   - v1.28 화물보안 대시보드: 점검 조회 12주(주별 이행률) · 환경센서 24시간 추이(env — 이 브라우저에 24시간치를
-     쌓아 두고 마지막 수신 이후만 새로 읽는다: 처음 한 번 약 1,440건, 이후 몇 건).
-   - v1.36 위해물품 적발 월 집계(haz — CARES hazStats, 공개 · 개인정보 · AWB 없음). 기록 원본 hazFinds 는 CARES 비공개라 읽지 않는다.
-   ═══════════════════════════════════════════════════════ */
+/* CARES 연동 계층 — CARES(Firebase/Firestore) 보안검색장비 데이터를 REST로 읽기만 한다(쓰기 없음). 화물 보안 허브 · 대시보드 공용.
+   공개 컬렉션만: equipments · repairLogs · inspectionLogs · sensorLogs · sensorThresholds · hazStats(월 집계).
+   deployLogs · locationStates · 원본 hazFinds 는 비공개라 읽지 않음. 웹 키는 공용 DB(semis_logi_store "caresCfg")에서 받는다. */
 "use strict";
 
 (() => {
@@ -21,11 +8,11 @@
   const FS_DOCS = "https://firestore.googleapis.com/v1/projects/" + PROJECT + "/databases/(default)/documents";
   const CARES_URL = "https://airzeta-security-system.web.app";
   const KEY_CACHE = "semisl:caresKey";
-  const ENV_CACHE = "semisl:caresEnv";   // v1.28 환경센서 24시간 기록(측정값뿐 — 이 브라우저에만)
+  const ENV_CACHE = "semisl:caresEnv";   // 환경센서 24시간 기록(측정값만, 이 브라우저에만)
   const ENV_HOURS = 24;
   const ENV_PAGE = 1600;
   const TTL_MS = 60000;
-  const INSP_DAYS = 84;              // 일일점검 조회 구간(28일 표 · 장비 상세 최근 점검 · v1.28 대시보드 주별 이행률 12주)
+  const INSP_DAYS = 84;              // 일일점검 조회 구간 12주(대시보드 주별 이행률 · 28일 표 · 장비 상세)
   const OFFLINE_MS = 8 * 60 * 1000;  // 센서 3분 주기 × 2회 미수신 + 여유 (CARES와 동일)
   const DAY = 86400000;
   const KST = 9 * 3600000;
@@ -33,7 +20,6 @@
   let fetchImpl = null;              // 테스트용 주입
   const F = () => fetchImpl || (typeof fetch !== "undefined" ? fetch : null);
 
-  /* ─────── 연동 키 ─────── */
   let apiKey = null;
   async function getKey() {
     if (apiKey) return apiKey;
@@ -50,7 +36,7 @@
   }
   function dropKey() { apiKey = null; try { localStorage.removeItem(KEY_CACHE); } catch (e) { /* 무시 */ } }
 
-  /* ─────── Firestore REST ─────── */
+  /* ── Firestore REST ── */
   function parseFs(v) {
     if (v == null || typeof v !== "object") return null;
     if ("doubleValue" in v) return Number(v.doubleValue);
@@ -103,13 +89,9 @@
     "cause", "causeCategory", "rootCause", "parts", "handlingType", "reportPhotoCount"];
   const INSP_FIELDS = ["type", "equipmentId", "equipmentName", "equipmentType", "inspector", "inspectedAtMs", "checklist", "remark"];
 
-  /* ─────── 상태 · 캐시 ───────
-     읽기량(Firestore 문서 읽기)을 줄이려고 세 묶음으로 나눠 따로 갱신한다.
-     - live    (60초):  장비(상태·배치) · 센서 최신값 · 오늘 점검          ≈ 35건
-     - repairs (10분):  고장·수리 전체(투영) · 센서 임계치                 ≈ 40건
-     - history (15분):  최근 12주 점검 · 정기점검(주간·월간…) 최근 기록     ≈ 800건 — 화면에 들어올 때만
-     - env     (5분):   환경센서 24시간(이 브라우저에 쌓아 두고 마지막 수신 이후만) — 화물보안 대시보드만
-     자동 새로고침(5분)은 live만 강제로, repairs는 유효기간이 지났을 때만 다시 읽는다. */
+  /* 상태 · 캐시 — Firestore 문서 읽기를 줄이려고 묶음별로 따로 갱신. 같은 묶음 동시 요청은 한 번만 보낸다.
+     live 60초(장비 · 센서 최신값 · 오늘 점검) · repairs 10분(고장·수리 투영 · 임계치) · history 15분(12주 점검 · 정기점검)
+     env 5분(환경센서 24시간, 화물보안 대시보드만) · haz 10분(위해물품 월 집계) */
   const st = { ts: 0, ver: 0, err: null, loading: false, parts: { live: 0, repairs: 0, history: 0, env: 0, haz: 0 },
     equips: [], repairs: [], inspections: [], todayIns: [], periodic: [], sensors: {}, thresholds: {}, env: [], haz: [], errs: {} };
   const TTL = { live: TTL_MS, repairs: 10 * 60000, history: 15 * 60000, env: 5 * 60000, haz: 10 * 60000 };
@@ -158,7 +140,7 @@
       } else {
         const res = await Promise.allSettled([
           inspQuery(Date.now() - INSP_DAYS * DAY, 1000),
-          /* 정기점검 최근일 — 45일 밖(연체)도 보이도록 유형 필터로 따로(투영 · 단일 필드라 색인 불필요) */
+          /* 정기점검 최근일 — 조회 구간 밖(연체)도 보이도록 유형 필터로 따로 조회(단일 필드라 색인 불필요) */
           fsQuery({ select: sel(["type", "equipmentId", "equipmentName", "equipmentType", "inspector", "inspectedAtMs", "remark"]),
             from: [{ collectionId: "inspectionLogs" }],
             where: { fieldFilter: { field: { fieldPath: "type" }, op: "IN", value: { arrayValue: { values:
@@ -173,7 +155,7 @@
       if (p === "env") st.errs.env = (e && e.message) || "연동 실패";
     }
     st.parts[p] = Date.now();
-    /* v1.28 실패한 묶음은 유효기간을 기다리지 않고 30초 뒤 다시 읽을 수 있게 */
+    /* 실패한 묶음은 유효기간을 기다리지 않고 30초 뒤 다시 읽는다 */
     const failed = p === "live" ? st.err : p === "repairs" ? st.errs.repairs : p === "history" ? st.errs.inspections : p === "haz" ? st.errs.haz : st.errs.env;
     if (failed) st.parts[p] = Date.now() - TTL[p] + 30000;
   }
@@ -213,14 +195,14 @@
   function onLoad(fn) { if (listeners.indexOf(fn) < 0) listeners.push(fn); }
   const fresh = (parts) => (parts || ALL_PARTS).every(p => !stale(p));
   const has = (p) => !!st.parts[p];
-  /* 최근 45일 + 오늘(live) 점검을 합친 목록 — 같은 기록은 한 번만 */
+  /* 조회 구간 점검 + 오늘(live) 점검 — 같은 기록은 한 번만 */
   function allInspections() {
     const seen = {}, out = [];
     st.todayIns.concat(st.inspections).forEach(r => { if (r && r.id && !seen[r.id]) { seen[r.id] = 1; out.push(r); } });
     return out.sort((a, b) => (b.inspectedAtMs || 0) - (a.inspectedAtMs || 0));
   }
 
-  /* ─────── 공통 규약 (CARES와 동일) ─────── */
+  /* ── 상태 · 원인 규약 (CARES와 동일) ── */
   const repairStatus = (r) => r.resolvedAtMs ? "resolved" : (r.status && r.status !== "resolved" ? r.status : "reported");
   const RS_META = {
     reported: { label: "접수 대기", tone: "red" },
@@ -280,7 +262,7 @@
   }
   const stateTone = (u) => u.state === "bad" ? (u.active ? RS_META[repairStatus(u.active)].tone : "red") : u.state === "warn" ? "amber" : "green";
 
-  /* ─────── 날짜 (KST) ─────── */
+  /* ── 날짜 — 하루 경계는 KST ── */
   const dayKey = (ms) => new Date(ms + KST).toISOString().slice(0, 10);
   const todayKey = () => dayKey(Date.now());
   const dayStartMs = (key) => Date.parse(key + "T00:00:00Z") - KST;
@@ -301,7 +283,6 @@
     return Math.floor(h / 24) + "일 " + (h % 24) + "시간";
   }
 
-  /* ─────── 점검 ─────── */
   /* unitId → { days: { "YYYY-MM-DD": [logs] }, last: { daily, weekly, monthly } } */
   function inspIndex() {
     const idx = {};
@@ -316,7 +297,7 @@
   const badCount = (r) => ((r && r.checklist) || []).filter(e => e && e.result === "bad").length;
   const cautionCount = (r) => ((r && r.checklist) || []).filter(e => e && e.result === "caution").length;
 
-  /* ─────── 고장 구간 · 가동률 ─────── */
+  /* ── 고장 구간 · 가동률 ── */
   function spanOf(r, now) {
     const s = r.reportedAtMs || r.occurredAtMs || 0;
     const e = r.resolvedAtMs || now || Date.now();
@@ -346,7 +327,7 @@
     return Object.keys(ys).map(Number).sort((a, b) => b - a);
   }
 
-  /* ─────── 환경센서 (CARES sensorEnv v2와 같은 기준) ─────── */
+  /* ── 환경센서 (CARES sensorEnv v2와 같은 기준) ── */
   const DEVICE_ORDER = ["ICN_CARGO_B", "ICN_ETD_CASE", "ICN_SEARCH_ROOM"];
   const DEVICES = {
     ICN_CARGO_B: { name: "화물터미널 입구", role: "준옥외 · 외기 부하" },
@@ -422,9 +403,8 @@
     return { level: "safe", margin, wet, cold, text: head };
   }
 
-  /* ─────── 환경센서 24시간 (v1.28) ───────
-     한 줄 = [기기, 시각(ms), 온도, 습도, CO₂, PM2.5, PM10, TVOC, HCHO] — 이 브라우저(localStorage)에 24시간치만.
-     다시 읽을 때는 마지막 수신 시각 이후만 요청한다(Firestore 문서 읽기 절약). */
+  /* 환경센서 24시간 — 한 줄 = [기기, 시각(ms), 온도, 습도, CO₂, PM2.5, PM10, TVOC, HCHO], localStorage에 24시간치만.
+     다시 읽을 때는 마지막 수신 시각 이후만 요청한다(문서 읽기 절약). */
   const ENV_FIELDS = ["deviceId", "timestamp", "online", "temp", "humidity", "co2", "pm25", "pm10", "tvoc", "hcho"];
   const ENV_KEYS = ["temp", "humidity", "co2", "pm25", "pm10", "tvoc", "hcho"];
   const numOrNull = (v) => typeof v === "number" && isFinite(v) ? v : null;
@@ -475,7 +455,7 @@
     return out;
   }
 
-  /* ─────── 기간 가동 통계 (v1.28) — yearStats 와 같은 산식을 임의 기간 [from, to) 로 ─────── */
+  /* 기간 가동 통계 — yearStats 와 같은 산식을 임의 기간 [from, to) 로 */
   function rangeStats(from, to) {
     to = Math.min(to || Date.now(), Date.now());
     return units().map(u => {
@@ -504,9 +484,8 @@
     });
   }
 
-  /* ─────── 위해물품 적발 월 집계 (v1.36) ───────
-     CARES hazStats/{YYYY-MM} = { total, cat:{liquid,powder,mixed,other,none}, loc:{'1','2','3',etc}, day:{DD}, withdrawn, review }
-     작성은 프로에스콤(CARES 웹 '위해물품 적발 일지'). 여기서는 월 숫자만 쓴다. */
+  /* 위해물품 적발 월 집계 — CARES hazStats/{YYYY-MM} = { total, cat:{liquid,powder,mixed,other,none}, loc:{'1','2','3',etc}, day:{DD}, withdrawn, review }.
+     작성은 프로에스콤(CARES 웹 '위해물품 적발 일지'). 여기서는 월 숫자만 읽는다. */
   const HAZ_CATS = [["liquid", "액체"], ["powder", "분말"], ["mixed", "분·액"], ["other", "기타"], ["none", "미기재"]];
   const ymKST = (off) => { const d = new Date(Date.now() + KST); const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + (off || 0), 1));
     return t.getUTCFullYear() + "-" + String(t.getUTCMonth() + 1).padStart(2, "0"); };
@@ -526,7 +505,7 @@
       return hazMonth(t.getUTCFullYear() + "-" + String(t.getUTCMonth() + 1).padStart(2, "0")); });
   }
 
-  /* 상세 모달용 — 고장 1건의 사진(data URL) */
+  /* 상세 모달용 — 고장 1건의 사진(data URL). 수 MB라 목록 조회(REPAIR_FIELDS 투영)에서는 뺀다 */
   async function repairPhotos(id) {
     const d = await fsGet("repairLogs/" + encodeURIComponent(id), ["reportPhotos", "repairPhotos"]);
     const ok = (a) => (Array.isArray(a) ? a : []).filter(u => typeof u === "string" && /^(data:image\/|https:\/\/)/.test(u));

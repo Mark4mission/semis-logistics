@@ -1,28 +1,11 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 회의록 게시판 (SeMIS v2 minutes 이식)
-   회의 때마다 "빈 회의록"을 즉시 만들어 그 자리에서 기록하는 범용 게시판.
-   (보안장비 협의회는 전용 서식이 있는 별도 모듈 — 이쪽은 모든 회의 공용)
+/* 회의록 게시판 — 회의마다 빈 회의록을 만들어 그 자리에서 기록한다. 직전 회의에서 회차·참석자·미결사항을 승계하고,
+   6자리 코드·QR로 참석자 서명, A4 회의록·QR 안내문 인쇄. */
 
-   설계 목표
-   1) 자동화 — 새 회의록을 만들면 회차·제목·일시·장소·주재·참석자·전차
-      미결사항이 직전 회의에서 자동으로 채워진다. 작성자는 논의 내용만 쓰면 된다.
-   2) 분류 — 폴더(그룹)로 회의체를 나눠 저장. 폴더는 사용자가 관리.
-   3) 검색 — 제목·본문·참석자·결정사항·태그를 한 번에. 전역 검색에도 연동.
-   4) 서명 — 6자리 코드 + QR 코드. 참석자가 휴대폰으로 스캔 → 바로 서명.
-   5) 인쇄 — A4 회의록 + QR 안내문(회의실 게시용).
-
-   데이터
-     DATA.minuteFolders = [{ id, name, icon, desc, place, chair, seq }]
-     DATA.minutes = [{ id, folder, no(회차), title, date, time, place,
-       chair(주재), scribe(작성), attendees:[{name,org,role,note,sign}],
-       absent(불참), agenda/agendaHtml, body/bodyHtml(논의내용),
-       decisions:[{task,owner,due,done}], carry:[{...}](전차 미결 참고),
-       nextDate, nextTime, nextPlace, nextPlan, linkCal(차기 일정 연동),
-       tags:[], files:[{url,name,size}], status: "draft"|"final",
-       by, byId, updated, created }]
-
-   권한: mgr 이상 열람·작성 / 본인 작성분은 본인이 수정, hq 이상은 전체 수정
-   ═══════════════════════════════════════════════════════ */
+/* DATA.minuteFolders = [{ id, name, icon, desc, place, chair, seq }]
+   DATA.minutes = [{ id, folder, no(회차), title, date, time, place, chair(주재), scribe(작성),
+     attendees:[{name,org,role,note,sign}], absent(불참), agenda/agendaHtml, body/bodyHtml(논의내용),
+     decisions:[{id,task,owner,due,done}], carry:[…](전차 미결 참고), nextDate, nextTime, nextPlace, nextPlan,
+     linkCal(차기 일정 연동), linkDec(결정사항 기한 연동), tags:[], files:[{url,name,size}], status: "draft"|"final", by, byId, updated, created }] */
 "use strict";
 
 (() => {
@@ -31,10 +14,10 @@
   const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
   const MAX_FILES = 20;
-  const FILE_MAX = 20 * 1024 * 1024;   // 20MB
+  const FILE_MAX = 20 * 1024 * 1024;
   const MAX_ATT = 60;
 
-  /* ─── 기본 폴더 (최초 1회 시드 · 이후 사용자 관리) ─── */
+  /* 기본 폴더(최초 1회 시드, 이후 사용자 관리) */
   function seedFolders() {
     return [
       { id: "mf-part", seq: 1, icon: "📋", name: "안전보안파트 정례회의", desc: "파트 주간·월간 정례회의", place: "인천화물터미널 회의실", chair: "" },
@@ -54,7 +37,7 @@
   const folderName = (id) => { const f = folderOf(id); return f ? f.name : "미분류"; };
   const folderIcon = (id) => { const f = folderOf(id); return (f && f.icon) || "🗒"; };
 
-  /* 최신순 (회의일 → 회차 → id) */
+  /* 최신순(회의일 → 회차 → id) */
   const sorted = (list) => (list || all()).slice().sort((a, b) =>
     String(b.date || "").localeCompare(String(a.date || "")) ||
     (Number(b.no) || 0) - (Number(a.no) || 0) ||
@@ -64,33 +47,23 @@
   /* 회차 채번은 전체 기준 — 열람 못 하는 회차가 있어도 번호가 겹치면 안 되므로 */
   const nextNo = (fid) => inFolder(fid).reduce((mx, x) => Math.max(mx, Number(x.no) || 0), 0) + 1;
 
-  /* 같은 폴더의 직전 회의 (자동 채움 기준) — 승계는 열람 가능한 회의에서만 */
+  /* 같은 폴더의 직전 회의(자동 채움 기준) — 승계는 열람 가능한 회의에서만 */
   function prevMeeting(fid, exceptId) {
     return sorted(visibleAll().filter(x => x.folder === fid && x.id !== exceptId))[0] || null;
   }
 
   const rank = () => SeMIS.roleRank();
   const me = () => (SeMIS.user && (SeMIS.user.origId || SeMIS.user.id)) || "";
-  const canWrite = () => rank() >= 2;                       // 작성: 보안관리자 이상
+  const canWrite = () => rank() >= 2;                       // 작성: manager 이상
   const canEditRec = (x) => rank() >= 3 || (!!x && x.byId && x.byId === me());
   const canDelRec = (x) => SeMIS.canDelete() || (canWrite() && !!x && x.byId && x.byId === me());
   const canManageFolders = () => rank() >= 3;
 
-  /* ══════════ 열람 권한 (v2.40.2) ══════════
-     회의록은 참석자의 기록이므로 "직급"이 아니라 "참석 사실"로 열람 범위를 정한다.
-
-       ① 안전보안파트(hq) 이상    → 전체 열람
-       ② 작성자(서기) 본인          → 열람 (참석 명단에 없어도 본인이 쓴 기록)
-       ③ 참석자 명단에 본인이 있음  → 열람 (계정 등급과 무관 — 일반사용자도 가능)
-       ④ 본인이 한 번이라도 참석한 같은 회의체(폴더) → 그 폴더의 다른 회차도 열람
-          (부득이 참석 못한 직전 회의 등을 확인할 수 있도록)
-       ⑤ 그 외                     → 차단 (보안관리자여도 남의 회의는 볼 수 없음)
-
-     본인 식별 — 두 경로를 함께 사용한다.
-       (가) 로그인 계정 이름이 참석자 이름과 같을 때 (실명 계정)
-       (나) QR로 서명한 이력이 있는 기기 (공용 계정 대응)
-            서명할 때 그 기기에 이름을 남겨두고, 이후 같은 기기로 접속하면 본인으로 인식.
-            실제로 참석해서 서명한 사람만 인식되므로 자가 신고보다 확실하다. */
+  /* ── 열람 권한 ── */
+  /* 회의록은 참석자의 기록이므로 직급이 아니라 참석 사실로 열람 범위를 정한다.
+     ① hq 이상 → 전체  ② 작성자 본인  ③ 참석자 명단에 본인(계정 등급 무관)
+     ④ 본인이 참석한 적 있는 같은 폴더(회의체)의 다른 회차  ⑤ 그 외 차단(관리자여도 남의 회의는 불가)
+     본인 식별: (가) 계정 이름 = 참석자 이름  (나) 이 기기에서 QR 서명한 이름(공용 계정 대응) */
   const LS_SIGNED = "semisl:signedAs";
   const norm = (s) => String(s || "").replace(/\s+/g, "").toLowerCase();
 
@@ -98,7 +71,7 @@
     try { const v = JSON.parse(localStorage.getItem(LS_SIGNED)); return Array.isArray(v) ? v : []; }
     catch (e) { return []; }
   }
-  /* 서명 완료 시 호출 — 이 기기의 '본인'으로 이름을 기억(최근 5명, 기기 공용 사용 대비) */
+  /* 서명 완료 시 호출 — 이 기기의 '본인'으로 이름 기억(최근 5명, 공용 기기 대비) */
   function rememberSigner(name) {
     const n = String(name || "").trim();
     if (!n) return;
@@ -106,7 +79,7 @@
     list.unshift(n);
     try { localStorage.setItem(LS_SIGNED, JSON.stringify(list.slice(0, 5))); } catch (e) { /* 저장 불가 무시 */ }
   }
-  /* 현재 사용자로 인정되는 이름들 (계정 이름 + 이 기기의 서명 이력) */
+  /* 현재 사용자로 인정되는 이름들(계정 이름 + 이 기기의 서명 이력) */
   function myNames() {
     const out = [];
     const u = SeMIS.user;
@@ -115,7 +88,7 @@
     return out.filter(Boolean);
   }
   const attendedBy = (x, names) => (x.attendees || []).some(a => names.indexOf(norm(a.name)) >= 0);
-  /* 본인과 직접 관련된 회의(참석 or 작성) */
+  /* 본인과 직접 관련된 회의(참석 또는 작성) */
   function isMineRec(x, names, uid) {
     return (!!uid && x.byId === uid) || attendedBy(x, names);
   }
@@ -137,17 +110,14 @@
   const nl2br = (s) => esc(String(s || "")).replace(/\n/g, "<br>");
   const todayStr = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
 
-  /* 리치 텍스트 — 공지 에디터 인프라 재사용 (council과 동일 규약) */
+  /* 리치 텍스트 — 공지 에디터 인프라 재사용(council과 동일 규약) */
   const sanitize = (h) => (window.SemisNotice ? window.SemisNotice.sanitizeHtml(h) : esc(h));
   const hasRich = (html, text) => !!(text && text.trim()) || /<(img|table|a|ul|ol|li)\b/i.test(html || "");
   const richView = (html, text) => html
     ? `<div class="cn-text cn-rich notice-html">${sanitize(html)}</div>`
     : (text ? `<div class="cn-text">${nl2br(text)}</div>` : "");
-  /* 리치 에디터 id 접두사.
-     ⚠️ v2.40.3까지 `mn-<key>` 를 썼는데, 논의 내용(key="body")의 id `mn-body` 가
-        목록 컨테이너 `<div id="mn-body">` 와 충돌했다. $()는 문서에서 먼저 나오는
-        목록 쪽을 잡으므로 논의 내용이 저장·복원되지 않았다.
-        → 에디터 전용 접두사 `mn-rich-` 로 분리하고, 조회는 data-rich-key 로 한다. */
+  /* 에디터 id는 mn-rich-<key>. mn-<key> 로 두면 mn-body 가 목록 컨테이너 #mn-body 와 충돌해 $()가 목록을 잡는다.
+     조회는 data-rich-key 로 한다. */
   const richSel = (key) => `[data-rich-key="${key}"]`;
   const richFieldHTML = (key, labelHTML, ph) => `
         <div class="form-row"><label>${labelHTML}</label>
@@ -216,7 +186,7 @@
     });
   }
 
-  /* ══════════ 참석자 이력 디렉터리 (이름 → 최근 소속·직책) ══════════ */
+  /* ── 참석자 이력(이름 → 최근 소속·직책) ── */
   function knownPeople() {
     const dir = new Map();
     sorted(visibleAll()).forEach(m => (m.attendees || []).forEach(a => {
@@ -224,7 +194,7 @@
       if (!nm || dir.has(nm)) return;
       dir.set(nm, { name: nm, org: String(a.org || "").trim(), role: String(a.role || "").trim() });
     }));
-    // 협의회 참석 이력도 함께 활용 (같은 사람이 여러 회의체에 참석)
+    // 협의회 참석 이력도 함께 사용(같은 사람이 여러 회의체에 참석)
     if (window.SemisCouncil && SemisCouncil.knownPeople) {
       try {
         SemisCouncil.knownPeople().forEach((p, nm) => { if (!dir.has(nm)) dir.set(nm, { name: nm, org: p.org, role: p.role }); });
@@ -240,7 +210,7 @@
     return Array.from(s);
   };
 
-  /* ══════════ 통계 ══════════ */
+  /* ── 통계 ── */
   function stats() {
     const items = visibleAll();
     const yr = new Date().getFullYear();
@@ -260,7 +230,7 @@
     };
   }
 
-  /* ══════════ 화면 상태 (폴더/검색/필터) ══════════ */
+  /* ── 화면 상태(폴더/검색/필터) ── */
   const view = { folder: "", q: "", year: "", status: "", tab: "list" };
 
   function matches(x, q) {
@@ -285,13 +255,13 @@
   }
   const years = () => Array.from(new Set(visibleAll().map(x => String(x.date || "").slice(0, 4)).filter(Boolean))).sort().reverse();
 
-  /* ══════════ 목록 ══════════ */
+  /* ── 목록 ── */
   function listHTML() {
     const items = filtered();
     if (!items.length) {
       if (view.q || view.folder || view.year || view.status)
         return '<div class="empty">조건에 맞는 회의록이 없습니다.</div>';
-      // 회의록은 있는데 본인에게 보이는 게 없는 경우 — 왜 비었는지 분명히 알린다
+      // 회의록은 있는데 본인에게 보이는 게 없을 때 — 왜 비었는지 알린다
       if (all().length && !visibleAll().length) return `<div class="mn-guide">
         <div class="mn-guide-h">🔒 열람 가능한 회의록이 없습니다</div>
         <div class="mn-guide-sub">회의록 게시판은 누구나 열 수 있지만, 회의 내용은 <b>본인이 참석한 회의</b>만 보입니다.</div>
@@ -311,7 +281,7 @@
             그래도 필요하면 <b>안전보안파트</b>에 문의해 주세요. 전체 열람은 안전보안파트 권한입니다.</div></div>
         </div>
       </div>`;
-      // 첫 사용자를 위한 사용법 안내 — 서명 흐름이 어디에 있는지 여기서 알려준다
+      // 첫 사용자용 안내 — 서명 흐름이 어디 있는지 알려준다
       return `<div class="mn-guide">
         <div class="mn-guide-h">🗒️ 아직 등록된 회의록이 없습니다</div>
         <div class="mn-guide-sub">회의 시작 전에 회의록을 하나 열어두고, 참석자에게는 QR만 보여주면 됩니다.</div>
@@ -369,7 +339,7 @@
         </tr>`; }).join("")}</tbody></table></div>`;
   }
 
-  /* ══════════ 결정사항 추적 (전체 회의 통합) ══════════ */
+  /* ── 결정사항 추적(전체 회의 통합) ── */
   function actionsHTML() {
     const rows = [];
     sorted(visibleAll()).forEach(x => (x.decisions || []).forEach((d, i) => {
@@ -397,7 +367,7 @@
       <div class="form-hint" style="margin-top:8px">미완료 ${open.length}건 · 완료 ${done.length}건 — 행을 누르면 해당 회의록이 열립니다.</div>`;
   }
 
-  /* ══════════ 서명 코드 · QR ══════════ */
+  /* ── 서명 코드 · QR ── */
   const signCode = (x) => SeMIS.signCodeFor(x);
   const signUrl = (x) => SeMIS.signUrlFor(x);
   function qrSvg(text, px) {
@@ -429,9 +399,8 @@
       </div></div>`;
   }
 
-  /* ══════════ 서명 받기 화면 (대형 QR) ══════════
-     회의실 화면·빔프로젝터에 띄워 두면 참석자들이 각자 스캔해서 서명한다.
-     서명이 들어오는 대로 현황이 자동으로 갱신된다(공용 DB 실시간 동기화 → 3초 폴링 재렌더). */
+  /* ── 서명 받기 화면(대형 QR) ── */
+  /* 회의실 화면에 띄워 두면 참석자가 각자 스캔해 서명. 공용 DB 동기화 → 3초 폴링으로 현황 갱신 */
   let signTimer = null;
   function signModal(id) {
     const x = all().find(c => c.id === id);
@@ -504,7 +473,7 @@
     }
   }
 
-  /* ══════════ 모듈 렌더 ══════════ */
+  /* ── 모듈 렌더 ── */
   SeMIS.registerModule("minutes", {
     title: "회의록 게시판",
     render(root) {
@@ -582,7 +551,7 @@
     }
   });
 
-  /* 목록만 다시 그리기 (검색어 입력 중 포커스 유지) */
+  /* 목록만 다시 그리기(검색어 입력 중 포커스 유지) */
   function repaint() {
     const box = $("#mn-body");
     if (!box) { SeMIS.renderView(); return; }
@@ -592,7 +561,7 @@
   function bindRows() {
     $$("#mn-body [data-mn-row]").forEach(el => el.onclick = () => detail(el.dataset.mnRow));
     $$("#mn-body [data-mn-act]").forEach(el => el.onclick = () => detail(el.dataset.mnAct));
-    // 목록의 ✍️ QR 버튼 — 행 클릭(상세 열기)과 충돌하지 않도록 전파 차단
+    // QR 버튼 — 행 클릭(상세 열기)과 겹치지 않게 전파 차단
     $$("#mn-body [data-mn-sign]").forEach(el => el.onclick = (ev) => {
       ev.stopPropagation(); signModal(el.dataset.mnSign);
     });
@@ -600,7 +569,7 @@
     if (ga) ga.onclick = () => newMinute();
   }
 
-  /* ══════════ 폴더 관리 ══════════ */
+  /* ── 폴더 관리 ── */
   function folderModal() {
     let list = folders().map(f => Object.assign({}, f));
     const ICONS = ["📋", "🏛", "🏢", "🎓", "🚨", "🗂", "🤝", "✈️", "🛡️", "📊", "🔧", "🪪"];
@@ -674,7 +643,7 @@
     };
   }
 
-  /* ══════════ 새 회의록 — 폴더 선택 + 자동 채움 안내 ══════════ */
+  /* ── 새 회의록 — 폴더 선택 + 자동 채움 안내 ── */
   function newMinute() {
     const fs = folders();
     if (!fs.length) { toast("먼저 폴더를 만들어 주세요.", true); if (canManageFolders()) folderModal(); return; }
@@ -743,11 +712,10 @@
     };
   }
 
-  /* ══════════ 차기 회의 → 일정관리 연동 ══════════ */
+  /* ── 차기 회의 → 일정관리 연동 ── */
   const SID = (id) => "mn_" + id;                   // 연동 일정 id (원본은 회의록)
   const DID = (decId) => "mnd_" + decId;             // 결정사항 기한 일정 id
-  /* 캘린더 color 는 색상 id 문자열("sky" 등)이다. hex 를 넣으면 ev-#0ea5e9 라는
-     잘못된 클래스가 되어 색이 적용되지 않는다. (v2.41.1에서 바로잡음) */
+  /* 캘린더 color 는 색상 id 문자열("sky" 등). hex 를 넣으면 ev-#… 클래스가 되어 색이 적용되지 않는다 */
   const CAL_MEETING = "sky";     // 차기 회의
   const CAL_ACTION = "amber";    // 결정·조치사항 기한
 
@@ -780,9 +748,8 @@
     syncDecisions(x);
   }
 
-  /* 결정·조치사항 기한 → 일정관리 (v2.41.1)
-     기한이 있는 항목만 등록하고, 완료하면 일정도 완료로 표시한다.
-     항목이 지워지거나 기한이 비면 해당 일정도 함께 정리된다. */
+  /* 결정·조치사항 기한 → 일정관리. 기한이 있는 항목만 등록하고, 완료하면 일정도 완료.
+     항목이 지워지거나 기한이 비면 일정도 정리된다. */
   function syncDecisions(x) {
     if (!Array.isArray(D().schedules)) D().schedules = [];
     const src = "mn:" + x.id;          // 이 회의록이 만든 일정임을 표시(고아 일정 정리 기준)
@@ -791,8 +758,7 @@
       (x.decisions || []).forEach(d => {
         if (!d || !d.id || !d.due || !String(d.task || "").trim()) return;
         keep[DID(d.id)] = true;
-        /* 일정관리의 자동 연기·연장으로 밀린 날짜는 되돌리지 않는다 — 되돌리면 다음 접속 때 다시 밀려
-           접속할 때마다 schedules 저장이 반복된다(SeMIS v2.53에서 확인·수정한 문제). */
+        /* 자동 연기·연장으로 밀린 날짜는 되돌리지 않는다 — 되돌리면 접속할 때마다 다시 밀려 schedules 저장이 반복된다 */
         const cur = D().schedules.find(s => s && s.id === DID(d.id));
         const rolled = !!(cur && !d.done && (cur.autoDefer || cur.autoExtend) && cur.autoRolledAt && String(cur.end || "") > d.due);
         upsertSchedule({
@@ -809,8 +775,7 @@
         });
       });
     }
-    /* 이 회의록이 만든 조치 일정 중 더 이상 유효하지 않은 것 정리.
-       (결정사항을 지우면 id 자체가 사라지므로 src 표식으로 찾아야 고아가 남지 않는다) */
+    /* 이 회의록이 만든 조치 일정 중 무효인 것 정리. 지운 결정사항은 id가 사라지므로 src 표식으로 찾는다 */
     D().schedules = D().schedules.filter(s =>
       !s || s.src !== src || String(s.id).indexOf("mnd_") !== 0 || !!keep[s.id]);
   }
@@ -821,9 +786,7 @@
     D().schedules = D().schedules.filter(s => !s || (s.id !== SID(id) && s.src !== src));
   }
 
-  /* 기존 회의록 보정 — normalizeData 에서 호출 (idempotent)
-     v2.41.1 이전에 만든 결정사항에는 연동 키(id)가 없어 일정이 만들어지지 않는다.
-     폼을 다시 열지 않아도 반영되도록 여기서 id를 채우고 일정을 맞춘다. */
+  /* normalizeData 에서 호출(멱등). 연동 키(id)가 없는 결정사항에 id를 채우고 일정을 맞춘다 */
   function normalizeDecisions() {
     let changed = false;
     all().forEach(x => {
@@ -838,7 +801,7 @@
     return changed;
   }
 
-  /* ══════════ 상세 (읽기) ══════════ */
+  /* ── 상세(읽기) ── */
   function detail(id) {
     const x = all().find(c => c.id === id);
     if (!x) return;
@@ -849,7 +812,7 @@
     const sec = (title, body) => body ? `<div class="cn-sec"><div class="cn-sec-h">${title}</div>${body}</div>` : "";
     const t = todayStr();
 
-    /* 직책 폭은 협의회 표와 동일 기준(5~7자 한 줄) — 셀 패딩 24px 감안 118px */
+    /* 직책 폭은 협의회 표와 같은 기준(5~7자 한 줄) — 셀 패딩 24px 감안 118px */
     const attHTML = att.length ? `<table class="tbl cn-att-tbl"><thead><tr>
         <th style="width:46px">No</th><th style="width:90px">성명</th><th>소속</th>
         <th style="width:118px">직책</th><th style="width:104px">서명</th><th style="width:110px">비고</th></tr></thead><tbody>
@@ -925,8 +888,8 @@
     });
   }
 
-  /* ══════════ 등록 / 수정 폼 ══════════ */
-  /* ── 작성 화면 개인 설정 (계정·기기별, localStorage) ── */
+  /* ── 등록 / 수정 폼 ── */
+  /* 작성 화면 개인 설정(계정·기기별, localStorage) */
   const LS_FULL = "semisl:mnFormFull";      // 전체화면 편집
   const LS_AUTO = "semisl:mnAutoSave";      // 자동 저장 (기본 On)
   const prefFull = () => { try { return localStorage.getItem(LS_FULL) === "1"; } catch (e) { return false; } };
@@ -940,11 +903,11 @@
     if (autoHide) { try { window.removeEventListener("pagehide", autoHide); } catch (e) {} autoHide = null; }
     autoTickFn = null;
   }
-  /* 열려 있는 작성 폼을 지금 즉시 자동 저장 (주기를 기다리지 않고 강제 실행) */
+  /* 열린 작성 폼을 주기와 무관하게 즉시 자동 저장 */
   function runAutoSaveNow() { return autoTickFn ? autoTickFn() : false; }
 
   function form(id, init) {
-    let cur = id ? all().find(c => c.id === id) : null;   // 자동 저장으로 신규 생성되면 여기에 채워진다
+    let cur = id ? all().find(c => c.id === id) : null;   // 자동 저장으로 신규 생성되면 채워진다
     const x = cur;
     const base = x || draftFrom(init || { folder: (folders()[0] || {}).id, date: todayStr(), inherit: true, carry: true });
     let attendees = (base.attendees || []).map(a => Object.assign({}, a));
@@ -1048,7 +1011,7 @@
       </div>
      </div>`, { wide: true });
 
-    /* ── 전체화면 편집 토글 ── */
+    /* 전체화면 편집 토글 */
     const box = document.getElementById("modal-box");
     function applyFull(on) {
       if (box) box.classList.toggle("full", !!on);
@@ -1061,7 +1024,7 @@
     wireRich("agenda", base.agendaHtml, base.agenda);
     wireRich("body", base.bodyHtml, base.body);
 
-    /* ─ 참석자 동적행 ─ */
+    /* 참석자 동적 행 */
     function attCollect() {
       $$("#mn-att .mn-att-row").forEach((row, i) => {
         if (!attendees[i]) return;
@@ -1086,7 +1049,7 @@
       $$("#mn-att [data-att-del]").forEach(btn => btn.onclick = () => {
         attCollect(); attendees.splice(Number(btn.dataset.attDel), 1); attPaint();
       });
-      // 이름 입력 시 지난 회의 소속·직책 자동 채움 (비어 있을 때만)
+      // 이름 입력 시 지난 회의 소속·직책 자동 채움(비어 있을 때만)
       $$("#mn-att .mn-a-name").forEach((el, i) => el.onchange = () => {
         const p = dir.get(String(el.value || "").trim());
         if (!p) return;
@@ -1104,9 +1067,9 @@
       const rows = $$("#mn-att .mn-a-name");
       if (rows.length) rows[rows.length - 1].focus();
     };
-    /* 회의 중 작성하다가 바로 QR을 띄우는 경로 — 입력분을 먼저 저장해 명단이 어긋나지 않게 한다 */
+    /* 작성 중 바로 QR을 띄우는 경로 — 입력분을 먼저 저장해 명단이 어긋나지 않게 */
     if ($("#mn-att-qr")) $("#mn-att-qr").onclick = () => {
-      if (!save({ silent: true })) return;   // 입력분을 먼저 저장해 명단이 어긋나지 않게
+      if (!save({ silent: true })) return;
       if (cur) signModal(cur.id);
     };
     $("#mn-att-prev").onclick = () => {
@@ -1124,7 +1087,7 @@
       toast(added ? `직전 회의(${p.date || ""})에서 ${added}명을 불러왔습니다.` : "새로 추가할 참석자가 없습니다.");
     };
 
-    /* ─ 결정사항 동적행 ─ */
+    /* 결정사항 동적 행 */
     function decCollect() {
       $$("#mn-dec .mn-dec-row").forEach((row, i) => {
         if (!decisions[i]) return;
@@ -1151,7 +1114,7 @@
     decPaint();
     $("#mn-dec-add").onclick = () => { decCollect(); decisions.push({ task: "", owner: "", due: "", done: false }); decPaint(); };
 
-    /* ─ 폴더 변경 시 회차 재계산 (신규 작성일 때만) ─ */
+    /* 폴더 변경 시 회차 재계산(신규 작성일 때만) */
     $("#mn-folder").onchange = () => {
       if (x) return;
       const fid = $("#mn-folder").value, f = folderOf(fid);
@@ -1164,7 +1127,7 @@
       if (ch && !ch.value.trim() && f && f.chair) ch.value = f.chair;
     };
 
-    /* ─ 첨부 ─ */
+    /* 첨부 */
     function renderFiles() {
       $("#mn-file-box").innerHTML = files.length
         ? files.map((f, i) => `<span class="nb-file"><a href="${esc(f.url)}" target="_blank" rel="noopener">📎 ${esc(f.name)}</a>
@@ -1203,7 +1166,7 @@
       e.target.value = ""; addFiles(picked);
     };
 
-    /* ─ 저장 / 취소 / 삭제 ─ */
+    /* 저장 / 취소 / 삭제 */
     $("#mn-cancel").onclick = () => {
       stopAutoSave();
       if (cur) {
@@ -1219,7 +1182,7 @@
       D().minutes = all().filter(c => c.id !== x.id);
       SeMIS.save(); closeModal(); SeMIS.renderView(); toast("삭제되었습니다.");
     });
-    /* 저장 — opts.silent 면 모달을 닫지 않고 값만 반영(QR 띄우기 경로). 성공 시 true */
+    /* opts.silent 면 모달을 닫지 않고 값만 반영(QR 띄우기 경로). 성공 시 true */
     function save(opts) {
       const o = opts || {};
       attCollect(); decCollect();
@@ -1278,7 +1241,7 @@
       stopAutoSave();
       closeModal();
       if (isNew) {
-        // 새 회의록은 상세를 바로 열어 QR 서명 안내가 곧장 눈에 들어오게 한다
+        // 새 회의록은 상세를 바로 열어 QR 서명 안내가 곧장 보이게 한다
         SeMIS.renderView();
         detail(saved.id);
         toast("회의록이 만들어졌습니다. QR을 보여주면 참석자가 바로 서명할 수 있습니다.");
@@ -1290,9 +1253,8 @@
     }
     $("#mn-save").onclick = () => save();
 
-    /* ══════ 자동 저장 (기본 On) ══════
-       회의 중 길게 작성하다 창이 닫혀도 내용이 남도록 20초마다 저장한다.
-       신규 작성은 실제로 입력한 내용이 생긴 뒤에만 만들어 빈 회의록이 쌓이지 않게 한다. */
+    /* 자동 저장(기본 On): 창이 닫혀도 내용이 남도록 20초마다 저장.
+       신규는 실제 입력이 생긴 뒤에만 만들어 빈 회의록이 쌓이지 않게 한다. */
     function markAutoSaved() {
       const el = $("#mn-autostat");
       if (!el) return;
@@ -1318,7 +1280,7 @@
       stopAutoSave();
       autoTickFn = autoTick;
       autoTimer = setInterval(autoTick, AUTOSAVE_MS);
-      // 탭을 닫거나 새로고침할 때도 마지막 입력분을 놓치지 않도록 (저장은 동기 처리)
+      // 탭을 닫거나 새로고침할 때도 마지막 입력분 저장(동기 처리)
       autoHide = () => { try { autoTick(); } catch (e) {} };
       window.addEventListener("pagehide", autoHide);
     }
@@ -1332,7 +1294,7 @@
     startAutoSave();
   }
 
-  /* ══════════ 인쇄 공통 — 숨김 iframe 으로 인쇄 대화상자 ══════════ */
+  /* ── 인쇄 공통 — 숨김 iframe 으로 인쇄 대화상자 ── */
   async function printHTML(html, label) {
     try {
       toast((label || "인쇄 문서") + " 준비 중…");
@@ -1433,12 +1395,12 @@
 </body></html>`, "회의록");
   }
 
-  /* ── QR 안내문 (회의실 게시·배포용) ── */
+  /* ── QR 안내문(회의실 게시·배포용) ── */
   function printQrSheet(id, opts) {
     const o = opts || {};
     const x = o.rec || all().find(c => c.id === id);
     if (!x) return;
-    if (!o.rec && !canSeeRec(x)) return;   // 회의록 게시판 경로만 검사 (o.rec = 협의회 등 외부 호출)
+    if (!o.rec && !canSeeRec(x)) return;   // 회의록 게시판 경로만 검사(o.rec = 협의회 등 외부 호출)
     const url = o.url || signUrl(x), code = o.code || signCode(x);
     const qr = qrSvg(url, 420);
     const title = o.title || x.title || "회의";
@@ -1484,7 +1446,7 @@
 </body></html>`, "QR 안내문");
   }
 
-  /* ══════════ 서명 화면 (휴대폰 · signer 계정) ══════════ */
+  /* ── 서명 화면(휴대폰 · signer 계정) ── */
   function renderSigning(root, minuteId) {
     const m = all().find(c => c.id === minuteId);
     if (!m) { root.innerHTML = '<div class="empty">회의 정보를 찾을 수 없습니다. 진행자에게 문의하세요.</div>'; return; }
@@ -1626,7 +1588,7 @@
     return true;
   }
 
-  /* 서명 패드 — 협의회 모듈과 동일 UX (캔버스 → Storage 업로드, 실패 시 dataURL) */
+  /* 서명 패드 — 협의회 모듈과 같은 UX(캔버스 → Storage 업로드, 실패 시 dataURL) */
   function openSignPad(p, onDone) {
     openModal(`
       <h3>✍️ ${esc(p.name || "참석자")} 서명</h3>

@@ -1,12 +1,6 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 운항 현황 (v1.14)
-   에어제타 화물기 실시간 위치(ADS-B) · 인천 접근 · 입출항 기록.
-     대시보드: 지도(기체만) + 인천 접근 중 목록
-     메뉴 "운항 현황"(#/flight): 요약 · 지도(비행 경로) · 인천 입항/출항 · 기체 현황 · 입출항 기록(48시간)
-   데이터: Supabase Edge Function semis-logi-adsb (adsb.lol 중계, 2분마다 서버가 기록) — js/flightcore.js 가 해석
-   지도: Leaflet 1.9.4(assets/vendor/leaflet, 필요할 때만 로드) + OpenStreetMap 타일
-   관리 항목은 기체 목록(공용 DB fleet)뿐 — 스케줄은 쓰지 않는다.
-   ═══════════════════════════════════════════════════════ */
+/* 운항 현황(#/flight) · 대시보드 지도 — 에어제타 화물기 실시간 위치(ADS-B) · 인천 접근 · 입출항 기록.
+   데이터: Supabase Edge Function semis-logi-adsb(adsb.lol 중계, 2분마다 서버가 기록) — 해석은 js/flightcore.js.
+   지도: Leaflet 1.9.4(assets/vendor/leaflet, 필요할 때만 로드) + OpenStreetMap 타일. 관리 항목은 기체 목록(공용 DB fleet)뿐. */
 "use strict";
 
 (() => {
@@ -21,7 +15,7 @@
 
   const state = { ts: 0, err: "", ac: [], events: null, trail: false, fetchedAt: 0, srcErr: "", ver: 0, busy: null };
 
-  /* ─────────── 데이터 ─────────── */
+  /* ── 데이터 ── */
   function fleet() {
     const f = SeMIS.data.fleet;
     return Array.isArray(f) && f.length ? f : F.DEFAULT_FLEET;
@@ -95,7 +89,7 @@
     return F.kstHM(state.fetchedAt || state.ts) + " 기준" + (state.err ? " · 갱신 실패" : "");
   }
 
-  /* ─────────── 지도 (Leaflet) ─────────── */
+  /* ── 지도 (Leaflet) ── */
   let leafletP = null;
   function loadLeaflet() {
     if (window.L && window.L.map) return Promise.resolve(window.L);
@@ -311,7 +305,7 @@
     mk.openPopup();
   }
 
-  /* ─────────── 인천 접근 중 목록 (대시보드 · 운항 현황 공용) ─────────── */
+  /* ── 인천 접근 중 목록 (대시보드 · 운항 현황 공용) ── */
   function apprListHTML(md) {
     if (!md.appr.length) return '<p class="fo-none">지금 인천으로 접근 중인 항공기가 없습니다.</p>';
     return `<ol class="appr-list">${md.appr.map(it => {
@@ -337,7 +331,7 @@
     }).join("")}</ul>`;
   }
 
-  /* ═════════ 대시보드 ═════════ */
+  /* ── 대시보드 ── */
   function dashHTML() {
     const md = model();
     return `<section class="dash-flt" id="dash-flt" aria-label="운항 현황">
@@ -382,7 +376,7 @@
     ensureTimer();
   }
 
-  /* ═════════ 운항 현황 화면 ═════════ */
+  /* ── 운항 현황 화면 ── */
   function statsHTML(md) {
     const day0 = F.kstDayStart(md.now);
     const arr = F.eventsOf(state.events, { kind: "arr", apt: F.HOME, since: day0 });
@@ -499,7 +493,7 @@
         }).join("")}</tbody></table></div>` : '<p class="fo-none">최근 48시간 입출항 기록이 없습니다.</p>'}
     </section>`;
   }
-  /* v1.29 모바일: 긴 목록은 앞의 몇 줄만 — '더 보기'로 펼친 상태는 1분 갱신 뒤에도 유지 */
+  /* 모바일: 긴 목록은 앞의 몇 줄만 — '더 보기'로 펼친 상태는 1분 갱신 뒤에도 유지 */
   const unfold = {};
   const FOLD_N = { arr: 4, dep: 4, wait: 4, fleet: 5, log: 5 };
   function foldLists(root) {
@@ -601,7 +595,7 @@
     if (Date.now() - state.ts > REFRESH_MS) refresh(false);
   });
 
-  /* ═════════ 기체 목록 편집 (hq) ═════════ */
+  /* ── 기체 목록 편집 (hq) ── */
   function fleetModal() {
     let rows = fleet().map(f => Object.assign({}, f));
     const rowHTML = (f, i) => `<div class="fl-row" data-i="${i}">

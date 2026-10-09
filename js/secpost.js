@@ -1,15 +1,7 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 경비대원 배치도 (v1.28, 화물보안 대시보드의 한 칸)
-   B터미널 보호구역 보안 경비대원 배치도를 "도면 + 지점 데이터"로 그린다.
-
-   민감보안정보: 도면 · 지점 위치 · 이름은 공용 DB에만 둔다(권한표 읽기 2 · 쓰기 3).
-   이 파일(공개 저장소)에는 유형 이름 · 색 · 화면 동작만 있고 실제 배치는 없다.
-     DATA.secPost    = { title, asOf, note, points[{ id, label, kind, x, y(도면 %), lp(이름표 b|t|l|r), cr(카드리더), dmd(문형 금속탐지기), note }],
-                         updatedAt, updatedBy }
-     DATA.secPostImg = { img(WebP data URL), w, h, name, updatedAt, updatedBy } — 도면은 거의 바뀌지 않아 따로 둔다(변경 이력 크기)
-   화면: 유형별 건수 칩(누르면 그 유형만 강조) · 도면 위 지점(누르면 정보) · 유형별 지점 목록(표 대신 읽는 길)
-   hq: 편집(제목 · 기준일 · 비고 · 도면 교체 · 지점 추가/삭제 · 유형 · 이름표 위치 · 카드리더 · 문형 MD · 도면을 눌러 위치 지정)
-   ═══════════════════════════════════════════════════════ */
+/* 경비대원 배치도(화물보안 대시보드의 한 칸) — 도면 + 지점 데이터로 그린다. hq는 편집.
+   민감보안정보: 도면 · 지점 위치 · 이름은 공용 DB에만(권한표 읽기 2 · 쓰기 3). 이 파일(공개 저장소)에는 유형 · 색 · 화면 동작만 둔다.
+   DATA.secPost    = { title, asOf, note, points[{ id, label, kind, x, y(도면 %), lp(이름표 b|t|l|r), cr(카드리더), dmd(문형 금속탐지기), note }], updatedAt, updatedBy }
+   DATA.secPostImg = { img(WebP data URL), w, h, name, updatedAt, updatedBy } — 도면은 거의 안 바뀌어 따로 둔다(변경 이력 크기) */
 "use strict";
 
 (() => {
@@ -53,10 +45,10 @@
   }
   const dotDate = (d) => /^\d{4}-\d{2}-\d{2}$/.test(String(d || "")) ? String(d).replace(/-/g, ".") : String(d || "");
 
-  /* ─────── 화면 상태 ─────── */
+  /* ── 화면 상태 ── */
   let filter = "", sel = "", pending = "";
 
-  /* ─────── 조각 ─────── */
+  /* ── 조각 ── */
   const sw = (k) => `<i class="gp-sw" style="--c:${esc(KIND[k].color)}" aria-hidden="true"></i>`;
   function pointHTML(p, on) {
     const k = KIND[p.kind];
@@ -121,7 +113,7 @@
     </section>`;
   }
 
-  /* ─────── 동작 ─────── */
+  /* ── 동작 ── */
   function placePop(card) {
     const pop = $("#gp-pop", card);
     if (!pop) return;
@@ -190,7 +182,7 @@
     else applyState(card);
   }
 
-  /* ═════════ 편집(hq) ═════════ */
+  /* ── 편집 (hq) ── */
   const uid = () => "sp" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   function editor() {
     if (!canEdit()) return;

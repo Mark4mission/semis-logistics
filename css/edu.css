@@ -1,7 +1,4 @@
-/* ═══════════════════════════════════════════
-   SeMIS · Logistics — 보안교육 이수 등록 (edu.html, v1.39.3 상시 등록 화면)
-   Logistics "Terminal Calm" 문법: 페트롤 머리 · 밝은 작업면 · 둥근 카드
-   ═══════════════════════════════════════════ */
+/* 보안교육 이수 등록 화면(edu.html) — Logistics "Terminal Calm" 문법: 페트롤 머리 · 밝은 작업면 · 둥근 카드 */
 :root {
   --bg: #f2f4f3; --surface: #ffffff; --surface-2: #f7f9f8;
   --border: #dfe5e3; --border-strong: #c9d2cf;
@@ -33,7 +30,7 @@ ul { list-style: none; }
 ::selection { background: #cdebe5; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: 0ms !important; animation-duration: 0ms !important; } }
 
-/* ═══════ 머리 ═══════ */
+/* ── 머리 ── */
 .ed-top { position: sticky; top: 0; z-index: 50; background: var(--petrol); color: #fff; }
 .ed-top-in { max-width: var(--w); margin: 0 auto; height: 56px; padding: 0 24px; display: flex; align-items: center; gap: 14px; }
 .ed-brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1rem; letter-spacing: -.01em; white-space: nowrap; }
@@ -50,7 +47,7 @@ ul { list-style: none; }
 .ed-kicker { color: #5eead4; font-size: .78rem; font-weight: 600; letter-spacing: .03em; margin-bottom: 4px; }
 .ed-hero h1 { font-size: 1.85rem; line-height: 1.25; font-weight: 700; letter-spacing: -.025em; }
 
-/* ═══════ 작업면 ═══════ */
+/* ── 작업면 ── */
 .ed-wrap { max-width: var(--w); margin: -42px auto 0; padding: 0 24px 72px; display: flex; flex-direction: column; gap: 14px; }
 .ed-card { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 26px 28px; box-shadow: var(--shadow-md); min-width: 0; }
 .ed-form { display: flex; flex-direction: column; gap: 24px; }
@@ -145,7 +142,7 @@ input[type="date"] { font-family: var(--mono); letter-spacing: -.01em; font-size
 .ed-btn-ghost { height: 46px; padding: 0 18px; border-radius: 12px; border: 1.5px solid var(--border-strong); background: var(--surface); color: var(--text); font-size: .94rem; }
 @media (hover: hover) and (pointer: fine) { .ed-btn-soft:hover { background: var(--primary-soft); } .ed-btn-ghost:hover { border-color: var(--text-3); } }
 
-/* ═══════ 상태 화면 ═══════ */
+/* ── 상태 화면 ── */
 .ed-load { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 120px 20px; color: var(--text-3); font-size: .92rem; }
 .ed-spin { width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid var(--border); border-top-color: var(--primary); animation: ed-spin 700ms linear infinite; flex: none; }
 @keyframes ed-spin { to { transform: rotate(360deg); } }
@@ -203,7 +200,7 @@ input[type="date"] { font-family: var(--mono); letter-spacing: -.01em; font-size
 .ed-same { font-style: normal; font-size: .7rem; font-weight: 600; color: var(--text-2); background: var(--surface-2); border: 1px solid var(--border); padding: 0 7px; border-radius: 999px; margin-left: 8px; white-space: nowrap; }
 .ed-actions { display: flex; justify-content: center; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
 
-/* ═══════ 반응형 ═══════ */
+/* ── 반응형 ── */
 @media screen and (max-width: 767px) {
   html { font-size: 16px; }
   .ed-top-in { padding: 0 16px; height: 52px; gap: 10px; }
@@ -228,7 +225,7 @@ input[type="date"] { font-family: var(--mono); letter-spacing: -.01em; font-size
   .ed-rcpt { grid-column: 1 / -1; }
 }
 
-/* ═══════ 인쇄 (A4) ═══════ */
+/* ── 인쇄 (A4) ── */
 @page { size: A4; margin: 12mm; }
 @media print {
   html { font-size: 12.5px; }

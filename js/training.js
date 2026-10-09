@@ -1,50 +1,14 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 보안교육 · 자격 관리 (v1.20 → v1.31 재정비, 라우트 training)
-
-   v1.31 — 직무 · 과정 명칭을 현행 법령 · 지침 · 국제 기준으로 정정하고 화면을 사람 중심으로 다시 짰다.
-   근거(공개 법령 — 국가법령정보센터 원문 확인 2026-10-01)
-   - 항공보안법 제28조(교육훈련) · 시행규칙 제3조의5 · 제15조
-   - 국가민간항공보안 교육훈련지침(국토교통부 예규 제379호, 2024-03-15) 제2조 · 제8조 · 제12~29조 · 제32조 · 별표 3~18의4
-     · 제13조 정기교육: 수료일(인증일)부터 1년 — 그 날 전후 30일이 이수 기간, 기간 안 이수 시 종전 만료일 다음 날부터 1년,
-       못 하면 자격 정지 → 정지 후 6개월 안 정기교육으로 회복
-   - 항공안전법 제72조 · 항공위험물운송기술기준 제12조②(24개월 이내 보수교육, 만료 3개월 안 이수 시 기존 만료일 기준 연장)
-   - ICAO Annex 17 3.4 · ICAO ASTP · IATA DGR 1.5 · EU 2015/1998 11.2.3.9 · 11.4.3(5년) · TSA 보안프로그램(비공개)
-
-   v1.38 — 직무 · 과정 기준표를 인천화물팀 · 화물 협력사 기준으로 추림(Mark 결정 2026-10-07).
-   - 범위: 항공보안 + 위험물. 여객 · 기내식 · 청소 업무와 화물 안전 필수교육(화물직무 · 지상안전 · W&B — 사내 AL-LEARNING · CSI 관리)은 넣지 않음
-   - 뺀 직무: 항공사보안책임자(사내 절차상 본사 안전보안실장 · 항공보안팀장) · 항공보안교관(교육기관 강사 — 과정은 사내보안교관 자격 경로로 남김)
-   - 더한 것: 보안검색요원 초기 (감독자 요건)(검색요원 초기 수료 — 지침 제18조①) · 방사선안전관리자(사내 절차 3.6)
-   - 사내 근거: 「항공보안교육훈련절차」(안전보안실, 2025-09-30 개정) · 「화물서비스 교육훈련절차」(2026-02-06 개정) — 절 번호만 적는다
-   - 화면: 공통 규칙 → 인천화물팀(직무군 색 순서) → 협력사 · 조업사(업체별 확인) → 그 밖의 과정
-
-   v1.44 — 팀에 해당자가 없는 직무군을 뺌(Mark 결정 2026-10-09): 보안 유관부서(관리자 · 일반요원) · 전화 접수 · 안내.
-   - 과정 c-mgr-i · c-mgr-r · c-gen-i · c-aware · c-bomb 도 기본 과정에서 뺌(기록 · 교육 기록이 가리키면 이전 때 남김)
-   - 협력사 확인 과정 '보안 유관부서 일반요원 교육 (협력사)'(지침 제29조② — 조업사 · 용역사)은 그대로
-   - '보안검색감독자 선수 과정'(법령 · 지침에 없는 말) → '보안검색요원 초기 (감독자 요건)': 감독자 지정 요건인 보안검색요원 초기과정 수료(지침 제18조①)
-
-   화면
-   - 인원(기본): 사람별 자격 상태 · 다음 갱신 · SSI 서약 (PC는 목록 / 이수 현황표, 모바일은 한 줄 카드)
-     이름을 누르면 개인 화면: 자격 현황 · 이수 이력 · SSI 서약 · 직무 · 기본 정보 (뒤로 = 브라우저 뒤로)
-   - 교육 기록: 당사 실시(기록 8항목 — 지침 제32조) · 협력사 확인 → 누르면 기록 화면
-   - 직무 · 과정: 직무별 근거 · 자격 조건 · 주요 역할 · 과정(구분 · 최소 시간 · 주기 · 법정 여부 · 교육기관)
-   - SSI 서약: SeMIS v2 보안서약서 명단 조회(RPC semis_logi_pledges — 사번 · 서명 없음)
-
-   데이터 DATA.training = {
-     catVer(과정 정의 판 — 2 = v1.31 정식 명칭 · 3 = v1.38 인천화물팀 기준 · 4 = v1.42 표기 · 5 = v1.44 직무군 정리),
+/* 보안교육 · 자격 관리 — 직무별 보안 · 위험물 교육 이수와 자격 상태(인원 · 교육 기록 · 직무 · 과정 · SSI 서약).
+   범위: 인천화물팀 · 화물 협력사의 항공보안 + 위험물. 여객 · 기내식 · 청소 업무와 화물 안전 필수교육(사내 AL-LEARNING · CSI 관리)은 넣지 않는다.
+   DATA.training = { catVer(과정 정의 판 — migrate 참고),
      courses[{ id, fam, name, kind(초기|직무|인증|정기|1회), cycle(개월, 0 = 영구), rule(kr|dg|""), step(자격을 주지 않는 단계),
-               hours, legal(law|intl|own), basis, org, roles[], all, vendor, who(협력사 과정 대상),
-               same[](같은 교육으로 인정하는 다른 과정 id — 그 기록도 이 묶음에 셈) }] — 비면 코드 기본 과정
-     people[{ id, name, emp(사번 — v1.39.2 본인 등록 · 직접 입력), dept, roles[], apt{직무: 임명일}, left(퇴직일), pledge(SSI 서약일), pledgeFiles[], note, src, selfAt }]
+               hours, legal(law|intl|own), basis, org, roles[], all, vendor, who(협력사 과정 대상), same[](같은 교육으로 인정하는 과정 id) }] — 비면 코드 기본 과정
+     people[{ id, name, emp(사번), dept, roles[], apt{직무: 임명일}, left(퇴직일), pledge(SSI 서약일), pledgeFiles[], note, src, selfAt }]
      records[{ id, pid, cid, date, expire(비면 규칙으로 계산), hours, score, org, certNo, files[], sessionId, note, src, selfAt, chkAt, chkBy }]
      sessions[{ id, type(own|vendor), cid, title, date, time, hours, place, instructor, evalText, pids[],
                 files{ tt[], roster[], eval[] }, vendor, target, done, note, createdAt/By, updatedAt/By }] }
-   v1.39 — 배포용 이수 등록(edu.html): 메일로 받은 링크에서 본인이 인원 · 직무(임명일) · 이수(수료일 · 이수증)를 등록하면
-     서버(semis_logi_edu_submit)가 이 컬렉션에 병합한다. 사람 apt{직무: 임명일} · selfAt, 기록 src 'self' · selfAt,
-     안전보안파트 확인 chkAt · chkBy. 등록 주소는 이 화면 '이수 등록 페이지'(hq)에서 복사 · 메일 · QR — v1.39.3 부터 상시 주소 하나(RPC semis_logi_edu_links · _link_save).
-   권한: 열람 mgr(권한표 training 2) · 편집 hq(3). 파일은 비공개 버킷 training/ 폴더(열람 2 · 올리기 3).
-   수검 대응 센터 증빙: window.SemisEvidence.training(mid) → { ok, text } (1.1~1.4 · 2.10 · 3.4 · 8.2 · 9.2 · 9.2.1)
-   점검 · 교육 대시보드(js/auddash.js)는 window.SemisTraining 의 집계 함수를 쓴다.
-   ═══════════════════════════════════════════════════════ */
+   본인 등록(edu.html): 서버 semis_logi_edu_submit 이 병합 — 사람 apt · selfAt, 기록 src "self" · selfAt. 안전보안파트가 확인하면 chkAt · chkBy.
+   권한: 열람 mgr(2) · 편집 hq(3). 파일은 비공개 버킷 training/ (열람 2 · 올리기 3). */
 "use strict";
 
 (() => {
@@ -90,9 +54,9 @@
     return addDays(shiftM(iso, months), -1);
   }
 
-  /* ─────── 직무 기준표 (공개 법령 · 지침 · 국제 기준) ─────── */
+  /* ── 직무 기준표 ── */
   const GROUPS = [["law", "항공보안법 · 교육훈련지침"], ["dg", "위험물 (항공안전법)"], ["intl", "국제 기준 · 항공사 보안프로그램"], ["own", "사내 · 기타"]];
-  /* 인천화물팀 기준(v1.38). '사내 절차' = 「항공보안교육훈련절차」, 위험물 화물 절차 = 「화물서비스 교육훈련절차」 — 절 번호만 */
+  /* '사내 절차' = 「항공보안교육훈련절차」, '화물 절차' = 「화물서비스 교육훈련절차」 — 절 번호만 적는다 */
   const ROLE_DEF = [
     { id: "항공사보안감독자", grp: "law", basis: "교육훈련지침 제2조8호 · 제17조 · 사내 절차 1.3.2 · 3.1", who: "인천화물팀장(국내 지점장) · 팀 보안감독자 — 보안책임자 추천으로 지정",
       qual: "지정 전 또는 지정 후 6개월 안 초기교육(16시간↑ · 평가 80점↑) 이수, 이후 연 1회 정기교육(8시간↑). ICAO · IATA · TSA 보안관리자 과정 이수는 초기교육으로 인정 (지침 제17조②)",
@@ -125,11 +89,11 @@
       qual: "보안서약 (교육 과정이 아니라 서약으로 관리)", duty: "민감보안정보 열람 · 취급", pledge: true }
   ];
   const ROLES = ROLE_DEF.map(r => r.id);
-  /* v1.31 옛 직무 이름 → 정식 명칭 (읽을 때 바꾸고, 데이터는 이전(migrate)에서 고친다) */
+  /* 옛 직무 이름 → 정식 명칭 (읽을 때 바꾸고, 저장 데이터는 migrate 에서 고친다) */
   const ROLE_ALIAS = { "보안감독자": "항공사보안감독자", "화물보안 요원": "화물보안 업무요원", "장비 운용자": "항공보안장비 유지보수요원", "위험물 취급자": "DGR", "SSI 취급자": "SSI" };
   const roleDef = (r) => ROLE_DEF.find(x => x.id === r) || null;
-  /* v1.37 직무군 색 (Mark 지정 5군 — v1.38 에서 책임자 · 항공보안교관을, v1.44 에서 보안 유관부서 · 전화 접수 · 안내를 뺌) — 그 밖(위험물 · 방사선 · SSI · ACMR · ACC3 · 사내 직무)은 '기타' 기본색.
-     색은 css `.rg-*` (dataviz 검증기 --pairs all 통과 · 상태 색(초록 · 호박 · 빨강 · 틸) 색상 피함), 글자는 본문 잉크 */
+  /* 직무군 — 그 밖(위험물 · 방사선 · SSI · ACMR · ACC3 · 사내 직무)은 '기타'.
+     색은 css .rg-*(상태 색 초록 · 호박 · 빨강 · 틸과 겹치지 않게), 글자는 본문 잉크 */
   const RGROUPS = [
     { id: "sup", label: "항공사 보안관리", roles: ["항공사보안감독자"] },
     { id: "scr", label: "보안검색 · 화물보안", roles: ["보안검색감독자", "보안검색요원", "항공보안장비 유지보수요원", "화물보안 업무요원"] },
@@ -146,7 +110,7 @@
   const sortRoles = (rs) => rs.slice().sort((a, b) => roleRank(a) - roleRank(b) || String(a).localeCompare(String(b), "ko"));
   const rgDot = (g) => `<i class="rg-dot rg-${g.id}" aria-hidden="true"></i>`;
 
-  /* ─────── 과정 기준 (코드 기본 — 데이터가 비었을 때 · 이전 때) ─────── */
+  /* ── 과정 기준 (코드 기본 — 데이터가 비었을 때 · migrate 때) ── */
   const SCR_ORG = "국토부 지정 보안검색교육기관 (위탁 의무)";
   const TRN_ORG = "항공훈련기관 · 보안검색교육기관 (예: 한국공항공사 항공기술훈련원 항공보안교육센터)";
   const DG_BASIS = "항공안전법 제72조 · 항공위험물운송기술기준 제12조② · IATA DGR 1.5";
@@ -159,7 +123,7 @@
   const C = (id, fam, name, kind, cycle, o) => Object.assign({ id, fam, name, kind, cycle, rule: "", hours: "", legal: "law", basis: "", org: "", roles: [] }, o || {});
   const RAD_BASIS = "원자력안전법 · 사내 절차 3.6";
   const SUP = ["항공사보안감독자"];
-  /* 보안검색감독자 지정 요건 — 보안검색요원 초기과정 수료(지침 제18조①). '자격'은 검색요원 자격인증(OJT 후)과 헷갈려 쓰지 않음 */
+  /* 보안검색감독자 지정 요건 — 보안검색요원 초기과정 수료(지침 제18조①). 검색요원 자격인증과 헷갈리지 않게 '자격'이라 쓰지 않는다. SCR_P_V3 = 이전 표기(migrate 에서 바꿈) */
   const SCR_P = { name: "보안검색요원 초기 (감독자 요건)", hours: "40시간↑ · 평가 — 보안검색요원 초기 수료증",
     basis: "교육훈련지침 제18조① · 별표 8 — 보안검색요원 초기과정 수료자를 감독자로 지정" };
   const SCR_P_V3 = { name: "보안검색감독자 선수 과정", hours: "보안검색요원 초기교육 40시간↑ · 평가 (수료증)", basis: "교육훈련지침 제18조① · 별표 8 — 검색요원 초기 이수자를 감독자로" };
@@ -199,7 +163,7 @@
   const LEGAL = { law: ["법정", "blue"], intl: ["국제 기준", "gray"], own: ["사내", "gray"] };
   const RULES = [["kr", "지침 제13조 (1년 · 전후 30일)"], ["dg", "위험물 (24개월 · 만료 3개월 안)"], ["", "주기만"]];
 
-  /* ─────── 데이터 ─────── */
+  /* ── 데이터 ── */
   function T() {
     let t = D()[KEY];
     if (!t || typeof t !== "object" || Array.isArray(t)) t = D()[KEY] = { courses: [], people: [], records: [], sessions: [] };
@@ -253,10 +217,10 @@
   const famOf = (f) => fams().find(g => g.fam === f) || null;
   const needs = (p, g) => !g.vendor && (g.all || g.roles.some(r => rolesOf(p).indexOf(r) >= 0));
 
-  /* ─────── 유효기한 · 상태 ───────
+  /* ── 유효기한 · 상태 ──
      묶음 안 기록을 날짜순으로 이어 셈한다. 직접 적은 유효기한(이수증 기재)이 있으면 그것.
-     kr(지침 제13조): 직전 유효기한 다음 날(=1년이 되는 날) 전후 30일 안 이수 → 직전 유효기한 다음 날부터 주기
-     dg(기술기준 제12조②): 직전 유효기한 3개월 전 ~ 유효기한 안 이수 → 직전 유효기한 다음 날부터 주기 */
+     kr(지침 제13조): 1년이 되는 날(직전 유효기한 다음 날) 전후 30일 안 이수 → 그날부터 주기. 못 하면 자격 정지, 정지 후 6개월 안 정기교육으로 회복
+     dg(기술기준 제12조② · IATA DGR 24개월): 직전 유효기한 3개월 전 ~ 유효기한 안 이수 → 직전 유효기한 다음 날부터 주기 */
   function nextExpire(c, date, prev) {
     const m = Number(c && c.cycle) || 0;
     if (!c || m <= 0 || !isISO(date)) return "";
@@ -337,7 +301,7 @@
     }
     return { st: d < 0 ? "exp" : d <= SOON ? "soon" : "ok", r, exp, d, at: exp };
   }
-  /* 상태 설명 한 줄 */
+  /* 상태 설명 한 줄 (short = 표 칸용) */
   function stText(c, short) {
     if (!c) return "";
     switch (c.st) {
@@ -422,9 +386,8 @@
     });
     return out;
   }
-  /* ─────── 만료 알림 · 명단(v1.40) ───────
-     만료 · 미이수 · 정지(BAD) = 빨강, 이수 기간 · 유예 · 임박 · 인증 전(WARN) = 주황.
-     목록 = dueList(DUE_DAYS): 조치 필요 + DUE_DAYS 안에 날짜가 오는 칸 */
+  /* ── 만료 알림 · 명단 ──
+     BAD(만료 · 미이수 · 정지) = 빨강, WARN(이수 기간 · 유예 · 임박 · 인증 전) = 주황. 목록 = dueList(DUE_DAYS) */
   const DUE_DAYS = 90;
   /* 알릴 날짜 — 이수 기간 · 만료는 유효기한, 유예는 이수 기간 끝, 정지 · 회복 경과는 회복 기한 */
   function ddDate(c) {
@@ -452,8 +415,7 @@
     const bad = list.filter(c => BAD.indexOf(c.st) >= 0).length;
     return { bad, warn: list.length - bad, n: list.length, people: new Set(list.map(c => c.p.id)).size, list };
   }
-  /* 인원 탭 위 만료 · 미이수 알림판(v1.42 표 형식) — 상태 · 이름 · 교육 · 기한 · 남은 날, 급한 순. 넓으면 두 단(행 우선),
-     처음 AL_MAX 건 + '전체 n건'. 줄을 누르면 개인 화면 */
+  /* 인원 탭 위 만료 · 미이수 알림판 — 급한 순, 넓으면 두 단(행 우선), 처음 AL_MAX 건 + '전체 n건'. 줄을 누르면 개인 화면 */
   const AL_MAX = 10;
   function alertStrip(t) {
     const a = alertSummary(t);
@@ -470,7 +432,7 @@
     </section>`;
   }
 
-  /* ─────── 엑셀(.xlsx) 쓰기 — 외부 라이브러리 없이(ZIP = SemisHwpx.zip) ─────── */
+  /* ── 엑셀(.xlsx) 쓰기 — 외부 라이브러리 없이(ZIP = SemisHwpx.zip) ── */
   const xesc = (v) => String(v == null ? "" : v).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   const colName = (i) => { let s = "", n = i + 1; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
   /* sheet = { name, widths[], freeze(머리 행 수), rows[[{ v, s }|값]] } — s: 0 기본 · 1 제목 · 2 머리 · 3 칸 · 4 빨강 · 5 주황 · 6 흐림 */
@@ -575,15 +537,15 @@
     return m % 12 === 0 ? (m / 12) + "년" : m + "개월";
   }
 
-  /* ─────── 데이터 이전(멱등) — v1.31 정식 명칭 · v1.38 인천화물팀 기준 · v1.44 직무군 정리 ───────
-     코드 기본 과정 id 는 코드 정의로 바꾸고, 직접 넣은 과정 중 위험물(DGR)은 24개월 · dg 규칙, 교관은 1회(영구) · 직무 없음(보유)으로.
-     기준표에서 뺀 직무(RETIRED_ROLES)는 과정의 대상 직무에서만 지운다(사람의 직무는 그대로 — 남아 있으면 '기타' 사내 직무로 보임).
-     같은 묶음 · 구분이 없는 기본 과정은 덧붙인다. 옛 직무 이름은 정식 명칭으로.
-     SeMIS v2 에서 옮긴 기록(src semis-v2)의 고정 유효기한(13개월 근사)은 지워 규칙으로 다시 셈한다. */
+  /* ── 데이터 이전(migrate) — 멱등, catVer < CAT_VER 일 때만 ──
+     catVer < 3: 코드 기본 과정 id 는 코드 정의로 바꾸고, 직접 넣은 과정 중 위험물(DGR)은 24개월 · dg 규칙, 교관은 1회(영구)로.
+       같은 묶음 · 구분이 없는 기본 과정은 덧붙인다. src semis-v2 기록의 고정 유효기한(13개월 근사)은 지워 규칙으로 다시 셈한다.
+     공통: 과정 이름 · 근거 표기 정리(NAME_V4), 옛 직무 이름(과정 · 사람 · 임명일 키)은 정식 명칭으로.
+     catVer < 5: RETIRED_COURSES 정리, 과정 대상 직무에서 RETIRED_ROLES 삭제(사람의 직무는 그대로 — '기타' 사내 직무로 보임), c-scr-p 표기 갱신. */
   const RETIRED_ROLES = ["항공사보안책임자", "항공보안교관", "보안 유관부서 관리자", "보안 유관부서 일반요원", "전화 접수자 · 안내요원"];
-  /* v1.44 (catVer 5) 기본 과정에서 뺀 과정 — 기록 · 교육 기록이 가리키지 않을 때만 지운다(가리키면 남겨 '그 밖의 과정'으로) */
+  /* 기본 과정에서 뺀 과정 — 기록 · 교육 기록이 가리키지 않을 때만 지운다(가리키면 '그 밖의 과정'으로 남김) */
   const RETIRED_COURSES = ["c-mgr-i", "c-mgr-r", "c-gen-i", "c-aware", "c-bomb"];
-  /* v1.42 (catVer 4) 표기 정리 — 책임자 없음(감독자만) · 위험물 → DGR. 과정 내용(시간 · 기관 · 근거)은 그대로, 이름만 */
+  /* 표기 정리 — 책임자 · 감독자 → 항공사보안감독자, 위험물 교육 → DGR. 이름 · 근거만 바꾼다 */
   const NAME_V4 = [[/항공사보안책임자\s*·\s*감독자/g, "항공사보안감독자"], [/(^|[^가-힣])책임자\s*·\s*감독자/g, "$1항공사보안감독자"],
     [/^\s*(IATA\s*)?(DGR\s*)?위험물\s*교육(?=\s|$)/, "DGR"]];
   const nameV4 = (s) => NAME_V4.reduce((a, [re, to]) => a.replace(re, to), String(s == null ? "" : s));
@@ -647,9 +609,9 @@
     return JSON.stringify(t) !== before;
   }
 
-  /* ─────── SSI 서약 — SeMIS v2 보안서약서 명단 (v1.21) ───────
-     서버 RPC semis_logi_pledges(manager 이상): 사람별 최신 서약 { name, dept, position, date, state, n } — 사번 · 서명 없음.
-     10분 동안 기억하고, 실패하면 1분 동안 다시 부르지 않는다(화면 다시 그리기와 맞물린 반복 호출 방지). */
+  /* ── SSI 서약 — SeMIS v2 보안서약서 명단 ──
+     RPC semis_logi_pledges(manager 이상): 사람별 최신 서약 { name, dept, position, date, state, n } — 사번 · 서명 없음.
+     10분 캐시, 실패하면 1분 동안 다시 부르지 않는다(다시 그리기와 맞물린 반복 호출 방지). */
   const PL = { rows: null, at: 0, busy: null, err: "", failAt: 0 };
   const PL_TTL = 10 * 60000;
   const PL_STATE = { valid: ["유효", "green"], left: ["퇴직 · 전출", "gray"], void: ["무효", "red"] };
@@ -691,7 +653,7 @@
     return { date: "", src: "", ambiguous: !!(m && m.ambiguous), row: m && !m.ambiguous ? m : null };
   }
   const pledged = (p) => !!pledgeInfo(p).date;
-  /* v1.39 본인 등록 — 안전보안파트가 아직 확인하지 않은 기록 */
+  /* 본인 등록(edu.html) 중 안전보안파트가 아직 확인하지 않은 기록 */
   const selfOpen = (r) => !!r && !!r.selfAt && !r.chkAt;
   const selfRecs = (pid) => records().filter(r => r.pid === pid && selfOpen(r));
   const selfPending = () => records().filter(r => selfOpen(r) && personOf(r.pid)).length;
@@ -700,8 +662,8 @@
     const k = Object.keys(p.apt).find(x => ROLE_ALIAS[x] === r && isISO(p.apt[x])); return k ? p.apt[k] : ""; };
   const isSSI = (p) => rolesOf(p).indexOf("SSI") >= 0;
 
-  /* ─────── 수검 대응 센터 증빙 연결 ───────
-     점검 체크리스트 항목 번호 → 이 화면의 실제 기록으로 증빙 여부 판단(없으면 '증빙 없음'). 번호만 쓰고 원문은 쓰지 않는다. */
+  /* ── 수검 대응 센터 증빙 ──
+     체크리스트 항목 번호 → 실제 기록으로 증빙 여부 판단. 번호만 쓰고 원문은 쓰지 않는다. */
   function roleValid(roles, t) {
     roles = [].concat(roles);
     const gs = fams(false).filter(g => g.roles.some(r => roles.indexOf(r) >= 0));
@@ -733,7 +695,7 @@
   }
   if (typeof window !== "undefined") (window.SemisEvidence = window.SemisEvidence || {})[MOD] = evidence;
 
-  /* ─────── 화면 상태 ─────── */
+  /* ── 화면 상태 ── */
   let tab = "people", q = "", roleF = "", rgF = "", onlyAct = false, onlySelf = false, year = "", sType = "all", pState = "active", pView = "list";
   let pid = "", sid = "";                       // 개인 화면 · 교육 기록 화면
   const TABS = [["people", "인원"], ["sessions", "교육 기록"], ["catalog", "직무 · 과정"], ["pledges", "SSI 서약"]];
@@ -742,7 +704,7 @@
   const segHTML = (name, items, cur) => `<div class="seg" role="group" aria-label="${esc(name)}">${items.map(([v, lb]) =>
     `<button type="button" class="seg-btn" data-tseg="${esc(name)}" data-v="${esc(v)}" aria-pressed="${String(v) === String(cur)}">${esc(lb)}</button>`).join("")}</div>`;
   const hay = (a) => a.map(v => String(v || "")).join(" ").toLowerCase();
-  /* 같은 파일은 하나만(v1.40) — 주소 · 내용 해시(sha) · 이름 + 크기가 같으면 같은 파일 */
+  /* 같은 파일은 하나만 — 주소 · 내용 해시(sha) · 이름 + 크기 중 하나가 같으면 같은 파일 */
   function uniqFiles(files) {
     const out = [];
     filesOf(files).forEach(f => {
@@ -764,8 +726,8 @@
   }
   /* 직무 칩 — 직무군 색 점 + 옅은 바탕(기타는 기본색 · 빈 고리) */
   const roleChip = (r) => { const g = rgOf(r); return `<span class="tr-role rg-${g.id}" title="${esc(g.label)}">${rgDot(g)}${esc(r)}</span>`; };
-  /* v1.43.1 자격 보유로도 직무군에 든다(g.fams) — 보안교관 = 사내보안교관 직무 또는 항공보안교관 과정 · 사내보안교관 임명 이수.
-     직무가 아니므로 필수 과정 · 상태 집계(roleStats · stats)에는 넣지 않고, 직무군 집계 · 걸러 보기 · 표시에만 쓴다 */
+  /* 자격 보유로도 직무군에 든다(g.fams) — 예: 보안교관 = 사내보안교관 직무 또는 항공보안교관 과정 · 사내보안교관 임명 이수.
+     직무가 아니므로 필수 과정 · 상태 집계(roleStats · stats)에는 넣지 않고 직무군 집계 · 걸러 보기 · 표시에만 쓴다 */
   const heldRecs = (p, g) => (g && g.fams && p ? records().filter(r => r.pid === p.id && g.fams.indexOf((courseOf(r.cid) || {}).fam) >= 0) : []);
   const roleIn = (p, g) => rolesOf(p).some(r => rgOf(r) === g);
   const inRg = (p, g) => roleIn(p, g) || heldRecs(p, g).length > 0;
@@ -780,7 +742,7 @@
   const rgsOf = (p) => RGROUPS.filter(g => inRg(p, g));
   const legalChip = (k) => ui.chip(LEGAL[k][0], LEGAL[k][1]);
 
-  /* ─────── 화면 이동 (개인 · 교육 기록) — 브라우저 뒤로 = 목록 ─────── */
+  /* ── 화면 이동 (개인 · 교육 기록) — 브라우저 뒤로 = 목록 ── */
   function hist(on, kind, id) {
     try {
       if (on) history.pushState({ tr: kind + ":" + id }, "", location.hash);
@@ -818,7 +780,7 @@
     pid = np; sid = ns; SeMIS.renderView();
   });
 
-  /* ═════════ 인원 (목록 · 이수 현황표 · 모바일 카드) ═════════ */
+  /* ── 인원 (목록 · 이수 현황표 · 모바일 카드) ── */
   function peopleRows(t) {
     const all = people();
     return all.filter(p => {
@@ -929,7 +891,7 @@
       </tr>`).join("")}</tbody></table></div>`;
   }
 
-  /* ═════════ 개인 화면 ═════════ */
+  /* ── 개인 화면 ── */
   function personPage(root, canW) {
     const p = personOf(pid);
     const t = todayISO();
@@ -963,7 +925,7 @@
         <h2 class="card-title">자격 현황<span class="dc-meta">${pq.req.length ? "필수 " + pq.req.length : "필수 과정 없음"}${pq.held.length ? " · 보유 " + pq.held.length : ""}</span></h2>
         ${quals.length ? `<div class="tr-quals">${quals.map(qual).join("")}</div>` : ui.empty(rolesOf(p).length ? "직무에 해당하는 과정이 없습니다." : "직무를 지정하면 필수 과정이 표시됩니다.")}
       </section>`;
-    /* v1.40 각 묶음의 지금 기록(자격 현황의 기준)은 상태 색 · 남은 날, 그 전 기록은 '이력'(흐리게) */
+    /* 묶음마다 지금 기록(자격 현황의 기준)은 상태 색 · 남은 날, 그 전 기록은 '이력'(흐리게) */
     const curOf = {};
     quals.forEach(q => { if (q.r) curOf[q.r.id] = q; });
     const famOfRec = (r) => { const c = courseOf(r.cid); return c ? (c.fam || c.id) : r.cid; };
@@ -1025,7 +987,7 @@
     }
   }
 
-  /* ═════════ 교육 기록 (목록 · 기록 화면) ═════════ */
+  /* ── 교육 기록 (목록 · 기록 화면) ── */
   function sessionsHTML(canW) {
     const t = todayISO();
     const all = sessions();
@@ -1128,8 +1090,8 @@
     $$("[data-tperson]", root).forEach(b => b.onclick = () => openPerson(b.dataset.tperson));
   }
 
-  /* ═════════ 직무 · 과정 기준표 (v1.38 인천화물팀 기준) ═════════
-     공통 규칙 → 인천화물팀(직무군 색 순서, 직무 한 줄 → 근거 · 지정 · 자격 조건 · 주요 역할 · 과정)
+  /* ── 직무 · 과정 기준표 ──
+     공통 규칙 → 인천화물팀(직무군 순서, 직무 한 줄 → 근거 · 지정 · 자격 조건 · 주요 역할 · 과정)
      → 협력사 · 조업사(업체별 확인 과정) → 그 밖의 과정(직무 지정 없음 — 이수하면 '보유') */
   const vName = (c) => String(c.name || "").replace(/\s*\(협력사\)\s*$/, "").replace(/,\s*협력사\)\s*$/, ")");
   function catalogHTML(canW) {
@@ -1217,7 +1179,7 @@
         ${ql && !team && !venHTML && !ex ? ui.empty("검색 결과가 없습니다.") : ""}</div>`;
   }
 
-  /* ═════════ SSI 서약 (SeMIS v2 보안서약서 명단 조회) ═════════ */
+  /* ── SSI 서약 (SeMIS v2 보안서약서 명단 조회) ── */
   function pledgesHTML(canW) {
     if (!PL.rows) return PL.err
       ? ui.empty("SeMIS 보안서약서 명단을 불러오지 못했습니다.", '<button type="button" class="btn btn-soft btn-sm" data-plretry="1">다시 시도</button>')
@@ -1264,7 +1226,7 @@
       </section>`;
   }
 
-  /* ═════════ 폼 공통 ═════════ */
+  /* ── 폼 공통 ── */
   const fld = (idn, label, html, tip) => `<div class="form-row"><label for="${idn}">${esc(label)}${tip ? " " + ui.tip(tip, label + " 설명") : ""}</label>${html}</div>`;
   const dl = (id, vals) => `<datalist id="${id}">${vals.filter(Boolean).map(v => `<option value="${esc(v)}">`).join("")}</datalist>`;
   const uniq = (a) => a.map(norm).filter((s, i, all) => s && all.indexOf(s) === i);
@@ -1318,7 +1280,7 @@
     }).join("")}</select>`;
   }
 
-  /* ─────── 인원 ─────── */
+  /* ── 폼: 인원 ── */
   function roleChooser(cur) {
     const have = cur.slice();
     const custom = allRoles().filter(r => !roleDef(r));
@@ -1350,7 +1312,7 @@
       ${fld("tp-note", "메모", `<input id="tp-note" value="${esc(v.note)}" maxlength="200">`)}
       ${dl("tp-dl-dept", depts)}
       ${actions(!!x && SeMIS.canDelete())}`, { wide: true });
-    /* 직무 임명일 — 고른 직무마다 (v1.39) */
+    /* 직무 임명일 — 고른 직무마다 */
     const aptVals = {};
     if (x && x.apt && typeof x.apt === "object") Object.keys(x.apt).forEach(k => { const k2 = ROLE_ALIAS[k] || k; if (!isISO(aptVals[k2])) aptVals[k2] = x.apt[k]; });
     const paintApts = () => {
@@ -1433,7 +1395,7 @@
     return `<small class="tr-semis">SeMIS ${esc(dot(m.date))} · ${esc(m.dept || "-")} · ${esc((PL_STATE[m.state] || PL_STATE.valid)[0])}</small>`;
   }
 
-  /* ─────── 이수 기록 ─────── */
+  /* ── 폼: 이수 기록 ── */
   function recordForm(personId, rid, cidPreset) {
     if (!SeMIS.canEdit()) return;
     const fixedP = !!personId;
@@ -1508,7 +1470,7 @@
     };
   }
 
-  /* ─────── 교육 기록 (당사 실시 · 협력사 확인) ─────── */
+  /* ── 폼: 교육 기록 (당사 실시 · 협력사 확인) ── */
   function sessionForm(id, typePreset) {
     if (!SeMIS.canEdit()) return;
     const x = id ? sessionOf(id) : null;
@@ -1608,7 +1570,7 @@
     });
   }
 
-  /* ─────── 과정 관리 (hq) — 목록 → 과정 한 개 편집 ─────── */
+  /* ── 과정 관리 (hq) — 목록 → 과정 한 개 편집 ── */
   function coursesForm() {
     if (!SeMIS.canEdit()) return;
     const list = courses().map(c => JSON.parse(JSON.stringify(c)));
@@ -1683,10 +1645,10 @@
     shell();
   }
 
-  /* ═════════ 이수 등록 페이지 — 배포용 edu.html (v1.39 · v1.39.3 상시 주소) ═════════
-     대외 교육기관 이수증을 직원이 올리는 상시 화면. 주소 = 이 사이트 주소/edu.html#코드(코드는 공개 저장소에서 주소를 추측하지 못하게).
-     서버 RPC semis_logi_edu_links(주소 · 최근 제출) · semis_logi_edu_link_save(주소 만들기 36500일 · 바꾸기 = 새로 만들고 옛 주소 닫기) — hq 이상.
-     v1.43.3 관리 창 = 주소 복사 · QR 코드 · 열기 · 주소 변경 + 등록 필요 인원(조치 필요 칸 — 명단 복사) + 최근 제출. 메일 작성은 뺌(안내 메일은 직접). */
+  /* ── 이수 등록 페이지(edu.html) 관리 ──
+     직원이 대외 교육기관 이수증을 올리는 상시 공개 화면. 주소 = 사이트 주소/edu.html#코드(공개 저장소에서 주소를 추측하지 못하게 코드 사용).
+     RPC semis_logi_edu_links(주소 · 최근 제출) · semis_logi_edu_link_save(만들기 36500일 · 바꾸기 = 새로 만들고 옛 주소 닫기) — hq 이상.
+     관리 창 = 주소 복사 · QR · 열기 · 주소 변경 + 등록 필요 인원(명단 복사) + 최근 제출. */
   const EDU = { links: null, recent: [], err: "", qr: "" };
   function eduUrl(code) {
     const base = typeof location !== "undefined" ? location.origin + location.pathname.replace(/[^/]*$/, "") : "";
@@ -1730,7 +1692,7 @@
   const PERM_DAYS = 36500;
   const eduPerm = () => (EDU.links || []).filter(l => l && l.open && l.target !== "eduTest")
     .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))[0] || null;
-  /* 등록 필요 인원 — 재직 인원 필수 묶음 중 조치 필요(미이수 · 만료 · 자격 정지 · 회복 기한 경과 · 이수 기간 · 유예 · 인증 전), 급한 순 */
+  /* 등록 필요 인원 — 재직 인원 필수 묶음 중 조치 필요(needAct) 칸을 사람별로, 급한 순 */
   function needList(t) {
     t = t || todayISO();
     const by = new Map();
@@ -1818,7 +1780,7 @@
     eduLoad().then(paintM);
   }
 
-  /* ═════════ 렌더 ═════════ */
+  /* ── 렌더 ── */
   function bodyHTML(canW) {
     return tab === "sessions" ? sessionsHTML(canW) : tab === "catalog" ? catalogHTML(canW) : tab === "pledges" ? pledgesHTML(canW) : peopleHTML(canW);
   }

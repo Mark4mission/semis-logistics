@@ -1,14 +1,5 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 바로가기 (v1.23)
-   링크 메뉴(type "link")를 허브별 카드로 한 화면에 모은다. 시스템관리자는 '편집'에서
-   추가 · 수정 · 삭제 · 순서 변경 · 사이트 아이콘 일괄 가져오기를 한다.
-   - 따로 쌓는 데이터 없음: DATA.menus 의 링크 메뉴가 곧 바로가기(권한표 menus 읽기 1 · 쓰기 4 = 시스템관리자)
-   - 아이콘 필드: fav(사이트 아이콘 · 올린 이미지를 64px PNG data URL로) · ico + tone(선 아이콘) · icon(이모지)
-     그리기는 SeMIS.linkIconHTML(우선순위 fav → ico → 이모지 → 기본)
-   - 추가 · 수정은 시스템 설정의 메뉴 폼(SeMIS.menuForm)을 함께 쓰고, 폼 안의 '아이콘' 칸을 이 파일이 맡는다
-   - 사이트 아이콘: SemisSync.favicon(url) → Edge Function semis-logi-favicon 이 사이트의 아이콘 파일을 찾아
-     돌려주면 화면에서 64px PNG로 줄여 저장한다. 사내망 주소는 서버가 닿지 않으므로 이미지 파일 · 선 아이콘을 쓴다
-   ═══════════════════════════════════════════════════════ */
+/* 바로가기 — 링크 메뉴(DATA.menus, type "link")를 허브별 카드로 모아 보여 주고, 시스템관리자가 편집한다.
+   별도 저장 데이터 없음. 추가·수정 폼은 SeMIS.menuForm 을 함께 쓰고 '아이콘' 칸만 이 파일이 맡는다. */
 "use strict";
 
 (() => {
@@ -25,11 +16,10 @@
   const TONE_NAME = { teal: "청록", blue: "파랑", indigo: "남색", violet: "보라", rose: "빨강", amber: "주황", green: "초록", slate: "회색" };
   let editMode = false, query = "", focusId = "", bulkRunning = false;
 
-  /* ═════════ 이미지 → 64px PNG (사이트 아이콘 · 올린 파일 공통) ═════════
-     16px 같은 작은 아이콘은 정수배로 키워(보간 없음) 또렷하게, 큰 이미지는 비율 유지로 줄인다. */
+  /* 이미지 → 64px PNG data URL. 작은 아이콘은 정수배 확대(보간 없음), 큰 이미지는 비율 유지 축소. */
   const SIZE = 64;
   function svgSized(src) {
-    /* width/height 없는 SVG(viewBox만)는 브라우저마다 크기가 달라 64px로 고정해 그린다 */
+    /* viewBox만 있는 SVG는 브라우저마다 크기가 달라 64px로 고정 */
     const m = /^data:image\/svg\+xml(;charset=[^;,]+)?(;base64)?,(.*)$/i.exec(src);
     if (!m) return src;
     let txt;
@@ -104,7 +94,7 @@
   }
   const shortSrc = (u) => { const s = String(u || "").replace(/^https?:\/\//, ""); return s.length > 48 ? s.slice(0, 46) + "…" : s; };
 
-  /* ═════════ 메뉴 폼 안의 '아이콘' 칸 ═════════ */
+  /* 아이콘 필드: fav(64px PNG data URL) · ico+tone(선 아이콘) · icon(이모지). 그리기 우선순위 fav → ico → 이모지 */
   let pick = null, busyN = 0;
   function initPick(m) {
     const fav = m && SeMIS.favOk(m.fav) ? m.fav : "";
@@ -209,7 +199,7 @@
     };
   }
   function pickerRead() { return pick ? Object.assign({}, pick) : null; }
-  /* 저장: 고른 종류의 필드만 남긴다(이모지 icon 은 검색 · 목록용으로 늘 보존) */
+  /* 고른 종류의 필드만 남긴다. 이모지 icon 은 검색·목록용으로 늘 보존 */
   function applyIcon(obj, v) {
     if (!obj || !v) return obj;
     delete obj.fav; delete obj.ico; delete obj.tone;
@@ -221,7 +211,6 @@
     return obj;
   }
 
-  /* ═════════ 화면 ═════════ */
   const links = () => SeMIS.sortedMenus().filter(m => m && m.type === "link");
   const shown = (m) => editMode ? SeMIS.canSee(m) : SeMIS.navVisible(m);
   const findMenu = (id) => D().menus.find(x => x && x.id === id);
@@ -275,7 +264,6 @@
     });
     const loose = all.filter(m => !m.parent || !findMenu(m.parent));
     if (loose.length) html += section("_none", "허브 없음", icon("sliders", 18), loose, { addTo: "" });
-    /* 편집 모드: 바로가기가 없는 허브는 한 줄 버튼으로만 */
     if (empty.length) html += `<div class="sc-more"><span class="sc-more-t">다른 허브에 추가</span>${empty.map(g =>
       `<button type="button" class="btn btn-ghost btn-sm" data-sc-add="${esc(g.id)}">${icon("plus", 15)}<span>${esc(g.label)}</span></button>`).join("")}</div>`;
     if (!html) html = ui.empty("등록된 바로가기가 없습니다.",
@@ -317,7 +305,7 @@
       focusId = "";
     }
   }
-  /* 머리말(인쇄 버튼 포함)은 그대로 두고 본문 · 도구만 다시 그린다 */
+  /* 머리말(인쇄 버튼 포함)은 두고 본문·도구만 다시 그린다 */
   function refresh() {
     const root = document.getElementById("view");
     const body = root && $("#sc-body", root);
@@ -358,7 +346,7 @@
     if (!SeMIS.isAdmin() || typeof SeMIS.menuForm !== "function" || !findMenu(id)) return;
     SeMIS.menuForm(id, { after: afterSave });
   }
-  /* 링크 묶음 화면의 '편집' — 이 화면을 편집 모드로 열고 그 묶음 칸으로 이동 */
+  /* 링크 묶음 화면의 '편집' — 편집 모드로 열고 그 묶음 칸으로 이동 */
   function manage(id) {
     if (!SeMIS.isAdmin()) return;
     editMode = true; focusId = id || "";
@@ -389,7 +377,7 @@
       SeMIS.save(); SeMIS.renderNav(); refresh(); toast("삭제되었습니다.");
     });
   }
-  /* 사이트 아이콘 일괄 — 사이트 아이콘 · 선 아이콘이 없는 외부 링크만(이모지는 바꾼다) */
+  /* 사이트 아이콘·선 아이콘이 없는 외부 링크만 대상(이모지는 덮어씀). 사내망 주소는 서버가 닿지 않아 제외 */
   function bulkTargets() {
     return links().filter(m => !SeMIS.favOk(m.fav) && !m.ico && /^https?:\/\/.+/i.test(m.url || "") && !SeMIS.isIntranet(m.url));
   }

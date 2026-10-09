@@ -1,13 +1,5 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — HWPX(한글 표준 문서 · OWPML) 읽기 · 채우기 · 쓰기 · A4 그리기 (v1.32)
-   외부 라이브러리 없이 ZIP + XML 을 직접 다룬다.
-   - open(url | ArrayBuffer) → pkg { entries[{ name, data(Uint8Array) }], sec(Document), head(Document) }
-   - 채우기: cell(pkg, [표, 행, 열]) · setCell(tc, 줄들) · setPara(p, 글) · topParas(pkg) · paraText(p)
-   - build(pkg) → Uint8Array(.hwpx) — mimetype 은 첫 항목 · 무압축, 나머지는 deflate(가능할 때)
-     줄 배치 캐시(hp:linesegarray)는 모두 지워 한글이 열 때 다시 배치하게 한다.
-   - html(pkg, { page }) → A4 HTML(본문만) · css(pkg) → 인쇄용 스타일 — 양식 모양 그대로 인쇄 · 미리보기
-   양식 원본은 assets/forms/ (국가법령정보센터 별표 HWP → HWPX 변환, 공개 행정규칙)
-   ═══════════════════════════════════════════════════════ */
+/* HWPX(한글 OWPML) 양식 읽기 · 채우기 · 쓰기 · A4 인쇄 미리보기 — 외부 라이브러리 없이 ZIP + XML 직접 처리.
+   양식 원본: assets/forms/ (국가법령정보센터 별표 HWP → HWPX 변환) */
 "use strict";
 
 (() => {
@@ -19,7 +11,6 @@
   };
   const XML_DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>';
 
-  /* ─────── 바이트 · 문자열 ─────── */
   const enc = (s) => new TextEncoder().encode(s);
   const dec = (u8) => new TextDecoder("utf-8").decode(u8);
   let CRC = null;
@@ -52,7 +43,7 @@
   };
   const deflate = (u8) => typeof CompressionStream === "undefined" ? Promise.resolve(null) : pipe(u8, new CompressionStream("deflate-raw")).catch(() => null);
 
-  /* ─────── ZIP 읽기 (순서 유지) ─────── */
+  /* ZIP 읽기 — 항목 순서 유지 */
   async function unzip(ab) {
     const u8 = ab instanceof Uint8Array ? ab : new Uint8Array(ab);
     const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
@@ -76,11 +67,11 @@
     }
     return out;
   }
-  /* ─────── ZIP 쓰기 ─────── */
   function dosTime(d) {
     return { time: (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1),
       date: ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate() };
   }
+  /* mimetype 은 첫 항목 · 무압축(OWPML 규칙), 나머지는 줄어들 때만 deflate */
   async function zip(entries, now) {
     const t = dosTime(now || new Date());
     const parts = [], cds = [];
@@ -115,7 +106,6 @@
     return out;
   }
 
-  /* ─────── XML ─────── */
   function parseXML(u8) {
     const doc = new DOMParser().parseFromString(dec(u8), "application/xml");
     if (doc.getElementsByTagName("parsererror").length) throw new Error("xml");
@@ -126,7 +116,7 @@
   const kid = (el, name, ns) => kids(el, name, ns)[0] || null;
   const all = (el, name, ns) => Array.from(el.getElementsByTagNameNS(ns || NS.hp, name));
 
-  /* ─────── 문서 열기 ─────── */
+  /* → { entries[{ name, data, store }], sec: section0.xml, head: header.xml } */
   async function open(src) {
     let ab = src;
     if (typeof src === "string") {
@@ -141,7 +131,6 @@
     return { entries, sec: parseXML(s.data), head: parseXML(h.data) };
   }
 
-  /* ─────── 표 · 칸 · 문단 ─────── */
   const tables = (pkg) => all(pkg.sec, "tbl");
   function cellsOf(tbl) {
     return kids(tbl, "tr", NS.hp).reduce((a, tr) => a.concat(kids(tr, "tc", NS.hp)), []);
@@ -226,7 +215,7 @@
     return pkg._center;
   }
 
-  /* ─────── 쓰기 ─────── */
+  /* 줄 배치 캐시(linesegarray)는 지워 한글이 열 때 다시 배치하게 한다 */
   async function build(pkg, o) {
     o = o || {};
     all(pkg.sec, "linesegarray").forEach(n => n.parentNode.removeChild(n));
@@ -248,7 +237,7 @@
     setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 4000);
   }
 
-  /* ═════════ A4 그리기 (인쇄 · 미리보기) ═════════ */
+  /* A4 그리기(인쇄 · 미리보기). 길이 단위 HWPUNIT = 1/7200 in */
   const mm = (hu) => (Number(hu) || 0) * 25.4 / 7200;
   const f2 = (n) => (Math.round(n * 100) / 100).toString();
   const escH = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));

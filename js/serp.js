@@ -1,19 +1,5 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 팀위기대응계획 SERP (v1.25)
-   인천화물팀 팀위기대응계획(Station Emergency Response Plan, 관리번호는 데이터)을 화면으로.
-   위기상황이 나면 이 화면 한 곳에서 통보 → 소집 → SERC 개설 → 시간대별 초동조치를 진행하고 기록한다.
-
-   계획 탭 6개: 초동대응 · 조직 · 연락망 · 연락처 · 체크리스트 · 양식 · 대응 기록 · 문서 · 개정
-   대응 기록(실제 · 훈련): 경과 시간 · 시간대별 초동조치 체크(시각 · 기록자 · 기한 경과) · 역할별 체크리스트
-     · 통보 양식(복사 · 공유 · 문자) · 비상소집 문자 · SERC(현장 / 온라인) · 상황 기록 · 사고자료 제출 대장 · A4 결과 보고
-   대시보드 띠 · 메뉴 배지(대응 중) · 통합 검색 · hq 편집(인원 · 연락처 · 절차 · 체크리스트 · 문서 정보)
-   인원 편집은 비상연락망의 '인천화물팀' 섹션에 함께 반영한다(syncContacts).
-
-   데이터: DATA.serp     = 계획 원문(절차 · 역할 · 인원 · 연락처 · 개정 이력) — 권한표 읽기 2 · 쓰기 3
-           DATA.serpRuns = 대응 기록 [{ id, kind(real|drill), title, start, end, place, items[](초동조치 사본), cks[](체크리스트 사본),
-                            tl{itemId:{at,by,note}}, ck{key:{at,by,note}}, notify{f{}, sent[]}, serc, log[], subs[] }] — 읽기 2 · 쓰기 2
-   ※ 계획 원문 · 명단 · 번호는 공개 저장소 코드에 넣지 않는다 — 공용 DB(semis_logi_store "serp")에만.
-   ═══════════════════════════════════════════════════════ */
+/* 팀위기대응계획 SERP(Station Emergency Response Plan) — 위기 시 통보 → 소집 → SERC 개설 → 시간대별 초동조치를 진행 · 기록.
+   ※ 계획 원문 · 명단 · 번호는 공개 저장소에 넣지 않는다 — 공용 DB(semis_logi_store "serp")에만. */
 "use strict";
 
 (() => {
@@ -25,7 +11,10 @@
   const arr = (v) => (Array.isArray(v) ? v : []);
   const obj = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : {});
 
-  /* ─────── 데이터 ─────── */
+  /* ── 데이터 ──
+     DATA.serp     계획 원문(절차 · 역할 · 인원 · 연락처 · 개정 이력) (읽기 2 · 쓰기 3)
+     DATA.serpRuns [{ id, kind(real|drill), title, start, end, place, items[](초동조치 사본), cks[](체크리스트 사본),
+                      tl{itemId:{at,by,note}}, ck{key:{at,by,note}}, notify{f{}, sent[]}, serc, log[], subs[] }] (읽기 2 · 쓰기 2) */
   const P = () => obj(SeMIS.data[KEY]);
   const roles = () => arr(P().roles).filter(r => r && r.id);
   const people = () => arr(P().people).filter(p => p && p.id);
@@ -54,7 +43,6 @@
   const rchip = (id, full) => `<span class="sp-rc t-${toneOf(id)}">${esc(full ? roleName(id) : roleShort(id))}</span>`;
   const peopleOf = (rid) => people().filter(p => p.role === rid);
 
-  /* ─────── 시간 ─────── */
   const pad = (n) => String(n).padStart(2, "0");
   const nowISO = () => new Date().toISOString();
   function hm(iso) { const d = new Date(iso); return isNaN(d) ? "-" : pad(d.getHours()) + ":" + pad(d.getMinutes()); }
@@ -81,7 +69,6 @@
   const phaseShort = (min) => min < 60 || min % 60 ? min + "분" : (min / 60) + "시간";
   const today = () => localInput().slice(0, 10);
 
-  /* ─────── 전화 · 문자 ─────── */
   function telHref(num) {
     const s = String(num || "").split(/[,/~]/)[0].trim();
     const d = s.replace(/[^\d]/g, "");
@@ -101,7 +88,6 @@
     return norm(v);
   }
 
-  /* ─────── 화면 상태 (모듈 메모리) ─────── */
   if (window.SemisDocs) SemisDocs.define("serp", [
     { id: "training", label: "위기대응 교육 · 훈련 결과" }, { id: "material", label: "교안 · 시나리오" }, { id: "plan", label: "계획 · 절차" }, { id: "misc", label: "기타" }
   ]);
@@ -121,7 +107,7 @@
   function navSync() { try { SeMIS.renderNav(); } catch (e) { /* 메뉴 배지만 영향 */ } }
   function commit(msg) { SeMIS.save(); repaint(); navSync(); if (msg) toast(msg); }
 
-  /* ═════════════ 대응 기록 계산 ═════════════ */
+  /* ── 대응 기록 계산 ── */
   function runItems(run) { return arr(run && run.items).filter(x => x && x.id); }
   function runCks(run) { return arr(run && run.cks).filter(x => x && x.id); }
   const tlOf = (run) => obj(run && run.tl);
@@ -148,7 +134,7 @@
   const kindChip = (run) => run.kind === "drill" ? ui.chip("훈련", "amber") : ui.chip("실제 상황", "red");
   const runTitle = (run) => norm(run.title) || (run.kind === "drill" ? "SERP 훈련" : "위기상황");
 
-  /* ═════════════ 계획 화면 ═════════════ */
+  /* ── 계획 화면 ── */
   function sectionsOf(t) { return arr(P().sections).filter(s => s && s.tab === t); }
   function paras(body) { return String(body || "").split("\n").map(norm).filter(Boolean).map(p => `<p>${esc(p)}</p>`).join(""); }
   function secCard(s, extra, fold) {
@@ -201,7 +187,7 @@
           <span class="sp-tt"><b>${esc(x.text)}</b>${x.sub ? `<small>${esc(x.sub)}</small>` : ""}</span>
           <span class="sp-who">${arr(x.roles).map(r => rchip(r)).join("")}</span></li>`).join("")}</ol></div>`;
     }).join("");
-    /* v1.30 모바일: 가장 먼저 할 일(3.6 초동조치)을 맨 위에, 원문 절은 접어 둔다. 통보처 전화는 위 띠와 같아 모바일에서 숨김 */
+    /* 모바일: 가장 먼저 할 일(3.6 초동조치)을 맨 위에, 원문 절은 접어 둔다. 통보처 전화는 위 띠와 겹쳐 모바일에서 숨김 */
     const occCard = `<section class="card sp-sec sp-occ"${ui.mf("occ")}>
         <header class="sp-sh mf-h"><span class="sp-no mono">3.1</span><h3>위기상황 발생 통보 (사내)</h3><span class="spacer"></span>
           ${canW() ? `<button type="button" class="sp-ed m-ed" id="sp-occ-edit" aria-label="통보처 편집">${icon("edit", 15)}</button>` : ""}</header>
@@ -444,7 +430,7 @@
     return String(after || "").split("\n").map(norm).filter(Boolean).map(p => b.indexOf(p) >= 0 ? `<p>${esc(p)}</p>` : `<p class="sp-new">${esc(p)}</p>`).join("");
   }
 
-  /* ═════════════ 대응 화면 ═════════════ */
+  /* ── 대응 화면 ── */
   function runView(run) {
     const st = runStat(run), live = !run.end;
     const serc = run.serc;
@@ -587,7 +573,7 @@
         <td>${esc(s.reqBy)} ${s.reqAt ? esc(ymdhm(s.reqAt)) : ""}</td><td>${esc(s.recv)}</td><td>${esc(s.by)} ${s.at ? esc(ymdhm(s.at)) : ""}</td><td>${esc(s.method)}</td><td>${esc(s.basis)}</td></tr>`).join("") || `<tr><td colspan="8">-</td></tr>`}</tbody></table>`;
   }
 
-  /* ═════════════ 렌더 ═════════════ */
+  /* ── 렌더 ── */
   function render(root) {
     const focus = captureFocus(root);
     const run = runSel ? runs().find(r => r.id === runSel) : null;
@@ -665,7 +651,7 @@
     });
   }
 
-  /* ═════════════ 동작 ═════════════ */
+  /* ── 동작 ── */
   function wire(root) {
     $$("[data-stab]", root).forEach(b => b.onclick = () => { tab = b.dataset.stab; SeMIS.renderView(); });
     $$("[data-rtab]", root).forEach(b => b.onclick = () => { runTab = b.dataset.rtab; SeMIS.renderView(); });
@@ -1017,7 +1003,7 @@
     } else window.open(im[i].url, "_blank", "noopener");
   }
 
-  /* ═════════════ hq 편집 ═════════════ */
+  /* ── hq 편집 ── */
   function wireEdit(root) {
     if (!canW()) return;
     const on = (sel, fn) => { const b = $(sel, root); if (b) b.onclick = fn; };
@@ -1286,7 +1272,7 @@
     return mine.length;
   }
 
-  /* ═════════════ 대시보드 띠 · 메뉴 ═════════════ */
+  /* ── 대시보드 띠 · 메뉴 ── */
   function dashHTML() {
     const run = activeRun();
     if (!run) return "";

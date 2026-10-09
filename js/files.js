@@ -1,16 +1,5 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 첨부 뷰어 (v1.12.1)
-   공지·일정 메모·회의록 등에 붙인 파일(.nb-file)과 이미지를 누르면 열리는 공통 뷰어.
-
-   - 사진·PDF는 그 자리에서 미리보기, 그 밖의 형식은 이름·형식과 함께 내려받기/새 탭
-   - 편집 중인 글(contenteditable)에서도 눌러서 열 수 있고, 뷰어에서 바로 첨부를 뺄 수 있다
-     (편집기 안에서는 링크가 열리지 않는 브라우저 기본 동작 때문에 여태 눌러도 반응이 없었다)
-   - 같은 글에 붙인 첨부는 ← → 로 넘긴다
-   - 내려받기는 올릴 때의 원래 이름으로 저장한다
-     (저장소 경로는 한글이 _ 로 바뀌어 있어 주소 그대로 받으면 이름이 깨진다 —
-      Supabase 공개 URL은 ?download=<이름>, 그 밖의 주소는 blob 으로 처리)
-   - <dialog> 라서 모달(일정 수정 창 등) 위에 겹쳐 뜨고, 닫으면 원래 화면이 그대로 남는다
-   ═══════════════════════════════════════════════════════ */
+/* 첨부 뷰어 — 첨부 칩(.nb-file)·본문 이미지 클릭 시 여는 공통 <dialog>(모달 위에 겹침).
+   contenteditable 안에서는 링크가 기본 동작으로 열리지 않아 클릭을 위임 처리 */
 "use strict";
 
 (() => {
@@ -25,8 +14,7 @@
 
   let list = [], idx = 0, pushed = false, zoom = false;
 
-  /* ─────── 파일 정보 ─────── */
-  /* 비공개 파일은 화면에서 서명 URL로 바뀌어 있다 — 원래(표준) 주소는 data-sf 에 있다 (js/fileauth.js) */
+  /* 비공개 파일은 화면에서 서명 URL로 바뀌어 있음 — 표준 주소는 data-sf (fileauth.js) */
   const urlOf = (el) => el.getAttribute("data-sf") || (el.tagName === "IMG" ? (el.getAttribute("src") || "") : (el.getAttribute("href") || ""));
   function nameFromUrl(url) {
     try {
@@ -36,7 +24,7 @@
   }
   function nameOf(el) {
     const raw = el.tagName === "IMG" ? (el.getAttribute("alt") || "") : (el.dataset.name || el.textContent || "");
-    /* 앞에 붙은 그림문자(📎 · 📄)와 공백만 걷어낸다 */
+    /* 앞에 붙은 그림문자 아이콘과 공백만 제거 */
     const t = String(raw).replace(/^[\s\u00a0\u200b]*(?:[\u2190-\u27bf\u2b00-\u2bff\ufe0f\u{1f000}-\u{1faff}]+[\s\u00a0]*)*/u, "").trim();
     return t || nameFromUrl(urlOf(el));
   }
@@ -51,7 +39,7 @@
     return m ? m[1].toUpperCase() : "";
   }
 
-  /* ─────── 내려받기 — 올릴 때의 이름 그대로 ─────── */
+  /* 내려받기 — 원래 파일명 유지. 저장소 경로는 한글이 _ 로 바뀌어 있어 주소 그대로 받으면 이름이 깨짐 */
   function clickLink(href, name) {
     const a = document.createElement("a");
     a.href = href;
@@ -61,7 +49,7 @@
     a.click();
     a.remove();
   }
-  /* Supabase 저장소 URL(표준·서명)이면 서버가 원래 이름으로 내려 주도록 download= 를 붙인다 */
+  /* Supabase 저장소 URL이면 download= 로 서버가 원래 이름으로 내려 주게, 그 밖은 blob */
   function downloadHref(url, name) {
     if (!/\/storage\/v1\/object\/(public|sign)\//.test(String(url))) return "";
     const u = String(url).split("#")[0];
@@ -83,7 +71,6 @@
     }
   }
 
-  /* ─────── 뷰어 ─────── */
   function viewerEl() {
     let d = document.getElementById("fv-viewer");
     if (d) return d;
@@ -123,7 +110,7 @@
       if (ev.target === d || (ev.target === stage && !zoom)) close();
     });
     d.addEventListener("keydown", (ev) => {
-      if (ev.key === "Escape") { ev.stopPropagation(); return; }   // 뒤에 열려 있는 모달(일정 수정 등)까지 닫히지 않게
+      if (ev.key === "Escape") { ev.stopPropagation(); return; }   // 뒤의 모달까지 닫히지 않게
       if (ev.target.closest("a,input,textarea")) return;
       if (ev.key === "ArrowRight") { ev.preventDefault(); step(1); }
       else if (ev.key === "ArrowLeft") { ev.preventDefault(); step(-1); }
@@ -211,7 +198,6 @@
     S().toast("첨부를 삭제했습니다.");
   }
 
-  /* ─────── 클릭 위임 — 첨부 칩·이미지 ─────── */
   function itemOf(el) {
     const url = urlOf(el);
     const name = nameOf(el);

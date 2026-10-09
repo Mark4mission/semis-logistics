@@ -1,11 +1,6 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 계약 · 협약 관리 (v1.41, 예정 메뉴 contracts 대체 · 안전보안파트 이상)
-   인천화물팀 안전 · 보안 관련 계약(도급 · 위수탁 · 유지보수 · 상용화주 협약)의 상대방 · 기간 · 해지 조건 · 담당과
-   계약서 원본(최신본 + 이전 계약서). 기간이 끝나 가는 계약은 위로.
-   데이터 SeMIS.data.contracts = [{ id, no, kind(안전|보안), title, party, period(원문), from, to, open(자동 연장),
-     terminate, owner, dept, scope(보안 업무 범위), note, files[], prev[](이전 계약서), at, by }] — 공용 DB 에만
-   수검 체크리스트 증빙: window.SemisEvidence.contracts
-   ═══════════════════════════════════════════════════════ */
+/* 계약 · 협약 관리 — 안전 · 보안 관련 계약의 상대방 · 기간 · 해지 조건 · 계약서. 만료가 가까운 계약이 위로.
+   SeMIS.data.contracts = [{ id, no, kind(안전|보안), title, party, period(원문), from, to, open(자동 연장),
+     terminate, owner, dept, scope, note, files[], prev[](이전 계약서), at, by }] — 공용 DB 에만 */
 "use strict";
 
 (() => {

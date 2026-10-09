@@ -1,24 +1,5 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 자체 보안점검 (v1.32, 라우트 selfcheck · 점검 · 교육 허브)
-   국가항공보안 수준관리지침(국토교통부예규 제217호) 별표 점검표를 화물터미널 자체 점검 기록으로 쓴다.
-     제3조 3호 · 제16조 3호 · 제23조 1항 3호 — 항공화물터미널운영자는 현장보안확인 · 보안점검 · 불시평가 대상
-     제8조 4항 — 항공화물터미널운영자 등은 자체 보안점검 · 불시평가를 실시
-     제14조 — 점검결과 보고서 3년 이상 보존(시정조치가 끝나지 않은 것은 끝날 때까지)
-     제53~55조 · 별표 15 — 문제점을 인적 · 장비 · 규정 · 조직 · 기타 환경 분야로 나눠 연간 건수 · 증감률 기록
-     제55조 4항 — 이행 시기 현장조치 · 단기(10일 이내) · 중기(10일 이상 3개월 미만) · 장기(3개월 이상)
-   양식: js/nasforms.js(표 · 칸 주소) + assets/forms/nas/b*.hwpx(별표 원본을 HWPX 로 바꾼 것)
-     → 기록을 그 양식 칸에 채워 HWPX 내려받기 · 같은 모양 A4 인쇄 · 미리보기(js/hwpx.js)
-   화면: 점검 기록 · 양식 · 지적 · 조치 · 문제점 분석(별표 15) / 기록 화면(브라우저 뒤로 = 목록)
-   데이터 selfChecks = [{ id, form(b1·b3·…), date, insp(점검자 · 감독관 칸), org(수검자 및 기관), appr[3](별표 1 결재),
-     ans{항목id: Y|N|RC|NA (별표 1: G 양호 | P 미흡)}, txt{항목id: 글 | [칸별 값]}, nm{항목id: 장비명}, rm{"표,행,열": 비고},
-     fx{항목id: { cat(별표 15 세부 id), act, term(onsite|short|mid|long), due, done }}, note, files[], status(draft|done),
-     createdAt/By, updatedAt/By }]
-   지적 = R/C(Required Correction) · 미흡. 권한: 열람 · 기록 mgr(권한표 selfChecks 2/2), 삭제 hq 또는 작성자.
-   v1.35 표시(시스템관리자): selfCheckCfg.vis = { 별표 id: { m: "dim" | "hide", msg } } — 숨김은 없는 것처럼(카드 · 기록 · 지적 · 통계 · 일정),
-     흐리게는 카드에 제목 + 안내 문구만. 하드카피 기록(종이 점검표를 보고 넣는 요약) = selfChecks 안
-     { id, form, hc: true, date, insp, find(지적 건수), open(미결 건수), note, createdAt/By, updatedAt/By } → 다음 기한 · 대시보드 · 증빙 2.7 · 일정관리에 반영
-   수검 대응 센터 증빙: window.SemisEvidence.selfcheck(2.7 · 2.8). 별표 15 집계에는 수검 지적의 '문제점 분야'도 넣을 수 있다.
-   ═══════════════════════════════════════════════════════ */
+/* 자체 보안점검(라우트 selfcheck) — 국가항공보안 수준관리지침(국토교통부예규 제217호) 별표 점검표로 화물터미널 자체 점검 · 지적 조치 · 문제점 분석(별표 15).
+   기록은 같은 양식 칸에 채워 HWPX 내려받기 · A4 인쇄(js/nasforms.js 칸 주소 + assets/forms/nas/*.hwpx + js/hwpx.js). */
 "use strict";
 
 (() => {
@@ -51,10 +32,10 @@
   const sp = (n) => " ".repeat(Math.max(0, n));
   const cssEsc = (v) => (typeof window !== "undefined" && window.CSS && window.CSS.escape) ? window.CSS.escape(v) : String(v).replace(/["\\\]\[]/g, "\\$&");
 
-  /* ─────── 양식 ─────── */
+  /* ── 양식 ── */
   const NF = () => window.SemisNasForms || { SRC: {}, FORMS: [] };
   const allForms = () => NF().FORMS || [];
-  /* v1.35 — 표시(시스템관리자): 숨김 · 흐리게 (selfCheckCfg.vis) */
+  /* 표시(시스템관리자): selfCheckCfg.vis = { 별표 id: { m: dim|hide, msg } } — 숨김은 카드 · 기록 · 지적 · 통계 · 일정 어디에도 없는 것처럼, 흐리게는 제목 + 안내만 */
   const VIS_MSG = "하드카피본 확인";
   function visMap() { const c = D()[CFG], v = c && typeof c === "object" ? c.vis : null; return v && typeof v === "object" && !Array.isArray(v) ? v : {}; }
   function visOf(id) {
@@ -76,7 +57,7 @@
     b15: "제53~56조 결과 분석 · 문제점 분포 · 증감률"
   };
   const REG_PDF = "assets/regs/nas-217.pdf";   // 지침 본문 + 화물 관련 별표 9종(규정 자료에도 같은 파일)
-  /* v1.33 — 별표는 항공보안감독관이 쓰는 점검표: 이 메뉴의 기록은 '국토부 수검대비 자체 점검'으로 표시해 구분한다 */
+  /* 별표는 항공보안감독관이 쓰는 점검표 — 이 메뉴의 기록은 '국토부 수검대비 자체 점검'으로 표시해 구분한다 */
   const MARK = "국토부 수검대비 자체 점검";
   const OFFICIAL = {            // 지침상 실제 점검 — 주체 → 대상 · 주기(조항)
     b1: { by: "항공보안감독관 · 지방항공청", target: "화물터미널운영자 · 상주업체", cyc: "항목별 주 2회 이상", ref: "제16 · 17조" },
@@ -85,8 +66,8 @@
   };
   /* 자체 점검 주기: 연 1회 이상 + 국토부 수검 7일 전까지(수검 전 90일 안에 끝낸 기록이 있으면 주기만) */
   const SELF = { by: "인천화물팀", cyc: "연 1회 이상 · 국토부 수검 전", months: 12, before: 7, fresh: 90 };
-  /* v1.34 — 안내(누가 · 누구를 · 주기)는 안전보안파트(hq) 이상이 고친다. 공용 DB selfCheckCfg —
-     { selfBy, months, before, fresh, forms: { 별표 id: { by, target, cyc } } } · 비거나 기본값과 같으면 저장하지 않는다(코드 기본값) */
+  /* 안내(누가 · 누구를 · 주기)는 hq 이상이 고친다. selfCheckCfg = { selfBy, months, before, fresh, forms: { 별표 id: { by, target, cyc } }, vis }
+     — 비거나 기본값과 같으면 저장하지 않는다(코드 기본값) */
   const CFG = "selfCheckCfg";
   const CYC_M = { 1: "월 1회 이상", 3: "분기 1회 이상", 6: "반기 1회 이상", 12: "연 1회 이상" };
   const cfgObj = () => { const c = D()[CFG]; return c && typeof c === "object" && !Array.isArray(c) ? c : {}; };
@@ -115,6 +96,7 @@
   }
   const CHOICE = { insp: [["Y", "Y"], ["N", "N"], ["RC", "R/C"], ["NA", "N/A"]], fsc: [["G", "양호"], ["P", "미흡"]] };
   const isChoice = (it) => it.k === "yn" || it.k === "gp" || it.k === "eq";
+  /* 이행 시기 — 제55조 4항 */
   const TERMS = { onsite: "현장조치", short: "단기 (10일 이내)", mid: "중기 (10일 이상 3개월 미만)", long: "장기 (3개월 이상)" };
   const TERM_KEYS = ["onsite", "short", "mid", "long"];
   function termDue(term, base) {
@@ -131,10 +113,17 @@
   const catSelect = (id, val, attrs) => `<select id="${esc(id)}" ${attrs || ""}><option value="">분야 미지정</option>${cats().map(c =>
     `<optgroup label="${esc(c.n)}">${c.items.map(it => `<option value="${esc(it.id)}" ${val === it.id ? "selected" : ""}>${esc(it.t)}</option>`).join("")}</optgroup>`).join("")}</select>`;
 
-  /* ─────── 데이터 ─────── */
+  /* ── 데이터 ──
+     selfChecks = [{ id, form(b1 · b3 · …), date, insp(점검자 · 감독관 칸), org(수검자 및 기관), appr[3](별표 1 결재),
+       ans{ 항목id: Y|N|RC|NA (별표 1: G 양호 | P 미흡) }, txt{ 항목id: 글 | [칸별 값] }, nm{ 항목id: 장비명 }, rm{ "표,행,열": 비고 },
+       fx{ 항목id: { cat(별표 15 세부 id), act, term(onsite|short|mid|long), due, done } }, note, files[], status(draft|done),
+       createdAt/By, updatedAt/By }]
+     하드카피 기록(종이 점검표 요약, 같은 배열): { id, form, hc: true, date, insp, find(지적 건수), open(미결 건수), note, createdAt/By, updatedAt/By }
+       → 다음 기한 · 대시보드 · 증빙 2.7 · 일정관리에 반영
+     지적 = R/C(Required Correction) · 미흡. 권한: 기록 mgr(selfChecks 2/2), 삭제 hq 또는 작성자. */
   function list() { let a = D()[KEY]; if (!Array.isArray(a)) a = D()[KEY] = []; return a; }
   const recs = () => (Array.isArray(D()[KEY]) ? D()[KEY] : []).filter(r => r && r.id && !r.hc && formOf(r.form) && formOf(r.form).kind !== "ana" && !isHid(r.form) && isISO(r.date));
-  /* 하드카피 기록(v1.35) — fid 를 주면 그 양식만 */
+  /* 하드카피 기록 — fid 를 주면 그 양식만 */
   const hcRecs = (fid) => (Array.isArray(D()[KEY]) ? D()[KEY] : []).filter(r => r && r.id && r.hc && formOf(r.form) && formOf(r.form).kind !== "ana" && !isHid(r.form) && isISO(r.date) && (!fid || r.form === fid));
   const hcN = (v) => { const n = Math.round(Number(v)); return Number.isFinite(n) && n > 0 ? n : 0; };
   const hcOpen = (fid) => hcRecs(fid).reduce((n, r) => n + Math.min(hcN(r.open), hcN(r.find) || hcN(r.open)), 0);
@@ -214,7 +203,7 @@
   const remember = (k, v) => { try { if (v) localStorage.setItem(k, v); } catch (e) { /* 저장소 없음 */ } };
   const recall = (k) => { try { return localStorage.getItem(k) || ""; } catch (e) { return ""; } };
 
-  /* ─────── 문제점 분석(별표 15) — 연도별 세부 건수 · 전년 대비 ─────── */
+  /* ── 문제점 분석(별표 15) — 연도별 세부 건수 · 전년 대비 ── */
   function auditFindings() {
     const as = Array.isArray(D().audits) ? D().audits : [];
     const out = [];
@@ -243,7 +232,7 @@
     return (v > 0 ? "+" : "") + v;
   }
 
-  /* ═════════ HWPX 채우기 ═════════ */
+  /* ── HWPX 채우기 ── */
   const VER = () => (SeMIS.VERSION || "");
   async function loadPkg(f) {
     if (!window.SemisHwpx) throw new Error("hwpx");
@@ -354,7 +343,7 @@
     } catch (e) { toast("HWPX 파일을 만들지 못했습니다.", true); }
   }
 
-  /* ═════════ 인쇄 · 미리보기 (양식 모양 그대로) ═════════ */
+  /* ── 인쇄 · 미리보기(양식 모양 그대로) ── */
   let lastPrint = "";
   function docHTML(pkg, title, screen) {
     return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${SemisHwpx.css(pkg, { screen })}</style></head><body>${SemisHwpx.html(pkg)}</body></html>`;
@@ -430,7 +419,7 @@
     document.body.appendChild(a); a.click(); setTimeout(() => a.remove(), 2000);
   }
 
-  /* ─────── 수검 대응 센터 증빙 — 2.7 자체 점검 기록 · 2.8 지적 개선 관리 ─────── */
+  /* ── 수검 대응 센터 증빙 — 2.7 자체 점검 기록 · 2.8 지적 개선 관리 ── */
   function evidence(mid) {
     mid = String(mid || "");
     if (mid !== "2.7" && mid !== "2.8") return null;
@@ -447,7 +436,7 @@
   }
   if (typeof window !== "undefined") (window.SemisEvidence = window.SemisEvidence || {})[MOD] = evidence;
 
-  /* ═════════ 화면 상태 ═════════ */
+  /* ── 화면 상태 ── */
   let tab = "list", q = "", fForm = "", fYear = "", fOpen = true, rid = "", focusItem = "", anaY = "", anaAudit = true;
   let pendingOpen = false;
   const TABS = [["list", "점검 기록"], ["forms", "양식"], ["fx", "지적 · 조치"], ["ana", "문제점 분석"]];
@@ -465,7 +454,7 @@
   }
   const stChip = (r) => r.status === "done" ? ui.chip("완료", "green") : ui.chip("작성 중", "blue");
 
-  /* ═════════ 점검 기록 ═════════ */
+  /* ── 점검 기록 ── */
   function listRows() {
     return recs().concat(hcRecs()).filter(r => {
       if (fForm && r.form !== fForm) return false;
@@ -522,7 +511,7 @@
     </section>`;
   }
 
-  /* ═════════ 양식 ═════════ */
+  /* ── 양식 ── */
   /* 양식 카드 · 기록 화면에 함께 쓰는 표시 — 감독관 점검표 · 수검대비 자체 점검 */
   const tagsHTML = (f) => `<span class="sc-tags"><span class="sc-tag is-off" title="${esc(offOf(f).ref)} — 항공보안감독관이 쓰는 양식">감독관 점검표</span><span class="sc-tag is-mark">${esc(f.kind === "ana" ? "수검대비 자체 분석" : "수검대비 자체 점검")}</span></span>`;
   const offText = (f) => { const o = offOf(f); return `${o.by} → ${o.target} · ${o.cyc}`; };
@@ -568,7 +557,7 @@
       <p class="sc-src">${esc(NF().SRC.title || "")} (${esc(NF().SRC.rev || "")}, ${esc(dot(NF().SRC.date || ""))}) 별표 — 국가법령정보센터 원본 양식 · <a href="${esc(REG_PDF)}" target="_blank" rel="noopener">지침 본문 PDF</a></p>`;
   }
 
-  /* ═════════ 안내 편집 (v1.34, hq 이상) — 누가 · 누구를 · 주기 ═════════ */
+  /* ── 안내 편집(hq 이상) — 누가 · 누구를 · 주기 ── */
   function cfgForm() {
     if (!SeMIS.canEdit()) return;
     const C = selfCfg(), fl = allForms().filter(f => !isHid(f.id));
@@ -619,7 +608,7 @@
     };
   }
 
-  /* ═════════ 표시 관리 (v1.35, 시스템관리자) ═════════ */
+  /* ── 표시 관리(시스템관리자) ── */
   function visForm() {
     if (!SeMIS.isAdmin()) return;
     const vm = visMap(), fl = allForms().filter(f => f.kind !== "ana");
@@ -636,7 +625,7 @@
     });
   }
 
-  /* ═════════ 하드카피 기록 (v1.35) — 종이 점검표를 보고 점검일 · 점검자 · 지적 · 미결 건수만 남긴다 ═════════ */
+  /* ── 하드카피 기록 — 종이 점검표를 보고 점검일 · 점검자 · 지적 · 미결 건수만 남긴다 ── */
   function hcForm(fid) {
     const f = formOf(fid);
     if (!f || f.kind === "ana" || isHid(f.id)) return;
@@ -697,7 +686,7 @@
     };
   }
 
-  /* ═════════ 일정관리 연동 (v1.35) — 기간 [from, to]: 다음 자체 점검 기한(같은 날 묶음) · 완료한 점검(전산 · 하드카피) ═════════ */
+  /* ── 일정관리 연동 — 기간 [from, to]: 다음 자체 점검 기한(같은 날 묶음) · 완료한 점검(전산 · 하드카피) ── */
   function calItems(from, to, today) {
     today = today || todayISO();
     const out = [];
@@ -723,7 +712,7 @@
     return out;
   }
 
-  /* ═════════ 지적 · 조치 ═════════ */
+  /* ── 지적 · 조치 ── */
   function fxRows() {
     const t = todayISO();
     return allFindings().filter(x => !fOpen || fState(x.fx, t) !== "done")
@@ -752,7 +741,7 @@
   }
   const itemTitle = (it, r) => it.k === "eq" ? (it.g ? it.g.replace(/\s+/g, " ") + " · " : "") + (it.t || nmOf(r, it.id) || "장비") : it.t;
 
-  /* ═════════ 문제점 분석 (별표 15) ═════════ */
+  /* ── 문제점 분석(별표 15) ── */
   function anaHTML() {
     const f = anaForm();
     if (!f) return ui.empty("분석표 양식이 없습니다.");
@@ -779,7 +768,7 @@
     </section>`;
   }
 
-  /* ═════════ 기록 화면 ═════════ */
+  /* ── 기록 화면 ── */
   const segHTML = (f, it, a, dis) => `<div class="sc-seg${f.kind === "fsc" ? " is-gp" : ""}" role="group" aria-label="${esc(it.l ? it.l + "." : it.t || "결과")}">${CHOICE[f.kind].map(([v, lb]) =>
     `<button type="button" data-sv="${v}" aria-pressed="${a === v}"${dis}>${lb}</button>`).join("")}</div>`;
   function fxBoxHTML(r, it, dis) {
@@ -899,7 +888,7 @@
     return Array.from(s).slice(0, 30);
   }
 
-  /* ─────── 입력 반영 — 화면을 다시 그리지 않고 기록만 고친다(한글 입력 보호) ─────── */
+  /* ── 입력 반영 — 화면을 다시 그리지 않고 기록만 고친다(한글 입력 보호) ── */
   let saveT = null;
   function saveSoon(now) {
     if (saveT) { clearTimeout(saveT); saveT = null; }
@@ -1050,7 +1039,7 @@
     repaint();
   }
 
-  /* ─────── 새 점검 ─────── */
+  /* ── 새 점검 ── */
   function newRecord(fid) {
     if (!canW()) return;
     const f = formOf(fid);
@@ -1080,7 +1069,7 @@
     $$("[data-pick]").forEach(b => b.onclick = () => { closeModal(); newRecord(b.dataset.pick); });
   }
 
-  /* ─────── 화면 이동 (기록 화면 — 브라우저 뒤로 = 목록) ─────── */
+  /* ── 화면 이동(기록 화면 — 브라우저 뒤로 = 목록) ── */
   function openRecord(id, item) {
     if (!recOf(id)) return;
     rid = id; focusItem = item || "";
@@ -1103,7 +1092,7 @@
     rid = nr; SeMIS.renderView();
   });
 
-  /* ═════════ 렌더 ═════════ */
+  /* ── 렌더 ── */
   function bodyHTML() { return tab === "forms" ? formsHTML() : tab === "fx" ? fxHTML() : tab === "ana" ? anaHTML() : listHTML(); }
   function wire(box) {
     const qi = $("#sc-q", box);
@@ -1208,7 +1197,7 @@
 
   SeMIS.registerModule(MOD, {
     title: TITLE,
-    optional: true,                                // v1.42 의무 아님 — 필요할 때 실행, 대시보드 · 통계 · 일정에서 제외(메뉴에 '선택')
+    optional: true,                                // 의무 아님 — 대시보드 · 통계 · 일정에서 제외(메뉴에 '선택')
     render
   });
 

@@ -1,11 +1,6 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 상용화주 · RA 관리 (v1.41, 예정 메뉴 kc-ra 대체)
-   상용화주(Known Consignor) · 보안업체(RA) 지정 현황, 보안검색업무 협약(계약 · 협약 관리와 연결), 현장점검,
-   월별 반입 통계(상용화주 차량 대수), 근거 고시 · 절차 문서.
-   데이터 SeMIS.data.kcra = { asOf, list[{ id, name, kind(상용화주|RA), code(협약 번호), site(터미널 · 지역), desig(지정 근거 · 번호),
-     desigDate, until, lastCheck, note }], stats{ title, cols[], rows[{ m, v[] }], note } } — 업체 · 수치는 공용 DB 에만
-   수검 체크리스트 증빙: 6.5 · 6.5.1 · 9.9
-   ═══════════════════════════════════════════════════════ */
+/* 상용화주 · RA 관리 — 지정 현황, 보안검색업무 협약(계약 · 협약 관리 연결), 현장점검, 월별 반입 통계.
+   SeMIS.data.kcra = { asOf, list[{ id, name, alias[](협약 상대방 대조용 별칭), kind(상용화주|RA), code(협약 번호), site, desig, desigDate, until, lastCheck, note }],
+     stats{ title, cols[], rows[{ m, v[] }], note } } — 업체 · 수치는 공용 DB 에만 */
 "use strict";
 
 (() => {

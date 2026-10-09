@@ -1,28 +1,5 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 보안 기록부 (v1.22, 라우트 inspection)
-   예정 메뉴 '안전보안 점검 일정(inspection)'을 대체하는 주기형 보안 점검 일지.
-   일일 · 월간 · 분기 · 불시 자체점검, 위해물품 월점검, 브리핑 · 순찰, Quarterly Self-Audit,
-   주기 경비 · 화물칸 점검(편별) 같은 반복 기록을 한 화면에서 남기고, 빠진 날(주기)을 찾는다.
-
-   화면
-   - 오늘: 양식별 이번 주기 기록 여부 · 누락 · 바로 기록(순찰은 '순찰 +1', 편별 양식은 '편 추가') — 모바일 우선
-   - 기록 현황: 양식별 최근 주기 칸(완료 · 이상 · 누락 · 진행 중) · 누락 목록(사후 기록)
-   - 기록 목록: 양식 · 월 · 이상만 · 검색 → 기록 열기 · 수정
-   - 점검 양식(hq): 이름 · 종류(점검 · 순찰 · 편별 · 문서) · 주기 · 평일만 · 시작일 · 점검 항목 · 순찰 최소 횟수 · 체크리스트 번호
-
-   데이터
-     seclogCfg = { since, templates[{ id, name, kind(check|patrol|flight|doc), cycle(day|week|month|quarter|year|event),
-                   days(all|weekday), from, items[{ id, text }], rounds, photo, evidence[], active, order, note }] }
-       — 점검 항목 문구는 규정(민감보안정보)에서 오므로 코드에 두지 않고 공용 DB에만 둔다(코드 기본값은 양식 뼈대뿐).
-     seclog = [{ id, tid, date, time, by, checks[{ t, v(ok|ng|na) }], result(ok|ng), note, action,
-                 rounds[{ t, by, note }], flight{ no, reg, dest }, files[], createdAt/By, updatedAt/By }]
-       — 점검 항목은 기록할 때 문구째 남긴다(양식을 고쳐도 옛 기록은 그때 점검한 그대로).
-     v1.35 표시(시스템관리자): seclogCfg.vis = { 양식id: { m: "dim" | "hide", msg } } — 숨김은 어디에도 없는 것처럼(기록 · 통계 · 배지 · 증빙 · 달력),
-       흐리게는 카드에 제목 + 안내 문구만, 종이 대장을 보고 넣은 하드카피 집계로 통계에 반영
-     하드카피 집계(seclog 안 한 줄): { id: "hc-"+양식id, tid, hc: true, marks{ 주기키: ok | ng | miss }, cnt{ "YYYY-MM": 건수 }(편별 · 수시), updatedAt/By }
-   권한: 열람 · 기록 mgr(권한표 seclog 2/2) · 양식 hq(seclogCfg 2/3). 파일: 비공개 버킷 seclog/ 폴더(열람 2 · 올리기 2).
-   수검 대응 센터 증빙: window.SemisEvidence.inspection(mid) → { ok, text } (2.7 · 4.1~4.3 · 5.3 · 5.4 · 7.2 · 7.6 · 9.1.2 · 9.4 · 9.6)
-   ═══════════════════════════════════════════════════════ */
+/* 보안 기록부(라우트 inspection) — 주기형 보안 점검 일지(일일 · 월간 · 분기 · 불시 · 위해물품 · 순찰 · 미주행 편별)의 기록과 누락 주기 확인.
+   권한: 기록 mgr(seclog 2/2) · 양식 hq(seclogCfg 2/3). 첨부: 비공개 버킷 seclog/ 폴더. */
 "use strict";
 
 (() => {
@@ -52,7 +29,7 @@
   const filesOf = (a) => (Array.isArray(a) ? a.filter(f => f && f.url) : []);
   const WD = ["일", "월", "화", "수", "목", "금", "토"];
 
-  /* ─────── 양식 뼈대 (점검 항목은 공용 DB에서 hq가 채운다) ─────── */
+  /* ── 양식 뼈대(점검 항목은 공용 DB에서 hq가 채운다) ── */
   const KINDS = { check: "점검", patrol: "순찰", flight: "편별", doc: "문서" };
   const CYCLES = { day: "매일", week: "매주", month: "매월", quarter: "분기", year: "연 1회 이상", event: "수시" };
   const DEF_TEMPLATES = [
@@ -67,7 +44,7 @@
     { id: "t-hold", name: "화물칸 보안 점검 (미주행)", kind: "flight", cycle: "event", evidence: ["9.6"] },
     { id: "t-appoint", name: "위해물품 관리책임자 지정", kind: "doc", cycle: "year", evidence: ["4.1"] }
   ];
-  /* v1.33 — 누가(주체) 누구를(대상) 점검하는지 · 대시보드 '다가오는 점검'의 대상 묶음(grp). 양식 편집에서 고칠 수 있고 비우면 아래 기본값 */
+  /* 점검 주체(by) · 대상(target) · 대시보드 '다가오는 점검' 묶음(grp). 양식 편집에서 비우면 아래 기본값 */
   const GRPS = { terminal: "화물터미널 · 보안검색", hazmat: "위해물품", us: "미주행 (TSA)", aircraft: "항공기", etc: "기타" };
   const DEF_META = {
     "t-daily": { by: "보안감독자", target: "화물터미널 보안구역", grp: "terminal" },
@@ -87,7 +64,16 @@
   const WINDOW = { day: 30, week: 13, month: 12, quarter: 4, year: 2 };
   const EVENT_DAYS = { flight: 30, doc: 365, check: 365, patrol: 30 };
 
-  /* ─────── 데이터 ─────── */
+  /* ── 데이터 ──
+     seclogCfg = { since, templates[{ id, name, kind(check|patrol|flight|doc), cycle(day|week|month|quarter|year|event),
+                   days(all|weekday), from, items[{ id, text }], rounds, photo, evidence[], active, order, note, by, target, grp }],
+                   vis{ 양식id: { m: dim|hide, msg } } }
+       점검 항목 문구는 규정(민감보안정보)에서 오므로 코드에 두지 않고 공용 DB에만 둔다.
+     seclog = [{ id, tid, date, time, by, checks[{ t, v(ok|ng|na) }], result(ok|ng), note, action,
+                 rounds[{ t, by, note }], flight{ no, reg, dest }, files[], createdAt/By, updatedAt/By }]
+       점검 항목은 문구째 남긴다(양식을 고쳐도 옛 기록은 그때 점검한 그대로).
+     하드카피 집계(seclog 안 한 줄): { id: "hc-"+양식id, tid, hc: true, marks{ 주기키: ok|ng|miss }, cnt{ "YYYY-MM": 건수 }(편별 · 수시) }
+     vis: hide = 어디에도 없는 것처럼(기록 · 통계 · 배지 · 증빙 · 달력), dim = 카드에 제목 + 안내만, 통계는 하드카피 집계로 */
   function cfg() {
     let c = D()[CFG];
     if (!c || typeof c !== "object" || Array.isArray(c)) c = D()[CFG] = { since: "", templates: [] };
@@ -115,7 +101,7 @@
     x.grp = GRPS[x.grp] ? x.grp : (m.grp || "etc");
     return x;
   }
-  /* v1.35 — 표시(시스템관리자): 숨김 · 흐리게 */
+  /* 표시(시스템관리자): 숨김 · 흐리게 */
   const VIS_MSG = "하드카피본 확인";
   function visMap() { const c = D()[CFG]; return c && c.vis && typeof c.vis === "object" && !Array.isArray(c.vis) ? c.vis : {}; }
   function visOf(id) {
@@ -157,7 +143,7 @@
   const roundsOf = (r) => (Array.isArray(r.rounds) ? r.rounds : []).filter(x => x && isHM(x.t));
   const isNG = (r) => r.result === "ng" || checksOf(r).some(c => c && c.v === "ng");
 
-  /* ─────── 주기 ─────── */
+  /* ── 주기 ── */
   function monday(iso) { const d = dow(iso); return addDays(iso, d === 0 ? -6 : 1 - d); }
   function periodOf(t, iso) {
     switch (t.cycle) {
@@ -184,7 +170,6 @@
     if (t.cycle === "year") return k + "-01-01";
     return k;
   }
-  /* 주기의 마지막 날 */
   function periodEnd(t, k) {
     const st = periodStart(t, k);
     if (t.cycle === "week") return addDays(st, 6);
@@ -204,8 +189,8 @@
     const end = periodEnd(t, s.cur.k);
     return { due: s.cur.done ? periodEnd(t, periodOf(t, addDays(end, 1))) : end, done: s.cur.done, missing: s.missing.length, cur: s.cur.k };
   }
-  /* v1.34 — 기간 [from, to] 의 점검 일정(대시보드 달력): 주 · 월 · 분기 · 연 양식만 —
-     기록한 날 { kind: "done" } · 기록이 없는 주기의 마지막 날 { kind: "due" | "late" }. cell = "양식|주기"(openCell) */
+  /* 기간 [from, to] 의 점검 일정(대시보드 달력) — 주 · 월 · 분기 · 연 양식만.
+     기록한 날 { kind: "done" } · 기록 없는 주기의 마지막 날 { kind: "due" | "late" }. cell = "양식|주기"(openCell) */
   function calEvents(from, to, today) {
     today = today || todayISO();
     const out = [], all = logs();
@@ -289,8 +274,8 @@
   }
   const missCount = (today) => templates().reduce((n, t) => { const s = status(t, today); return n + (s.event ? 0 : s.missing.length); }, 0);
 
-  /* ─────── 수검 대응 센터 증빙 연결 ───────
-     체크리스트 번호에 연결된 양식이 최근 주기에 빠짐없이 기록됐는지(편별 · 문서는 기간 안 기록이 있는지). 번호만 쓰고 원문은 쓰지 않는다. */
+  /* ── 수검 대응 센터 증빙: SemisEvidence.inspection(mid) → { ok, text } ──
+     체크리스트 번호에 연결된 양식이 최근 주기에 빠짐없이 기록됐는지(편별 · 문서는 기간 안 기록 유무). 번호만 쓰고 원문은 쓰지 않는다. */
   function evidence(mid) {
     mid = String(mid || "");
     const ts = templates().filter(t => t.evidence.indexOf(mid) >= 0);
@@ -307,10 +292,10 @@
   }
   if (typeof window !== "undefined") (window.SemisEvidence = window.SemisEvidence || {})[MOD] = evidence;
 
-  /* ─────── 화면 상태 ─────── */
+  /* ── 화면 상태 ── */
   let tab = "today", q = "", fTid = "", fMonth = "", fNG = false;
   const TABS = [["today", "오늘"], ["status", "기록 현황"], ["list", "기록 목록"], ["docs", "보고서 · 증빙"]];
-  /* v1.41 종이 기록 · 결과 보고서(월간 · 분기 자체 점검, 불시 점검, 위해물품 관리대장 등) — 증빙 문서 서가(js/docshelf.js) */
+  /* 종이 기록 · 결과 보고서 — 증빙 문서 서가(js/docshelf.js) */
   if (window.SemisDocs) SemisDocs.define(MOD, [
     { id: "monthly", label: "월간 자체 보안점검" }, { id: "quarterly", label: "분기 자체 보안점검 · Self Audit" }, { id: "surprise", label: "불시 점검 · 대테러 훈련" },
     { id: "hazmat", label: "위해물품 관리대장 (월별)" }, { id: "hazmgr", label: "위해물품 관리책임자" }, { id: "patrol", label: "순찰 · 브리핑" }, { id: "misc", label: "기타" }
@@ -325,8 +310,8 @@
   }
   const evTags = (t) => t.evidence.length ? `<span class="sl-ev mono" title="수검 체크리스트 번호">${esc(t.evidence.join(" · "))}</span>` : "";
 
-  /* ═════════ 오늘 ═════════ */
-  /* v1.36 위해물품 적발 일지(CARES 월 집계, js/hazfind.js) — 위해물품 묶음 양식 뒤(없으면 끝)에 자리만 둔다 */
+  /* ── 오늘 ── */
+  /* 위해물품 적발 일지(js/hazfind.js) 칸 — 위해물품 묶음 양식 뒤(없으면 끝)에 둔다 */
   function hazAfter(pairs, kind) {
     if (!window.SemisHaz || !SemisHaz.canShow()) return pairs.map(p => p[1]).join("");
     let at = -1;
@@ -403,7 +388,7 @@
     </section>`;
   }
 
-  /* ═════════ 기록 현황 ═════════ */
+  /* ── 기록 현황 ── */
   function statusHTML() {
     const t0 = todayISO();
     const ts = templates();
@@ -431,7 +416,7 @@
         </div>`;
   }
 
-  /* ═════════ 기록 목록 ═════════ */
+  /* ── 기록 목록 ── */
   function listRows() {
     return logs().filter(r => {
       if (fTid && r.tid !== fTid) return false;
@@ -478,7 +463,7 @@
     </section>`;
   }
 
-  /* ═════════ 기록 입력 ═════════ */
+  /* ── 기록 입력 ── */
   function byDefault() {
     try { const v = localStorage.getItem(LS_BY); if (v) return v; } catch (e) { /* 저장소 없음 */ }
     return "";
@@ -663,7 +648,7 @@
     if (canW()) recordForm(t.id, "", { date: t.cycle === "day" ? k : periodStart(t, k) > todayISO() ? todayISO() : periodStart(t, k) });
   }
 
-  /* ═════════ 점검 양식 (hq) ═════════ */
+  /* ── 점검 양식 (hq) ── */
   function templatesForm() {
     if (!SeMIS.canEdit()) return;
     const ts = templates(true).map(t => JSON.parse(JSON.stringify(stripVis(t))));
@@ -728,7 +713,7 @@
     if (o.fNG !== undefined) fNG = !!o.fNG;
   }
 
-  /* ═════════ 표시 관리 (v1.35, 시스템관리자) ═════════ */
+  /* ── 표시 관리 (시스템관리자) ── */
   function visForm() {
     if (!SeMIS.isAdmin()) return;
     const vm = visMap(), shown = allTemplates().filter(t => t.active !== false);
@@ -744,7 +729,7 @@
     });
   }
 
-  /* ═════════ 하드카피 집계 (v1.35) — 종이 대장을 보고 주기마다 확인 · 이상 · 누락(편별 · 수시는 월별 건수) ═════════ */
+  /* ── 하드카피 집계 — 종이 대장을 보고 주기마다 확인 · 이상 · 누락(편별 · 수시는 월별 건수) ── */
   function hcForm(tid, focusK) {
     const t = tplOf(tid);
     if (!t || t.vis === "hide" || t.active === false) return;
@@ -839,8 +824,8 @@
     };
   }
 
-  /* ═════════ 일정관리 연동 (v1.35) — 기간 [from, to] 의 점검 일정(읽기 전용 · 일정관리가 그릴 때 계산)
-     주 · 월 · 분기 · 연 양식 = 주기 마감일마다 한 건, 매일 양식 = 날마다 '매일 점검' 한 건(양식 묶음). 편별 · 수시는 넣지 않는다 ═════════ */
+  /* ── 일정관리 연동 — 기간 [from, to] 의 점검 일정(읽기 전용, 일정관리가 그릴 때 계산) ──
+     주 · 월 · 분기 · 연 양식 = 주기 마감일마다 한 건, 매일 양식 = 날마다 '매일 점검' 한 건(양식 묶음). 편별 · 수시는 넣지 않는다 */
   function calItems(from, to, today) {
     today = today || todayISO();
     const out = [];
@@ -889,7 +874,7 @@
     return out;
   }
 
-  /* ═════════ 렌더 ═════════ */
+  /* ── 렌더 ── */
   function bodyHTML() { return tab === "status" ? statusHTML() : tab === "list" ? listHTML() : tab === "docs" ? docsHTML() : todayHTML(); }
   function wire(box) {
     const qi = $("#sl-q", box);

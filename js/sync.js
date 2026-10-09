@@ -1,24 +1,10 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — Supabase Sync Layer (v1.15 서버 보안)
-   로그인 세션 ↔ Supabase 공용 DB 동기화
-
-   - 로그인: RPC semis_logi_login(암호) → 세션 토큰(64자). 토큰은 이 탭의 sessionStorage 에만 둔다.
-     모든 요청에 x-semis-token 헤더를 붙이고, 서버 RLS가 계정 권한으로 컬렉션별 읽기·쓰기를 거른다.
-   - 컬렉션 단위 KV 동기화: public.semis_logi_store (key, value jsonb, updated_at, updated_by)
-     읽기·쓰기 가능 컬렉션은 로그인 응답의 권한표(acl)로 판단한다.
-   - 실시간: DB 트리거가 보내는 변경 알림(Realtime Broadcast "semis-logi-sync", 컬렉션 이름만)을 받으면
-     해당 컬렉션만 다시 읽는다. 알림을 못 받으면 30초 폴링.
-   - 파일: 비공개 버킷 — Edge Function semis-logi-files 가 서명 URL을 발급한다.
-   - 오프라인: 이 탭의 sessionStorage 캐시로 동작, 변경분은 pending 큐에 두었다가 재접속 시 push
-   - 저장 충돌 방지(v1.24): 저장할 때 마지막으로 받은 서버 시각(base_at)을 함께 보낸다. 그 사이 서버 값이
-     바뀌었으면 서버가 거절(409)하고, 이 탭은 서버 값을 다시 받아 3-way 병합(항목·필드 단위) 후 다시 저장한다.
-     잠자기에서 깨어난 옛 화면이 서버의 새 데이터를 통째로 덮어쓰던 문제(2026-09-29 일정 61→26건) 대응.
-   ═══════════════════════════════════════════════════════ */
+/* 동기화 — 로그인 세션 ↔ Supabase semis_logi_store(key, value jsonb, updated_at) 컬렉션 단위 KV.
+   토큰은 탭 sessionStorage 에만 두고 요청마다 x-semis-token 헤더 → 서버 RLS 가 컬렉션별 읽기·쓰기 판정 */
 "use strict";
 
 (() => {
   const SUPA_URL = "https://mzyuzrxkdcpzxojenwat.supabase.co";
-  // anon(publishable) key — 공개용 키. 데이터 권한은 로그인 세션(x-semis-token)과 서버 RLS가 결정한다.
+  // anon(공개용) 키 — 데이터 권한은 세션 토큰과 서버 RLS 가 결정
   const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im16eXV6cnhrZGNwenhvamVud2F0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQxMTQ1MTYsImV4cCI6MjA5OTY5MDUxNn0.YqcCnEY8Bn-Bc2cbUHWl4m9GLMIifZbH5KqrbamU0YI";
   const TABLE = "semis_logi_store";
   const BUCKET = "semis-logi-files";
@@ -29,14 +15,13 @@
   const CHANNEL = "semis-logi-sync";
 
   const SYNC_KEYS = ["menus", "notices", "schedules", "assignees", "assigneesSeeded", "minutes", "minuteFolders", "levelHistory", "safetyBoard", "contacts", "gcal", "chatRooms", "vault", "regulations", "equipment", "crisis", "fleet", "audits", "phonebook", "training", "seclog", "seclogCfg", "serp", "serpRuns", "threat", "threatRuns", "threatChecks", "patrol", "patrolCfg", "patrolPeople", "secPost", "secPostImg", "selfChecks", "selfCheckCfg", "docs", "partners", "contracts", "kcra", "secCases", "dissem", "scrStats"];
-  /* 탭 세션 저장소 — 로그인 토큰 · 권한 · 미전송 목록은 탭을 닫으면 사라진다 */
+  /* sessionStorage — 토큰·권한·미전송 목록은 탭을 닫으면 소멸 */
   const SS_TOKEN = "semisl:tok";
   const SS_ME = "semisl:me";
   const SS_PENDING = "semisl:pendingSync";
   const SS_FORCE = "semisl:forcePush";
   const LS_GUARD = "semisl:guardLog";   // 대량 삭제 방어 기록(데이터 없음)
-  /* 대량 삭제 방어 기준 — 직전 동기화 시점에 이 건수 이상이던 배열이
-     로컬에서 0건이 되면 비정상으로 보고 서버 push를 막는다. */
+  /* 직전 동기화 때 이 건수 이상이던 배열이 로컬에서 0건이면 비정상으로 보고 push 차단 */
   const GUARD_MIN = 2;
   const CLIENT_ID = "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
@@ -44,15 +29,15 @@
   const RETRY_MS = 30000;
   const POLL_MS = 30000;
   const BEAT_MS = 10 * 60 * 1000;      // 세션 확인·연장
-  const NET_TIMEOUT_MS = 20000;        // 데이터 요청 시간 제한(응답 없는 요청이 동기화 줄을 막지 않게)
+  const NET_TIMEOUT_MS = 20000;        // 데이터 요청 시간 제한
   const WAKE_TICK_MS = 15000;          // 잠자기 감지 주기
-  const WAKE_GAP_MS = 180000;          // 이보다 오래 타이머가 멈췄으면 잠자기에서 깨어난 것으로 본다(숨긴 탭 타이머 지연 1분보다 길게)
+  const WAKE_GAP_MS = 180000;          // 이보다 오래 타이머가 멈췄으면 잠자기 복귀(숨긴 탭 타이머 지연 1분보다 길게)
   const CONFLICT_RETRY = 3;
 
   let status = "init";            // init | online | syncing | offline
   let snapshots = {};             // key → canonical JSON (마지막 동기화 시점)
-  /* v1.24 저장 기준: key → 서버 행의 updated_at("" = 서버에 행 없음, undefined = 모름 → 먼저 받아 온다)
-     baseOK[key] = snapshots[key] 가 실제 서버 값(병합 기준으로 쓸 수 있음)인지 */
+  /* serverAt: key → 서버 행 updated_at("" = 행 없음, undefined = 모름 → 먼저 받아 옴)
+     baseOK[key]: snapshots[key] 가 실제 서버 값(병합 기준 가능)인지 */
   let serverAt = {};
   let baseOK = {};
   let stale = false;              // 잠자기·탭 숨김에서 막 돌아와 아직 서버와 맞추지 못한 상태
@@ -68,7 +53,7 @@
     del(k) { try { sessionStorage.removeItem(k); } catch (e) { /* 무시 */ } }
   };
 
-  /* ─── 세션 ─── */
+  /* ── 세션 ── */
   let token = ss.get(SS_TOKEN) || "";
   let sess = (() => { try { return JSON.parse(ss.get(SS_ME)) || null; } catch (e) { return null; } })();
   function aclOf(k) {
@@ -93,14 +78,14 @@
   function httpErr(what, res) { const e = new Error(what + " " + res.status); e.status = res.status; return e; }
   function toastSafe(msg, isErr) { try { SeMIS.toast(msg, isErr); } catch (e) { /* 헤더 미존재 */ } }
 
-  /* ─── canonical stringify (jsonb는 객체 키를 정렬하므로 비교용 정규화) ─── */
+  /* 비교용 정규화 — jsonb 가 객체 키를 정렬하므로 키 정렬 stringify */
   function canon(v) {
     if (v === null || typeof v !== "object") return JSON.stringify(v === undefined ? null : v);
     if (Array.isArray(v)) return "[" + v.map(canon).join(",") + "]";
     return "{" + Object.keys(v).sort().map(k => JSON.stringify(k) + ":" + canon(v[k])).join(",") + "}";
   }
 
-  /* ─── 상태 표시 ─── */
+  /* ── 상태 표시 ── */
   const STATUS_META = {
     online:  { cls: "online",  txt: "실시간", title: "공용 DB 연결됨 — 변경 사항이 실시간 공유됩니다. (클릭: 수동 동기화)" },
     syncing: { cls: "syncing", txt: "동기화", title: "동기화 진행 중…" },
@@ -119,7 +104,7 @@
     } catch (e) { /* 헤더 미존재(테스트 등) 무시 */ }
   }
 
-  /* ─── pending 큐 (오프라인 변경분) ─── */
+  /* ── pending 큐(오프라인 변경분) ── */
   function pendingKeys() {
     try { return JSON.parse(ss.get(SS_PENDING)) || []; } catch (e) { return []; }
   }
@@ -128,8 +113,8 @@
     else ss.del(SS_PENDING);
   }
 
-  /* ─── 스냅샷 / 변경 감지 ─── */
-  /* 이 탭의 값을 기준으로 삼는다(서버 값이 아님 → 병합 기준으로는 쓰지 않는다) */
+  /* ── 스냅샷 · 변경 감지 ── */
+  /* snapAll: 이 탭 값을 기준으로(서버 값 아님 → 병합 기준으로 쓰지 않음) */
   function snapAll() { SYNC_KEYS.forEach(k => { snapshots[k] = canon(D()[k]); }); baseOK = {}; }
   function dirtyKeys() { return SYNC_KEYS.filter(k => canon(D()[k]) !== snapshots[k]); }
   function markBase(key, value, at) {
@@ -142,13 +127,12 @@
     try { return JSON.parse(snapshots[key]); } catch (e) { return undefined; }
   }
 
-  /* ─── 3-way 병합 (v1.24) ───
-     base = 마지막으로 서버와 맞춘 값, local = 이 탭의 값, remote = 지금 서버 값.
-     서로 다른 곳을 고쳤으면 양쪽을 모두 살리고, 같은 곳을 다르게 고쳤으면 이 탭(local)이 이긴다.
-     - id 가 있는 객체 배열: 항목 단위(추가 · 삭제 · 수정) — 한쪽이 지운 항목을 다른 쪽이 고쳤으면 남긴다
-     - 원시값 배열: 값 집합(추가 · 삭제)   - 길이가 같은 id 없는 객체 배열: 자리별
-     - 객체: 키 단위로 다시 병합        - 그 밖에 양쪽이 다르게 바뀐 값: 이 탭 값
-     base 를 모르면(undefined) 합집합(겹치면 이 탭 우선) — 옛 mergeById 와 같은 결과 */
+  /* ── 3-way 병합 ──
+     base = 마지막으로 서버와 맞춘 값, local = 이 탭, remote = 지금 서버.
+     서로 다른 곳을 고쳤으면 양쪽 모두 살리고, 같은 곳을 다르게 고쳤으면 local 우선.
+     - id 객체 배열: 항목 단위 — 한쪽이 지운 항목을 다른 쪽이 고쳤으면 남김
+     - 원시값 배열: 값 집합   - 길이 같은 id 없는 객체 배열: 자리별   - 객체: 키 단위 재귀
+     base 를 모르면(undefined) 합집합(겹치면 local 우선) */
   const ATOMIC = { vault: true };           // 암호화 묶음 — 쪼개어 섞지 않는다
   const same = (a, b) => canon(a) === canon(b);
   const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
@@ -239,7 +223,7 @@
     return merge3(base, local, remote);
   }
 
-  /* ─── RPC · REST ─── */
+  /* ── RPC · REST ── */
   /* 응답 없는 요청이 동기화 줄을 막지 않도록 시간 제한 */
   function fetchT(url, o) {
     if (typeof AbortController === "undefined") return fetch(url, o);
@@ -260,7 +244,7 @@
     if (!res.ok) throw httpErr("GET", res);
     return res.json();
   }
-  /* 저장 — 행마다 base_at(마지막으로 받은 서버 시각)을 보낸다. 서버 값이 그 사이 바뀌었으면 409(conflict) */
+  /* 저장 — 행마다 base_at(마지막으로 받은 서버 시각) 동봉. 그 사이 서버 값이 바뀌었으면 409 → 받아 병합 후 재저장 */
   async function restUpsert(rows) {
     const res = await fetchT(REST + "?on_conflict=key&select=key,updated_at", {
       method: "POST",
@@ -279,9 +263,8 @@
     return Array.isArray(out) ? out : [];
   }
 
-  /* ─── 로그인 · 확인 · 로그아웃 ─── */
-  /* ─── 작업증명(PoW) — js/pow.js (v1.16) ───
-     로그인마다 서버가 서명한 문제(2분 유효·1회용)를 풀어 첨부한다. 로그인 창이 떠 있는 동안 미리 푼다. */
+  /* ── 로그인 · 확인 · 로그아웃 ── */
+  /* 작업증명(pow.js) — 서버 서명 문제(2분 유효·1회용)를 풀어 로그인에 첨부. 로그인 창이 뜬 동안 미리 푼다 */
   const POW = () => (typeof window !== "undefined" && window.SemisPow) || null;
   let powPre = null;              // { exp, promise }
   async function challenge() {
@@ -360,11 +343,9 @@
     try { if (SeMIS.sessionLost) SeMIS.sessionLost(); } catch (e) { /* 무시 */ }
   }
 
-  /* ─── 대량 삭제 방어 ───
-     2026-09-17 일정 전량 유실 사고 대응. 로컬 배열이 통째로 비었는데
-     직전 동기화본에는 GUARD_MIN건 이상 있었다면, 사용자의 명시적 삭제가 아니라
-     로컬 저장소 손상·버그로 보고 (1) push를 막고 (2) 로컬을 직전 상태로 되돌린다.
-     정상적인 전체 삭제는 confirmWipe(key)로 1회 허용한다. */
+  /* ── 대량 삭제 방어 ──
+     로컬 배열이 통째로 비었는데 직전 동기화본엔 GUARD_MIN건 이상이었다면 저장소 손상·버그로 보고
+     push 차단 + 직전 상태로 복원. 정상적인 전체 삭제는 confirmWipe(key)로 1회 허용 */
   let wipeOK = {};                 // key → true (1회용 허용)
   function confirmWipe(key) { if (SYNC_KEYS.includes(key)) wipeOK[key] = true; }
   function snapLen(key) {
@@ -403,7 +384,7 @@
     rerender();
   }
 
-  /* ─── 동기화 줄: push · pull 을 한 번에 하나씩(서로 끼어들어 기준 시각이 엇갈리지 않게) ─── */
+  /* ── 동기화 줄 — push·pull 직렬화(기준 시각이 엇갈리지 않게) ── */
   let chain = Promise.resolve();
   function serial(fn) {
     const p = chain.then(fn, fn);
@@ -411,7 +392,7 @@
     return p;
   }
 
-  /* ─── push: 로컬 변경분 → 서버 (쓰기 권한이 있는 컬렉션만) ─── */
+  /* ── push: 로컬 변경분 → 서버(쓰기 권한 컬렉션만) ── */
   function push(keys, opts) { return serial(() => pushNow(keys, opts)); }
   async function pushNow(keys, opts) {
     if (!sess || sess.kind !== "user" || !token) return;
@@ -421,14 +402,14 @@
     const dropped = pendingKeys().filter(k => !canWrite(k));
     if (dropped.length) setPending(pendingKeys().filter(k => canWrite(k)));
     if (!targets.length) return;
-    /* 서버 기준을 모르는 컬렉션(탭을 새로 열었거나 다시 로그인한 직후) → 먼저 받아 병합한 뒤 저장 */
+    /* 서버 기준을 모르는 컬렉션(새 탭·재로그인 직후) → 먼저 받아 병합한 뒤 저장 */
     const unknown = targets.filter(k => serverAt[k] === undefined);
     if (unknown.length) {
       targets = targets.filter(k => serverAt[k] !== undefined);
       try { await pullNow(false, unknown, o.depth || 0); }
       catch (e) { setStatus("offline"); scheduleRetry(); throw e; }
     }
-    /* 이미 서버와 같은 것은 보내지 않는다(서버에 행이 없으면 만들고, 강제 복원이면 모두) */
+    /* 이미 서버와 같은 것은 생략(서버에 행이 없거나 강제 복원이면 보냄) */
     const same0 = targets.filter(k => !o.all && serverAt[k] !== "" && canon(D()[k]) === snapshots[k] && baseOK[k]);
     if (same0.length) {
       targets = targets.filter(k => same0.indexOf(k) < 0);
@@ -496,7 +477,7 @@
     }
   }
 
-  /* ─── pull: 서버 → 로컬 (onlyKeys 가 있으면 그 컬렉션만) ─── */
+  /* ── pull: 서버 → 로컬(onlyKeys 있으면 그 컬렉션만) ── */
   function pull(initial, onlyKeys) { return serial(() => pullNow(initial, onlyKeys, 0)); }
   async function pullNow(initial, onlyKeys, depth) {
     if (!sess || sess.kind !== "user" || !token) return false;
@@ -537,10 +518,9 @@
     });
     want.forEach(k => { if (!present[k]) serverAt[k] = ""; });            // 서버에 아직 행이 없음
     if (!onlyKeys) { stale = false; lastFullPull = Date.now(); }
-    // 서버 데이터 반영 후 정규화 — 구버전 서버 데이터가 로컬 마이그레이션(신규 메뉴/필드)을
-    // 되돌리지 않도록 보정하고, 보정분은 dirty로 잡혀 서버에 push됨(쓰기 권한이 있을 때만)
+    // 반영 후 정규화 — 서버의 옛 형식 데이터가 로컬 마이그레이션을 되돌리지 않게. 보정분은 dirty → push
     try { if (SeMIS.normalizeData && SeMIS.normalizeData()) changed = true; } catch (e) {}
-    // 서버에 없는 컬렉션은 로컬 데이터로 시드 (쓰기 권한이 있을 때만)
+    // 서버에 없는 컬렉션은 로컬 데이터로 시드(쓰기 권한 있을 때만)
     const missing = onlyKeys ? [] : want.filter(k => !present[k] && canWrite(k));
     const toPush = (force ? writeKeys()
       : Array.from(new Set(missing.concat(pend.filter(k => present[k]), dirtyKeys())))).filter(canWrite);
@@ -555,14 +535,14 @@
     return changed;
   }
 
-  /* ─── 원격 변경 반영 ─── */
+  /* ── 원격 변경 반영 ── */
   function applyRemote(key, value) {
     if (!SYNC_KEYS.includes(key)) return false;
     const remote = canon(value);
     if (remote === canon(D()[key])) { markBase(key, remote); return false; }
     D()[key] = value;
     markBase(key, remote);
-    // 원격 반영 후 정규화 — 보정이 생기면 디바운스 push로 서버에 반영 (idempotent라 루프 없음)
+    // 정규화 보정분은 디바운스 push(멱등이라 루프 없음)
     try { if (SeMIS.normalizeData && SeMIS.normalizeData()) queuePush(); } catch (e) {}
     SeMIS.saveSilent();
     rerender();
@@ -571,14 +551,14 @@
 
   function rerender() {
     try {
-      if (!SeMIS.user) return; // 로그인 전에는 화면 갱신 불필요
+      if (!SeMIS.user) return;
       SeMIS.renderHeader();
       SeMIS.renderNav();
       SeMIS.renderView();
     } catch (e) { /* 렌더 실패가 동기화를 막지 않도록 */ }
   }
 
-  /* ─── 실시간: 변경 알림(컬렉션 이름만) → 그 컬렉션만 다시 읽기 ─── */
+  /* ── 실시간 — 변경 알림(컬렉션 이름만) → 그 컬렉션만 다시 읽기. 실패 시 폴링 ── */
   const remoteKeys = new Set();
   let remoteTimer = null;
   function queueRemote(key) {
@@ -613,7 +593,7 @@
         .subscribe((st) => {
           if (st === "SUBSCRIBED") {
             realtimeOn = true; stopPolling(); setStatus("online");
-            /* 다시 연결됨 — 끊겨 있던 동안의 변경 알림은 오지 않으므로 한 번 다시 받는다 */
+            /* 재연결 — 끊긴 동안의 알림은 오지 않으므로 한 번 다시 받는다 */
             if (Date.now() - lastFullPull > 10000) pull(false).catch(() => {});
           }
           else if (st === "CHANNEL_ERROR" || st === "TIMED_OUT" || st === "CLOSED") {
@@ -623,7 +603,7 @@
     } catch (e) { startPolling(); }
   }
 
-  /* ─── 폴링 폴백 ─── */
+  /* ── 폴링 폴백 ── */
   function startPolling() {
     if (pollTimer) return;
     pollTimer = setInterval(() => {
@@ -634,7 +614,7 @@
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   }
 
-  /* ─── 세션 확인·연장 (10분) ─── */
+  /* ── 세션 확인·연장 ── */
   function startBeat() {
     if (beatTimer) return;
     beatTimer = setInterval(() => {
@@ -647,10 +627,9 @@
   }
   function stopBeat() { if (beatTimer) { clearInterval(beatTimer); beatTimer = null; } }
 
-  /* ─── 잠자기 · 탭 숨김에서 돌아옴 (v1.24) ───
-     절전 · 브라우저 잠자기 탭(Edge) · 휴대폰 화면 꺼짐 동안에는 타이머와 실시간 연결이 멈춰 다른 사람의 변경을
-     받지 못한다. 돌아오면 먼저 서버 값을 다시 받는다. 그 전에 일어난 자동 변경(일정 자동 연기 등)은
-     서버의 기준 시각 확인에 걸려 덮어쓰지 못하고, 받아 온 값과 병합된 뒤 저장된다. */
+  /* ── 잠자기 · 탭 숨김 복귀 ──
+     절전·잠자기 탭(Edge)·휴대폰 화면 꺼짐 동안 타이머·실시간 연결이 멈춤 → 돌아오면 먼저 서버 값을 다시 받는다.
+     그 전에 생긴 자동 변경은 base_at 확인(409)에 걸려 덮어쓰지 못하고 병합 후 저장 */
   let lastTick = Date.now(), wakeTimer = null, hiddenAt = 0, lastFullPull = 0, wakeHooked = false;
   function onWake() {
     if (!sess || sess.kind !== "user" || !token || lostFired) return;
@@ -665,7 +644,7 @@
       wakeTimer = setInterval(() => {
         const now = Date.now(), gap = now - lastTick;
         lastTick = now;
-        if (gap > WAKE_GAP_MS) onWake();       // 타이머가 오래 멈췄다 = 잠자기에서 깨어남
+        if (gap > WAKE_GAP_MS) onWake();       // 타이머가 오래 멈춤 = 잠자기 복귀
       }, WAKE_TICK_MS);
     }
     if (wakeHooked || typeof document === "undefined") return;
@@ -680,7 +659,7 @@
   }
   function stopWake() { if (wakeTimer) { clearInterval(wakeTimer); wakeTimer = null; } }
 
-  /* ─── 재시도 ─── */
+  /* ── 재시도 ── */
   function scheduleRetry() {
     if (retryTimer) return;
     retryTimer = setTimeout(() => { retryTimer = null; reconnect(); }, RETRY_MS);
@@ -691,7 +670,7 @@
       .catch(() => { setStatus("offline"); scheduleRetry(); });
   }
 
-  /* ─── save 후크: 변경 감지 → 디바운스 push ─── */
+  /* ── save 후크: 변경 감지 → 디바운스 push ── */
   function queuePush() {
     if (!sess || sess.kind !== "user") return;
     const dk = dirtyKeys().filter(canWrite);
@@ -704,7 +683,7 @@
     }, DEBOUNCE_MS);
   }
 
-  /* ═════════ 파일 (비공개 버킷 · Edge Function semis-logi-files) ═════════ */
+  /* ── 파일 — 비공개 버킷, Edge Function semis-logi-files 가 서명 URL 발급 ── */
   const STORAGE_API = SUPA_URL + "/storage/v1";
   const PUBLIC_PREFIX = STORAGE_API + "/object/public/" + BUCKET + "/";   // 저장용 표준 주소(열람은 서명 URL로)
   async function filesCall(body) {
@@ -751,8 +730,8 @@
     return true;
   }
 
-  /* v1.23 사이트 파비콘 — Edge Function semis-logi-favicon(시스템관리자)이 사이트의 아이콘 이미지를 찾아
-     { data: "data:<형식>;base64,…", type, src } 로 돌려준다. 화면은 이를 64px PNG로 줄여 메뉴에 저장한다. */
+  /* 사이트 파비콘 — Edge Function semis-logi-favicon(시스템관리자)이 { data: "data:<형식>;base64,…", type, src } 반환.
+     화면이 64px PNG로 줄여 메뉴에 저장 */
   async function favicon(url) {
     if (typeof fetch === "undefined") throw new Error("offline");
     if (!token) { const e = new Error("auth"); e.status = 401; throw e; }
@@ -783,7 +762,7 @@
     return Number.isFinite(n) ? n : null;
   }
 
-  /* ─── 단일 KV 조회 (SYNC_KEYS 외 설정 행 — 예: caresCfg) ─── */
+  /* 단일 KV 조회 — SYNC_KEYS 밖 설정 행(예: caresCfg) */
   async function fetchKV(key) {
     if (typeof fetch === "undefined") return null;
     const res = await fetch(REST + "?key=eq." + encodeURIComponent(key) + "&select=key,value", { headers: hdr() });
@@ -793,7 +772,7 @@
     return row ? row.value : null;
   }
 
-  /* ─── 서버 변경 이력 (semis_store_history — 시스템관리자 RPC) ─── */
+  /* ── 서버 변경 이력(semis_store_history · 시스템관리자 RPC) ── */
   async function history(key, limit) {
     const d = await rpc("semis_logi_history", { p_key: key || null, p_limit: limit || 60 });
     if (!d || !d.ok) throw new Error((d && d.error) || "history");
@@ -803,7 +782,7 @@
     const d = await rpc("semis_logi_history_value", { p_id: Number(id) });
     return d && d.ok ? d.row : null;
   }
-  /* 이력 한 건을 현재 데이터로 되돌린다 (되돌린 값이 비어 있어도 사용자 확인을 거친 것이므로 허용) */
+  /* 이력 한 건으로 복원 — 사용자 확인을 거쳤으므로 빈 값도 허용 */
   async function restoreHistory(id) {
     const row = await historyValue(id);
     if (!row || !SYNC_KEYS.includes(row.key) || !canWrite(row.key)) throw new Error("not-found");
@@ -815,7 +794,7 @@
     return row.key;
   }
 
-  /* ─── 수동 동기화 ─── */
+  /* ── 수동 동기화 ── */
   async function syncNow() {
     if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
     await push().catch(() => {});
@@ -823,16 +802,16 @@
     if (!realtimeOn) subscribe();
     return status;
   }
-  /* 잠자기에서 막 돌아와 아직 서버 값을 다시 받지 못했는가 — 자동 변경(일정 자동 연기 등)은 이때 미룬다 */
+  /* 잠자기 복귀 후 아직 서버 값을 못 받음 — 자동 변경(일정 자동 연기 등)은 이때 미룬다 */
   function isStale() { return stale; }
 
-  /* ─── 시작 (로그인·세션 확인 뒤 app.js 가 부른다) ─── */
+  /* ── 시작 — 로그인·세션 확인 뒤 app.js 가 호출 ── */
   function start() {
     if (typeof SeMIS === "undefined") return Promise.resolve();
     if (typeof fetch === "undefined") { setStatus("offline"); return Promise.resolve(); }
     if (!sess || sess.kind !== "user" || !token) return Promise.resolve();
     lostFired = false;
-    /* 이 탭에서 이미 서버와 맞춘 컬렉션은 기준(서버 값 · 시각)을 그대로 두고, 처음이면 이 탭 값으로 시작 */
+    /* 이미 서버와 맞춘 컬렉션은 기준(값·시각) 유지, 처음이면 이 탭 값으로 시작 */
     SYNC_KEYS.forEach(k => { if (!baseOK[k]) snapshots[k] = canon(D()[k]); });
     if (!hooked) {
       hooked = true;

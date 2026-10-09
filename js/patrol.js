@@ -1,23 +1,5 @@
-/* ═══════════════════════════════════════════════════════
-   SeMIS · Logistics — 일일 보안 · 안전 순찰일지 (v1.27, 라우트 daily-safety)
-   종이 「Daily 보안/안전 순찰일지」(A4 한 장 = 5일)를 전산으로 옮긴 화면. 예정 메뉴 '일일 안전점검'을 대체한다.
-
-   하루 기록 = 오전 순찰자 · 서명 / 오후 순찰자 · 서명 / 특이사항 / 이상 항목 → 보안감독자 확인 서명으로 끝.
-   - 서명: 사람마다 한 번 그려 등록 → 이름만 누르면 서명 칸에 들어간다(그 자리에서 다시 그릴 수도 있음).
-   - 점검사항: 기본은 전 항목 이상 없음. 이상 있는 항목만 눌러 표시하면 특이사항에 함께 인쇄된다.
-   - 휴무 · 당직: 순찰이 없는 날은 당직근무자가 이름과 서명을 그때그때 남긴다(명단 등록 없음, 확인 칸에 '당직근무자 · 이름 · 서명' 인쇄).
-   - 보안감독자 확인이 끝난 날은 잠긴다(고치려면 확인 취소).
-   - 인쇄: 종이 양식과 같은 A4 세로 — 1~5 · 6~10 · … · 26~말일 한 장씩(31일은 26~31 여섯 줄).
-
-   화면: 일지 작성(날짜별) · 월별 일지(5일 묶음 표 · 일괄 확인 · 미리보기) · 순찰자 · 서명
-   데이터
-     patrolCfg    = { title, asOf, since, secs[{ id, name, items[{ id, text }] }] }   — 점검사항 문구는 공용 DB에만(코드는 구분 뼈대)
-     patrolPeople = [{ id, name, roles[](patrol · sup), sign(서명 이미지 주소), signAt, active, order }]  — 명단은 공용 DB에만
-     patrol       = [{ id, date, am, pm, sup, off{ name, sign, at, by }, note, ng[{ id, sec, t, note }], createdAt/By, updatedAt/By }]
-                    am · pm · sup = { pid, name, sign, t(순찰 시각, 확인은 없음), at, by } — 서명 주소는 그때 것을 그대로 남긴다
-   권한: 열람 · 기록 · 순찰자 등록 mgr(권한표 patrol 2/2 · patrolPeople 2/2) · 양식 hq(patrolCfg 2/3).
-   파일: 비공개 버킷 patrol/ 폴더(서명 이미지, 열람 2 · 올리기 2).
-   ═══════════════════════════════════════════════════════ */
+/* 일일 보안 · 안전 순찰일지(라우트 daily-safety) — 종이 「Daily 보안/안전 순찰일지」(A4 한 장 = 5일)의 전산판.
+   하루 기록 = 오전 · 오후 순찰자 서명 · 특이사항 · 이상 항목 → 보안감독자 확인 서명으로 잠김(고치려면 확인 취소). */
 "use strict";
 
 (() => {
@@ -63,7 +45,13 @@
   const routeNow = () => (typeof location !== "undefined" ? location.hash.replace(/^#\//, "") : "") || "dashboard";
   const signOk = (u) => typeof u === "string" && (/^https:\/\/[^\s"'<>]+$/.test(u) || /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(u));
 
-  /* ─────── 양식 ─────── */
+  /* 데이터
+     patrolCfg    = { title, asOf, since, secs[{ id, name, items[{ id, text }] }] } — 점검사항 문구는 공용 DB에만(코드는 구분 뼈대)
+     patrolPeople = [{ id, name, roles[](patrol · sup), sign(서명 이미지 주소), signAt, active, order }] — 명단은 공용 DB에만
+     patrol       = [{ id, date, am, pm, sup, off{ name, sign, at, by }, note, ng[{ id, sec, t, note }], createdAt/By, updatedAt/By }]
+       am · pm · sup = { pid, name, sign, t(순찰 시각, 확인은 없음), at, by } — 서명 주소는 그때 것을 그대로 남긴다
+     권한: 기록 · 순찰자 등록 mgr(patrol · patrolPeople 2/2) · 양식 hq(patrolCfg 2/3). 서명 이미지: 비공개 버킷 patrol/ 폴더 */
+  /* ── 양식 ── */
   function cfg() {
     const c = obj(D()[CFG]);
     const secs = arr(c.secs).filter(s => s && s.id && norm(s.name)).map(s => ({ id: String(s.id), name: norm(s.name),
@@ -77,7 +65,7 @@
   }
   const itemsAll = () => [].concat.apply([], cfg().secs.map(s => s.items.map(it => ({ id: it.id, text: it.text, sec: s.name }))));
 
-  /* ─────── 순찰자 · 보안감독자 ─────── */
+  /* ── 순찰자 · 보안감독자 ── */
   function pplList() { let a = D()[PPL]; if (!Array.isArray(a)) a = D()[PPL] = []; return a; }
   const peopleAll = () => arr(D()[PPL]).filter(p => p && p.id && norm(p.name)).slice()
     .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
@@ -95,7 +83,7 @@
   }
   const lastPid = (slot) => meMap()[slot === "sup" ? "sup" : "patrol"] || "";
 
-  /* ─────── 하루 기록 ─────── */
+  /* ── 하루 기록 ── */
   function list() { let a = D()[KEY]; if (!Array.isArray(a)) a = D()[KEY] = []; return a; }
   const days = () => arr(D()[KEY]).filter(r => r && r.id && isISO(r.date));
   function dayOf(iso) {
@@ -139,7 +127,7 @@
     return changed;
   }
 
-  /* ─────── 상태 ─────── */
+  /* ── 상태 ── */
   function since() {
     const c = cfg();
     if (c.since) return c.since;
@@ -175,7 +163,7 @@
     return out;
   }
 
-  /* ─────── 5일 묶음(종이 한 장) ─────── */
+  /* ── 5일 묶음(종이 한 장): 1~5 · 6~10 · … · 26~말일(31일이면 여섯 줄) ── */
   function sheetOf(iso) {
     const ym = iso.slice(0, 7), L = lastDay(ym);
     const i = Math.min(5, Math.floor((Number(iso.slice(8, 10)) - 1) / PER));
@@ -190,7 +178,7 @@
   function datesIn(from, to) { const out = []; for (let d = from, g = 0; d <= to && g < 400; d = addDays(d, 1), g++) out.push(d); return out; }
   const sheetLabel = (sh) => md(sh.from) + " ~ " + md(sh.to);
 
-  /* ═════════ 서명 패드 — 손가락 · 펜 · 마우스. 여백을 잘라 투명 PNG로 올린다(실패하면 data URL) ═════════ */
+  /* ── 서명 패드 — 손가락 · 펜 · 마우스. 여백을 잘라 투명 PNG로 올린다(실패하면 data URL) ── */
   let padDone = null;
   function signPad(o, done) {
     o = o || {};
@@ -285,7 +273,7 @@
   }
   const signImg = (u, cls) => signOk(u) ? `<img class="${cls || "pt-sig"}" src="${esc(u)}" alt="서명">` : "";
 
-  /* ═════════ 기록 동작 ═════════ */
+  /* ── 기록 동작 ── */
   function slotOf(r, slot) { return r && slotOk(r[slot]) ? r[slot] : null; }
   function stamp(iso, slot, p, sign, t) {
     const r = ensureDay(iso);
@@ -508,7 +496,7 @@
     r.ng = []; touch(r); SeMIS.save(); paint();
   }
 
-  /* ═════════ 순찰자 · 서명 관리 ═════════ */
+  /* ── 순찰자 · 서명 관리 ── */
   function personForm(id, after) {
     if (!canW()) return;
     const x = id ? personOf(id) : null;
@@ -564,7 +552,7 @@
     SeMIS.save(); paint();
   }
 
-  /* ═════════ 양식 편집 (hq) ═════════ */
+  /* ── 양식 편집 (hq) ── */
   function cfgForm() {
     if (!SeMIS.canEdit()) return;
     const c = cfg();
@@ -608,14 +596,14 @@
     };
   }
 
-  /* ═════════ 화면 상태 ═════════ */
+  /* ── 화면 상태 ── */
   let tab = "day", curDate = "", curMonth = "";
-  let chkOpen = false;   // v1.29 모바일: 점검 항목 목록 펼침(이상 항목이 있으면 늘 펼침)
+  let chkOpen = false;   // 모바일 점검 항목 목록 펼침(이상 항목이 있으면 늘 펼침)
   const TABS = [["day", "일지 작성"], ["month", "월별 일지"], ["people", "순찰자 · 서명"]];
   const selDate = () => { if (!isISO(curDate) || curDate > todayISO()) curDate = todayISO(); return curDate; };
   const selMonth = () => { if (!isYM(curMonth)) curMonth = selDate().slice(0, 7); return curMonth; };
 
-  /* ═════════ 일지 작성 (하루) ═════════ */
+  /* ── 일지 작성 (하루) ── */
   function slotCard(iso, slot, r) {
     const s = slotOf(r, slot), lock = locked(r), w = canW();
     const label = `<div class="pt-slot-h"><span class="pt-slot-t">${esc(SLOT_NAME[slot])}</span>${s && s.t ? `<span class="mono pt-slot-tm">${esc(s.t)}</span>` : ""}</div>`;
@@ -694,7 +682,7 @@
       + `<div class="pt-cols">${noteCard}${chkCard}</div>`;
   }
 
-  /* ═════════ 월별 일지 (5일 묶음 표) ═════════ */
+  /* ── 월별 일지 (5일 묶음 표) ── */
   function noteLines(r) {
     const out = [];
     const n = normText(r && r.note);
@@ -755,7 +743,7 @@
       + shs.map(sh => sheetCard(sh, t0)).join("");
   }
 
-  /* ═════════ 순찰자 · 서명 ═════════ */
+  /* ── 순찰자 · 서명 ── */
   function peopleHTML() {
     const all = peopleAll(), w = canW();
     const card = (p, i) => `<section class="pt-pcard${p.active === false ? " is-off" : ""}">
@@ -771,7 +759,7 @@
       ${all.length ? `<div class="pt-pgrid">${all.map(card).join("")}</div>` : ui.empty("등록된 순찰자가 없습니다.")}</section>`;
   }
 
-  /* ═════════ 인쇄 — 종이 양식과 같은 A4 세로 한 장 = 5일 ═════════ */
+  /* ── 인쇄 — 종이 양식과 같은 A4 세로 한 장 = 5일 ── */
   const LOGO_A = [[0.846, 0.151], [0.613, 0.151], [0.109, 0.551], [0.372, 0.551], [0.372, 0.389], [0.65, 0.389]];
   const LOGO_B = [[0.861, 0.418], [0.673, 0.418], [0.673, 0.632], [0.395, 0.632], [0.126, 0.879], [0.524, 0.879]];
   const pts = (a) => a.map(([x, y]) => (x * 30).toFixed(1) + "," + (y * 30).toFixed(1)).join(" ");
@@ -942,7 +930,7 @@
     $$("[data-pv]").forEach(b => b.onclick = () => { const x = pick(b.dataset.pv); previewSheets(x[3], x[4]); });
   }
 
-  /* ═════════ 렌더 ═════════ */
+  /* ── 렌더 ── */
   function bodyHTML() { return tab === "month" ? monthHTML() : tab === "people" ? peopleHTML() : dayHTML(); }
   function captureFocus(root) {
     const a = typeof document !== "undefined" ? document.activeElement : null;
