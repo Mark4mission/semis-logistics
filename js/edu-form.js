@@ -188,9 +188,9 @@
       <form class="ed-card ed-form" id="ed-form" novalidate autocomplete="off">
         <div class="ed-row">
           <label class="ed-f ed-f-name"><span class="ed-l">이름</span>
-            <input id="ed-name" maxlength="30" autocomplete="name" value="${esc(st.name)}" placeholder="홍길동">${fieldErr("ed-name", "이름을 입력하세요")}</label>
+            <input id="ed-name" maxlength="30" autocomplete="name" value="${esc(st.name)}" placeholder="홍길동">${fieldErr("ed-name", "이름을 입력해주세요")}</label>
           <label class="ed-f ed-f-emp"><span class="ed-l">사번</span>
-            <input id="ed-emp" maxlength="20" autocomplete="off" autocapitalize="characters" spellcheck="false" value="${esc(st.emp)}" class="mono">${fieldErr("ed-emp", "사번을 입력하세요")}</label>
+            <input id="ed-emp" maxlength="20" autocomplete="off" autocapitalize="characters" spellcheck="false" value="${esc(st.emp)}" class="mono">${fieldErr("ed-emp", "사번을 입력해주세요")}</label>
         </div>
         <div class="ed-blk" id="ed-blk-files">
           <span class="ed-l">이수증</span>
@@ -199,7 +199,7 @@
             <div id="ed-pickw">${pickHTML()}</div>
             <input type="file" id="ed-file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,application/pdf,image/*" multiple hidden>
           </div>
-          ${fieldErr("ed-files", "이수증을 올리세요")}
+          ${fieldErr("ed-files", "이수증을 올려주세요")}
         </div>
         <div class="ed-foot" id="ed-foot"></div>
       </form>
@@ -692,6 +692,7 @@
         <span class="ed-okico" aria-hidden="true">${svg(IC.check, 28)}</span>
         <div class="ed-ok-t"><h2>${allSame ? "이미 등록되어 있습니다" : "등록되었습니다"}</h2><p>${esc(kindLb)}</p></div>
         <dl class="ed-rcpt"><div><dt>접수 번호</dt><dd class="mono">${esc(res.receipt || "-")}</dd></div><div><dt>제출 시각</dt><dd class="mono">${esc(String(res.at || "").replace(/-/g, "."))}</dd></div></dl>
+        <p class="ed-close" role="status">제출이 완료되었습니다. 이 화면을 닫으셔도 됩니다.</p>
       </section>
       <section class="ed-card" aria-labelledby="ed-h-next">
         <div class="ed-ch"><h3 id="ed-h-next">다음 교육</h3>${cal.length ? `<button type="button" class="ed-btn ed-btn-soft" id="ed-ics">${svg(IC.cal, 17)}<span>캘린더에 추가</span></button>` : ""}</div>

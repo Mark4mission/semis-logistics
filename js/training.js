@@ -1680,19 +1680,11 @@
   /* ═════════ 이수 등록 페이지 — 배포용 edu.html (v1.39 · v1.39.3 상시 주소) ═════════
      대외 교육기관 이수증을 직원이 올리는 상시 화면. 주소 = 이 사이트 주소/edu.html#코드(코드는 공개 저장소에서 주소를 추측하지 못하게).
      서버 RPC semis_logi_edu_links(주소 · 최근 제출) · semis_logi_edu_link_save(주소 만들기 36500일 · 바꾸기 = 새로 만들고 옛 주소 닫기) — hq 이상.
-     메일은 메일 프로그램으로 쓴다(mailto — 받는 사람은 직접). */
+     v1.43.3 관리 창 = 주소 복사 · QR 코드 · 열기 · 주소 변경 + 등록 필요 인원(조치 필요 칸 — 명단 복사) + 최근 제출. 메일 작성은 뺌(안내 메일은 직접). */
   const EDU = { links: null, recent: [], err: "", qr: "" };
   function eduUrl(code) {
     const base = typeof location !== "undefined" ? location.origin + location.pathname.replace(/[^/]*$/, "") : "";
     return base + "edu.html#" + code;
-  }
-  function eduMail(l) {
-    const subject = "[보안교육] 이수증 등록 안내";
-    const body = ["안녕하세요. 인천화물팀 안전보안파트입니다.", "",
-      "교육기관에서 받은 보안교육 이수증을 아래 페이지에 등록해 주세요.", "",
-      "▶ 등록 페이지: " + eduUrl(l.code), "▶ 입력: 이름 · 사번 · 이수증(PDF 또는 사진)", "",
-      "이 주소는 계속 쓸 수 있습니다. 새 이수증을 받을 때마다 같은 주소에서 등록해 주세요.", "", "감사합니다."].join("\n");
-    return "mailto:?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
   }
   const fmtAt = (iso) => { const d = new Date(iso); return isNaN(d) ? "" : p2(d.getMonth() + 1) + "." + p2(d.getDate()) + " " + p2(d.getHours()) + ":" + p2(d.getMinutes()); };
   async function eduLoad() {
@@ -1732,6 +1724,29 @@
   const PERM_DAYS = 36500;
   const eduPerm = () => (EDU.links || []).filter(l => l && l.open && l.target !== "eduTest")
     .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))[0] || null;
+  /* 등록 필요 인원 — 재직 인원 필수 묶음 중 조치 필요(미이수 · 만료 · 자격 정지 · 회복 기한 경과 · 이수 기간 · 유예 · 인증 전), 급한 순 */
+  function needList(t) {
+    t = t || todayISO();
+    const by = new Map();
+    grid(t).cells.filter(c => needAct(c.st)).forEach(c => { if (!by.has(c.p.id)) by.set(c.p.id, { p: c.p, cs: [] }); by.get(c.p.id).cs.push(c); });
+    const lv = (x) => Math.max.apply(null, x.cs.map(c => ST[c.st].lv));
+    return Array.from(by.values()).map(x => (x.cs.sort((a, b) => ST[b.st].lv - ST[a.st].lv || String(ddDate(a) || "").localeCompare(String(ddDate(b) || ""))), x))
+      .sort((a, b) => lv(b) - lv(a) || String(a.p.name).localeCompare(String(b.p.name), "ko"));
+  }
+  const needItem = (c, t) => famShort(c.g) + " " + ST[c.st].label + (c.st === "none" ? "" : ddLabel(c, t) ? " " + ddLabel(c, t) : "");
+  function needText(l) {
+    const t = todayISO(), ns = needList(t);
+    return ["[보안교육 이수 등록 필요 인원] 기준 " + dot(t) + " · " + ns.length + "명", ""]
+      .concat(ns.map((x, i) => (i + 1) + ". " + x.p.name + (x.p.dept ? "(" + x.p.dept + ")" : "") + " — " + x.cs.map(c => needItem(c, t)).join(", ")))
+      .concat(l ? ["", "등록 페이지: " + eduUrl(l.code)] : []).join("\n");
+  }
+  function needHTML() {
+    const t = todayISO(), ns = needList(t);
+    return `<h4 class="te-h">등록 필요 인원<small class="te-hn">${ns.length}명</small><span class="spacer"></span>${ns.length ? `<button type="button" class="btn btn-ghost btn-sm" id="te-ncopy">${icon("copy", 15)}<span>명단 복사</span></button>` : ""}</h4>
+      ${ns.length ? `<ul class="te-need">${ns.map(x => `<li><button type="button" class="te-nrow" data-te-pid="${esc(x.p.id)}">
+          <b>${esc(x.p.name)}</b><span class="te-nis">${x.cs.map(c => `<span class="te-ni tone-${esc(ST[c.st].tone)}">${esc(famShort(c.g))}<em>${esc(ST[c.st].label)}${c.st !== "none" && ddLabel(c, t) ? " " + esc(ddLabel(c, t)) : ""}</em></span>`).join("")}</span></button></li>`).join("")}</ul>`
+        : '<p class="au-none">등록이 필요한 인원이 없습니다.</p>'}`;
+  }
   function eduLinks() {
     if (!SeMIS.canEdit()) return;
     const KIND = { new: ["신규", "blue"], updated: ["갱신", "gray"], dup: ["동명이인", "amber"] };
@@ -1752,15 +1767,15 @@
       box.innerHTML = (l ? `<div class="te-link" data-code="${esc(l.code)}">
           <div class="te-url mono">${esc(eduUrl(l.code))}</div>
           <div class="te-acts">
-            <button type="button" class="btn btn-ghost btn-sm" data-te="copy">${icon("copy", 15)}<span>복사</span></button>
-            <a class="btn btn-ghost btn-sm" href="${esc(eduMail(l))}">${icon("mail", 15)}<span>메일 작성</span></a>
-            <button type="button" class="btn btn-ghost btn-sm" data-te="qr" aria-pressed="${EDU.qr === l.code}">QR</button>
+            <button type="button" class="btn btn-ghost btn-sm" data-te="copy">${icon("copy", 15)}<span>주소 복사</span></button>
+            <button type="button" class="btn btn-ghost btn-sm" data-te="qr" aria-pressed="${EDU.qr === l.code}">QR 코드</button>
             <a class="btn btn-ghost btn-sm" href="${esc(eduUrl(l.code))}" target="_blank" rel="noopener">${icon("external", 15)}<span>열기</span></a>
             <span class="spacer"></span>
             <button type="button" class="btn btn-ghost btn-sm te-renew${armed ? " is-armed" : ""}" data-te="renew">${armed ? "변경 확인" : "주소 변경"}</button>
           </div>
           ${EDU.qr === l.code && window.SemisQR ? `<div class="te-qr">${window.SemisQR.svg(eduUrl(l.code), { ecc: "M", size: 176, label: "이수 등록 QR" })}</div>` : ""}
         </div>` : `<div class="te-link te-none">${ui.empty("등록 페이지 주소가 없습니다.", '<button type="button" class="btn btn-primary btn-sm" id="te-make">주소 생성</button>')}</div>`)
+        + needHTML()
         + `<h4 class="te-h">최근 제출${selfPending() ? `<small>본인 등록 확인 전 ${selfPending()}건</small>` : ""}</h4>
         ${EDU.recent.length ? `<ul class="te-recent">${EDU.recent.map(r => { const k = KIND[r.kind] || [String(r.kind || ""), "gray"];
           return `<li><button type="button" class="te-rrow" data-te-pid="${esc(r.pid)}">
@@ -1782,6 +1797,8 @@
             "주소를 변경했습니다. 이전 주소는 더 이상 열리지 않습니다.");
         }
       });
+      const nc = $("#te-ncopy", box);
+      if (nc) nc.onclick = () => copyText(needText(l)).then(ok => toast(ok ? "등록 필요 인원 명단을 복사했습니다." : "복사하지 못했습니다.", !ok));
       $$("[data-te-pid]", box).forEach(b => b.onclick = () => {
         const id = b.dataset.tePid;
         if (!personOf(id)) { toast("아직 이 화면에 반영되지 않았습니다. 잠시 뒤 다시 여세요.", true); return; }
@@ -1937,7 +1954,7 @@
     courses, fams, famStatus, personQuals, stats, roleStats, dueList, expiryByMonth, sessionsByMonth, grid, missing, evidence, expireOf, stText, cycleText,
     migrate, rolesOf, needAct, loadPledges, pledgeMatch, pledgeInfo, pledgesState: PL,
     syncSessionRecords, personForm, pledgeForm, recordForm, sessionForm, coursesForm, keepOver, leftOver, openPerson, openSession,
-    eduLinks, eduUrl, eduMail, selfPending, selfRecs, aptOf, eduState: EDU,
+    eduLinks, eduUrl, needList, needText, selfPending, selfRecs, aptOf, eduState: EDU,
     uniqFiles, ddLabel, ddDate, alertSummary, dueSheet, xlsxParts, xlsxBytes, exportDue, DUE_DAYS,
     setToday(t) { fixedToday = isISO(t) ? t : ""; },
     getState() { return { tab, q, roleF, rgF, onlyAct, onlySelf, year, sType, pState, pView, pid, sid, plScope, plState }; },

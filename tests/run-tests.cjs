@@ -8283,6 +8283,8 @@ function makeServer(opts = {}) {
       eq(sb.p.emp, "KJ1234567");
       eq(sb.p.recs.length, 1);
       ok($e(x, ".ed-ok") && /AB12CD34/.test($e(x, ".ed-rcpt").textContent), "접수 번호");
+      ok(/제출이 완료되었습니다\. 이 화면을 닫으셔도 됩니다\./.test($e(x, ".ed-ok .ed-close").textContent), "닫아도 된다는 안내(v1.43.3)");
+      ok(/\.ed-close, input\[type="file"\] \{ display: none !important; \}/.test(read("css/edu.css")), "인쇄 때는 숨김");
       const rows = $$e(x, ".ed-next li").map(li => li.textContent.replace(/\s+/g, " "));
       ok(rows.some(r => /항공사보안감독자/.test(r) && /2027\.09\.17 ~ 2027\.11\.16/.test(r) && /유효기한 2027\.10\.16/.test(r) && /이번 제출/.test(r)),
         "이수 기간 안 이수 → 종전 유효기한 다음 날부터 1년: " + rows.join(" / "));
@@ -8316,6 +8318,7 @@ function makeServer(opts = {}) {
       eq($e(x, "#ed-name").getAttribute("aria-invalid"), "true"); ok(!$e(x, "#ed-name-e").hidden && !$e(x, "#ed-emp-e").hidden);
       ok(!$e(x, "#ed-files-e").hidden && $e(x, "#ed-drop").classList.contains("is-bad"));
       ok(/미입력 항목/.test($e(x, ".ed-miss").textContent) && /이름 · 사번 · 이수증/.test($e(x, ".ed-miss").textContent));
+      ok(/이수증을 올려주세요/.test(x.dom.window.document.body.textContent) && /이름을 입력해주세요/.test(x.dom.window.document.body.textContent) && !/올리세요/.test(x.dom.window.document.body.textContent), "안내 문구(v1.43.3)");
       typeIn(x, "#ed-name", "갑"); typeIn(x, "#ed-emp", "A1");
       eq($e(x, "#ed-name").getAttribute("aria-invalid"), "false", "고치면 바로 지움");
       putFiles(x, [F(x, "sup.pdf", 1000, "application/pdf")]);
@@ -8420,7 +8423,8 @@ function makeServer(opts = {}) {
       const e = makeEnv();
       const TR = e.w.SemisTraining;
       TR.setToday("2026-10-08");
-      e.S.data.training = { courses: [], people: [{ id: "p1", name: "홍길동", dept: "인천화물팀", roles: ["DGR"] }], records: [], sessions: [] };
+      e.S.data.training = { courses: [], people: [{ id: "p1", name: "홍길동", dept: "인천화물팀", roles: ["DGR"] }, { id: "p2", name: "을유효", dept: "인천화물팀", roles: ["항공사보안감독자"] }],
+        records: [{ id: "v1", pid: "p2", cid: "c-sup-r", date: "2026-03-02" }], sessions: [] };
       loginAs(e, "manager"); TR.setState({ tab: "people", pid: "" }); go(e, "training");
       ok(!q(e, "#tr-edu"), "manager 에게는 없음");
       loginAs(e, "hq"); go(e, "training");
@@ -8446,9 +8450,14 @@ function makeServer(opts = {}) {
         ok(/edu\.html#abcdefghjkmn$/.test(q(e, ".te-url").textContent), "상시 주소 = 사이트/edu.html#코드");
         ok(!q(e, "#te-title") && !q(e, "#te-days") && !q(e, '[data-te="ext"]') && !q(e, '[data-te="close"]') && !/기한|~20/.test(q(e, "#te-body").textContent), "기한 · 새 링크 · 마감 · 연장 없음");
         eq(qa(e, ".te-rrow").length, 1, "최근 제출(시험 제출은 hq 에게 안 보임)");
-        const mail = q(e, '.te-link a[href^="mailto:"]').getAttribute("href");
-        const body = decodeURIComponent(mail.split("&body=")[1]), subj = decodeURIComponent(/subject=([^&]+)/.exec(mail)[1]);
-        ok(/이수증 등록 안내/.test(subj) && /edu\.html#abcdefghjkmn/.test(body) && /이름 · 사번 · 이수증/.test(body) && !/기한|직무|임명/.test(body), "메일 초안");
+        eq(qa(e, ".te-acts .btn").map(b => b.textContent.trim()).join("|"), "주소 복사|QR 코드|열기|주소 변경", "버튼 넷(v1.43.3 메일 작성 뺌)");
+        ok(!q(e, '#te-body a[href^="mailto:"]'), "메일 링크 없음");
+        /* 등록 필요 인원 */
+        const nr = qa(e, ".te-nrow");
+        eq(nr.length, 1, "조치 필요 인원만"); ok(/홍길동/.test(nr[0].textContent) && /DGR/.test(nr[0].textContent) && /미이수/.test(nr[0].textContent), nr[0].textContent);
+        ok(/1명/.test(q(e, ".te-hn").textContent) && q(e, "#te-ncopy"), "인원 수 · 명단 복사");
+        const tx = TR.needText({ code: "abcdefghjkmn" });
+        ok(/^\[보안교육 이수 등록 필요 인원\] 기준 2026\.10\.08 · 1명/.test(tx) && /1\. 홍길동\(인천화물팀\) — DGR 미이수/.test(tx) && !/을유효/.test(tx) && /등록 페이지: .*edu\.html#abcdefghjkmn/.test(tx), tx);
         q(e, '.te-link [data-te="qr"]').click();
         ok(q(e, ".te-qr svg"), "QR");
         q(e, '[data-te="renew"]').click();
@@ -8460,8 +8469,13 @@ function makeServer(opts = {}) {
         const sv = calls.filter(c => c[0] === "semis_logi_edu_link_save").map(c => c[1].p);
         ok(sv.length === 2 && !sv[0].code && sv[0].days === 36500 && sv[1].code === "abcdefghjkmn" && sv[1].active === false, "새 상시 주소(36500일) → 옛 주소 닫기 — 인자 { p: … } " + JSON.stringify(sv));
         ok(/edu\.html#newcodenewco$/.test(q(e, ".te-url").textContent), "새 주소 표시");
-        q(e, "[data-te-pid]").click();
+        q(e, ".te-rrow[data-te-pid]").click();
         eq(TR.getState().pid, "p1", "최근 제출 → 개인 화면");
+        TR.setState({ pid: "" }); go(e, "training"); q(e, "#tr-edu").click();
+        return tick(20);
+      }).then(() => {
+        q(e, ".te-nrow[data-te-pid]").click();
+        eq(TR.getState().pid, "p1", "등록 필요 인원 → 개인 화면");
         eq(bad.join("|"), "", "관리 화면 RPC 인자 = SQL 선언");
         /* 주소가 없으면 만들기 */
         links = links.map(l => Object.assign(l, { open: false, active: false }));

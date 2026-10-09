@@ -6097,6 +6097,16 @@ button.hc-d:focus-visible { outline: 2px solid var(--primary); outline-offset: 1
 .te-qr svg { width: 176px; height: 176px; background: #fff; border-radius: 8px; }
 .te-h { display: flex; align-items: baseline; gap: 8px; margin-top: 6px; font-size: .92rem; font-weight: 700; }
 .te-h small { font-size: .76rem; font-weight: 600; color: var(--info); }
+.te-h .spacer { flex: 1; }
+.te-h small.te-hn { color: var(--danger); font-family: var(--mono); }
+.te-need { list-style: none; margin: 0 0 8px; padding: 0; border-top: 1px solid var(--border); max-height: 300px; overflow-y: auto; }
+.te-nrow { width: 100%; display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 10px; align-items: start; padding: 8px 4px; border: none; border-bottom: 1px solid var(--border); background: none; text-align: left; font: inherit; font-size: .86rem; cursor: pointer; }
+@media (hover: hover) and (pointer: fine) { .te-nrow:hover { background: var(--surface-2); } }
+.te-nis { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.te-ni { color: var(--text-2); white-space: nowrap; }
+.te-ni em { margin-left: 5px; font-style: normal; font-weight: 700; font-size: .78rem; }
+.te-ni.tone-red em { color: var(--danger); }
+.te-ni.tone-amber em { color: var(--accent-dark); }
 .te-recent { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border-top: 1px solid var(--border); }
 .te-rrow { width: 100%; display: flex; align-items: center; gap: 10px; padding: 9px 4px; border: none; border-bottom: 1px solid var(--border); background: none; text-align: left; font-size: .88rem; }
 .te-rrow:hover { background: var(--surface-2); }
