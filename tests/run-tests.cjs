@@ -4804,7 +4804,7 @@ function makeServer(opts = {}) {
     });
     t("SEC08 CSP · 인라인 스크립트 없음 · 시작 코드는 main.js(마지막)", () => {
       const html = read("index.html");
-      ok(/http-equiv="Content-Security-Policy" content="script-src 'self' https:\/\/cdn\.jsdelivr\.net\/npm\/@supabase\/supabase-js@2\/dist\/umd\/supabase\.min\.js; worker-src 'self'; object-src 'none'; base-uri 'self'/.test(html), "CSP");
+      ok(/http-equiv="Content-Security-Policy" content="script-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'/.test(html), "CSP");
       ok(!/<script>(?!<\/script>)/.test(html) && !/<script(?![^>]*\bsrc=)[^>]*>/.test(html), "인라인 스크립트");
       ok(!/\son[a-z]+="/i.test(html.replace(/<meta[^>]*>/g, "")), "인라인 이벤트 속성(html)");
       FILES.forEach(f => ok(!/\son(click|change|error|load|input|submit|mouse\w+|key\w+)=\\?["']/.test(read(f)), f + ": 인라인 이벤트"));
@@ -4837,6 +4837,14 @@ function makeServer(opts = {}) {
       ok(/object\\\/\(public\|sign\)/.test(read("js/files.js")), "download= 처리");
     });
     t("SEC12 jsdom 오류 없음(보안 블록)", () => eq(e.errors.length, 0, e.errors.join(" | ")));
+    t("SEC13 외부 라이브러리 고정 — supabase-js 로컬 사본(2.117.2, npm 원본과 같은 해시) · 버전 미고정 CDN 없음 (2026-10 보안 점검)", () => {
+      const html = read("index.html");
+      ok(/<script src="assets\/vendor\/supabase-js-2\.117\.2\.min\.js" defer><\/script>/.test(html), "로컬 사본 사용");
+      ok(!/cdn\.jsdelivr\.net\/npm\/@supabase/.test(html), "jsDelivr supabase 없음");
+      ok(!/<script[^>]+src="https?:\/\/[^"]*@\d+(\.\d+)?\//.test(html), "주 버전만 지정한 CDN 스크립트 없음");
+      const buf = require("fs").readFileSync(require("path").join(ROOT, "assets/vendor/supabase-js-2.117.2.min.js"));
+      eq(require("crypto").createHash("sha256").update(buf).digest("hex"), "59d39487c3589843b410322d8a3d562ce022aba1e5ccb16898ef3fb2a0da2ecd", "supabase-js 2.117.2 dist/umd/supabase.js 해시");
+    });
     FA.stop(); e.Sync.stop();
   }
 
