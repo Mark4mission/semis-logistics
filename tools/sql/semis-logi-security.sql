@@ -82,6 +82,7 @@ insert into semis_logi_private.key_acl(key, read_rank, write_rank) values
   ('secPost',2,3), ('secPostImg',2,3), -- 경비대원 배치도 (v1.28, 민감보안정보): manager 열람 · hq 편집 (마이그레이션 semis_logi_security_15_secpost)
   ('docs',2,3), ('partners',2,3), ('contracts',2,3), ('kcra',2,3), ('secCases',2,3), ('dissem',2,3), ('scrStats',2,3),   -- 점검교육 · 수검대응 자료 (v1.41): manager 열람 · hq 편집, 원본 파일은 폴더 등급(docs-ssi · contracts = hq) (마이그레이션 semis_logi_security_23_audit_ta — 번호 23 은 edu_simple 과 겹치나 별개 마이그레이션)
   ('vault',3,3),
+  ('desk',3,3),          -- 메인 데스크 (v1.47): 접수 대장 · 담당 배정 — hq 열람 · 편집 (마이그레이션 semis_logi_security_26_desk)
   ('auditMaster',3,9),   -- 수검 체크리스트 원본(민감보안정보): hq 열람 · 등록은 SQL(서비스 권한)로만 (마이그레이션 semis_logi_security_9_audit_master)
   ('pwOverrides',9,9), ('userOverrides',9,9), ('customUsers',9,9), ('__hist_probe',9,9)
 on conflict (key) do update set read_rank = excluded.read_rank, write_rank = excluded.write_rank;

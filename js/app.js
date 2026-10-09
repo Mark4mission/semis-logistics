@@ -3,7 +3,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.46.0";
+  const VERSION = "1.47.0";
   const APP_NAME = "ARGOS";
   /* 데이터 캐시는 탭 sessionStorage 에만(탭 닫기·로그아웃 시 소멸). 화면 설정(LS_UI)만 localStorage */
   const LS_DATA = "semisl:data";
@@ -180,6 +180,7 @@ const SeMIS = (() => {
       m("dashboard", "대시보드", "🏠", "dashboard", "all", null, { mv: MENU_VER }),
 
       h("hub-home", "홈", "home"),
+      m("desk", "메인 데스크", "📥", "desk", "hq", "hub-home"),
       m("schedule", "일정관리", "📅", "schedule", "mgr", "hub-home"),
       m("minutes", "회의록", "🗒️", "minutes", "mgr", "hub-home"),
       m("flight", "운항 현황", "✈️", "flight", "all", "hub-home"),
@@ -340,7 +341,8 @@ const SeMIS = (() => {
       kcra: {},          // 상용화주 · RA
       secCases: [],      // 보안 처리 대장
       dissem: {},        // 보안 전파교육
-      scrStats: {}       // 화물 보안검색 실적 (월별 합계)
+      scrStats: {},      // 화물 보안검색 실적 (월별 합계)
+      desk: { cfg: {}, log: [] }   // 메인 데스크 — 분야별 담당 · 접수 대장 (js/desk.js)
     };
   }
 
@@ -496,6 +498,9 @@ const SeMIS = (() => {
     const sc = obj("selfCheckCfg", {});
     if (!isObj(sc.forms)) sc.forms = {};
     ["serp", "threat", "secPost", "secPostImg", "patrolCfg", "partners", "kcra", "dissem", "scrStats"].forEach(k => obj(k, {}));
+    const dk = obj("desk", { cfg: {}, log: [] });
+    if (!isObj(dk.cfg)) dk.cfg = {};
+    dk.log = (Array.isArray(dk.log) ? dk.log : []).filter(x => x && typeof x === "object" && x.id && x.file && typeof x.file === "object");
     ["serpRuns", "threatRuns", "threatChecks", "equipment", "audits", "seclog", "patrol", "patrolPeople",
       "selfChecks", "docs", "contracts", "secCases"].forEach(rows);
     DATA.equipment.forEach(x => { if (!Array.isArray(x.logs)) x.logs = []; });
@@ -1394,6 +1399,8 @@ const SeMIS = (() => {
     if (util) $$(".rail-btn[data-route]", util).forEach(b => { b.onclick = () => navigate(b.dataset.route); });
     renderTabbar();
     highlightNav(currentRoute());
+    const dk = $("#hdr-desk");
+    if (dk) { const mn = menuForModule("desk"); dk.hidden = !(modules.desk && mn && navVisible(mn) && role !== "vendor" && role !== "signer"); }
   }
 
   /* 허브 전환 — 레일 클릭. 좁은 화면·패널 접힘 상태에서는 패널이 떠서 열린다. */

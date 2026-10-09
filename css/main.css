@@ -5835,3 +5835,69 @@ button.hc-d:focus-visible { outline: 2px solid var(--primary); outline-offset: 1
   .sbt-tab { font-size: .92rem; padding: 8px 1px 10px; }
 }
 @media print { .subtabs { display: none !important; } .subtabs + .view { padding-top: 0; } }
+
+/* ── 메인 데스크 — 올리기 · 반영안 확인 · 접수 대장 ── */
+.dk-drop { display: flex; align-items: center; gap: 16px; padding: 22px 24px; border: 1.5px dashed var(--border-strong); background: var(--surface-2); cursor: pointer;
+  transition: border-color .15s var(--ease-out), background-color .15s var(--ease-out); }
+.dk-drop:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.dk-drop.on { border-color: var(--primary); background: var(--primary-soft); }
+.dk-dico { flex: none; display: grid; place-items: center; width: 52px; height: 52px; border-radius: 14px; background: var(--surface); color: var(--primary); box-shadow: var(--shadow); }
+.dk-dt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.dk-dt b { font-size: 1rem; }
+.dk-dt small { color: var(--text-3); font-size: .8rem; }
+.dk-db { flex: none; display: flex; gap: 8px; }
+.dk-cam { display: none; }
+.dk-queue { display: flex; flex-direction: column; gap: 14px; margin-bottom: 18px; }
+.dk-item { padding: 16px 18px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); }
+.dk-item.is-up { opacity: .8; }
+.dk-ih { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; color: var(--text-2); }
+.dk-ih > svg { flex: none; color: var(--text-3); }
+.dk-fn { min-width: 0; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+.dk-ih small { color: var(--text-3); }
+.dk-by { font-size: .78rem; }
+.dk-sum { margin: 10px 0 0; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--surface-2); }
+.dk-sum b { display: block; font-size: .95rem; }
+.dk-sum p { margin: 4px 0 0; font-size: .86rem; line-height: 1.6; color: var(--text-2); }
+.dk-err { margin: 10px 0 0; font-size: .86rem; color: var(--danger); }
+.dk-acts { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.dk-act { border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.dk-act.on { border-color: color-mix(in srgb, var(--primary) 40%, var(--border)); }
+.dk-ah { display: flex; align-items: center; gap: 8px; padding: 9px 12px; cursor: pointer; font-size: .9rem; }
+.dk-act.on .dk-ah { background: var(--primary-soft); border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
+.dk-ab { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 12px; padding: 10px 12px 12px; }
+.dk-act:not(.on) .dk-ab { display: none; }
+.dk-f { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: .78rem; font-weight: 600; color: var(--text-3); }
+.dk-w { grid-column: span 2; }
+.dk-f input, .dk-f select, .dk-find input, .dk-find select { width: 100%; min-width: 0; padding: 7px 9px; border: 1.5px solid var(--border-strong); border-radius: var(--radius-xs);
+  background: var(--surface); font-size: .88rem; font-weight: 400; color: var(--text); outline: none; }
+.dk-f input:focus, .dk-f select:focus, .dk-find input:focus, .dk-find select:focus { border-color: var(--primary); }
+.dk-ck { display: inline-flex; align-items: center; gap: 6px; align-self: end; padding: 7px 0; font-size: .86rem; color: var(--text-2); cursor: pointer; }
+.dk-note { grid-column: 1 / -1; margin: 0; font-size: .8rem; color: var(--text-3); }
+.dk-finds { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; }
+.dk-find { display: grid; grid-template-columns: auto 110px minmax(0, 1fr) 120px 140px; gap: 6px; align-items: center; }
+.dk-find .dk-ck { padding: 0; align-self: center; }
+.dk-finds .link-btn { align-self: flex-start; }
+.dk-add { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; margin-top: 10px; font-size: .8rem; color: var(--text-3); }
+.dk-foot { display: flex; align-items: center; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.dk-h { margin: 0; font-size: 1rem; }
+.dk-tbl td { vertical-align: top; }
+.dk-go { display: inline-block; margin: 0 4px 4px 0; padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); font-size: .78rem; color: var(--text-2); text-align: left; }
+@media (hover: hover) and (pointer: fine) { .dk-go:hover { border-color: var(--primary); color: var(--primary); } }
+body.desk-drag::after { content: "놓으면 메인 데스크로 올립니다"; position: fixed; left: 50%; bottom: 28px; z-index: 900; transform: translateX(-50%); padding: 12px 20px;
+  border-radius: 999px; background: var(--text); color: var(--surface); font-size: .9rem; font-weight: 600; box-shadow: var(--shadow-lg); pointer-events: none; }
+body.desk-drag #main { outline: 2px dashed var(--primary); outline-offset: -6px; }
+@media screen and (max-width: 767px) {
+  .dk-drop { flex-wrap: wrap; padding: 16px; gap: 12px; }
+  .dk-dico { width: 44px; height: 44px; }
+  .dk-db { width: 100%; }
+  .dk-db .btn { flex: 1; justify-content: center; }
+  .dk-cam { display: inline-flex; }
+  .dk-item { padding: 14px; }
+  .dk-ab { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dk-find { grid-template-columns: 22px minmax(0, 1fr) minmax(0, 1fr); }
+  .dk-find select { grid-column: 2 / -1; }
+  .dk-find input[data-ff="text"] { grid-column: 1 / -1; }
+  .dk-find input[data-ff="ref"] { grid-column: 1 / 3; }
+  .dk-foot { flex-wrap: wrap; }
+}
+@media print { .dk-queue, .dk-drop { display: none !important; } }

@@ -7,14 +7,14 @@
 <meta name="robots" content="noindex">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta http-equiv="Content-Security-Policy" content="script-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
-<script src="js/loginguard.js?v=1.46.0"></script>
+<script src="js/loginguard.js?v=1.47.0"></script>
 <title>ARGOS — 인천화물팀 안전보안 종합정보</title>
 <link rel="icon" type="image/svg+xml" href="assets/mark.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
 <link rel="preload" as="image" href="assets/img/login-dusk.webp" type="image/webp" fetchpriority="high" media="(min-width: 861px)">
-<link rel="stylesheet" href="css/main.css?v=1.46.0">
+<link rel="stylesheet" href="css/main.css?v=1.47.0">
 </head>
 <body>
 
@@ -88,6 +88,7 @@
     <a class="brand" href="#/dashboard"><img src="assets/mark.svg" alt="" width="30" height="30"><span class="brand-text">ARGOS</span></a>
     <nav id="crumbs" class="crumbs" aria-label="현재 위치"></nav>
     <div class="header-right">
+      <button id="hdr-desk" class="icon-btn" type="button" hidden aria-label="메인 데스크" title="메인 데스크 — 문서 올리기"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 13.5 6 5.5h12l2.5 8V19a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1z"/><path d="M3.5 13.5h5l1.5 2.5h4l1.5-2.5h5"/><path d="M12 3.5v7"/><path d="m9.5 8 2.5 2.5L14.5 8"/></svg></button>
       <button id="hdr-search-btn" class="icon-btn search-btn-m" type="button" data-search-open aria-label="통합 검색" title="통합 검색 (Ctrl K)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg></button>
       <span id="sec-level-badge" class="sec-badge" title="현재 국가 항공보안등급"></span>
       <span id="user-chip" class="user-chip"></span>
@@ -124,49 +125,51 @@
 <div id="toast-wrap" class="toast-wrap"></div>
 
 <script src="assets/vendor/supabase-js-2.117.2.min.js" defer></script>
-<script src="js/app.js?v=1.46.0" defer></script>
-<script src="js/qr.js?v=1.46.0" defer></script>
-<script src="js/hero3d.js?v=1.46.0" defer></script>
-<script src="js/modules.js?v=1.46.0" defer></script>
-<script src="js/shortcuts.js?v=1.46.0" defer></script>
-<script src="js/files.js?v=1.46.0" defer></script>
-<script src="js/docshelf.js?v=1.46.0" defer></script>
-<script src="js/calendar.js?v=1.46.0" defer></script>
-<script src="js/minutes.js?v=1.46.0" defer></script>
-<script src="js/contacts.js?v=1.46.0" defer></script>
-<script src="js/flowpdf.js?v=1.46.0" defer></script>
-<script src="js/vault.js?v=1.46.0" defer></script>
-<script src="js/regulations.js?v=1.46.0" defer></script>
-<script src="js/search.js?v=1.46.0" defer></script>
-<script src="js/cares.js?v=1.46.0" defer></script>
-<script src="js/hazfind.js?v=1.46.0" defer></script>
-<script src="js/screening.js?v=1.46.0" defer></script>
-<script src="js/equipment.js?v=1.46.0" defer></script>
-<script src="js/secpost.js?v=1.46.0" defer></script>
-<script src="js/secdash.js?v=1.46.0" defer></script>
-<script src="js/crisis.js?v=1.46.0" defer></script>
-<script src="js/serp.js?v=1.46.0" defer></script>
-<script src="js/threat.js?v=1.46.0" defer></script>
-<script src="js/phonebook.js?v=1.46.0" defer></script>
-<script src="js/contracts.js?v=1.46.0" defer></script>
-<script src="js/partners.js?v=1.46.0" defer></script>
-<script src="js/kcra.js?v=1.46.0" defer></script>
-<script src="js/seccases.js?v=1.46.0" defer></script>
-<script src="js/dissem.js?v=1.46.0" defer></script>
-<script src="js/scrstats.js?v=1.46.0" defer></script>
-<script src="js/audit.js?v=1.46.0" defer></script>
-<script src="js/training.js?v=1.46.0" defer></script>
-<script src="js/seclog.js?v=1.46.0" defer></script>
-<script src="js/patrol.js?v=1.46.0" defer></script>
-<script src="js/hwpx.js?v=1.46.0" defer></script>
-<script src="js/nasforms.js?v=1.46.0" defer></script>
-<script src="js/selfcheck.js?v=1.46.0" defer></script>
-<script src="js/auddash.js?v=1.46.0" defer></script>
-<script src="js/flightcore.js?v=1.46.0" defer></script>
-<script src="js/flightops.js?v=1.46.0" defer></script>
-<script src="js/sync.js?v=1.46.0" defer></script>
-<script src="js/pow.js?v=1.46.0" defer></script>
-<script src="js/fileauth.js?v=1.46.0" defer></script>
-<script src="js/main.js?v=1.46.0" defer></script>
+<script src="js/app.js?v=1.47.0" defer></script>
+<script src="js/qr.js?v=1.47.0" defer></script>
+<script src="js/hero3d.js?v=1.47.0" defer></script>
+<script src="js/modules.js?v=1.47.0" defer></script>
+<script src="js/shortcuts.js?v=1.47.0" defer></script>
+<script src="js/files.js?v=1.47.0" defer></script>
+<script src="js/docshelf.js?v=1.47.0" defer></script>
+<script src="js/calendar.js?v=1.47.0" defer></script>
+<script src="js/minutes.js?v=1.47.0" defer></script>
+<script src="js/contacts.js?v=1.47.0" defer></script>
+<script src="js/flowpdf.js?v=1.47.0" defer></script>
+<script src="js/vault.js?v=1.47.0" defer></script>
+<script src="js/regulations.js?v=1.47.0" defer></script>
+<script src="js/search.js?v=1.47.0" defer></script>
+<script src="js/cares.js?v=1.47.0" defer></script>
+<script src="js/hazfind.js?v=1.47.0" defer></script>
+<script src="js/screening.js?v=1.47.0" defer></script>
+<script src="js/equipment.js?v=1.47.0" defer></script>
+<script src="js/secpost.js?v=1.47.0" defer></script>
+<script src="js/secdash.js?v=1.47.0" defer></script>
+<script src="js/crisis.js?v=1.47.0" defer></script>
+<script src="js/serp.js?v=1.47.0" defer></script>
+<script src="js/threat.js?v=1.47.0" defer></script>
+<script src="js/phonebook.js?v=1.47.0" defer></script>
+<script src="js/contracts.js?v=1.47.0" defer></script>
+<script src="js/partners.js?v=1.47.0" defer></script>
+<script src="js/kcra.js?v=1.47.0" defer></script>
+<script src="js/seccases.js?v=1.47.0" defer></script>
+<script src="js/dissem.js?v=1.47.0" defer></script>
+<script src="js/scrstats.js?v=1.47.0" defer></script>
+<script src="js/audit.js?v=1.47.0" defer></script>
+<script src="js/training.js?v=1.47.0" defer></script>
+<script src="js/seclog.js?v=1.47.0" defer></script>
+<script src="js/patrol.js?v=1.47.0" defer></script>
+<script src="js/hwpx.js?v=1.47.0" defer></script>
+<script src="js/nasforms.js?v=1.47.0" defer></script>
+<script src="js/docread.js?v=1.47.0" defer></script>
+<script src="js/desk.js?v=1.47.0" defer></script>
+<script src="js/selfcheck.js?v=1.47.0" defer></script>
+<script src="js/auddash.js?v=1.47.0" defer></script>
+<script src="js/flightcore.js?v=1.47.0" defer></script>
+<script src="js/flightops.js?v=1.47.0" defer></script>
+<script src="js/sync.js?v=1.47.0" defer></script>
+<script src="js/pow.js?v=1.47.0" defer></script>
+<script src="js/fileauth.js?v=1.47.0" defer></script>
+<script src="js/main.js?v=1.47.0" defer></script>
 </body>
 </html>

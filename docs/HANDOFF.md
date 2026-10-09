@@ -7,11 +7,11 @@
 
 | 항목 | 값 |
 |---|---|
-| 현재 버전 | **v1.46.0** (2026-10-09) — 이름 ARGOS · 메뉴 2판(탭 묶음) · 인계서 정리. 직전 v1.45.0 — 코드 정리(동작 · 화면 동일) |
+| 현재 버전 | **v1.47.0** (2026-10-09) — 메인 데스크(문서 접수 · AI 판독 · 확인 후 반영). 직전 v1.46.0 — 이름 ARGOS · 메뉴 2판(탭 묶음) |
 | 접속 주소 | https://mark4mission.github.io/semis-logistics/ |
 | 저장소 | GitHub `Mark4mission/semis-logistics` (공개) · Mac `~/SeMIS_Logistics` |
-| 테스트 | `npm test` 521건 전부 통과(v1.46.0) |
-| 백엔드 | Supabase `mzyuzrxkdcpzxojenwat` — 테이블 `semis_logi_store`(세션 RLS), **비공개** 버킷 `semis-logi-files`, 비공개 스키마 `semis_logi_private`(계정 · 세션 · 로그인 시도 · 접속 기록 · 권한표), RPC `semis_logi_*`, Edge Function `semis-logi-files`(서명 URL · 이수증 판독) · `semis-logi-ai`(AI 요약) · `semis-logi-favicon` · `semis-logi-adsb`(운항, pg_cron 2분) |
+| 테스트 | `npm test` 532건 전부 통과(v1.47.0) |
+| 백엔드 | Supabase `mzyuzrxkdcpzxojenwat` — 테이블 `semis_logi_store`(세션 RLS), **비공개** 버킷 `semis-logi-files`, 비공개 스키마 `semis_logi_private`(계정 · 세션 · 로그인 시도 · 접속 기록 · 권한표), RPC `semis_logi_*`, Edge Function `semis-logi-files`(서명 URL · 이수증 판독 · 데스크 판독 · 사본, v11) · `semis-logi-ai`(AI 요약) · `semis-logi-favicon` · `semis-logi-adsb`(운항, pg_cron 2분) |
 
 ## 2. 새 세션 시작
 
@@ -56,7 +56,7 @@ Claude가 할 일(순서대로):
 | 허브 | 메뉴 (탭 묶음은 [탭 · 탭]) | 들어갈 정보 기준 |
 |---|---|---|
 | (최상위) | 대시보드 | — |
-| 홈 `hub-home` | 일정관리 · 회의록 · 운항 현황 · 바로가기 (+ 링크) | 매일 보는 것 |
+| 홈 `hub-home` | 메인 데스크(hq) · 일정관리 · 회의록 · 운항 현황 · 바로가기 (+ 링크) | 매일 보는 것 · 문서 접수 |
 | 화물 보안 `hub-sec` | 화물보안 대시보드 · 보안검색 현황 · 검색장비 관리 · 보안 처리 대장 · 상용화주 · RA · 협력사 · 보안요원 · (예정) 보안구역 출입 | 화물 · 검색 · 장비 · 보안요원 운영 |
 | 점검 · 교육 `hub-aud` | 점검 · 교육 대시보드 · 점검 · 순찰 `bd-check`[보안 기록부 · 순찰일지] · 수검 대응 `bd-audit`[수검 · 지적사항 · 자체 보안점검(선택)] · 보안교육 `bd-edu`[이수 · 자격 · 전파교육] | 주기적으로 기록하는 것 |
 | 비상 · 연락 `hub-ops` | 팀위기대응 (SERP) · 위협전화 대응 · 연락처 `bd-contact`[업무 연락처 · 비상연락망 · 체계도 · 위기대응 조직] | 사람 · 연락처 · 비상 절차 |
@@ -75,6 +75,7 @@ Claude가 할 일(순서대로):
 | 라우트 | 파일 | 권한 | 내용 |
 |---|---|---|---|
 | dashboard | modules.js · hero3d.js | all | 3D 화물 태그(무재해 · 보안등급) · 오늘 · 띠(검색 환경 · 위협전화 · SERP · 수검 · 운항) · 공지 · 결정사항 · 모듈 구축 현황 |
+| desk | desk.js · docread.js | hq | **메인 데스크** — 문서 올리기(끌어다 놓기 · 다른 화면에서 놓아도 · 모바일 촬영 · 머리말 버튼) → AI 판독 → 반영안 확인 · 수정 → 반영(이수 기록 + 다음 이수 기간 일정 · 일정 · 전파교육 · 수검 지적 · 처리 대장 · 하드카피 집계 · 문서 서가) · 보관만 · 접수 대장 |
 | schedule | calendar.js | mgr | 일정(담당자 다중 · 12색 · 반복 · 미리알림) · 점검 기한 · 수검 일정 연동 |
 | minutes | minutes.js | mgr | 회의록 · QR 참석 서명 · 결정사항 |
 | flight | flightcore.js · flightops.js | all | 에어제타 화물기 15대 ADS-B 위치 · 인천 입출항 |
@@ -107,10 +108,15 @@ Claude가 할 일(순서대로):
 
 ## 5. 데이터 · 백엔드
 
-- **SYNC_KEYS(40)**: menus · notices · schedules · assignees · assigneesSeeded · minutes · minuteFolders · levelHistory · safetyBoard · contacts · gcal · vault · regulations · equipment · crisis · fleet · audits · phonebook · training · seclog · seclogCfg · serp · serpRuns · threat · threatRuns · threatChecks · patrol · patrolCfg · patrolPeople · secPost · secPostImg · selfChecks · selfCheckCfg (계정 자료 pwOverrides·userOverrides·customUsers는 v1.15에 서버 전용 표로 이관·삭제)
+- **SYNC_KEYS(41)**: menus · notices · schedules · assignees · assigneesSeeded · minutes · minuteFolders · levelHistory · safetyBoard · contacts · gcal · vault · regulations · equipment · crisis · fleet · audits · phonebook · training · seclog · seclogCfg · serp · serpRuns · threat · threatRuns · threatChecks · patrol · patrolCfg · patrolPeople · secPost · secPostImg · selfChecks · selfCheckCfg · docs · partners · contracts · kcra · secCases · dissem · scrStats · desk (계정 자료 pwOverrides·userOverrides·customUsers는 v1.15에 서버 전용 표로 이관·삭제)
 - **v1.39 보안교육 이수 등록(배포용 edu.html — 새 컬렉션 없음, training 칸 추가)**: people `apt{직무: 임명일}` · `emp`(사번, v1.39.2 — 대조 키 `edu_emp_key` = 영문 · 숫자 소문자, 앞 KJ 뺌) · `src: "self"` · `selfAt` / records `src: "self"` · `selfAt` · `chkAt` · `chkBy`(안전보안파트 확인). 비공개 표 `semis_logi_private.edu_links`(코드 12자 · 제목 · 기한(그날 23:59:59 KST) · active · target training|eduTest) · `edu_tickets`(sha256, 3시간) · `edu_uploads`(경로 · 표 · used_by) · `edu_submits`(제출 원본 결과 — 같은 sid 재전송은 저장된 결과 반환) · `edu_hits`(IP 제한). 공개 RPC(anon): `semis_logi_edu_info(p_k)` · `semis_logi_edu_ticket(p_k, p_pow)`(작업증명 = 로그인과 같은 challenge) · `semis_logi_edu_submit(p_k, p_ticket, p)`, 관리(hq): `semis_logi_edu_links()` · `semis_logi_edu_link_save(p)`, 서비스 권한만: `semis_logi_edu_claim(…)` · `semis_logi_edu_read_ok(p_ticket, p_path)`(v1.39.2 판독 전 확인 · 횟수 · 과정 목록)(파일 함수가 부름). 병합 = 순수 함수 `semis_logi_private.edu_merge(t, p, m)`. 시험 행 `eduTest`(권한표 9/9 — 시스템관리자만 target 'eduTest' 링크를 만들 수 있음). 제출은 계정 세션이 아니라 check_base(409)를 타지 않고, 열린 화면은 변경 알림으로 다시 받는다(updated_by `anon/edu-self`)
 - **v1.35 점검 표시 · 하드카피(새 컬렉션 · 권한표 변경 없음)**: `seclogCfg.vis` = { 양식id: { m: "dim" | "hide", msg? } }(msg 는 기본 '하드카피본 확인'과 다를 때만, 표시는 넣지 않음) · `selfCheckCfg.vis` = { 별표 id: 같은 모양 } · 보안 기록부 하드카피 집계 = `seclog` 안 한 줄 { id: "hc-"+양식id, tid, hc: true, marks{ 주기키: ok | ng | miss }, cnt{ "YYYY-MM": 건수 }(편별 · 수시), updatedAt/By } — 날짜가 없어 `logs()` · 대시보드 기록 집계에 안 잡힘 · 자체 보안점검 하드카피 기록 = `selfChecks` 안 { id, form, hc: true, date, insp, find, open, note, createdAt/By, updatedAt/By } — status 없음, `recs()` 에서 빠지고 `hcRecs()` 로 셈. 쓰기 권한: vis 는 화면에서 admin 만(서버 권한표는 seclogCfg 3 · selfCheckCfg 3 그대로)
 - **CARES 위해물품 월 집계(v1.36)**: `js/cares.js` 묶음 `haz`(10분 캐시, 따로 요청할 때만) = CARES Firestore `hazStats` 목록(GET) → `SemisCares.hazMonth(ym)` · `hazSeries(n)` · `ymKST(off)` · `HAZ_CATS` · `HAZ_URL`. 문서 = { total, cat:{liquid,powder,mixed,other,none}, loc:{'1','2','3',etc}, day, withdrawn, review } — CARES 함수(hazStatsOnWrite)가 만들고 공개 읽기. 기록 원본 `hazFinds`(AWB · 업체 · 근무자)는 CARES 비공개라 Logistics 는 읽지 않는다(테스트 HZ01). 분류 색 #2b59c3 · #d97706 · #9d174d · #0d9488(dataviz 검증기 --pairs all 통과)
+- **메인 데스크(v1.47)**: 컬렉션 `desk`(권한표 3/3, 마이그레이션 `semis_logi_security_26_desk`) = { cfg{ areas{ security · safety · industrial · dg } — 분야별 일정 담당(이름 쉼표 구분 — 공용 DB 에만, 화면 '분야별 담당'), log[최근 500 — { id, at, by, file{ name, size, url, type(pdf · image · docx · hwpx · xlsx · pptx · text · legacy · other) }, status(reading · wait · done · kept), err, type(cert · notice · dissem · audit · special · hardcopy · other), title, summary, ai(확인 대기 중 판독 결과 — 반영 · 보관하면 지움), acts[{ k, label, route }], doneAt, doneBy }] }
+  - 파일: 원본은 `desk/`(열람 · 올리기 3). 반영할 때 Edge `copy` 로 대상 폴더에 사본(이수 기록 training · 일정 schedules · 전파교육 dissem · 수검 audits · 처리 대장 cases · 서가 docs / 민감 docs-ssi) — 대상 화면 열람 등급을 따르게
+  - 판독: DOCX · HWPX · XLSX · PPTX · TXT 는 화면(`js/docread.js`)이 글을 뽑아(문단 · 표 칸 ` | ` · 엑셀 날짜 서식 · 6만 자) 보내고, PDF(15MB) · 이미지(긴 변 2400px JPEG, 5MB)는 함수가 저장소 원본을 읽는다. HWP · DOC · XLS · PPT 구 형식은 판독 불가(보관 · 수동 반영). AI 에 보내는 목록 = 교육 과정 · 수검 · 기록부 양식 · 처리 유형 · 서가 묶음 · 전파 구분(이름 · 담당자는 보내지 않음). 결과는 화면이 다시 검사(`SemisDesk.clean` — 목록 밖 id · 틀린 날짜 · 시각은 비움)
+  - 반영: 이수 기록(사번 → 이름 순으로 재직자 맞춤, 없으면 새 인원 · 같은 사람 · 과정 · 수료일이 있으면 기본 꺼짐 · 유효기한은 계산값과 다를 때만) + 다음 이수 기간 일정(id `dsk_tr_<인원>_<묶음>` — 다시 반영하면 덮어씀, 지침 제13조는 1년 되는 날 30일 전 · 위험물은 만료 3개월 전, 지났으면 오늘) / 일정(색: 회의 파랑 · 교육 초록 · 점검 · 심사 빨강 · 규정 · 절차 갈색 · 기한 빨강 · 행사 · 견학 회색, 회의실 = 장소에 '화물터미널' + '회의실', 담당 = 분야별 담당) / 전파교육(대상 파트 전부) / 수검(기존 또는 새로 + 지적 → 일정 연동) / 처리 대장 / 하드카피 집계(주기 양식은 그 주기 확인 · 이상, 수시 양식은 그 달 건수 더하기) / 문서 서가
+  - 운영 DB `desk` 행은 SQL 로 분야별 담당 시드(updated_by `desk-seed`, 보안 · 안전 · 산업안전 — 위험물은 비움)
 - SYNC_KEYS 밖 설정 행: `caresCfg`(CARES Firebase 웹 키 — `SemisSync.fetchKV`로만 읽음, 앱이 쓰지 않음) · `auditMaster`(v1.19 수검 체크리스트 원본 — 민감보안정보, 권한표 읽기 3 · 쓰기 9, hq가 상세를 열 때 `fetchKV`로 받아 메모리에만 둠)
 - 신규 컬렉션 추가 시: `freshData()` 기본값 → `normalizeData()` 보정(멱등 — v1.45~ `obj` · `rows` 표에 키 한 줄) → `sync.js` SYNC_KEYS → 테스트 Y01 기대 문자열 갱신 → **서버 권한표 등록**(아래)
 - **서버 보안(v1.15)** — 원본 SQL `tools/sql/semis-logi-security.sql`(1단계) · `tools/sql/semis-logi-lockdown.sql`(2단계 잠금). 실제 적용은 마이그레이션 `semis_logi_security_1~6`(6 = RPC 실행 권한: public `semis_logi_*`는 anon·service_role만, authenticated 차단)
@@ -168,12 +174,15 @@ Claude가 할 일(순서대로):
 - **원문 확인 필요 목록**: SERP 9건 · 위협전화 10건 · 업무 연락처 9건 — 각 화면(hq)에 표시
 - **CSS**: `@media (max-width: …)` 에 `screen` 이 없는 34곳 — A4 인쇄 폭(≈718px)에 걸릴 수 있어 인쇄 확인 후 정리
 - **공통 도우미**: 모듈마다 비슷한 isISO · uid · telHref · copyText 가 따로 있음(메시지 · 동작이 조금씩 다름) · serp · threat 응대 화면 공통 코드
-- **AI**: `semis-logi-ai` 요약 함수는 아직 부르는 화면 없음 — 메인 데스크(v1.47)에서 문서 분석으로 쓴다
+- **메인 데스크 실사용 확인**: 실제 이수증 · 공문 · 점검 결과 · 처리 보고서 · 대장 스캔으로 판독 품질을 본 뒤 기본값(문서 구분별 기본 선택 · 일정 색 · 미리알림) 조정. 위험물 분야 담당은 비어 있음(화면 '분야별 담당'). 접수 대장 '지우기'는 시스템관리자만 원본까지 지운다(hq 는 기록만 — 원본은 저장소 관리의 연결 없는 파일)
+- **저장소 정리**: 판독 시험 파일 3건(`desk/…_zz-test-notice.txt` · `desk/…_zz-test-cert.pdf` · `schedules/…_zz-test-notice.txt`) — 시스템 설정 › 저장소 관리(연결 없는 파일)에서 삭제
+- **AI**: 문서 판독은 `semis-logi-files`(desk-read)가 한다. `semis-logi-ai` 요약 함수는 부르는 화면 없음 — 쓰지 않으면 정리 대상
 
 ## 8. 작업 기록 (최근 — 전체는 HISTORY.md §C)
 
 | 버전 | 날짜 | 내용 |
 |---|---|---|
+| v1.47.0 | 10-09 | **메인 데스크** — 홈 허브 첫 메뉴 · 머리말 버튼(hq). 문서 올리기(어느 화면에서나 끌어다 놓기 · 모바일 촬영) → AI 판독(Edge `desk-read`, 워드 · 한글 · 엑셀 · PPT 는 화면이 글 추출) → 반영안 확인 · 수정 → 반영(이수 기록 + 다음 이수 기간 일정 · 일정 · 전파교육 · 수검 지적 · 처리 대장 · 하드카피 집계 · 문서 서가) · 보관만 · 접수 대장. 서버: 권한표 desk 3/3 · 폴더 desk 3/3 · op copy. 테스트 DK01~DK11 (532 통과) |
 | v1.46.0 | 10-09 | **ARGOS** — 이름 변경(화면 · 인쇄 · 이수 등록 페이지) · 메뉴 2판(탭 묶음 5 · 협력사 → 화물 보안 · 계약 → 규정 · 문서 · 이름 정리 · 현황판 · CAR 삭제 · 예정만 있는 허브 숨김) · 모듈 템플릿 사고 보고로 · 인계서 정리(지난 기록 HISTORY.md) |
 | v1.0.x | 09-14 | 사이트 구축 · 배포, 관리자 암호(v2 운영 해시) 반영 |
 | v1.1.0 | 09-17 | 일정 담당자 관리(시스템 설정), A4 인쇄 버튼 전 화면 |

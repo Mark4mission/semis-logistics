@@ -3,7 +3,7 @@
    실행: npm test  (jsdom 필요: npm install)
    구성: [C] 코어(해시·계정·메뉴·정규화·권한·라우터·예정 모듈)
          [D] 대시보드·공지·현황판  [S] 시스템 설정  [M] 이식 모듈 스모크(일정·회의록·연락망·검색)
-         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [IM] 한글 입력 보호  [FL] 운항 현황  [AU] 수검 대응 센터  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [SEC] 서버 보안(비공개 파일·살균·CSP)  [PT] 순찰일지  [SK] 자체 보안점검(수준관리지침 별표 · HWPX)  [UP] 점검 표시 · 다가오는 점검  [CM] v1.29 화면 정돈  [CN] v1.30 편집 모드 · 모바일 접기  [ED] v1.39 보안교육 이수 등록(배포용)  [TA] v1.41 점검교육 · 수검 자료  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
+         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [IM] 한글 입력 보호  [FL] 운항 현황  [AU] 수검 대응 센터  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [SEC] 서버 보안(비공개 파일·살균·CSP)  [PT] 순찰일지  [SK] 자체 보안점검(수준관리지침 별표 · HWPX)  [UP] 점검 표시 · 다가오는 점검  [CM] v1.29 화면 정돈  [CN] v1.30 편집 모드 · 모바일 접기  [ED] v1.39 보안교육 이수 등록(배포용)  [TA] v1.41 점검교육 · 수검 자료  [DK] v1.47 메인 데스크  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
    ═══════════════════════════════════════════════════════ */
 "use strict";
 const fs = require("fs");
@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/loginguard.js", "js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/docshelf.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/hazfind.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/contracts.js", "js/partners.js", "js/kcra.js", "js/seccases.js", "js/dissem.js", "js/scrstats.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/selfcheck.js", "js/auddash.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
+const FILES = ["js/loginguard.js", "js/app.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/docshelf.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/hazfind.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/contracts.js", "js/partners.js", "js/kcra.js", "js/seccases.js", "js/dissem.js", "js/scrstats.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/docread.js", "js/desk.js", "js/selfcheck.js", "js/auddash.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -631,7 +631,7 @@ function makeServer(opts = {}) {
       const sec = rows.find(r => r.dataset.dashHub === "hub-sec");
       eq(sec.querySelector(".br-n").textContent, "6/7", "화물보안 대시보드 · 보안검색 현황 · 검색장비 · 보안 처리 대장 · 상용화주 · 협력사 운영 / 출입 예정");
       const home = rows.find(r => r.dataset.dashHub === "hub-home");
-      eq(home.querySelector(".br-n").textContent, "5/5", "대시보드 · 일정 · 회의록 · 운항 현황 · 바로가기");
+      eq(home.querySelector(".br-n").textContent, "6/6", "대시보드 · 메인 데스크 · 일정 · 회의록 · 운항 현황 · 바로가기");
       const aud = rows.find(r => r.dataset.dashHub === "hub-aud");
       eq(aud.querySelector(".br-n").textContent, "7/7", "대시보드 + 탭 묶음 속 6");
       ok(rows.find(r => r.dataset.dashHub === "hub-saf"), "예정 모듈만 있는 허브도 구축 현황에");
@@ -1412,7 +1412,7 @@ function makeServer(opts = {}) {
     const e = makeEnv({ fetch: server.fetch });
     const { Sync } = e;
     t("Y01 SYNC_KEYS 구성(계정 자료 제외)", () =>
-      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,vault,regulations,equipment,crisis,fleet,audits,phonebook,training,seclog,seclogCfg,serp,serpRuns,threat,threatRuns,threatChecks,patrol,patrolCfg,patrolPeople,secPost,secPostImg,selfChecks,selfCheckCfg,docs,partners,contracts,kcra,secCases,dissem,scrStats"));
+      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,vault,regulations,equipment,crisis,fleet,audits,phonebook,training,seclog,seclogCfg,serp,serpRuns,threat,threatRuns,threatChecks,patrol,patrolCfg,patrolPeople,secPost,secPostImg,selfChecks,selfCheckCfg,docs,partners,contracts,kcra,secCases,dissem,scrStats,desk"));
     t("Y02 SYNC_KEYS는 모두 freshData 컬렉션에 존재", () => Sync.SYNC_KEYS.forEach(k => ok(e.S.data[k] !== undefined, k)));
     await ta("Y03 로그인 전에는 서버를 부르지 않음 · 로그인 후 초기 pull + 쓰기 권한 있는 컬렉션만 시드", async () => {
       await Sync.start();
@@ -8904,6 +8904,294 @@ function makeServer(opts = {}) {
       ok(!/"docs-ssi"|contracts:/.test(rr), "읽기 등급표에 없음 = 기본 3");
       ok(/docs: 2, cases: 2, dissem: 2/.test(rr));
       ["docs", "partners", "contracts", "kcra", "secCases", "dissem", "scrStats"].forEach(k => ok(ACL[k] && ACL[k][0] === 2 && ACL[k][1] === 3, k));
+    });
+  }
+
+  /* ══════════ [DK] v1.47 메인 데스크 (문서 접수 · AI 판독 · 확인 후 반영) ══════════ */
+  {
+    const PUB = "https://mzyuzrxkdcpzxojenwat.supabase.co/storage/v1/object/public/semis-logi-files/";
+    const deskEnv = (role) => {
+      const e = makeEnv();
+      for (const k of ["TextEncoder", "TextDecoder", "CompressionStream", "DecompressionStream"]) if (!e.w[k]) e.w[k] = globalThis[k];
+      loginAs(e, role || "hq");
+      e.w.SemisDesk.setToday("2026-10-09"); e.w.SemisTraining.setToday("2026-10-09");
+      const T = e.S.data.training;
+      T.people = [{ id: "p1", name: "가 나다", emp: "A100", dept: "화물", roles: [] }, { id: "p2", name: "라마", emp: "", dept: "", roles: [], left: "2026-01-01" }];
+      T.records = [{ id: "r0", pid: "p1", cid: "c-cargo-i", date: "2025-10-20", expire: "", files: [] }];
+      e.S.data.desk = { cfg: { areas: { security: "보안담당", safety: "안전담당" } }, log: [] };
+      return e;
+    };
+    const AI = (o) => Object.assign({ type: "other", title: "", summary: "", date: "", org: "", conf: 0.9, certs: [], events: [], dissem: null, audit: null, case: null, hardcopy: null, shelf: null }, o);
+    const enc = (s) => new TextEncoder().encode(s);
+
+    await ta("DK01 메뉴 · 머리말 버튼: 홈 허브 첫 메뉴(hq) · hq 에만 머리말 버튼 · 권한표 desk 3/3 · 동기화 키", async () => {
+      const e = deskEnv("hq");
+      const m = e.S.data.menus.find(x => x.type === "module" && x.module === "desk");
+      ok(m && m.parent === "hub-home" && m.vis === "hq", "시드 메뉴");
+      const homeKids = e.S.sortedMenus().filter(x => x.parent === "hub-home");
+      eq(homeKids[0].module, "desk", "홈 허브 첫 메뉴");
+      eq(q(e, "#hdr-desk").hidden, false, "hq 머리말 버튼");
+      ok(ACL.desk && ACL.desk[0] === 3 && ACL.desk[1] === 3, "권한표 3/3");
+      ok(e.Sync.SYNC_KEYS.indexOf("desk") >= 0, "동기화 키");
+      loginAs(e, "manager");
+      eq(q(e, "#hdr-desk").hidden, true, "manager 숨김");
+      go(e, "desk");
+      ok(!q(e, "#dk-drop"), "manager 는 데스크 화면 없음");
+    });
+
+    await ta("DK02 글 뽑기: DOCX 문단 · 표 / XLSX 공유 문자열 · 날짜 서식 · 시트 순서 / HWPX 표 / 구 형식은 판독 불가", async () => {
+      const e = deskEnv();
+      const H = e.w.SemisHwpx, R = e.w.SemisDocRead;
+      const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+      const docx = await H.zip([{ name: "word/document.xml", store: true, data: enc(`<?xml version="1.0"?><w:document ${W}><w:body>
+        <w:p><w:r><w:t>회의 개최</w:t></w:r><w:r><w:tab/><w:t>안내</w:t></w:r></w:p>
+        <w:tbl><w:tr><w:tc><w:p><w:r><w:t>일시</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>11월 5일</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>`) }]);
+      eq(await R.textOf("a.docx", docx), "회의 개최 안내\n일시 | 11월 5일");
+      const X = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"';
+      const xlsx = await H.zip([
+        { name: "xl/workbook.xml", store: true, data: enc(`<workbook ${X} xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="둘째" sheetId="2" r:id="rId2"/><sheet name="첫째" sheetId="1" r:id="rId1"/></sheets></workbook>`) },
+        { name: "xl/_rels/workbook.xml.rels", store: true, data: enc(`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Target="/xl/worksheets/sheet2.xml"/></Relationships>`) },
+        { name: "xl/sharedStrings.xml", store: true, data: enc(`<sst ${X}><si><t>성명</t></si><si><r><t>가</t></r><r><t>나</t></r><rPh><t>カ</t></rPh></si></sst>`) },
+        { name: "xl/styles.xml", store: true, data: enc(`<styleSheet ${X}><numFmts><numFmt numFmtId="164" formatCode="yyyy\\-mm\\-dd"/></numFmts><cellXfs><xf numFmtId="0"/><xf numFmtId="164"/><xf numFmtId="14"/></cellXfs></styleSheet>`) },
+        { name: "xl/worksheets/sheet1.xml", store: true, data: enc(`<worksheet ${X}><sheetData><row><c t="s"><v>0</v></c><c><v>4.5</v></c></row><row><c t="s"><v>1</v></c><c s="1"><v>46296</v></c><c s="2"><v>46296.5</v></c></row></sheetData></worksheet>`) },
+        { name: "xl/worksheets/sheet2.xml", store: true, data: enc(`<worksheet ${X}><sheetData><row><c t="inlineStr"><is><t>메모</t></is></c><c t="b"><v>1</v></c></row></sheetData></worksheet>`) }
+      ]);
+      eq(await R.textOf("b.xlsx", xlsx), "[시트] 둘째\n메모\tTRUE\n[시트] 첫째\n성명\t4.5\n가나\t2026-10-01\t2026-10-01 12:00", "시트 순서 · 날짜 · 소수 · rPh 제외");
+      const hwpx = await H.zip([{ name: "Contents/section0.xml", store: true, data: enc(`<hs:sec xmlns:hs="urn:s" xmlns:hp="urn:p"><hp:p><hp:run><hp:t>제목</hp:t></hp:run>
+        <hp:run><hp:tbl><hp:tr><hp:tc><hp:subList><hp:p><hp:run><hp:t>칸1</hp:t></hp:run></hp:p></hp:subList></hp:tc><hp:tc><hp:subList><hp:p><hp:run><hp:t>칸2</hp:t></hp:run></hp:p></hp:subList></hp:tc></hp:tr></hp:tbl></hp:run></hp:p></hs:sec>`) }]);
+      eq(await R.textOf("c.hwpx", hwpx), "제목\n칸1 | 칸2", "문단 안의 표");
+      eq(R.kindOf("x.HWP"), "legacy"); eq(R.kindOf("x.pdf"), "pdf"); eq(R.kindOf("x.jpeg"), "image"); eq(R.kindOf("x.zip"), "other");
+      const ex = await R.extract(new e.w.File([new Uint8Array([1, 2])], "old.hwp"));
+      eq(ex.mode, "none", "구 형식");
+      const tx = await R.extract(new e.w.File([enc("﻿공지\n내용")], "n.txt"));
+      eq(tx.mode + "|" + tx.text, "text|공지\n내용", "텍스트 BOM 제거");
+    });
+
+    await ta("DK03 판독 결과 정리: 목록 밖 id · 형식 틀린 날짜 · 시각은 비움 · 일정은 제목과 날짜가 있어야", async () => {
+      const e = deskEnv();
+      const DK = e.w.SemisDesk;
+      const c = DK.clean({ type: "zzz", title: "  제목  ", conf: 3,
+        certs: [{ name: "가 나다", emp: "a 100", cid: "c-cargo-r", date: "2026-10-05", expire: "2026/10/05", hours: "8" }, { name: "x", cid: "nope", hours: -1 }],
+        events: [{ title: "회의", start: "2026-11-05", time: "14:00", timeEnd: "25:00", cat: "meeting", area: "security" }, { title: "날짜 없음" }],
+        audit: { auditId: "none", body: "xx", findings: [{ type: "car", text: "지적" }, { text: "" }] },
+        case: { type: "special", date: "2026-10-01", start: "9:00", ref: "994-1" }, hardcopy: { tid: "t-hazmat", result: "bad", count: 3 },
+        shelf: { mod: "inspection", grp: "hazmat", title: "대장" }, dissem: { kind: "없는 구분", title: "개정" } });
+      eq(c.type, "other"); eq(c.title, "제목"); eq(c.conf, 1);
+      eq(c.certs.length, 2); eq(c.certs[0].emp, "A100"); eq(c.certs[0].cid, "c-cargo-r"); eq(c.certs[0].expire, ""); eq(c.certs[0].hours, 8);
+      eq(c.certs[1].cid, ""); eq(c.certs[1].hours, null);
+      eq(c.events.length, 1, "날짜 없는 일정 제외"); eq(c.events[0].timeEnd, "");
+      eq(c.audit.auditId, ""); eq(c.audit.body, "gov"); eq(c.audit.findings.length, 1);
+      eq(c.case.start, ""); eq(c.case.type, "special");
+      eq(c.hardcopy.tid, "t-hazmat"); eq(c.hardcopy.result, "ok");
+      eq(c.shelf && c.shelf.grp, "hazmat", "서가 위치 확인");
+      eq(c.dissem.kind, "", "목록 밖 구분");
+      eq(DK.clean({ shelf: { mod: "inspection", grp: "nope" } }).shelf, null, "없는 묶음");
+      const cat = DK.catalog();
+      ok(cat.courses.some(x => x.id === "c-cargo-r") && !cat.courses.some(x => x.id === "v-guard"), "협력사 과정 제외");
+      ok(cat.shelves.some(s => s.mod === "inspection" && s.grp === "hazmat"), "서가 목록");
+      ok(!JSON.stringify(cat).includes("가 나다") && !JSON.stringify(cat).includes("보안담당"), "이름 · 담당자는 보내지 않음");
+    });
+
+    await ta("DK04 반영안: 문서 구분별 기본 선택 · 인원 맞추기(사번 > 이름 · 퇴직자 제외) · 중복 이수 꺼짐 · 분야 담당 · 회의실", async () => {
+      const e = deskEnv();
+      const DK = e.w.SemisDesk;
+      e.S.data.training.records.push({ id: "r1", pid: "p1", cid: "c-cargo-r", date: "2026-09-01", files: [] });
+      const ps = DK.plan(DK.clean(AI({ type: "cert", certs: [
+        { name: "다른이름", emp: "A100", cid: "c-cargo-r", date: "2026-10-05" }, { name: "라마", cid: "c-cargo-r", date: "2026-10-05" },
+        { name: "가나다", cid: "c-cargo-r", date: "2026-09-01" }],
+        events: [{ title: "다음 교육", start: "2026-12-01", cat: "training" }] })));
+      eq(ps.filter(a => a.k === "cert").map(a => a.pid + ":" + a.on).join(), "p1:true,_new:true,p1:false", "사번 · 퇴직자 · 중복");
+      eq(ps.find(a => a.k === "event").on, false, "이수증의 일정은 기본 꺼짐");
+      ok(ps.find(a => a.k === "cert").sched, "주기 과정은 다음 이수 일정");
+      const pn = DK.plan(DK.clean(AI({ type: "notice", events: [{ title: "협의회", start: "2026-11-05", time: "14:00", place: "인천화물터미널 2층 회의실", cat: "meeting", area: "security" },
+        { title: "회신", start: "2026-10-30", cat: "deadline", area: "" }] })));
+      const ev = pn.filter(a => a.k === "event");
+      eq(ev.map(a => a.on + ":" + a.room + ":" + a.assignee).join(), "true:true:보안담당,true:false:", "분야 담당 · 회의실");
+      const ph = DK.plan(DK.clean(AI({ type: "hardcopy", hardcopy: { tid: "t-hazmat", date: "2026-09-01" }, shelf: { mod: "inspection", grp: "hazmat", title: "9월 대장" } })));
+      eq(ph.map(a => a.k + ":" + a.on).join(), "hc:true,shelf:true");
+      const po = DK.plan(DK.clean(AI({ type: "other" })));
+      eq(po.map(a => a.k + ":" + a.on).join(), "shelf:false", "서가 위치 없으면 꺼짐");
+      eq(DK.check(po[0]), "문서 서가 위치를 고르세요.");
+    });
+
+    await ta("DK05 반영 — 이수 기록: 새 인원 · 계산과 같은 유효기한은 비움 · 다음 이수 기간 일정(덮어쓰기) · 파일은 training/", async () => {
+      const e = deskEnv();
+      const DK = e.w.SemisDesk, D = e.S.data;
+      const f = { name: "c.pdf", size: 9, url: PUB + "training/x_c.pdf" };
+      const acts = DK.plan(DK.clean(AI({ type: "cert", certs: [{ name: "가나다", emp: "", cid: "c-cargo-r", date: "2026-10-05", expire: "2027-10-19", org: "기관", hours: 2 },
+        { name: "새사람", emp: "b200", cid: "c-dg-i", date: "2026-10-01" }] })));
+      eq(acts.map(DK.folderFor).join(), "training,training");
+      const out = DK.commit(acts, { training: f }, {});
+      const recs = D.training.records.filter(r => r.src === "desk");
+      eq(recs.length, 2);
+      eq(recs[0].expire, "", "계산값과 같으면 비움(지침 제13조 이어 셈)");
+      eq(recs[0].files[0].url, f.url);
+      const np = D.training.people.find(p => p.name === "새사람");
+      ok(np && np.emp === "B200" && recs[1].pid === np.id, "새 인원");
+      const ev = D.schedules.filter(s => s.src === "desk");
+      eq(ev.length, 2, "다음 이수 일정 2");
+      const kr = ev.find(s => s.id === "dsk_tr_p1_cargo");
+      eq(kr.start, "2027-09-20", "1년 되는 날 30일 전"); eq(kr.assignee, "보안담당"); eq(kr.color, "green");
+      ok(/이수 기간 2027\.09\.20 ~ 2027\.11\.19/.test(kr.memo), kr.memo);
+      const dg = ev.find(s => s.id === "dsk_tr_" + np.id + "_dgr");
+      eq(dg.start, "2028-06-30", "DGR 만료 3개월 전");
+      ok(out.some(o => o.k === "cert") && out.some(o => o.route === "schedule"));
+      DK.commit(DK.plan(DK.clean(AI({ type: "cert", certs: [{ name: "가나다", cid: "c-cargo-r", date: "2027-10-01" }] }))), {}, {});
+      eq(D.schedules.filter(s => s.id === "dsk_tr_p1_cargo").length, 1, "같은 사람 · 묶음은 덮어씀");
+      eq(D.schedules.find(s => s.id === "dsk_tr_p1_cargo").start, "2028-09-20");
+    });
+
+    await ta("DK06 반영 — 일정 · 전파교육 · 수검(새로 · 지적 → 일정 연동) · 처리 대장 · 하드카피(월 · 수시) · 서가(민감 → docs-ssi)", async () => {
+      const e = deskEnv();
+      const DK = e.w.SemisDesk, D = e.S.data;
+      e.S.data.seclogCfg.templates = e.w.SemisSeclog.DEF_TEMPLATES.map(x => Object.assign({}, x)).concat([{ id: "t-ev", name: "수시 대장", kind: "doc", cycle: "event", active: true }]);
+      const F = (fd) => ({ name: "s.pdf", size: 5, url: PUB + fd + "/x_s.pdf" });
+      const acts = DK.plan(DK.clean(AI({ type: "notice", title: "협의회", date: "2026-10-09", org: "본사",
+        events: [{ title: "협의회", start: "2026-11-05", time: "14:00", timeEnd: "16:00", place: "화물터미널 회의실", cat: "meeting", area: "security", memo: "대상: <b>관계자</b>" }],
+        dissem: { kind: "규정 개정", title: "보안계획 개정 전파", due: "2026-10-31" },
+        audit: { body: "gov", org: "서울지방항공청", kind: "정기점검", start: "2026-09-10", findings: [{ type: "car", text: "출입 통제 미흡", due: "2026-11-30" }, { type: "obs", text: "관찰" }] },
+        case: { type: "special", date: "2026-10-02", ref: "994-0001", result: "이상 없음" },
+        hardcopy: { tid: "t-hazmat", date: "2026-09-01", result: "ng" }, shelf: { mod: "inspection", grp: "hazmat", title: "9월 대장" } })));
+      acts.forEach(a => { a.on = true; });
+      const hc2 = { id: "x", k: "hc", on: true, tid: "t-ev", date: "2026-09-15", count: 2 };
+      acts.push(hc2);
+      acts.find(a => a.k === "shelf").ssi = true;
+      acts.find(a => a.k === "audit").findings[1].on = false;
+      acts.forEach(a => eq(DK.check(a), "", a.k));
+      const fds = Array.from(new Set(acts.map(DK.folderFor).filter(Boolean))).sort().join();
+      eq(fds, "audits,cases,dissem,docs-ssi,schedules", "복사 폴더");
+      const files = {}; ["audits", "cases", "dissem", "docs-ssi", "schedules"].forEach(k => { files[k] = F(k); });
+      const out = DK.commit(acts, files, {});
+      const s = D.schedules.find(x => x.title === "협의회");
+      ok(s && s.time === "14:00" && s.timeEnd === "16:00" && !s.allDay && s.room && s.color === "blue" && s.assignee === "보안담당", "일정");
+      ok(s.memoHtml.includes(PUB + "schedules/") && !/<b>/.test(s.memoHtml) && s.memoHtml.includes("&lt;b&gt;"), "원본 링크 · 메모는 글자로");
+      const dv = D.dissem.events[0];
+      ok(dv.kind === "규정 개정" && dv.notice[0].url.includes("/dissem/") && dv.targets.length >= 5 && dv.note === "기한 2026.10.31", "전파교육");
+      const au = D.audits[0];
+      ok(au.org === "서울지방항공청" && au.findings.length === 1 && au.findings[0].status === "open" && au.files[0].url.includes("/audits/"), "수검 · 지적 1");
+      ok(D.schedules.some(x => x.id === "audf_" + au.findings[0].id), "지적 조치 일정 연동");
+      ok(D.secCases[0].ref === "994-0001" && D.secCases[0].files.length === 1, "처리 대장");
+      const hc = D.seclog.filter(r => r.hc);
+      eq(hc.find(r => r.tid === "t-hazmat").marks["2026-09"], "ng", "월 하드카피 이상");
+      eq(hc.find(r => r.tid === "t-ev").cnt["2026-09"], 2, "수시 건수");
+      DK.commit([Object.assign({}, hc2)], {}, {});
+      eq(D.seclog.find(r => r.tid === "t-ev").cnt["2026-09"], 4, "건수 누적");
+      const dk = D.docs.find(d => d.src === "desk");
+      ok(dk.ssi && dk.files[0].url.includes("/docs-ssi/") && dk.mod === "inspection", "서가 민감");
+      eq(out.length, 7, "요약 7");
+    });
+
+    await ta("DK07 접수 → 판독 → 반영 흐름: desk/ 올리기 · 글 판독(DOCX) · 반영 시 폴더별 복사 1회 · 대장 기록 · 판독 결과 삭제", async () => {
+      const e = deskEnv();
+      const DK = e.w.SemisDesk, Sy = e.w.SemisSync, D = e.S.data;
+      const calls = [];
+      Sy.uploadFile = async (file, prefix) => { calls.push("up:" + prefix + ":" + file.name); return { name: file.name, size: file.size, url: PUB + prefix + "/zz_" + file.name }; };
+      Sy.filesCall = async (b) => {
+        calls.push(b.op + (b.op === "copy" ? ":" + b.from + ">" + b.prefix : ":" + b.path + ":" + (b.text ? "text" : "file")));
+        if (b.op === "desk-read") return { ok: true, data: AI({ type: "notice", title: "회의 안내", summary: "요약", events: [{ title: "회의", start: "2026-11-05", cat: "meeting", area: "safety" }] }) };
+        if (b.op === "copy") return { ok: true, path: b.prefix + "/c", url: PUB + b.prefix + "/cc_a.docx" };
+        throw new Error("op");
+      };
+      const H = e.w.SemisHwpx;
+      const docx = await H.zip([{ name: "word/document.xml", store: true, data: enc('<w:document xmlns:w="urn:w"><w:body><w:p><w:r><w:t>회의</w:t></w:r></w:p></w:body></w:document>') }]);
+      go(e, "desk");
+      await DK.intake([new e.w.File([docx], "a.docx")]);
+      for (let i = 0; i < 20 && D.desk.log[0] && D.desk.log[0].status !== "wait"; i++) await tick(5);
+      const lg = D.desk.log[0];
+      eq(lg.status, "wait"); eq(lg.type, "notice"); eq(lg.title, "회의 안내");
+      eq(calls.slice(0, 2).join(), "up:desk:a.docx,desk-read:desk/zz_a.docx:text");
+      await tick(40);
+      const card = q(e, '.dk-item[data-dk="' + lg.id + '"]');
+      ok(card, "확인 대기 카드");
+      const acts = qa(e, ".dk-act");
+      eq(acts.length, 1); ok(acts[0].classList.contains("on"));
+      eq(q(e, '.dk-act [data-f="assignee"]').value, "안전담당", "분야 담당");
+      const t = q(e, '.dk-act [data-f="title"]'); t.value = "안전 회의"; t.dispatchEvent(new e.w.Event("input", { bubbles: true }));
+      await DK.apply(lg.id);
+      eq(calls.filter(c => c.indexOf("copy:") === 0).join(), "copy:desk/zz_a.docx>schedules");
+      eq(lg.status, "done"); ok(!("ai" in lg), "판독 결과 지움");
+      eq(lg.acts[0].label, "일정 · 2026.11.05 안전 회의");
+      ok(D.schedules.some(s => s.title === "안전 회의" && s.memoHtml.includes("/schedules/cc_a.docx")));
+      await tick(40);
+      ok(!q(e, ".dk-item[data-dk]"), "대기 카드 없음");
+      ok(q(e, "#dk-log").textContent.includes("안전 회의"), "접수 대장");
+    });
+
+    await ta("DK08 판독 실패 · 구 형식 · 보관만 · 지우기 · 수동 추가 · 검사 문구", async () => {
+      const e = deskEnv();
+      const DK = e.w.SemisDesk, Sy = e.w.SemisSync, D = e.S.data;
+      Sy.uploadFile = async (file, prefix) => ({ name: file.name, size: 3, url: PUB + prefix + "/zz_" + file.name });
+      Sy.filesCall = async () => { const er = new Error("files busy"); er.code = "busy"; throw er; };
+      go(e, "desk");
+      await DK.intake([new e.w.File([new Uint8Array([1])], "옛.hwp"), new e.w.File([enc("본문")], "b.txt")]);
+      for (let i = 0; i < 20 && D.desk.log.some(x => x.status !== "wait"); i++) await tick(5);
+      const [b, a] = D.desk.log;
+      ok(/구 형식/.test(a.err), "구 형식 안내"); eq(b.err, "AI 사용량이 많습니다. 잠시 뒤 다시 판독하세요.");
+      await tick(40);
+      const card = q(e, '.dk-item[data-dk="' + a.id + '"]');
+      ok(!card.querySelector('[data-do="reread"]'), "구 형식은 다시 판독 없음");
+      ok(card.querySelector('[data-do="apply"]').disabled, "반영할 것 없음");
+      card.querySelector('[data-add="event"]').click();
+      const c2 = q(e, '.dk-item[data-dk="' + a.id + '"]');
+      ok(c2.querySelector('.dk-act.on [data-f="title"]'), "일정 추가");
+      eq(DK.check({ k: "event", title: "", start: "2026-01-01" }), "일정 이름을 입력하세요.");
+      eq(DK.check({ k: "cert", pid: "_new", name: "", cid: "c-cargo-r", date: "2026-01-01" }), "이수자를 고르세요.");
+      eq(DK.check({ k: "hc", tid: "nope", date: "2026-01-01" }), "기록부 양식을 고르세요.");
+      DK.keep(a.id);
+      eq(a.status, "kept");
+      await tick(40);
+      q(e, '.dk-item[data-dk="' + b.id + '"] [data-do="drop"]').click();
+      q(e, "#modal-box [data-act=ok]") ? clickOk(e) : qa(e, "#modal-box button").find(x => /확인|삭제/.test(x.textContent)).click();
+      ok(!D.desk.log.some(x => x.id === b.id), "지움");
+    });
+
+    await ta("DK09 어디서나 끌어다 놓기: 다른 화면에서 놓으면 데스크로 · 첨부 칸이 먼저 처리하면 건드리지 않음 · manager 는 무시", async () => {
+      const e = deskEnv();
+      const Sy = e.w.SemisSync, D = e.S.data;
+      const ups = [];
+      Sy.uploadFile = async (file, prefix) => { ups.push(file.name); return { name: file.name, size: 1, url: PUB + prefix + "/zz_" + file.name }; };
+      Sy.filesCall = async () => ({ ok: true, data: AI({}) });
+      go(e, "schedule");
+      const drop = (target, files, pre) => {
+        const ev = new e.w.Event("drop", { bubbles: true, cancelable: true });
+        ev.dataTransfer = { types: ["Files"], files };
+        if (pre) target.addEventListener("drop", (x) => x.preventDefault(), { once: true });
+        target.dispatchEvent(ev);
+        return ev;
+      };
+      const ev = drop(q(e, "#view"), [new e.w.File([enc("x")], "놓기.txt")]);
+      ok(ev.defaultPrevented, "브라우저 기본 동작 막음");
+      await tick(30);
+      eq(e.w.location.hash, "#/desk"); eq(ups.join(), "놓기.txt");
+      drop(q(e, "#view"), [new e.w.File([enc("y")], "첨부칸.txt")], true);
+      await tick(30);
+      eq(ups.length, 1, "첨부 칸이 처리한 파일은 무시");
+      loginAs(e, "manager");
+      drop(q(e, "#view"), [new e.w.File([enc("z")], "m.txt")]);
+      await tick(30);
+      eq(ups.length, 1, "manager 무시");
+      ok(D.desk.log.length >= 1);
+    });
+
+    t("DK10 서버 원본: desk-read 는 hq 이상 · desk/ 경로만 · 글은 6만 자 · copy 는 desk/ → 다른 폴더(등급 확인) · 폴더 등급", () => {
+      const s = read("tools/edge/semis-logi-files.ts");
+      ok(/if \(w\.kind !== "user" \|\| \(w\.rank \?\? 0\) < 3\) return json\(\{ ok: false, error: "forbidden" \}, 403, origin\);\n  const path = String\(body\.path \|\| ""\);\n  if \(!\/\^desk/.test(s), "deskRead 등급 · 경로");
+      ok(/const DESK_MAX_TEXT = 60000;/.test(s));
+      ok(/folderOf\(from\) !== "desk"/.test(s) && /folder === "desk"\) return json\(\{ ok: false, error: "prefix" \}/.test(s) && /!canRead\(w, from\) \|\| !canWrite\(w, folder\)/.test(s), "copy 검사");
+      ok(/dissem: 3, desk: 3\n\};/.test(s), "올리기 3");
+      ok(!/desk:/.test(/const READ_RANK[^}]+}/.exec(s)[0]), "열람 기본 3");
+      ok(/op === "desk-read"\) return await deskRead\(w, body, origin\)/.test(s) && s.indexOf('op === "desk-read"') > s.indexOf("const w = await whoAmI(req);"), "세션 확인 뒤");
+      ok(/전화번호 · 주민번호를 옮기지 않는다/.test(s));
+    });
+
+    t("DK11 위생: 데스크 코드에 이름 · 담당자 실데이터 없음 · 화면 · 스크립트 · 인쇄 숨김", () => {
+      const s = read("js/desk.js") + read("js/docread.js");
+      ok(!/\["[가-힣]{3}",\s*"[가-힣]{3}"/.test(s), "이름 목록");
+      ok(!/areas:\s*\{\s*security:\s*"/.test(s), "담당 시드 없음");
+      const html = read("index.html");
+      ok(html.indexOf("js/docread.js") > html.indexOf("js/hwpx.js") && html.indexOf("js/desk.js") > html.indexOf("js/docread.js"), "스크립트 순서");
+      ok(/id="hdr-desk"[^>]*hidden/.test(html), "머리말 버튼 기본 숨김");
+      ok(/@media print \{ \.dk-queue, \.dk-drop \{ display: none !important; \} \}/.test(read("css/main.css")), "인쇄 시 올리기 · 대기 숨김");
     });
   }
 

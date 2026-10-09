@@ -14,7 +14,7 @@
   const FN_FAV = SUPA_URL + "/functions/v1/semis-logi-favicon";
   const CHANNEL = "semis-logi-sync";
 
-  const SYNC_KEYS = ["menus", "notices", "schedules", "assignees", "assigneesSeeded", "minutes", "minuteFolders", "levelHistory", "safetyBoard", "contacts", "gcal", "vault", "regulations", "equipment", "crisis", "fleet", "audits", "phonebook", "training", "seclog", "seclogCfg", "serp", "serpRuns", "threat", "threatRuns", "threatChecks", "patrol", "patrolCfg", "patrolPeople", "secPost", "secPostImg", "selfChecks", "selfCheckCfg", "docs", "partners", "contracts", "kcra", "secCases", "dissem", "scrStats"];
+  const SYNC_KEYS = ["menus", "notices", "schedules", "assignees", "assigneesSeeded", "minutes", "minuteFolders", "levelHistory", "safetyBoard", "contacts", "gcal", "vault", "regulations", "equipment", "crisis", "fleet", "audits", "phonebook", "training", "seclog", "seclogCfg", "serp", "serpRuns", "threat", "threatRuns", "threatChecks", "patrol", "patrolCfg", "patrolPeople", "secPost", "secPostImg", "selfChecks", "selfCheckCfg", "docs", "partners", "contracts", "kcra", "secCases", "dissem", "scrStats", "desk"];
   /* sessionStorage — 토큰·권한·미전송 목록은 탭을 닫으면 소멸 */
   const SS_TOKEN = "semisl:tok";
   const SS_ME = "semisl:me";
