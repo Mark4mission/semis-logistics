@@ -1758,6 +1758,8 @@ a.ct-tel:hover { color: var(--primary); }
 #view[data-hub] .page-head .btn-soft { background: rgba(255,255,255,.95); color: var(--primary-dark); }
 #view[data-hub] .page-head .btn-primary { box-shadow: 0 6px 16px rgba(0,0,0,.28); }
 #view[data-hub] .page-head .badge { box-shadow: 0 0 0 1px rgba(255,255,255,.2); }
+#view[data-hub] .page-head .head-link { color: rgba(255,255,255,.86); }
+#view[data-hub] .page-head .head-link:hover { color: #fff; }
 @media (max-width: 767px) {
   #view[data-hub] .page-head { min-height: 116px; padding: 20px 18px 16px; border-radius: 16px; }
   #view[data-hub] .page-head::before { background-image: var(--hero-sm); }
@@ -4556,6 +4558,7 @@ tr.on .gp-pick { border-color: var(--primary); box-shadow: 0 0 0 2px var(--prima
   #view[data-hub] .page-head .btn-soft { background: var(--primary-soft); }
   #view[data-hub] .page-head .btn-primary { box-shadow: none; }
   #view[data-hub] .page-head .badge { box-shadow: none; }
+  #view[data-hub] .page-head .head-link { color: var(--text-3); }
 
   /* 요약 수치 — 한 줄 띠(가로로 밀어 보기) */
   .stat-row {
