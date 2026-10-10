@@ -572,7 +572,8 @@ create trigger semis_logi_store_a_stamp before insert or update on public.semis_
 create or replace function semis_logi_private.notify_change() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
-  perform realtime.send(jsonb_build_object('key', new.key, 'by', new.updated_by, 'at', new.updated_at),
+  -- 공개 채널이라 계정 ID 는 보내지 않는다 — 'by' 는 클라이언트 ID(updated_by 의 '/' 뒤)만
+  perform realtime.send(jsonb_build_object('key', new.key, 'by', regexp_replace(coalesce(new.updated_by, ''), '^.*/', ''), 'at', new.updated_at),
                         'change', 'semis-logi-sync', false);
   return null;
 exception when others then

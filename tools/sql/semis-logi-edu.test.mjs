@@ -45,9 +45,9 @@ const training = {
     { id: "p1", name: "김 철수", dept: "인천화물팀", roles: ["항공사보안감독자"], left: "", note: "" },
     { id: "p2", name: "이영희", dept: "인천화물팀", roles: [], left: "", apt: { "x": "2020-01-01" } },
     { id: "p3", name: "이영희", dept: "화물운송팀", roles: [], left: "" },
-    { id: "p4", name: "박민수", dept: "인천화물팀", roles: [], left: "2024-01-01" },
-    { id: "p5", name: "최동명", dept: "인천화물팀 A", roles: [], left: "" },
-    { id: "p6", name: "최동명", dept: "인천화물팀 B", roles: [], left: "" }
+    { id: "p4", name: "박바다", dept: "인천화물팀", roles: [], left: "2024-01-01" },
+    { id: "p5", name: "최마루", dept: "인천화물팀 A", roles: [], left: "" },
+    { id: "p6", name: "최마루", dept: "인천화물팀 B", roles: [], left: "" }
   ],
   records: [{ id: "r1", pid: "p1", cid: "c-sup-r", date: "2025-10-17", expire: "", files: [{ name: "a.pdf", url: "u-a" }], chkAt: "2025-10-20", chkBy: "관리" }]
 };
@@ -209,11 +209,11 @@ ok(r.ok && r.kind === "updated" && r.person.id === "p3", "S28 동명이인 → �
 eq(r.person.apt, {}, "S29 임명일 없음 = 빈 객체");
 r = await sub({ name: "이영희", dept: "본사", roles: [{ r: "위험물 취급자" }] });
 ok(r.ok && r.kind === "updated" && r.person.id === "p2", "S30 다른 사번이 적힌 동명이인(p3)은 빼고 남은 한 사람(p2) " + JSON.stringify(r.person));
-r = await sub({ name: "최동명", dept: "인천화물팀", roles: [{ r: "위험물 취급자" }] });
+r = await sub({ name: "최마루", dept: "인천화물팀", roles: [{ r: "위험물 취급자" }] });
 eq(r.kind, "dup", "S32 소속이 둘 다 포함되면 못 가림 → 새 사람");
 T = await one("select value from public.semis_logi_store where key='training'");
 ok(/동명이인/.test(T.people.find(x => x.id === r.person.id).note) && ["p5", "p6"].indexOf(r.person.id) < 0, "S31 동명이인 메모");
-r = await sub({ name: "박민수", dept: "인천화물팀", roles: [{ r: "위험물 취급자" }] });
+r = await sub({ name: "박바다", dept: "인천화물팀", roles: [{ r: "위험물 취급자" }] });
 ok(r.kind === "new" && r.person.id !== "p4", "S33 퇴직자 같은 이름 → 새 사람");
 
 /* 이수증 판독 확인 */

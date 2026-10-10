@@ -3,7 +3,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.49.0";
+  const VERSION = "1.49.1";
   const APP_NAME = "ARGOS";
   /* 데이터 캐시는 탭 sessionStorage 에만(탭 닫기·로그아웃 시 소멸). 화면 설정(LS_UI)만 localStorage */
   const LS_DATA = "semisl:data";
@@ -289,7 +289,7 @@ const SeMIS = (() => {
   /* ── 일정 담당자 카테고리 ──
      일정관리 담당자 태그 목록(시스템 설정 → 담당자 관리). 목록에 없는 이름도 일정 폼에서 자유 입력 가능 */
   function seedAssignees() {
-    return [{ id: "as-csi", seq: 1, name: "최상일", title: "안전보안파트", emoji: "🛡️", short: "최" }];
+    return [];
   }
   function assignees() {
     return (Array.isArray(DATA.assignees) ? DATA.assignees : [])

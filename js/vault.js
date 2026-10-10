@@ -329,7 +329,7 @@
           <button class="btn btn-danger btn-sm" data-vm-del="${esc(m.id)}">제거</button>
         </div>`).join("")}</div>
       <div class="form-grid" style="margin-top:14px">
-        <div class="form-row"><label>새 멤버 이름</label><input id="vm-name" maxlength="20" placeholder="예: 김홍석"></div>
+        <div class="form-row"><label>새 멤버 이름</label><input id="vm-name" maxlength="20" placeholder="예: 김화물"></div>
         <div class="form-row"><label>개인 비밀번호</label><input id="vm-newpw" type="password" maxlength="60" autocomplete="new-password"></div>
       </div>
       <div class="modal-actions">
@@ -404,7 +404,7 @@
             </form>` : `
             <form id="vault-setup-form" autocomplete="off" class="v-form">
               <p class="v-lock-note">최초 설정</p>
-              <input id="vs-name" class="v-input" placeholder="본인 이름 (예: 최상일)" maxlength="20">
+              <input id="vs-name" class="v-input" placeholder="본인 이름 (예: 홍길동)" maxlength="20">
               ${pwFieldHTML("vs-pw", "개인 비밀번호 (4자 이상)", "new-password")}
               ${pwFieldHTML("vs-pw2", "비밀번호 확인", "new-password")}
               <button type="submit" class="btn btn-primary v-submit">저장소 생성</button>

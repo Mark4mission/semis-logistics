@@ -344,7 +344,7 @@ function makeServer(opts = {}) {
     t("C07 세션 기반 RLS 정책 + 변경 알림(컬렉션 이름만)", () => {
       ok(SEC_SQL.indexOf('create policy "logi session read"') > 0);
       ok(SEC_SQL.indexOf('create policy "logi session update"') > 0);
-      ok(/realtime\.send\(jsonb_build_object\('key', new\.key, 'by', new\.updated_by, 'at', new\.updated_at\)/.test(SEC_SQL), "값은 보내지 않음");
+      ok(/realtime\.send\(jsonb_build_object\('key', new\.key, 'by', regexp_replace\(coalesce\(new\.updated_by, ''\), '\^\.\*\/', ''\), 'at', new\.updated_at\)/.test(SEC_SQL), "값 · 계정 ID 는 보내지 않음");
       ok(SEC_SQL.indexOf("x-semis-token") > 0);
     });
 
@@ -385,9 +385,8 @@ function makeServer(opts = {}) {
       ok(d.safetyBoard && typeof d.safetyBoard.since === "string");
       ok(d.minuteFolders.length >= 6, "minutes 폴더 시드");
     });
-    t("C14b 담당자 카테고리 시드 1명 + 필드 보정", () => {
-      const a = e.S.assignees();
-      eq(a.length, 1); eq(a[0].name, "최상일"); ok(a[0].short && a[0].emoji && a[0].id);
+    t("C14b 담당자 카테고리 시드 없음(실명 미포함) + 필드 보정", () => {
+      eq(e.S.assignees().length, 0);
       e.S.data.assignees.push({ name: "무필드" });
       e.S.normalizeData();
       const b = e.S.assignees().find(x => x.name === "무필드");
@@ -874,11 +873,13 @@ function makeServer(opts = {}) {
       await tick(30);
     });
     t("S9b 담당자 탭: 목록 렌더 · 추가 · 중복 거부", () => {
+      // 시드가 없으므로 운영처럼 담당자 1명이 등록된 상태에서 시작
+      e.S.data.assignees = [{ id: "as-1", seq: 1, name: "최가람", title: "안전보안파트", emoji: "🛡️", short: "최" }]; e.S.saveSilent();
       qa(e, ".tab").find(x => x.dataset.tab === "assignees").click();
       ok(q(e, "#view").textContent.includes("일정 담당자"));
       eq(qa(e, ".as-tbl tbody tr").length, 1);
       q(e, "#btn-add-as").click();
-      q(e, "#f-asname").value = "최상일"; q(e, "#f-save").click();
+      q(e, "#f-asname").value = "최가람"; q(e, "#f-save").click();
       ok(!q(e, "#modal-overlay").classList.contains("hidden"), "중복 이름 거부");
       q(e, "#f-asname").value = "김화물"; q(e, "#f-astitle").value = "인천화물팀";
       q(e, "#f-asemoji").value = "📦"; q(e, "#f-asshort").value = "김";
@@ -929,17 +930,17 @@ function makeServer(opts = {}) {
     });
     t("S9g 담당자 탭: 다중 담당자 일정도 사람별로 집계 · 개명 시 문자열 안에서 교체", () => {
       e.S.data.schedules.push({ id: "sM2", title: "합동", start: "2026-09-26", end: "2026-09-26", allDay: true,
-        time: "", timeEnd: "", color: "teal", done: false, assignee: "최상일, 정검색", vehicle: false, room: false,
+        time: "", timeEnd: "", color: "teal", done: false, assignee: "최가람, 정검색", vehicle: false, room: false,
         reminders: [], repeat: { freq: "none", until: "" }, doneFrom: "", doneDates: [], undoneDates: [] });
       e.S.saveSilent();
       renderSettings(e);
-      const row = qa(e, ".as-tbl tbody tr").find(r => r.textContent.indexOf("최상일") >= 0);
+      const row = qa(e, ".as-tbl tbody tr").find(r => r.textContent.indexOf("최가람") >= 0);
       ok(row.textContent.indexOf("1건") >= 0, "다중 담당 일정도 집계");
       ok(q(e, "#view").textContent.indexOf("정검색") >= 0, "직접 입력 담당자로 표시");
-      const id = e.S.assignees().find(x => x.name === "최상일").id;
+      const id = e.S.assignees().find(x => x.name === "최가람").id;
       q(e, `[data-as-edit="${id}"]`).click();
-      q(e, "#f-asname").value = "최상일프로"; q(e, "#f-save").click();
-      eq(e.S.data.schedules.find(x => x.id === "sM2").assignee, "최상일프로, 정검색");
+      q(e, "#f-asname").value = "최가람프로"; q(e, "#f-save").click();
+      eq(e.S.data.schedules.find(x => x.id === "sM2").assignee, "최가람프로, 정검색");
     });
     t("S9h 데이터 탭: 구글 캘린더 연동이 시스템 설정으로 이관(관리자 전용)", () => {
       renderSettings(e, "data");
@@ -949,10 +950,10 @@ function makeServer(opts = {}) {
       q(e, "#btn-gcal").click();
       ok(q(e, "#modal-box").textContent.includes("구글캘린더 연동"), "연동 설정 모달");
       q(e, "#g-enabled").checked = true;
-      q(e, "#g-calid").value = "icncargo@gmail.com";
+      q(e, "#g-calid").value = "team-calendar@example.com";
       q(e, "#g-save").click();
       eq(e.S.data.gcal.enabled, true);
-      eq(e.S.data.gcal.calendarId, "icncargo@gmail.com");
+      eq(e.S.data.gcal.calendarId, "team-calendar@example.com");
     });
     t("S10 데이터 탭: 백업 JSON · 메뉴 재설정", () => {
       qa(e, ".tab").find(x => x.dataset.tab === "data").click();
@@ -1062,21 +1063,21 @@ function makeServer(opts = {}) {
     t("M06c 담당자 다중 지정: 분해·태그·필터", () => {
       const C = e.w.SemisCalendar;
       e.S.data.assignees = [
-        { id: "a1", seq: 1, name: "최상일", title: "", emoji: "🛡️", short: "최" },
+        { id: "a1", seq: 1, name: "최가람", title: "", emoji: "🛡️", short: "최" },
         { id: "a2", seq: 2, name: "김화물", title: "", emoji: "📦", short: "김" },
         { id: "a3", seq: 3, name: "이보안", title: "", emoji: "🔎", short: "이" }
       ];
       e.S.saveSilent();
-      eq(C.splitNames("최상일, 김화물 , 이보안").join("|"), "최상일|김화물|이보안");
-      eq(C.joinNames(["최상일", "김화물", "최상일", " "]), "최상일, 김화물");
-      eq(C.tagsOf("최상일, 김화물"), "최·김");
-      eq(C.tagsOf("최상일, 김화물, 이보안"), "최·김+1");
-      eq(C.tagsOf("최상일"), "최");
-      const ev = { assignee: "최상일, 김화물" };
+      eq(C.splitNames("최가람, 김화물 , 이보안").join("|"), "최가람|김화물|이보안");
+      eq(C.joinNames(["최가람", "김화물", "최가람", " "]), "최가람, 김화물");
+      eq(C.tagsOf("최가람, 김화물"), "최·김");
+      eq(C.tagsOf("최가람, 김화물, 이보안"), "최·김+1");
+      eq(C.tagsOf("최가람"), "최");
+      const ev = { assignee: "최가람, 김화물" };
       ok(C.hasName(ev, "김화물")); ok(!C.hasName(ev, "이보안"));
       const d = "2026-09-25";
       e.S.data.schedules.push({ id: "sM", title: "합동 점검", start: d, end: d, allDay: true, time: "", timeEnd: "",
-        color: "teal", done: false, assignee: "최상일, 김화물", vehicle: false, room: false, reminders: [],
+        color: "teal", done: false, assignee: "최가람, 김화물", vehicle: false, room: false, reminders: [],
         repeat: { freq: "none", until: "" }, doneFrom: "", doneDates: [], undoneDates: [] });
       e.S.saveSilent();
       C.setFilter("김화물", undefined);
@@ -1092,7 +1093,7 @@ function makeServer(opts = {}) {
       const chips = qa(e, ".team-btn");
       ok(chips.length >= 3);
       chips[0].click(); chips[1].click();
-      eq(q(e, "#f-assignee").value, "최상일, 김화물");
+      eq(q(e, "#f-assignee").value, "최가람, 김화물");
       ok(chips[0].classList.contains("sel") && chips[1].classList.contains("sel"));
       chips[0].click();                                   // 다시 누르면 해제
       eq(q(e, "#f-assignee").value, "김화물");
@@ -1523,8 +1524,8 @@ function makeServer(opts = {}) {
       const i = server.rows.findIndex(r => r.key === "notices");
       server.rows[i] = Object.assign({}, server.rows[i], { value: server.rows[i].value.concat([{ id: "bc1", title: "알림으로 받은 공지", body: "", author: "x", pinned: false, created: "2026-09-03T00:00:00Z" }]) });
       const n0 = server.calls.length;
-      Sync.onBroadcast({ payload: { key: "notices", by: "cargo-mgr/cOTHER" } });
-      Sync.onBroadcast({ payload: { key: "vault", by: "x/" + Sync.CLIENT_ID } });
+      Sync.onBroadcast({ payload: { key: "notices", by: "cOTHER" } });
+      Sync.onBroadcast({ payload: { key: "vault", by: Sync.CLIENT_ID } });
       await tick(500);
       ok(e.S.data.notices.some(n => n.id === "bc1"), "반영");
       const gets = server.calls.slice(n0).filter(c => c.method === "GET" && c.url.indexOf("/rest/v1/semis_logi_store") >= 0);
@@ -1887,7 +1888,7 @@ function makeServer(opts = {}) {
       const e = makeEnv();
       loginAs(e, "hq");
       const VT = e.w.SemisVault;
-      await VT.setup("최상일", "master-pw-1");
+      await VT.setup("최가람", "master-pw-1");
       ok(VT.isUnlocked(), "설정 후 해제 상태");
       eq(e.S.data.vault.members.length, 1);
       await VT.addEntryForTest({ category: "시스템", title: "테스트항목", account: "admin", pw: "SuperSecret123!", url: "", note: "" });
@@ -1903,7 +1904,7 @@ function makeServer(opts = {}) {
       const e = makeEnv();
       loginAs(e, "hq");
       const VT = e.w.SemisVault;
-      await VT.setup("최상일", "master-pw-1");
+      await VT.setup("최가람", "master-pw-1");
       await VT.addEntryForTest({ category: "시스템", title: "테스트항목", account: "a", pw: "SuperSecret123!", url: "", note: "" });
       VT.lock();
       ok(!VT.isUnlocked(), "잠금");
@@ -1920,11 +1921,11 @@ function makeServer(opts = {}) {
       const e = makeEnv();
       loginAs(e, "hq");
       const VT = e.w.SemisVault;
-      await VT.setup("최상일", "pw-choi");
-      await VT.addMember("김홍석", "pw-kim");
+      await VT.setup("최가람", "pw-choi");
+      await VT.addMember("김나래", "pw-kim");
       eq(e.S.data.vault.members.length, 2);
       VT.lock();
-      const m2 = e.S.data.vault.members.find(m => m.name === "김홍석");
+      const m2 = e.S.data.vault.members.find(m => m.name === "김나래");
       await VT.unlock(m2.id, "pw-kim");
       ok(VT.isUnlocked(), "새 멤버 비밀번호로 해제");
       await VT.changeMemberPw(m2.id, "pw-kim-2");
@@ -1933,7 +1934,7 @@ function makeServer(opts = {}) {
       try { await VT.unlock(m2.id, "pw-kim"); } catch (err) { old2 = true; }
       ok(old2, "이전 비밀번호 무효");
       await VT.unlock(m2.id, "pw-kim-2");
-      VT.removeMember(e.S.data.vault.members.find(m => m.name === "최상일").id);
+      VT.removeMember(e.S.data.vault.members.find(m => m.name === "최가람").id);
       eq(e.S.data.vault.members.length, 1);
       VT.removeMember(m2.id);
       eq(e.S.data.vault.members.length, 1, "최소 1명 보호");
@@ -1943,7 +1944,7 @@ function makeServer(opts = {}) {
       const e = makeEnv();
       loginAs(e, "hq");
       const VT = e.w.SemisVault;
-      await VT.setup("최상일", "pw-choi");
+      await VT.setup("최가람", "pw-choi");
       go(e, "vault");
       ok(VT.remainingMs() > 0 && VT.remainingMs() <= VT.AUTO_LOCK_MS, "타이머 동작");
       VT._fireExpire();
@@ -1954,7 +1955,7 @@ function makeServer(opts = {}) {
       const e = makeEnv();
       loginAs(e, "hq");
       const VT = e.w.SemisVault;
-      await VT.setup("최상일", "pw-choi");
+      await VT.setup("최가람", "pw-choi");
       go(e, "vault");
       ok(VT.isUnlocked());
       go(e, "dashboard");
@@ -1965,8 +1966,8 @@ function makeServer(opts = {}) {
       const e = makeEnv();
       loginAs(e, "hq");
       const VT = e.w.SemisVault;
-      await VT.setup("최상일", "pw-choi");
-      await VT.addMember("김홍석", "pw-kim");
+      await VT.setup("최가람", "pw-choi");
+      await VT.addMember("김나래", "pw-kim");
       VT.lock();
       go(e, "vault");
       ok(q(e, "#vault-unlock-form"), "해제 폼");
@@ -1992,7 +1993,7 @@ function makeServer(opts = {}) {
       const e = makeEnv();
       loginAs(e, "hq");
       const VT = e.w.SemisVault;
-      await VT.setup("최상일", "pw-choi");
+      await VT.setup("최가람", "pw-choi");
       const mk = (t2, c) => ({ category: c, title: t2, account: "a", pw: "p", url: "", note: "" });
       await VT.addEntryForTest(mk("하나로 시스템", "기타"));
       await VT.addEntryForTest(mk("가나다 포털", "장비"));
@@ -2016,7 +2017,7 @@ function makeServer(opts = {}) {
       const e = makeEnv();
       loginAs(e, "hq");
       const VT = e.w.SemisVault;
-      await VT.setup("최상일", "pw-choi");
+      await VT.setup("최가람", "pw-choi");
       await VT.addEntryForTest({ category: "시스템", title: "마스킹", account: "a", pw: "PlainPw!", url: "", note: "" });
       go(e, "vault");
       ok(q(e, "#view [data-print-btn]"), "A4 인쇄 버튼 자동 부착");
@@ -2030,18 +2031,18 @@ function makeServer(opts = {}) {
       const e = makeEnv();
       loginAs(e, "hq");
       const VT = e.w.SemisVault;
-      await VT.setup("최상일", "pw-choi");
-      await VT.addMember("김홍석", "pw-kim");
+      await VT.setup("최가람", "pw-choi");
+      await VT.addMember("김나래", "pw-kim");
       await VT.addEntryForTest({ category: "시스템", title: "팀 공용 CCTV", account: "cctv", pw: "SharedPw1!", url: "", note: "" }, "shared");
       await VT.addEntryForTest({ category: "웹사이트", title: "내 개인 메일", account: "me", pw: "MyOwnPw9!", url: "", note: "" }, "personal");
       eq(VT.sharedCount(), 1); eq(VT.personalCount(), 1);
-      const choiId = e.S.data.vault.members.find(m => m.name === "최상일").id;
+      const choiId = e.S.data.vault.members.find(m => m.name === "최가람").id;
       ok(e.S.data.vault.personal[choiId] && e.S.data.vault.personal[choiId].ct, "개인용 암호문 저장");
       const raw = JSON.stringify(e.S.data.vault) + (e.w.localStorage.getItem("semisl:data") || "");
       ok(!raw.includes("MyOwnPw9!") && !raw.includes("내 개인 메일"), "개인용 평문 미노출");
       VT.lock();
       // 다른 멤버로 해제 → 공용만 보임
-      const kimId = e.S.data.vault.members.find(m => m.name === "김홍석").id;
+      const kimId = e.S.data.vault.members.find(m => m.name === "김나래").id;
       await VT.unlock(kimId, "pw-kim");
       eq(VT.sharedCount(), 1, "공용은 보임");
       eq(VT.personalCount(), 0, "타인의 개인용은 안 보임");
@@ -2058,7 +2059,7 @@ function makeServer(opts = {}) {
       const e = makeEnv();
       loginAs(e, "hq");
       const VT = e.w.SemisVault;
-      await VT.setup("최상일", "pw-choi");
+      await VT.setup("최가람", "pw-choi");
       go(e, "vault");
       q(e, "#vault-add").click();
       eq(qa(e, '#modal-box input[name="v-scope"]').length, 2, "공용/개인용 2택");
@@ -2083,7 +2084,7 @@ function makeServer(opts = {}) {
       const e = makeEnv();
       loginAs(e, "hq");
       const VT = e.w.SemisVault;
-      await VT.setup("최상일", "pw-choi");
+      await VT.setup("최가람", "pw-choi");
       await VT.addEntryForTest({ category: "시스템", title: "A공용", account: "", pw: "", url: "", note: "" }, "shared");
       await VT.addEntryForTest({ category: "시스템", title: "B개인", account: "", pw: "", url: "", note: "" }, "personal");
       go(e, "vault");
@@ -2101,11 +2102,11 @@ function makeServer(opts = {}) {
       const e = makeEnv();
       loginAs(e, "hq");
       const VT = e.w.SemisVault;
-      await VT.setup("최상일", "pw-choi");
-      await VT.addMember("김홍석", "pw-kim");
+      await VT.setup("최가람", "pw-choi");
+      await VT.addMember("김나래", "pw-kim");
       VT.lock();
-      const kimId = e.S.data.vault.members.find(m => m.name === "김홍석").id;
-      const choiId = e.S.data.vault.members.find(m => m.name === "최상일").id;
+      const kimId = e.S.data.vault.members.find(m => m.name === "김나래").id;
+      const choiId = e.S.data.vault.members.find(m => m.name === "최가람").id;
       await VT.unlock(kimId, "pw-kim");
       await VT.addEntryForTest({ category: "기타", title: "김 개인", account: "", pw: "k1", url: "", note: "" }, "personal");
       VT.lock();
@@ -2733,8 +2734,8 @@ function makeServer(opts = {}) {
       { id: "r-env", equipmentId: "x1", equipmentName: "RAP-638DV", symptom: "다운", reporter: "검색요원", reportedAtMs: NOW - 40 * DAY, resolvedAtMs: NOW - 40 * DAY + HOUR, status: "resolved", causeCategory: "environmental" }
     ];
     const INSP = EQUIPS.filter(e => e.id !== "x2").map((e, i) => ({ id: "i" + i, type: "daily", equipmentId: e.id, equipmentName: e.name, equipmentType: e.type,
-      inspector: "안도빈", inspectedAtMs: NOW - 10 * 60000 - i * 60000, checklist: [{ itemId: "a", itemName: "동작", result: e.id === "e1" ? "bad" : "ok", note: "" }], remark: "" }));
-    const PERIODIC = [{ id: "w1", type: "weekly", equipmentId: "x1", equipmentName: "RAP-638DV", equipmentType: "X-RAY", inspector: "최정희", inspectedAtMs: NOW - 26 * DAY, remark: "" }];
+      inspector: "안라온", inspectedAtMs: NOW - 10 * 60000 - i * 60000, checklist: [{ itemId: "a", itemName: "동작", result: e.id === "e1" ? "bad" : "ok", note: "" }], remark: "" }));
+    const PERIODIC = [{ id: "w1", type: "weekly", equipmentId: "x1", equipmentName: "RAP-638DV", equipmentType: "X-RAY", inspector: "최다솜", inspectedAtMs: NOW - 26 * DAY, remark: "" }];
     const TS = new Date(NOW - 60000).toISOString();
     const SENS = [
       { deviceId: "ICN_CARGO_B", online: true, temp: 25.2, humidity: 57, co2: 428, hcho: 0.113, tvoc: 1.3, pm25: 20, pm10: 26, timestamp: TS },
@@ -3076,8 +3077,8 @@ function makeServer(opts = {}) {
     const D0 = K.dayStartMs(K.todayKey());
     const EXTRA = [];
     for (let d = 1; d <= 30; d++) {
-      EXTRA.push({ id: "xa" + d, type: "daily", equipmentId: "x1", equipmentName: "RAP-638DV", equipmentType: "X-RAY", inspector: "최정희", inspectedAtMs: D0 - d * DAY + 6 * HOUR + 10 * 60000, checklist: [], remark: "" });
-      if (d % 2 === 0) EXTRA.push({ id: "xe" + d, type: "daily", equipmentId: "e5", equipmentName: "IONAB 5호기", equipmentType: "ETD", inspector: "최정희", inspectedAtMs: D0 - d * DAY + 6 * HOUR + 20 * 60000,
+      EXTRA.push({ id: "xa" + d, type: "daily", equipmentId: "x1", equipmentName: "RAP-638DV", equipmentType: "X-RAY", inspector: "최다솜", inspectedAtMs: D0 - d * DAY + 6 * HOUR + 10 * 60000, checklist: [], remark: "" });
+      if (d % 2 === 0) EXTRA.push({ id: "xe" + d, type: "daily", equipmentId: "e5", equipmentName: "IONAB 5호기", equipmentType: "ETD", inspector: "최다솜", inspectedAtMs: D0 - d * DAY + 6 * HOUR + 20 * 60000,
         checklist: d === 4 ? [{ itemId: "b", itemName: "배터리 상태", result: "caution", note: "충전 느림" }] : [], remark: "" });
     }
     const fake2 = (url, opts) => {
@@ -3170,7 +3171,7 @@ function makeServer(opts = {}) {
       ok(wk[11].etdN[1] > 0 && wk[11].etdN[0] >= 3, "IONAB 5호기 이틀에 한 번");
       ok(wk[0].xray == null && wk[0].etd == null, "점검 기록이 시작되기 전 주는 비움");
       const i28 = SD.inspect28();
-      eq(i28.n, 7 + 27 + 13); eq(i28.hours[6], 40 + INSP.filter(r => K.hm(r.inspectedAtMs).slice(0, 2) === "06").length, "06시대(오늘 점검이 06시대에 들면 더함)"); eq(i28.who[0].name, "최정희"); eq(i28.who[0].n, 40);
+      eq(i28.n, 7 + 27 + 13); eq(i28.hours[6], 40 + INSP.filter(r => K.hm(r.inspectedAtMs).slice(0, 2) === "06").length, "06시대(오늘 점검이 06시대에 들면 더함)"); eq(i28.who[0].name, "최다솜"); eq(i28.who[0].n, 40);
       const an = SD.anomalies(5);
       eq(an.bad, 1); eq(an.total, 2); eq(an.list[0].c.itemName, "동작", "최근 순");
       const r28 = SD.rate28();
@@ -3224,7 +3225,7 @@ function makeServer(opts = {}) {
       const over = q(e, ".sd-over");
       ok(over && over.textContent.includes("CO₂") && over.textContent.includes("1시간"), "기준 초과 시간");
       ok(q(e, ".sd-tbl table"), "표로 보기");
-      ok(q(e, "#sd-body").textContent.includes("안도빈"), "점검자별");
+      ok(q(e, "#sd-body").textContent.includes("안라온"), "점검자별");
       q(e, '[data-sd-equip="analysis"]').click();
       eq(e.w.location.hash, "#/scr-equip");
       go(e, "sec-dash");
@@ -4556,7 +4557,7 @@ function makeServer(opts = {}) {
     const e = makeEnv();
     t("IM01 ui.searchValue: 끝의 조합 중 자모 제거", () => {
       const sv = e.S.ui.searchValue;
-      eq(sv("최ㅅ"), "최"); eq(sv("ㅊ"), ""); eq(sv("최상일"), "최상일"); eq(sv(" 안전 "), "안전"); eq(sv("ETD ㅇ"), "ETD");
+      eq(sv("최ㅅ"), "최"); eq(sv("ㅊ"), ""); eq(sv("최가람"), "최가람"); eq(sv(" 안전 "), "안전"); eq(sv("ETD ㅇ"), "ETD");
     });
     t("IM02 ui.repaintKeep: 입력칸·조상은 그대로(같은 노드), 나머지는 새것", () => {
       const box = e.w.document.createElement("div");
@@ -5688,8 +5689,8 @@ function makeServer(opts = {}) {
       eq(e.w.history.state && e.w.history.state.tr, "p:dgp");
       ok(q(e, ".tr-pgrid"));
       q(e, "[data-tback]").click();
-      await tick(30);
-      ok(q(e, ".tr-ptbl") && !q(e, ".tr-pgrid"), "뒤로 → 목록");
+      const until = async (fn, n) => { for (let i = 0; i < (n || 600) && !fn(); i++) await tick(5); return fn(); };   // popstate 는 비동기 — 고정 대기 대신 기다림
+      ok(await until(() => q(e, ".tr-ptbl") && !q(e, ".tr-pgrid")), "뒤로 → 목록");
       eq(TR.getState().pid, "");
       TR.openPerson("dgp");
       go(e, "audit"); e.w.history.replaceState(null, "", e.w.location.hash);
@@ -8242,7 +8243,8 @@ function makeServer(opts = {}) {
       const x = makeEdu({ ticketFail: 1 }); await settle();
       typeIn(x, "#ed-name", "홍길동");
       putFiles(x, [F(x, "sup.pdf", 1200, "application/pdf"), F(x, "memo.txt", 10, "text/plain"), F(x, "big.jpg", 21 * 1024 * 1024, "image/jpeg"), F(x, "scan.pdf", 900, "application/pdf")]);
-      await tick(200);
+      const until = async (fn, n) => { for (let i = 0; i < (n || 600) && !fn(); i++) await tick(5); return fn(); };   // 작업증명 시간이 들쭉날쭉 — 판독 2건이 끝날 때까지
+      await until(() => x.srv.reads.length >= 2); await tick(40);
       const ups = x.srv.calls.filter(c => /semis-logi-files/.test(c.url) && c.body.op === "edu-upload");
       eq(ups.length, 3, "표 만료 → 새 표로 한 번 더 + 두 번째 파일");
       eq(ups[1].body.name + "|" + ups[1].body.size + "|" + ups[1].body.type, "sup.pdf|1200|application/pdf");
@@ -8265,7 +8267,8 @@ function makeServer(opts = {}) {
       ok(/자동 판독에 실패했습니다/.test(scanEl.textContent) && $e(x, '[data-reread="' + scan.k + '"]'), "다시 읽기(일시 오류)");
       const opts = $e(x, "#ed-cid-" + scan.k).innerHTML;
       ok(/<optgroup label="항공보안법 · 교육훈련지침">[\s\S]*c-sup-r[\s\S]*<\/optgroup><optgroup label="위험물">[\s\S]*c-dg-r/.test(opts), "과정 목록 = 법정 · 위험물 · 국제 · 사내 묶음");
-      $e(x, '[data-reread="' + scan.k + '"]').click(); await tick(60);
+      $e(x, '[data-reread="' + scan.k + '"]').click();
+      await until(() => x.srv.reads.length >= 3 && scan.reads === 2); await tick(20);
       eq(x.srv.reads.length, 3, "다시 읽기");
       eq(scan.reads, 2);
       $e(x, '[data-del="' + memo.k + '"]').click();
