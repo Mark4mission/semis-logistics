@@ -3,7 +3,7 @@
    실행: npm test  (jsdom 필요: npm install)
    구성: [C] 코어(해시·계정·메뉴·정규화·권한·라우터·예정 모듈)
          [D] 대시보드·공지·현황판  [S] 시스템 설정  [M] 이식 모듈 스모크(일정·회의록·연락망·검색)
-         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [IM] 한글 입력 보호  [FL] 운항 현황  [AU] 수검 대응 센터  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [SEC] 서버 보안(비공개 파일·살균·CSP)  [PT] 순찰일지  [SK] 자체 보안점검(수준관리지침 별표 · HWPX)  [UP] 점검 표시 · 다가오는 점검  [CM] v1.29 화면 정돈  [CN] v1.30 편집 모드 · 모바일 접기  [ED] v1.39 보안교육 이수 등록(배포용)  [TA] v1.41 점검교육 · 수검 자료  [DK] v1.47 메인 데스크  [UI] v1.48 지원 카드 · 공통 패널 · 부엉이  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
+         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [IM] 한글 입력 보호  [FL] 운항 현황  [AU] 수검 대응 센터  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [SEC] 서버 보안(비공개 파일·살균·CSP)  [PT] 순찰일지  [SK] 자체 보안점검(수준관리지침 별표 · HWPX)  [UP] 점검 표시 · 다가오는 점검  [CM] v1.29 화면 정돈  [CN] v1.30 편집 모드 · 모바일 접기  [ED] v1.39 보안교육 이수 등록(배포용)  [TA] v1.41 점검교육 · 수검 자료  [DK] v1.47 메인 데스크  [UI] v1.48 지원 카드 · 공통 패널 · 부엉이  [AR] v1.49 아르고 AI 도우미  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
    ═══════════════════════════════════════════════════════ */
 "use strict";
 const fs = require("fs");
@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/loginguard.js", "js/app.js", "js/argo-owl.js", "js/panel.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/docshelf.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/hazfind.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/contracts.js", "js/partners.js", "js/kcra.js", "js/seccases.js", "js/dissem.js", "js/scrstats.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/docread.js", "js/desk.js", "js/selfcheck.js", "js/auddash.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
+const FILES = ["js/loginguard.js", "js/app.js", "js/argo-owl.js", "js/panel.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/docshelf.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/hazfind.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/contracts.js", "js/partners.js", "js/kcra.js", "js/seccases.js", "js/dissem.js", "js/scrstats.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/docread.js", "js/desk.js", "js/argo.js", "js/selfcheck.js", "js/auddash.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -9261,23 +9261,20 @@ function makeServer(opts = {}) {
 
   /* ══════════ [UI] v1.48 지원 카드 · 공통 패널 · 부엉이 ══════════ */
   {
-    await ta("UI01 지원 카드 권한별: admin · hq = 검색 + 메인 데스크 / manager · user · vendor = 검색만 · 아르고는 모듈이 있을 때 내부 계정만", async () => {
+    await ta("UI01 지원 카드 권한별: admin · hq = 검색 + 메인 데스크 + 아르고 / manager · user = 검색 + 아르고 / vendor = 검색만", async () => {
       const e = makeEnv();
       const vis = () => ["search", "desk", "argo"].filter(id => !q(e, "#sup-" + id).hidden).join(",");
-      for (const [role, want] of [["admin", "search,desk"], ["hq", "search,desk"], ["manager", "search"], ["user", "search"], ["vendor", "search"]]) {
+      for (const [role, want] of [["admin", "search,desk,argo"], ["hq", "search,desk,argo"], ["manager", "search,argo"], ["user", "search,argo"], ["vendor", "search"]]) {
         loginAs(e, role);
         eq(vis(), want, role);
         eq(q(e, "#sup-card").dataset.n, String(want.split(",").length), role + " 칸 수");
         eq(q(e, "#sup-card").hidden, false, role + " 카드");
       }
       loginAs(e, "hq");
-      eq(q(e, "#hdr-desk").hidden, false, "상단바도 같은 판정"); eq(q(e, "#hdr-argo").hidden, true, "아르고 모듈 없음 → 숨김");
-      e.S.registerModule("argo", { title: "아르고", render(r) { r.innerHTML = ""; } });
+      eq(q(e, "#hdr-desk").hidden, false, "상단바도 같은 판정"); eq(q(e, "#hdr-argo").hidden, false, "아르고 모듈 있음 → 보임");
+      loginAs(e, "vendor"); eq(q(e, "#hdr-argo").hidden, true, "협력업체 → 숨김");
       let opened = 0;
       e.S.registerSupport("argo", { open: () => { opened++; } });
-      for (const [role, want] of [["hq", "search,desk,argo"], ["manager", "search,argo"], ["user", "search,argo"], ["vendor", "search"]]) {
-        loginAs(e, role); eq(vis(), want, role + " (아르고 있음)");
-      }
       loginAs(e, "user");
       q(e, "#sup-argo").click(); q(e, "#hdr-argo").click();
       eq(opened, 2, "아르고 칸 · 아이콘 → 열기");
@@ -9416,6 +9413,388 @@ function makeServer(opts = {}) {
       ok(!/\d{2,3}-\d{3,4}-\d{4}/.test(src), "전화번호 없음");
       const svg = read("assets/img/night-terminal.svg");
       ok(svg.indexOf("<script") < 0 && /^<svg xmlns/.test(svg), "야경 그림 = 순수 SVG");
+    });
+  }
+
+  /* ══════════ [AR] v1.49 아르고 AI 도우미 (도구 실행 · 되돌리기 · 권한 · 안내 지식 · 서버 원본) ══════════ */
+  {
+    const PUB = "https://mzyuzrxkdcpzxojenwat.supabase.co/storage/v1/object/public/semis-logi-files/";
+    const argoEnv = (role, script) => {
+      const e = makeEnv();
+      for (const k of ["TextEncoder", "TextDecoder"]) if (!e.w[k]) e.w[k] = globalThis[k];
+      loginAs(e, role || "hq");
+      const A = e.w.SemisArgo;
+      A._reset();
+      A.setToday("2026-10-09"); e.w.SemisDesk.setToday("2026-10-09"); e.w.SemisTraining.setToday("2026-10-09");
+      if (e.w.SemisAudit) e.w.SemisAudit.setToday("2026-10-09");
+      const T = e.S.data.training;
+      T.people = [{ id: "p1", name: "가나다", emp: "A100", dept: "화물", roles: ["화물보안 업무요원"] }];
+      T.records = [{ id: "r0", pid: "p1", cid: "c-cargo-i", date: "2025-10-20", expire: "", files: [] }];
+      e.S.data.schedules = [{ id: "s-old", title: "기존 회의", start: "2026-10-12", end: "2026-10-12", allDay: true, color: "blue", memo: "", repeat: { freq: "none", until: "" }, done: false }];
+      e.S.data.desk = { cfg: { areas: { security: "보안담당" } }, log: [] };
+      e.calls = [];
+      e.w.fetch = async (url, init) => {
+        if (String(url).indexOf("/functions/v1/semis-logi-argo") < 0) throw new Error("offline");
+        const body = JSON.parse(init.body);
+        e.calls.push({ headers: init.headers, body });
+        const r = script ? script(body, e.calls.length) : { ok: true, content: [{ type: "text", text: "네" }], stop: "end_turn" };
+        const st = r.__status || 200;
+        return { ok: st >= 200 && st < 300, status: st, json: async () => r };
+      };
+      return e;
+    };
+    let tseq = 0;
+    const ctxOf = (A, files) => { const turn = { id: "tt" + (++tseq), q: "", files: [], a: "", log: "", cards: [] }; if (A) A.conv.turns.push(turn); return { turn, files: files || {}, up: {}, log: [] }; };
+    const run = async (e, name, inp, ctx) => { ctx = ctx || ctxOf(e.w.SemisArgo); const r = await e.w.SemisArgo.runTool(name, inp, ctx); return { r, ctx }; };
+
+    await ta("AR01 모듈 · 지원 카드 · 패널: 내부 계정은 열림(부엉이 머리 · 제안 · 입력줄), 협력업체 · 서명 세션은 없음 · #/argo 는 대시보드 위 패널", async () => {
+      const e = argoEnv("user");
+      ok(e.S.hasModule("argo"), "모듈 등록");
+      ok(!e.S.data.menus.some(m => m.module === "argo"), "메뉴가 아니라 지원 카드");
+      q(e, "#sup-argo").click();
+      await tick(5);
+      ok(e.w.SemisPanel.isOpen("argo"), "패널 열림");
+      eq(q(e, "#pnl-argo .pnl-title").textContent, "아르고");
+      ok(q(e, "#pnl-argo .pnl-mark.is-owl"), "머리 부엉이");
+      ok(q(e, "#pnl-argo .ag-log[role=log]") && q(e, "#pnl-argo #ag-in") && q(e, "#pnl-argo .ag-compose.no-print"), "대화 · 입력줄");
+      const sugs = qa(e, "#pnl-argo [data-sug]").map(b => b.textContent);
+      ok(sugs.length >= 3 && !sugs.some(s => /등록해줘/.test(s)), "user 제안에 등록 없음: " + sugs.join("|"));
+      eq(q(e, "#pnl-argo .pnl-print").hidden, false, "대화 Print");
+      e.w.SemisArgo.close();
+      loginAs(e, "vendor");
+      eq(e.w.SemisArgo.open(), null, "협력업체 열 수 없음");
+      eq(q(e, "#sup-argo").hidden, true);
+      loginAs(e, "hq");
+      go(e, "argo"); await tick(5);
+      ok(e.w.SemisPanel.isOpen("argo") && e.w.location.hash === "#/dashboard", "#/argo → 대시보드 위 패널");
+      ok(qa(e, "#pnl-argo [data-sug]").some(b => /등록해줘/.test(b.textContent)), "hq 제안에 등록");
+      const hit = e.w.SemisSearch.search("아르고");
+      ok(hit.some(h => h.title === "아르고"), "통합 검색에 아르고");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+
+    await ta("AR02 대화 왕복: 토큰 헤더 · tool_use → 화면 실행 → tool_result(같은 id) → 답 · 마크다운 · 바로 가기 · 대화 저장(실행 기록) · 다음 질문의 이력은 글만", async () => {
+      const e = argoEnv("hq", (b, n) => n === 1
+        ? { ok: true, stop: "tool_use", used: 3, limit: 200, content: [{ type: "text", text: "" }, { type: "tool_use", id: "tu_1", name: "schedule_add", input: { items: [{ title: "안전 회의", start: "2026-10-14", time: "14:00", color: "blue" }] } }] }
+        : { ok: true, stop: "end_turn", used: 4, limit: 200, content: [{ type: "text", text: "등록했습니다.\n- **10월 14일** 14:00\n[[일정관리|schedule]] <script>x</script>" }] });
+      const A = e.w.SemisArgo;
+      A.open();
+      q(e, "#ag-in").value = "다음 주 화요일 14시 안전 회의 등록해줘";
+      ok(await A.send(), "보냄");
+      eq(e.calls.length, 2, "왕복 2회");
+      eq(e.calls[0].headers["x-semis-token"], "t".repeat(64), "세션 토큰");
+      const m1 = e.calls[0].body.messages;
+      eq(m1.length, 1); eq(m1[0].role, "user"); ok(/안전 회의 등록해줘$/.test(m1[0].content.slice(-1)[0].text));
+      const m2 = e.calls[1].body.messages;
+      eq(m2.map(m => m.role).join(), "user,assistant,user");
+      eq(m2[1].content.filter(b => b.type === "tool_use")[0].id, "tu_1");
+      const tr = m2[2].content[0];
+      eq(tr.type, "tool_result"); eq(tr.tool_use_id, "tu_1"); ok(JSON.parse(tr.content).ok, "실행 결과");
+      ok(e.S.data.schedules.some(s => s.title === "안전 회의" && s.time === "14:00" && s.src === "argo"), "일정 등록");
+      const md = q(e, "#pnl-argo .ag-turn:last-child .ag-md");
+      ok(md && md.querySelector("li b") && !md.querySelector("script") && md.innerHTML.includes("&lt;script&gt;"), "마크다운 · 이스케이프");
+      ok(md.querySelector('.ag-go[data-go="schedule"]'), "바로 가기 단추");
+      ok(q(e, '#pnl-argo .ag-card.is-result [data-undo]'), "결과 카드 · 되돌리기");
+      const saved = JSON.parse(e.w.sessionStorage.getItem("semisl:argo:tester"));
+      eq(saved.turns.length, 1); ok(/schedule_add s/.test(saved.turns[0].log), "실행 기록");
+      const h = A.history();
+      eq(h.length, 2); ok(typeof h[0].content === "string" && /\[실행 기록\]/.test(h[1].content), "이력 = 글 + 실행 기록");
+      q(e, '#pnl-argo .ag-go[data-go="schedule"]').click();
+      ok(!e.w.SemisPanel.isOpen("argo") && e.w.location.hash === "#/schedule", "바로 가기 → 패널 닫고 이동");
+    });
+
+    await ta("AR03 권한: user · manager 는 쓰기 도구 거절 · 권한 밖 화면 자료 거절 · 협력업체는 모두 거절 · 민감보안정보 문서는 hq 이상만", async () => {
+      const e = argoEnv("user");
+      let x = await run(e, "schedule_add", { items: [{ title: "a", start: "2026-10-20" }] });
+      ok(/권한 밖/.test(x.r.error), "user 쓰기 거절");
+      x = await run(e, "argos_records", { collection: "schedules" });
+      ok(/권한 밖/.test(x.r.error), "user 일정 자료 거절");
+      x = await run(e, "argos_records", { collection: "notices" });
+      ok(Array.isArray(x.r.items), "user 공지는 읽음");
+      x = await run(e, "argos_catalog", {});
+      ok(/권한 밖/.test(x.r.error), "user 목록 거절");
+      loginAs(e, "manager");
+      x = await run(e, "argos_records", { collection: "schedules" });
+      ok(x.r.items.some(s => s.id === "s-old"), "manager 일정 읽음");
+      x = await run(e, "schedule_done", { id: "s-old", done: true });
+      ok(/권한 밖/.test(x.r.error) && !e.S.data.schedules[0].done, "manager 쓰기 거절(화면과 같게 hq 이상)");
+      x = await run(e, "argos_records", { collection: "contracts" });
+      ok(/권한 밖/.test(x.r.error), "manager 계약 거절");
+      e.S.data.docs = [{ id: "d1", mod: "inspection", grp: "hazmat", title: "일반 문서", ssi: false, files: [] }, { id: "d2", mod: "inspection", grp: "hazmat", title: "SSI 문서", ssi: true, files: [] }];
+      x = await run(e, "argos_records", { collection: "docs" });
+      eq(x.r.items.map(d => d.title).join(), "일반 문서", "manager SSI 문서 안 넘김");
+      loginAs(e, "hq");
+      x = await run(e, "argos_records", { collection: "docs" });
+      eq(x.r.items.length, 2, "hq 는 SSI 포함");
+      loginAs(e, "vendor");
+      x = await run(e, "argos_find", { query: "일정" });
+      ok(/권한 밖/.test(x.r.error), "협력업체 거절");
+      x = await run(e, "vault_read", {});
+      ok(/없는 도구/.test(x.r.error), "없는 도구");
+      eq(Object.keys(e.w.SemisArgo.COLS).indexOf("vault"), -1, "암호 관리는 자료 목록에 없음");
+    });
+
+    await ta("AR04 일정 등록 · 수정 · 완료 → 되돌리기: 항목 단위(다른 사람이 그 사이 고친 칸 · 항목은 남김) · 가장 최근 것부터", async () => {
+      const e = argoEnv("hq");
+      const A = e.w.SemisArgo, D = e.S.data;
+      A.open();
+      const c1 = ctxOf(A); let x = await run(e, "schedule_add", { items: [{ title: "보안 회의", start: "2026-10-20", place: "인천화물터미널 2층 회의실", reminders: ["1d", "bad"] }] }, c1);
+      const id = x.r.ids[0], s = D.schedules.find(v => v.id === id);
+      ok(s.room && /장소: 인천화물터미널/.test(s.memo) && s.reminders.join() === "1d" && s.allDay, "회의실 · 장소 · 미리알림");
+      eq(c1.turn.cards[0].k, "result"); ok(c1.turn.cards[0].undo, "되돌리기 연결");
+      D.schedules.push({ id: "s-other", title: "다른 사람 일정", start: "2026-10-21" });
+      x = await run(e, "schedule_update", { id, title: "보안 협의회", start: "2026-10-22" });
+      eq(D.schedules.find(v => v.id === id).title, "보안 협의회"); eq(D.schedules.find(v => v.id === id).end, "2026-10-22", "기간 유지 이동");
+      D.schedules.find(v => v.id === id).memo = "다른 사람이 고친 메모";
+      x = await run(e, "schedule_done", { id: "s-old", done: true });
+      ok(D.schedules.find(v => v.id === "s-old").done, "완료");
+      const u = A.conv.undo.slice();
+      eq(u.length, 3);
+      ok(!A.undo(u[0].id), "가장 최근 것부터만");
+      ok(A.undo(u[2].id)); ok(!D.schedules.find(v => v.id === "s-old").done, "완료 되돌림");
+      ok(A.undo(u[1].id));
+      const s2 = D.schedules.find(v => v.id === id);
+      ok(s2.title === "보안 회의" && s2.start === "2026-10-20" && s2.memo === "다른 사람이 고친 메모", "고친 칸만 되돌리고 남이 고친 칸은 둠");
+      ok(A.undo(u[0].id));
+      ok(!D.schedules.some(v => v.id === id) && D.schedules.some(v => v.id === "s-other") && D.schedules.some(v => v.id === "s-old"), "추가만 지우고 다른 항목은 둠");
+      ok(A.latestUndo() === null);
+      x = await run(e, "schedule_update", { id: "nope", title: "x" });
+      ok(/찾지 못했습니다/.test(x.r.error), "없는 id");
+      x = await run(e, "schedule_add", { items: [{ title: "", start: "2026-10-20" }] });
+      ok(/이름/.test(x.r.error), "검사");
+    });
+
+    await ta("AR05 지우기 · 여러 건은 한 번 확인: 취소 → 실행 안 함 / 삭제 → 지우고 되돌리기로 제자리 복원 · 2건 등록 확인 · 되돌리기 한 번에 둘 다", async () => {
+      const e = argoEnv("hq");
+      const A = e.w.SemisArgo, D = e.S.data;
+      A.open();
+      const t = { id: "tt", q: "", files: [], a: "", cards: [], pending: true };
+      A.conv.turns.push(t);
+      const ctx = { turn: t, files: {}, up: {}, log: [] };
+      let p = A.runTool("schedule_delete", { id: "s-old" }, ctx);
+      await tick(5);
+      const cf = () => q(e, '#pnl-argo .ag-card.is-confirm [data-ok]');
+      ok(q(e, "#pnl-argo .ag-card.is-confirm.is-danger"), "확인 카드(삭제)");
+      q(e, '#pnl-argo [data-cf][data-ok="0"]').click();
+      let r = await p;
+      ok(r.cancelled && D.schedules.some(v => v.id === "s-old"), "취소 → 그대로");
+      p = A.runTool("schedule_delete", { id: "s-old" }, ctx); await tick(5);
+      q(e, '#pnl-argo [data-cf][data-ok="1"]').click();
+      r = await p;
+      ok(r.ok && !D.schedules.some(v => v.id === "s-old"), "삭제");
+      D.schedules.push({ id: "s-z", title: "z", start: "2026-11-01" });
+      ok(A.undo(A.latestUndo().id));
+      eq(D.schedules[0].id, "s-old", "제자리 복원");
+      p = A.runTool("schedule_add", { items: [{ title: "a", start: "2026-10-20" }, { title: "b", start: "2026-10-21" }] }, ctx); await tick(5);
+      ok(/일정 등록 2건/.test(qa(e, "#pnl-argo .ag-card.is-confirm .ag-card-h").pop().textContent), "여러 건 확인");
+      q(e, '#pnl-argo [data-cf][data-ok="1"]').click();
+      r = await p;
+      eq(r.ids.length, 2);
+      ok(A.undo(A.latestUndo().id));
+      ok(!D.schedules.some(v => v.title === "a" || v.title === "b"), "두 건 함께 되돌림");
+      ok(cf() === null, "확인 단추는 결정 뒤 사라짐");
+    });
+
+    await ta("AR06 교육 이수 기록: 재직자 맞춤(사번) · 다음 이수 기간 일정 · 중복 거절 · 새 인원 · 첨부 원본은 training/ 에(hq) · 되돌리면 기록 · 인원 · 일정 모두", async () => {
+      const e = argoEnv("hq");
+      const A = e.w.SemisArgo, D = e.S.data, Sy = e.w.SemisSync;
+      const ups = [];
+      Sy.uploadFile = async (file, prefix) => { ups.push(prefix + ":" + file.name); return { name: file.name, size: 3, url: PUB + prefix + "/zz_" + file.name }; };
+      const f1 = { fid: "f1", name: "cert.pdf", kind: "pdf", file: new e.w.File(["x"], "cert.pdf") };
+      const ctx = ctxOf(A, { f1 });
+      let x = await run(e, "training_record", { name: "아무개", emp: "a100", course_id: "c-cargo-r", date: "2026-10-05", org: "기관", file: "f1" }, ctx);
+      ok(x.r.ok, JSON.stringify(x.r));
+      const rec = D.training.records.find(r => r.src === "desk" && r.date === "2026-10-05");
+      ok(rec && rec.pid === "p1", "사번으로 재직자 맞춤");
+      eq(rec.files[0].url, PUB + "training/zz_cert.pdf"); eq(ups.join(), "training:cert.pdf", "원본 1회 업로드");
+      ok(D.schedules.some(s => s.id === "dsk_tr_p1_cargo"), "다음 이수 기간 일정");
+      ok(ctx.turn.cards[0].go.some(g => g.route === "training"), "바로 가기");
+      x = await run(e, "training_record", { name: "가나다", course_id: "c-cargo-r", date: "2026-10-05" });
+      ok(/이미 같은 기록/.test(x.r.error), "중복 거절");
+      x = await run(e, "training_record", { name: "새사람", course_id: "c-none", date: "2026-10-05" });
+      ok(/과정/.test(x.r.error), "없는 과정");
+      x = await run(e, "training_record", { name: "새사람", course_id: "c-dg-i", date: "2026-10-01", next_schedule: false });
+      const np = D.training.people.find(p => p.name === "새사람");
+      ok(np && !D.schedules.some(s => s.id === "dsk_tr_" + np.id + "_dgr"), "새 인원 · 일정 안 만듦");
+      ok(A.undo(A.latestUndo().id)); ok(!D.training.people.some(p => p.name === "새사람"), "새 인원 되돌림");
+      ok(A.undo(A.latestUndo().id));
+      ok(!D.training.records.some(r => r.date === "2026-10-05") && !D.schedules.some(s => s.id === "dsk_tr_p1_cargo"), "기록 · 일정 되돌림");
+      x = await run(e, "training_record", { name: "가나다", course_id: "c-cargo-r", date: "2026-10-06", file: "f9" });
+      ok(/첨부 f9/.test(x.r.error), "없는 첨부");
+    });
+
+    await ta("AR07 문서 서가 · 수검 지적: 서가 위치 검사 · 민감 → docs-ssi · 지적 2건 확인 → 조치 일정 연동 · 되돌리기", async () => {
+      const e = argoEnv("hq");
+      const A = e.w.SemisArgo, D = e.S.data, Sy = e.w.SemisSync;
+      Sy.uploadFile = async (file, prefix) => ({ name: file.name, size: 3, url: PUB + prefix + "/zz_" + file.name });
+      const f1 = { fid: "f1", name: "a.pdf", kind: "pdf", file: new e.w.File(["x"], "a.pdf") };
+      let x = await run(e, "doc_shelve", { mod: "nope", grp: "x", title: "t", file: "f1" }, ctxOf(A, { f1 }));
+      ok(/서가/.test(x.r.error), "위치 검사");
+      const sh = e.w.SemisDesk.shelfMods()[0];
+      x = await run(e, "doc_shelve", { mod: sh.mod, grp: sh.groups[0].id, title: "점검 결과", ssi: true, file: "f1" }, ctxOf(A, { f1 }));
+      ok(x.r.ok && D.docs.some(d => d.title === "점검 결과" && d.ssi && d.files[0].url.includes("/docs-ssi/")), "서가 · 민감");
+      A.open();
+      const t = { id: "t2", q: "", files: [], a: "", cards: [], pending: true }; A.conv.turns.push(t);
+      const p = A.runTool("audit_findings_add", { new_audit: { body: "gov", org: "서울지방항공청", kind: "정기점검", start: "2026-09-10" },
+        findings: [{ type: "car", text: "출입 통제 미흡", due: "2026-11-30" }, { type: "obs", text: "관찰" }] }, { turn: t, files: {}, up: {}, log: [] });
+      await tick(5);
+      ok(q(e, "#pnl-argo .ag-card.is-confirm"), "2건 → 확인");
+      q(e, '#pnl-argo [data-cf][data-ok="1"]').click();
+      x = { r: await p };
+      const au = D.audits.find(a => a.org === "서울지방항공청");
+      ok(au && au.findings.length === 2 && D.schedules.some(s => s.id === "audf_" + au.findings[0].id), "지적 · 조치 일정");
+      ok(A.undo(A.latestUndo().id));
+      ok(!D.audits.some(a => a.org === "서울지방항공청") && !D.schedules.some(s => /^audf_/.test(s.id)), "수검 · 일정 되돌림");
+    });
+
+    await ta("AR08 현황 · 찾기: 이번 주 일정(반복 회차 펼침) · 교육 만료 · 열린 지적 · 기록부 누락 · 요약 · 메뉴 찾기(바로 가기 go) · 결과 길이 제한", async () => {
+      const e = argoEnv("hq");
+      const A = e.w.SemisArgo, D = e.S.data;
+      D.schedules.push({ id: "s-rep", title: "주간 점검", start: "2026-09-01", end: "2026-09-01", allDay: true, repeat: { freq: "weekly", until: "" }, doneDates: ["2026-10-06"] });
+      let x = await run(e, "argos_status", { topic: "schedule" });
+      eq(x.r.from, "2026-10-05"); eq(x.r.to, "2026-10-11");
+      const rep = x.r.items.filter(i => i.id === "s-rep");
+      ok(rep.length === 1 && rep[0].start === "2026-10-06" && rep[0].done === true, "반복 회차 · 회차 완료");
+      x = await run(e, "argos_status", { topic: "schedule", from: "2026-10-12", to: "2026-10-12" });
+      ok(x.r.items.some(i => i.id === "s-old"), "기간 지정");
+      x = await run(e, "argos_status", { topic: "training_due", days: 400 });
+      ok(Array.isArray(x.r.items) && x.r.items.some(i => i.name === "가나다"), "교육 만료 · 미이수");
+      D.audits = [{ id: "au1", org: "기관", kind: "정기", start: "2026-09-01", findings: [{ id: "f1", type: "car", text: "지적", due: "2026-10-01", status: "open" }, { id: "f2", type: "obs", text: "끝남", status: "done" }] }];
+      x = await run(e, "argos_status", { topic: "audit_open" });
+      ok(x.r.count === 1 && x.r.overdue === 1 && x.r.items[0].type === "시정조치", "열린 지적 · 기한 지남");
+      x = await run(e, "argos_status", { topic: "seclog_missing" });
+      ok(Array.isArray(x.r.items), "기록부 누락");
+      x = await run(e, "argos_status", { topic: "overview" });
+      ok(x.r.sec_level && x.r.schedules && x.r.training && x.r.audit && "desk_pending" in x.r, "요약");
+      loginAs(e, "user");
+      x = await run(e, "argos_status", { topic: "overview" });
+      ok(x.r.sec_level && !x.r.schedules && !x.r.training && !("desk_pending" in x.r), "user 요약 = 권한 안만");
+      loginAs(e, "hq");
+      x = await run(e, "argos_find", { query: "보안교육" });
+      ok(x.r.items.some(i => i.go === "training"), "메뉴 찾기 → go");
+      ok(A.goOk("training") && !A.goOk("javascript:x") && !A.goOk("settings2"), "바로 가기 검사");
+      loginAs(e, "user"); ok(!A.goOk("training"), "user 는 보안교육 바로 가기 없음"); loginAs(e, "hq");
+      const big = { items: Array.from({ length: 3000 }, (_, i) => ({ id: "x" + i, t: "가".repeat(40) })) };
+      const cap = JSON.parse(A.capJSON(big));
+      ok(JSON.stringify(cap).length <= 24000 && /전체 3000건/.test(cap.note), "결과 길이 제한");
+    });
+
+    await ta("AR09 자료 요약: 서명 · 그림 · 서식 원문 · 파일 주소는 빼고 이름만 · 회의록 서명 없음 · 교육 기록은 사람 · 과정 이름으로", async () => {
+      const e = argoEnv("hq");
+      const A = e.w.SemisArgo;
+      const s = A.slim({ id: "a", sign: "data:image/png;base64,AAAA", photo: "x", memoHtml: "<b>x</b>", bodyHtml: "<p>", note: "n", img2: "data:image/png;base64,BB", files: [{ name: "f.pdf", url: PUB + "x/f.pdf" }], u: PUB + "x/y.pdf", pw: "secret" });
+      eq(JSON.stringify(s), JSON.stringify({ id: "a", note: "n", img2: "(그림)", files: ["f.pdf"], u: "(파일)" }));
+      e.S.data.minutes = [{ id: "m1", folder: "", title: "협의회", date: "2026-10-01", attendees: [{ name: "가", sign: "data:image/png;base64,AA" }], decisions: [{ task: "조치", owner: "가", due: "2026-10-30" }], status: "final" }];
+      let x = await run(e, "argos_records", { collection: "minutes" });
+      ok(x.r.items[0].attendees === 1 && !JSON.stringify(x.r).includes("base64"), "회의록 서명 없음");
+      x = await run(e, "argos_records", { collection: "training", query: "가나다 화물보안" });
+      ok(x.r.items.some(i => i.type === "이수 기록" && i.course === "화물보안 업무요원 초기"), "교육 기록 이름");
+      x = await run(e, "argos_records", { collection: "schedules", from: "2026-10-12", to: "2026-10-12" });
+      eq(x.r.items.length, 1, "날짜 범위");
+      x = await run(e, "argos_catalog", {});
+      ok(x.r.courses.length && x.r.colors.length === 12 && x.r.areas.security === "보안담당", "등록 목록");
+    });
+
+    await ta("AR10 첨부: 글 문서 → 본문 · PDF 4.5MB 초과 거절 · 구 형식 거절 · 사진 → base64 · 사용자 메시지 블록 순서([첨부 f1: …] 뒤 질문) · 3개 제한", async () => {
+      const e = argoEnv("hq");
+      const A = e.w.SemisArgo;
+      let x = await A.prepFile(new e.w.File(["교육 안내 본문"], "a.txt", { type: "text/plain" }));
+      ok(x.kind === "text" && /교육 안내/.test(x.text), "글");
+      x = await A.prepFile(new e.w.File([new Uint8Array(4.6 * 1024 * 1024)], "big.pdf", { type: "application/pdf" }));
+      ok(/4\.5MB/.test(x.error), "PDF 크기");
+      x = await A.prepFile(new e.w.File(["x"], "old.hwp"));
+      ok(/구 형식/.test(x.error), "구 형식");
+      x = await A.prepFile(new e.w.File([new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3])], "p.jpg", { type: "image/jpeg" }));
+      ok(x.kind === "image" && x.mt === "image/jpeg" && /^[A-Za-z0-9+/=]+$/.test(x.b64), "사진");
+      const pdf = await A.prepFile(new e.w.File(["%PDF-1.4"], "c.pdf", { type: "application/pdf" }));
+      const blocks = A.userContent("기록해줘", [Object.assign({ fid: "f1", name: "p.jpg" }, x), Object.assign({ fid: "f2", name: "c.pdf" }, pdf)]);
+      eq(blocks.map(b => b.type).join(), "image,document,text");
+      ok(/^\[첨부 f1: p\.jpg \(사진\)\]\n\n\[첨부 f2: c\.pdf \(PDF\)\]\n\n기록해줘$/.test(blocks[2].text), blocks[2].text);
+      A.open();
+      await A.addFiles([1, 2, 3, 4].map(i => new e.w.File(["t" + i], "n" + i + ".txt")));
+      eq(A.pending.length, 3, "3개까지");
+      eq(qa(e, "#pnl-argo .ag-files .ag-chip").length, 3, "첨부 표시");
+    });
+
+    await ta("AR11 입력 · 오류 · 저장 한도: 한글 조합 중 Enter 는 보내지 않음 · Shift+Enter 줄바꿈 · 사용량 초과 문구 · 부엉이 alert · 질문 20개만 보관 · 새 대화", async () => {
+      const e = argoEnv("hq", () => ({ __status: 429, ok: false, error: "limit", used: 200, limit: 200 }));
+      const A = e.w.SemisArgo;
+      A.open();
+      const ta2 = q(e, "#ag-in");
+      ta2.value = "안녕";
+      ta2.dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "Enter", isComposing: true, bubbles: true }));
+      ta2.dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "Enter", shiftKey: true, bubbles: true }));
+      eq(e.calls.length, 0, "조합 중 · Shift 는 안 보냄");
+      ta2.dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      for (let i = 0; i < 20 && A.busy; i++) await tick(5);
+      eq(e.calls.length, 1, "Enter 보냄");
+      ok(/오늘 사용량\(200회\)/.test(q(e, "#pnl-argo .ag-err").textContent), "한도 문구");
+      eq(e.w.SemisPanel.get("argo") && q(e, "#pnl-argo .pnl-mark .owl-svg").getAttribute("data-state"), "alert", "부엉이 alert");
+      const c = A.conv;
+      for (let i = 0; i < 25; i++) c.turns.push({ id: "x" + i, q: "q" + i, a: "a" + i, files: [], cards: [], log: "" });
+      await A.send("마지막");
+      eq(A.conv.turns.length, 20, "20개만");
+      eq(A.history().length % 2, 0, "이력은 질문 · 답 짝");
+      q(e, "#pnl-argo [data-ag-new]").click();
+      ok(q(e, "#modal-box"), "새 대화 확인"); clickOk(e);
+      eq(A.conv.turns.length, 0); ok(q(e, "#pnl-argo .ag-empty"), "빈 화면");
+    });
+
+    t("AR12 안내 지식: 사본 일치(npm run argo:guide) · 메뉴 표 route 가 실제 모듈 · 이름 · 연락처 · 계정 · 토큰 · 민감보안정보 원문 없음", () => {
+      const md = read("docs/ARGO-GUIDE.md"), ts = read("tools/edge/argo-guide.ts");
+      const B = require(path.join(ROOT, "tools/build-argo-guide.cjs"));
+      eq(ts, B.tsOf(md), "argo-guide.ts 사본 — npm run argo:guide");
+      const g = B.guideText(md);
+      ok(g.length > 4000 && g.length < 20000, "길이 " + g.length);
+      const e = makeEnv(); loginAs(e, "admin");
+      const routes = Array.from(g.matchAll(/\| ([a-z][a-z0-9-]+(?: · [a-z][a-z0-9-]+)*) \| (?:전체|manager|hq|admin)/g)).flatMap(m => m[1].split(" · "));
+      ok(routes.length >= 25, "route " + routes.length);
+      routes.forEach(r => ok(r === "desk" || e.S.hasModule(r), "모듈 없음: " + r));
+      const all = md + read("js/argo.js") + read("tools/edge/semis-logi-argo.ts") + read("tools/sql/semis-logi-argo.sql");
+      ok(!/\d{2,3}-\d{3,4}-\d{4}/.test(all), "전화번호");
+      ok(!/[\w.-]+@[\w-]+\.[a-z]{2,}/i.test(all), "메일 주소");
+      ok(!/[0-9a-f]{40,}/i.test(all) && !/eyJ[A-Za-z0-9_-]{20,}/.test(all) && !/sk-ant-/.test(all), "토큰 · 키");
+      ok(!/mark3464|cargo-(ss|mgr|user)/.test(all), "계정 이름");
+      ok(!/CHK-LIST|auditMaster|체크리스트 원본/.test(md), "수검 체크리스트 원본 언급 없음");
+    });
+
+    t("AR13 서버 원본(Edge): 세션 · 등급 · 사용량은 서버 RPC · 등급별 도구(클라이언트 TOOL_MIN 과 같음) · 왕복 5회 · 캐시 · 대화 저장 안 함 · CORS", () => {
+      const src = read("tools/edge/semis-logi-argo.ts");
+      const i1 = src.indexOf('rpc(tok, "semis_logi_argo_begin"'), i2 = src.indexOf("fetch(AI_URL");
+      ok(i1 > 0 && i2 > i1, "사용량 확인 뒤에 AI 호출");
+      ok(/\/\^\[0-9a-f\]\{64\}\$\/\.test\(tok\)/.test(src), "토큰 모양 확인");
+      ok(src.includes('semis_logi_argo_meter') && src.includes("cache_control: { type: \"ephemeral\" }"), "토큰 계량 · 캐시");
+      ok(/const MAX_ROUNDS = 5;/.test(src) && src.includes('payload.tool_choice = { type: "none" }'), "왕복 5회");
+      ok(src.includes('Deno.env.get("ARGO_MODEL")') && src.includes('"claude-sonnet-5-5"') && src.includes('Deno.env.get("ANTHROPIC_API_KEY")'), "모델 · 키");
+      ok(!/semis_logi_store|console\.(log|info|warn|error)|insert into/i.test(src), "대화 저장 · 기록 없음");
+      ok(src.includes('"https://mark4mission.github.io"') && !src.includes('"*"'), "CORS 출처 제한");
+      const srvMin = {};
+      Array.from(src.matchAll(/\{ name: "([a-z_]+)", min: (\d)/g)).forEach(m => { srvMin[m[1]] = Number(m[2]); });
+      const e = makeEnv();
+      const cliMin = e.w.SemisArgo.TOOL_MIN;
+      eq(JSON.stringify(Object.keys(srvMin).sort()), JSON.stringify(Object.keys(cliMin).sort()), "도구 이름");
+      Object.keys(srvMin).forEach(k => eq(srvMin[k], cliMin[k], "등급 " + k));
+      ok(Object.keys(e.w.SemisArgo.W).every(k => srvMin[k] === 3), "쓰기 도구는 hq 이상");
+      const cols = {};
+      Array.from(src.matchAll(/\["([a-z_]+)", (\d), "/g)).forEach(m => { cols[m[1]] = Number(m[2]); });
+      eq(JSON.stringify(Object.keys(cols).sort()), JSON.stringify(Object.keys(e.w.SemisArgo.COLS).sort()), "자료 목록 이름");
+      ok(cols.contracts === 3 && cols.kcra === 3 && cols.notices === 1 && cols.schedules === 2, "자료 목록 등급");
+      ok(/'messages'|"messages"/.test(src) && src.includes('return "pairing"') && src.includes('names.has(name)'), "대화 검사(짝 · 도구 이름)");
+    });
+
+    t("AR14 서버 원본(SQL): 비공개 표 · 내부 계정만 · 한도 200 · KST · RPC 실행 권한 · PGlite 검증 스크립트 · 화면 위생", () => {
+      const sql = read("tools/sql/semis-logi-argo.sql");
+      ok(/create table if not exists semis_logi_private\.argo_usage/.test(sql) && /revoke all on semis_logi_private\.argo_usage from public, anon, authenticated/.test(sql), "비공개 표");
+      ok(/c\.role not in \('admin', 'hq', 'manager', 'user'\)/.test(sql) && /c\.kind <> 'user'/.test(sql), "내부 계정만");
+      ok(/"calls": 200/.test(sql) && /Asia\/Seoul/.test(sql), "한도 · KST");
+      ok(/grant execute on function public\.semis_logi_argo_begin\(\) to anon, service_role/.test(sql) && /revoke all on function public\.semis_logi_argo_begin\(\) from public, authenticated/.test(sql), "실행 권한");
+      ok(read("tools/sql/semis-logi-argo.test.mjs").includes("semis_logi_argo_begin"), "검증 스크립트");
+      const js = read("js/argo.js");
+      ok(!/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(js), "이모지 없음");
+      ok(!/onclick=|<script/.test(js.replace(/b\.onclick|\.onclick = /g, "")), "인라인 스크립트 없음");
+      ok(read("index.html").includes('<script src="js/argo.js?v='), "스크립트(defer)");
+      ok(/semisl:argo:/.test(read("js/app.js")), "로그아웃 때 대화 지움");
+      ok(/@media screen and \(max-width: 767px\) \{\n  \.ag-log/.test(read("css/main.css")), "모바일 CSS 는 screen");
     });
   }
 

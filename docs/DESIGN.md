@@ -1,4 +1,4 @@
-# ARGOS(구 SeMIS · Logistics) — 설계서 (v1.0 ~ v1.48 기록 — 지금 메뉴 구조는 HANDOFF §4, 지금 디자인 규칙은 §9 · §17)
+# ARGOS(구 SeMIS · Logistics) — 설계서 (v1.0 ~ v1.49 기록 — 지금 메뉴 구조는 HANDOFF §4, 지금 디자인 규칙은 §9 · §17)
 
 인천화물팀 안전보안파트의 **화물터미널 현장 안전·보안 관리 정보시스템**.
 SeMIS v2(항공보안파트)의 검증된 플랫폼 구조를 그대로 이어받되, 데이터·메뉴·디자인 팔레트를 완전히 분리한 **독립 사이트**로 구축한다.
@@ -555,3 +555,42 @@ GET 이 도는 동안 push 가 끝나더라도 서버의 옛 값이 로컬 변�
 - 실제 크로미움(가짜 백엔드 — 저장은 서버로 보내지 않음): 패널 = 모달 · Tab 40회 · Shift+Tab 패널 밖으로 안 나감 · Esc 순서(폼 모달 → 패널) · 연 단추로 포커스 · 스크롤 잠금 · Ctrl K → 검색칸 · 검색 Esc 한 번에 닫힘 · 바깥 누르기 · Print A4 1쪽 · 끌어다 놓기(보던 화면 그대로) · 동작 줄이기에서 같은 결과(부엉이 SVG).
 - axe-core WCAG 2.1 A/AA: 셸 · 데스크 패널 2탭 · 검색 패널 2상태 · 보안교육 × 1440/390 = 12 화면 0건(검색 결과 묶음 role · 모바일 요약 띠 키보드 스크롤 고친 뒤).
 - 22개 화면 1440 · 390 가로 넘침 0 · 페이지 오류 0. 운영 메뉴 구조로 옛/새 정규화 비교 — 메인 데스크 1건만 빠짐 · 두 번째 정규화 변화 없음.
+
+## 18. v1.49 — 아르고 AI 도우미 (2026-10-10)
+
+### 18-1. 구조
+
+| 부분 | 파일 | 역할 |
+|---|---|---|
+| 화면 | `js/argo.js` | 공통 패널(`id: argo`) 안 대화 · 첨부 · 결과 카드 · 확인 카드 · 되돌리기 · Print. 도구 12종을 **브라우저에서** 실행(이미 권한대로 받은 자료 · 모듈 API · `SeMIS.save`) |
+| 서버 | `tools/edge/semis-logi-argo.ts` (+ `argo-guide.ts`) | Claude 프록시. 세션 · 등급 · 사용량은 SQL(`semis_logi_argo_begin`)이 판정, 등급별 도구만 보냄, 시스템 지침 + 안내 지식 + 도구 정의 캐시, 대화 저장 없음 |
+| 사용량 | `tools/sql/semis-logi-argo.sql` | 비공개 표 `semis_logi_private.argo_usage`(계정 × KST 날짜: 호출 · 토큰), 한도 settings `argo` { calls 200, tokIn 500만 } |
+| 안내 지식 | `docs/ARGO-GUIDE.md` → `npm run argo:guide` → `tools/edge/argo-guide.ts` | 공개 가능한 사용법 · 메뉴 표(route) · 용어. 테스트 AR12 가 사본 일치 · 누출(전화 · 메일 · 토큰 · 계정 이름)을 검사 |
+
+왕복: 화면 → Edge(Claude) → `tool_use` → 화면이 실행 → `tool_result` → Edge … 한 질문에 도구 왕복 5회까지(5회째는 `tool_choice: none` 으로 답만).
+
+### 18-2. 도구
+
+| 도구 | 등급 | 내용 |
+|---|---|---|
+| `argos_find` | user | 통합 검색(`SemisSearch.search`)과 같은 범위 — 결과 `go` = 바로 가기 route |
+| `argos_status` | user | overview · schedule(반복 회차 펼침 · 점검 기한) · training_due · audit_open · seclog_missing · notices · sec_level · desk_pending — 각 모듈 API 로 계산, 권한 밖은 빠짐 |
+| `argos_records` | user(목록은 등급별) | 공지(1) · 일정 · 회의록 · 연락처 3종 · 교육 · 수검 · 서가 · 규정 · 장비 · 처리 대장 · 전파교육 · 협력사 · 기록부(2) · 계약 · 상용화주(3). 화면 메뉴 권한(`navVisible`)과 같게, 민감보안정보 서가 문서는 hq 이상만, 서명 · 그림 · 서식 원문 · 파일 주소는 빼고 이름만(`slim`) |
+| `argos_catalog` | hq | 메인 데스크 `catalog()` + 일정 색 · 담당자 · 분야별 담당 |
+| `schedule_add` · `_update` · `_done` · `_delete` | hq | 화면의 일정 편집 권한(`canEdit`)과 같게 hq 이상. 수검 연동 일정은 `backSyncInsp` · `unlinkBySchedule` |
+| `notice_add` | hq | 공지 |
+| `training_record` · `doc_shelve` · `audit_findings_add` | hq | 메인 데스크 `SemisDesk.check` · `commit` 재사용. 첨부 원본은 반영하는 순간 대상 폴더(training · docs · docs-ssi · audits)에 바로 올림(Mark 결정 — desk/ 거치지 않음) |
+
+### 18-3. 쓰기 · 되돌리기
+
+- 쓰기 도구는 실행 전 대상 컬렉션을 복사해 두고, 실행 뒤 **항목 단위 비교**(`id` 가 있는 배열은 항목별, 객체는 키별)로 역연산 목록을 만든다: 추가 → 지움 · 지움 → 제자리 복원 · 값 → 이전 값. 되돌리면 그 사이 다른 사람이 고친 칸 · 항목은 그대로 남는다(409 병합과 같은 단위).
+- 되돌리기는 가장 최근 실행부터. 결과 카드에 단추가 하나만 보인다. 대화를 지우면(새 대화) 되돌리기도 사라진다.
+- 확인이 필요한 것: 지우기 · 2건 이상(일정 여러 건 · 지적 여러 건) — 대화 안 확인 카드(실행 · 취소). 실행하면 결과 카드가 그 자리를 잇는다.
+
+### 18-4. 화면
+
+- 질문 = 페트롤 잉크 말풍선(오른쪽), 답 = 흰 카드(왼쪽 · 30px 부엉이 SVG), 결과 카드 = 흰 카드 + 왼쪽 4px 띠(완료 초록 · 확인 앰버 · 삭제 빨강 · 되돌림 회색). 입력줄 = 절취선 아래 크림 태그, `field-sizing: content`(1~8줄, 미지원 브라우저는 고정 높이).
+- 한글 조합 중 Enter 는 보내지 않는다(`isComposing` · keyCode 229). Shift+Enter 줄바꿈. 붙여 넣은 사진 · 끌어다 놓은 파일 = 첨부(패널 위에서는 메인 데스크보다 먼저).
+- 답의 `[[이름|route]]` = 바로 가기 단추(그 계정에 보이는 화면만, 아니면 굵은 글자). 표 · HTML 은 쓰지 않게 지시하고, 와도 글자로만 그린다.
+- 부엉이: 답을 기다리는 동안 thinking · 끝나면 happy(2.6초) · 오류 alert(4초). 빈 화면 = 96px 3D(모바일 72px) + 제안 질문(등급별).
+- 검증: 크로미움 1440 · 390 가로 넘침 0 · 페이지 오류 0 · axe WCAG 2.1 A/AA 0건(대화 · 결과 · 확인 카드 상태) · Print A4.

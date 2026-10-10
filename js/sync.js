@@ -12,6 +12,7 @@
   const RPC = SUPA_URL + "/rest/v1/rpc/";
   const FN_FILES = SUPA_URL + "/functions/v1/semis-logi-files";
   const FN_FAV = SUPA_URL + "/functions/v1/semis-logi-favicon";
+  const FN_ARGO = SUPA_URL + "/functions/v1/semis-logi-argo";
   const CHANNEL = "semis-logi-sync";
 
   const SYNC_KEYS = ["menus", "notices", "schedules", "assignees", "assigneesSeeded", "minutes", "minuteFolders", "levelHistory", "safetyBoard", "contacts", "gcal", "vault", "regulations", "equipment", "crisis", "fleet", "audits", "phonebook", "training", "seclog", "seclogCfg", "serp", "serpRuns", "threat", "threatRuns", "threatChecks", "patrol", "patrolCfg", "patrolPeople", "secPost", "secPostImg", "selfChecks", "selfCheckCfg", "docs", "partners", "contracts", "kcra", "secCases", "dissem", "scrStats", "desk"];
@@ -842,7 +843,7 @@
 
   window.SemisSync = {
     start, init: start, stop, syncNow, uploadFile, fetchKV, ANON: SUPA_KEY, URL: SUPA_URL,
-    listFiles, deleteFile, signFiles, filesCall, countRows, BUCKET, PUBLIC_PREFIX, FN_FILES, favicon, FN_FAV,
+    listFiles, deleteFile, signFiles, filesCall, countRows, BUCKET, PUBLIC_PREFIX, FN_FILES, favicon, FN_FAV, FN_ARGO,
     push, pull, applyRemote, onBroadcast,
     history, historyValue, restoreHistory,
     confirmWipe, guardEvents, guardWipe, GUARD_MIN,

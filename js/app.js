@@ -3,7 +3,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.48.0";
+  const VERSION = "1.49.0";
   const APP_NAME = "ARGOS";
   /* 데이터 캐시는 탭 sessionStorage 에만(탭 닫기·로그아웃 시 소멸). 화면 설정(LS_UI)만 localStorage */
   const LS_DATA = "semisl:data";
@@ -108,6 +108,8 @@ const SeMIS = (() => {
     xray: '<path d="M3 17.5V8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v9.5"/><path d="M7.5 17.5v-5a4.5 4.5 0 0 1 9 0v5"/><path d="M2 17.5h20"/><path d="M5 20.5h.01M9.5 20.5h.01M14.5 20.5h.01M19 20.5h.01"/>',
     etd: '<rect x="6" y="3" width="12" height="18" rx="2"/><path d="M9.5 6.5h5"/><rect x="9" y="9.5" width="6" height="4.5" rx="1"/><path d="M10.5 17.5h3"/>',
     refresh: '<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/>',
+    clip: '<path d="M20 11.5 12.4 19a4.6 4.6 0 0 1-6.5-6.5l7.7-7.6a3.1 3.1 0 0 1 4.4 4.4l-7.6 7.6a1.5 1.5 0 0 1-2.2-2.2L15 7.9"/>',
+    send: '<path d="M4.5 12.2 19.5 5l-4.4 14.5-3.6-6.2z"/><path d="m11.5 13.3 8-8.3"/>',
     down: '<path d="M12 4v11"/><path d="m7.5 11.5 4.5 4.5 4.5-4.5"/><path d="M4.5 19.5h15"/>',
     trash: '<path d="M4.5 7h15"/><path d="M9.5 7V4.8a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1V7"/><path d="M6.5 7l.8 12.3a1 1 0 0 0 1 .95h7.4a1 1 0 0 0 1-.95L17.5 7"/><path d="M10.5 11v5.5M13.5 11v5.5"/>',
     plane: '<path d="M12 2.8c.9 0 1.4.9 1.4 2v4.7l6.8 4v1.9l-6.8-2v4.1l2.1 1.5v1.6L12 19.8l-3.5.8V19l2.1-1.5v-4.1l-6.8 2v-1.9l6.8-4V4.8c0-1.1.5-2 1.4-2z"/>',
@@ -685,6 +687,7 @@ const SeMIS = (() => {
     try { if (window.SemisFileAuth) SemisFileAuth.stop(); } catch (e) {}
     currentUser = null;
     store.del(LS_DATA); store.del(SS_OWNER);
+    try { Object.keys(sessionStorage).filter(k => k.indexOf("semisl:argo:") === 0).forEach(k => sessionStorage.removeItem(k)); } catch (e) { /* 저장소 접근 불가 */ }
     location.hash = "";
     location.reload();
   }

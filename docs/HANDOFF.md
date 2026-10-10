@@ -7,11 +7,11 @@
 
 | 항목 | 값 |
 |---|---|
-| 현재 버전 | **v1.48.0** (2026-10-10) — 디자인 '화물 태그'(Mark 선택 B안) · 지원 시스템 카드(검색 · 메인 데스크 · 아르고) · 공통 패널 모달 · 부엉이 경비대원 '아르고'(3D/SVG) · 메인 데스크 → 패널. 다음은 세션 ② 아르고 AI 도우미(Project 문서 `claude/argos-next-sessions.md`) |
+| 현재 버전 | **v1.49.0** (2026-10-10) — **아르고 AI 도우미**(지원 카드 · 공통 패널 · 도구 12종 · 바로 실행 + 결과 카드 + 되돌리기 · 첨부 · 하루 200회). 앞 버전 v1.48 = 디자인 '화물 태그' · 지원 카드 · 공통 패널 · 부엉이 |
 | 접속 주소 | https://mark4mission.github.io/semis-logistics/ |
 | 저장소 | GitHub `Mark4mission/semis-logistics` (공개) · Mac `~/SeMIS_Logistics` |
-| 테스트 | `npm test` 539건 전부 통과(v1.48.0) |
-| 백엔드 | Supabase `mzyuzrxkdcpzxojenwat` — 테이블 `semis_logi_store`(세션 RLS), **비공개** 버킷 `semis-logi-files`, 비공개 스키마 `semis_logi_private`(계정 · 세션 · 로그인 시도 · 접속 기록 · 권한표), RPC `semis_logi_*`, Edge Function `semis-logi-files`(서명 URL · 이수증 판독 · 데스크 판독 · 사본, v11) · `semis-logi-ai`(AI 요약) · `semis-logi-favicon` · `semis-logi-adsb`(운항, pg_cron 2분) |
+| 테스트 | `npm test` 553건 전부 통과(v1.49.0) · Edge `deno test --allow-net --allow-env tools/edge/semis-logi-argo.test.ts` 6건 · SQL PGlite `tools/sql/semis-logi-argo.test.mjs` 19건 |
+| 백엔드 | Supabase `mzyuzrxkdcpzxojenwat` — 테이블 `semis_logi_store`(세션 RLS), **비공개** 버킷 `semis-logi-files`, 비공개 스키마 `semis_logi_private`(계정 · 세션 · 로그인 시도 · 접속 기록 · 권한표), RPC `semis_logi_*`, Edge Function `semis-logi-files`(서명 URL · 이수증 판독 · 데스크 판독 · 사본, v11) · `semis-logi-ai`(AI 요약) · `semis-logi-favicon` · `semis-logi-adsb`(운항, pg_cron 2분) · **`semis-logi-argo`(아르고, v1)** |
 
 ## 2. 새 세션 시작
 
@@ -57,7 +57,7 @@ Claude가 할 일(순서대로):
 | 허브 | 메뉴 (탭 묶음은 [탭 · 탭]) | 들어갈 정보 기준 |
 |---|---|---|
 | (최상위) | 대시보드 | — |
-| (패널 맨 위) | **지원 카드**(v1.48) — 검색(Ctrl K) · 메인 데스크(hq) · 아르고(모듈이 있을 때, 세션 ②). 패널을 접었을 때 · 태블릿 · 모바일은 상단바 아이콘 3개 | 메뉴가 아니라 어디서나 여는 도구 |
+| (패널 맨 위) | **지원 카드**(v1.48) — 검색(Ctrl K) · 메인 데스크(hq) · 아르고(내부 전 계정, v1.49). 패널을 접었을 때 · 태블릿 · 모바일은 상단바 아이콘 3개 | 메뉴가 아니라 어디서나 여는 도구 |
 | 홈 `hub-home` | 일정관리 · 회의록 · 운항 현황 · 바로가기 (+ 링크) | 매일 보는 것 |
 | 화물 보안 `hub-sec` | 화물보안 대시보드 · 보안검색 현황 · 검색장비 관리 · 보안 처리 대장 · 상용화주 · RA · 협력사 · 보안요원 · (예정) 보안구역 출입 | 화물 · 검색 · 장비 · 보안요원 운영 |
 | 점검 · 교육 `hub-aud` | 점검 · 교육 대시보드 · 점검 · 순찰 `bd-check`[보안 기록부 · 순찰일지] · 수검 대응 `bd-audit`[수검 · 지적사항 · 자체 보안점검(선택)] · 보안교육 `bd-edu`[이수 · 자격 · 전파교육] | 주기적으로 기록하는 것 |
@@ -79,6 +79,7 @@ Claude가 할 일(순서대로):
 |---|---|---|---|
 | dashboard | modules.js · hero3d.js | all | 3D 화물 태그(무재해 · 보안등급) · 오늘 · 띠(검색 환경 · 위협전화 · SERP · 수검 · 운항) · 공지 · 결정사항 · 모듈 구축 현황 |
 | (패널) desk | desk.js · docread.js | hq | **메인 데스크**(v1.48 부터 라우트 화면이 아니라 공통 패널) — 지원 카드 · 상단바 · 어디서나 끌어다 놓기(보던 화면 그대로) · `#/desk`(대시보드 위에 패널) · 검색 결과로 연다. 탭 [올리기 · 확인 대기][접수 대장 — A4 Print]. 머리 부엉이 표정 = 판독 중 thinking · 반영 직후 happy · 판독 실패 alert. 문서 올리기 → AI 판독 → 반영안 확인 · 수정 → 반영(이수 기록 + 다음 이수 기간 일정 · 일정 · 전파교육 · 수검 지적 · 처리 대장 · 하드카피 집계 · 문서 서가) · 보관만 |
+| (패널) argo | argo.js | user~admin(협력업체 · 서명 제외) | **아르고 AI 도우미**(v1.49) — 지원 카드 · 상단바 부엉이 · `#/argo`(대시보드 위 패널) · 검색 결과로 연다. 사용법 · 용어 Q&A(docs/ARGO-GUIDE.md) · 메뉴 찾기(바로 가기) · 자료 찾기 · 현황 · 쓰기(hq — 일정 등록 · 수정 · 완료 · 삭제 · 공지 · 이수 기록 · 서가 보관 · 수검 지적) · 첨부(사진 · PDF 4.5MB · 워드 · 한글 · 엑셀 · PPT 글) · 결과 카드 · 되돌리기 · 지우기 · 여러 건 확인 · 대화 Print. 설계 DESIGN §18 |
 | (공통) | panel.js | — | **공통 패널 모달** `SeMIS.ui.panel(o)` = `SemisPanel.open(o)` — 검색 · 메인 데스크 · 아르고 |
 | (공통) | argo-owl.js | — | **부엉이 아르고** `SemisOwl.mount(el, { size, state })` · `SemisOwl.svg(state, size)` |
 | schedule | calendar.js | mgr | 일정(담당자 다중 · 12색 · 반복 · 미리알림) · 점검 기한 · 수검 일정 연동 |
@@ -122,6 +123,10 @@ Claude가 할 일(순서대로):
   - 판독: DOCX · HWPX · XLSX · PPTX · TXT 는 화면(`js/docread.js`)이 글을 뽑아(문단 · 표 칸 ` | ` · 엑셀 날짜 서식 · 6만 자) 보내고, PDF(15MB) · 이미지(긴 변 2400px JPEG, 5MB)는 함수가 저장소 원본을 읽는다. HWP · DOC · XLS · PPT 구 형식은 판독 불가(보관 · 수동 반영). AI 에 보내는 목록 = 교육 과정 · 수검 · 기록부 양식 · 처리 유형 · 서가 묶음 · 전파 구분(이름 · 담당자는 보내지 않음). 결과는 화면이 다시 검사(`SemisDesk.clean` — 목록 밖 id · 틀린 날짜 · 시각은 비움)
   - 반영: 이수 기록(사번 → 이름 순으로 재직자 맞춤, 없으면 새 인원 · 같은 사람 · 과정 · 수료일이 있으면 기본 꺼짐 · 유효기한은 계산값과 다를 때만) + 다음 이수 기간 일정(id `dsk_tr_<인원>_<묶음>` — 다시 반영하면 덮어씀, 지침 제13조는 1년 되는 날 30일 전 · 위험물은 만료 3개월 전, 지났으면 오늘) / 일정(색: 회의 파랑 · 교육 초록 · 점검 · 심사 빨강 · 규정 · 절차 갈색 · 기한 빨강 · 행사 · 견학 회색, 회의실 = 장소에 '화물터미널' + '회의실', 담당 = 분야별 담당) / 전파교육(대상 파트 전부) / 수검(기존 또는 새로 + 지적 → 일정 연동) / 처리 대장 / 하드카피 집계(주기 양식은 그 주기 확인 · 이상, 수시 양식은 그 달 건수 더하기) / 문서 서가
   - 운영 DB `desk` 행은 SQL 로 분야별 담당 시드(updated_by `desk-seed`, 보안 · 안전 · 산업안전 — 위험물은 비움)
+- **아르고(v1.49)** — 새 컬렉션 없음(대화는 탭 `sessionStorage semisl:argo:<계정>`, 질문 20개 · 되돌리기 목록, 로그아웃 때 지움). 기록에 `src: "argo"`(일정 · 공지) / 이수 기록 · 서가는 메인 데스크 반영 경로(`src: "desk"`) 그대로
+  - Edge `semis-logi-argo`(원본 `tools/edge/semis-logi-argo.ts` + `argo-guide.ts`, verify_jwt false): x-semis-token → RPC `semis_logi_argo_begin()`(세션 · 내부 계정 · 오늘 호출 +1 · 한도) → Claude(`ARGO_MODEL` → claude-sonnet-5-5 → sonnet-4-5 → haiku-4-5, max_tokens 2500, 캐시 = 도구 + 고정 지침 + 마지막 블록) → `semis_logi_argo_meter(p_in, p_out, p_cache)`. 비밀값 `ANTHROPIC_API_KEY`(데스크 판독과 같은 키). 대화 검사: 역할 교대 · 도구 이름(등급별) · tool_use/tool_result 짝 · 첨부 6개 · base64 9.5M자 · 본문 10MB
+  - SQL `tools/sql/semis-logi-argo.sql`(마이그레이션 `semis_logi_security_27_argo`): 비공개 표 `semis_logi_private.argo_usage`(account_id × day(KST) · calls · tok_in · tok_out · tok_cache) · settings `argo` { calls 200, tokIn 5000000 } — 한도 바꾸기: `update semis_logi_private.settings set v = jsonb_set(v, '{calls}', '300') where k = 'argo'` · 사용량 보기(시스템관리자 세션 RPC 또는 SQL): `select a.login_id, u.* from semis_logi_private.argo_usage u join semis_logi_private.accounts a on a.id = u.account_id order by day desc`
+  - 안내 지식: `docs/ARGO-GUIDE.md` 를 고치면 `npm run argo:guide` → Edge 재배포(파일 2개). 메뉴가 바뀌면 §4 표와 함께 고친다(테스트 AR12 가 route 가 실제 모듈인지 확인)
 - SYNC_KEYS 밖 설정 행: `caresCfg`(CARES Firebase 웹 키 — `SemisSync.fetchKV`로만 읽음, 앱이 쓰지 않음) · `auditMaster`(v1.19 수검 체크리스트 원본 — 민감보안정보, 권한표 읽기 3 · 쓰기 9, hq가 상세를 열 때 `fetchKV`로 받아 메모리에만 둠)
 - 신규 컬렉션 추가 시: `freshData()` 기본값 → `normalizeData()` 보정(멱등 — v1.45~ `obj` · `rows` 표에 키 한 줄) → `sync.js` SYNC_KEYS → 테스트 Y01 기대 문자열 갱신 → **서버 권한표 등록**(아래)
 - **서버 보안(v1.15)** — 원본 SQL `tools/sql/semis-logi-security.sql`(1단계) · `tools/sql/semis-logi-lockdown.sql`(2단계 잠금). 실제 적용은 마이그레이션 `semis_logi_security_1~6`(6 = RPC 실행 권한: public `semis_logi_*`는 anon·service_role만, authenticated 차단)
@@ -168,6 +173,7 @@ Claude가 할 일(순서대로):
 
 18. **버튼 위계(v1.41, Mark: "동일한 버튼을 여러 개 만들어 헷갈리게 하지 말고 중요한 버튼은 강조, 덜 중요하거나 관리자용은 텍스트화 · 작게" — 사이트 전반)**: 머리말 강조(`.btn-primary`)는 하나. 관리 · 설정 동작(표시 관리 · 양식 · 폴더 관리 · 엑셀 반영 · 기본 정보 · 등록 페이지 등)은 머리말에서 `link-btn head-link`(글자 버튼). 카드 · 행마다 반복되는 동작은 강조하지 않는다(`btn-ghost` 또는 작은 아이콘 `mt-btn`). 같은 동작을 두 곳에 두지 않는다(예: 제목 = 원문 열기, 행 클릭 수정 대신 연필 아이콘 하나). 버튼에 그림 문자(이모지) 금지 — `SeMIS.icon`. 문서 서가의 '문서 추가'는 카드마다 하나(묶음은 등록 창에서 고름). 테스트 TA09
 19. **주석은 '왜'만(v1.45)**: 코드 주석에는 버전 · 날짜 · 결정 경위 · 바뀐 내력을 쓰지 않는다(그건 이 문서 §7 · §8 과 docs/HISTORY.md). 남길 것 = 보안 제약 · 규정 근거 · 브라우저 함정 · 데이터 모양 · 경고. 파일 머리는 역할 1~2줄, 800줄 넘는 파일만 `/* ── 구역 ── */` 한 줄 표지. 새 메뉴는 `defaultMenus()` 에만 넣으면 운영 데이터에 없을 때 `ensureSeedMenus()` 가 시드 순서 자리에 넣는다(예정 메뉴는 넣지 않음)
+22. **아르고 도구(v1.49)**: 새 모듈 자료를 아르고가 읽게 하려면 `js/argo.js` `COLS`(목록 · 요약) 한 줄 + Edge `COLLECTIONS` 한 줄(이름 · 등급 — 테스트 AR13 이 두 곳을 대조). 쓰기 도구는 `W` 에 { label, keys(되돌릴 컬렉션), prep(검사 · 업로드), run(바꾸기 → lines · go · result · log) } + Edge `toolList` 정의(min 3). 쓰기 권한은 그 화면의 편집 권한과 같게. 안내 지식 · 메뉴 표는 docs/ARGO-GUIDE.md(공개 저장소 — 이름 · 연락처 · SSI 금지)
 20. **공통 패널(v1.48)** — 검색 · 메인 데스크 · 아르고처럼 '어디서나 여는 큰 화면'은 `SeMIS.ui.panel({ id, title, sub, mascot(부엉이 상태) | icon, tabs[{ id, label, badge }], tab, onTab, render(body, h), actions, onActs, print, focus, onClose, cls })`. 폼 입력은 지금처럼 `openModal`(작은 모달). 패널이 열려 있으면 `openModal` · `toast` · 말풍선 · 액션 시트가 패널 안에 붙는다(밖은 inert). 지원 카드 기능은 `SeMIS.registerSupport(id, { ok, badge, open })`, 옛 주소 처리는 `SeMIS.registerPanelRoute(id, fn)`, 원격 변경 때 다시 그리기는 `SeMIS.onRerender(fn)`. 패널 본문의 표 정돈은 `SeMIS.tidyTables(body)`. Esc 는 안쪽 모달 → 패널 순으로 하나씩
 21. **화물 태그 문법(v1.48, Mark 선택 B안)** — 크림 종이(`--tag` · `--tag-2`) · 앰버 띠 · 절취선(`--tag-perf`) · 페트롤 잉크(`--tag-ink`)는 지원 카드 · 패널 · 선택 상태(탭 · 세그먼트 · 메뉴) · 배지 · 표 머리에만. 카드 · 업무 본문은 흰 바탕 그대로. 종이 위 보조 글자도 `--text-2`/`--text-3`. 부엉이는 그림이라 이모지 금지 규칙과 무관하되 메뉴 · 버튼 이름에는 넣지 않는다
 
@@ -185,7 +191,7 @@ Claude가 할 일(순서대로):
 - **저장소 정리**: 판독 시험 파일 3건(`desk/…_zz-test-notice.txt` · `desk/…_zz-test-cert.pdf` · `schedules/…_zz-test-notice.txt`) — 시스템 설정 › 저장소 관리(연결 없는 파일)에서 삭제
 - **v1.48 메뉴 저장**: 시스템관리자가 v1.48 로 한 번 접속하면 운영 menus 에서 '메인 데스크' 항목이 지워져 저장된다. 배포 직후 열려 있던 옛 탭은 새로고침
 - **정규화 검증 범위(v1.48)**: 운영 자료 전체 사본으로는 확인하지 못함(임시 세션 생성이 권한 정책에 막힘) — 운영 메뉴 구조(SQL 로 이름 · 순서 · 숨김만)로 옛/새 `normalizeData` 비교: 메인 데스크 1건만 빠지고 나머지 61건 · 다른 컬렉션 동일 · 두 번째 정규화 변화 없음
-- **아르고(세션 ②)**: 지원 카드 · 상단바의 아르고 칸은 `SeMIS.hasModule("argo")` 일 때만 보인다(내부 전 계정, 협력업체 · 서명 세션 제외). 세션 ②에서 `registerModule("argo")` + `registerSupport("argo", { open })` 로 패널을 붙이면 된다(머리 `mascot` 상태 연동)
+- **아르고 운영(v1.49)**: 실사용에서 답 품질 · 사용량을 보고 안내 지식(docs/ARGO-GUIDE.md) · 한도(settings `argo`) 조정. 아르고로 반영한 뒤 되돌린 기록의 첨부 원본은 저장소에 남는다(시스템 설정 › 저장소 관리 '연결 없는 파일'에서 정리). 테스트 TR12 · ED04 는 jsdom 시간 의존이라 가끔 한 번 실패 — 다시 돌리면 통과
 - **부엉이 3D**: 48px 이상 자리(패널 머리 · 빈 화면)만 3D — 첫 사용 때 three.js(약 0.6MB, 대시보드 3D 와 같은 파일) 로드. 렌더러 하나를 나눠 쓰고 30fps · 화면 밖/숨은 탭 정지 · 평균 28ms 넘으면 모두 SVG
 - **AI**: 문서 판독은 `semis-logi-files`(desk-read)가 한다. `semis-logi-ai` 요약 함수는 부르는 화면 없음 — 쓰지 않으면 정리 대상
 
@@ -193,6 +199,7 @@ Claude가 할 일(순서대로):
 
 | 버전 | 날짜 | 내용 |
 |---|---|---|
+| v1.49.0 | 10-10 | **아르고 AI 도우미** — 지원 카드 · 상단바 · `#/argo` → 공통 패널 대화. Edge `semis-logi-argo`(Claude 프록시 · 세션 · 등급별 도구 · 캐시 · 대화 저장 없음) + SQL `argo_usage`(계정별 하루 200회, Mark 결정). 도구 12종(찾기 · 현황 · 자료 목록 · 등록 목록 / hq: 일정 등록 · 수정 · 완료 · 삭제 · 공지 · 이수 기록 · 서가 보관 · 수검 지적) — 브라우저 실행 · 바로 실행 + 결과 카드 + 항목 단위 되돌리기 · 지우기 · 여러 건 확인. 첨부(사진 1600px · PDF 4.5MB · 워드 · 한글 · 엑셀 · PPT 글) · 원본은 반영 때 대상 폴더(hq, Mark 결정). 일정 쓰기는 화면과 같게 hq 이상(Mark 결정). 안내 지식 docs/ARGO-GUIDE.md. axe 0 · 1440/390 넘침 0. 테스트 AR01~AR14 (553 통과) |
 | v1.48.0 | 10-10 | **디자인 '화물 태그'(B안) · 지원 카드 · 공통 패널 · 아르고** — 허브 패널 맨 위 지원 카드(검색 · 메인 데스크 배지 · 아르고, 권한별) · 패널 접힘/태블릿/모바일은 상단바 아이콘 · 공통 패널 모달 `SeMIS.ui.panel`(dialog · Esc · 바깥 누르기 · 포커스 가두기 · 스크롤 잠금 · 열고 닫는 움직임 · 야경 실루엣 · 모바일 전체 화면 · 더보기 시트 · A4 Print) · 통합 검색과 메인 데스크를 패널로(메뉴 · 라우트 화면 제거, `#/desk` 는 대시보드 위 패널, 끌어다 놓으면 보던 화면 그대로) · 검색어 없을 때 허브별 메뉴 · 제목에 검색어가 모두 있으면 위로 · 부엉이 경비대원 아르고(로우폴리 3D + 같은 모양 SVG, 상태 4종) · 탭 · 세그먼트 · 메뉴 선택 · 배지 · 표 머리 · 폼 모달에 태그 문법 · 모바일 요약 띠 키보드 스크롤. axe WCAG 2.1 AA 12 화면 0건. 테스트 UI01~UI06 · DK12 (539 통과) |
 | v1.47.1 | 10-09 | 사진 머리말(허브 배너) 위 글자 버튼(`head-link` — 폴더 관리 · 분야별 담당 등)이 어두운 사진에 묻히던 것 → 밝은 글자(모바일 흰 머리말은 그대로) |
 | v1.47.0 | 10-09 | **메인 데스크** — 홈 허브 첫 메뉴 · 머리말 버튼(hq). 문서 올리기(어느 화면에서나 끌어다 놓기 · 모바일 촬영) → AI 판독(Edge `desk-read`, 워드 · 한글 · 엑셀 · PPT 는 화면이 글 추출) → 반영안 확인 · 수정 → 반영(이수 기록 + 다음 이수 기간 일정 · 일정 · 전파교육 · 수검 지적 · 처리 대장 · 하드카피 집계 · 문서 서가) · 보관만 · 접수 대장. 서버: 권한표 desk 3/3 · 폴더 desk 3/3 · op copy. 테스트 DK01~DK11 (532 통과) |
