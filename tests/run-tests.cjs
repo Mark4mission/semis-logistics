@@ -507,6 +507,13 @@ function makeServer(opts = {}) {
       ok(q(e, "#view").textContent.includes("시스템 설정"));
       eq(qa(e, ".tab").length, 6);   // 메뉴·사용자·담당자·데이터·저장소·보안
     });
+    t("C28a 시스템 정보 — 이름 H:drive · 별칭 ARGOS", () => {
+      q(e, '.tab[data-tab="data"]').click();
+      const rows = qa(e, "#view .tbl tr").map(r => Array.from(r.cells).map(c => c.textContent.trim()).join(" "));
+      ok(rows.some(r => r.startsWith("버전 H:drive v" + e.S.VERSION)), "버전 줄");
+      ok(rows.some(r => r.startsWith("별칭 ARGOS (Air-cargo Risk & Guard Operations System)")), "별칭 줄");
+      eq(e.S.APP_NAME, "H:drive");
+    });
     await ta("C29 로그아웃 → 서버 세션 종료 · 토큰·데이터 사본 제거", async () => {
       const tok = e.w.sessionStorage.getItem("semisl:tok");
       q(e, "#logout-btn").click();   // jsdom reload는 미구현(무해)
@@ -1392,7 +1399,7 @@ function makeServer(opts = {}) {
       ok(head, "print-head 없음");
       eq(q(e, "#view").firstChild, head, "머리말이 화면 맨 위");
       const tx = head.textContent;
-      ok(tx.indexOf("ARGOS") >= 0);
+      ok(tx.indexOf("H:drive") >= 0, "시스템명");
       ok(tx.indexOf("회의록") >= 0, "화면명");
       ok(/출력일시 \d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(tx), "출력일시");
       ok(tx.indexOf("시스템관리자") >= 0, "출력자");
@@ -4942,6 +4949,27 @@ function makeServer(opts = {}) {
       const tags = body.match(/<script\b[^>]*>/g) || [];
       ok(tags.length > 20 && tags.every(t2 => / defer>$/.test(t2)), "본문 스크립트 모두 defer");
       ok(/__semisReady = true/.test(read("js/app.js").slice(read("js/app.js").indexOf("function boot()"))), "boot 에서 준비 표시");
+    });
+    t("LG04 이름 H:drive — 탭 제목 · 머리말 글자 · 별칭은 로그인 태그 한 줄 · 아이콘(SVG · PNG · 홈 화면)", () => {
+      const ix = read("index.html"), ed = read("edu.html");
+      ok(/<title>H:drive — /.test(ix) && /<title>[^<]*— H:drive<\/title>/.test(ed), "탭 제목");
+      eq((ix.match(/<b>H:<\/b>drive/g) || []).length, 4, "로그인 · 모바일 로그인 · 패널 · 상단바");
+      eq((ed.match(/<b>H:<\/b>drive/g) || []).length, 1, "이수 등록 페이지");
+      const al = ix.match(/ARGOS/g) || [];
+      eq(al.length, 1, "별칭은 한 곳"); ok(/class="lb-tag-foot">별칭 ARGOS · /.test(ix));
+      ok(!/ARGOS/.test(ed), "이수 등록 페이지에는 별칭 없음");
+      for (const h of [ix, ed]) {
+        const head = h.slice(0, h.indexOf("</head>"));
+        ok(/<link rel="icon" type="image\/png" sizes="32x32" href="assets\/icon-32\.png">\s*<link rel="icon" type="image\/svg\+xml" href="assets\/mark\.svg">/.test(head), "PNG 다음 SVG(지원 브라우저는 SVG)");
+        ok(/<link rel="apple-touch-icon" href="assets\/apple-touch-icon\.png">/.test(head), "홈 화면 아이콘");
+      }
+      const png = (f) => { const b = fs.readFileSync(path.join(ROOT, f)); ok(b.slice(1, 4).toString() === "PNG", f); return [b.readUInt32BE(16), b.readUInt32BE(20)]; };
+      eq(png("assets/icon-32.png").join("x"), "32x32"); eq(png("assets/apple-touch-icon.png").join("x"), "180x180");
+      const svg = read("assets/mark.svg");
+      ok(/^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg" viewBox="0 0 40 40">/.test(svg) && /<\/svg>\s*$/.test(svg), "SVG 틀");
+      const doc = new (require("jsdom").JSDOM)("").window.DOMParser; const d = new doc().parseFromString(svg, "image/svg+xml");
+      eq(d.getElementsByTagName("parsererror").length, 0, "XML 오류 없음");
+      ok(!/<text\b|<image\b|href="http/.test(svg), "글꼴 · 외부 그림 없이 도형만");
     });
     await ta("LG02 앱 준비 전에 누른 로그인 — 새로고침 없이 붙잡아 두었다가 준비되면 그대로 로그인", async () => {
       const server = makeServer();

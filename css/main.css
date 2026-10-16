@@ -1,4 +1,4 @@
-/* ARGOS 디자인 시스템 "Terminal Calm" + "Cargo Tag"(v1.48) — 페트롤 레일 · 틸 포인트 · 시그널 앰버 · 뉴트럴 바탕.
+/* H:drive(별칭 ARGOS) 디자인 시스템 "Terminal Calm" + "Cargo Tag"(v1.48) — 페트롤 레일 · 틸 포인트 · 시그널 앰버 · 뉴트럴 바탕.
    화물 태그 문법(크림 종이 · 앰버 띠 · 절취선 · 페트롤 잉크)은 지원 카드 · 공통 패널 · 선택 상태 · 배지에만 쓴다.
    구조: 레일(허브) + 허브 패널 + 상단바 + 본문 / 모바일: 앱바 + 하단 탭 + 메뉴 시트 */
 :root {
@@ -72,7 +72,7 @@ kbd { font-family: var(--mono); font-size: .68rem; padding: 1px 6px; border: 1px
   background: var(--sidebar-bg); color: #fff; padding: 52px 60px;
   display: flex; flex-direction: column; justify-content: space-between; gap: 40px;
 }
-.lb-brand { display: flex; align-items: center; gap: 14px; font-size: 1.3rem; font-weight: 700; letter-spacing: .08em; }
+.lb-brand { display: flex; align-items: center; gap: 14px; font-size: 1.3rem; font-weight: 700; letter-spacing: .02em; }
 .lb-brand b { color: #5eead4; font-weight: 700; }
 .lb-body { display: flex; flex-direction: column; gap: 30px; }
 .lb-title { font-size: 2.55rem; font-weight: 700; line-height: 1.25; letter-spacing: -.025em; text-wrap: balance; }
@@ -155,7 +155,7 @@ kbd { font-family: var(--mono); font-size: .68rem; padding: 1px 6px; border: 1px
   border-bottom: 1px solid var(--border);
 }
 .pb-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
-.pb-name { font-size: 1.08rem; font-weight: 700; letter-spacing: .08em; white-space: nowrap; }
+.pb-name { font-size: 1.08rem; font-weight: 700; letter-spacing: .02em; white-space: nowrap; }
 .pb-name b { color: var(--primary); font-weight: 700; }
 .pb-sub { font-size: .74rem; color: var(--text-3); white-space: nowrap; }
 /* 지원 카드 — 검색 · 메인 데스크 · 아르고. 화물 태그(앰버 띠 · 펀치 구멍 · 절취선)로 일반 메뉴와 구분 */
@@ -261,7 +261,7 @@ kbd { font-family: var(--mono); font-size: .68rem; padding: 1px 6px; border: 1px
 @media (hover: hover) and (pointer: fine) { .icon-btn:hover { background: var(--surface-2); color: var(--text); } }
 .brand { display: none; align-items: center; gap: 10px; color: var(--text); }
 .brand img { display: block; }
-.brand-text { font-size: 1.02rem; font-weight: 700; letter-spacing: .08em; white-space: nowrap; }
+.brand-text { font-size: 1.02rem; font-weight: 700; letter-spacing: .02em; white-space: nowrap; }
 .brand-text b { color: var(--primary); font-weight: 700; }
 .crumbs { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: .86rem; color: var(--text-3); }
 .crumbs .ico { color: var(--border-strong); }

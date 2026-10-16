@@ -1,4 +1,4 @@
-/* ARGOS — Supabase Edge Function "semis-logi-files" (v1.15 · v1.39 edu-upload · edu-read · v1.47 desk-read · copy)
+/* H:drive(별칭 ARGOS) — Supabase Edge Function "semis-logi-files" (v1.15 · v1.39 edu-upload · edu-read · v1.47 desk-read · copy)
    비공개 버킷 semis-logi-files 의 유일한 출입구. 브라우저는 버킷에 직접 접근하지 못한다.
    - 인증: 요청 헤더 x-semis-token (로그인 세션) → public.semis_logi_file_auth() 로 확인
    - op "sign"   : 파일 열람용 서명 URL(1시간) — 폴더별 열람 등급 확인

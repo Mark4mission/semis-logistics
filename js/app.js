@@ -3,8 +3,9 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.49.1";
-  const APP_NAME = "ARGOS";
+  const VERSION = "1.50.0";
+  const APP_NAME = "H:drive";
+  const APP_ALIAS = "ARGOS (Air-cargo Risk & Guard Operations System)";
   /* 데이터 캐시는 탭 sessionStorage 에만(탭 닫기·로그아웃 시 소멸). 화면 설정(LS_UI)만 localStorage */
   const LS_DATA = "semisl:data";
   const LS_UI   = "semisl:ui";
@@ -303,12 +304,12 @@ const SeMIS = (() => {
       menus: defaultMenus(),
       notices: [{
         id: "n" + Date.now(),
-        title: "ARGOS 오픈 안내",
-        body: "인천화물팀 안전보안 종합정보 플랫폼 ARGOS가 열렸습니다.\n\n- 좌측 메뉴에서 각 업무 화면으로 이동할 수 있습니다.\n- '예정' 표시가 있는 메뉴는 준비 중인 업무 모듈로, 순차적으로 열립니다.\n- 문의: 인천화물팀 안전보안파트",
+        title: "H:drive 오픈 안내",
+        body: "인천화물팀 안전보안 종합정보 플랫폼 H:drive가 열렸습니다.\n\n- 좌측 메뉴에서 각 업무 화면으로 이동할 수 있습니다.\n- '예정' 표시가 있는 메뉴는 준비 중인 업무 모듈로, 순차적으로 열립니다.\n- 문의: 인천화물팀 안전보안파트",
         author: "시스템관리자", pinned: true, created: new Date().toISOString()
       }],
       levelHistory: [{ id: "lv0", date: new Date().toISOString().slice(0, 10), level: "평시",
-        note: "ARGOS 개설", by: "시스템", at: new Date().toISOString() }],
+        note: "H:drive 개설", by: "시스템", at: new Date().toISOString() }],
       safetyBoard: { since: "", note: "" }, // 무재해 기준일(대시보드 현황판)
       schedules: [],     // 일정관리
       assignees: [],     // 일정 담당자 카테고리 — normalize 가 기본값 시드
@@ -2260,7 +2261,7 @@ const SeMIS = (() => {
     $, $$, esc, fmtDate, dsRing, sortedMenus,
     SEC_LEVELS, secCurrent, secNext, levelSorted,
     ROLE_LABEL, ROLE_RANK, VIS_LABEL,
-    VERSION, APP_NAME, LS_DATA, LS_UI, SS_OWNER
+    VERSION, APP_NAME, APP_ALIAS, LS_DATA, LS_UI, SS_OWNER
   };
 })();
 

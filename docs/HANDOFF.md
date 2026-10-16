@@ -1,24 +1,24 @@
-# ARGOS — 세션 인계서
+# H:drive — 세션 인계서
 
-> ARGOS(Air-cargo Risk & Guard Operations System) = 에어제타 인천화물팀 안전보안 종합정보 플랫폼(구 SeMIS · Logistics, v1.46 에서 이름 변경 — 저장소 · 주소 · DB 이름은 그대로).
+> H:drive(별칭 ARGOS — Air-cargo Risk & Guard Operations System) = 에어제타 인천화물팀 안전보안 종합정보 플랫폼. 이름 내력 SeMIS · Logistics → ARGOS(v1.46) → H:drive(v1.50, 안전보안파트장 제안). 저장소 · 주소 · DB 이름과 아르고 도구 이름(`argos_*`)은 그대로.
 > 새 세션은 이 문서부터 읽는다. 작업이 끝날 때마다 §1 · §4 · §7 · §8 을 갱신하고, 끝난 일의 자세한 경위는 `docs/HISTORY.md` 로 옮긴다.
 
 ## 1. 현황
 
 | 항목 | 값 |
 |---|---|
-| 현재 버전 | **v1.49.1** (2026-10-10) — 공개 저장소 점검(실명 · 계정 ID 제거, 변경 알림에 계정 ID 미포함, 쓰지 않던 요약 함수 정리). 기능 기준 v1.49.0 = **아르고 AI 도우미**(지원 카드 · 공통 패널 · 도구 12종 · 바로 실행 + 결과 카드 + 되돌리기 · 첨부 · 하루 200회). 앞 버전 v1.48 = 디자인 '화물 태그' · 지원 카드 · 공통 패널 · 부엉이 |
+| 현재 버전 | **v1.50.0** (2026-10-16) — 이름 **H:drive**(별칭 ARGOS) · 아이콘 3D 폴더(Mark 선택 A안). 기능 기준 v1.49 = **아르고 AI 도우미**(지원 카드 · 공통 패널 · 도구 12종 · 바로 실행 + 결과 카드 + 되돌리기 · 첨부 · 하루 200회) · v1.49.1 공개 저장소 점검. 앞 버전 v1.48 = 디자인 '화물 태그' · 지원 카드 · 공통 패널 · 부엉이 |
 | 접속 주소 | https://mark4mission.github.io/semis-logistics/ |
 | 저장소 | GitHub `Mark4mission/semis-logistics` (공개) · Mac `~/SeMIS_Logistics` |
-| 테스트 | `npm test` 553건 전부 통과(v1.49.1) · Edge `deno test --allow-net --allow-env tools/edge/semis-logi-argo.test.ts` 6건 · SQL PGlite `tools/sql/semis-logi-argo.test.mjs` 19건 |
-| 백엔드 | Supabase `mzyuzrxkdcpzxojenwat` — 테이블 `semis_logi_store`(세션 RLS), **비공개** 버킷 `semis-logi-files`, 비공개 스키마 `semis_logi_private`(계정 · 세션 · 로그인 시도 · 접속 기록 · 권한표), RPC `semis_logi_*`, Edge Function `semis-logi-files`(서명 URL · 이수증 판독 · 데스크 판독 · 사본, v11) · `semis-logi-favicon` · `semis-logi-adsb`(운항, pg_cron 2분) · **`semis-logi-argo`(아르고, v2)** |
+| 테스트 | `npm test` 555건 전부 통과(v1.50.0) · Edge `deno test --allow-net --allow-env tools/edge/semis-logi-argo.test.ts` 6건(deno 없으면 `npm i deno@2` 를 스크래치에) · SQL PGlite `node tools/sql/semis-logi-argo.test.mjs tools/sql/semis-logi-argo.sql` 19건(`npm i --no-save @electric-sql/pglite` 후, 끝나면 `npm prune`) |
+| 백엔드 | Supabase `mzyuzrxkdcpzxojenwat` — 테이블 `semis_logi_store`(세션 RLS), **비공개** 버킷 `semis-logi-files`, 비공개 스키마 `semis_logi_private`(계정 · 세션 · 로그인 시도 · 접속 기록 · 권한표), RPC `semis_logi_*`, Edge Function `semis-logi-files`(서명 URL · 이수증 판독 · 데스크 판독 · 사본, v11) · `semis-logi-favicon` · `semis-logi-adsb`(운항, pg_cron 2분) · **`semis-logi-argo`(아르고, v3)** |
 
 ## 2. 새 세션 시작
 
 Mark가 새 세션 첫 메시지로 붙여넣는 문구:
 
 ```
-ARGOS(구 SeMIS · Logistics) 작업을 이어서 한다.
+H:drive(구 ARGOS · SeMIS · Logistics) 작업을 이어서 한다.
 GitHub Mark4mission/semis-logistics 의 docs/HANDOFF.md 를 먼저 읽고 현황을 파악한 뒤,
 이번에는 [모듈명 / 작업 내용] 을 진행해줘.
 ```
@@ -176,6 +176,7 @@ Claude가 할 일(순서대로):
 22. **아르고 도구(v1.49)**: 새 모듈 자료를 아르고가 읽게 하려면 `js/argo.js` `COLS`(목록 · 요약) 한 줄 + Edge `COLLECTIONS` 한 줄(이름 · 등급 — 테스트 AR13 이 두 곳을 대조). 쓰기 도구는 `W` 에 { label, keys(되돌릴 컬렉션), prep(검사 · 업로드), run(바꾸기 → lines · go · result · log) } + Edge `toolList` 정의(min 3). 쓰기 권한은 그 화면의 편집 권한과 같게. 안내 지식 · 메뉴 표는 docs/ARGO-GUIDE.md(공개 저장소 — 이름 · 연락처 · SSI 금지)
 20. **공통 패널(v1.48)** — 검색 · 메인 데스크 · 아르고처럼 '어디서나 여는 큰 화면'은 `SeMIS.ui.panel({ id, title, sub, mascot(부엉이 상태) | icon, tabs[{ id, label, badge }], tab, onTab, render(body, h), actions, onActs, print, focus, onClose, cls })`. 폼 입력은 지금처럼 `openModal`(작은 모달). 패널이 열려 있으면 `openModal` · `toast` · 말풍선 · 액션 시트가 패널 안에 붙는다(밖은 inert). 지원 카드 기능은 `SeMIS.registerSupport(id, { ok, badge, open })`, 옛 주소 처리는 `SeMIS.registerPanelRoute(id, fn)`, 원격 변경 때 다시 그리기는 `SeMIS.onRerender(fn)`. 패널 본문의 표 정돈은 `SeMIS.tidyTables(body)`. Esc 는 안쪽 모달 → 패널 순으로 하나씩
 21. **화물 태그 문법(v1.48, Mark 선택 B안)** — 크림 종이(`--tag` · `--tag-2`) · 앰버 띠 · 절취선(`--tag-perf`) · 페트롤 잉크(`--tag-ink`)는 지원 카드 · 패널 · 선택 상태(탭 · 세그먼트 · 메뉴) · 배지 · 표 머리에만. 카드 · 업무 본문은 흰 바탕 그대로. 종이 위 보조 글자도 `--text-2`/`--text-3`. 부엉이는 그림이라 이모지 금지 규칙과 무관하되 메뉴 · 버튼 이름에는 넣지 않는다
+23. **이름 · 아이콘(v1.50)**: 화면 · 인쇄 · 탭 제목의 시스템명은 `SeMIS.APP_NAME`("H:drive"), 글자 표기는 `<b>H:</b>drive`(강조색은 H: 만, 자간 .02em). 별칭 `SeMIS.APP_ALIAS`(ARGOS)는 로그인 태그 아랫줄 · 시스템 설정 › 데이터 관리 › 시스템 정보 · 아르고 안내 지식에만(Mark 결정, 테스트 LG04 · C28a). 아이콘 원본 `assets/mark.svg`(40×40 · 도형만 · 둥근 타일) — 바꾸면 `icon-32.png`(투명 모서리) · `apple-touch-icon.png`(모서리 없는 정사각 180, iOS 가 둥글림)를 다시 만든다(헤드리스 크롬으로 SVG 렌더). `<head>` 순서는 PNG 32 → SVG → apple-touch-icon(index.html · edu.html 둘 다)
 
 ## 7. 미결 · 주의 (열린 일만 — 끝나면 HISTORY.md 로)
 
@@ -199,6 +200,7 @@ Claude가 할 일(순서대로):
 
 | 버전 | 날짜 | 내용 |
 |---|---|---|
+| v1.50.0 | 10-16 | **이름 H:drive**(안전보안파트장 제안, 별칭 ARGOS) — 탭 제목 · 로그인 · 메뉴 패널 · 상단바 · 인쇄 머리말(APP_NAME) · 회의록 인쇄 · 이수 등록 페이지 · 일정 내보내기 PRODID · 아르고 소개 문구 · 추천 질문 · 안내 지식(ARGO-GUIDE, Edge `semis-logi-argo` v3 재배포 — 시스템 프롬프트 'H:drive(별칭 ARGOS)'). 별칭은 로그인 태그 아랫줄 · 시스템 정보 '별칭' 줄 · 안내 지식에만. 아이콘 3D 폴더(A안 — 페트롤 타일 · 틸 뒷판 · 서류 · 앰버 앞판, 그림자 · 두께) + PNG 32 · 홈 화면 180 · `apple-mobile-web-app-title`. 아르고(부엉이) 이름 · 운영 공지 'SeMIS · Logistics 오픈 안내'는 그대로(Mark 결정). 테스트 LG04 · C28a (555 pass) |
 | v1.49.1 | 10-10 | **공개 저장소 점검** — 기본 담당자 시드 실명 삭제(빈 목록) · 시험 · 안내 문구의 실명을 가상 이름으로 · HISTORY 의 실명 · 계정 ID · 인원별 자격 특이사항 · 암호 관련 남은 조치를 비공개 문서로 · README/DESIGN 계정 ID 표 삭제. 변경 알림(Broadcast, 공개 채널) `by` = 클라이언트 ID 만(`notify_change`, 마이그레이션 `semis_logi_security_26_notify_client_only`). 쓰지 않던 Edge `semis-logi-ai` 원본 삭제 · 서버는 410 안내. 시험 TR12 · ED04 고정 대기 → 조건 대기(553 pass) |
 | v1.49.0 | 10-10 | **아르고 AI 도우미** — 지원 카드 · 상단바 · `#/argo` → 공통 패널 대화. Edge `semis-logi-argo`(Claude 프록시 · 세션 · 등급별 도구 · 캐시 · 대화 저장 없음) + SQL `argo_usage`(계정별 하루 200회, Mark 결정). 도구 12종(찾기 · 현황 · 자료 목록 · 등록 목록 / hq: 일정 등록 · 수정 · 완료 · 삭제 · 공지 · 이수 기록 · 서가 보관 · 수검 지적) — 브라우저 실행 · 바로 실행 + 결과 카드 + 항목 단위 되돌리기 · 지우기 · 여러 건 확인. 첨부(사진 1600px · PDF 4.5MB · 워드 · 한글 · 엑셀 · PPT 글) · 원본은 반영 때 대상 폴더(hq, Mark 결정). 일정 쓰기는 화면과 같게 hq 이상(Mark 결정). 안내 지식 docs/ARGO-GUIDE.md. axe 0 · 1440/390 넘침 0. 테스트 AR01~AR14 (553 통과). 운영 확인 시나리오 11개(user · hq 임시 계정, 시험 자료 삭제 · 계정 비활성) |
 | v1.48.0 | 10-10 | **디자인 '화물 태그'(B안) · 지원 카드 · 공통 패널 · 아르고** — 허브 패널 맨 위 지원 카드(검색 · 메인 데스크 배지 · 아르고, 권한별) · 패널 접힘/태블릿/모바일은 상단바 아이콘 · 공통 패널 모달 `SeMIS.ui.panel`(dialog · Esc · 바깥 누르기 · 포커스 가두기 · 스크롤 잠금 · 열고 닫는 움직임 · 야경 실루엣 · 모바일 전체 화면 · 더보기 시트 · A4 Print) · 통합 검색과 메인 데스크를 패널로(메뉴 · 라우트 화면 제거, `#/desk` 는 대시보드 위 패널, 끌어다 놓으면 보던 화면 그대로) · 검색어 없을 때 허브별 메뉴 · 제목에 검색어가 모두 있으면 위로 · 부엉이 경비대원 아르고(로우폴리 3D + 같은 모양 SVG, 상태 4종) · 탭 · 세그먼트 · 메뉴 선택 · 배지 · 표 머리 · 폼 모달에 태그 문법 · 모바일 요약 띠 키보드 스크롤. axe WCAG 2.1 AA 12 화면 0건. 테스트 UI01~UI06 · DK12 (539 통과) |

@@ -1389,7 +1389,7 @@
       <th style="width:74px">담당</th><th style="width:80px">기한</th></tr></thead><tbody>${decRows}</tbody></table></div>
   ${nextTxt ? `<div class="sec"><div class="sec-h">차기 회의</div><div class="ptext">${esc(nextTxt)}</div></div>` : ""}
   <div class="foot">
-    <span>ARGOS (인천화물팀 안전보안파트) · 회의록</span>
+    <span>H:drive (인천화물팀 안전보안파트) · 회의록</span>
     <span>출력 ${esc(today)}${SeMIS.user ? " · " + esc(SeMIS.user.name) : ""}</span>
   </div>
 </body></html>`, "회의록");
@@ -1441,7 +1441,7 @@
       <div>③ 명단에서 <b>본인 이름</b>을 찾아 [서명하기]를 누릅니다.</div>
       <div>④ 명단에 없으면 <b>[직접 입력 후 서명]</b>으로 등록하고 서명합니다.</div>
     </div>
-    <div class="foot">ARGOS — 이 종이는 회의 종료 후 폐기하세요.</div>
+    <div class="foot">H:drive — 이 종이는 회의 종료 후 폐기하세요.</div>
   </div>
 </body></html>`, "QR 안내문");
   }

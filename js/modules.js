@@ -1443,6 +1443,7 @@
         <div class="card-title">${SeMIS.icon("info", 17)}<span>시스템 정보</span></div>
         <table class="tbl">
           <tr><td style="width:140px;color:var(--text-2)">버전</td><td>${esc(SeMIS.APP_NAME)} v${esc(SeMIS.VERSION)}</td></tr>
+          <tr><td style="color:var(--text-2)">별칭</td><td>${esc(SeMIS.APP_ALIAS)}</td></tr>
           <tr><td style="color:var(--text-2)">저장 방식</td><td>Supabase 공용 DB(semis_logi_store) · 권한별 서버 접근 제어(RLS) · 파일은 비공개 저장소(서명 URL)</td></tr>
           <tr><td style="color:var(--text-2)">동기화</td><td><span id="sysinfo-sync">-</span> <button class="btn btn-ghost btn-sm" id="btn-sync-now" style="margin-left:8px">지금 동기화</button></td></tr>
           <tr><td style="color:var(--text-2)">인증 방식</td><td>서버 확인(bcrypt) · 로그인 세션(탭 단위) · 로그인 시도 제한</td></tr>

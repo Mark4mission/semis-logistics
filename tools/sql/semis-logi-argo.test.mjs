@@ -1,4 +1,4 @@
-// ARGOS — 아르고 사용량 SQL 로컬 검증 (PGlite, 세션 함수 ctx() 는 시험 표로 흉내)
+// H:drive — 아르고 사용량 SQL 로컬 검증 (PGlite, 세션 함수 ctx() 는 시험 표로 흉내)
 // 실행: mkdir -p /tmp/pgl && cd /tmp/pgl && npm i @electric-sql/pglite && cp <저장소>/tools/sql/semis-logi-argo.test.mjs . && node semis-logi-argo.test.mjs <저장소>/tools/sql/semis-logi-argo.sql
 import { PGlite } from "@electric-sql/pglite";
 import fs from "fs";

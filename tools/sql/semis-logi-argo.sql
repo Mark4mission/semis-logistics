@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════
-   ARGOS — 아르고(AI 도우미) 계정별 하루 사용량
+   H:drive(별칭 ARGOS) — 아르고(AI 도우미) 계정별 하루 사용량
    - 대화 내용은 저장하지 않는다. 오늘(KST) 호출 수 · 토큰 수만 센다.
    - semis_logi_argo_begin(): 세션(x-semis-token) 확인과 호출 수 +1 을 한 번에. 내부 계정(user~admin)만 — 협력업체 · 서명 세션 제외.
      한도(settings k='argo' { calls, tokIn })를 넘으면 거절. Edge Function semis-logi-argo 가 Claude 를 부르기 전에 부른다.

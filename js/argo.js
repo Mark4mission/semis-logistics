@@ -1,4 +1,4 @@
-/* 아르고 — ARGOS AI 도우미(공통 패널). Edge Function semis-logi-argo 가 Claude 를 부르고, 도구는 이 화면이 실행한다
+/* 아르고 — H:drive AI 도우미(공통 패널). Edge Function semis-logi-argo 가 Claude 를 부르고, 도구는 이 화면이 실행한다
    (이미 권한대로 받은 자료 · 각 모듈 API · SeMIS.save → 동기화 · 409 병합 그대로). 쓰기는 안전보안파트(hq) 이상, 바로 실행 + 결과 카드 + 되돌리기.
    지우기 · 여러 건만 한 번 확인. 대화는 이 탭 sessionStorage(계정별 20개 질문) — 서버에는 남지 않는다.
    되돌리기는 실행 전후를 항목 단위로 비교한 역연산(추가 → 삭제, 고침 → 이전 값) — 그 사이 다른 사람이 고친 항목은 그대로 둔다. */
@@ -739,7 +739,7 @@
     const r = rank();
     const l = r >= 2 ? ["이번 주 일정 알려줘", "만료 임박 교육 있어?", "열린 지적사항 정리해줘"] : ["보안교육 화면은 어디 있어?", "지금 보안등급은?"];
     if (r >= 3) l.push("다음 주 화요일 14시 보안회의 일정 등록해줘");
-    return l.concat(["SSOP 가 뭐야?", "ARGOS 사용법 알려줘"]).slice(0, 5);
+    return l.concat(["SSOP 가 뭐야?", "H:drive 사용법 알려줘"]).slice(0, 5);
   }
   function emptyHTML() {
     return `<div class="ag-empty"><span class="ag-hero" aria-hidden="true"></span><p class="ag-hello">무엇을 도와드릴까요?</p>
@@ -987,7 +987,7 @@
     if (!canUse() || !window.SemisPanel) return null;
     if (!root) root = build();
     const h = SemisPanel.open({
-      id: PID, title: TITLE, sub: "ARGOS 도우미", mascot: busy ? "thinking" : mood || "idle", cls: "pnl-argo", body: root, focus: SeMIS.isMobile && SeMIS.isMobile() ? "" : "#ag-in",
+      id: PID, title: TITLE, sub: "H:drive 도우미", mascot: busy ? "thinking" : mood || "idle", cls: "pnl-argo", body: root, focus: SeMIS.isMobile && SeMIS.isMobile() ? "" : "#ag-in",
       actions: '<button type="button" class="btn btn-ghost btn-sm" data-ag-new>' + icon("refresh", 16) + "<span>새 대화</span></button>",
       onActs: (box) => { const b = box.querySelector("[data-ag-new]"); if (b) b.onclick = newConv; },
       print: () => "아르고 대화 기록"
@@ -1003,7 +1003,7 @@
   SeMIS.registerPanelRoute(MOD, () => open());
   if (window.SemisSearch) SemisSearch.register({
     id: MOD, group: TITLE, ico: "info",
-    items: () => (canUse() ? [{ title: TITLE, sub: "ARGOS 도우미 — 사용법 · 자료 찾기 · 등록", text: [TITLE, "도우미", "AI", "질문"], route: "", pick: () => open() }] : [])
+    items: () => (canUse() ? [{ title: TITLE, sub: "H:drive 도우미 — 사용법 · 자료 찾기 · 등록", text: [TITLE, "도우미", "AI", "질문"], route: "", pick: () => open() }] : [])
   });
 
   window.SemisArgo = { open, close, isOpen, send, runTool, undo, diff, invert, md, slim, capJSON, records, status, find, catalog, userContent, history, prepFile, addFiles,
