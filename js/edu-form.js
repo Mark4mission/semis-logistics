@@ -207,12 +207,13 @@
     if (n >= MAX_FILES) return "";
     return `<button type="button" class="ed-pick" id="ed-pick">${svg(IC.up, 20)}<span class="ed-pick-t">${n ? "이수증 추가 첨부" : "이수증 첨부"}</span><small>PDF · 사진${n ? "" : " · 여러 장 가능"}</small></button>`;
   }
-  /* 과정 고르기 — 법정 · 위험물 · 국제 · 사내 묶음 */
+  /* 과정 고르기 — 법정 · 위험물 · 방사선 · 국제 · 사내 묶음 */
   function courseOptions(cur) {
     const all = TR().courses().filter(c => !c.vendor);
-    const grp = (c) => (/^(dgr|dg)/.test(String(c.fam || "")) || /위험물|DGR/.test(String(c.name || "")) ? "dg" : c.legal === "intl" ? "intl" : c.legal === "own" ? "own" : "law");
+    const grp = (c) => (/^(dgr|dg)/.test(String(c.fam || "")) || /위험물|DGR/.test(String(c.name || "")) ? "dg"
+      : /^(rad|rmon)$/.test(String(c.fam || "")) || /방사선/.test(String(c.name || "")) ? "rad" : c.legal === "intl" ? "intl" : c.legal === "own" ? "own" : "law");
     const opt = (c) => `<option value="${esc(c.id)}"${c.id === cur ? " selected" : ""}>${esc(c.name)}</option>`;
-    return `<option value="">과정 선택</option>` + [["law", "항공보안법 · 교육훈련지침"], ["dg", "위험물"], ["intl", "국제 기준"], ["own", "사내 · 기타"]].map(([k, lb]) => {
+    return `<option value="">과정 선택</option>` + [["law", "항공보안법 · 교육훈련지침"], ["dg", "위험물"], ["rad", "방사선"], ["intl", "국제 기준"], ["own", "사내 · 기타"]].map(([k, lb]) => {
       const xs = all.filter(c => grp(c) === k);
       return xs.length ? `<optgroup label="${esc(lb)}">${xs.map(opt).join("")}</optgroup>` : "";
     }).join("");

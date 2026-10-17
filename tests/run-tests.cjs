@@ -6036,7 +6036,7 @@ function makeServer(opts = {}) {
       data().people = data().people.filter(p => ["c1", "c2", "c3"].indexOf(p.id) < 0);
     });
     t("TR22 인천화물팀 기준(v1.38): 판 2 → 3 이전(책임자 · 교관 직무 뺌 · 새 과정 · 협력사 대상 · 사람 · 기록 그대로) · 감독자 요건 과정 = 검색요원 초기 기록 인정", () => {
-      eq(TR.CAT_VER, 5);
+      eq(TR.CAT_VER, 6);
       const D = (id) => JSON.parse(JSON.stringify(TR.DEF_COURSES.find(c => c.id === id)));
       const v131 = (id, o) => Object.assign(D(id), o);
       const prod = { catVer: 2,
@@ -6063,7 +6063,7 @@ function makeServer(opts = {}) {
       eq(ids.indexOf("c-rad-i"), ids.indexOf("c-dg-r") + 1); eq(ids.indexOf("c-rad-r"), ids.indexOf("c-rad-i") + 1);
       eq(prod.courses.filter(c => c.fam === "dgr" && c.kind === "초기").length, 1, "위험물 초기 하나");
       eq(JSON.stringify(prod.people) + JSON.stringify(prod.records), ppl + recs, "사람 직무 · 기록은 그대로");
-      eq(prod.catVer, 5);
+      eq(prod.catVer, 6);
       const snap = JSON.stringify(prod);
       eq(TR.migrate(prod), false, "멱등"); eq(JSON.stringify(prod), snap);
       /* 감독자 요건(c-scr-p): 검색요원 초기(c-scn-i) 기록을 인정 */
@@ -6093,14 +6093,14 @@ function makeServer(opts = {}) {
         records: [{ id: "x1", pid: "k1", cid: "u-dgi", date: "2025-03-02", expire: "2027-03-01", src: "semis-v2" }], sessions: [] };
       eq(TR.migrate(prod), true);
       const by = (id) => prod.courses.find(c => c.id === id);
-      eq(prod.courses.map(c => c.name).join("|"), "항공사보안감독자 초기|항공사보안감독자 정기|DGR 초기|DGR 정기|ICAO 항공보안 관리자 (ASTP)|보안검색감독자 초기");
+      eq(prod.courses.map(c => c.name).join("|"), "항공사보안감독자 초기|항공사보안감독자 정기|DGR 초기|DGR 정기|방사선감시기 운영 교육|ICAO 항공보안 관리자 (ASTP)|보안검색감독자 초기", "판 6 새 과정(방사선감시기)만 제자리에 더함");
       eq(by("c-sup-i").hours, "16시간↑ (팀 기준)", "고친 과정 내용 그대로(판 3 이후는 코드 정의로 덮지 않음)");
       eq(by("u-dgi").roles.join() + "|" + by("c-icao-m").basis, "DGR|ICAO ASTP — 항공사보안감독자 초기교육 인정 근거(지침 제17조②)");
-      eq(prod.courses.length, 6, "기본 과정을 덧붙이지 않음");
+      eq(prod.courses.length, 7, "판 4 · 5 는 기본 과정을 덧붙이지 않음 — 판 6 새 과정 하나만");
       eq(prod.people[0].roles.join(","), "항공사보안감독자,DGR,SSI");
       eq(JSON.stringify(prod.people[0].apt) + JSON.stringify(prod.people[1].apt), '{"DGR":"2025-03-02"}{"SSI":"2025-01-01"}', "임명일 키 — 새 이름이 있으면 그것");
       eq(prod.records[0].expire, "2027-03-01", "v2 기록 유효기한 그대로");
-      eq(prod.catVer, 5);
+      eq(prod.catVer, 6);
       const snap = JSON.stringify(prod);
       eq(TR.migrate(prod), false, "멱등"); eq(JSON.stringify(prod), snap);
       eq(TR.aptOf({ apt: { "위험물 취급자": "2025-03-02" } }, "DGR"), "2025-03-02", "옛 키 임명일도 읽음");
@@ -6149,13 +6149,13 @@ function makeServer(opts = {}) {
       const ppl = JSON.stringify(prod.people), recs = JSON.stringify(prod.records), ses = JSON.stringify(prod.sessions);
       eq(TR.migrate(prod), true);
       const by = (id) => prod.courses.find(c => c.id === id);
-      eq(prod.courses.map(c => c.id).join(","), "c-sup-i,c-scr-i,c-scr-p,c-scn-i,c-aware,c-bomb,u-x,v-aware", "안 쓰는 뺀 과정만 지움 · 순서 그대로");
+      eq(prod.courses.map(c => c.id).join(","), "c-sup-i,c-scr-i,c-scr-p,c-scn-i,c-rmon,c-aware,c-bomb,u-x,v-aware", "안 쓰는 뺀 과정만 지움 · 순서 그대로 (판 6 새 과정은 앞 기본 과정 뒤)");
       eq(by("c-aware").roles.join() + "|" + by("c-bomb").roles.join(), "|", "남긴 과정은 뺀 직무만 지움(그 밖의 과정)");
       eq(by("u-x").roles.join(), "화물보안 업무요원", "사용자 과정 대상에서도 뺀 직무만 지움");
       eq([by("c-scr-p").name, by("c-scr-p").hours, by("c-scr-p").basis].join("|"), [D("c-scr-p").name, D("c-scr-p").hours, D("c-scr-p").basis].join("|"), "감독자 요건 과정 이름 · 시간 · 근거");
       ok(by("v-aware").vendor && /보안 유관부서/.test(by("v-aware").name), "협력사 확인 과정 그대로");
       eq(JSON.stringify(prod.people) + JSON.stringify(prod.records) + JSON.stringify(prod.sessions), ppl + recs + ses, "사람 · 기록 · 교육 기록 그대로");
-      eq(prod.catVer, 5);
+      eq(prod.catVer, 6);
       const snap = JSON.stringify(prod);
       eq(TR.migrate(prod), false, "멱등"); eq(JSON.stringify(prod), snap);
       const fixed = { catVer: 4, courses: [Object.assign(D("c-scr-p"), { name: "검색요원 초기(팀 이름)", hours: oldP.hours })], people: [], records: [], sessions: [] };
@@ -6181,6 +6181,78 @@ function makeServer(opts = {}) {
       ok(!/보안 유관부서|전화 접수/.test(txt) && /보안검색요원 초기 \(감독자 요건\)/.test(txt), "기준표 인천화물팀: 뺀 직무 없음 · 감독자 요건 과정");
       eq(e.errors.length, 0, e.errors.join("|"));
       TR.setState({ tab: "people", pid: "" });
+      Object.assign(data(), JSON.parse(keep));
+    });
+    t("TR26 방사선감시기 운영 담당자(v1.51): 법정 직무 · 연 1회 과정 · 판 5 → 6 이전(새 과정만 제자리 · 고친 내용 · 사람 · 기록 그대로 · 멱등) · 상태 · 기준표 · 개인 화면", () => {
+      const keep = JSON.stringify(data());
+      const D = (id) => JSON.parse(JSON.stringify(TR.DEF_COURSES.find(c => c.id === id)));
+      const R = "방사선감시기 운영 담당자";
+      const d = TR.ROLE_DEF.find(x => x.id === R);
+      ok(d && d.grp === "law" && /생활주변방사선 안전관리법 제19조③ · 제26조의2/.test(d.basis) && /시행령 제13조 · 제14조의3/.test(d.basis) && d.who && d.duty, "직무 기준 · 근거");
+      ok(/원자력안전위원회/.test(d.qual) && /연 1회/.test(d.qual) && /300만원/.test(d.qual), "자격 조건: 원안위 교육 · 연 1회 관리 · 과태료");
+      eq(TR.ROLES.indexOf(R), TR.ROLES.indexOf("방사선안전관리자") + 1, "방사선안전관리자 다음");
+      eq(TR.rgOf(R).id, "etc", "직무군 기타(방사선)");
+      const c = D("c-rmon");
+      eq([c.fam, c.kind, c.cycle, c.rule, c.legal, c.roles.join()].join("|"), "rmon|정기|12||law|" + R, "단일 과정 · 12개월 · 주기만 · 법정");
+      ok(/제26조의2/.test(c.basis) && /제14조의3/.test(c.basis) && /원자력안전위원회/.test(c.org) && c.hours, "근거 · 교육기관 · 시간");
+      eq(TR.DEF_COURSES.findIndex(x => x.id === "c-rmon"), TR.DEF_COURSES.findIndex(x => x.id === "c-rad-r") + 1, "기본 순서 = 방사선안전관리자 정기 뒤");
+      eq(TR.cycleText(c), "1년");
+      /* 판 5 → 6 */
+      const prod = { catVer: 5,
+        courses: [D("c-sup-i"), D("c-dg-r"), Object.assign(D("c-rad-i"), { hours: "3시간 (팀 기준)" }), D("c-rad-r"), D("c-acmr-i"),
+          { id: "u-wb", fam: "w/b", name: "Weight & Balance 초기", kind: "초기", cycle: 12, legal: "own", roles: [] }, D("v-aware")],
+        people: [{ id: "k1", name: "갑", roles: ["방사선안전관리자"] }],
+        records: [{ id: "x1", pid: "k1", cid: "c-rad-r", date: "2026-04-06", expire: "" }],
+        sessions: [{ id: "s1", type: "own", cid: "c-sup-i", title: "감독자 교육", date: "2026-03-01", pids: [] }] };
+      const rest = JSON.stringify([prod.people, prod.records, prod.sessions]);
+      const before = prod.courses.map(x => JSON.stringify(x));
+      eq(TR.migrate(prod), true);
+      eq(prod.courses.map(x => x.id).join(","), "c-sup-i,c-dg-r,c-rad-i,c-rad-r,c-rmon,c-acmr-i,u-wb,v-aware", "방사선안전관리자 정기 뒤에 끼움");
+      eq(JSON.stringify(prod.courses.filter(x => x.id !== "c-rmon")), "[" + before.join(",") + "]", "다른 과정 그대로(고친 시간 포함)");
+      eq(JSON.stringify(prod.courses.find(x => x.id === "c-rmon")), JSON.stringify(c), "새 과정 = 코드 정의");
+      eq(JSON.stringify([prod.people, prod.records, prod.sessions]), rest, "사람 · 기록 · 교육 기록 그대로");
+      eq(prod.catVer, 6);
+      const snap = JSON.stringify(prod);
+      eq(TR.migrate(prod), false, "멱등"); eq(JSON.stringify(prod), snap);
+      const own = { catVer: 5, courses: [D("c-rad-r"), { id: "u-rm", fam: "rmon", name: "감시기 교육(팀)", kind: "정기", cycle: 12, legal: "law", roles: [R] }], people: [], records: [], sessions: [] };
+      TR.migrate(own);
+      eq(own.courses.map(x => x.id).join(","), "c-rad-r,u-rm", "같은 묶음 · 구분 과정이 이미 있으면 덧붙이지 않음");
+      const empty = { catVer: 5, courses: [], people: [], records: [], sessions: [] };
+      TR.migrate(empty);
+      eq(empty.courses.length + "|" + empty.catVer, "0|6", "빈 목록은 코드 기본 과정을 그대로 씀");
+      /* 상태: 미이수 → 유효(1년) → 임박(60일) → 만료 */
+      Object.assign(data(), { courses: TR.DEF_COURSES.map(x => JSON.parse(JSON.stringify(x))),
+        people: [{ id: "m1", name: "감시가", dept: "인천화물팀", roles: [R] }], records: [], sessions: [] });
+      const g = TR.fams(false).find(x => x.fam === "rmon");
+      ok(g && g.legal === "law" && g.roles.join() === R, "묶음");
+      const P = () => data().people[0];
+      TR.setToday("2026-10-17");
+      eq(TR.famStatus(P(), g).st, "none", "기록 없으면 미이수");
+      ok(TR.personQuals(P()).req.some(x => x.g.fam === "rmon" && x.st === "none"), "필수 묶음");
+      data().records.push({ id: "m1a", pid: "m1", cid: "c-rmon", date: "2026-03-02" });
+      const s1 = TR.famStatus(P(), g);
+      eq(s1.st + "|" + s1.exp, "ok|2027-03-01", "수료일 + 12개월 − 1일");
+      TR.setToday("2027-01-15"); eq(TR.famStatus(P(), g).st, "soon", "60일 안 임박");
+      TR.setToday("2027-03-02"); eq(TR.famStatus(P(), g).st, "exp", "지나면 만료(지침 제13조 이수 기간 · 정지 규칙 없음)");
+      data().records.push({ id: "m1b", pid: "m1", cid: "c-rmon", date: "2027-03-20" });
+      eq(TR.famStatus(P(), g).exp, "2028-03-19", "다시 이수하면 그날부터 1년");
+      /* 화면: 기준표 · 개인 화면 */
+      TR.setToday("2026-10-17");
+      data().records = [];
+      loginAs(e, "hq"); TR.setState({ tab: "catalog", q: "", pid: "" }); go(e, "training");
+      const rd = qa(e, ".tr-rd").find(x => x.querySelector("summary .tr-rn b").textContent === R);
+      ok(rd && rd.classList.contains("rg-etc") && rd.closest(".tr-team"), "기준표 인천화물팀 · 기타");
+      ok(/법정/.test(rd.querySelector("summary").textContent) && /1년/.test(rd.querySelector(".tr-rc").textContent), "법정 · 1년");
+      ok(/제26조의2/.test(rd.textContent) && /방사선감시기 운영 교육/.test(rd.querySelector(".tr-cat, .tr-catm").textContent) && /원자력안전위원회/.test(rd.textContent), "근거 · 과정 · 교육기관");
+      TR.setState({ q: "생활주변방사선" }); go(e, "training");
+      ok(qa(e, ".tr-rd").some(x => x.open && x.querySelector("summary .tr-rn b").textContent === R), "검색: 법 이름으로 찾음");
+      TR.setState({ tab: "people", q: "" }); go(e, "training");
+      TR.openPerson("m1");
+      const qd = q(e, '.tr-qual[data-tqual="rmon"]');
+      ok(qd && qd.getAttribute("data-st") === "none" && /방사선감시기 운영 교육/.test(qd.textContent), "개인 화면: 미이수 카드");
+      eq(e.errors.length, 0, e.errors.join("|"));
+      TR.setState({ tab: "people", pid: "" });
+      TR.setToday("");
       Object.assign(data(), JSON.parse(keep));
     });
     e.w.close();
@@ -8295,6 +8367,10 @@ function makeServer(opts = {}) {
       ok(/자동 판독에 실패했습니다/.test(scanEl.textContent) && $e(x, '[data-reread="' + scan.k + '"]'), "다시 읽기(일시 오류)");
       const opts = $e(x, "#ed-cid-" + scan.k).innerHTML;
       ok(/<optgroup label="항공보안법 · 교육훈련지침">[\s\S]*c-sup-r[\s\S]*<\/optgroup><optgroup label="위험물">[\s\S]*c-dg-r/.test(opts), "과정 목록 = 법정 · 위험물 · 국제 · 사내 묶음");
+      const radG = (opts.match(/<optgroup label="방사선">([\s\S]*?)<\/optgroup>/) || [])[1] || "";
+      const lawG = (opts.match(/<optgroup label="항공보안법 · 교육훈련지침">([\s\S]*?)<\/optgroup>/) || [])[1] || "";
+      ok(/c-rad-i/.test(radG) && /c-rad-r/.test(radG) && /c-rmon/.test(radG) && !/c-rad|c-rmon/.test(lawG), "방사선 묶음 = 방사선안전관리자 · 방사선감시기 (항공보안법 묶음에서 뺌)");
+      ok(opts.indexOf('label="위험물"') < opts.indexOf('label="방사선"') && opts.indexOf('label="방사선"') < opts.indexOf('label="국제 기준"'), "위험물 다음 · 국제 기준 앞");
       $e(x, '[data-reread="' + scan.k + '"]').click();
       await until(() => x.srv.reads.length >= 3 && scan.reads === 2); await tick(20);
       eq(x.srv.reads.length, 3, "다시 읽기");

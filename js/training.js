@@ -23,7 +23,7 @@
   const KR_WIN = 30, KR_SUSP = 6;                       // 지침 제13조: 전후 30일 · 정지 후 6개월
   const DG_WIN = 3;                                     // 기술기준 제12조②: 만료 3개월 안
   const KEEP_YEARS = 3, KEEP_LEFT_DAYS = 90;            // 지침 제32조: 기록 3년 · 퇴직 후 90일
-  const CAT_VER = 5;
+  const CAT_VER = 6;
   const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const p2 = (n) => String(n).padStart(2, "0");
   const toISO = (d) => d.getFullYear() + "-" + p2(d.getMonth() + 1) + "-" + p2(d.getDate());
@@ -57,6 +57,7 @@
   /* ── 직무 기준표 ── */
   const GROUPS = [["law", "항공보안법 · 교육훈련지침"], ["dg", "위험물 (항공안전법)"], ["intl", "국제 기준 · 항공사 보안프로그램"], ["own", "사내 · 기타"]];
   /* '사내 절차' = 「항공보안교육훈련절차」, '화물 절차' = 「화물서비스 교육훈련절차」 — 절 번호만 적는다 */
+  const RMON_ROLE = "방사선감시기 운영 담당자";
   const ROLE_DEF = [
     { id: "항공사보안감독자", grp: "law", basis: "교육훈련지침 제2조8호 · 제17조 · 사내 절차 1.3.2 · 3.1", who: "인천화물팀장(국내 지점장) · 팀 보안감독자 — 보안책임자 추천으로 지정",
       qual: "지정 전 또는 지정 후 6개월 안 초기교육(16시간↑ · 평가 80점↑) 이수, 이후 연 1회 정기교육(8시간↑). ICAO · IATA · TSA 보안관리자 과정 이수는 초기교육으로 인정 (지침 제17조②)",
@@ -81,6 +82,10 @@
       duty: "위험물 접수 · 취급 · 보관 · 탑재 (기술기준 표 1-1)" },
     { id: "방사선안전관리자", grp: "law", basis: "원자력안전법 · 사내 절차 1.3.10 · 3.6", who: "방사선작업종사자 · 방사선관리구역 출입 직원 (X-ray 검색장비)",
       qual: "외부 전문교육기관 초기교육(3시간↑) 수료 · 증명서 취득, 이후 연 1회 정기교육(3시간↑)", duty: "방사선발생장치(X-ray) 안전관리" },
+    { id: RMON_ROLE, grp: "law", basis: "생활주변방사선 안전관리법 제19조③ · 제26조의2 · 제31조④3 · 시행령 제13조 · 제14조의3",
+      who: "공항 감시기 운영을 위탁받은 항공운송사업자(감시기 운영자)가 지정한 감시기 운영 담당자",
+      qual: "원자력안전위원회가 실시하는 감시기 운영 · 유의물질 조치 교육 이수 — 법정 주기는 없고 교육이 매년 열려 연 1회로 관리. 운영자가 교육을 받게 하지 않으면 300만원 이하 과태료",
+      duty: "수출입 화물 방사선준위 · 방사성핵종 확인, 유의물질 분류 · 격리 · 임시보관, 감시기 일상점검" },
     { id: "ACMR", grp: "intl", basis: "TSA 보안프로그램 (미주행, 비공개) · ICNKF SSOP", who: "미주행 화물기 운항 때 회사가 지정",
       qual: "초기 · 연 1회 정기교육 — 시간 · 합격 기준 · 이수 기간은 SSOP 교육 조항(비공개)", duty: "미주행 화물기 보안조치 관리" },
     { id: "ACC3 보안통제 직원", grp: "intl", basis: "EU 시행규정 2015/1998 6.8 · 11.2.3.9 · 11.4.3", who: "EU행 화물 보안통제 직원",
@@ -146,6 +151,8 @@
     C("c-dg-r", "dgr", "DGR 정기", "정기", 24, { rule: "dg", hours: DG_HRS_R, basis: DG_BASIS, org: DG_ORG, roles: ["DGR"] }),
     C("c-rad-i", "rad", "방사선안전관리자 초기", "초기", 12, { hours: "3시간↑ · 수료증", basis: RAD_BASIS + ".1", org: "외부 전문교육기관", roles: ["방사선안전관리자"] }),
     C("c-rad-r", "rad", "방사선안전관리자 정기", "정기", 12, { hours: "연 1회 3시간↑", basis: RAD_BASIS + ".2", org: "외부 전문교육기관", roles: ["방사선안전관리자"] }),
+    C("c-rmon", "rmon", "방사선감시기 운영 교육", "정기", 12, { hours: "법정 시간 없음 · 집합 · 현장 · 실습", basis: "생활주변방사선 안전관리법 제26조의2 · 시행령 제14조의3",
+      org: "원자력안전위원회 (전문기관 위탁)", roles: [RMON_ROLE] }),
     C("c-acmr-i", "acmr", "ACMR 초기", "초기", 12, { legal: "intl", hours: "SSOP 교육 조항", basis: ACMR_BASIS, org: "사내 · TSA 인정 과정", roles: ["ACMR"] }),
     C("c-acmr-r", "acmr", "ACMR 정기", "정기", 12, { legal: "intl", hours: "연 1회 · SSOP 교육 조항", basis: ACMR_BASIS, org: "사내 · TSA 인정 과정", roles: ["ACMR"] }),
     C("c-acc3", "acc3", "ACC3 화물 보안통제 교육", "정기", 60, { legal: "intl", hours: "직무 전 · 5년 이내 재교육", basis: "EU 시행규정 2015/1998 11.2.3.9 · 11.4.3", org: "사내 · 위탁", roles: ["ACC3 보안통제 직원"] }),
@@ -539,7 +546,8 @@
      catVer < 3: 코드 기본 과정 id 는 코드 정의로 바꾸고, 직접 넣은 과정 중 위험물(DGR)은 24개월 · dg 규칙, 교관은 1회(영구)로.
        같은 묶음 · 구분이 없는 기본 과정은 덧붙인다. src semis-v2 기록의 고정 유효기한(13개월 근사)은 지워 규칙으로 다시 셈한다.
      공통: 과정 이름 · 근거 표기 정리(NAME_V4), 옛 직무 이름(과정 · 사람 · 임명일 키)은 정식 명칭으로.
-     catVer < 5: RETIRED_COURSES 정리, 과정 대상 직무에서 RETIRED_ROLES 삭제(사람의 직무는 그대로 — '기타' 사내 직무로 보임), c-scr-p 표기 갱신. */
+     catVer < 5: RETIRED_COURSES 정리, 과정 대상 직무에서 RETIRED_ROLES 삭제(사람의 직무는 그대로 — '기타' 사내 직무로 보임), c-scr-p 표기 갱신.
+     catVer < 6: ADDED_V6(방사선감시기 운영 교육)을 제자리에 덧붙인다. */
   const RETIRED_ROLES = ["항공사보안책임자", "항공보안교관", "보안 유관부서 관리자", "보안 유관부서 일반요원", "전화 접수자 · 안내요원"];
   /* 기본 과정에서 뺀 과정 — 기록 · 교육 기록이 가리키지 않을 때만 지운다(가리키면 '그 밖의 과정'으로 남김) */
   const RETIRED_COURSES = ["c-mgr-i", "c-mgr-r", "c-gen-i", "c-aware", "c-bomb"];
@@ -547,6 +555,19 @@
   const NAME_V4 = [[/항공사보안책임자\s*·\s*감독자/g, "항공사보안감독자"], [/(^|[^가-힣])책임자\s*·\s*감독자/g, "$1항공사보안감독자"],
     [/^\s*(IATA\s*)?(DGR\s*)?위험물\s*교육(?=\s|$)/, "DGR"]];
   const nameV4 = (s) => NAME_V4.reduce((a, [re, to]) => a.replace(re, to), String(s == null ? "" : s));
+  /* 판 6에 더한 기본 과정 */
+  const ADDED_V6 = ["c-rmon"];
+  /* 없는 기본 과정(only = 이 id 들만)은 코드 순서상 바로 앞 기본 과정(또는 같은 묶음 · 구분 과정) 뒤에 끼운다 — 이수 현황표 칸 순서 */
+  function addDefaults(out, only) {
+    const same = (c, d) => !!c && (c.id === d.id || (c.fam === d.fam && c.kind === d.kind && !!c.vendor === !!d.vendor));
+    DEF_COURSES.forEach((d, i) => {
+      if (only && only.indexOf(d.id) < 0) return;
+      if (out.some(c => same(c, d))) return;
+      let at = -1;
+      for (let k = i - 1; k >= 0 && at < 0; k--) for (let j = out.length - 1; j >= 0; j--) if (same(out[j], DEF_COURSES[k])) { at = j; break; }
+      out.splice(at < 0 ? out.length : at + 1, 0, JSON.parse(JSON.stringify(d)));
+    });
+  }
   function migrate(t) {
     if (!t || typeof t !== "object" || Array.isArray(t)) return false;
     const from = Number(t.catVer) || 0;
@@ -569,16 +590,11 @@
         } else if (!x.legal) x.legal = "own";
         out.push(x);
       });
-      /* 없는 기본 과정은 코드 순서상 바로 앞 기본 과정(또는 같은 묶음 · 구분 과정) 뒤에 끼운다 — 이수 현황표 칸 순서 */
-      const same = (c, d) => c.id === d.id || (c.fam === d.fam && c.kind === d.kind && !!c.vendor === !!d.vendor);
-      DEF_COURSES.forEach((d, i) => {
-        if (out.some(c => same(c, d))) return;
-        let at = -1;
-        for (let k = i - 1; k >= 0 && at < 0; k--) for (let j = out.length - 1; j >= 0; j--) if (same(out[j], DEF_COURSES[k])) { at = j; break; }
-        out.splice(at < 0 ? out.length : at + 1, 0, JSON.parse(JSON.stringify(d)));
-      });
+      addDefaults(out, null);
       t.courses = out;
     }
+    /* 판 6: 새 기본 과정만 덧붙인다(과정 목록이 비면 코드 기본 과정을 그대로 쓰므로 건너뜀) */
+    if (from >= 3 && from < 6 && Array.isArray(t.courses) && t.courses.some(c => c && c.id)) addDefaults(t.courses, ADDED_V6);
     (Array.isArray(t.courses) ? t.courses : []).forEach(c => {
       if (!c || !c.id) return;
       if (typeof c.name === "string") c.name = nameV4(c.name);

@@ -7,10 +7,10 @@
 
 | 항목 | 값 |
 |---|---|
-| 현재 버전 | **v1.50.0** (2026-10-16) — 이름 **H:drive**(별칭 ARGOS) · 아이콘 3D 폴더(Mark 선택 A안). 기능 기준 v1.49 = **아르고 AI 도우미**(지원 카드 · 공통 패널 · 도구 12종 · 바로 실행 + 결과 카드 + 되돌리기 · 첨부 · 하루 200회) · v1.49.1 공개 저장소 점검. 앞 버전 v1.48 = 디자인 '화물 태그' · 지원 카드 · 공통 패널 · 부엉이 |
+| 현재 버전 | **v1.51.0** (2026-10-17) — 보안교육 직무 **방사선감시기 운영 담당자** · 과정 **방사선감시기 운영 교육**(법정 · 연 1회, 생활주변방사선 안전관리법 제26조의2). 앞 버전 v1.50.0 = 이름 **H:drive**(별칭 ARGOS) · 아이콘 3D 폴더(Mark 선택 A안). 기능 기준 v1.49 = **아르고 AI 도우미**(지원 카드 · 공통 패널 · 도구 12종 · 바로 실행 + 결과 카드 + 되돌리기 · 첨부 · 하루 200회) · v1.49.1 공개 저장소 점검. 앞 버전 v1.48 = 디자인 '화물 태그' · 지원 카드 · 공통 패널 · 부엉이 |
 | 접속 주소 | https://mark4mission.github.io/semis-logistics/ |
 | 저장소 | GitHub `Mark4mission/semis-logistics` (공개) · Mac `~/SeMIS_Logistics` |
-| 테스트 | `npm test` 555건 전부 통과(v1.50.0) · Edge `deno test --allow-net --allow-env tools/edge/semis-logi-argo.test.ts` 6건(deno 없으면 `npm i deno@2` 를 스크래치에) · SQL PGlite `node tools/sql/semis-logi-argo.test.mjs tools/sql/semis-logi-argo.sql` 19건(`npm i --no-save @electric-sql/pglite` 후, 끝나면 `npm prune`) |
+| 테스트 | `npm test` 556건 전부 통과(v1.51.0) · Edge `deno test --allow-net --allow-env tools/edge/semis-logi-argo.test.ts` 6건(deno 없으면 `npm i deno@2` 를 스크래치에) · SQL PGlite `node tools/sql/semis-logi-argo.test.mjs tools/sql/semis-logi-argo.sql` 19건(`npm i --no-save @electric-sql/pglite` 후, 끝나면 `npm prune`) |
 | 백엔드 | Supabase `mzyuzrxkdcpzxojenwat` — 테이블 `semis_logi_store`(세션 RLS), **비공개** 버킷 `semis-logi-files`, 비공개 스키마 `semis_logi_private`(계정 · 세션 · 로그인 시도 · 접속 기록 · 권한표), RPC `semis_logi_*`, Edge Function `semis-logi-files`(서명 URL · 이수증 판독 · 데스크 판독 · 사본, v11) · `semis-logi-favicon` · `semis-logi-adsb`(운항, pg_cron 2분) · **`semis-logi-argo`(아르고, v3)** |
 
 ## 2. 새 세션 시작
@@ -183,6 +183,7 @@ Claude가 할 일(순서대로):
 - **메뉴 2판 저장**: 시스템관리자가 v1.46 으로 한 번 접속하면 운영 menus 에 저장된다. 배포 직후 열려 있던 옛 탭은 새로고침할 것(옛 화면은 탭 묶음을 모른다)
 - **순찰일지 숨김**: 운영 설정에서 숨김 상태 — '점검 · 순찰' 탭 묶음에 보안 기록부만 보인다. 쓰기 시작하면 설정 › 메뉴에서 표시
 - **보안교육**: DGR 5명 기록은 KF 교육 이력(2026.09.30) 기준 — 이수증 받으면 각 기록에 파일 첨부 · 이수 등록 페이지 팀 공지 / 제출 확인 · 쓰이지 않은 시험 업로드(edutestcode*) 정리 · 방사선안전관리자 소관 확인
+- **방사선감시기 운영 담당자(v1.51)**: 운영 인원에 직무를 지정해야 현황 · 만료 알림에 잡힌다(지정 전 0명). 실제 운영 담당자가 협력사(보안검색 용역) 직원이면 협력사 과정(업체별 확인)으로 옮길 것. 법정 주기가 없어 연 1회(12개월 · 규칙 '주기만')로 관리 — Mark 결정
 - **SSOP Rev.01**(2026.10.13 시행): 수검 체크리스트 의견의 '확인 필요'(배포 · 개정 교육 기록 등)와 Rev.01 에도 없는 조항(NTAS 경보 · ACISP 8.5.5 · Quarterly Self-Audit 등) — HISTORY §B
 - **원문 확인 필요 목록**: SERP 9건 · 위협전화 10건 · 업무 연락처 9건 — 각 화면(hq)에 표시
 - **CSS**: `@media (max-width: …)` 에 `screen` 이 없는 34곳 — A4 인쇄 폭(≈718px)에 걸릴 수 있어 인쇄 확인 후 정리
@@ -200,6 +201,7 @@ Claude가 할 일(순서대로):
 
 | 버전 | 날짜 | 내용 |
 |---|---|---|
+| v1.51.0 | 10-17 | **방사선감시기 교육(법정)** — 직무 · 과정 기준표에 직무 `방사선감시기 운영 담당자`(기타 직무군 · 법정, 근거 생활주변방사선 안전관리법 제19조③ · 제26조의2 · 제31조④3(과태료 300만원 이하) · 시행령 제13조 · 제14조의3) + 과정 `c-rmon` 방사선감시기 운영 교육(단일 · 정기 12개월 · 규칙 '주기만' · 원자력안전위원회(전문기관 위탁)) — Mark 결정(새 직무 · 단일 과정 연 1회). catVer 6 이전 = `ADDED_V6` 만 제자리(방사선안전관리자 정기 뒤)에 덧붙임(`addDefaults`). 이수 등록 페이지 과정 고르기에 '방사선' 묶음(방사선안전관리자 · 감시기). 운영 DB 과정 32 → 33 · catVer 6(SQL, updated_by `training-catalog-v151`). 테스트 TR26 · TR22/23/25 · ED 갱신 (556 pass) |
 | v1.50.0 | 10-16 | **이름 H:drive**(안전보안파트장 제안, 별칭 ARGOS) — 탭 제목 · 로그인 · 메뉴 패널 · 상단바 · 인쇄 머리말(APP_NAME) · 회의록 인쇄 · 이수 등록 페이지 · 일정 내보내기 PRODID · 아르고 소개 문구 · 추천 질문 · 안내 지식(ARGO-GUIDE, Edge `semis-logi-argo` v3 재배포 — 시스템 프롬프트 'H:drive(별칭 ARGOS)'). 별칭은 로그인 태그 아랫줄 · 시스템 정보 '별칭' 줄 · 안내 지식에만. 아이콘 3D 폴더(A안 — 페트롤 타일 · 틸 뒷판 · 서류 · 앰버 앞판, 그림자 · 두께) + PNG 32 · 홈 화면 180 · `apple-mobile-web-app-title`. 아르고(부엉이) 이름 · 운영 공지 'SeMIS · Logistics 오픈 안내'는 그대로(Mark 결정). 테스트 LG04 · C28a (555 pass) |
 | v1.49.1 | 10-10 | **공개 저장소 점검** — 기본 담당자 시드 실명 삭제(빈 목록) · 시험 · 안내 문구의 실명을 가상 이름으로 · HISTORY 의 실명 · 계정 ID · 인원별 자격 특이사항 · 암호 관련 남은 조치를 비공개 문서로 · README/DESIGN 계정 ID 표 삭제. 변경 알림(Broadcast, 공개 채널) `by` = 클라이언트 ID 만(`notify_change`, 마이그레이션 `semis_logi_security_26_notify_client_only`). 쓰지 않던 Edge `semis-logi-ai` 원본 삭제 · 서버는 410 안내. 시험 TR12 · ED04 고정 대기 → 조건 대기(553 pass) |
 | v1.49.0 | 10-10 | **아르고 AI 도우미** — 지원 카드 · 상단바 · `#/argo` → 공통 패널 대화. Edge `semis-logi-argo`(Claude 프록시 · 세션 · 등급별 도구 · 캐시 · 대화 저장 없음) + SQL `argo_usage`(계정별 하루 200회, Mark 결정). 도구 12종(찾기 · 현황 · 자료 목록 · 등록 목록 / hq: 일정 등록 · 수정 · 완료 · 삭제 · 공지 · 이수 기록 · 서가 보관 · 수검 지적) — 브라우저 실행 · 바로 실행 + 결과 카드 + 항목 단위 되돌리기 · 지우기 · 여러 건 확인. 첨부(사진 1600px · PDF 4.5MB · 워드 · 한글 · 엑셀 · PPT 글) · 원본은 반영 때 대상 폴더(hq, Mark 결정). 일정 쓰기는 화면과 같게 hq 이상(Mark 결정). 안내 지식 docs/ARGO-GUIDE.md. axe 0 · 1440/390 넘침 0. 테스트 AR01~AR14 (553 통과). 운영 확인 시나리오 11개(user · hq 임시 계정, 시험 자료 삭제 · 계정 비활성) |
