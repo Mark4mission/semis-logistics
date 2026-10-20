@@ -144,6 +144,17 @@
   }
   const sc = (v) => (Number.isInteger(v) && v >= 0 && v <= 4 ? v : null);
   const linksOf = (c) => (c && Array.isArray(c.links) ? c.links : (c && c.mid && MID_LINKS[c.mid]) || []).filter(r => typeof r === "string" && r);
+  /* 자료 요청 목록(chkSrc.kind "req") — 기관이 보낸 자료제출 요구서의 번호 그대로 항목을 만든다.
+     항목의 rel[] = 같은 내용을 다루는 점검관용 CHK-LIST 번호(근거 요지 · 연결 화면 증빙 판단), dids[] = 고른 증빙 문서(문서 서가 id) */
+  const isReq = (a) => !!(a && a.chkSrc && a.chkSrc.kind === "req");
+  const relMode = (c) => !!c && Array.isArray(c.rel);
+  const relOf = (c) => (relMode(c) ? c.rel.map(x => norm(x)).filter(Boolean) : []);
+  const MID_RE = /^\d+(\.\d+)*$/;
+  /* 연결 화면에 넘길 항목 번호 — 자료 요청 항목은 그 화면이 증빙하는 CHK-LIST 번호(없으면 빈 값: 화면 단위 판단) */
+  function evMid(c, r) {
+    if (!relMode(c)) return c && c.mid;
+    return relOf(c).find(m => (MID_LINKS[m] || []).some(x => x === r || baseOf(x) === baseOf(r))) || "";
+  }
   /* 연결 화면의 증빙 판단 — 화면이 window.SemisEvidence[route](mid) 를 내놓으면 실제 기록으로({ ok, text }),
      없으면 화면이 열려 있는 것만으로 증빙으로 본다 */
   function routeEv(r, mid) {
@@ -154,8 +165,21 @@
     }
     return { ok: live, text: "", live };
   }
-  /* 증빙 문서(SemisDocs) — 문서 서가에서 이 항목 번호를 단 문서(판 묶음마다 최신 판) */
-  const docsOf = (c) => (c && c.mid && typeof window !== "undefined" && window.SemisDocs ? SemisDocs.forMid(c.mid) : []);
+  /* 증빙 문서 — 항목에 고른 문서(dids)가 있으면 그 순서대로, 없으면 문서 서가에서 이 항목 번호를 단 문서(판 묶음마다 최신 판) */
+  function docsOf(c) {
+    if (!c) return [];
+    if (Array.isArray(c.dids)) {
+      const all = Array.isArray(D().docs) ? D().docs : [];
+      const seen = {};
+      return c.dids.map(id => all.find(d => d && d.id === id)).filter(d => d && !seen[d.id] && (seen[d.id] = true) && (d.files || []).length);
+    }
+    return c.mid && typeof window !== "undefined" && window.SemisDocs ? SemisDocs.forMid(c.mid) : [];
+  }
+  function relChips(c) {
+    const rel = relOf(c);
+    return rel.length ? `<div class="ck-sop ck-rel"><span class="ck-sop-k">CHK-LIST</span>${rel.map(m => `<span class="ck-sopc">${esc(m)}</span>`)
+      .join('<span class="ck-sop-sep" aria-hidden="true">·</span>')}</div>` : "";
+  }
   /* SSOP 조항 — 항목마다 시행 중인 SSOP 의 해당 조항 · 별첨(c.sop: "4.2.16 · 별첨 25"), 수검마다 기준 문서(a.sopDoc = 문서 서가 id).
      그 문서에 pages{ 조항: PDF 쪽 }이 있으면 조항 칩이 그 쪽을 연다(#page=N). 조항 번호만 두고 본문은 문서에서 본다(민감보안정보) */
   const sopTokens = (s) => String(s || "").split(/\s*[·,;\n]\s*/).map(norm).filter(Boolean);
@@ -190,7 +214,7 @@
         : `<span class="ck-sopc">${esc(t)}</span>`;
     }).join('<span class="ck-sop-sep" aria-hidden="true">·</span>')}</div>`;
   }
-  const hasEvidence = (c) => filesOf(c).length > 0 || docsOf(c).length > 0 || linksOf(c).some(r => routeEv(r, c && c.mid).ok);
+  const hasEvidence = (c) => filesOf(c).length > 0 || docsOf(c).length > 0 || linksOf(c).some(r => routeEv(r, evMid(c, r)).ok);
   /* 항목 상태 — N/A · 미평가(문서·시행 중 하나라도 비었음) · 보완 필요(3점 미만) · 증빙 없음 · 준비됨 */
   function itemState(c) {
     if (!c) return "todo";
@@ -280,6 +304,13 @@
   const avgTxt = (v) => (v == null ? "-" : v.toFixed(1));
   /* 체크리스트를 영역별로 — 원본 항목은 번호 순, 직접 추가한 항목은 마지막 '추가 항목' */
   function groupsOf(a) {
+    if (isReq(a)) {                                     // 자료 요청 목록 — 요구서 번호 순 한 묶음
+      const items = checksOf(a).filter(c => c && c.mid).sort((x, y) => cmpMid(x.mid, y.mid));
+      const extra = checksOf(a).filter(c => c && !c.mid);
+      const out = items.length ? [{ no: "", key: "req", title: norm(a.chkSrc.list) || "자료 요청 목록", items }] : [];
+      if (extra.length) out.push({ no: "", title: "추가 항목", items: extra });
+      return out;
+    }
     const secs = Array.isArray(a.chkSecs) ? a.chkSecs : [];
     const byNo = {}, order = [], extra = [];
     checksOf(a).forEach(c => {
@@ -591,7 +622,7 @@
   }
   const refLines = (r) => String(r || "").split("\n").map(norm).filter(Boolean);
   const refChips = (r) => refLines(r).map(x => `<span class="au-ref">${esc(x)}</span>`).join("");
-  const secKey = (g) => g.no || "etc";
+  const secKey = (g) => g.key || g.no || "etc";
   const secName = (g) => (g.no ? g.no + ". " : "") + (g.title || (g.no ? "영역 " + g.no : "추가 항목"));
   function scoreHTML(c, kind, canW) {
     const key = kind === "doc" ? "docScore" : "impScore", lb = kind === "doc" ? "문서" : "시행";
@@ -602,7 +633,7 @@
       <option value="">-</option>${SCORES.map((s, i) => `<option value="${i}" ${v === i ? "selected" : ""}>${i} ${esc(s)}</option>`).join("")}</select></label>`;
   }
   function linkChips(c) {
-    return linksOf(c).map(r => { const ev = routeEv(r, c.mid);
+    return linksOf(c).map(r => { const ev = routeEv(r, evMid(c, r));
       return ev.live
         ? `<button type="button" class="ck-link${ev.ok ? "" : " is-warn"}" data-ck-go="${esc(r)}">${icon("forward", 13)}<span>${esc(routeLabel(r))}</span>${ev.text ? `<small>${esc(ev.text)}</small>` : ""}</button>`
         : `<span class="ck-link is-plan"><span>${esc(routeLabel(r))}</span><small>준비 중</small></span>`; }).join("");
@@ -613,11 +644,12 @@
     if (!ds.length) return "";
     const one = (d) => { const f = (d.files || [])[0]; return `<a class="nb-file ck-doc" href="${esc(f.url)}" target="_blank" rel="noopener" data-name="${esc(f.name || "")}" title="${esc([d.title, d.date].filter(Boolean).join(" · "))}">${icon("doc", 13)}<span>${esc(d.title)}</span>${d.date ? `<small class="mono">${esc(String(d.date).slice(2).replace(/-/g, "."))}</small>` : ""}</a>`; };
     const more = ds.length - DOC_SHOW;
-    return ds.slice(0, DOC_SHOW).map(one).join("") + (more > 0 ? `<button type="button" class="link-btn ck-docmore" data-ck-docs="${esc(c.mid)}">문서 외 ${more}건</button>` : "");
+    return ds.slice(0, DOC_SHOW).map(one).join("") + (more > 0 ? `<button type="button" class="link-btn ck-docmore" data-ck-docs="${esc(c.id)}">문서 외 ${more}건</button>` : "");
   }
-  function docsModal(mid) {
-    const ds = window.SemisDocs ? SemisDocs.forMid(mid) : [];
-    openModal(`<h3>증빙 문서 <small class="au-mh mono">${esc(mid)}</small></h3><ul class="dk-list">${ds.map(d => { const f = (d.files || [])[0];
+  function docsModal(c) {
+    if (!c) return;
+    const ds = docsOf(c);
+    openModal(`<h3>증빙 문서 <small class="au-mh mono">${esc(c.mid || "")}</small></h3><ul class="dk-list">${ds.map(d => { const f = (d.files || [])[0];
       return `<li class="dk-row"><span class="dk-ext mono">${esc(((f && f.name) || "").split(".").pop().toUpperCase().slice(0, 4))}</span><div class="dk-main"><div class="dk-t"><a class="nb-file" href="${esc(f.url)}" target="_blank" rel="noopener" data-name="${esc(f.name || "")}">${esc(d.title)}</a></div><div class="dk-meta">${esc([String(d.date || "").slice(2).replace(/-/g, "."), d.org, routeLabel(d.mod)].filter(Boolean).join(" · "))}</div></div></li>`; }).join("")}</ul>
       <div class="modal-actions"><button type="button" class="btn btn-primary" data-act="cancel">닫기</button></div>`, { wide: true });
     $("#modal-box [data-act=cancel]").onclick = closeModal;
@@ -625,17 +657,18 @@
   function ckRow(c, canW, canB, a) {
     const st = CST[itemState(c)];
     const ev = filesOf(c).length || linksOf(c).length || docsOf(c).length;
+    const bmid = relMode(c) ? relOf(c).join(",") : c.mid;
     return `<li class="ck-row" data-st="${itemState(c)}" data-cid="${esc(c.id)}">
       <div class="ck-no mono">${esc(c.mid || "·")}</div>
       <div class="ck-main">
         <div class="ck-head"><div class="ck-t">${c.mid ? `<span class="ck-no-m mono">${esc(c.mid)}</span>` : ""}${esc(c.text || "")}</div><span class="ck-state">${ui.chip(st.label, st.tone)}</span></div>
         ${c.ref && !c.mid ? `<div class="ck-refs">${refChips(c.ref)}</div>` : ""}
-        ${sopChips(a, c)}
+        ${sopChips(a, c)}${relChips(c)}
         <div class="ck-ctl">
           ${scoreHTML(c, "doc", canW)}${scoreHTML(c, "imp", canW)}
           ${canW ? `<button type="button" class="ck-na" data-na="${esc(c.id)}" aria-pressed="${!!c.na}">N/A</button>` : ""}
           <span class="spacer"></span>
-          ${canB && c.mid ? `<button type="button" class="btn btn-ghost btn-sm ck-basis" data-basis="${esc(c.mid)}">${icon("book", 15)}<span>근거 요지</span></button>` : ""}
+          ${canB && bmid ? `<button type="button" class="btn btn-ghost btn-sm ck-basis" data-basis="${esc(bmid)}">${icon("book", 15)}<span>근거 요지</span></button>` : ""}
           ${canW ? `<button type="button" class="mt-btn" data-ck-edit="${esc(c.id)}" aria-label="항목 수정">${icon("notes", 15)}</button>` : ""}
         </div>
         ${c.owner || c.note ? `<div class="ck-meta">${[c.owner ? "담당 " + esc(c.owner) : "", c.note ? `<span class="ck-note">${esc(c.note)}</span>` : ""].filter(Boolean).join('<span class="au-sep">·</span>')}</div>` : ""}
@@ -660,19 +693,19 @@
     const sub = (s) => `문서 ${s.dSum}/${s.dN * 4} · 시행 ${s.iSum}/${s.iN * 4} · 평균 ${avgTxt(s.dAvg)} / ${avgTxt(s.iAvg)} · 준비 ${s.ready}/${s.ap}`;
     const remark = (c) => [c.note ? esc(c.note) : "", filesOf(c).length ? "첨부 " + filesOf(c).length : "",
       docsOf(c).length ? "증빙: " + docsOf(c).slice(0, 4).map(d => esc(d.title)).join(", ") + (docsOf(c).length > 4 ? " 외 " + (docsOf(c).length - 4) : "") : "",
-      linksOf(c).filter(routeLive).map(r => { const ev = routeEv(r, c.mid); return esc(routeLabel(r) + (ev.text ? " — " + ev.text : "")); }).join(", ")]
+      linksOf(c).filter(routeLive).map(r => { const ev = routeEv(r, evMid(c, r)); return esc(routeLabel(r) + (ev.text ? " — " + ev.text : "")); }).join(", ")]
       .filter(Boolean).join("<br>");
     return `<div class="print-only au-print">
       <div class="au-pcap"><b>${esc(src.title || "점검 체크리스트")}${src.asOf ? " (" + esc(src.asOf) + ")" : ""}</b>
         ${sd ? `<span>SSOP 조항 기준: ${esc(sopName(sd))}${sd.date ? " (" + esc(dot(sd.date)) + ")" : ""}</span>` : ""}
         <span>평가점수: ${SCORES.map((s, i) => esc(s) + " " + i).join(" · ")}</span></div>
       <table class="au-ptbl">
-        <colgroup><col style="width:39%"><col style="width:25%"><col style="width:6%"><col style="width:6%"><col style="width:5%"><col style="width:19%"></colgroup>
-        <thead><tr><th>CHK-LIST 항목</th><th>관련근거</th><th>문서</th><th>시행</th><th>N/A</th><th>비고</th></tr></thead>
+        <colgroup>${(isReq(a) ? [28, 18, 6, 6, 5, 37] : [39, 25, 6, 6, 5, 19]).map(w => `<col style="width:${w}%">`).join("")}</colgroup>
+        <thead><tr><th>${isReq(a) ? "요청 자료" : "CHK-LIST 항목"}</th><th>관련근거</th><th>문서</th><th>시행</th><th>N/A</th><th>비고</th></tr></thead>
         <tbody>${groups.map(g => {
           const s = tally(g.items);
           return `<tr class="au-psec"><td colspan="6"><b>${esc(secName(g))}</b><span>${sub(s)}</span></td></tr>` + g.items.map(c =>
-            `<tr><td class="au-pt">${c.mid ? `<b class="mono">${esc(c.mid)}</b> ` : ""}${esc(c.text || "")}</td><td class="au-pr">${refLines(c.ref).map(esc).join("<br>")}${sopTokens(c.sop).length ? `<div class="au-psop"><b>${esc(sopName(sd))}</b> ${esc(sopJoin(c.sop))}</div>` : ""}</td>
+            `<tr><td class="au-pt">${c.mid ? `<b class="mono">${esc(c.mid)}</b> ` : ""}${esc(c.text || "")}</td><td class="au-pr">${refLines(c.ref).map(esc).join("<br>")}${sopTokens(c.sop).length ? `<div class="au-psop"><b>${esc(sopName(sd))}</b> ${esc(sopJoin(c.sop))}</div>` : ""}${relOf(c).length ? `<div class="au-psop"><b>CHK-LIST</b> ${esc(relOf(c).join(" · "))}</div>` : ""}</td>
               <td class="c mono">${scTxt(c, "docScore")}</td><td class="c mono">${scTxt(c, "impScore")}</td><td class="c">${c.na ? "✓" : ""}</td><td class="au-pn">${remark(c)}</td></tr>`).join("");
         }).join("")}
         <tr class="au-ptot"><td colspan="6"><b>합계</b><span>${sub(t)} · 준비율 ${pr.pct}%</span></td></tr></tbody>
@@ -699,7 +732,7 @@
         <div class="au-sh"><h3>점검 체크리스트</h3><span class="au-cnt mono">${pr.done}/${pr.total}</span>${pr.total ? bar(pr.pct) : ""}
           <span class="spacer"></span>
           ${canW && canB && all.length ? `<button type="button" class="link-btn m-ed" id="au-sop">SSOP 기준</button>` : ""}
-          ${canW && canB ? `<button type="button" class="btn btn-ghost btn-sm" id="au-load">${icon("clipboard", 15)}<span>체크리스트 불러오기</span></button>` : ""}
+          ${canW && canB && !isReq(a) ? `<button type="button" class="btn btn-ghost btn-sm" id="au-load">${icon("clipboard", 15)}<span>체크리스트 불러오기</span></button>` : ""}
           ${canW ? `<button type="button" class="btn btn-ghost btn-sm" id="au-ck-add">${icon("plus", 15)}<span>항목 추가</span></button>` : ""}
         </div>
         ${src}
@@ -832,15 +865,19 @@
       : l.indexOf("※") === 0 ? `<p class="bs-note">${esc(l)}</p>`
       : /^[①-⑳]/.test(l) ? `<p class="bs-li">${esc(l)}</p>` : `<p>${esc(l)}</p>`).join("");
   }
+  /* mid 는 하나 또는 쉼표로 이은 여러 번호(자료 요청 항목의 CHK-LIST 연계) */
   function basisView(mid) {
+    const mids = String(mid || "").split(",").map(norm).filter(Boolean);
     return loadMaster().then(m => {
-      const hit = m ? masterItem(mid) : null;
-      if (!hit) { toast(m ? "원본에 없는 항목입니다." : "근거 요지를 불러오지 못했습니다.", true); return; }
-      const b = basisOf(mid);
-      openModal(`<h3><span class="mono">${esc(mid)}</span> 근거 본문 요지 <span class="bs-ssi">민감보안정보</span></h3>
-        <p class="bs-t">${esc(hit.item.text || "")}</p>
-        ${hit.item.ref ? `<div class="ck-refs">${refChips(hit.item.ref)}</div>` : ""}
-        <div class="bs-body">${b ? basisHTML(b) : '<p class="au-none">요지가 없습니다.</p>'}</div>
+      const hits = m ? mids.map(x => ({ mid: x, hit: masterItem(x) })).filter(x => x.hit) : [];
+      if (!hits.length) { toast(m ? "원본에 없는 항목입니다." : "근거 요지를 불러오지 못했습니다.", true); return; }
+      const many = hits.length > 1;
+      const one = (x) => { const b = basisOf(x.mid);
+        return `${many ? `<h4 class="bs-mid"><span class="mono">${esc(x.mid)}</span></h4>` : ""}<p class="bs-t">${esc(x.hit.item.text || "")}</p>
+        ${x.hit.item.ref ? `<div class="ck-refs">${refChips(x.hit.item.ref)}</div>` : ""}
+        <div class="bs-body">${b ? basisHTML(b) : '<p class="au-none">요지가 없습니다.</p>'}</div>`; };
+      openModal(`<h3>${many ? "CHK-LIST " + esc(hits.map(x => x.mid).join(" · ")) : `<span class="mono">${esc(hits[0].mid)}</span>`} 근거 본문 요지 <span class="bs-ssi">민감보안정보</span></h3>
+        ${hits.map(one).join("")}
         <div class="modal-actions"><button type="button" class="btn btn-primary" data-act="cancel">닫기</button></div>`, { wide: true });
       $("#modal-box [data-act=cancel]").onclick = closeModal;
     });
@@ -877,7 +914,7 @@
       paintChecks(a, `[data-ckst="${cssq(b.dataset.ckst)}"]`);
     });
     $$("[data-ck-go]", sec).forEach(b => b.onclick = () => goRoute(b.dataset.ckGo));
-    $$("[data-ck-docs]", sec).forEach(b => b.onclick = () => docsModal(b.dataset.ckDocs));
+    $$("[data-ck-docs]", sec).forEach(b => b.onclick = () => docsModal(cOf(b.dataset.ckDocs)));
     $$("[data-basis]", sec).forEach(b => b.onclick = () => basisView(b.dataset.basis));
     if (!canW) return;
     $$("select[data-sc]", sec).forEach(el => el.onchange = () => {
@@ -1046,7 +1083,19 @@
     const v = Object.assign({ text: "", ref: "", sop: "", owner: "", note: "", docScore: null, impScore: null, na: false }, c || {});
     const files = filesOf(c).map(f => Object.assign({}, f));
     const cur = linksOf(v);
-    const def = (fixed && MID_LINKS[c.mid]) || [];
+    const def = (fixed && !relMode(c) && MID_LINKS[c.mid]) || [];
+    const reqMode = isReq(a) || relMode(c);
+    const dids = docsOf(c).map(d => d.id);                // 없는 문서 · 중복은 고를 때 정리
+    const shelf = (Array.isArray(D().docs) ? D().docs : []).filter(d => d && d.id && (d.files || []).length);
+    const docOpts = () => {
+      const by = {};
+      shelf.filter(d => dids.indexOf(d.id) < 0).sort((x, y) => String(y.date || "").localeCompare(String(x.date || ""))).forEach(d => { (by[d.mod] = by[d.mod] || []).push(d); });
+      return `<option value="">문서 추가</option>` + Object.keys(by).sort((x, y) => routeLabel(x).localeCompare(routeLabel(y), "ko")).map(k =>
+        `<optgroup label="${esc(routeLabel(k))}">${by[k].map(d => `<option value="${esc(d.id)}">${esc(d.title + (d.date ? " · " + dot(d.date) : ""))}</option>`).join("")}</optgroup>`).join("");
+    };
+    const reqRows = reqMode ? fld("ac-rel", "CHK-LIST 연계", `<input id="ac-rel" value="${esc(relOf(v).join(" · "))}" maxlength="80" autocomplete="off" placeholder="예: 1.1 · 8.2">`,
+      "점검관용 CHK-LIST에서 같은 내용을 다루는 항목 번호입니다. 근거 요지와 연결 화면의 증빙 판단에 씁니다.")
+      + `<div class="form-row"><label for="ac-dadd">증빙 문서</label><div class="au-files au-files-edit" id="ac-docs"></div><select id="ac-dadd"></select></div>` : "";
     const scSel = (idn, val) => `<select id="${idn}"><option value="">-</option>${SCORES.map((t, i) =>
       `<option value="${i}" ${sc(val) === i ? "selected" : ""}>${i} ${esc(t)}</option>`).join("")}</select>`;
     openModal(`<h3>${c ? "항목 수정" : "항목 추가"}${fixed ? ` <small class="au-mh mono">${esc(c.mid)}</small>` : ""}</h3>
@@ -1061,7 +1110,8 @@
       </div>
       <label class="au-opt"><input type="checkbox" id="ac-na" ${v.na ? "checked" : ""}> N/A (해당 없음)</label>
       ${fld("ac-owner", "담당", `<input id="ac-owner" value="${esc(v.owner)}" maxlength="40" autocomplete="off" list="ac-dl-p">`)}
-      ${fld("ac-note", "의견 · 비고", `<textarea id="ac-note" rows="2" maxlength="500">${esc(v.note)}</textarea>`)}
+      ${fld("ac-note", "의견 · 비고", `<textarea id="ac-note" rows="${reqMode ? 4 : 2}" maxlength="${reqMode ? 1000 : 500}">${esc(v.note)}</textarea>`)}
+      ${reqRows}
       ${fileBox("ac", files)}
       <div class="form-row"><label>증빙 화면 ${ui.tip("이 항목을 증명하는 화면입니다. 열린 화면이 연결되어 있거나 파일이 첨부되어 있으면 증빙이 있는 것으로 봅니다.", "증빙 화면 설명")}</label>
         <div class="ck-rchoose" id="ac-links">${routeChoices().map(r => `<label class="ck-rc"><input type="checkbox" value="${esc(r)}" ${cur.indexOf(r) >= 0 ? "checked" : ""}>
@@ -1073,6 +1123,18 @@
         <button type="button" class="btn btn-primary" data-act="ok">저장</button>
       </div>`, { wide: true });
     wireFileBox("ac", files);
+    if (reqMode) {
+      const paintDocs = () => {
+        const box = $("#ac-docs"), pick = $("#ac-dadd");
+        if (!box || !pick) return;
+        box.innerHTML = dids.map((id, i) => { const d = shelf.find(x => x.id === id);
+          return d ? `<span class="au-file"><span class="nb-file">${icon("doc", 14)}<span>${esc(d.title)}</span>${d.date ? `<small class="mono">${esc(String(d.date).slice(2).replace(/-/g, "."))}</small>` : ""}</span><button type="button" class="mt-btn danger" data-ac-ddel="${i}" aria-label="증빙 문서 제외">${icon("x", 14)}</button></span>` : ""; }).join("");
+        pick.innerHTML = docOpts();
+        $$("[data-ac-ddel]", box).forEach(b => b.onclick = () => { dids.splice(Number(b.getAttribute("data-ac-ddel")), 1); paintDocs(); });
+      };
+      paintDocs();
+      $("#ac-dadd").onchange = (ev) => { const id = ev.target.value; if (id && dids.indexOf(id) < 0) dids.push(id); paintDocs(); };
+    }
     $("#modal-box [data-act=cancel]").onclick = closeModal;
     const del = $("#modal-box [data-act=del]");
     if (del) del.onclick = () => {
@@ -1096,6 +1158,10 @@
       const sopV = sopJoin(($("#ac-sop") || {}).value);
       if (sopV) tgt.sop = sopV; else delete tgt.sop;
       if (same) delete tgt.links; else tgt.links = links;   // 기본 연결과 같으면 기본값을 따른다(메뉴가 늘면 자동 반영)
+      if (reqMode) {
+        tgt.rel = String(($("#ac-rel") || {}).value || "").split(/[\s,·]+/).map(x => x.trim()).filter((x, i, all) => MID_RE.test(x) && all.indexOf(x) === i);
+        tgt.dids = dids.slice();
+      }
       if (!c) a.checklist.push(tgt);
       stamp(a); SeMIS.save(); closeModal(); paint(); toast("저장했습니다.");
     };
@@ -1318,6 +1384,7 @@
     phase, dday, ddayText, prep, repeatCount, overdueF, nextAudit, allFindings, auditTitle,
     syncCalendar, syncFromSchedule, unlinkBySchedule, dropCalendar, uploadInto,
     itemState, linksOf, routeEv, tally, groupsOf, applyChecklist, loadForm, loadMaster, basisOf, basisView, cmpMid, unusedItem,
+    isReq, relOf, evMid, docsOf,
     sopTokens, sopJoin, sopKey, sopDoc, sopHref, sopForm,
     setMaster(m) { master = validMaster(m) ? m : null; masterErr = ""; masterWait = null; },
     dashHTML, mountDash, dashData, open: openAudit, form: auditForm, checkForm, findingForm,

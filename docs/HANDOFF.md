@@ -7,10 +7,10 @@
 
 | 항목 | 값 |
 |---|---|
-| 현재 버전 | **v1.51.0** (2026-10-17) — 보안교육 직무 **방사선감시기 운영 담당자** · 과정 **방사선감시기 운영 교육**(법정 · 연 1회, 생활주변방사선 안전관리법 제26조의2). 앞 버전 v1.50.0 = 이름 **H:drive**(별칭 ARGOS) · 아이콘 3D 폴더(Mark 선택 A안). 기능 기준 v1.49 = **아르고 AI 도우미**(지원 카드 · 공통 패널 · 도구 12종 · 바로 실행 + 결과 카드 + 되돌리기 · 첨부 · 하루 200회) · v1.49.1 공개 저장소 점검. 앞 버전 v1.48 = 디자인 '화물 태그' · 지원 카드 · 공통 패널 · 부엉이 |
+| 현재 버전 | **v1.52.0** (2026-10-20) — 수검 대응 **자료 요청 목록**(기관 자료제출 요구서를 그 번호대로 체크리스트로 · 항목마다 CHK-LIST 연계 번호 · 고른 증빙 문서 · SSOP 조항) + 운영 수검 **서울지방항공청 정기점검(2026.11.9)** 29항목 등록. 앞 버전 v1.51.0 = 보안교육 직무 **방사선감시기 운영 담당자** · 과정 **방사선감시기 운영 교육**(법정 · 연 1회). v1.50.0 = 이름 **H:drive**(별칭 ARGOS) · 아이콘 3D 폴더. 기능 기준 v1.49 = **아르고 AI 도우미** · v1.48 = 디자인 '화물 태그' · 지원 카드 · 공통 패널 · 부엉이 |
 | 접속 주소 | https://mark4mission.github.io/semis-logistics/ |
 | 저장소 | GitHub `Mark4mission/semis-logistics` (공개) · Mac `~/SeMIS_Logistics` |
-| 테스트 | `npm test` 556건 전부 통과(v1.51.0) · Edge `deno test --allow-net --allow-env tools/edge/semis-logi-argo.test.ts` 6건(deno 없으면 `npm i deno@2` 를 스크래치에) · SQL PGlite `node tools/sql/semis-logi-argo.test.mjs tools/sql/semis-logi-argo.sql` 19건(`npm i --no-save @electric-sql/pglite` 후, 끝나면 `npm prune`) |
+| 테스트 | `npm test` 557건 전부 통과(v1.52.0) · Edge `deno test --allow-net --allow-env tools/edge/semis-logi-argo.test.ts` 6건(deno 없으면 `npm i deno@2` 를 스크래치에) · SQL PGlite `node tools/sql/semis-logi-argo.test.mjs tools/sql/semis-logi-argo.sql` 19건(`npm i --no-save @electric-sql/pglite` 후, 끝나면 `npm prune`) |
 | 백엔드 | Supabase `mzyuzrxkdcpzxojenwat` — 테이블 `semis_logi_store`(세션 RLS), **비공개** 버킷 `semis-logi-files`, 비공개 스키마 `semis_logi_private`(계정 · 세션 · 로그인 시도 · 접속 기록 · 권한표), RPC `semis_logi_*`, Edge Function `semis-logi-files`(서명 URL · 이수증 판독 · 데스크 판독 · 사본, v11) · `semis-logi-favicon` · `semis-logi-adsb`(운항, pg_cron 2분) · **`semis-logi-argo`(아르고, v3)** |
 
 ## 2. 새 세션 시작
@@ -95,7 +95,7 @@ Claude가 할 일(순서대로):
 | aud-dash | auddash.js | mgr | 점검 · 교육 대시보드(교육 · 자격 · 수검 · 기록부) |
 | inspection | seclog.js | mgr | 보안 기록부(양식별 주기 기록 · 누락 · 하드카피 집계) |
 | daily-safety | patrol.js | mgr | 일일 보안 · 안전 순찰일지(5일 한 장 · 등록 서명) |
-| audit | audit.js | mgr | 수검 대응 센터(수검 일정 · 체크리스트 70항목 · SSOP 조항 · 지적사항) |
+| audit | audit.js | mgr | 수검 대응 센터(수검 일정 · 체크리스트 70항목 · SSOP 조항 · 지적사항) · **자료 요청 목록**(v1.52 — `chkSrc.kind "req"`: 기관 요구서 번호 순 한 묶음, 항목 `rel[]` CHK-LIST 연계 · `dids[]` 증빙 문서) |
 | selfcheck | selfcheck.js · hwpx.js · nasforms.js | mgr | 자체 보안점검(수준관리지침 별표 · HWPX) — 선택 실행 |
 | training | training.js · edu.html · edu-form.js · edu-shim.js | mgr | 보안교육 · 자격(인원 · 교육 기록 · 직무 · 과정 기준표 · SSI 서약 · 이수 등록 페이지) |
 | dissem | dissem.js | mgr | 보안 전파교육 이행표 |
@@ -184,6 +184,7 @@ Claude가 할 일(순서대로):
 - **순찰일지 숨김**: 운영 설정에서 숨김 상태 — '점검 · 순찰' 탭 묶음에 보안 기록부만 보인다. 쓰기 시작하면 설정 › 메뉴에서 표시
 - **보안교육**: DGR 5명 기록은 KF 교육 이력(2026.09.30) 기준 — 이수증 받으면 각 기록에 파일 첨부 · 이수 등록 페이지 팀 공지 / 제출 확인 · 쓰이지 않은 시험 업로드(edutestcode*) 정리 · 방사선안전관리자 소관 확인
 - **방사선감시기 운영 담당자(v1.51)**: 운영 인원에 직무를 지정해야 현황 · 만료 알림에 잡힌다(지정 전 0명). 실제 운영 담당자가 협력사(보안검색 용역) 직원이면 협력사 과정(업체별 확인)으로 옮길 것. 법정 주기가 없어 연 1회(12개월 · 규칙 '주기만')로 관리 — Mark 결정
+- **서울지방항공청 정기점검(2026.11.9, 수검 id `au-sroa-2026`)**: 자료제출 요구서(항공운송사업자 등, 10.19) 29항목 — 문서 · 시행 3점 이상 9항목 / 해당 26(N/A 3: 기내식 · 위탁수하물 · 정비고). 각 항목 의견의 '확인 필요'를 채우고 점수를 다시 매길 것. 17(기내 보안장비) · 25(무기운송 기록)는 소관 · 실적 확인, 요구서 PDF 는 수검 '수정 › 파일 첨부'로 공문 칸에 올릴 것(이 세션은 파일 함수에 쓸 세션이 없어 못 올림). 공항운영자용 요구서는 대상 아님
 - **SSOP Rev.01**(2026.10.13 시행): 수검 체크리스트 의견의 '확인 필요'(배포 · 개정 교육 기록 등)와 Rev.01 에도 없는 조항(NTAS 경보 · ACISP 8.5.5 · Quarterly Self-Audit 등) — HISTORY §B
 - **원문 확인 필요 목록**: SERP 9건 · 위협전화 10건 · 업무 연락처 9건 — 각 화면(hq)에 표시
 - **CSS**: `@media (max-width: …)` 에 `screen` 이 없는 34곳 — A4 인쇄 폭(≈718px)에 걸릴 수 있어 인쇄 확인 후 정리
@@ -201,6 +202,7 @@ Claude가 할 일(순서대로):
 
 | 버전 | 날짜 | 내용 |
 |---|---|---|
+| v1.52.0 | 10-20 | **수검 자료 요청 목록** — 기관이 보낸 자료제출 요구서를 번호 그대로 체크리스트로(`chkSrc.kind "req"` · 한 묶음 · 인쇄 머리 '요청 자료' · 비고 칸 넓게 · CHK-LIST 불러오기 숨김). 항목 `rel[]` = 같은 내용의 점검관용 CHK-LIST 번호 → 근거 요지(여러 번호) · 연결 화면 증빙 판단 번호(`evMid`), `dids[]` = 고른 증빙 문서(문서 서가 id, 순서 유지 · 없는 문서 · 중복 제외) — 항목 수정 창에 'CHK-LIST 연계' · '증빙 문서' 고르기. 운영: 서울지방항공청 정기점검(11.9) 수검 + 29항목(SSOP Rev.01 조항 · 연계 · 증빙 문서 121건 · 의견 · 점수) + 일정 1건 SQL 등록(반영 직전 값 `semis_store_history`). 테스트 TA12 (557 통과) |
 | v1.51.0 | 10-17 | **방사선감시기 교육(법정)** — 직무 · 과정 기준표에 직무 `방사선감시기 운영 담당자`(기타 직무군 · 법정, 근거 생활주변방사선 안전관리법 제19조③ · 제26조의2 · 제31조④3(과태료 300만원 이하) · 시행령 제13조 · 제14조의3) + 과정 `c-rmon` 방사선감시기 운영 교육(단일 · 정기 12개월 · 규칙 '주기만' · 원자력안전위원회(전문기관 위탁)) — Mark 결정(새 직무 · 단일 과정 연 1회). catVer 6 이전 = `ADDED_V6` 만 제자리(방사선안전관리자 정기 뒤)에 덧붙임(`addDefaults`). 이수 등록 페이지 과정 고르기에 '방사선' 묶음(방사선안전관리자 · 감시기). 운영 DB 과정 32 → 33 · catVer 6(SQL 제자리 삽입, updated_by `training-catalog-v151`, 반영 직전 값 `semis_store_history` id 880 — 인원 · 기록 · 교육 기록 md5 그대로). 테스트 TR26 · TR22/23/25 · ED 갱신 (556 pass) |
 | v1.50.0 | 10-16 | **이름 H:drive**(안전보안파트장 제안, 별칭 ARGOS) — 탭 제목 · 로그인 · 메뉴 패널 · 상단바 · 인쇄 머리말(APP_NAME) · 회의록 인쇄 · 이수 등록 페이지 · 일정 내보내기 PRODID · 아르고 소개 문구 · 추천 질문 · 안내 지식(ARGO-GUIDE, Edge `semis-logi-argo` v3 재배포 — 시스템 프롬프트 'H:drive(별칭 ARGOS)'). 별칭은 로그인 태그 아랫줄 · 시스템 정보 '별칭' 줄 · 안내 지식에만. 아이콘 3D 폴더(A안 — 페트롤 타일 · 틸 뒷판 · 서류 · 앰버 앞판, 그림자 · 두께) + PNG 32 · 홈 화면 180 · `apple-mobile-web-app-title`. 아르고(부엉이) 이름 · 운영 공지 'SeMIS · Logistics 오픈 안내'는 그대로(Mark 결정). 테스트 LG04 · C28a (555 pass) |
 | v1.49.1 | 10-10 | **공개 저장소 점검** — 기본 담당자 시드 실명 삭제(빈 목록) · 시험 · 안내 문구의 실명을 가상 이름으로 · HISTORY 의 실명 · 계정 ID · 인원별 자격 특이사항 · 암호 관련 남은 조치를 비공개 문서로 · README/DESIGN 계정 ID 표 삭제. 변경 알림(Broadcast, 공개 채널) `by` = 클라이언트 ID 만(`notify_change`, 마이그레이션 `semis_logi_security_26_notify_client_only`). 쓰지 않던 Edge `semis-logi-ai` 원본 삭제 · 서버는 410 안내. 시험 TR12 · ED04 고정 대기 → 조건 대기(553 pass) |

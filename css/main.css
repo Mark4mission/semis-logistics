@@ -3210,6 +3210,9 @@ button.ck-link:active { transform: scale(.97); }
 .cl-n { font-size: .78rem; color: var(--text-3); white-space: nowrap; }
 .bs-ssi { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 6px; background: var(--danger-soft); color: var(--danger); font-size: .72rem; font-weight: 700; vertical-align: middle; }
 .bs-t { margin: 0 0 6px; font-weight: 600; white-space: pre-line; }
+.bs-mid { margin: 0 0 4px; font-size: .84rem; color: var(--primary-dark); }
+.bs-body + .bs-mid { margin-top: 18px; }
+.ck-rel { margin-top: 2px; }
 .bs-body { margin-top: 12px; padding: 12px 14px; border-radius: 10px; background: var(--surface-2); border: 1px solid #e8eeec; font-size: .88rem; line-height: 1.65; max-height: 56vh; overflow: auto; }
 .bs-body p { margin: 0 0 6px; overflow-wrap: break-word; }
 .bs-body h5 { margin: 12px 0 6px; font-size: .84rem; font-weight: 700; color: var(--primary-dark); }

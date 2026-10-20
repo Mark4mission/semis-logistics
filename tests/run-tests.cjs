@@ -8993,6 +8993,63 @@ function makeServer(opts = {}) {
       ok(!q(m, "#au-sop"), "manager 기준 고르기 없음");
       eq(m.errors.length, 0, m.errors.join("|")); m.w.close();
     });
+    await ta("TA12 자료 요청 목록(v1.52): 요구서 번호 순 한 묶음 · CHK-LIST 연계(근거 요지 · 화면 증빙 번호) · 고른 증빙 문서 · 인쇄 '요청 자료' · 불러오기 없음 · 편집", async () => {
+      const mk = () => [{ id: "r", body: "gov", org: "지방항공청", kind: "정기점검", start: "2026-11-09", end: "", findings: [],
+        chkSrc: { kind: "req", title: "자료제출 요구서", asOf: "2026.10.19", list: "자료 요청 목록" },
+        checklist: [
+          { id: "q10", mid: "10", sec: "", text: "열째 자료", rel: ["2.10", "1.1"], links: [], dids: [], docScore: null, impScore: null, files: [] },
+          { id: "q1", mid: "1", sec: "", text: "첫째 자료", rel: ["3.1"], links: ["partners:vendor"], dids: ["d4", "zz-none", "d2", "d4"], docScore: 3, impScore: 3, files: [] },
+          { id: "qx", text: "직접 추가", files: [] },
+          { id: "q2", mid: "2", sec: "", text: "둘째 자료", rel: [], links: [], dids: [], na: true, files: [] },
+          { id: "q3", mid: "3", sec: "", text: "셋째 자료", rel: [], links: [], dids: ["d1", "d2", "d3", "d4"], docScore: 3, impScore: 2, files: [] }] }];
+      const e = makeEnv(); loginAs(e, "hq");
+      e.S.data.docs = DOCS.slice(); e.S.data.audits = mk();
+      const A = e.w.SemisAudit, a = e.S.data.audits[0];
+      A.setMaster({ title: "M", sections: [{ no: "1", title: "교육", items: [{ no: "1.1", text: "감독자 교육", ref: "", basis: "요지 하나" }] },
+        { no: "2", title: "관리", items: [{ no: "2.10", text: "SSI 취급", ref: "", basis: "요지 둘" }] }] });
+      ok(A.isReq(a), "요청 목록");
+      const gs = A.groupsOf(a);
+      eq(gs.map(g => g.title).join("|"), "자료 요청 목록|추가 항목", "한 묶음 + 추가");
+      eq(gs[0].items.map(c => c.mid).join(), "1,2,3,10", "번호 순(숫자)");
+      const q1 = a.checklist[1];
+      eq(A.docsOf(q1).map(d => d.id).join(), "d4,d2", "고른 순서 · 없는 문서 · 중복 제외");
+      eq(A.evMid(q1, "partners:vendor"), "3.1", "화면이 증빙하는 연계 번호");
+      eq(A.evMid(q1, "training"), "", "연계 없는 화면은 화면 단위");
+      eq(A.evMid({ mid: "8.2" }, "training"), "8.2", "CHK-LIST 항목은 그대로");
+      eq(A.itemState(q1), "ready");
+      eq(A.prep(a).total + "/" + A.prep(a).done, "4/1", "N/A 제외 · 준비 1");
+      A.setState({ tab: "list", sel: "r", ckSec: "all", ckSt: "all" }); go(e, "audit");
+      ok(!q(e, "#au-load"), "CHK-LIST 불러오기 없음");
+      ok(/자료 요청 목록/.test(q(e, ".ck-grp h4").textContent), "묶음 이름");
+      const r1 = q(e, '.ck-row[data-cid="q1"]');
+      eq(r1.querySelector(".ck-rel").textContent.replace(/\s+/g, " ").trim(), "CHK-LIST3.1", "연계 칩");
+      eq(r1.querySelectorAll(".ck-doc").length, 2, "증빙 문서 칩");
+      eq(qa(e, ".au-ptbl thead th")[0].textContent, "요청 자료", "인쇄 머리");
+      ok(/CHK-LIST 3\.1/.test(Array.from(e.w.document.querySelectorAll(".au-print .au-psop")).map(x => x.textContent).join(" ")), "인쇄 관련근거에 연계");
+      ok(!q(e, '.ck-row[data-cid="q2"] [data-basis]'), "연계 없으면 근거 요지 없음");
+      q(e, '.ck-row[data-cid="q10"] [data-basis="2.10,1.1"]').click();
+      await new Promise(r => setTimeout(r, 0));
+      eq(qa(e, "#modal-box .bs-mid").length, 2, "연계 번호마다 요지");
+      ok(/요지 둘/.test(q(e, "#modal-box").textContent) && /요지 하나/.test(q(e, "#modal-box").textContent));
+      q(e, "#modal-box [data-act=cancel]").click();
+      q(e, '.ck-row[data-cid="q3"] [data-ck-docs="q3"]').click();
+      eq(qa(e, "#modal-box .dk-row").length, 4, "문서 외 n건 → 모두");
+      q(e, "#modal-box [data-act=cancel]").click();
+      /* 편집 — 연계 번호 정리 · 증빙 문서 빼기 · 더하기, 문구는 요구서 그대로 */
+      q(e, '[data-ck-edit="q1"]').click();
+      ok(!q(e, "#ac-text"), "요구서 문구 고정");
+      eq(q(e, "#ac-rel").value, "3.1");
+      q(e, "#ac-rel").value = "3.1, 3.3 · x 3.1";
+      q(e, '#ac-docs [data-ac-ddel="0"]').click();
+      const sel = q(e, "#ac-dadd");
+      ok(!Array.from(sel.options).some(o => o.value === "d2"), "이미 고른 문서는 후보 아님");
+      sel.value = "d1"; sel.dispatchEvent(new e.w.Event("change"));
+      eq(qa(e, "#ac-docs .au-file").length, 2);
+      clickOk(e);
+      eq(q1.rel.join(), "3.1,3.3", "번호만 · 중복 제외");
+      eq(q1.dids.join(), "d2,d1");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
     t("TA09 화면 위계: 새 화면 머리말 강조 버튼 ≤ 1 · 관리 동작은 글자 버튼 · 버튼에 그림 문자 없음 · SeMIS.user 는 값(함수 아님)", () => {
       const e = makeEnv(); loginAs(e, "admin");
       ["partners", "contracts", "kc-ra", "sec-cases", "dissem", "inspection", "reg-sec", "training", "crisis", "phonebook", "minutes"].forEach(r => {
