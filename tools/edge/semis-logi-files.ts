@@ -29,12 +29,14 @@ const MAX_SIGN = 200;
 const READ_RANK: Record<string, number> = {
   notices: 1, attach: 1, minutes: 1, "minutes-sign": 1,
   schedules: 2, contacts: 2, crisis: 2, regs: 2, "regs-diff": 2, audits: 2, training: 2, seclog: 2, threat: 2, patrol: 2,
-  docs: 2, cases: 2, dissem: 2            // v1.40 증빙 문서 · 보안 처리 대장 · 전파교육 (docs-ssi · contracts · desk 는 기본 3 = hq)
+  docs: 2, cases: 2, dissem: 2,           // v1.40 증빙 문서 · 보안 처리 대장 · 전파교육 (docs-ssi · contracts · desk 는 기본 3 = hq)
+  bbs1: 1, bbs2: 2, bbs3: 3, bbs4: 4      // 게시판 — 게시판 읽기 등급별 폴더(전체 · 관리자 · 파트 · 시스템관리자)
 };
 const WRITE_RANK: Record<string, number> = {
   minutes: 2, "minutes-sign": 2, seclog: 2, threat: 2, patrol: 2,
   schedules: 3, notices: 3, attach: 3, contacts: 3, crisis: 3, regs: 3, "regs-diff": 3, audits: 3, training: 3,
-  docs: 3, "docs-ssi": 3, contracts: 3, cases: 3, dissem: 3, desk: 3
+  docs: 3, "docs-ssi": 3, contracts: 3, cases: 3, dissem: 3, desk: 3,
+  bbs1: 1, bbs2: 2, bbs3: 3, bbs4: 4      // 게시판 글쓰기 · 첨부(쓰기 권한은 서버 RPC 가 게시판별로 한 번 더 확인)
 };
 const DEFAULT_READ = 3, DEFAULT_WRITE = 3;
 const BLOCK_TYPES = /^(text\/html|application\/xhtml\+xml|text\/javascript|application\/(x-)?javascript)/i;

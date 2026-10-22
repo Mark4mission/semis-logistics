@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/loginguard.js", "js/app.js", "js/argo-owl.js", "js/panel.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/docshelf.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/cares.js", "js/hazfind.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/contracts.js", "js/partners.js", "js/kcra.js", "js/seccases.js", "js/dissem.js", "js/scrstats.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/docread.js", "js/desk.js", "js/argo.js", "js/selfcheck.js", "js/auddash.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
+const FILES = ["js/loginguard.js", "js/app.js", "js/argo-owl.js", "js/panel.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/docshelf.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/board.js", "js/cares.js", "js/hazfind.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/contracts.js", "js/partners.js", "js/kcra.js", "js/seccases.js", "js/dissem.js", "js/scrstats.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/docread.js", "js/desk.js", "js/argo.js", "js/selfcheck.js", "js/auddash.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -88,6 +88,162 @@ function submitLogin(env, pw) {
   w.document.querySelector("#login-form").dispatchEvent(new w.Event("submit", { bubbles: true, cancelable: true }));
 }
 const tick = (ms) => new Promise(r => setTimeout(r, ms || 0));
+
+/* ── 가짜 게시판 서버(RPC semis_logi_bbs_*) — 실제 SQL 은 tools/sql/semis-logi-bbs.test.mjs(PGlite)가 따로 검증 ── */
+const BBS_LV = { all: 1, mgr: 2, hq: 3, admin: 4 };
+const BBS_SEED = [
+  { id: "B001", name: "공지사항", kind: "notice", view: "list", desc: "", read: "all", write: "hq", cmt: "all", perPage: 20,
+    opt: { pin: true, attach: true, editor: true, views: true, readers: true, comment: false, reply: false, cat: false, dash: true, newDays: 7 }, cats: [] },
+  { id: "B002", name: "일반게시판", kind: "general", view: "list", desc: "", read: "all", write: "all", cmt: "all", perPage: 20,
+    opt: { pin: true, attach: true, editor: true, views: true, readers: false, comment: true, reply: true, cat: false, dash: false, newDays: 3 }, cats: [] },
+  { id: "B003", name: "자료실", kind: "archive", view: "file", desc: "", read: "all", write: "hq", cmt: "all", perPage: 20,
+    opt: { pin: true, attach: true, editor: true, views: true, readers: false, comment: false, reply: false, cat: true, dash: false, newDays: 7 }, cats: ["규정 · 지침", "양식", "교육 자료", "기타"] }
+];
+function bbsFake(srv, me0) {
+  const db = srv.bbs = { posts: [], comments: [], reads: [], seq: 0, cseq: 0, calls: [] };
+  const boards = () => { const r = srv.rows.find(x => x.key === "boards"); return r && Array.isArray(r.value) ? r.value : BBS_SEED; };
+  const bd = (id) => boards().find(b => b.id === id);
+  const on = (b, k) => !!(b && b.opt && b.opt[k] === true);
+  const lv = (v) => BBS_LV[v] || 3;
+  const live = (x) => !x.del;
+  const ncOf = (x) => db.comments.filter(c => c.post === x.id && !c.del).length;
+  const row = (x, m) => ({ id: x.id, no: x.no, b: x.board, cat: x.cat, title: x.title, by: x.by, at: x.at, up: x.up, views: x.views, nc: ncOf(x),
+    nf: x.files.length, f1: x.files[0] || null, depth: x.depth, pin: !!x.pin, mine: x.aid === m.id, fresh: true,
+    read: x.aid === m.id || db.reads.some(r => r.post === x.id && r.aid === m.id), img: (x.files.find(f => /^image\//.test(f.type || "")) || {}).url || null });
+  const order = (a, c) => (c.thread - a.thread) || (a.path < c.path ? -1 : a.path > c.path ? 1 : 0);
+  const kids = (x) => db.posts.filter(y => y.thread === x.thread && y.depth > x.depth && y.path.indexOf(x.path) === 0 && y.id !== x.id);
+  const fx = (o, fnName, body) => { db.calls.push({ name: fnName, body }); return me0(o); };
+  const add = (m, b, p, par) => {
+    const no = db.posts.filter(x => x.board === b.id).reduce((n, x) => Math.max(n, x.no), 0) + 1;
+    const id = ++db.seq;
+    const x = { id, board: b.id, no, title: String(p.title || "").replace(/\s+/g, " ").trim().slice(0, 200), body: String(p.body || ""), html: String(p.html || ""),
+      files: on(b, "attach") ? (p.files || []).filter(f => f && /\/object\/public\/semis-logi-files\/(bbs[1-4]|attach|notices)\//.test(f.url || "")) : [],
+      cat: on(b, "cat") && (b.cats || []).indexOf(p.cat) >= 0 ? p.cat : "", pin: on(b, "pin") && m.rank >= 3 && !par && p.pin === true,
+      aid: m.id, by: m.name, at: new Date(Date.now() - (1000 - id) * 1000).toISOString(), up: null, views: 0,
+      depth: par ? par.depth + 1 : 0, thread: par ? par.thread : id, path: par ? par.path + String(db.posts.filter(y => y.parent === par.id).length + 1).padStart(3, "0") + "." : "",
+      parent: par ? par.id : null, src: p.src || null };
+    x.up = x.at;
+    db.posts.push(x);
+    return x;
+  };
+  return {
+    semis_logi_bbs_list(body, o) {
+      const p = body.p || {}, m = fx(o, "list", p);
+      if (!m) return { ok: false, error: "auth" };
+      const b = bd(p.b); if (!b) return { ok: false, error: "nf" };
+      if (m.rank < lv(b.read)) return { ok: false, error: "forbidden" };
+      const size = [10, 15, 20, 30, 50, 100].indexOf(Number(p.size)) >= 0 ? Number(p.size) : 20;
+      const ts = String(p.q || "").trim().toLowerCase().split(/\s+/).filter(Boolean);
+      const hay = (x) => (p.f === "title" ? x.title : p.f === "body" ? x.body : p.f === "author" ? x.by : x.title + " " + x.body + " " + x.by).toLowerCase();
+      const all = db.posts.filter(x => x.board === b.id && live(x) && (!p.cat || x.cat === p.cat) && ts.every(t => hay(x).indexOf(t) >= 0)).sort(order);
+      const last = Math.max(1, Math.ceil(all.length / size));
+      const page = Math.min(last, Math.max(1, Number(p.page) || 1));
+      const pins = on(b, "pin") && page === 1 && !ts.length && !p.cat ? db.posts.filter(x => x.board === b.id && live(x) && x.pin).map(x => row(x, m)) : [];
+      return { ok: true, total: all.length, page, size, rows: all.slice((page - 1) * size, page * size).map(x => row(x, m)), pins, rank: m.rank, me: m.id };
+    },
+    semis_logi_bbs_get(body, o) {
+      const m = fx(o, "get", body);
+      if (!m) return { ok: false, error: "auth" };
+      const x = db.posts.find(y => y.id === Number(body.p_id) && live(y));
+      if (!x) return { ok: false, error: "nf" };
+      const b = bd(x.board);
+      if (!b || m.rank < lv(b.read)) return { ok: false, error: "forbidden" };
+      let first = false;
+      if (!db.reads.some(r => r.post === x.id && r.aid === m.id)) { db.reads.push({ post: x.id, aid: m.id, at: new Date().toISOString(), name: m.name }); x.views++; first = true; }
+      const mine = x.aid === m.id, mng = m.rank >= 3;
+      const roots = db.posts.filter(y => y.board === x.board && live(y) && !y.depth);
+      const prev = roots.filter(y => y.id < x.thread).sort((a, c) => c.id - a.id)[0];
+      const next = roots.filter(y => y.id > x.thread).sort((a, c) => a.id - c.id)[0];
+      return { ok: true, first,
+        post: { id: x.id, no: x.no, b: x.board, cat: x.cat, title: x.title, html: x.html, body: x.body, files: x.files, by: x.by, at: x.at, up: x.up, views: x.views,
+          pin: x.pin, pinUntil: null, depth: x.depth, parent: x.parent, mine, replies: kids(x).filter(live).length },
+        comments: on(b, "comment") ? db.comments.filter(c => c.post === x.id && !c.del).map(c => ({ id: c.id, body: c.body, by: c.by, at: c.at, mine: c.aid === m.id })) : [],
+        readers: on(b, "readers") && (mng || mine) ? { read: db.reads.filter(r => r.post === x.id && r.aid !== x.aid).map(r => ({ name: r.name, at: r.at })), unread: ["미열람자"] } : null,
+        prev: prev ? { id: prev.id, title: prev.title } : null, next: next ? { id: next.id, title: next.title } : null,
+        can: { edit: mine || mng, del: mng || (mine && !kids(x).some(y => live(y) && y.aid !== m.id)), reply: on(b, "reply") && x.depth < 3 && m.rank >= lv(b.write),
+          comment: on(b, "comment") && m.rank >= lv(b.cmt || b.read), manage: mng } };
+    },
+    semis_logi_bbs_save(body, o) {
+      const p = body.p || {}, m = fx(o, "save", p);
+      if (!m) return { ok: false, error: "auth" };
+      if (!String(p.title || "").trim()) return { ok: false, error: "title" };
+      if (p.id) {
+        const x = db.posts.find(y => y.id === Number(p.id) && live(y));
+        if (!x) return { ok: false, error: "nf" };
+        if (!(x.aid === m.id || m.rank >= 3)) return { ok: false, error: "forbidden" };
+        const b = bd(x.board);
+        Object.assign(x, { title: String(p.title).trim(), html: String(p.html || ""), body: String(p.body || ""), files: on(b, "attach") ? (p.files || []) : [],
+          pin: on(b, "pin") && m.rank >= 3 ? p.pin === true : x.pin, up: new Date().toISOString() });
+        return { ok: true, id: x.id, no: x.no, b: x.board };
+      }
+      const b = bd(p.b); if (!b) return { ok: false, error: "nf" };
+      if (m.rank < lv(b.read) || m.rank < lv(b.write)) return { ok: false, error: "forbidden" };
+      let par = null;
+      if (p.parent) { par = db.posts.find(y => y.id === Number(p.parent) && y.board === b.id && live(y)); if (!on(b, "reply") || !par) return { ok: false, error: "reply" }; }
+      const x = add(m, b, p, par);
+      return { ok: true, id: x.id, no: x.no, b: b.id };
+    },
+    semis_logi_bbs_delete(body, o) {
+      const p = body.p || {}, m = fx(o, "delete", p);
+      if (!m) return { ok: false, error: "auth" };
+      let n = 0;
+      for (const id of (p.ids || [])) {
+        const x = db.posts.find(y => y.id === Number(id) && live(y));
+        if (!x) continue;
+        if (m.rank < 3 && x.aid !== m.id) return { ok: false, error: "forbidden", n };
+        [x].concat(kids(x)).filter(live).forEach(y => { y.del = true; n++; });
+      }
+      return { ok: true, n };
+    },
+    semis_logi_bbs_comment(body, o) {
+      const p = body.p || {}, m = fx(o, "comment", p);
+      if (!m) return { ok: false, error: "auth" };
+      if (p.del) { const c = db.comments.find(y => y.id === Number(p.del) && !y.del); if (!c) return { ok: false, error: "nf" }; if (c.aid !== m.id && m.rank < 3) return { ok: false, error: "forbidden" }; c.del = true; return { ok: true }; }
+      const x = db.posts.find(y => y.id === Number(p.post) && live(y));
+      if (!x) return { ok: false, error: "nf" };
+      if (!on(bd(x.board), "comment")) return { ok: false, error: "off" };
+      if (!String(p.body || "").trim()) return { ok: false, error: "body" };
+      const c = { id: ++db.cseq, post: x.id, body: String(p.body).trim(), aid: m.id, by: m.name, at: new Date().toISOString() };
+      db.comments.push(c);
+      return { ok: true, id: c.id };
+    },
+    semis_logi_bbs_stats(body, o) {
+      const m = fx(o, "stats", body);
+      if (!m) return { ok: false, error: "auth" };
+      const out = {};
+      const rb = boards().filter(b => m.rank >= lv(b.read));
+      rb.forEach(b => { const ps = db.posts.filter(x => x.board === b.id && live(x)); out[b.id] = { total: ps.length, fresh: ps.length, unread: ps.filter(x => x.aid !== m.id && !db.reads.some(r => r.post === x.id && r.aid === m.id)).length }; });
+      return { ok: true, boards: out, index: db.posts.filter(x => live(x) && rb.some(b => b.id === x.board)).slice().reverse().map(x => ({ id: x.id, b: x.board, no: x.no, title: x.title, by: x.by, at: x.at, cat: x.cat })) };
+    },
+    semis_logi_bbs_recent(body, o) {
+      const p = body.p || {}, m = fx(o, "recent", p);
+      if (!m) return { ok: false, error: "auth" };
+      const ids = boards().filter(b => m.rank >= lv(b.read) && (Array.isArray(p.b) ? p.b.indexOf(b.id) >= 0 : on(b, "dash"))).map(b => b.id);
+      const rows = db.posts.filter(x => ids.indexOf(x.board) >= 0 && live(x) && !x.depth).sort((a, c) => (c.pin - a.pin) || (c.id - a.id)).slice(0, Number(p.n) || 6).map(x => row(x, m));
+      return { ok: true, rows, boards: ids };
+    },
+    semis_logi_bbs_move(body, o) {
+      const p = body.p || {}, m = fx(o, "move", p);
+      if (!m) return { ok: false, error: "auth" };
+      if (m.rank < 3) return { ok: false, error: "forbidden" };
+      let n = 0;
+      (p.ids || []).forEach(id => { const x = db.posts.find(y => y.id === Number(id) && !y.depth); if (!x) return;
+        db.posts.filter(y => y.thread === x.thread).forEach(y => { y.no = db.posts.filter(z => z.board === p.to).reduce((k, z) => Math.max(k, z.no), 0) + 1; y.board = p.to; n++; }); });
+      return { ok: true, n };
+    },
+    semis_logi_bbs_admin(body, o) {
+      const p = body.p || {}, m = fx(o, "admin", p);
+      if (!m) return { ok: false, error: "auth" };
+      if (m.rank < 4) return { ok: false, error: "forbidden" };
+      if (p.op === "counts") { const out = {}; db.posts.forEach(x => { const c = out[x.board] = out[x.board] || { total: 0, deleted: 0 }; if (live(x)) c.total++; else c.deleted++; }); return { ok: true, boards: out }; }
+      if (p.op === "trash") return { ok: true, rows: db.posts.filter(x => !live(x)).map(x => ({ id: x.id, b: x.board, no: x.no, title: x.title, by: x.by, at: x.at, del: x.at, delBy: m.name, depth: x.depth })) };
+      if (p.op === "restore") { const x = db.posts.find(y => y.id === Number(p.id) && !live(y)); if (!x) return { ok: false, error: "nf" }; [x].concat(kids(x)).forEach(y => { delete y.del; }); return { ok: true, n: 1 + kids(x).length, b: x.board }; }
+      if (p.op === "drop") { if (p.confirm !== p.b) return { ok: false, error: "confirm" }; const n = db.posts.filter(x => x.board === p.b).length; db.posts = db.posts.filter(x => x.board !== p.b); return { ok: true, n }; }
+      if (p.op === "files") return { ok: true, urls: Array.from(new Set([].concat(...db.posts.map(x => x.files.map(f => f.url))))) };
+      return { ok: false, error: "op" };
+    }
+  };
+}
 
 /* ── 가짜 서버: RPC(로그인·계정·이력·서명) · REST(RLS 흉내) · 파일 함수 ── */
 function makeServer(opts = {}) {
@@ -220,6 +376,7 @@ function makeServer(opts = {}) {
       return { ok: true, index: t, minute: signView(m.id) };
     }
   };
+  Object.assign(rpc, bbsFake(srv, (o) => { const s = sessOf(o), a = accOf(s); return a && a.role !== "vendor" ? { id: a.id, name: a.name, rank: RANK[a.role] } : null; }));
   const reply = (status, body) => Promise.resolve({ ok: status >= 200 && status < 300, status,
     json: () => Promise.resolve(body), headers: { get: () => null } });
   const FOLDER_READ = { notices: 1, attach: 1, minutes: 1, "minutes-sign": 1, schedules: 2, contacts: 2, crisis: 2, regs: 2, "regs-diff": 2 };
@@ -349,9 +506,10 @@ function makeServer(opts = {}) {
     });
 
     /* ══════════ [C] 코어 — 메뉴 시드·정규화 ══════════ */
-    t("C08 메뉴 시드: 허브 6개(hub-*) · 예정 모듈 10개 이상 · 링크 5개", () => {
+    t("C08 메뉴 시드: 허브 7개(hub-*) · 예정 모듈 10개 이상 · 링크 5개 · 게시판 3개", () => {
       const m = e.S.data.menus;
-      eq(m.filter(x => x.type === "group").map(x => x.id).join(","), "hub-home,hub-sec,hub-saf,hub-aud,hub-ops,hub-doc");
+      eq(m.filter(x => x.type === "group").map(x => x.id).join(","), "hub-home,hub-bbs,hub-sec,hub-saf,hub-aud,hub-ops,hub-doc");
+      eq(m.filter(x => x.type === "board").map(x => x.board + ":" + x.parent).join(","), "B001:hub-bbs,B002:hub-bbs,B003:hub-bbs", "게시판 메뉴");
       ok(m.filter(x => x.type === "group").every(g => e.S.ICONS[g.ico]), "허브 아이콘");
       ok(m.filter(x => x.type === "module" && x.planned).length >= 4, "planned");
       eq(m.filter(x => x.type === "bundle").map(x => x.id).join(","), "bd-check,bd-audit,bd-edu,bd-contact,bd-regs", "탭 묶음");
@@ -505,7 +663,7 @@ function makeServer(opts = {}) {
       loginAs(e, "admin");
       go(e, "settings");
       ok(q(e, "#view").textContent.includes("시스템 설정"));
-      eq(qa(e, ".tab").length, 6);   // 메뉴·사용자·담당자·데이터·저장소·보안
+      eq(qa(e, ".tab").length, 7);   // 메뉴·게시판·사용자·담당자·데이터·저장소·보안
     });
     t("C28a 시스템 정보 — 이름 H:drive · 별칭 ARGOS", () => {
       q(e, '.tab[data-tab="data"]').click();
@@ -661,22 +819,29 @@ function makeServer(opts = {}) {
       ok(e.S.data.safetyBoard.since !== "2999-01-01");
       e.S.closeModal();
     });
-    t("D05 공지 작성 → 목록 · 검색 프로바이더 반영", () => {
+    t("D05 대시보드 공지 칸 = 공지사항 게시판(B001) · '새 공지'는 게시판 글쓰기", () => {
+      ok(q(e, "#notice-list"), "공지 칸");
+      ok(q(e, '[data-dash-go="board/B001"]'), "전체 → 게시판");
       q(e, "#btn-add-notice").click();
-      q(e, "#f-title").value = "화물터미널 안전점검 안내";
-      q(e, "#nb-editor").innerHTML = "<b>9월</b> 점검 <script>alert(1)</script>";
-      q(e, "#f-save").click();
-      eq(e.S.data.notices.length, 2);
-      const n = e.S.data.notices[1];
-      ok(n.bodyHtml.indexOf("<script") < 0, "살균");
-      ok(q(e, "#notice-list").textContent.includes("화물터미널 안전점검 안내"));
-      const hits = e.w.SemisSearch.search("안전점검 안내");
-      ok(hits.some(h => h.group === "공지사항"));
+      ok(q(e, "#bb-wt") && q(e, "#bb-wed"), "글쓰기 모달(서식 편집기)");
+      ok(q(e, "#modal-box").textContent.includes("공지사항"));
+      ok(q(e, "#bb-wpin"), "hq 는 상단 고정");
     });
-    t("D06 공지 삭제(confirm)", () => {
-      const id = e.S.data.notices[1].id;
-      q(e, `#notice-list [data-del="${id}"]`).click(); clickOk(e);
-      eq(e.S.data.notices.length, 1);
+    t("D06 글쓰기 모달은 바깥 누르기 · Esc 로 닫히지 않고, 쓴 내용이 있으면 취소를 두 번 눌러야 닫힘", () => {
+      q(e, "#bb-wt").value = "화물터미널 안전점검 안내";
+      q(e, "#modal-overlay").dispatchEvent(new e.w.MouseEvent("click", { bubbles: true }));
+      ok(!q(e, "#modal-overlay").classList.contains("hidden"), "바깥 누르기");
+      e.w.document.dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      ok(!q(e, "#modal-overlay").classList.contains("hidden"), "Esc");
+      q(e, "#modal-box [data-act=cancel]").click();
+      ok(!q(e, "#modal-overlay").classList.contains("hidden"), "첫 취소는 확인");
+      eq(q(e, "#modal-box [data-act=cancel]").textContent, "작성 취소 확인");
+      q(e, "#modal-box [data-act=cancel]").click();
+      ok(q(e, "#modal-overlay").classList.contains("hidden"), "두 번째에 닫힘");
+      ok(!q(e, "#modal-box").hasAttribute("data-sticky"), "닫으면 표시 해제");
+      e.S.openModal("<p>x</p>");
+      q(e, "#modal-overlay").dispatchEvent(new e.w.MouseEvent("click", { bubbles: true }));
+      ok(q(e, "#modal-overlay").classList.contains("hidden"), "일반 모달은 그대로 바깥 누르기로 닫힘");
     });
     t("D07 보안등급 변경 → 배지·타일 반영", () => {
       q(e, "#btn-edit-level").click();
@@ -1207,9 +1372,9 @@ function makeServer(opts = {}) {
     const e = makeEnv();
     loginAs(e, "admin");
     go(e, "dashboard");
-    t("H04 레일: 허브 6개 + 하단 유틸리티(암호 관리·시스템 설정) · 선 아이콘", () => {
-      eq(qa(e, "#rail-hubs .rail-btn").map(b => b.dataset.hub).join(","), "hub-home,hub-sec,hub-aud,hub-ops,hub-doc", "예정 모듈만 있는 안전 관리는 숨김");
-      ok(qa(e, "#rail-hubs .rail-btn svg").length === 5);
+    t("H04 레일: 허브 6개(게시판 포함) + 하단 유틸리티(암호 관리·시스템 설정) · 선 아이콘", () => {
+      eq(qa(e, "#rail-hubs .rail-btn").map(b => b.dataset.hub).join(","), "hub-home,hub-bbs,hub-sec,hub-aud,hub-ops,hub-doc", "예정 모듈만 있는 안전 관리는 숨김");
+      ok(qa(e, "#rail-hubs .rail-btn svg").length === 6);
       eq(qa(e, "#rail-util .rail-btn").map(b => b.dataset.route).join(","), "vault,settings");
       eq(q(e, '#rail-hubs [data-hub="hub-aud"] span').textContent, "점검교육", "레일 짧은 이름");
     });
@@ -1426,7 +1591,7 @@ function makeServer(opts = {}) {
     const e = makeEnv({ fetch: server.fetch });
     const { Sync } = e;
     t("Y01 SYNC_KEYS 구성(계정 자료 제외)", () =>
-      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,vault,regulations,equipment,crisis,fleet,audits,phonebook,training,seclog,seclogCfg,serp,serpRuns,threat,threatRuns,threatChecks,patrol,patrolCfg,patrolPeople,secPost,secPostImg,selfChecks,selfCheckCfg,docs,partners,contracts,kcra,secCases,dissem,scrStats,desk"));
+      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,vault,regulations,equipment,crisis,fleet,audits,phonebook,training,seclog,seclogCfg,serp,serpRuns,threat,threatRuns,threatChecks,patrol,patrolCfg,patrolPeople,secPost,secPostImg,selfChecks,selfCheckCfg,docs,partners,contracts,kcra,secCases,dissem,scrStats,desk,boards"));
     t("Y02 SYNC_KEYS는 모두 freshData 컬렉션에 존재", () => Sync.SYNC_KEYS.forEach(k => ok(e.S.data[k] !== undefined, k)));
     await ta("Y03 로그인 전에는 서버를 부르지 않음 · 로그인 후 초기 pull + 쓰기 권한 있는 컬렉션만 시드", async () => {
       await Sync.start();
@@ -1447,9 +1612,10 @@ function makeServer(opts = {}) {
     });
     t("Y05 원격 변경 반영(applyRemote) → 화면 갱신", () => {
       go(e, "dashboard");
-      Sync.applyRemote("notices", [{ id: "nr", title: "원격 공지", body: "b", author: "x", pinned: false, created: "2026-09-01T00:00:00Z" }]);
-      eq(e.S.data.notices[0].title, "원격 공지");
-      ok(q(e, "#notice-list").textContent.includes("원격 공지"));
+      Sync.applyRemote("levelHistory", [{ id: "lvr", date: "2026-01-01", end: "", level: "주의", note: "원격 변경", by: "x", at: "2026-01-01T00:00:00Z" }]);
+      eq(e.S.secCurrent().level, "주의");
+      eq(q(e, ".ticket .tk-level").textContent, "주의");
+      Sync.applyRemote("levelHistory", [{ id: "lv0", date: "2026-01-01", level: "평시", note: "", by: "x", at: "2026-01-01T00:00:00Z" }]);
     });
     t("Y06 canon: 키 순서 무관 동일", () => eq(Sync._canon({ b: 1, a: [1, { d: 2, c: 3 }] }), Sync._canon({ a: [1, { c: 3, d: 2 }], b: 1 })));
     await ta("Y07 오프라인: pending 큐(탭 세션) 보관 후 재접속 push", async () => {
@@ -3511,18 +3677,23 @@ function makeServer(opts = {}) {
       eq(leaked, 0, "Esc 가 문서까지 올라가지 않음");
       e.S.closeModal();
     });
-    t("FV07 읽기 화면(공지·일정 상세)의 첨부도 같은 뷰어로", () => {
-      go(e, "dashboard");
-      e.S.data.notices = [{ id: "n-fv", title: "첨부 시험", body: "본문", author: "시스템", pinned: false,
-        created: new Date().toISOString(), files: [{ name: "안내문.pdf", url: "https://files.test/안내문.pdf" }] }];
-      e.S.saveSilent(); e.S.renderView();
-      const link = q(e, "#notice-list .nb-file");
-      ok(link, "공지 첨부 칩");
-      link.dispatchEvent(new e.w.MouseEvent("click", { bubbles: true, cancelable: true }));
-      ok(openAttr());
-      eq(q(e, "#fv-title").textContent, "안내문.pdf");
-      eq(q(e, "#fv-viewer [data-fv-stage]").dataset.kind, "pdf");
-      q(e, "#fv-viewer [data-fv=close]").click();
+    await ta("FV07 읽기 화면(게시판 글 · 일정 상세)의 첨부도 같은 뷰어로", async () => {
+      const sv = makeServer();
+      sv.bbs.posts.push({ id: 77, board: "B001", no: 1, title: "첨부 시험", body: "본문", html: "<p>본문</p>", files: [{ name: "안내문.pdf", url: "https://files.test/안내문.pdf" }],
+        cat: "", pin: false, aid: "x", by: "시스템", at: new Date().toISOString(), up: new Date().toISOString(), views: 0, depth: 0, thread: 77, path: "", parent: null });
+      const e2 = makeEnv({ fetch: sv.fetch });
+      await sv.loginAs(e2, "hq-pw-2222");
+      go(e2, "board/B001/77");
+      await tick(60);
+      const link = q(e2, ".bb-files a.bb-file");
+      ok(link, "글 첨부");
+      link.dispatchEvent(new e2.w.MouseEvent("click", { bubbles: true, cancelable: true }));
+      const d = q(e2, "#fv-viewer");
+      ok(d && (d.open || d.hasAttribute("open")), "뷰어 열림");
+      eq(q(e2, "#fv-title").textContent, "안내문.pdf");
+      eq(q(e2, "#fv-viewer [data-fv-stage]").dataset.kind, "pdf");
+      q(e2, "#fv-viewer [data-fv=close]").click();
+      e2.Sync.stop();
     });
     t("FV08 뷰어가 본문을 고치지 않음 · 모달 위에 겹치는 dialog · index.html 로드", () => {
       e.S.openModal('<div id="f-memo" class="nb-editor" contenteditable="true"><a class="nb-file" href="' + SUPA + '">📎 회의자료.docx</a></div>');
@@ -4771,19 +4942,22 @@ function makeServer(opts = {}) {
     const PUBU = "https://mzyuzrxkdcpzxojenwat.supabase.co/storage/v1/object/public/semis-logi-files/";
     const srvF = makeServer({ rows: [{ key: "notices", value: [{ id: "nf", title: "첨부 공지", body: "", author: "x", pinned: false,
       created: "2026-09-01T00:00:00Z", bodyHtml: '<p>본문 <img src="' + PUBU + 'notices/a.png" alt="그림"></p>', files: [{ name: "보고서.pdf", url: PUBU + "attach/b.pdf" }] }] }] });
+    srvF.bbs.posts.push({ id: 900, board: "B001", no: 1, title: "첨부 공지", body: "", html: '<p>본문 <img src="' + PUBU + 'notices/a.png" alt="그림"></p>',
+      files: [{ name: "보고서.pdf", url: PUBU + "attach/b.pdf" }], cat: "", pin: false, aid: "x", by: "x", at: "2026-09-01T00:00:00Z", up: "2026-09-01T00:00:00Z",
+      views: 0, depth: 0, thread: 900, path: "", parent: null });
     const e = makeEnv({ fetch: srvF.fetch });
     await srvF.loginAs(e, "user-pw-4444");
     const FA = e.w.SemisFileAuth;
     await ta("SEC01 화면의 비공개 파일 주소 → 서명 URL(표준 주소는 data-sf에 보관)", async () => {
       FA.start();
       await e.Sync.start();
-      go(e, "dashboard");
-      await tick(80);
-      const img = q(e, ".notice-html img");
+      go(e, "board/B001/900");
+      await tick(120);
+      const img = q(e, ".bb-content.notice-html img");
       ok(img, "공지 이미지");
       ok(img.getAttribute("src").indexOf("/object/sign/semis-logi-files/notices/a.png?token=") > 0, img.getAttribute("src"));
       eq(img.getAttribute("data-sf"), PUBU + "notices/a.png");
-      const a = q(e, "a.nb-file");
+      const a = q(e, "a.bb-file");
       ok(a && a.getAttribute("href").indexOf("/object/sign/semis-logi-files/attach/b.pdf?token=") > 0, a && a.getAttribute("href"));
       ok(srvF.calls.some(c => c.url.indexOf("/functions/v1/semis-logi-files") > 0 && c.body && c.body.op === "sign"), "서명 요청");
     });
@@ -8231,7 +8405,7 @@ function makeServer(opts = {}) {
     const C0 = "abcdefghjkmn";
     /* SQL 선언에서 공개 함수 인자 이름 — 가짜 서버 · 관리 화면 흉내가 부를 때마다 맞춰 본다(v1.39.1 '새 링크' 인자 이름 오류 재발 방지) */
     const SIGS = {};
-    [ESQL, read("tools/sql/semis-logi-pow.sql")].forEach(src => { for (const m of src.matchAll(/create or replace function public\.(\w+)\(([^)]*)\)/g))
+    [ESQL, read("tools/sql/semis-logi-pow.sql"), read("tools/sql/semis-logi-bbs.sql")].forEach(src => { for (const m of src.matchAll(/create or replace function public\.(\w+)\(([^)]*)\)/g))
       SIGS[m[1]] = m[2].split(",").map(x => x.trim()).filter(Boolean).map(x => ({ n: x.split(/\s+/)[0], opt: /\sdefault\s/i.test(x) })); });
     const sigBad = (name, args) => {
       const sg = SIGS[name];
@@ -9406,7 +9580,7 @@ function makeServer(opts = {}) {
       ok(/if \(w\.kind !== "user" \|\| \(w\.rank \?\? 0\) < 3\) return json\(\{ ok: false, error: "forbidden" \}, 403, origin\);\n  const path = String\(body\.path \|\| ""\);\n  if \(!\/\^desk/.test(s), "deskRead 등급 · 경로");
       ok(/const DESK_MAX_TEXT = 60000;/.test(s));
       ok(/folderOf\(from\) !== "desk"/.test(s) && /folder === "desk"\) return json\(\{ ok: false, error: "prefix" \}/.test(s) && /!canRead\(w, from\) \|\| !canWrite\(w, folder\)/.test(s), "copy 검사");
-      ok(/dissem: 3, desk: 3\n\};/.test(s), "올리기 3");
+      ok(/dissem: 3, desk: 3,?\n/.test(s), "올리기 3");
       ok(!/desk:/.test(/const READ_RANK[^}]+}/.exec(s)[0]), "열람 기본 3");
       ok(/op === "desk-read"\) return await deskRead\(w, body, origin\)/.test(s) && s.indexOf('op === "desk-read"') > s.indexOf("const w = await whoAmI(req);"), "세션 확인 뒤");
       ok(/전화번호 · 주민번호를 옮기지 않는다/.test(s));
@@ -9959,6 +10133,324 @@ function makeServer(opts = {}) {
       ok(read("index.html").includes('<script src="js/argo.js?v='), "스크립트(defer)");
       ok(/semisl:argo:/.test(read("js/app.js")), "로그아웃 때 대화 지움");
       ok(/@media screen and \(max-width: 767px\) \{\n  \.ag-log/.test(read("css/main.css")), "모바일 CSS 는 screen");
+    });
+  }
+
+  /* ══════════ [BB] 게시판 — 메뉴 · 목록 · 읽기 · 쓰기 · 댓글 · 관리 · 대시보드 · 아르고 · 서버 원본 ══════════ */
+  {
+    const PUBB = "https://mzyuzrxkdcpzxojenwat.supabase.co/storage/v1/object/public/semis-logi-files/";
+    const BSQL = read("tools/sql/semis-logi-bbs.sql");
+    const BJS = read("js/board.js");
+    const boardEnv = async (pw, seed) => {
+      const sv = makeServer();
+      if (seed) seed(sv);
+      const e = makeEnv({ fetch: sv.fetch });
+      await sv.loginAs(e, pw || "hq-pw-2222");
+      await tick(10);
+      return { e, sv };
+    };
+    const P = (sv, o) => { const id = ++sv.bbs.seq; const x = Object.assign({ id, board: "B002", no: id, title: "글 " + id, body: "", html: "<p>본문 " + id + "</p>", files: [], cat: "", pin: false,
+      aid: "cargo-user", by: "화물팀 사용자", at: new Date(Date.now() - (500 - id) * 60000).toISOString(), up: null, views: 0, depth: 0, thread: id, path: "", parent: null }, o || {});
+      x.up = x.up || x.at; sv.bbs.posts.push(x); return x; };
+
+    t("BB01 게시판 정의: 기본 3개(B001 공지 · B002 일반 · B003 자료실) · 정규화(ID 형식 · 쓰기 ≥ 읽기 · 분류 중복 · 크기)", () => {
+      const e = makeEnv();
+      eq(e.S.defaultBoards().map(b => b.id + ":" + b.kind + ":" + b.view).join(","), "B001:notice:list,B002:general:list,B003:archive:file");
+      const n = e.S.normBoard({ id: "B010", name: "  시험 ", read: "hq", write: "all", cmt: "user?", perPage: 7, opt: { pin: "yes", reply: true, newDays: 99 }, cats: ["가", "가", " ", "나"] });
+      eq(JSON.stringify([n.name, n.read, n.write, n.cmt, n.perPage, n.opt.pin, n.opt.reply, n.opt.newDays, n.cats.join("|")]), JSON.stringify(["시험", "hq", "hq", "hq", 20, false, true, 30, "가|나"]));
+      eq(e.S.normBoard({ id: "X1", name: "x" }), null, "ID 형식");
+      e.S.data.boards = [{ id: "B001", name: "공지" }, { id: "B001", name: "중복" }, { id: "bad" }];
+      e.S.normalizeData();
+      eq(e.S.data.boards.map(b => b.name).join(","), "공지", "중복 · 잘못된 정의 제거");
+      ok(read("tools/sql/semis-logi-bbs.sql").indexOf('"id":"B003","name":"자료실","kind":"archive","view":"file"') > 0, "서버 시드와 같은 기본값");
+    });
+    t("BB02 운영 메뉴에 게시판이 없으면 한 번만 '게시판' 허브 + 메뉴 3개(홈 허브 뒤) — 지운 뒤에는 되살리지 않음", () => {
+      const e = makeEnv();
+      loginAs(e, "admin");
+      e.S.data.menus = e.S.data.menus.filter(m => m.type !== "board" && m.id !== "hub-bbs");
+      const dash = e.S.data.menus.find(m => m.module === "dashboard"); delete dash.bv;
+      e.S.normalizeData();
+      const hub = e.S.data.menus.find(m => m.id === "hub-bbs");
+      ok(hub && hub.type === "group", "허브");
+      const home = e.S.data.menus.find(m => m.id === "hub-home"), sec = e.S.data.menus.find(m => m.id === "hub-sec");
+      ok(hub.seq > home.seq && hub.seq < sec.seq, "홈 허브 뒤");
+      eq(e.S.data.menus.filter(m => m.type === "board").map(m => m.board + ":" + m.parent).join(","), "B001:hub-bbs,B002:hub-bbs,B003:hub-bbs");
+      eq(dash.bv, 1);
+      e.S.data.menus = e.S.data.menus.filter(m => m.type !== "board" && m.id !== "hub-bbs");
+      e.S.normalizeData();
+      ok(!e.S.data.menus.some(m => m.type === "board"), "운영자가 지운 뒤에는 그대로");
+    });
+    t("BB03 게시판 메뉴 권한 = 게시판 읽기 등급 · 협력업체 · 서명 세션 제외 · 없는 게시판은 숨김", () => {
+      const e = makeEnv();
+      loginAs(e, "user");
+      e.S.data.boards.push(e.S.normBoard({ id: "B004", name: "파트 내부", read: "hq", write: "hq" }));
+      e.S.data.menus.push({ id: "bbs-B004", seq: 9.5, type: "board", label: "파트 내부", board: "B004", vis: "all", parent: "hub-bbs" },
+        { id: "bbs-B099", seq: 9.6, type: "board", label: "없는 게시판", board: "B099", vis: "all", parent: "hub-bbs" });
+      e.S.renderNav();
+      const items = () => qa(e, '#nav-menu .hub[data-hub="hub-bbs"] .nav-item').map(b => b.dataset.route).join(",");
+      eq(items(), "board/B001,board/B002,board/B003", "user");
+      loginAs(e, "hq"); e.S.renderNav();
+      eq(items(), "board/B001,board/B002,board/B003,board/B004", "hq");
+      loginAs(e, "vendor"); e.S.renderNav();
+      ok(!e.S.canSee(e.S.data.menus.find(m => m.id === "bbs-B001")), "협력업체");
+      loginAs(e, "user");
+      go(e, "board/B004");
+      ok(!q(e, ".bb-card") && q(e, "#view .ticket"), "권한 밖 주소 → 대시보드");
+    });
+    await ta("BB04 목록: 공지 고정 줄 · 글 번호 · 새 글 · 첨부 · 댓글 수 · 쪽 번호(10쪽 묶음) · 쪽당 글 수 · 메뉴 배지 · Print", async () => {
+      const { e, sv } = await boardEnv("hq-pw-2222", (sv) => {
+        for (let i = 0; i < 45; i++) P(sv, { files: i === 44 ? [{ name: "a.pdf", url: PUBB + "bbs1/x_a.pdf", size: 1200 }] : [] });
+        P(sv, { title: "고정 안내", pin: true });
+        sv.bbs.comments.push({ id: 1, post: 45, body: "c", aid: "x", by: "x", at: new Date().toISOString() });
+      });
+      go(e, "board/B002");
+      await tick(30);
+      const rows = qa(e, ".bb-tbl tbody tr.bb-row");
+      eq(rows.filter(r => r.classList.contains("is-pin")).length, 1, "고정 줄");
+      eq(rows.length, 21, "고정 1 + 20");
+      eq(q(e, ".bb-tbl tbody tr.bb-row:not(.is-pin) .bb-no").textContent, "46");
+      ok(qa(e, ".bb-tbl .bb-nc").some(x => x.textContent === "댓글 [1]" && x.querySelector(".sr-only")), "댓글 수(읽기 프로그램용 '댓글')");
+      ok(q(e, ".bb-tbl .bb-ic"), "첨부 표시");
+      ok(q(e, ".bb-tbl .bb-n"), "새 글");
+      eq(qa(e, ".bb-pager .bb-pg[data-bpg]").filter(b => /^\d+$/.test(b.textContent)).map(b => b.textContent).join(","), "1,2,3");
+      eq(q(e, ".bb-meta b").textContent, "46");
+      ok(q(e, "#view [data-print-btn]"), "Print");
+      q(e, '.bb-pager [data-bpg="3"]').click();
+      await tick(30);
+      eq(sv.bbs.calls.filter(c => c.name === "list").pop().body.page, 3);
+      eq(qa(e, ".bb-tbl tbody tr.bb-row").length, 6, "3쪽(고정 줄은 1쪽만)");
+      const sz = q(e, "#bb-size"); sz.value = "50"; sz.dispatchEvent(new e.w.Event("change"));
+      await tick(30);
+      eq(qa(e, ".bb-tbl tbody tr.bb-row").length, 47, "50개씩");
+      ok(/^\d+$/.test(e.w.SemisBoard.navBadge("B002")), "메뉴 배지(안 읽은 새 글)");
+      ok(q(e, '#nav-menu [data-route="board/B002"] .nav-new'), "메뉴에 배지");
+      e.Sync.stop();
+    });
+    await ta("BB05 검색(범위 · 낱말) · 분류 거르기 · 검색 해제 · 입력 중 다시 그려도 검색어 유지", async () => {
+      const { e, sv } = await boardEnv("hq-pw-2222", (sv) => {
+        P(sv, { board: "B003", title: "점검표 양식", cat: "양식" }); P(sv, { board: "B003", title: "교육 교재", cat: "교육 자료", by: "가나다" });
+      });
+      go(e, "board/B003");
+      await tick(30);
+      eq(qa(e, ".bb-cat-b").map(b => b.textContent).join(","), "전체,규정 · 지침,양식,교육 자료,기타");
+      ok(q(e, ".bb-tbl th:nth-child(5)").textContent === "첨부" || qa(e, ".bb-tbl th").some(th => th.textContent === "첨부"), "자료형 = 첨부 열");
+      q(e, '[data-bcat="양식"]').click();
+      await tick(30);
+      eq(sv.bbs.calls.filter(c => c.name === "list").pop().body.cat, "양식");
+      eq(qa(e, ".bb-tbl tbody tr.bb-row").length, 1);
+      q(e, '[data-bcat=""]').click(); await tick(30);
+      q(e, "#bb-q").value = "가나다"; q(e, "#bb-q").dispatchEvent(new e.w.Event("input"));
+      e.S.renderView();
+      eq(q(e, "#bb-q").value, "가나다", "다시 그려도 쓰던 검색어");
+      q(e, "#bb-f").value = "author";
+      q(e, "#bb-sf").dispatchEvent(new e.w.Event("submit", { cancelable: true }));
+      await tick(30);
+      const c = sv.bbs.calls.filter(x => x.name === "list").pop().body;
+      eq(JSON.stringify([c.q, c.f, c.page]), JSON.stringify(["가나다", "author", 1]));
+      eq(qa(e, ".bb-tbl tbody tr.bb-row").length, 1);
+      q(e, "[data-bb-clear]").click(); await tick(30);
+      eq(sv.bbs.calls.filter(x => x.name === "list").pop().body.q, "");
+      e.Sync.stop();
+    });
+    await ta("BB06 글쓰기 → 서버 저장(살균 · 첨부 · 고정) → 글 화면 · 고치기 · 지우기", async () => {
+      const { e, sv } = await boardEnv("hq-pw-2222");
+      go(e, "board/B001");
+      await tick(20);
+      q(e, "#bb-write").click();
+      q(e, "#bb-wt").value = "  11월\t 보안점검 계획 ";
+      q(e, "#bb-wed").innerHTML = "<b>11월 3일</b> 시작 <img src=x onerror=alert(1)><script>alert(2)</script>";
+      q(e, "#bb-wpin").checked = true;
+      q(e, "#modal-box [data-act=ok]").click();
+      await tick(40);
+      const sv1 = sv.bbs.calls.filter(c => c.name === "save").pop().body;
+      eq(JSON.stringify([sv1.b, sv1.title, sv1.pin, sv1.body.indexOf("11월 3일") >= 0]), JSON.stringify(["B001", "11월 보안점검 계획", true, true]));
+      ok(sv1.html.indexOf("<script") < 0 && sv1.html.indexOf("onerror") < 0, "살균");
+      const id = sv.bbs.posts[0].id;
+      eq(e.w.location.hash, "#/board/B001/" + id, "글 화면으로");
+      await tick(30);
+      eq(q(e, ".bb-ptl h2").textContent, "11월 보안점검 계획");
+      ok(q(e, ".bb-pm").textContent.indexOf("No. B001-0001") >= 0, "글 번호");
+      ok(q(e, ".bb-readers"), "열람 확인(hq)");
+      ok(q(e, "#view [data-print-btn]"), "Print");
+      q(e, "[data-bb-edit]").click();
+      eq(q(e, "#bb-wt").value, "11월 보안점검 계획", "고치기 = 기존 글");
+      q(e, "#bb-wt").value = "11월 보안점검 계획(수정)";
+      q(e, "#modal-box [data-act=ok]").click();
+      await tick(40);
+      eq(sv.bbs.posts[0].title, "11월 보안점검 계획(수정)");
+      eq(q(e, ".bb-ptl h2").textContent, "11월 보안점검 계획(수정)", "다시 받아 그림");
+      q(e, "[data-bb-del]").click(); clickOk(e);
+      await tick(40);
+      ok(sv.bbs.posts[0].del, "지움");
+      eq(e.w.location.hash, "#/board/B001");
+      e.Sync.stop();
+    });
+    await ta("BB07 user: 공지 글쓰기 없음 · 일반게시판 글 · 답글 · 댓글(쓰기 · 지우기) · 남의 글 수정 없음 · 쓰던 댓글은 다시 그려도 남음", async () => {
+      const { e, sv } = await boardEnv("user-pw-4444", (sv) => { P(sv, { aid: "cargo-mgr", by: "관리자", title: "남의 글" }); });
+      go(e, "board/B001"); await tick(20);
+      ok(!q(e, "#bb-write"), "공지 글쓰기 없음");
+      go(e, "board/B002/1"); await tick(30);
+      ok(!q(e, "[data-bb-edit]") && !q(e, "[data-bb-del]"), "남의 글");
+      ok(q(e, "[data-bb-reply]"), "답글");
+      q(e, "#bb-ct").value = "의견입니다"; q(e, "#bb-ct").dispatchEvent(new e.w.Event("input"));
+      e.S.renderView(); await tick(5);
+      eq(q(e, "#bb-ct").value, "의견입니다", "다시 그려도 댓글 초안 유지");
+      q(e, "#bb-cf").dispatchEvent(new e.w.Event("submit", { cancelable: true }));
+      await tick(40);
+      eq(sv.bbs.comments.length, 1);
+      eq(q(e, ".bb-c p").textContent, "의견입니다");
+      eq(q(e, "#bb-ct").value, "", "등록 후 비움");
+      ok(q(e, "#view [data-print-btn]"), "다시 그린 뒤에도 Print");
+      q(e, "[data-cdel]").click(); clickOk(e); await tick(40);
+      ok(sv.bbs.comments[0].del, "내 댓글 지움");
+      q(e, "[data-bb-reply]").click();
+      eq(q(e, "#bb-wt").value, "Re: 남의 글");
+      ok(!q(e, "#bb-wpin"), "user 고정 없음");
+      q(e, "#modal-box [data-act=ok]").click(); await tick(40);
+      const rp = sv.bbs.posts.find(x => x.parent === 1);
+      ok(rp && rp.depth === 1, "답글 저장");
+      go(e, "board/B002"); await tick(30);
+      ok(q(e, ".bb-tbl .bb-tw.is-re"), "목록 답글 들여쓰기");
+      e.Sync.stop();
+    });
+    await ta("BB08 관리(hq): 선택 삭제 · 다른 게시판으로 이동", async () => {
+      const { e, sv } = await boardEnv("hq-pw-2222", (sv) => { for (let i = 0; i < 3; i++) P(sv); });
+      go(e, "board/B002"); await tick(30);
+      const cbs = qa(e, "[data-bsel]");
+      eq(cbs.length, 3);
+      cbs[0].checked = true; cbs[0].dispatchEvent(new e.w.Event("change"));
+      ok(!q(e, "[data-bb-del]").disabled, "선택하면 켜짐");
+      q(e, "[data-bb-move]").click();
+      q(e, "#bb-mvto").value = "B003";
+      q(e, "#modal-box [data-act=ok]").click(); await tick(40);
+      eq(sv.bbs.posts.find(x => x.id === 3).board, "B003", "이동");
+      await tick(30);
+      const c2 = qa(e, "[data-bsel]");
+      eq(c2.length, 2, "목록 다시 받음");
+      q(e, "#bb-all").checked = true; q(e, "#bb-all").dispatchEvent(new e.w.Event("change"));
+      q(e, "[data-bb-del]").click(); clickOk(e); await tick(40);
+      eq(sv.bbs.posts.filter(x => x.board === "B002" && !x.del).length, 0, "선택 삭제");
+      e.Sync.stop();
+    });
+    await ta("BB09 대시보드: 공지 칸 = 대시보드 표시 게시판 최근 글(고정 먼저) · 누르면 글 · user 는 '새 공지' 없음", async () => {
+      const { e } = await boardEnv("user-pw-4444", (sv) => { P(sv, { board: "B001", title: "일반 공지" }); P(sv, { board: "B001", title: "고정 공지", pin: true }); P(sv, { board: "B002", title: "일반글" }); });
+      go(e, "dashboard"); await tick(40);
+      const items = qa(e, "#notice-list .bb-dash");
+      eq(items.map(a => a.textContent.indexOf("고정 공지") >= 0 ? "pin" : a.textContent.indexOf("일반 공지") >= 0 ? "n" : "x").join(","), "pin,n");
+      eq(items[0].getAttribute("href"), "#/board/B001/2");
+      ok(!q(e, "#btn-add-notice"), "user 새 공지 없음");
+      eq(q(e, '#view [aria-label="공지사항"] h2').textContent, "공지사항");
+      e.Sync.stop();
+    });
+    await ta("BB10 시스템 설정 › 게시판: 만들기(형식 · 토글 · 분류 · 메뉴 허브) → 정의 · 메뉴 · 고치기(이름 → 메뉴 이름) · 삭제(서버 비우기 확인)", async () => {
+      const { e, sv } = await boardEnv("admin-pw-111");
+      go(e, "settings"); await tick(30);
+      q(e, '.tab[data-tab="boards"]').click(); await tick(30);
+      eq(qa(e, ".bb-adm tbody tr[data-bbid]").map(r => r.dataset.bbid).join(","), "B001,B002,B003");
+      q(e, "#bb-new").click();
+      eq(q(e, "#modal-box .au-mh").textContent, "B004", "다음 ID");
+      q(e, "#bf-name").value = "현장 사진";
+      q(e, "#bf-kind").value = "gallery"; q(e, "#bf-kind").dispatchEvent(new e.w.Event("change"));
+      eq(JSON.stringify([q(e, "#bf-view").value, q(e, "#bf-write").value, q(e, "#bf-o-comment").checked, q(e, "#bf-o-pin").checked]), JSON.stringify(["gallery", "mgr", true, false]), "형식 기본값");
+      q(e, "#bf-o-cat").checked = true; q(e, "#bf-o-cat").dispatchEvent(new e.w.Event("change"));
+      q(e, "#bf-cats").value = "검색장 , 창고, 검색장";
+      q(e, "#modal-box [data-act=ok]").click(); await tick(20);
+      const b = e.S.data.boards.find(x => x.id === "B004");
+      eq(JSON.stringify([b.name, b.view, b.write, b.opt.comment, b.opt.cat, b.cats.join("|")]), JSON.stringify(["현장 사진", "gallery", "mgr", true, true, "검색장|창고"]));
+      const m = e.S.data.menus.find(x => x.type === "board" && x.board === "B004");
+      eq(JSON.stringify([m && m.parent, m && m.label]), JSON.stringify(["hub-bbs", "현장 사진"]), "메뉴");
+      ok(q(e, '#nav-menu [data-route="board/B004"]'), "사이드 메뉴");
+      q(e, '[data-bbedit="B004"]').click();
+      q(e, "#bf-name").value = "현장 사진첩";
+      q(e, "#modal-box [data-act=ok]").click(); await tick(20);
+      eq(e.S.data.menus.find(x => x.board === "B004").label, "현장 사진첩", "메뉴 이름 따라감");
+      P(sv, { board: "B004" });
+      q(e, '[data-bbdel="B004"]').click(); clickOk(e); await tick(40);
+      const dc = sv.bbs.calls.filter(c => c.name === "admin" && c.body.op === "drop").pop().body;
+      eq(dc.b + "/" + dc.confirm, "B004/B004");
+      ok(!e.S.data.boards.some(x => x.id === "B004") && !e.S.data.menus.some(x => x.board === "B004"), "정의 · 메뉴 삭제");
+      e.Sync.stop();
+    });
+    t("BB11 메뉴 관리: 유형 '게시판'으로 게시판 ID 를 고른 메뉴 추가 · 메뉴 트리에 게시판 표시", () => {
+      const e = makeEnv();
+      loginAs(e, "admin");
+      go(e, "settings");
+      q(e, "#btn-add-menu").click();
+      q(e, "#f-type").value = "board"; q(e, "#f-type").dispatchEvent(new e.w.Event("change"));
+      ok(q(e, "#row-board").style.display !== "none" && q(e, "#row-vis").style.display === "none", "게시판 고르기 · 권한은 게시판 설정");
+      q(e, "#f-board").value = "B003"; q(e, "#f-board").dispatchEvent(new e.w.Event("change"));
+      eq(q(e, "#f-label").value, "자료실", "이름 채움");
+      q(e, "#f-parent").value = "hub-home";
+      q(e, "#f-save").click();
+      const m = e.S.data.menus.filter(x => x.type === "board" && x.board === "B003").pop();
+      eq(m.parent + "/" + m.label, "hub-home/자료실");
+      ok(q(e, "#menu-tree").textContent.indexOf("게시판 B003") >= 0, "트리 표시");
+      ok(q(e, '#nav-menu .hub[data-hub="hub-home"] [data-route="board/B003"]'), "홈 허브에");
+    });
+    await ta("BB12 통합 검색: 게시판 메뉴 · 글 제목(서버 색인, 권한 안) → 글로 이동", async () => {
+      const { e } = await boardEnv("user-pw-4444", (sv) => { P(sv, { board: "B001", title: "추석 연휴 보안점검 안내" }); });
+      await e.w.SemisBoard.refreshStats(true);
+      const hits = e.w.SemisSearch.search("추석 보안점검");
+      const h = hits.find(x => x.group === "게시판");
+      ok(h && h.route === "board/B001/1", JSON.stringify(hits.map(x => x.group + ":" + x.route)));
+      ok(e.w.SemisSearch.search("자료실").some(x => x.route === "board/B003"), "메뉴");
+      e.Sync.stop();
+    });
+    await ta("BB13 아르고: 공지 등록 = 공지사항 게시판 글(src argo) · 결과 카드 이동 · 되돌리기 = 글 지우기 · 공지 자료는 게시판 색인", async () => {
+      const { e, sv } = await boardEnv("hq-pw-2222");
+      const A = e.w.SemisArgo;
+      A._reset();
+      const turn = { id: "t1", q: "", files: [], a: "", log: "", cards: [] }; A.conv.turns.push(turn);
+      const r = await A.runTool("notice_add", { title: "보안등급 상향 안내", body: "관심 단계로 올립니다.", pinned: true }, { turn, files: {}, up: {}, log: [] });
+      ok(r.ok, JSON.stringify(r));
+      const x = sv.bbs.posts[0];
+      eq([x.board, x.title, x.pin, x.src].join("/"), "B001/보안등급 상향 안내/true/argo");
+      eq(turn.cards[0].go[0].route, "board/B001/" + x.id, "결과 카드 이동");
+      ok(turn.cards[0].undo, "되돌리기 가능");
+      A.undo(turn.cards[0].undo); await tick(30);
+      ok(x.del, "되돌리기 = 지움");
+      P(sv, { board: "B001", title: "색인 공지" });
+      await e.w.SemisBoard.refreshStats(true);
+      const rec = await A.runTool("argos_records", { collection: "notices" }, { turn, files: {}, up: {}, log: [] });
+      ok(rec.items.some(i => i.title === "색인 공지" && i.go === "board/B001/2"), JSON.stringify(rec));
+      const st = await A.runTool("argos_status", { topic: "notices" }, { turn, files: {}, up: {}, log: [] });
+      ok(st.items.some(i => i.title === "색인 공지"), "현황 notices");
+      e.Sync.stop();
+    });
+    await ta("BB14 저장소 관리: 게시판 글이 쓰는 파일은 연결 있는 파일로", async () => {
+      const { e, sv } = await boardEnv("admin-pw-111", (sv) => { P(sv, { files: [{ name: "a.pdf", url: PUBB + "bbs1/k_a.pdf" }] }); });
+      const refs = await e.w.SemisBoard.fileRefs();
+      ok(refs.indexOf(PUBB + "bbs1/k_a.pdf") >= 0);
+      ok(read("js/modules.js").indexOf("SemisBoard.fileRefs()") > 0 && /bbs === null/.test(read("js/modules.js")), "목록을 못 받으면 정리 잠금");
+      e.Sync.stop();
+    });
+    t("BB15 서버 원본: 화면이 부르는 RPC 는 SQL 에 선언 · 인자 이름 일치 · 공개 함수는 anon 만 실행 · boards 권한표 1/4 · 파일 폴더 bbs1~4", () => {
+      const used = Array.from(new Set(Array.from(BJS.matchAll(/rpc\("(semis_logi_bbs_\w+)"/g)).map(m => m[1])));
+      eq(used.slice().sort().join(","), "semis_logi_bbs_admin,semis_logi_bbs_comment,semis_logi_bbs_delete,semis_logi_bbs_get,semis_logi_bbs_list,semis_logi_bbs_move,semis_logi_bbs_recent,semis_logi_bbs_save,semis_logi_bbs_stats");
+      used.forEach(fnn => {
+        const arg = fnn === "semis_logi_bbs_get" ? "p_id bigint" : fnn === "semis_logi_bbs_stats" ? "" : "p jsonb";
+        ok(BSQL.indexOf("create or replace function public." + fnn + "(" + arg + ")") >= 0, fnn + "(" + arg + ")");
+        if (arg) ok(new RegExp('rpc\\("' + fnn + '", \\{ ' + arg.split(" ")[0] + "[:,} ]").test(BJS), fnn + " 인자 이름");
+      });
+      ok(/function public\.semis_logi_bbs_get\(p_id bigint\)/.test(BSQL) && /function public\.semis_logi_bbs_stats\(\)/.test(BSQL));
+      ok(/revoke all on function public\.semis_logi_bbs_list[\s\S]+from public, authenticated;/.test(BSQL) && /grant execute on function public\.semis_logi_bbs_list[\s\S]+to anon, service_role;/.test(BSQL), "실행 권한");
+      eq((ACL.boards || []).join(","), "1,4", "boards 1/4");
+      ok(/\('boards', 1, 4\)/.test(BSQL), "SQL 파일도 등록");
+      const E = read("tools/edge/semis-logi-files.ts");
+      ok(/bbs1: 1, bbs2: 2, bbs3: 3, bbs4: 4\s+\/\/ 게시판 — /.test(E) && /bbs1: 1, bbs2: 2, bbs3: 3, bbs4: 4\s+\/\/ 게시판 글쓰기/.test(E), "폴더 등급");
+      ok(/security definer set search_path = ''/.test(BSQL) && !/security definer(?! set search_path)/.test(BSQL), "모든 security definer 함수에 search_path");
+      ok(BSQL.indexOf("bbs_me()") > 0 && /c\.role in \('admin', 'hq', 'manager', 'user'\)/.test(BSQL), "내부 계정만");
+      ok(/semis_logi_private\.bbs_files/.test(BSQL) && /\(bbs\[1-4\]\|attach\|notices\)/.test(BSQL), "첨부 주소 검사");
+    });
+    t("BB16 디자인: 본문 14px · 문서형 구획(구획 위 굵은 선) · 10px 미만 글자 없음 · 게시판 화면 모바일 목록", () => {
+      const c = read("css/main.css");
+      ok(/^html \{ font-size: 14px; \}/m.test(c), "PC 14px");
+      ok(/@media \(max-width: 768px\) \{\n  html \{ font-size: 14px; \}/.test(c), "모바일 14px");
+      ok(/\.card \{ border: 1px solid var\(--line\); border-top: 2px solid var\(--rule\);/.test(c), "구획 위 굵은 선");
+      const small = Array.from(c.matchAll(/font-size:\s*0?\.(\d+)rem/g)).map(m => Number("0." + m[1])).filter(v => v < 0.72);
+      eq(small.length, 0, "작은 글자: " + small.join(","));
+      ok(/@media screen and \(max-width: 767px\)[\s\S]*\.bb-search \{ margin-left: 0; width: 100%; \}/.test(c));
+      ok(BJS.indexOf("SeMIS.isMobile()") > 0 && BJS.indexOf("bb-mlist") > 0, "모바일 목록");
     });
   }
 

@@ -237,8 +237,9 @@
       const d = D();
       const canWrite = SeMIS.canEdit();
       const rank = SeMIS.roleRank();
-      const notices = d.notices.slice().sort((a, b) =>
-        (b.pinned - a.pinned) || String(b.created).localeCompare(String(a.created)));
+      const BB = window.SemisBoard;
+      const dashB = BB ? BB.dashBoards() : [];
+      const noteB = dashB.find(b => BB.canWrite(b));
       const upcomingAll = upcomingList();
       const upcoming = upcomingAll.filter(s => !s.done);
       const wk = (() => { const d = new Date(Date.now() + 7 * 86400000); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); })();
@@ -253,7 +254,7 @@
       const canMinute = window.SemisMinutes && SemisMinutes.canWrite && SemisMinutes.canWrite();
 
       const acts = [
-        canWrite ? `<button type="button" class="btn btn-soft" id="btn-add-notice">${ico("megaphone", 17)}<span>새 공지</span></button>` : "",
+        noteB ? `<button type="button" class="btn btn-soft" id="btn-add-notice">${ico("megaphone", 17)}<span>${noteB.kind === "notice" ? "새 공지" : "새 글"}</span></button>` : "",
         canSched ? `<button type="button" class="btn btn-soft" id="btn-add-sched">${ico("calendar", 17)}<span>일정 추가</span></button>` : "",
         canMinute ? `<button type="button" class="btn btn-soft" id="btn-add-minute">${ico("notes", 17)}<span>회의록 작성</span></button>` : ""
       ].join("");
@@ -275,10 +276,13 @@
           }).join("") : '<div class="empty">예정된 일정이 없습니다.</div>'}</div>
         </section>` : "";
 
-      const noticeCol = `<section class="sheet-col" aria-label="공지사항">
-          <div class="dc-head"><h2>공지사항</h2><span class="dc-meta mono">${notices.length}</span></div>
+      const bOne = dashB.length === 1 ? dashB[0] : null;
+      const bName = bOne ? ((SeMIS.menuForBoard(bOne.id) || {}).label || bOne.name) : "게시판 새 글";
+      const noticeCol = dashB.length ? `<section class="sheet-col" aria-label="${esc(bName)}">
+          <div class="dc-head"><h2>${esc(bName)}</h2><span class="dc-meta" id="dash-bbs-meta"></span><span class="spacer"></span>
+            ${bOne ? `<button type="button" class="link-btn" data-dash-go="board/${esc(bOne.id)}">전체</button>` : ""}</div>
           <div id="notice-list" class="notice-list"></div>
-        </section>`;
+        </section>` : "";
       const actionCol = cardVis("actions") && window.SemisMinutes ? `<section class="sheet-col" aria-label="회의 결정사항">
           <div class="dc-head"><h2>회의 결정사항</h2><span class="spacer"></span><button type="button" class="link-btn" id="btn-go-minutes">회의록</button></div>
           <div class="dc-nums">
@@ -315,7 +319,7 @@
         ${!guest && cardVis("screen") && window.SemisScreen && menuOk("scr-status") ? SemisScreen.dashHTML() : ""}
         ${!guest && cardVis("audit") && menuOk("audit", "SemisAudit") ? SemisAudit.dashHTML() : ""}
         ${cardVis("flight") && menuOk("flight", "SemisFlight") ? SemisFlight.dashHTML() : ""}
-        ${guest ? `<section class="dash-card">${noticeCol}</section>`
+        ${guest ? (noticeCol ? `<section class="dash-card">${noticeCol}</section>` : "")
           : `<div class="dash-sheet-wrap"><div class="dash-sheet cols-${[upcomingCard, noticeCol, actionCol].filter(Boolean).length}">${upcomingCard}${noticeCol}${actionCol}</div></div>${buildCol}`}`;
       if (window.SemisHero3D && $("#dash-3d")) SemisHero3D.mount($("#dash-3d"));
       if (window.SemisFlight && $("#dash-flt")) SemisFlight.mountDash();
@@ -330,32 +334,8 @@
       if (window.SemisSerp && $("#dash-serp")) SemisSerp.mountDash();
       if (window.SemisThreat && $("#dash-threat")) SemisThreat.mountDash();
 
-      const nl = $("#notice-list");
-      if (nl) {
-        if (!notices.length) nl.innerHTML = '<div class="empty">등록된 공지가 없습니다.</div>';
-        notices.forEach(n => {
-          const item = document.createElement("div");
-          item.className = "notice-item";
-          const filesHtml = (n.files && n.files.length)
-            ? `<div class="nb-files-view">${n.files.map(f =>
-                `<a class="nb-file" href="${esc(f.url)}" target="_blank" rel="noopener">${ico("link", 14)} ${esc(f.name)}</a>`).join("")}</div>` : "";
-          item.innerHTML = `
-            <div class="notice-title">${n.pinned ? '<span class="badge badge-red">고정</span>' : ""}<span>${esc(n.title)}</span>${n.files && n.files.length ? `<span class="nt-clip" title="첨부 ${n.files.length}">${ico("link", 14)}</span>` : ""}</div>
-            <div class="notice-meta">${esc(n.author)} · ${esc(fmtDate(n.created))}</div>
-            <div class="notice-body">${n.bodyHtml ? `<div class="notice-html">${sanitizeHtml(n.bodyHtml)}</div>` : esc(n.body)}${filesHtml}${canWrite ? `<div class="nb-acts"><button class="btn btn-ghost btn-sm" data-edit="${esc(n.id)}">수정</button><button class="btn btn-danger btn-sm" data-del="${esc(n.id)}">삭제</button></div>` : ""}</div>`;
-          item.addEventListener("click", (e) => {
-            if (e.target.closest("button") || e.target.closest("a")) return;
-            item.classList.toggle("open");
-          });
-          nl.appendChild(item);
-        });
-        $$("#notice-list [data-edit]").forEach(b => b.onclick = () => noticeForm(b.dataset.edit));
-        $$("#notice-list [data-del]").forEach(b => b.onclick = () =>
-          confirmModal("이 공지를 삭제하시겠습니까?", () => {
-            D().notices = D().notices.filter(x => x.id !== b.dataset.del);
-            SeMIS.save(); SeMIS.renderView(); toast("삭제되었습니다.");
-          }));
-      }
+      if (BB && $("#notice-list")) BB.paintDash($("#notice-list"), $("#dash-bbs-meta"));
+      $$("[data-dash-go]", root).forEach(el => el.onclick = () => SeMIS.navigate(el.dataset.dashGo));
 
       if ($("#actions-box")) {
         const t = todayISO();
@@ -374,7 +354,7 @@
       if ($("#btn-go-schedule")) $("#btn-go-schedule").onclick = () => SeMIS.navigate("schedule");
       $$("[data-dash-hub]", root).forEach(el => el.onclick = () => SeMIS.openHub(el.dataset.dashHub));
 
-      if ($("#btn-add-notice")) $("#btn-add-notice").onclick = () => noticeForm(null);
+      if ($("#btn-add-notice")) $("#btn-add-notice").onclick = () => BB.write(noteB.id);
       if ($("#btn-edit-level")) $("#btn-edit-level").onclick = levelForm;
       if ($("#btn-edit-zero")) $("#btn-edit-zero").onclick = zeroForm;
       if ($("#btn-level-hist")) $("#btn-level-hist").onclick = levelHistModal;
@@ -510,125 +490,6 @@
     });
   }
 
-  function noticeForm(id) {
-    const n = id ? D().notices.find(x => x.id === id) : null;
-    let files = n && Array.isArray(n.files) ? n.files.slice() : [];
-    openModal(`
-      <h3>${n ? "공지 수정" : "새 공지 작성"}</h3>
-      <div class="form-row"><label>제목</label><input id="f-title" value="${esc(n ? n.title : "")}" maxlength="120"></div>
-      <div class="form-row"><label>내용</label>
-        <div class="nb-toolbar">
-          <button type="button" data-cmd="bold" title="굵게"><b>B</b></button>
-          <button type="button" data-cmd="italic" title="기울임"><i>I</i></button>
-          <button type="button" data-cmd="underline" title="밑줄"><u>U</u></button>
-          <button type="button" data-cmd="strikeThrough" title="취소선"><s>S</s></button>
-          <span class="nb-sep"></span>
-          <button type="button" data-cmd="insertUnorderedList" title="글머리 목록">•—</button>
-          <button type="button" data-cmd="insertOrderedList" title="번호 목록">1.—</button>
-          <span class="nb-sep"></span>
-          <button type="button" id="nb-table" title="표 삽입 (3×3)">⊞ 표</button>
-          <button type="button" id="nb-img" title="이미지 삽입">🖼 이미지</button>
-          <button type="button" id="nb-link" title="선택 영역에 링크">🔗 링크</button>
-        </div>
-        <div id="nb-editor" class="nb-editor" contenteditable="true"></div>
-        <input type="file" id="nb-imgfile" accept="image/*" style="display:none">
-        <div class="form-hint">서식·표·이미지를 지원합니다. 이미지는 공용 저장소에 업로드되어 모든 사용자에게 표시됩니다.</div></div>
-      <div class="form-row"><label>파일 첨부</label>
-        <div id="nb-filelist" class="nb-files-view"></div>
-        <label class="btn btn-ghost btn-sm" style="cursor:pointer">📎 파일 추가 (10MB 이하)
-          <input type="file" id="nb-attach" style="display:none" multiple></label></div>
-      <div class="form-row"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-        <input type="checkbox" id="f-pinned" style="width:auto" ${n && n.pinned ? "checked" : ""}> 상단 고정</label></div>
-      <div class="modal-actions">
-        <button class="btn btn-ghost" id="f-cancel">취소</button>
-        <button class="btn btn-primary" id="f-save">저장</button>
-      </div>`, { wide: true });
-
-    const ed = $("#nb-editor");
-    ed.innerHTML = n ? (n.bodyHtml || esc(n.body || "").replace(/\n/g, "<br>")) : "";
-    wireRichMedia(ed, "notices");
-
-    const exec = (cmd, val) => { ed.focus(); try { document.execCommand(cmd, false, val); } catch (e) {} };
-    const insertHTML = (h) => {
-      ed.focus();
-      try { if (!document.execCommand("insertHTML", false, h)) ed.innerHTML += h; }
-      catch (e) { ed.innerHTML += h; }
-    };
-    $$(".nb-toolbar [data-cmd]").forEach(b => {
-      b.onmousedown = (ev) => ev.preventDefault();
-      b.onclick = () => exec(b.dataset.cmd);
-    });
-    $("#nb-table").onclick = () => {
-      const row = "<tr>" + "<td>&nbsp;</td>".repeat(3) + "</tr>";
-      insertHTML(`<table class="nb-table"><tbody>${row.repeat(3)}</tbody></table><p><br></p>`);
-    };
-    $("#nb-link").onclick = () => {
-      let url = "";
-      try { url = window.prompt("링크 주소(URL)를 입력하세요", "https://") || ""; } catch (e) {}
-      if (/^https?:\/\/.+/.test(url)) exec("createLink", url);
-    };
-    $("#nb-img").onclick = () => $("#nb-imgfile").click();
-    $("#nb-imgfile").onchange = async (ev) => {
-      const file = ev.target.files[0];
-      ev.target.value = "";
-      if (!file) return;
-      toast("이미지 처리 중…");
-      try {
-        const slim = await shrinkImage(file, 1400);
-        if (!window.SemisSync) throw new Error("no-sync");
-        const up = await SemisSync.uploadFile(slim, "notices");
-        insertHTML(`<img src="${esc(up.url)}" alt="${esc(file.name)}">`);
-        toast("이미지가 삽입되었습니다.");
-      } catch (err) {
-        try {
-          const slim = await shrinkImage(file, 800);
-          if (slim.size > 500 * 1024) throw new Error("too big");
-          const reader = new FileReader();
-          reader.onload = () => { insertHTML(`<img src="${reader.result}" alt="">`); toast("오프라인: 이미지를 문서에 내장했습니다."); };
-          reader.onerror = () => toast("이미지 삽입 실패", true);
-          reader.readAsDataURL(slim);
-        } catch (e2) { toast("이미지 삽입 실패 — 네트워크를 확인하세요.", true); }
-      }
-    };
-
-    const renderFileList = () => {
-      $("#nb-filelist").innerHTML = files.map((f, i) =>
-        `<span class="nb-file">📎 ${esc(f.name)} <button type="button" class="mt-btn danger" data-frm="${i}" title="첨부 삭제">✕</button></span>`).join("") ||
-        '<span class="form-hint">첨부된 파일이 없습니다.</span>';
-      $$("#nb-filelist [data-frm]").forEach(b => b.onclick = () => { files.splice(Number(b.dataset.frm), 1); renderFileList(); });
-    };
-    renderFileList();
-    $("#nb-attach").onchange = async (ev) => {
-      const list = Array.from(ev.target.files || []);
-      ev.target.value = "";
-      for (const f of list) {
-        if (f.size > 10 * 1024 * 1024) { toast(f.name + ": 10MB를 초과합니다.", true); continue; }
-        if (!window.SemisSync) { toast("오프라인에서는 파일을 첨부할 수 없습니다.", true); break; }
-        try {
-          toast("업로드 중: " + f.name);
-          const up = await SemisSync.uploadFile(f, "attach");
-          files.push(up); renderFileList();
-          toast("첨부되었습니다: " + f.name);
-        } catch (err) { toast("업로드 실패: " + f.name, true); }
-      }
-    };
-
-    $("#f-cancel").onclick = closeModal;
-    $("#f-save").onclick = () => {
-      const title = $("#f-title").value.trim();
-      if (!title) { toast("제목을 입력하세요.", true); return; }
-      const bodyHtml = sanitizeHtml(ed.innerHTML);
-      const tmp = document.createElement("div");
-      tmp.innerHTML = bodyHtml;
-      const body = (tmp.textContent || "").trim();
-      const pinned = $("#f-pinned").checked;
-      if (n) Object.assign(n, { title, body, bodyHtml, pinned, files });
-      else D().notices.push({ id: uid("n"), title, body, bodyHtml, pinned, files,
-        author: SeMIS.user.name, created: new Date().toISOString() });
-      SeMIS.save(); closeModal(); SeMIS.renderView(); toast("저장되었습니다.");
-    };
-  }
-
   function levelForm() {
     const cur = SeMIS.secCurrent();
     openModal(`
@@ -697,6 +558,7 @@
         </div>
         <div class="tabs">
           <button class="tab active" data-tab="menus">메뉴 관리</button>
+          <button class="tab" data-tab="boards">게시판</button>
           <button class="tab" data-tab="users">사용자 / 암호</button>
           <button class="tab" data-tab="assignees">담당자 관리</button>
           <button class="tab" data-tab="data">데이터 관리</button>
@@ -704,7 +566,7 @@
           <button class="tab" data-tab="security">보안</button>
         </div>
         <div id="tab-body"></div>`;
-      const tabs = { menus: renderMenuTab, users: renderUserTab, assignees: renderAssigneeTab,
+      const tabs = { menus: renderMenuTab, boards: (box) => { if (window.SemisBoard) SemisBoard.adminTab(box); else box.innerHTML = ""; }, users: renderUserTab, assignees: renderAssigneeTab,
         data: renderDataTab, storage: renderStorageTab, security: renderSecurityTab };
       $$(".tab").forEach(t => t.onclick = () => {
         $$(".tab").forEach(x => x.classList.remove("active"));
@@ -721,6 +583,7 @@
     const typeBadge = (m) =>
       m.type === "group" ? '<span class="badge badge-gray mt-type">허브</span>'
       : m.type === "bundle" ? '<span class="badge badge-blue mt-type">탭 묶음</span>'
+      : m.type === "board" ? '<span class="badge badge-green mt-type">게시판 ' + esc(m.board || "") + (SeMIS.boardDef(m.board) ? "" : " · 없음") + '</span>'
       : m.type === "link" ? (m.open === "group"
         ? '<span class="badge badge-blue mt-type">링크 묶음 ⊞</span>'
         : m.open === "frame"
@@ -732,7 +595,7 @@
 
     const row = (m, depth, grp) => `
       <div class="menu-tree-item ${depth ? "is-child" : ""}${depth > 1 ? " is-sub" : ""}${m.hidden ? " is-hidden" : ""}${grp ? " mf-h" : ""}" data-id="${esc(m.id)}">
-        <span class="mt-ico">${m.type === "group" ? SeMIS.icon(m.ico, 18) : m.type === "bundle" ? SeMIS.icon("panel", 18) : m.type === "link" ? SeMIS.linkIconHTML(m, "mt-lki") : esc(m.icon || "▪")}</span>
+        <span class="mt-ico">${m.type === "group" ? SeMIS.icon(m.ico, 18) : m.type === "bundle" ? SeMIS.icon("panel", 18) : m.type === "board" ? SeMIS.icon("bbs", 18) : m.type === "link" ? SeMIS.linkIconHTML(m, "mt-lki") : esc(m.icon || "▪")}</span>
         <span class="mt-label">${esc(m.label)}${m.tab && m.tab !== m.label ? ` <small class="mt-tab">탭: ${esc(m.tab)}</small>` : ""}
           ${m.hidden ? '<span class="badge badge-gray mt-type">숨김</span>' : ""}
           ${m.quick ? '<span class="badge badge-amber mt-type">고정</span>' : ""}</span>
@@ -740,9 +603,11 @@
           ? `<span class="mt-url col-ext" title="${esc(m.url)}">${esc(m.url)}</span>`
           : m.type === "module" && m.module
             ? `<span class="mt-url col-ext mt-url-mod" title="라우트 #/${esc(m.module)}">#/${esc(m.module)}</span>`
-            : ""}
+            : m.type === "board" ? `<span class="mt-url col-ext mt-url-mod" title="라우트 #/board/${esc(m.board)}">#/board/${esc(m.board)}</span>` : ""}
         ${typeBadge(m)}
-        ${m.type === "group" || m.type === "bundle" ? "" : `<span class="badge badge-gray mt-type">${esc(SeMIS.VIS_LABEL[m.vis || "all"] || "전체")}</span>`}
+        ${m.type === "group" || m.type === "bundle" ? "" : m.type === "board"
+          ? `<span class="badge badge-gray mt-type">${esc(SeMIS.VIS_LABEL[{ all: "all", mgr: "mgr", hq: "hq", admin: "admin" }[(SeMIS.boardDef(m.board) || {}).read] || "admin"] || "")}</span>`
+          : `<span class="badge badge-gray mt-type">${esc(SeMIS.VIS_LABEL[m.vis || "all"] || "전체")}</span>`}
         <span class="mt-actions">
           <button type="button" class="mt-btn" data-up="${esc(m.id)}" title="위로" aria-label="위로">${SeMIS.icon("chevup", 16)}</button>
           <button type="button" class="mt-btn" data-down="${esc(m.id)}" title="아래로" aria-label="아래로">${SeMIS.icon("chevdown", 16)}</button>
@@ -849,12 +714,18 @@
       ${m || lockLink ? "" : `<div class="form-row"><label>유형</label>
         <select id="f-type">
           <option value="link">외부 링크 (웹주소 등록)</option>
+          <option value="board">게시판 (게시판 ID 연결)</option>
           <option value="group">허브 (업무 묶음)</option>
           <option value="bundle">탭 묶음 (메뉴 여러 개를 한 줄 · 화면 위 탭으로)</option>
           <option value="planned">예정 모듈 (준비 중 안내 화면)</option>
         </select></div>`}
       <div class="form-row"><label>이름</label><input id="f-label" value="${esc(m ? m.label : "")}" maxlength="40" placeholder="메뉴 이름"></div>
-      <div class="form-row" id="row-icon" ${type === "group" || type === "bundle" || (type === "link" && SC) ? 'style="display:none"' : ""}>
+      <div class="form-row" id="row-board" ${type === "board" ? "" : 'style="display:none"'}>
+        <label for="f-board">게시판</label>
+        <div class="bf-inl"><select id="f-board">${(SeMIS.data.boards || []).map(b => `<option value="${esc(b.id)}" ${m && m.board === b.id ? "selected" : ""}>${esc(b.id + " · " + b.name)}</option>`).join("")}</select>
+          ${window.SemisBoard ? '<button type="button" class="link-btn" id="f-board-new">새 게시판 만들기</button>' : ""}</div>
+        <div class="form-hint">읽기 · 쓰기 권한과 기능은 게시판 설정(시스템 설정 › 게시판)을 따릅니다.</div></div>
+      <div class="form-row" id="row-icon" ${type === "group" || type === "bundle" || type === "board" || (type === "link" && SC) ? 'style="display:none"' : ""}>
         <label>아이콘 (검색·관리 화면용 이모지)</label><input id="f-icon" value="${esc(m ? m.icon || "" : "🔗")}" maxlength="4"></div>
       <div class="form-row" id="row-ico" ${type === "group" ? "" : 'style="display:none"'}>
         <label>허브 아이콘</label>
@@ -888,7 +759,7 @@
         <div class="form-hint">${m && m.type === "module" ? "탭 묶음을 고르면 메뉴는 묶음 한 줄로 모이고 화면 위 탭으로 오갑니다." : "링크 묶음을 고르면 사이드바에는 나오지 않고 그 묶음 화면 안의 카드로만 표시됩니다."}</div></div>
       <div class="form-row" id="row-tab" ${m && m.type === "module" ? "" : 'style="display:none"'}>
         <label>탭 이름 (탭 묶음 안에서 쓰는 짧은 이름)</label><input id="f-tab" value="${esc(m && m.tab ? m.tab : "")}" maxlength="20" placeholder="비우면 메뉴 이름"></div>
-      <div class="form-row" id="row-vis" ${type === "group" || type === "bundle" ? 'style="display:none"' : ""}>
+      <div class="form-row" id="row-vis" ${type === "group" || type === "bundle" || type === "board" ? 'style="display:none"' : ""}>
         <label>접근 권한</label>
         <select id="f-vis">
           <option value="all" ${!m || m.vis === "all" ? "selected" : ""}>전체 사용자</option>
@@ -913,16 +784,26 @@
       const t = typeSel.value;
       $("#row-url").style.display = t === "link" ? "" : "none";
       $("#row-open").style.display = t === "link" ? "" : "none";
+      $("#row-board").style.display = t === "board" ? "" : "none";
       $("#row-route").style.display = t === "planned" ? "" : "none";
       $("#row-desc").style.display = t === "planned" ? "" : "none";
       $("#row-parent").style.display = t === "group" ? "none" : "";
-      $("#row-vis").style.display = t === "group" || t === "bundle" ? "none" : "";
+      $("#row-vis").style.display = t === "group" || t === "bundle" || t === "board" ? "none" : "";
       $("#row-quick").style.display = t === "group" || t === "bundle" ? "none" : "";
-      $("#row-icon").style.display = t === "group" || t === "bundle" || (t === "link" && SC) ? "none" : "";
+      $("#row-icon").style.display = t === "group" || t === "bundle" || t === "board" || (t === "link" && SC) ? "none" : "";
       $("#row-ico").style.display = t === "group" ? "" : "none";
       if ($("#row-lki")) $("#row-lki").style.display = t === "link" ? "" : "none";
     };
     if (SC && $("#row-lki")) SC.pickerWire($("#row-lki"));
+    const fb = $("#f-board");
+    const fillBoardName = () => {
+      const b = fb && SeMIS.boardDef(fb.value);
+      if (b && !$("#f-label").value.trim()) $("#f-label").value = b.name;
+    };
+    if (fb) fb.onchange = () => { if (!m) $("#f-label").value = ""; fillBoardName(); };
+    if (typeSel) typeSel.addEventListener("change", () => { if (typeSel.value === "board") fillBoardName(); });
+    const fbn = $("#f-board-new");
+    if (fbn) fbn.onclick = () => { closeModal(); window.SemisBoard.boardForm(null, () => { if ($("#tab-body") && $("#menu-tree")) renderMenuTab($("#tab-body")); }); };
     $("#f-cancel").onclick = closeModal;
     const hiddenVal = () => !!($("#f-hidden") && $("#f-hidden").checked);
     const applyHidden = (obj) => { if (hiddenVal() && SeMIS.canHide(obj)) obj.hidden = true; else delete obj.hidden; return obj; };
@@ -958,6 +839,14 @@
         }
         if (SC) SC.applyIcon(obj, SC.pickerRead());
         saved = obj;
+      } else if (t === "board") {
+        const bid = fb ? fb.value : "";
+        if (!SeMIS.boardDef(bid)) { toast("게시판을 고르세요. 없으면 '새 게시판 만들기'로 먼저 만드세요.", true); return; }
+        const par = $("#f-parent").value || null;
+        const pp = par ? D().menus.find(x => x.id === par) : null;
+        if (pp && pp.type !== "group") { toast("게시판 메뉴는 허브 안에 두거나 허브 없이 둡니다.", true); return; }
+        if (m) applyHidden(Object.assign(m, { label, board: bid, parent: par, vis: "all", quick: $("#f-quick").checked }));
+        else D().menus.push(applyHidden({ id: uid("bbs"), seq: nextSeq(), type: "board", label, board: bid, vis: "all", parent: par, quick: $("#f-quick").checked }));
       } else if (t === "group") {
         const pick = document.querySelector('#modal-box input[name="f-ico"]:checked');
         const ico = pick ? pick.value : "folder";
@@ -1578,7 +1467,8 @@
   const FRESH_MS = 24 * 3600 * 1000;
   const FOLDER_LABEL = {
     "notices": "공지 이미지", "attach": "공지 첨부", "schedules": "일정 메모 첨부",
-    "minutes": "회의록 첨부", "minutes-sign": "회의록 서명", "files": "기타", "": "(루트)"
+    "minutes": "회의록 첨부", "minutes-sign": "회의록 서명", "files": "기타", "": "(루트)",
+    "bbs1": "게시판 (전체 열람)", "bbs2": "게시판 (관리자 이상)", "bbs3": "게시판 (파트 이상)", "bbs4": "게시판 (시스템관리자)"
   };
   const folderName = (f) => FOLDER_LABEL[f] || f || "(루트)";
 
@@ -1681,7 +1571,8 @@
       if (g) g.innerHTML = gaugeHTML("파일 스토리지", 0, STORE_LIMIT, "조회 실패");
     };
     if (!window.SemisSync || !SemisSync.listFiles) { fail("동기화 모듈이 로드되지 않아 조회할 수 없습니다."); return; }
-    SemisSync.listFiles().then(files => {
+    const bbsRefs = window.SemisBoard ? SemisBoard.fileRefs() : Promise.resolve([]);
+    Promise.all([SemisSync.listFiles(), bbsRefs]).then(([files, bbs]) => {
       if (!$("#st-folders")) return;
       const total = files.reduce((s, f) => s + f.size, 0);
       $("#st-file-gauge").innerHTML = gaugeHTML("파일 스토리지 (semis-logi-files)", total, STORE_LIMIT, files.length + "개 파일");
@@ -1703,16 +1594,19 @@
           <td>${esc(fmtBytes(byFolder[k].bytes))}</td>
           <td>${total ? ((byFolder[k].bytes / total) * 100).toFixed(1) : "0.0"}%</td></tr>`).join("")}
         </tbody></table>` : '<div class="empty">업로드된 파일이 없습니다.</div>';
-      paintOrphans(box, files);
+      paintOrphans(box, files, bbs);
     }).catch(() => fail("파일 목록을 불러오지 못했습니다. 네트워크를 확인하세요."));
   }
-  function paintOrphans(box, files) {
+  /* 게시판 글이 쓰는 파일은 공용 자료에 없어 서버 목록(bbs)으로 더한다 — 목록을 못 받았으면(null) 정리를 잠근다 */
+  function paintOrphans(box, files, bbs) {
     const refs = referencedPaths();
     const ob = $("#st-orphans");
     if (!ob) return;
     ob.className = "";
     if (!files.length) { ob.innerHTML = '<div class="empty">파일이 없습니다.</div>'; return; }
-    if (!refs.size) {
+    const tail = "/object/public/semis-logi-files/";
+    (Array.isArray(bbs) ? bbs : []).forEach(u => { const i = String(u).indexOf(tail); if (i >= 0) refs.add(String(u).slice(i + tail.length)); });
+    if (!refs.size || bbs === null) {
       ob.innerHTML = '<div class="empty">⚠️ 참조 관계를 확인하지 못해 정리 기능을 잠갔습니다. (오삭제 방지)</div>';
       return;
     }

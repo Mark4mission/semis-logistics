@@ -34,7 +34,7 @@ const S = (description: string) => ({ type: "string", description });
 const DATE = (d: string) => S(d + " (YYYY-MM-DD)");
 const COLORS = ["red", "orange", "yellow", "green", "teal", "sky", "blue", "purple", "pink", "rose", "brown", "gray"];
 const COLLECTIONS: [string, number, string][] = [
-  ["notices", 1, "공지"],
+  ["notices", 1, "공지(공지사항 게시판 최근 글)"],
   ["schedules", 2, "일정(반복 일정은 원본 1건 — 날짜별 펼침은 argos_status schedule)"],
   ["minutes", 2, "회의록(제목 · 일자 · 장소 · 참석 인원 수 · 결정사항)"],
   ["phonebook", 2, "업무 연락처"],
@@ -92,7 +92,7 @@ function toolList(rank: number): Tool[] {
       description: "일정을 지운다(화면이 한 번 확인). 반복 일정은 전체가 지워진다.",
       input_schema: { type: "object", properties: { id: S("일정 id") }, required: ["id"] } },
     { name: "notice_add", min: 3,
-      description: "대시보드 공지를 등록한다.",
+      description: "공지사항 게시판(B001)에 글을 올린다 — 대시보드 공지에도 보인다. pinned 는 상단 고정.",
       input_schema: { type: "object", properties: { title: S("제목"), body: S("본문(줄바꿈 가능)"), pinned: { type: "boolean", description: "상단 고정" } }, required: ["title", "body"] } },
     { name: "training_record", min: 3,
       description: "보안교육 이수 기록을 넣는다(이수증 등). 사번 → 이름 순으로 재직자를 찾고 없으면 새 인원으로 등록. course_id 는 argos_catalog 의 courses. 주기가 있는 과정은 다음 이수 기간 일정도 만든다(next_schedule false 면 안 만듦). file = 첨부 id(원본 보관).",

@@ -111,6 +111,14 @@ const SemisSearch = (() => {
         if (sc && it.route) menuHits.push(Object.assign({ group: "메뉴 · 링크", score: sc }, it));
         return;
       }
+      if (mn.type === "board") {
+        const b = S().boardDef(mn.board);
+        const it = { title: mn.label, sub: "게시판 " + mn.board + (b && b.desc ? " · " + b.desc : ""), icon: "📋", route: "board/" + mn.board,
+          text: [mn.label, b ? b.name : "", mn.board] };
+        const sc = scoreOf(it, ts);
+        if (sc) menuHits.push(Object.assign({ group: "메뉴 · 링크", score: sc }, it));
+        return;
+      }
       const bd = mn.type === "module" && S().bundleOf ? S().bundleOf(mn) : null;
       const up = mn.parent ? S().sortedMenus().find(x => x && x.id === mn.parent && x.type === "link") : null;
       const way = mn.open === "group" ? "링크 모음 열기" : mn.open === "frame" ? "내부 화면으로 열기" : "새 탭으로 열기";
@@ -147,10 +155,6 @@ const SemisSearch = (() => {
   }
 
   const A = (v) => Array.isArray(v) ? v : [];
-
-  register({ id: "notices", group: "공지사항", icon: "📢", module: "dashboard",
-    items: () => A(D().notices).map(n => ({
-      title: n.title, sub: n.body, text: [n.title, n.body, n.author], route: "dashboard" })) });
 
   register({ id: "levels", group: "보안등급", icon: "🚨", module: "dashboard",
     items: () => A(D().levelHistory).map(e => ({

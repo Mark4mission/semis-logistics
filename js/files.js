@@ -8,9 +8,9 @@
   const icon = (n, z) => S().icon(n, z);
   const IMG_RE = /\.(png|jpe?g|gif|webp|bmp|avif|svg)(\?|#|$)/i;
   const PDF_RE = /\.pdf(\?|#|$)/i;
-  const SEL_FILE = "a.nb-file, .nb-file > a";
+  const SEL_FILE = "a.nb-file, .nb-file > a, a.bb-file, a.bb-f";
   const SEL_IMG = ".nb-editor img, .notice-html img, .ag-memo img, .cn-rich img, .nb-files-view img";
-  const SEL_ROOT = ".nb-editor, .notice-html, .ag-memo, .cn-rich, .nb-files-view, .notice-body, td, .modal-box";
+  const SEL_ROOT = ".nb-editor, .notice-html, .ag-memo, .cn-rich, .nb-files-view, .notice-body, .bb-files, td, .modal-box";
 
   let list = [], idx = 0, pushed = false, zoom = false;
 

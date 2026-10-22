@@ -3,7 +3,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.52.0";
+  const VERSION = "1.53.0";
   const APP_NAME = "H:drive";
   const APP_ALIAS = "ARGOS (Air-cargo Risk & Guard Operations System)";
   /* 데이터 캐시는 탭 sessionStorage 에만(탭 닫기·로그아웃 시 소멸). 화면 설정(LS_UI)만 localStorage */
@@ -138,10 +138,13 @@ const SeMIS = (() => {
     chevup: '<path d="m6 15 6-6 6 6"/>',
     eyeoff: '<path d="M4 4l16 16"/><path d="M9.9 5.8A9.7 9.7 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a17 17 0 0 1-3 3.8M6.4 7.2A17.3 17.3 0 0 0 2.5 12S6 18.5 12 18.5a9.3 9.3 0 0 0 4.2-1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
     copy: '<rect x="8.5" y="8.5" width="11.5" height="11.5" rx="2"/><path d="M15.5 8.5V6A1.5 1.5 0 0 0 14 4.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/>',
-    more: '<circle cx="5.5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="18.5" cy="12" r="1.2"/>'
+    more: '<circle cx="5.5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="18.5" cy="12" r="1.2"/>',
+    bbs: '<path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9a1.5 1.5 0 0 1-1.5 1.5H10l-4.5 3.5V16h0A1.5 1.5 0 0 1 4 14.5z"/><path d="M8 8.5h8M8 12h5"/>',
+    reply: '<path d="M9.5 7 4.5 12l5 5"/><path d="M4.5 12H14a5.5 5.5 0 0 1 5.5 5.5v1"/>',
+    up: '<path d="M12 20V9"/><path d="m7.5 12.5 4.5-4.5 4.5 4.5"/><path d="M4.5 4.5h15"/>'
   });
   /* 허브 선택용 아이콘 목록 (시스템 설정 → 메뉴 관리) */
-  const HUB_ICONS = ["home", "scan", "hardhat", "clipboard", "users", "book", "folder", "calendar", "notes", "alert", "link", "doc"];
+  const HUB_ICONS = ["home", "bbs", "scan", "hardhat", "clipboard", "users", "book", "folder", "calendar", "notes", "alert", "link", "doc"];
   /* 링크 메뉴 아이콘 우선순위: 사이트 아이콘(fav, 64px PNG data URL) → 선 아이콘(ico + tone) → 이모지(icon) → 기본 */
   const LINK_ICONS = ["link", "globe", "monitor", "plane", "box", "truck", "building", "shield", "scan", "xray", "etd", "chart",
     "database", "doc", "folder", "book", "calendar", "clock", "mail", "phone", "users", "user", "shirt", "star", "map", "wrench",
@@ -167,6 +170,56 @@ const SeMIS = (() => {
       ' stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + d + '</svg>';
   }
 
+  /* ── 게시판 정의(boards) — 글 · 댓글 · 열람 기록은 서버 비공개 표(RPC semis_logi_bbs_*, js/board.js).
+     여기에는 게시판 ID · 이름 · 권한 · 기능 토글만(공용 행 'boards', 쓰기 = 시스템관리자). 서버 시드(tools/sql/semis-logi-bbs.sql)와 같은 기본값 */
+  const BBS_RANK = { all: 1, mgr: 2, hq: 3, admin: 4 };
+  const BBS_OPTS = ["pin", "attach", "editor", "views", "readers", "comment", "reply", "cat", "dash"];
+  const BBS_VIEWS = ["list", "file", "gallery"];
+  const BBS_SIZES = [10, 15, 20, 30, 50];
+  const BBS_KIND = {
+    notice:  { label: "공지형", view: "list", read: "all", write: "hq", newDays: 7, on: ["pin", "attach", "editor", "views", "readers", "dash"] },
+    general: { label: "일반형", view: "list", read: "all", write: "all", newDays: 3, on: ["pin", "attach", "editor", "views", "comment", "reply"] },
+    archive: { label: "자료실형", view: "file", read: "all", write: "hq", newDays: 7, on: ["pin", "attach", "editor", "views", "cat"], cats: ["규정 · 지침", "양식", "교육 자료", "기타"] },
+    gallery: { label: "사진형", view: "gallery", read: "all", write: "mgr", newDays: 7, on: ["attach", "editor", "views", "comment"] }
+  };
+  function boardPreset(kind, id, name) {
+    const k = BBS_KIND[kind] || BBS_KIND.general;
+    const opt = {};
+    BBS_OPTS.forEach(o => { opt[o] = k.on.indexOf(o) >= 0; });
+    opt.newDays = k.newDays;
+    return { id, name, kind: BBS_KIND[kind] ? kind : "general", view: k.view, desc: "", read: k.read, write: k.write, cmt: "all",
+      perPage: 20, opt, cats: (k.cats || []).slice() };
+  }
+  function defaultBoards() {
+    return [boardPreset("notice", "B001", "공지사항"), boardPreset("general", "B002", "일반게시판"), boardPreset("archive", "B003", "자료실")];
+  }
+  const clip = (v, n) => String(v == null ? "" : v).replace(/[\u0000-\u001f]+/g, " ").trim().slice(0, n);
+  function normBoard(b) {
+    if (!b || typeof b !== "object" || !/^B\d{3}$/.test(String(b.id || ""))) return null;
+    const lv = (v, d) => (BBS_RANK[v] ? v : d);
+    const opt = {};
+    const src = b.opt && typeof b.opt === "object" ? b.opt : {};
+    BBS_OPTS.forEach(o => { opt[o] = src[o] === true; });
+    const nd = Number(src.newDays);
+    opt.newDays = Number.isFinite(nd) ? Math.max(0, Math.min(30, Math.round(nd))) : 3;
+    const out = { id: b.id, name: clip(b.name, 30) || b.id, kind: BBS_KIND[b.kind] ? b.kind : "general",
+      view: BBS_VIEWS.indexOf(b.view) >= 0 ? b.view : "list", desc: clip(b.desc, 200),
+      read: lv(b.read, "all"), write: lv(b.write, "hq"), cmt: lv(b.cmt, "all"),
+      perPage: BBS_SIZES.indexOf(Number(b.perPage)) >= 0 ? Number(b.perPage) : 20, opt,
+      cats: Array.from(new Set((Array.isArray(b.cats) ? b.cats : []).map(c => clip(c, 20)).filter(Boolean))).slice(0, 20) };
+    if (BBS_RANK[out.write] < BBS_RANK[out.read]) out.write = out.read;
+    if (BBS_RANK[out.cmt] < BBS_RANK[out.read]) out.cmt = out.read;
+    ["created", "by"].forEach(k => { if (typeof b[k] === "string" && b[k]) out[k] = clip(b[k], 40); });
+    return out;
+  }
+  function boardDef(id) { return (DATA && Array.isArray(DATA.boards) ? DATA.boards : []).find(b => b.id === id) || null; }
+  /* 게시판 메뉴 노출 — 게시판 읽기 권한 그대로(협력업체 · 서명 세션은 게시판 없음) */
+  function canReadBoard(b) {
+    if (!b || !currentUser || currentUser.role === "vendor" || currentUser.role === "signer") return false;
+    return roleRank() >= (BBS_RANK[b.read] || 3);
+  }
+  const boardRoute = (m) => "board/" + (m && m.board);
+
   /* ── 기본 메뉴 시드 ──
      허브(group)는 레일, 하위 메뉴는 허브 패널. 탭 묶음(bundle)은 패널에 한 줄 — 누르면 첫 화면, 화면 위 탭으로 서로 이동.
      대시보드는 최상위지만 홈 허브 첫 항목, 나머지 최상위(암호 관리 · 시스템 설정)는 레일 아래 유틸리티.
@@ -179,6 +232,7 @@ const SeMIS = (() => {
     const p  = (id, label, icon, module, vis, parent, desc) => m(id, label, icon, module, vis, parent, { planned: true, desc });
     const b  = (id, label, parent) => ({ id, seq: seq++, type: "bundle", label, vis: "all", parent });
     const lk = (id, label, icon, url, parent, opts) => Object.assign({ id, seq: seq++, type: "link", label, icon, url, vis: "all", parent: parent || null }, opts || {});
+    const bm = (board, label, parent) => ({ id: "bbs-" + board, seq: seq++, type: "board", label, board, vis: "all", parent });
     return [
       m("dashboard", "대시보드", "🏠", "dashboard", "all", null, { mv: MENU_VER }),
 
@@ -187,6 +241,11 @@ const SeMIS = (() => {
       m("minutes", "회의록", "🗒️", "minutes", "mgr", "hub-home"),
       m("flight", "운항 현황", "✈️", "flight", "all", "hub-home"),
       m("shortcuts", "바로가기", "🔗", "shortcuts", "all", "hub-home"),
+
+      h("hub-bbs", "게시판", "bbs"),
+      bm("B001", "공지사항", "hub-bbs"),
+      bm("B002", "일반게시판", "hub-bbs"),
+      bm("B003", "자료실", "hub-bbs"),
 
       h("hub-sec", "화물 보안", "scan"),
       m("sec-dash", "화물보안 대시보드", "📊", "sec-dash", "mgr", "hub-sec"),
@@ -287,6 +346,27 @@ const SeMIS = (() => {
     dash.mv = MENU_VER;
   }
 
+  /* 게시판 허브 · 메뉴 — 운영 메뉴에 게시판 메뉴가 하나도 없을 때 한 번(대시보드 메뉴 bv). 홈 허브 바로 뒤에 둔다 */
+  function addBoardMenus(dash) {
+    if (!dash || dash.bv) return;
+    dash.bv = 1;
+    if (DATA.menus.some(m => m.type === "board")) return;
+    const seed = defaultMenus();
+    const groups = DATA.menus.filter(m => m.type === "group").map(m => Number(m.seq) || 0).sort((a, b) => a - b);
+    const home = DATA.menus.find(m => m.id === "hub-home");
+    const h0 = home ? Number(home.seq) || 0 : (groups.length ? groups[0] - 1 : 0);
+    const nx = groups.filter(v => v > h0);
+    let hub = DATA.menus.find(m => m.id === "hub-bbs");
+    if (!hub) {
+      hub = Object.assign({}, seed.find(s => s.id === "hub-bbs"), { seq: nx.length ? (h0 + nx[0]) / 2 : h0 + 1 });
+      DATA.menus.push(hub);
+    }
+    seed.filter(s => s.type === "board").forEach((s, i) => {
+      if (DATA.menus.some(m => m.id === s.id)) return;
+      DATA.menus.push(Object.assign({}, s, { parent: hub.id, seq: Math.round(((Number(hub.seq) || 0) + (i + 1) * 0.01) * 1e4) / 1e4 }));
+    });
+  }
+
   /* ── 일정 담당자 카테고리 ──
      일정관리 담당자 태그 목록(시스템 설정 → 담당자 관리). 목록에 없는 이름도 일정 폼에서 자유 입력 가능 */
   function seedAssignees() {
@@ -346,7 +426,8 @@ const SeMIS = (() => {
       secCases: [],      // 보안 처리 대장
       dissem: {},        // 보안 전파교육
       scrStats: {},      // 화물 보안검색 실적 (월별 합계)
-      desk: { cfg: {}, log: [] }   // 메인 데스크 — 분야별 담당 · 접수 대장 (js/desk.js)
+      desk: { cfg: {}, log: [] },  // 메인 데스크 — 분야별 담당 · 접수 대장 (js/desk.js)
+      boards: defaultBoards()      // 게시판 정의 (글은 서버 비공개 표 — js/board.js)
     };
   }
 
@@ -407,6 +488,7 @@ const SeMIS = (() => {
     ensureSeedMenus();
     const dash = DATA.menus.find(m => m.type === "module" && m.module === "dashboard");
     migrateMenus(dash);
+    addBoardMenus(dash);
     // 탭 묶음 소속이 풀린 메뉴(옛 화면이 저장한 경우 등)는 시드 자리로
     const seedAll = defaultMenus();
     DATA.menus.forEach(m => {
@@ -435,6 +517,8 @@ const SeMIS = (() => {
     });
 
     DATA.notices = Array.isArray(DATA.notices) ? DATA.notices : [];
+    const bl = Array.isArray(DATA.boards) ? DATA.boards.map(normBoard).filter(Boolean) : defaultBoards();
+    DATA.boards = bl.filter((b, i) => bl.findIndex(x => x.id === b.id) === i);
     // 옛 캐시의 계정 자료 제거 — 계정은 서버 전용
     delete DATA.pwOverrides; delete DATA.userOverrides; delete DATA.customUsers;
     if (!Array.isArray(DATA.levelHistory) || !DATA.levelHistory.length) {
@@ -749,6 +833,7 @@ const SeMIS = (() => {
     try { return window.SemisMinutes.visibleAll().length > 0; } catch (e) { return false; }
   }
   function canSee(menu) {
+    if (menu.type === "board") return canReadBoard(boardDef(menu.board));
     const vis = menu.vis || "all";
     if (vis === "all") return true;
     if (vis === "mgr") return roleRank() >= 2 || minutesAttendee(menu);
@@ -832,6 +917,7 @@ const SeMIS = (() => {
     if (ov && h && ov.parentNode !== h) h.appendChild(ov);
     const box = $("#modal-box");
     box.classList.toggle("wide", !!(opts && opts.wide));
+    box.toggleAttribute("data-sticky", !!(opts && opts.sticky));
     box.innerHTML = html;
     $("#modal-overlay").classList.remove("hidden");
   }
@@ -840,6 +926,7 @@ const SeMIS = (() => {
     const box = $("#modal-box");
     box.classList.remove("wide");
     box.classList.remove("full");
+    box.removeAttribute("data-sticky");
     box.innerHTML = "";
   }
   function confirmModal(msg, onOk) {
@@ -863,6 +950,10 @@ const SeMIS = (() => {
     if (rt.indexOf("embed/") === 0 || rt.indexOf("links/") === 0) {
       const lk = DATA.menus.find(m => m && m.id === rt.slice(6));
       if (lk) return lk.label;
+    }
+    if (rt.indexOf("board/") === 0) {
+      const bd = boardDef(boardIdOf(rt));
+      if (bd) return bd.name;
     }
     const def = modules[route];
     return (def && def.title) || "화면 출력";
@@ -986,6 +1077,18 @@ const SeMIS = (() => {
   function menuForModule(moduleId) {
     return DATA.menus.find(x => x.type === "module" && x.module === moduleId);
   }
+  /* 게시판 주소 board/<게시판 ID>[/<글 id | new>] → 그 게시판 메뉴 */
+  const boardIdOf = (route) => { const mm = /^board\/(B\d{3})(?:\/|$)/.exec(String(route || "")); return mm ? mm[1] : ""; };
+  function menuForBoard(id) {
+    return id ? sortedMenus().find(x => x && x.type === "board" && x.board === id && navVisible(x)) ||
+      DATA.menus.find(x => x && x.type === "board" && x.board === id) || null : null;
+  }
+  function menuOfRoute(route) {
+    const rt = String(route || "");
+    if (rt.indexOf("embed/") === 0 || rt.indexOf("links/") === 0) return DATA.menus.find(m => m && m.id === rt.slice(6)) || null;
+    if (rt.indexOf("board/") === 0) return menuForBoard(boardIdOf(rt));
+    return menuForModule(rt) || null;
+  }
 
   /* 라우트별 콘텐츠 폭 — wide(2100px) / mid(1560px) / 기본 1180px */
   const VIEW_WIDTH = {
@@ -997,7 +1100,7 @@ const SeMIS = (() => {
   };
   function applyViewWidth(view, route) {
     const r = String(route);
-    const tier = r.indexOf("embed/") === 0 ? "wide" : r.indexOf("links/") === 0 ? "mid" : (VIEW_WIDTH[route] || "");
+    const tier = r.indexOf("embed/") === 0 ? "wide" : (r.indexOf("links/") === 0 || r.indexOf("board/") === 0) ? "mid" : (VIEW_WIDTH[route] || "");
     view.classList.toggle("view-wide", tier === "wide");
     view.classList.toggle("view-mid", tier === "mid");
   }
@@ -1039,7 +1142,7 @@ const SeMIS = (() => {
     let hub = null;
     const rt = String(route || "");
     if (route && route !== "dashboard" && rt.indexOf("embed/") !== 0) {
-      const mn = rt.indexOf("links/") === 0 ? DATA.menus.find(x => x && x.id === rt.slice(6)) : menuForModule(route);
+      const mn = menuOfRoute(rt);
       const hid = mn ? hubOfDeep(mn) : null;
       const g = hid ? DATA.menus.find(x => x.id === hid && x.type === "group") : null;
       if (g) hub = g;
@@ -1094,6 +1197,14 @@ const SeMIS = (() => {
     } else if (route.indexOf("links/") === 0) {
       renderSubtabs("");
       renderLinkGroup(view, route.slice(6));
+    } else if (route.indexOf("board/") === 0) {
+      renderSubtabs("");
+      const bd = boardDef(boardIdOf(route));
+      if (!bd || !canReadBoard(bd) || !window.SemisBoard) {
+        toast(bd ? "접근 권한이 없습니다." : "게시판을 찾을 수 없습니다.", true);
+        markHub(view, "dashboard");
+        modules.dashboard.render(view);
+      } else window.SemisBoard.render(view, route.slice(6));
     } else {
       let def = modules[route];
       const menu = menuForModule(route);
@@ -1333,6 +1444,11 @@ const SeMIS = (() => {
         esc(ms.map(x => x.module).join(" ")) + '" title="' + esc(m.label + " — " + ms.map(x => x.tab || x.label).join(" · ")) + '">' +
         '<span class="nav-lbl">' + esc(m.label) + '</span>' + (badge ? '<span class="nav-meta">' + esc(badge) + '</span>' : "") + '</button>';
     }
+    if (m.type === "board") {
+      const nb = window.SemisBoard && window.SemisBoard.navBadge ? window.SemisBoard.navBadge(m.board) : "";
+      return '<button type="button" class="nav-item nav-board" data-route="' + esc(boardRoute(m)) + '" title="' + esc(m.label) + '">' +
+        '<span class="nav-lbl">' + esc(m.label) + '</span>' + (nb ? '<span class="nav-meta nav-new" title="새 글 ' + esc(nb) + '건">' + esc(nb) + '</span>' : "") + '</button>';
+    }
     const tag = m.type === "link" ? "a" : "button";
     if (isLinkGroup(m)) {
       const kn = linkChildren(m.id).length;
@@ -1365,7 +1481,7 @@ const SeMIS = (() => {
   }
   const LINKS_SHOWN = 5;   // 허브 패널 바로가기는 5개까지, 나머지는 펼쳐 보기
   function hubSectionHTML(g, entries) {
-    const live = entries.filter(m => m.type === "bundle" || (m.type === "module" && isLive(m)));
+    const live = entries.filter(m => m.type === "bundle" || m.type === "board" || (m.type === "module" && isLive(m)));
     const planned = entries.filter(isPlannedMenu);
     const links = entries.filter(m => m.type === "link");
     const pins = g.id === homeHubId()
@@ -1379,7 +1495,7 @@ const SeMIS = (() => {
         const pinIco = '<span class="pin-ico">' + icon("pin", 15) + '</span>';
         if (m.type === "link" && m.open !== "frame" && !isLinkGroup(m))
           return '<a class="nav-pin" href="' + esc(m.url) + '" target="_blank" rel="noopener">' + pinIco + '<span>' + esc(m.label) + '</span></a>';
-        const r = m.type === "link" ? (isLinkGroup(m) ? "links/" : "embed/") + m.id : m.module;
+        const r = m.type === "board" ? boardRoute(m) : m.type === "link" ? (isLinkGroup(m) ? "links/" : "embed/") + m.id : m.module;
         return '<button type="button" class="nav-pin" data-go="' + esc(r) + '">' + pinIco + '<span>' + esc(m.label) + '</span></button>';
       }).join("") + '</div>';
     if (planned.length) h += '<div class="hub-block hub-planned' + (open ? " open" : "") + '">' +
@@ -1438,10 +1554,10 @@ const SeMIS = (() => {
         icon(g.ico, 22) + '<span>' + esc(railLabel(g)) + '</span></button>').join("");
       const utils = utilEntries();
       if (util) util.innerHTML = utils.map(m => {
-        const ico = icon(m.ico || UTIL_ICO[m.module] || (m.type === "link" ? "link" : "folder"), 21);
+        const ico = icon(m.ico || UTIL_ICO[m.module] || (m.type === "link" ? "link" : m.type === "board" ? "bbs" : "folder"), 21);
         if (m.type === "link" && m.open !== "frame" && !isLinkGroup(m))
           return '<a class="rail-btn util" href="' + esc(m.url) + '" target="_blank" rel="noopener" title="' + esc(m.label) + '" aria-label="' + esc(m.label) + '">' + ico + '</a>';
-        const r = m.type === "link" ? (isLinkGroup(m) ? "links/" : "embed/") + m.id : m.module;
+        const r = m.type === "board" ? boardRoute(m) : m.type === "link" ? (isLinkGroup(m) ? "links/" : "embed/") + m.id : m.module;
         return '<button type="button" class="rail-btn util" data-route="' + esc(r) + '" title="' + esc(m.label) + '" aria-label="' + esc(m.label) + '">' + ico + '</button>';
       }).join("");
       if (utils.length) html += '<section class="hub hub-util" data-hub="_util" aria-label="관리"><div class="hub-head"><span class="hub-ico">' +
@@ -1582,7 +1698,7 @@ const SeMIS = (() => {
     if (!el) return;
     const g = hub ? DATA.menus.find(x => x.id === hub) : null;
     const hubName = g ? g.label : (mn && !mn.parent ? "관리" : "");
-    const leaf = mn ? mn.label : ((modules[route] && modules[route].title) || "");
+    const leaf = mn ? mn.label : ((modules[route] && modules[route].title) || (boardDef(boardIdOf(route)) || {}).name || "");
     const up = mn && mn.parent ? DATA.menus.find(x => x && x.id === mn.parent && (x.type === "link" || x.type === "bundle")) : null;
     el.innerHTML = (hubName && hubName !== leaf ? '<span class="cr-hub">' + esc(hubName) + '</span>' + icon("chevron", 14) : "") +
       (up && up.label !== leaf ? '<span class="cr-hub">' + esc(up.label) + '</span>' + icon("chevron", 14) : "") +
@@ -1590,12 +1706,13 @@ const SeMIS = (() => {
   }
   function highlightNav(route) {
     route = String(route || "");
+    const bid = boardIdOf(route);
+    if (bid) route = "board/" + bid;
     $$(".nav-item").forEach(el => el.classList.toggle("active", el.dataset.route === route ||
       (!!el.dataset.routes && el.dataset.routes.split(" ").indexOf(route) >= 0)));
     $$(".rail-btn.util").forEach(el => el.classList.toggle("active", el.dataset.route === route));
     const role = currentUser && currentUser.role;
-    const mn = (route.indexOf("embed/") === 0 || route.indexOf("links/") === 0)
-      ? DATA.menus.find(m => m && m.id === route.slice(6)) : menuForModule(route);
+    const mn = menuOfRoute(route);
     const hub = mn ? hubOfDeep(mn) : null;
     $$(".tab-btn[data-route]").forEach(el => {
       el.classList.toggle("active", el.dataset.route === route || (!!el.dataset.hub && el.dataset.hub === hub));
@@ -1754,12 +1871,14 @@ const SeMIS = (() => {
     $("#sidebar-backdrop").addEventListener("click", closeOverlays);
     const sc = $("#sheet-close");
     if (sc) sc.addEventListener("click", closeOverlays);
+    /* 긴 글을 쓰는 모달(data-sticky)은 바깥 누르기 · Esc 로 닫지 않는다 — 취소 단추로만 */
+    const stickyModal = () => $("#modal-box").hasAttribute("data-sticky");
     $("#modal-overlay").addEventListener("click", (e) => {
-      if (e.target === $("#modal-overlay")) closeModal();
+      if (e.target === $("#modal-overlay") && !stickyModal()) closeModal();
     });
     document.addEventListener("keydown", (e) => {
       if (e.key !== "Escape") return;
-      if (!$("#modal-overlay").classList.contains("hidden")) { e.preventDefault(); closeModal(); return; }
+      if (!$("#modal-overlay").classList.contains("hidden")) { e.preventDefault(); if (!stickyModal()) closeModal(); return; }
       closeOverlays();
     });
     /* 화면 폭이 바뀌면 떠 있는 패널·시트를 정리 (태블릿 회전 등) */
@@ -2256,6 +2375,7 @@ const SeMIS = (() => {
     LINK_ICONS, LINK_TONES, favOk, linkIconHTML, linkCardHTML, menuForModule,
     closeSidebar, closeOverlays, bundleOf, bundleMembers, hubModules, renderSubtabs,
     isMobile, actionSheet, closeActionSheet, tidyView, labelTable, setEditMode, mfToggle,
+    BBS_RANK, BBS_OPTS, BBS_KIND, BBS_VIEWS, BBS_SIZES, boardPreset, defaultBoards, normBoard, boardDef, canReadBoard, boardIdOf, menuForBoard, menuOfRoute,
     get editing() { return editingNow(); },
     openModal, closeModal, confirmModal, toast,
     $, $$, esc, fmtDate, dsRing, sortedMenus,

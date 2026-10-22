@@ -7,11 +7,11 @@
 
 | 항목 | 값 |
 |---|---|
-| 현재 버전 | **v1.52.0** (2026-10-20) — 수검 대응 **자료 요청 목록**(기관 자료제출 요구서를 그 번호대로 체크리스트로 · 항목마다 CHK-LIST 연계 번호 · 고른 증빙 문서 · SSOP 조항) + 운영 수검 **서울지방항공청 정기점검(2026.11.9)** 29항목 등록. 앞 버전 v1.51.0 = 보안교육 직무 **방사선감시기 운영 담당자** · 과정 **방사선감시기 운영 교육**(법정 · 연 1회). v1.50.0 = 이름 **H:drive**(별칭 ARGOS) · 아이콘 3D 폴더. 기능 기준 v1.49 = **아르고 AI 도우미** · v1.48 = 디자인 '화물 태그' · 지원 카드 · 공통 패널 · 부엉이 |
+| 현재 버전 | **v1.53.0** (2026-10-22) — 디자인 **문서형 구획**(본문 14px · 굵은 위 선 + 제목 + 가는 선, 둥근 모서리 · 그림자 줄임) + **게시판**(허브 '게시판' — 공지사항 B001 · 일반게시판 B002 · 자료실 B003, 시스템관리자가 만들고 지움 · 기능 토글 · 메뉴 유형 '게시판') · 대시보드 공지는 공지사항 게시판으로 전환. 앞 버전 v1.52.0 = 수검 대응 **자료 요청 목록**(기관 자료제출 요구서를 그 번호대로 체크리스트로 · 항목마다 CHK-LIST 연계 번호 · 고른 증빙 문서 · SSOP 조항) + 운영 수검 **서울지방항공청 정기점검(2026.11.9)** 29항목 등록. 앞 버전 v1.51.0 = 보안교육 직무 **방사선감시기 운영 담당자** · 과정 **방사선감시기 운영 교육**(법정 · 연 1회). v1.50.0 = 이름 **H:drive**(별칭 ARGOS) · 아이콘 3D 폴더. 기능 기준 v1.49 = **아르고 AI 도우미** · v1.48 = 디자인 '화물 태그' · 지원 카드 · 공통 패널 · 부엉이 |
 | 접속 주소 | https://mark4mission.github.io/semis-logistics/ |
 | 저장소 | GitHub `Mark4mission/semis-logistics` (공개) · Mac `~/SeMIS_Logistics` |
-| 테스트 | `npm test` 557건 전부 통과(v1.52.0) · Edge `deno test --allow-net --allow-env tools/edge/semis-logi-argo.test.ts` 6건(deno 없으면 `npm i deno@2` 를 스크래치에) · SQL PGlite `node tools/sql/semis-logi-argo.test.mjs tools/sql/semis-logi-argo.sql` 19건(`npm i --no-save @electric-sql/pglite` 후, 끝나면 `npm prune`) |
-| 백엔드 | Supabase `mzyuzrxkdcpzxojenwat` — 테이블 `semis_logi_store`(세션 RLS), **비공개** 버킷 `semis-logi-files`, 비공개 스키마 `semis_logi_private`(계정 · 세션 · 로그인 시도 · 접속 기록 · 권한표), RPC `semis_logi_*`, Edge Function `semis-logi-files`(서명 URL · 이수증 판독 · 데스크 판독 · 사본, v11) · `semis-logi-favicon` · `semis-logi-adsb`(운항, pg_cron 2분) · **`semis-logi-argo`(아르고, v3)** |
+| 테스트 | `npm test` 573건 전부 통과(v1.53.0) · Edge `deno test --allow-net --allow-env tools/edge/semis-logi-argo.test.ts` 6건(deno 없으면 `npm i deno@2` 를 스크래치에) · SQL PGlite `node tools/sql/semis-logi-argo.test.mjs tools/sql/semis-logi-argo.sql` 19건 · 게시판 `node tools/sql/semis-logi-bbs.test.mjs tools/sql/semis-logi-bbs.sql` 78건(`npm i --no-save @electric-sql/pglite` 후, 끝나면 `npm prune`) |
+| 백엔드 | Supabase `mzyuzrxkdcpzxojenwat` — 테이블 `semis_logi_store`(세션 RLS), **비공개** 버킷 `semis-logi-files`, 비공개 스키마 `semis_logi_private`(계정 · 세션 · 로그인 시도 · 접속 기록 · 권한표), RPC `semis_logi_*`, 비공개 게시판 표 `bbs_posts` · `bbs_comments` · `bbs_reads`(RPC `semis_logi_bbs_*`), Edge Function `semis-logi-files`(서명 URL · 이수증 판독 · 데스크 판독 · 사본, v12) · `semis-logi-favicon` · `semis-logi-adsb`(운항, pg_cron 2분) · **`semis-logi-argo`(아르고, v4)** |
 
 ## 2. 새 세션 시작
 
@@ -59,6 +59,7 @@ Claude가 할 일(순서대로):
 | (최상위) | 대시보드 | — |
 | (패널 맨 위) | **지원 카드**(v1.48) — 검색(Ctrl K) · 메인 데스크(hq) · 아르고(내부 전 계정, v1.49). 패널을 접었을 때 · 태블릿 · 모바일은 상단바 아이콘 3개 | 메뉴가 아니라 어디서나 여는 도구 |
 | 홈 `hub-home` | 일정관리 · 회의록 · 운항 현황 · 바로가기 (+ 링크) | 매일 보는 것 |
+| 게시판 `hub-bbs`(v1.53) | 공지사항 `B001` · 일반게시판 `B002` · 자료실 `B003` (+ 게시판 메뉴) | 소통 · 공지 · 자료 공유 |
 | 화물 보안 `hub-sec` | 화물보안 대시보드 · 보안검색 현황 · 검색장비 관리 · 보안 처리 대장 · 상용화주 · RA · 협력사 · 보안요원 · (예정) 보안구역 출입 | 화물 · 검색 · 장비 · 보안요원 운영 |
 | 점검 · 교육 `hub-aud` | 점검 · 교육 대시보드 · 점검 · 순찰 `bd-check`[보안 기록부 · 순찰일지] · 수검 대응 `bd-audit`[수검 · 지적사항 · 자체 보안점검(선택)] · 보안교육 `bd-edu`[이수 · 자격 · 전파교육] | 주기적으로 기록하는 것 |
 | 비상 · 연락 `hub-ops` | 팀위기대응 (SERP) · 위협전화 대응 · 연락처 `bd-contact`[업무 연락처 · 비상연락망 · 체계도 · 위기대응 조직] | 사람 · 연락처 · 비상 절차 |
@@ -71,17 +72,19 @@ Claude가 할 일(순서대로):
 - 옛 화면이 묶음 소속을 풀어 저장해도 다음 정규화가 시드 묶음으로 되돌린다. 설정에서 묶음을 지우면 안의 메뉴는 허브로 옮겨진다
 - 탭이 하나만 보이면(나머지 숨김 · 권한 밖) 탭 줄은 숨는다. 지금 운영 데이터는 **순찰일지가 숨김**이라 '점검 · 순찰'에 보안 기록부만 보인다
 - **메뉴가 아닌 기능(v1.48)**: `PANEL_ONLY`(지금 desk)는 시드에 없고, 운영 menus 에 남아 있으면 `normalizeData()` 가 지운다(ensureSeedMenus 가 되살리지 않음). 운영 menus 저장은 시스템관리자가 v1.48 로 처음 접속할 때 — 그 전에도 각 화면은 정규화로 메뉴를 숨긴다
+- **게시판 메뉴(v1.53)**: 메뉴 유형 `board` = `{ type: "board", board: "B001", label, parent: 허브 }`(시스템 설정 › 메뉴 › 유형 '게시판', 허브 아래만). 권한은 게시판 읽기 등급을 따른다(메뉴 vis 는 all). 운영 menus 에는 `addBoardMenus` 가 대시보드 메뉴 `bv: 1` 로 한 번(게시판 메뉴가 하나도 없을 때) 허브 · 메뉴 3개를 홈 허브 뒤에 넣는다 — 저장은 시스템관리자가 v1.53 으로 처음 접속할 때
 - 새 메뉴: `defaultMenus()` 시드에 한 줄(탭 묶음이면 `parent: "bd-…"`, `tab: "짧은 이름"`) → 운영 데이터에 없으면 `ensureSeedMenus()` 가 시드 자리에 넣는다
 
 ### 4-2. 모듈 (라우트 · 파일 · 권한)
 
 | 라우트 | 파일 | 권한 | 내용 |
 |---|---|---|---|
-| dashboard | modules.js · hero3d.js | all | 3D 화물 태그(무재해 · 보안등급) · 오늘 · 띠(검색 환경 · 위협전화 · SERP · 수검 · 운항) · 공지 · 결정사항 · 모듈 구축 현황 |
+| dashboard | modules.js · hero3d.js | all | 3D 화물 태그(무재해 · 보안등급) · 오늘 · 띠(검색 환경 · 위협전화 · SERP · 수검 · 운항) · 공지(대시보드 표시 게시판 최근 글 — `SemisBoard.loadRecent`) · 결정사항 · 모듈 구축 현황 |
 | (패널) desk | desk.js · docread.js | hq | **메인 데스크**(v1.48 부터 라우트 화면이 아니라 공통 패널) — 지원 카드 · 상단바 · 어디서나 끌어다 놓기(보던 화면 그대로) · `#/desk`(대시보드 위에 패널) · 검색 결과로 연다. 탭 [올리기 · 확인 대기][접수 대장 — A4 Print]. 머리 부엉이 표정 = 판독 중 thinking · 반영 직후 happy · 판독 실패 alert. 문서 올리기 → AI 판독 → 반영안 확인 · 수정 → 반영(이수 기록 + 다음 이수 기간 일정 · 일정 · 전파교육 · 수검 지적 · 처리 대장 · 하드카피 집계 · 문서 서가) · 보관만 |
 | (패널) argo | argo.js | user~admin(협력업체 · 서명 제외) | **아르고 AI 도우미**(v1.49) — 지원 카드 · 상단바 부엉이 · `#/argo`(대시보드 위 패널) · 검색 결과로 연다. 사용법 · 용어 Q&A(docs/ARGO-GUIDE.md) · 메뉴 찾기(바로 가기) · 자료 찾기 · 현황 · 쓰기(hq — 일정 등록 · 수정 · 완료 · 삭제 · 공지 · 이수 기록 · 서가 보관 · 수검 지적) · 첨부(사진 · PDF 4.5MB · 워드 · 한글 · 엑셀 · PPT 글) · 결과 카드 · 되돌리기 · 지우기 · 여러 건 확인 · 대화 Print. 설계 DESIGN §18 |
 | (공통) | panel.js | — | **공통 패널 모달** `SeMIS.ui.panel(o)` = `SemisPanel.open(o)` — 검색 · 메인 데스크 · 아르고 |
 | (공통) | argo-owl.js | — | **부엉이 아르고** `SemisOwl.mount(el, { size, state })` · `SemisOwl.svg(state, size)` |
+| board/Bxxx[/글] | board.js | 게시판 읽기 등급(협력업체 · 서명 제외) | **게시판**(v1.53) — 목록(쪽 10묶음 · 쪽당 10~100 · 검색 범위 · 분류 · 상단 고정 · 새 글 N · 댓글 수 · 첨부 · 일괄 이동/삭제 hq · 보기 방식 목록/자료/갤러리) · 글(No. B001-0001 · 첨부 · 서식 본문 살균 · 열람 확인 · 댓글 · 답글 3단 · 이전/다음) · 쓰기(서식 편집기 · 첨부 · 고정 기한, 오래 쓰는 창은 바깥 누르기 · Esc 로 닫히지 않음 `sticky`). 메뉴 배지 = 안 읽은 새 글. 시스템 설정 › 게시판(admin): 만들기(종류 프리셋) · 고치기 · 기능 토글 · 메뉴 추가 · 휴지통 · 지우기 |
 | schedule | calendar.js | mgr | 일정(담당자 다중 · 12색 · 반복 · 미리알림) · 점검 기한 · 수검 일정 연동 |
 | minutes | minutes.js | mgr | 회의록 · QR 참석 서명 · 결정사항 |
 | flight | flightcore.js · flightops.js | all | 에어제타 화물기 15대 ADS-B 위치 · 인천 입출항 |
@@ -107,14 +110,14 @@ Claude가 할 일(순서대로):
 | reg-sec · reg-safety · reg-dg | regulations.js | mgr | 규정 3종 · PDF 뷰어 · 개정 아이디어 |
 | contracts | contracts.js | hq | 계약 · 협약 |
 | vault | vault.js | hq | 암호 관리(AES-256-GCM, 공용/개인) |
-| settings | modules.js | admin | 메뉴(탭 묶음 포함) · 사용자 · 담당자 · 데이터 이력 · 저장소 · 보안 |
+| settings | modules.js · board.js | admin | 메뉴(탭 묶음 · 게시판 메뉴 포함) · 게시판 · 사용자 · 담당자 · 데이터 이력 · 저장소 · 보안 |
 | (서가) | docshelf.js | 화면별 | 문서 서가 `SemisDocs` — 체크리스트 증빙 · SSI 잠금 |
 
 모듈별 자세한 동작 · 데이터 모양은 각 파일 머리 주석과 `docs/HISTORY.md` §A.
 
 ## 5. 데이터 · 백엔드
 
-- **SYNC_KEYS(41)**: menus · notices · schedules · assignees · assigneesSeeded · minutes · minuteFolders · levelHistory · safetyBoard · contacts · gcal · vault · regulations · equipment · crisis · fleet · audits · phonebook · training · seclog · seclogCfg · serp · serpRuns · threat · threatRuns · threatChecks · patrol · patrolCfg · patrolPeople · secPost · secPostImg · selfChecks · selfCheckCfg · docs · partners · contracts · kcra · secCases · dissem · scrStats · desk (계정 자료 pwOverrides·userOverrides·customUsers는 v1.15에 서버 전용 표로 이관·삭제)
+- **SYNC_KEYS(42)**: menus · boards · notices · schedules · assignees · assigneesSeeded · minutes · minuteFolders · levelHistory · safetyBoard · contacts · gcal · vault · regulations · equipment · crisis · fleet · audits · phonebook · training · seclog · seclogCfg · serp · serpRuns · threat · threatRuns · threatChecks · patrol · patrolCfg · patrolPeople · secPost · secPostImg · selfChecks · selfCheckCfg · docs · partners · contracts · kcra · secCases · dissem · scrStats · desk (계정 자료 pwOverrides·userOverrides·customUsers는 v1.15에 서버 전용 표로 이관·삭제)
 - **v1.39 보안교육 이수 등록(배포용 edu.html — 새 컬렉션 없음, training 칸 추가)**: people `apt{직무: 임명일}` · `emp`(사번, v1.39.2 — 대조 키 `edu_emp_key` = 영문 · 숫자 소문자, 앞 KJ 뺌) · `src: "self"` · `selfAt` / records `src: "self"` · `selfAt` · `chkAt` · `chkBy`(안전보안파트 확인). 비공개 표 `semis_logi_private.edu_links`(코드 12자 · 제목 · 기한(그날 23:59:59 KST) · active · target training|eduTest) · `edu_tickets`(sha256, 3시간) · `edu_uploads`(경로 · 표 · used_by) · `edu_submits`(제출 원본 결과 — 같은 sid 재전송은 저장된 결과 반환) · `edu_hits`(IP 제한). 공개 RPC(anon): `semis_logi_edu_info(p_k)` · `semis_logi_edu_ticket(p_k, p_pow)`(작업증명 = 로그인과 같은 challenge) · `semis_logi_edu_submit(p_k, p_ticket, p)`, 관리(hq): `semis_logi_edu_links()` · `semis_logi_edu_link_save(p)`, 서비스 권한만: `semis_logi_edu_claim(…)` · `semis_logi_edu_read_ok(p_ticket, p_path)`(v1.39.2 판독 전 확인 · 횟수 · 과정 목록)(파일 함수가 부름). 병합 = 순수 함수 `semis_logi_private.edu_merge(t, p, m)`. 시험 행 `eduTest`(권한표 9/9 — 시스템관리자만 target 'eduTest' 링크를 만들 수 있음). 제출은 계정 세션이 아니라 check_base(409)를 타지 않고, 열린 화면은 변경 알림으로 다시 받는다(updated_by `anon/edu-self`)
 - **v1.35 점검 표시 · 하드카피(새 컬렉션 · 권한표 변경 없음)**: `seclogCfg.vis` = { 양식id: { m: "dim" | "hide", msg? } }(msg 는 기본 '하드카피본 확인'과 다를 때만, 표시는 넣지 않음) · `selfCheckCfg.vis` = { 별표 id: 같은 모양 } · 보안 기록부 하드카피 집계 = `seclog` 안 한 줄 { id: "hc-"+양식id, tid, hc: true, marks{ 주기키: ok | ng | miss }, cnt{ "YYYY-MM": 건수 }(편별 · 수시), updatedAt/By } — 날짜가 없어 `logs()` · 대시보드 기록 집계에 안 잡힘 · 자체 보안점검 하드카피 기록 = `selfChecks` 안 { id, form, hc: true, date, insp, find, open, note, createdAt/By, updatedAt/By } — status 없음, `recs()` 에서 빠지고 `hcRecs()` 로 셈. 쓰기 권한: vis 는 화면에서 admin 만(서버 권한표는 seclogCfg 3 · selfCheckCfg 3 그대로)
 - **CARES 위해물품 월 집계(v1.36)**: `js/cares.js` 묶음 `haz`(10분 캐시, 따로 요청할 때만) = CARES Firestore `hazStats` 목록(GET) → `SemisCares.hazMonth(ym)` · `hazSeries(n)` · `ymKST(off)` · `HAZ_CATS` · `HAZ_URL`. 문서 = { total, cat:{liquid,powder,mixed,other,none}, loc:{'1','2','3',etc}, day, withdrawn, review } — CARES 함수(hazStatsOnWrite)가 만들고 공개 읽기. 기록 원본 `hazFinds`(AWB · 업체 · 근무자)는 CARES 비공개라 Logistics 는 읽지 않는다(테스트 HZ01). 분류 색 #2b59c3 · #d97706 · #9d174d · #0d9488(dataviz 검증기 --pairs all 통과)
@@ -127,6 +130,13 @@ Claude가 할 일(순서대로):
   - Edge `semis-logi-argo`(원본 `tools/edge/semis-logi-argo.ts` + `argo-guide.ts`, verify_jwt false): x-semis-token → RPC `semis_logi_argo_begin()`(세션 · 내부 계정 · 오늘 호출 +1 · 한도) → Claude(`ARGO_MODEL` → claude-sonnet-5-5 → sonnet-4-5 → haiku-4-5, max_tokens 2500, 캐시 = 도구 + 고정 지침 + 마지막 블록) → `semis_logi_argo_meter(p_in, p_out, p_cache)`. 비밀값 `ANTHROPIC_API_KEY`(데스크 판독과 같은 키). 대화 검사: 역할 교대 · 도구 이름(등급별) · tool_use/tool_result 짝 · 첨부 6개 · base64 9.5M자 · 본문 10MB
   - SQL `tools/sql/semis-logi-argo.sql`(마이그레이션 `semis_logi_security_27_argo`): 비공개 표 `semis_logi_private.argo_usage`(account_id × day(KST) · calls · tok_in · tok_out · tok_cache) · settings `argo` { calls 200, tokIn 5000000 } — 한도 바꾸기: `update semis_logi_private.settings set v = jsonb_set(v, '{calls}', '300') where k = 'argo'` · 사용량 보기(시스템관리자 세션 RPC 또는 SQL): `select a.login_id, u.* from semis_logi_private.argo_usage u join semis_logi_private.accounts a on a.id = u.account_id order by day desc`
   - 안내 지식: `docs/ARGO-GUIDE.md` 를 고치면 `npm run argo:guide` → Edge 재배포(파일 2개). 메뉴가 바뀌면 §4 표와 함께 고친다(테스트 AR12 가 route 가 실제 모듈인지 확인)
+- **게시판(v1.53)** — SQL `tools/sql/semis-logi-bbs.sql`(마이그레이션 `semis_logi_security_28_bbs*` — 한 번에 넣을 수 있는 크기 제한으로 나눠 적용) · PGlite 시험 `semis-logi-bbs.test.mjs`
+  - 정의: 공용 행 `boards`(권한표 1/4 — 시스템관리자만 고침) = [{ id `B\d{3}`, name, kind(notice · general · archive · gallery 프리셋), view(list · file · gallery), desc, read · write · cmt(all · mgr · hq · admin, 쓰기 · 댓글 ≥ 읽기), perPage, opt{ pin · attach · editor · views · readers · comment · reply · cat · dash · newDays(0~30) }, cats[≤20] }]. 화면 정규화 `normBoard` · 서버도 같은 등급표(`bbs_rank`)
+  - 글 · 댓글 · 열람은 비공개 표(`semis_logi_private.bbs_posts` · `bbs_comments` · `bbs_reads`)에만 — 공용 행이 아니라 RPC 로만 읽고 쓴다(쪽 나누기 · 검색 · 작성자 확인을 서버가): `semis_logi_bbs_list(p)` · `_get(id)`(처음 열면 조회 +1 · 열람 기록) · `_save(p)`(제목 200 · 본문 HTML 30만 · 첨부는 이 버킷 표준 주소만 · 고정은 hq · 1분 10건) · `_delete(p)`(표시만, 답글 함께, 90일 뒤 정리) · `_comment(p)`(1분 20건) · `_stats()`(게시판별 전체 · 새 글 · 안 읽은 새 글 + 검색 색인 300) · `_recent(p)`(대시보드 · 아르고) · `_move(p)`(hq) · `_admin(p)`(admin — counts · trash · restore · drop(확인 문자열 = 게시판 id) · files). 도우미 `semis_logi_private.bbs_*` 는 anon 실행 불가
+  - 남의 글 수정 · 삭제 · 고정 · 이동 = hq 이상. 일반 사용자는 자기 글만, 남의 답글이 달린 글은 못 지움. 열람 확인(읽은 · 안 읽은 사람)은 hq · 작성자만
+  - 첨부: 폴더 `bbs1~4` = 게시판 읽기 등급(파일 함수 열람 · 올리기 등급 같은 숫자). 저장소 관리 '연결 없는 파일'은 게시판 첨부 · 본문 그림(`_admin files`)도 연결로 본다
+  - 실시간: 저장할 때 `realtime.send` 키 `bbs:<게시판>` → 열린 목록 · 글 화면만 다시 받음(`SemisBoard.remote`)
+  - 공지 이관: 옛 공용 행 `notices` 를 B001 로 한 번 옮김(src `notice:<id>` — 다시 실행해도 중복 없음). `notices` 행 · `SemisNotice`(편집기 · 살균)는 남겨 둠, 화면 · 아르고 · 검색은 게시판을 쓴다
 - SYNC_KEYS 밖 설정 행: `caresCfg`(CARES Firebase 웹 키 — `SemisSync.fetchKV`로만 읽음, 앱이 쓰지 않음) · `auditMaster`(v1.19 수검 체크리스트 원본 — 민감보안정보, 권한표 읽기 3 · 쓰기 9, hq가 상세를 열 때 `fetchKV`로 받아 메모리에만 둠)
 - 신규 컬렉션 추가 시: `freshData()` 기본값 → `normalizeData()` 보정(멱등 — v1.45~ `obj` · `rows` 표에 키 한 줄) → `sync.js` SYNC_KEYS → 테스트 Y01 기대 문자열 갱신 → **서버 권한표 등록**(아래)
 - **서버 보안(v1.15)** — 원본 SQL `tools/sql/semis-logi-security.sql`(1단계) · `tools/sql/semis-logi-lockdown.sql`(2단계 잠금). 실제 적용은 마이그레이션 `semis_logi_security_1~6`(6 = RPC 실행 권한: public `semis_logi_*`는 anon·service_role만, authenticated 차단)
@@ -138,7 +148,7 @@ Claude가 할 일(순서대로):
   - 관리자 RPC: `semis_logi_users` · `semis_logi_user_save(p)` · `semis_logi_user_delete` · `semis_logi_set_password`(다른 접속 끊김) · `semis_logi_history` · `semis_logi_history_value` · `semis_logi_security`(접속 중 · 기록) · `semis_logi_end_sessions`. 회의 서명: `semis_logi_sign_submit`(그 회의 한 건만 수정 — signer 세션은 공용 DB 직접 조회 불가)
   - 계정 표는 SQL(서비스 권한)로만 직접 볼 수 있다: `select id, login_id, role, last_login_at from semis_logi_private.accounts`
 - **데이터 사본**: `sessionStorage semisl:data`(탭 단위 — 탭을 닫거나 로그아웃하면 사라짐) · 캐시 주인 `semisl:owner`(다른 계정이 로그인하면 비움) · 읽을 권한이 없는 컬렉션은 로그인 때 기본값으로 비운다. pending 큐 · 강제 push 표시도 sessionStorage. 옛 버전의 `localStorage semisl:data`는 시작할 때 지운다
-- **파일(v1.15)**: 버킷 비공개. 저장값은 표준 주소(`…/object/public/semis-logi-files/경로`) 그대로. `js/fileauth.js`(SemisFileAuth)가 화면의 img · iframe · a 등을 서명 URL(1시간)로 바꿔 끼우고(원래 주소는 `data-sf`), 서명 전 링크는 새 창을 먼저 연 뒤 보낸다. 서명·업로드·목록·삭제는 Edge Function `semis-logi-files`(원본 `tools/edge/semis-logi-files.ts`, verify_jwt false — 세션은 `semis_logi_file_auth()`로 확인). 폴더 등급: 열람 notices·attach·minutes·minutes-sign 1 / schedules·contacts·crisis·regs·regs-diff·audits·training·seclog·threat·patrol 2 / 그 밖 3, 올리기 minutes·minutes-sign·seclog·threat·patrol 2(서명 세션은 minutes-sign만) / 나머지 3. 업로드 경로는 함수가 정한다(무작위 접두사). html·js 형식은 거부, 50MB 제한
+- **파일(v1.15)**: 버킷 비공개. 저장값은 표준 주소(`…/object/public/semis-logi-files/경로`) 그대로. `js/fileauth.js`(SemisFileAuth)가 화면의 img · iframe · a 등을 서명 URL(1시간)로 바꿔 끼우고(원래 주소는 `data-sf`), 서명 전 링크는 새 창을 먼저 연 뒤 보낸다. 서명·업로드·목록·삭제는 Edge Function `semis-logi-files`(원본 `tools/edge/semis-logi-files.ts`, verify_jwt false — 세션은 `semis_logi_file_auth()`로 확인). 폴더 등급: 열람 notices·attach·minutes·minutes-sign 1 / schedules·contacts·crisis·regs·regs-diff·audits·training·seclog·threat·patrol 2 / 그 밖 3, 올리기 minutes·minutes-sign·seclog·threat·patrol 2(서명 세션은 minutes-sign만) / 나머지 3. 게시판 `bbs1~4` 는 열람 · 올리기 모두 숫자 그대로(v1.53). 업로드 경로는 함수가 정한다(무작위 접두사). html·js 형식은 거부, 50MB 제한
 - **대량 삭제 방어**(sync.js `guardWipe`): 2건 이상 → 0건 push 차단. 정상 전체 삭제는 `SemisSync.confirmWipe(key)`
 - **저장 충돌 방지(v1.24)** — 원본 SQL `tools/sql/semis-logi-conflict.sql`, 마이그레이션 `semis_logi_security_12_base_check`(완화) → `semis_logi_security_13_base_strict`(엄격)
   - 열 `semis_logi_store.base_at`(확인용 — 트리거가 늘 null 로 되돌려 저장 안 됨) · BEFORE UPDATE 트리거 `semis_logi_store_0_base` → `semis_logi_private.check_base()`: **계정 세션(ctx kind user)** 의 저장은 `base_at` 이 지금 행의 `updated_at` 과 같아야 한다(없으면 = 옛 화면 → 거절). 거절은 `PT409` → HTTP 409 `{message:"semis_conflict", details:<key>}`. SQL(서비스 권한) · 회의 서명 RPC(signer)는 확인하지 않음. BEFORE INSERT 에 걸면 안 됨(INSERT … ON CONFLICT 의 excluded 에 반영되어 늘 충돌)
@@ -158,7 +168,7 @@ Claude가 할 일(순서대로):
 3. **테스트 통과 후에만 배포**. 브라우저 확인(playwright)은 `addInitScript`로 supabase.co 비-GET 요청을 차단한 상태에서만 (운영 DB 오염 방지)
 4. **공개 저장소**: 연락처·명단·암호 평문을 코드에 넣지 않는다. 실데이터는 공용 DB에만
 5. 애매한 요구는 질문 후 진행 (AskUserQuestion), 보고는 간결하게
-6. 가독성 기준: 본문 17px · 보조 문구 `.81rem` 이상 · 보조 색은 `--text-2`/`--text-3`만
+6. 가독성 기준: 본문 **14px**(v1.53 — PC · 모바일 같음, 터치 기기 입력칸만 16px · iOS 확대 방지) · 가장 작은 글자 `.72rem` · 보조 색은 `--text-2`/`--text-3`만
 7. **디자인 규칙(v1.8~)**: 새 모듈은 `docs/module-template.js`를 복사해 시작. 화면은 `SeMIS.ui.head/stats/search/empty/chip`, 아이콘은 `SeMIS.icon()`만 사용. 제목·메뉴에 이모지 금지. 메뉴는 반드시 허브(hub-*)에 소속. 390px 모바일 화면까지 확인
 8. **비주얼 규칙(v1.9)**: 허브에 속한 화면은 `.page-head`가 자동으로 허브 사진 배너가 된다(`#view[data-hub]`, 사진은 `assets/img/hero-*.webp`). 새 허브를 만들면 홈 사진이 기본 — 전용 사진은 CSS `#view[data-hub="hub-…"]` 한 줄 추가. 입력 폼의 설명 문구는 문단으로 쓰지 말고 `SeMIS.ui.tip(text, label)`(ⓘ 말풍선)로. 일정 색은 12색(`SemisCalendar.COLORS`) — 추가 시 ΔE2000 18 이상·글자 대비 4.5:1 이상 확인
 9. **줄바꿈(v1.9.1)**: 본문 전체 `word-break: keep-all`(한글은 어절 단위). 글자 단위로 끊는 `word-break: break-word`는 쓰지 말고 `overflow-wrap: break-word`로. 좁은 칸의 머리글(제목·건수·링크)은 `white-space: nowrap`. 새 화면은 390px에서 가로 넘침이 없는지 확인
@@ -175,10 +185,17 @@ Claude가 할 일(순서대로):
 19. **주석은 '왜'만(v1.45)**: 코드 주석에는 버전 · 날짜 · 결정 경위 · 바뀐 내력을 쓰지 않는다(그건 이 문서 §7 · §8 과 docs/HISTORY.md). 남길 것 = 보안 제약 · 규정 근거 · 브라우저 함정 · 데이터 모양 · 경고. 파일 머리는 역할 1~2줄, 800줄 넘는 파일만 `/* ── 구역 ── */` 한 줄 표지. 새 메뉴는 `defaultMenus()` 에만 넣으면 운영 데이터에 없을 때 `ensureSeedMenus()` 가 시드 순서 자리에 넣는다(예정 메뉴는 넣지 않음)
 22. **아르고 도구(v1.49)**: 새 모듈 자료를 아르고가 읽게 하려면 `js/argo.js` `COLS`(목록 · 요약) 한 줄 + Edge `COLLECTIONS` 한 줄(이름 · 등급 — 테스트 AR13 이 두 곳을 대조). 쓰기 도구는 `W` 에 { label, keys(되돌릴 컬렉션), prep(검사 · 업로드), run(바꾸기 → lines · go · result · log) } + Edge `toolList` 정의(min 3). 쓰기 권한은 그 화면의 편집 권한과 같게. 안내 지식 · 메뉴 표는 docs/ARGO-GUIDE.md(공개 저장소 — 이름 · 연락처 · SSI 금지)
 20. **공통 패널(v1.48)** — 검색 · 메인 데스크 · 아르고처럼 '어디서나 여는 큰 화면'은 `SeMIS.ui.panel({ id, title, sub, mascot(부엉이 상태) | icon, tabs[{ id, label, badge }], tab, onTab, render(body, h), actions, onActs, print, focus, onClose, cls })`. 폼 입력은 지금처럼 `openModal`(작은 모달). 패널이 열려 있으면 `openModal` · `toast` · 말풍선 · 액션 시트가 패널 안에 붙는다(밖은 inert). 지원 카드 기능은 `SeMIS.registerSupport(id, { ok, badge, open })`, 옛 주소 처리는 `SeMIS.registerPanelRoute(id, fn)`, 원격 변경 때 다시 그리기는 `SeMIS.onRerender(fn)`. 패널 본문의 표 정돈은 `SeMIS.tidyTables(body)`. Esc 는 안쪽 모달 → 패널 순으로 하나씩
-21. **화물 태그 문법(v1.48, Mark 선택 B안)** — 크림 종이(`--tag` · `--tag-2`) · 앰버 띠 · 절취선(`--tag-perf`) · 페트롤 잉크(`--tag-ink`)는 지원 카드 · 패널 · 선택 상태(탭 · 세그먼트 · 메뉴) · 배지 · 표 머리에만. 카드 · 업무 본문은 흰 바탕 그대로. 종이 위 보조 글자도 `--text-2`/`--text-3`. 부엉이는 그림이라 이모지 금지 규칙과 무관하되 메뉴 · 버튼 이름에는 넣지 않는다
+21. **화물 태그 문법(v1.48, Mark 선택 B안)** — 크림 종이(`--tag` · `--tag-2`) · 앰버 띠 · 절취선(`--tag-perf`) · 페트롤 잉크(`--tag-ink`)는 지원 카드 · 패널 · 선택 상태(탭 · 세그먼트 · 메뉴) · 배지에만(표 머리는 v1.53 부터 문서형 실선). 카드 · 업무 본문은 흰 바탕 그대로. 종이 위 보조 글자도 `--text-2`/`--text-3`. 부엉이는 그림이라 이모지 금지 규칙과 무관하되 메뉴 · 버튼 이름에는 넣지 않는다
 23. **이름 · 아이콘(v1.50)**: 화면 · 인쇄 · 탭 제목의 시스템명은 `SeMIS.APP_NAME`("H:drive"), 글자 표기는 `<b>H:</b>drive`(강조색은 H: 만, 자간 .02em). 별칭 `SeMIS.APP_ALIAS`(ARGOS)는 로그인 태그 아랫줄 · 시스템 설정 › 데이터 관리 › 시스템 정보 · 아르고 안내 지식에만(Mark 결정, 테스트 LG04 · C28a). 아이콘 원본 `assets/mark.svg`(40×40 · 도형만 · 둥근 타일) — 바꾸면 `icon-32.png`(투명 모서리) · `apple-touch-icon.png`(모서리 없는 정사각 180, iOS 가 둥글림)를 다시 만든다(헤드리스 크롬으로 SVG 렌더). `<head>` 순서는 PNG 32 → SVG → apple-touch-icon(index.html · edu.html 둘 다)
+24. **문서형 구획(v1.53, Mark 선택)** — 한눈에 읽히게 섹션은 선으로 가른다: `.card` = 위 2px 진한 선(`--rule`) + 얇은 테두리(`--line`) · 모서리 4px · 그림자 없음, `.card-title` 아래 가는 선(`--hair`), 표 머리 = 위 · 아래 실선 + `--head-bg`, 머리말(배너 없는 화면) 아래 2px 선. 새 화면은 `.card` · `.card-title` · `table` 만 쓰면 된다(따로 테두리 · 그림자 · 큰 둥근 모서리를 만들지 말 것). 버튼 34px · 작은 버튼 28px
+25. **게시판(v1.53)** — 글처럼 쌓이는 소통 · 공지 · 자료는 새 컬렉션 대신 게시판(시스템 설정 › 게시판에서 만들고 메뉴로 단다). 게시판 화면 · 자료 접근은 `SemisBoard`(render · write · post · loadRecent · fileRefs)만 거친다. 게시판 첨부는 `"bbs" + 읽기 등급` 폴더 — 새 등급을 만들면 파일 함수 등급표도
 
 ## 7. 미결 · 주의 (열린 일만 — 끝나면 HISTORY.md 로)
+
+- **게시판 DB 마무리(v1.53)**: 글 지우기 · 관리 함수 2개(`semis_logi_bbs_delete` · `semis_logi_bbs_admin`)는 MCP 적용 때 'delete' 구문 확인 창이 자동 취소되어, Mark 가 Supabase SQL 편집기에서 실행할 파일로 전달함(내용 = `tools/sql/semis-logi-bbs.sql` 의 두 함수 + 호출 권한). 실행 전에는 글 삭제 · 휴지통 · 게시판 지우기만 안 된다. 확인: `select count(*) from pg_proc where proname like 'semis_logi_bbs_%'` = 9
+- **게시판 메뉴 저장(v1.53)**: 시스템관리자가 v1.53 으로 한 번 접속하면 운영 menus 에 허브 '게시판' · 메뉴 3개가 저장된다(그 전에도 각 화면은 정규화로 보임). 배포 직후 열려 있던 옛 탭은 새로고침 — 옛 탭에서 쓴 공지는 옛 `notices` 행에만 남는다(SQL 이관 부분을 다시 실행하면 B001 로, 중복 없음)
+- **게시판 읽기 등급 변경**: 이미 올린 첨부는 올릴 때의 폴더(`bbsN`) 등급을 따른다 — 읽기 등급을 올리면 민감한 첨부는 다시 올릴 것
+- **게시판 운영 확인**: 컨테이너에 운영 세션이 없어 실서버 글쓰기 · 첨부 · 댓글 · 열람 확인은 못 함(하네스 = PGlite 에 실제 SQL 로 확인). 첫 공지를 쓸 때 첨부 · 열람 확인 · 대시보드 · 메뉴 배지를 한 번 볼 것
 
 - **메뉴 2판 저장**: 시스템관리자가 v1.46 으로 한 번 접속하면 운영 menus 에 저장된다. 배포 직후 열려 있던 옛 탭은 새로고침할 것(옛 화면은 탭 묶음을 모른다)
 - **순찰일지 숨김**: 운영 설정에서 숨김 상태 — '점검 · 순찰' 탭 묶음에 보안 기록부만 보인다. 쓰기 시작하면 설정 › 메뉴에서 표시
@@ -202,6 +219,7 @@ Claude가 할 일(순서대로):
 
 | 버전 | 날짜 | 내용 |
 |---|---|---|
+| v1.53.0 | 10-22 | **문서형 구획 · 게시판** — 디자인: 본문 14px(PC 17 → 14 · 모바일 15 → 14), 작은 글자 .72rem 이상으로 정리, 카드 = 위 2px 진한 선 + 제목 아래 가는 선 · 모서리 4px · 그림자 없음, 표 머리 실선, 버튼 · 입력 높이 줄임, 허브 배너 낮춤(Mark 선택: 14px · 문서형 구획). 게시판: 허브 '게시판'(Mark 선택) · 기본 3개(공지사항 · 일반게시판 · 자료실) · 게시판 ID(B001~) · 기능 토글 10종 · 메뉴 유형 '게시판' · 서버 표 + RPC(쪽 · 검색 · 권한 · 작성자) · 첨부 폴더 bbs1~4 · 열람 확인 · 댓글 · 답글 · 이동 · 휴지통 · 실시간 · 메뉴 배지 · 통합 검색 · 대시보드 공지 · 아르고 공지 등록 → B001. 공지만 게시판으로 전환(Mark 선택), 운영 공지 1건 이관. Edge files v12 · argo v4(안내 지식). 테스트 BB01~BB16 · PGlite 78 (573 통과). axe(기존 #sup-search 이름 불일치 1건 제외) · 1440/390 넘침 0 |
 | v1.52.0 | 10-20 | **수검 자료 요청 목록** — 기관이 보낸 자료제출 요구서를 번호 그대로 체크리스트로(`chkSrc.kind "req"` · 한 묶음 · 인쇄 머리 '요청 자료' · 비고 칸 넓게 · CHK-LIST 불러오기 숨김). 항목 `rel[]` = 같은 내용의 점검관용 CHK-LIST 번호 → 근거 요지(여러 번호) · 연결 화면 증빙 판단 번호(`evMid`), `dids[]` = 고른 증빙 문서(문서 서가 id, 순서 유지 · 없는 문서 · 중복 제외) — 항목 수정 창에 'CHK-LIST 연계' · '증빙 문서' 고르기. 운영: 서울지방항공청 정기점검(11.9) 수검 + 29항목(SSOP Rev.01 조항 · 연계 · 증빙 문서 121건 · 의견 · 점수) + 일정 1건 SQL 등록(반영 직전 값 `semis_store_history`). 테스트 TA12 (557 통과) |
 | v1.51.0 | 10-17 | **방사선감시기 교육(법정)** — 직무 · 과정 기준표에 직무 `방사선감시기 운영 담당자`(기타 직무군 · 법정, 근거 생활주변방사선 안전관리법 제19조③ · 제26조의2 · 제31조④3(과태료 300만원 이하) · 시행령 제13조 · 제14조의3) + 과정 `c-rmon` 방사선감시기 운영 교육(단일 · 정기 12개월 · 규칙 '주기만' · 원자력안전위원회(전문기관 위탁)) — Mark 결정(새 직무 · 단일 과정 연 1회). catVer 6 이전 = `ADDED_V6` 만 제자리(방사선안전관리자 정기 뒤)에 덧붙임(`addDefaults`). 이수 등록 페이지 과정 고르기에 '방사선' 묶음(방사선안전관리자 · 감시기). 운영 DB 과정 32 → 33 · catVer 6(SQL 제자리 삽입, updated_by `training-catalog-v151`, 반영 직전 값 `semis_store_history` id 880 — 인원 · 기록 · 교육 기록 md5 그대로). 테스트 TR26 · TR22/23/25 · ED 갱신 (556 pass) |
 | v1.50.0 | 10-16 | **이름 H:drive**(안전보안파트장 제안, 별칭 ARGOS) — 탭 제목 · 로그인 · 메뉴 패널 · 상단바 · 인쇄 머리말(APP_NAME) · 회의록 인쇄 · 이수 등록 페이지 · 일정 내보내기 PRODID · 아르고 소개 문구 · 추천 질문 · 안내 지식(ARGO-GUIDE, Edge `semis-logi-argo` v3 재배포 — 시스템 프롬프트 'H:drive(별칭 ARGOS)'). 별칭은 로그인 태그 아랫줄 · 시스템 정보 '별칭' 줄 · 안내 지식에만. 아이콘 3D 폴더(A안 — 페트롤 타일 · 틸 뒷판 · 서류 · 앰버 앞판, 그림자 · 두께) + PNG 32 · 홈 화면 180 · `apple-mobile-web-app-title`. 아르고(부엉이) 이름 · 운영 공지 'SeMIS · Logistics 오픈 안내'는 그대로(Mark 결정). 테스트 LG04 · C28a (555 pass) |

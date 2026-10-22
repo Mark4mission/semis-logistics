@@ -157,6 +157,8 @@
     const r = String(route || "");
     if (r === "dashboard") return true;
     if (r === "desk") return !!(SeMIS.supportOk && SeMIS.supportOk("desk"));
+    const bm = /^board\/(B\d{3})(?:\/\d{1,15})?$/.exec(r);
+    if (bm) return !!SeMIS.canReadBoard(SeMIS.boardDef(bm[1]));
     if (!/^[a-z0-9-]{2,40}$/.test(r)) return false;
     return canMod(r);
   }
@@ -229,14 +231,23 @@
       return { form: tp.name, cycle: SL.cycLabel(tp), missing: miss.slice(-12), missingCount: miss.length, currentDone: !!s.cur.done, last: s.last || undefined };
     }).filter(Boolean);
   }
+  /* 공지 = 대시보드 표시 게시판(기본 공지사항)의 글 — 서버에서 받은 최근 글 · 색인 */
+  const BBS = () => window.SemisBoard || null;
+  const bbsRow = (x) => ({ id: x.id, board: x.b, title: x.title, date: String(x.at || "").slice(0, 10), author: x.by || undefined, pinned: x.pin || undefined, go: "board/" + x.b + "/" + x.id });
   function noticesList(n) {
-    return arr(D().notices).filter(x => x && x.id).slice().sort((a, b) => (b.pinned - a.pinned) || String(b.created).localeCompare(String(a.created)))
-      .slice(0, n).map(x => ({ id: x.id, title: x.title, date: String(x.created || "").slice(0, 10), pinned: !!x.pinned || undefined, body: cut(x.body, 300) }));
+    const B = BBS();
+    return B ? arr(B.recent.rows).slice(0, n).map(bbsRow) : [];
+  }
+  function noticeIndex() {
+    const B = BBS();
+    if (!B) return [];
+    const ids = B.dashBoards().map(b => b.id);
+    return arr(B.stats.index).filter(x => ids.indexOf(x.b) >= 0).map(bbsRow);
   }
   function status(inp) {
     const t = todayISO(), topic = String(inp.topic || "");
     if (topic === "sec_level") { const c = SeMIS.secCurrent(), n = SeMIS.secNext && SeMIS.secNext(); return { level: c.level, since: c.date || undefined, until: c.end || undefined, note: c.note || undefined, next: n ? { level: n.level, from: n.date } : undefined }; }
-    if (topic === "notices") return { items: noticesList(10) };
+    if (topic === "notices") return BBS() ? BBS().loadRecent(true).then(() => ({ items: noticesList(10) })) : { items: [] };
     if (topic === "schedule") {
       if (!canMod("schedule")) return deny("일정관리(화물팀 관리자 이상)");
       let [from, to] = weekOf(t);
@@ -297,7 +308,7 @@
     return people.concat(recs);
   }
   const COLS = {
-    notices: { mod: "", label: "공지", rows: () => noticesList(500) },
+    notices: { mod: "", label: "공지", rows: () => noticeIndex() },
     schedules: { mod: "schedule", label: "일정관리", rows: () => arr(D().schedules).filter(e => e && e.id && (!C() || C().canSeePriv(e))).map(schedView).sort((a, b) => String(b.start).localeCompare(String(a.start))) },
     minutes: { mod: "minutes", label: "회의록", rows: () => (window.SemisMinutes ? SemisMinutes.visibleAll() : []).map(m => ({ id: m.id, title: m.title, no: m.no || undefined,
       folder: SemisMinutes.folderName ? SemisMinutes.folderName(m.folder) : undefined, date: m.date, time: m.time || undefined, place: m.place || undefined,
@@ -380,6 +391,12 @@
     return cur;
   }
   function invert(op) {
+    if (op.t === "bbs") {
+      const B = BBS();
+      if (!B) return false;
+      B.remove([op.id]).then(d => { if (!d || !d.ok) toast("게시판 글을 지우지 못했습니다. 게시판에서 직접 지우세요.", true); });
+      return true;
+    }
     if (op.t === "add") { const a = resolve(op.path); if (!Array.isArray(a)) return false; const i = a.findIndex(e => e && e.id === op.id); if (i < 0) return false; a.splice(i, 1); return true; }
     if (op.t === "del") { const a = resolve(op.path); if (!Array.isArray(a)) return false; if (a.some(e => e && e.id === op.id)) return true; a.splice(Math.min(op.idx, a.length), 0, clone(op.before)); return true; }
     if (op.t === "set") {
@@ -528,16 +545,19 @@
       }
     },
     notice_add: {
-      label: "공지 등록", keys: ["notices"],
+      label: "공지 등록", keys: [],
       prep(inp) {
         const title = str(inp.title, 200), body = String(inp.body || "").trim().slice(0, 8000);
-        return title && body ? { title, body } : { error: "제목과 본문이 필요합니다." };
+        const B = BBS(), b = B ? B.dashBoards().find(x => B.canWrite(x)) : null;
+        if (!b) return { error: "공지 게시판에 글을 쓸 수 없습니다." };
+        return title && body ? { title, body, b } : { error: "제목과 본문이 필요합니다." };
       },
-      run(inp, ctx, p) {
-        if (!Array.isArray(D().notices)) D().notices = [];
-        const n = { id: uid("n"), title: p.title, body: p.body, bodyHtml: memoHtml(p.body), pinned: inp.pinned === true, files: [], author: me(), created: new Date().toISOString(), src: "argo" };
-        D().notices.push(n);
-        return { lines: [n.title + (n.pinned ? " (상단 고정)" : "")], go: [{ label: "대시보드", route: "dashboard" }], result: { id: n.id }, log: "notice_add " + n.id + " '" + n.title + "'" };
+      async run(inp, ctx, p) {
+        const d = await BBS().post({ b: p.b.id, title: p.title, body: p.body, html: memoHtml(p.body), pin: inp.pinned === true, src: "argo" }).catch(() => null);
+        if (!d || !d.ok) return { error: "공지를 등록하지 못했습니다" + (d && d.error ? " (" + d.error + ")" : "") + "." };
+        const route = "board/" + p.b.id + "/" + d.id;
+        return { lines: [p.title + (inp.pinned === true ? " (상단 고정)" : ""), p.b.name + " No. " + d.no], go: [{ label: p.b.name, route }],
+          result: { id: d.id, board: p.b.id }, ops: [{ t: "bbs", id: d.id }], log: "notice_add " + p.b.id + "-" + d.no + " '" + p.title + "'" };
       }
     },
     training_record: {
@@ -647,10 +667,11 @@
     }
     const before = {};
     T.keys.forEach(k => { before[k] = clone(D()[k]); });
-    const r = T.run(inp, ctx, p);
+    const r = await T.run(inp, ctx, p);
     if (r.error) { T.keys.forEach(k => { D()[k] = before[k]; }); return { error: r.error }; }
     const ops = [];
     T.keys.forEach(k => diff(before[k], D()[k], [k], ops));
+    arr(r.ops).forEach(o => ops.push(o));   // 서버 쪽 쓰기(게시판 글) — 되돌리기는 지우기 요청
     const u = { id: uid("u"), label: T.label, ops, at: new Date().toISOString(), done: false };
     if (ops.length) C0().undo.push(u);
     SeMIS.save();
