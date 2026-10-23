@@ -524,7 +524,7 @@
     return native.concat(gcalOnDay(iso), inspOnDay(iso)).sort(evCompare);
   }
 
-  /* ── 점검 일정 연동(읽기 전용 · 저장 안 함) ── */
+  /* ── 점검 일정 연동(일정 데이터에 저장 안 함 — 완료 체크는 원본 모듈의 mark 로) ── */
   /* 자체 보안점검(국토부 수검대비)은 선택 실행이라 기한·기록을 일정에 넣지 않는다 */
   const INSP_SRC = [["inspection", () => window.SemisSeclog]];
   let inspCache = {}, inspIdx = {};
@@ -569,27 +569,60 @@
     closeModal();
     g.run();
   }
+  /* 점검 일정 완료 = 원본 모듈의 mark(want) — 보안 기록부는 하드카피 집계 '확인'으로 남긴다(일정 데이터에는 저장하지 않음) */
+  const inspCan = (e) => !!(e && e.chk && typeof e.mark === "function");
+  function inspCheckHTML(e) {
+    const c = inspCan(e) ? e.chk : {}, attr = ` data-itoggle="${esc(e.ik)}"`;
+    if (e.done) return c.off ? `<span class="chip-check done"${attr} title="완료 — 클릭 시 해제">✓</span>` : '<span class="chip-check done">✓</span>';
+    return c.on ? `<span class="chip-check todo"${attr} title="완료 표시">○</span>` : "";
+  }
+  function inspToggle(ik) {
+    const e = inspIdx[ik];
+    if (!inspCan(e)) return;
+    const on = !e.done;
+    if (!(on ? e.chk.on : e.chk.off) || !e.mark(on)) return;
+    toast(on ? "완료 처리했습니다. 보안 기록부에 '확인'으로 남습니다." : "완료를 해제했습니다.");
+    SeMIS.renderView();
+  }
   function inspDetail(ik) {
     const e = inspIdx[ik];
     if (!e) return;
     const gs = goOf(e);
+    const ed = inspCan(e) && e.chk.edit;
+    const parts = ed && Array.isArray(e.chk.parts) ? e.chk.parts : [];
     const st = e.done ? '<span class="badge badge-green">완료</span>' : e.late ? '<span class="badge badge-red">기한 지남</span>' : "";
+    const one = parts.length === 1;
+    const lock = (p) => p.rec || p.mark === "ng";
+    const partHTML = (p) => `<div class="evf-opt${lock(p) ? " is-locked" : ""}"><label class="evf-check"><input type="checkbox" data-ipt="${esc(p.tid)}"${p.rec || p.mark === "ok" || p.mark === "ng" ? " checked" : ""}${lock(p) ? " disabled" : ""}>
+        <span class="evf-box" aria-hidden="true">${SeMIS.icon("check", 13)}</span><span>${esc(one ? "완료" : p.name)}</span>${p.rec ? '<small>전산 기록</small>' : p.mark === "ng" ? '<small>이상</small>' : ""}</label></div>`;
     openModal(`
       <h3><span class="cal-dot ev-${esc(pickColor(e.color))}"></span> ${esc(e.title)} ${st}</h3>
       <table class="tbl" style="font-size:.88rem">
         <tr><td style="width:90px;color:var(--text-2)">날짜</td><td>${esc(e.start)} (${esc(dowName(e.start))})</td></tr>
-        ${e.sub ? `<tr><td style="color:var(--text-2)">내용</td><td>${esc(e.sub)}</td></tr>` : ""}
+        ${e.sub && (!parts.length || one) ? `<tr><td style="color:var(--text-2)">내용</td><td>${esc(e.sub)}</td></tr>` : ""}
+        ${parts.length ? `<tr><td style="color:var(--text-2)">점검 ${SeMIS.ui.tip("체크하면 보안 기록부 하드카피 집계에 '확인'으로 남습니다. 전산 기록 · '이상'은 보안 기록부에서 고칩니다.", "점검 완료 설명")}</td>
+          <td><div class="evf-opts evf-opts-col insp-parts">${parts.map(partHTML).join("")}</div></td></tr>` : ""}
       </table>
-      <div class="modal-actions"><button type="button" class="btn btn-ghost" id="f-close">닫기</button>${gs.map((g, i) =>
-        `<button type="button" class="btn ${i ? "btn-ghost" : "btn-primary"}" data-igo="${i}" data-ik="${esc(e.ik)}">${SeMIS.icon(g.ico || "external", 15)}<span>${esc(g.lb)}</span></button>`).join("")}</div>`);
+      <div class="modal-actions${parts.length ? " insp-acts" : ""}"><button type="button" class="btn btn-ghost" id="f-close">${parts.length ? "취소" : "닫기"}</button>${gs.map((g, i) =>
+        `<button type="button" class="btn ${i || parts.length ? "btn-ghost" : "btn-primary"}" data-igo="${i}" data-ik="${esc(e.ik)}" title="${esc(g.lb)}">${SeMIS.icon(g.ico || "external", 15)}<span>${esc(g.lb)}</span></button>`).join("")}${
+        parts.length ? '<button type="button" class="btn btn-primary" id="f-isave">저장</button>' : ""}</div>`);
     $("#f-close").onclick = closeModal;
     $$("#modal-box [data-igo]").forEach(b => b.onclick = () => runGo(b));
+    const sv = $("#f-isave");
+    if (sv) sv.onclick = () => {
+      const want = {};
+      $$("#modal-box [data-ipt]").forEach(i => { if (!i.disabled) want[i.dataset.ipt] = i.checked; });
+      const n = e.mark(want);
+      closeModal();
+      if (n) { toast("저장했습니다."); SeMIS.renderView(); }
+    };
   }
   function wireInsp(root) {
     $$("[data-igo]", root).forEach(b => b.onclick = (ev) => { ev.stopPropagation(); runGo(b); });
+    $$("[data-itoggle]", root).forEach(b => b.onclick = (ev) => { ev.stopPropagation(); inspToggle(b.dataset.itoggle); });
     $$("[data-ik]", root).forEach(el => {
       if (el.hasAttribute("data-igo")) return;
-      el.onclick = (ev) => { if (ev.target.closest("[data-igo]")) return; inspDetail(el.dataset.ik); };
+      el.onclick = (ev) => { if (ev.target.closest("[data-igo],[data-itoggle]")) return; inspDetail(el.dataset.ik); };
       el.onkeydown = (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); inspDetail(el.dataset.ik); } };
     });
   }
@@ -838,11 +871,11 @@
     return canWrite ? `<span class="chip-check todo"${attr} title="완료 표시${rep ? " (범위 선택)" : ""}">○</span>` : "";
   }
 
-  /* 점검 일정 칩 — 읽기 전용(끌기·완료 체크 없음), 눌러 상세 · 아이콘으로 바로 가기 */
+  /* 점검 일정 칩 — 끌기 없음, 완료 체크(원본 모듈에 반영) · 눌러 상세 · 아이콘으로 바로 가기 */
   function inspBarHTML(e, style, cls, max) {
     return `<div class="${cls} ev-${esc(pickColor(e.color))} is-insp${e.done ? " done" : ""}${e.late ? " late" : ""}${e.soft ? " soft" : ""}"${style ? ` style="${style}"` : ""}
         data-ik="${esc(e.ik)}" role="button" tabindex="0" title="${esc(e.title)}${e.sub ? "\n" + esc(e.sub) : ""}">
-      ${e.done ? '<span class="chip-check done">✓</span>' : ""}
+      ${inspCheckHTML(e)}
       <span class="chip-title">${esc(e.title)}</span>${goBtns(e, max || 1)}</div>`;
   }
   function barHTML(it, canWrite, style) {
@@ -1358,7 +1391,7 @@
       <span class="calm-when">종일</span>
       <span class="calm-body"><b>${esc(e.title)}</b>${e.sub ? `<small>${esc(e.sub)}</small>` : ""}</span>
       <span class="calm-go">${goBtns(e, 2)}</span>
-      ${e.done ? '<span class="calm-chk"><span class="chip-check done">✓</span></span>' : ""}
+      ${e.done || (inspCan(e) && e.chk.on) ? `<span class="calm-chk">${inspCheckHTML(e)}</span>` : ""}
     </div>`;
     if (!e.id && e.gcalId) {
       return `<button type="button" class="calm-ev" data-gcal="${esc(e.gcalId)}" style="--evf:#1a73e8">

@@ -824,13 +824,58 @@
     };
   }
 
-  /* ── 일정관리 연동 — 기간 [from, to] 의 점검 일정(읽기 전용, 일정관리가 그릴 때 계산) ──
-     주 · 월 · 분기 · 연 양식 = 주기 마감일마다 한 건, 매일 양식 = 날마다 '매일 점검' 한 건(양식 묶음). 편별 · 수시는 넣지 않는다 */
+  /* ── 일정관리 연동 — 기간 [from, to] 의 점검 일정(일정관리가 그릴 때 계산, 일정 데이터에 저장하지 않음) ──
+     주 · 월 · 분기 · 연 양식 = 주기 마감일마다 한 건, 매일 양식 = 날마다 '매일 점검' 한 건(양식 묶음). 편별 · 수시는 넣지 않는다.
+     완료 체크(chk · mark) = 그 주기의 하드카피 집계를 '확인'(ok)으로 남기거나 지운다 — 기록부 누락 · 대시보드 · 수검 증빙에 그대로 잡힌다.
+     전산 기록으로 끝난 양식(rec)과 '이상'(ng)은 일정에서 바꾸지 않고(기록부 · 집계 창에서), 해제는 '확인'만 지운다. 시작 전 주기는 체크하지 않는다 */
+  function chkOf(parts, st, today, w) {
+    const free = parts.filter(p => !p.rec && p.mark !== "ng");
+    const edit = !!w && st <= today && free.length > 0;
+    return { parts, edit, on: edit && free.some(p => p.mark !== "ok"), off: edit && free.some(p => p.mark === "ok") };
+  }
+  function calParts(ik) {
+    const all = logs(), s0 = since();
+    const part = (t, k) => ({ tid: t.id, k, name: t.name, rec: doneIn(t, all.filter(r => r.tid === t.id && periodOf(t, r.date) === k)), mark: marksOf(t.id)[k] || "" });
+    const m = /^sld:(\d{4}-\d{2}-\d{2})$/.exec(String(ik || ""));
+    if (m && fromUTC(utc(m[1])) === m[1]) {
+      const d = m[1];
+      const ts = templates().filter(t => t.cycle === "day" && d >= (isISO(t.from) ? t.from : s0) && !(t.days === "weekday" && (dow(d) === 0 || dow(d) === 6)));
+      return ts.length ? { st: d, parts: ts.map(t => part(t, d)) } : null;
+    }
+    const p = /^sl:([^:]+):(.+)$/.exec(String(ik || ""));
+    const t = p && templates().find(x => x.id === p[1]);
+    if (!t || t.cycle === "day" || t.cycle === "event") return null;
+    const k = p[2], st = periodStart(t, k);
+    if (!isISO(st) || fromUTC(utc(st)) !== st || periodOf(t, st) !== k || k < periodOf(t, isISO(t.from) ? t.from : s0)) return null;
+    return { st, parts: [part(t, k)] };
+  }
+  /* want = true | false(모든 양식) 또는 { 양식id: true|false }(고른 양식만). 바뀐 칸 수를 돌려준다 */
+  function calMark(ik, want) {
+    const P = calParts(ik);
+    if (!P || !canW() || P.st > todayISO()) return 0;
+    const arr = list(), at = new Date().toISOString(), by = me();
+    let n = 0;
+    P.parts.forEach(p => {
+      if (p.rec || p.mark === "ng") return;
+      const v = typeof want === "boolean" ? want
+        : want && typeof want === "object" && Object.prototype.hasOwnProperty.call(want, p.tid) ? !!want[p.tid] : null;
+      if (v === null || (v ? p.mark === "ok" : p.mark !== "ok")) return;
+      let it = arr.find(r => r && r.hc && r.tid === p.tid);
+      if (!it) { it = { id: HCID(p.tid), tid: p.tid, hc: true, marks: {}, cnt: {} }; arr.push(it); }
+      if (!it.marks || typeof it.marks !== "object" || Array.isArray(it.marks)) it.marks = {};
+      if (v) it.marks[p.k] = "ok"; else delete it.marks[p.k];
+      it.updatedAt = at; it.updatedBy = by;
+      n++;
+    });
+    if (n) SeMIS.save();
+    return n;
+  }
   function calItems(from, to, today) {
     today = today || todayISO();
     const out = [];
     if (!isISO(from) || !isISO(to) || from > to) return out;
     const ts = templates(), all = logs(), s0 = since(), w = canW();
+    const mark = (ik) => (want) => calMark(ik, want);
     const navTo = (st) => () => { setState(st); if (routeNow() === MOD) SeMIS.renderView(); else SeMIS.navigate(MOD); };
     const dash = { lb: "점검 · 교육 대시보드", ico: "grid", run: () => SeMIS.navigate("aud-dash") };
     ts.forEach(t => {
@@ -850,8 +895,10 @@
           else if (st > today) go = { lb: TITLE, ico: "clipboard", run: navTo({ tab: "today" }) };
           else if (!done && end >= today) go = { lb: "점검표", ico: "clipboard", run: () => recordForm(t.id, "") };
           else go = { lb: "점검표", ico: "clipboard", run: () => openCell(t.id + "|" + k) };
-          out.push({ ik: "sl:" + t.id + ":" + k, start: end, end, title: "[점검] " + t.name, done, late: !done && end < today, color: "red",
+          const ik = "sl:" + t.id + ":" + k;
+          out.push({ ik, start: end, end, title: "[점검] " + t.name, done, late: !done && end < today, color: "red",
             sub: [periodLabel(t, k), whoText(t), t.vis === "dim" ? t.dimMsg : "", g.some(isNG) || hm[k] === "ng" ? "이상 있음" : ""].filter(Boolean).join(" · "),
+            chk: chkOf([{ tid: t.id, k, name: t.name, rec: doneIn(t, g), mark: hm[k] || "" }], st, today, w), mark: mark(ik),
             go: [go, dash] });
         }
         k = periodOf(t, addDays(end, 1));
@@ -865,10 +912,11 @@
     if (days.length) for (let d = from, g = 0; d <= to && g < 400; d = addDays(d, 1), g++) {
       const app = days.filter(m => d >= m.first && !(m.t.days === "weekday" && (dow(d) === 0 || dow(d) === 6)));
       if (!app.length) continue;
-      const st = app.map(m => ({ t: m.t, done: doneIn(m.t, m.by[d] || []) || markDone(m.hm[d]) }));
+      const st = app.map(m => { const rec = doneIn(m.t, m.by[d] || []), mk = m.hm[d] || ""; return { t: m.t, rec, mark: mk, done: rec || markDone(mk) }; });
       const n = st.filter(x => x.done).length, N = st.length, past = d <= today;
       out.push({ ik: "sld:" + d, start: d, end: d, title: "[점검] 매일 점검" + (past && n < N ? " " + n + "/" + N : ""), done: past && n === N, late: d < today && n < N, soft: !past, color: "red",
         sub: st.map(x => x.t.name + (past ? (x.done ? " 완료" : " 미기록") : "")).join(" · "),
+        chk: chkOf(st.map(x => ({ tid: x.t.id, k: d, name: x.t.name, rec: x.rec, mark: x.mark })), d, today, w), mark: mark("sld:" + d),
         go: [{ lb: d < today ? "기록 현황" : TITLE, ico: "clipboard", run: navTo({ tab: d < today ? "status" : "today" }) }, dash] });
     }
     return out;
@@ -964,7 +1012,7 @@
     DEF_TEMPLATES, templates, tplOf, status, evidence, periodOf, periodsBack, periodLabel, missCount, isNG,
     GRPS, DEF_META, whoText, cycLabel, periodEnd, nextDue, calEvents,
     recordForm, quickRound, templatesForm, openCell,
-    allTemplates, visOf, marksOf, cntOf, hcForm, visForm, VIS_MSG, calItems, logs, hcNgIn,
+    allTemplates, visOf, marksOf, cntOf, hcForm, visForm, VIS_MSG, calItems, calParts, calMark, logs, hcNgIn,
     setToday(t, hm) { fixedToday = isISO(t) ? t : ""; fixedNow = isHM(hm) ? hm : ""; },
     getState() { return { tab, q, fTid, fMonth, fNG }; },
     setState

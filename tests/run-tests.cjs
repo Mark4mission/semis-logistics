@@ -8412,6 +8412,90 @@ function makeServer(opts = {}) {
       eq(JSON.stringify(e.S.data.schedules), sched0, "끝까지 일정 데이터 그대로");
       eq(e.errors.length, 0, e.errors.join(" | "));
     });
+
+    t("VZ07 일정 완료 체크: 매일 점검 그날 묶음 ○ 한 번 → 하드카피 '확인' · ✓ 해제 · 상세 창 양식별 체크(전산 기록 · 이상 잠금) · 주기 점검 '완료' · 앞날 · 숨긴 양식 · 권한 · 기록부 누락 · 주기 완료 · 모바일 · 일정 데이터 저장 안 함", () => {
+      reset();
+      const hc = (tid) => e.S.data.seclog.find(r => r.hc && r.tid === tid);
+      const it = (ik) => SL.calItems("2026-09-28", "2026-10-31").find(x => x.ik === ik);
+      const sched0 = JSON.stringify(e.S.data.schedules);
+      const d1 = it("sld:2026-10-01");
+      ok(d1.chk && d1.chk.edit && d1.chk.on && !d1.chk.off && typeof d1.mark === "function", JSON.stringify(d1.chk));
+      eq(d1.chk.parts.map(p => p.tid + ":" + p.rec).join(","), "t-daily:true,t-uld:false", "양식 칸 · 전산 기록");
+      const d2 = it("sld:2026-10-02"); ok(d2.done && !d2.chk.edit && !d2.chk.on && !d2.chk.off, "모두 전산 기록 = 바꿀 것 없음");
+      ok(!it("sld:2026-10-10").chk.edit, "앞날은 체크 안 됨");
+      ok(it("sld:" + T0).chk.on && !it("sld:" + T0).late, "오늘은 체크 가능");
+      eq(SL.calMark("sld:2026-10-10", true), 0, "앞날 반영 안 함");
+      eq(SL.calMark("sl:t-regular:2026-Q5", true) + SL.calMark("bad", true) + SL.calMark("sld:2026-09-31", true) + SL.calMark("sl:t-hold:2026-10-01", true), 0, "잘못된 주기 · 날짜 · 수시 양식");
+      ok(!SL.calParts("sl:t-regular:2026-Q5") && !SL.calParts("sld:2026-09-31"), "주기 키 검사");
+      eq(SL.calMark("sld:2026-10-01", true), 1, "전산 기록 없는 양식만");
+      eq(hc("t-uld").marks["2026-10-01"], "ok"); ok(!hc("t-daily"), "전산 기록 양식은 집계 줄 없음");
+      ok(it("sld:2026-10-01").done && it("sld:2026-10-01").chk.off && !it("sld:2026-10-01").late, "완료 · 해제 가능");
+      eq(SL.status(SL.tplOf("t-uld"), T0).missing.some(c => c.k === "2026-10-01"), false, "기록부 누락에서 빠짐");
+      eq(SL.calMark("sld:2026-10-01", true), 0, "이미 완료면 그대로");
+      eq(SL.calMark("sld:2026-10-01", false), 1); ok(!("2026-10-01" in hc("t-uld").marks), "해제 = 확인 지움");
+      hc("t-uld").marks["2026-09-30"] = "ng";
+      eq(SL.calMark("sld:2026-09-30", false), 0, "이상은 해제 안 함");
+      eq(SL.calMark("sld:2026-09-30", true), 1); eq(hc("t-daily").marks["2026-09-30"], "ok"); eq(hc("t-uld").marks["2026-09-30"], "ng", "이상 그대로");
+      eq(SL.calMark("sld:2026-09-29", { "t-uld": true }), 1); ok(hc("t-uld").marks["2026-09-29"] === "ok" && !hc("t-daily").marks["2026-09-29"], "고른 양식만");
+      ok(!it("sld:2026-09-29").done && it("sld:2026-09-29").title === "[점검] 매일 점검 1/2", "1/2");
+      hc("t-uld").marks["2026-09-28"] = "miss";
+      eq(SL.calMark("sld:2026-09-28", true), 2); eq(hc("t-uld").marks["2026-09-28"], "ok", "누락 → 확인");
+      const hz = it("sl:t-hazmat:2026-10"); ok(hz.chk.edit && hz.chk.on && hz.chk.parts.length === 1 && !hz.done, "이번 달 주기(진행 중)");
+      eq(SL.calMark("sl:t-hazmat:2026-10", true), 1); eq(hc("t-hazmat").marks["2026-10"], "ok");
+      ok(it("sl:t-hazmat:2026-10").done && SL.status(SL.tplOf("t-hazmat"), T0).cur.done, "주기 완료");
+      eq(SL.calMark("sl:t-hazmat:2026-11", true), 0, "시작 전 주기");
+      ok(!it("sl:t-hazmat:2026-09").chk.edit, "전산 기록 주기는 바꾸지 않음");
+      SL.calMark("sl:t-hazmat:2026-10", false);
+      e.S.data.seclogCfg.vis = { "t-uld": { m: "hide" } };
+      eq(it("sld:2026-10-01").chk.parts.length, 1, "숨긴 양식 빠짐");
+      eq(SL.calMark("sl:t-regular:2026-Q4", true), 1, "분기"); delete hc("t-regular").marks["2026-Q4"];
+      e.S.data.seclogCfg.vis = {};
+      /* 화면 — 달력 칩 ○ · ✓ */
+      reset();
+      loginAs(e, "admin"); setW(1024); C.setView("month"); C.setAnchor(T0); C.setFilter("", false); go(e, "schedule");
+      const todo = q(e, '#view .cal-bar.is-insp[data-ik="sld:2026-10-01"] .chip-check.todo[data-itoggle]'); ok(todo, "○");
+      ok(!q(e, '#view .cal-bar.is-insp[data-ik="sld:2026-10-10"] [data-itoggle]') && !q(e, '#view .cal-bar.is-insp[data-ik="sld:2026-10-02"] [data-itoggle]'), "앞날 · 전산 기록 완료는 체크 없음");
+      todo.click();
+      ok(!q(e, "#modal-box h3"), "상세 창 열지 않음");
+      eq(hc("t-uld").marks["2026-10-01"], "ok", "○ → 확인");
+      const done = q(e, '#view .cal-bar.is-insp.done[data-ik="sld:2026-10-01"] .chip-check.done[data-itoggle]'); ok(done, "다시 그려 ✓");
+      done.click(); ok(!("2026-10-01" in hc("t-uld").marks) && q(e, '#view .cal-bar.is-insp.late[data-ik="sld:2026-10-01"]'), "✓ → 해제");
+      /* 상세 창 — 양식별 */
+      q(e, '#view .cal-bar.is-insp[data-ik="sld:2026-10-01"] .chip-title').click();
+      const ipts = qa(e, "#modal-box [data-ipt]"); eq(ipts.length, 2, "양식 2");
+      ok(ipts[0].dataset.ipt === "t-daily" && ipts[0].checked && ipts[0].disabled && /전산 기록/.test(ipts[0].closest("label").textContent), "전산 기록 잠금");
+      ok(!ipts[1].checked && !ipts[1].disabled, "체크 가능");
+      ok(q(e, "#f-isave.btn-primary") && !q(e, "#modal-box [data-igo].btn-primary") && q(e, "#modal-box .help-tip"), "저장이 주 버튼 · 설명은 말풍선");
+      ipts[1].checked = true; q(e, "#f-isave").click();
+      ok(!q(e, "#modal-box h3") && hc("t-uld").marks["2026-10-01"] === "ok", "저장");
+      q(e, '#view .cal-bar.is-insp[data-ik="sld:2026-10-01"] .chip-title').click();
+      ok(q(e, '#modal-box [data-ipt="t-uld"]').checked && /완료/.test(q(e, "#modal-box h3 .badge").textContent), "다시 열면 체크 · 완료");
+      q(e, '#modal-box [data-ipt="t-uld"]').checked = false; q(e, "#f-isave").click();
+      ok(!("2026-10-01" in hc("t-uld").marks), "체크 해제 저장");
+      q(e, '#view .cal-bar.is-insp[data-ik="sl:t-hazmat:2026-10"] .chip-title').click();
+      ok(qa(e, "#modal-box [data-ipt]").length === 1 && /^완료/.test(q(e, "#modal-box [data-ipt]").closest("label").textContent.trim()) && /2026\.10/.test(q(e, "#modal-box").textContent), "주기 점검 = '완료' 하나 + 내용");
+      e.S.closeModal();
+      q(e, '#view .cal-bar.is-insp[data-ik="sld:2026-10-10"] .chip-title').click();
+      ok(!q(e, "#modal-box [data-ipt]") && !q(e, "#f-isave") && q(e, "#modal-box [data-igo].btn-primary"), "앞날 = 예전 상세");
+      e.S.closeModal();
+      /* 권한 — manager 는 기록부 쓰기(2) 가 있어 체크 가능, 일정 편집은 아님 */
+      loginAs(e, "manager"); go(e, "schedule");
+      ok(q(e, '#view [data-ik="sld:2026-10-01"] [data-itoggle]') && !q(e, "#cal-add"), "manager 체크 가능");
+      e.S.data.seclogCfg.vis = { "t-uld": { m: "dim" } };
+      go(e, "schedule"); q(e, '#view [data-ik="sld:2026-10-01"] [data-itoggle]').click();
+      eq(hc("t-uld").marks["2026-10-01"], "ok", "흐리게(하드카피) 양식도 같은 집계");
+      e.S.data.seclogCfg.vis = {};
+      /* 모바일 */
+      loginAs(e, "admin"); setW(390); go(e, "schedule");
+      q(e, '#view [data-mday="2026-10-03"]').click();
+      const mt = q(e, '#view .calm-ev.is-insp[data-ik="sld:2026-10-03"] .calm-chk [data-itoggle]'); ok(mt, "모바일 오늘 ○");
+      mt.click();
+      ok(hc("t-daily").marks["2026-10-03"] === "ok" && hc("t-uld").marks["2026-10-03"] === "ok" && !q(e, "#modal-box h3"), "모바일 체크");
+      ok(q(e, '#view .calm-ev.is-insp.done[data-ik="sld:2026-10-03"] .calm-chk .chip-check.done'), "모바일 ✓");
+      setW(1024);
+      eq(JSON.stringify(e.S.data.schedules), sched0, "일정 데이터에 저장하지 않음");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
     e.w.close();
   }
 
