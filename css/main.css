@@ -6396,3 +6396,29 @@ table.bb-tbl { table-layout: fixed; }
   .bb-readers[open] summary, .bb-readers summary { list-style: none; }
   .bb-row.is-pin td { background: #f6f6f6 !important; }
 }
+
+/* ══ 탭 묶음이 눈에 띄게 — 패널은 묶음 아래 화면을 늘 펼치고, 본문 위 탭은 상자형(선택 = 진한 바탕) ══ */
+.nav-grp { display: flex; flex-direction: column; }
+.nav-bundle { font-weight: 600; color: var(--text); }
+.nav-bundle.cur { font-weight: 700; }
+.nav-subs { display: flex; flex-direction: column; gap: 1px; margin: 1px 0 6px 13px; padding-left: 9px; border-left: 1px solid var(--line); }
+.nav-sub { min-height: 32px; padding: 5px 10px; font-size: .84rem; color: var(--text-2); }
+.nav-sub.active { color: var(--text); }
+.nav-sub.active::before { content: ""; position: absolute; left: -10px; top: 6px; bottom: 6px; width: 2px; border-radius: 2px; background: var(--rule); }
+.nav-sub.is-opt { margin-top: 0; border-top: 0; border-radius: 6px; }
+@media screen and (max-width: 767px) { .nav-sub { min-height: 40px; font-size: .9rem; } }
+
+.subtabs { align-items: center; gap: 12px; }
+.sbt-name { padding: 0 12px 0 0; border-right: 1px solid var(--line); font-size: .9rem; font-weight: 700; color: var(--text); line-height: 30px; }
+.sbt-list { flex: 0 1 auto; gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 6px; background: var(--head-bg); }
+.sbt-tab { padding: 6px 14px; border-radius: 4px; font-size: .9rem; color: var(--text-2); }
+.sbt-tab::after, .sbt-tab.on::after { display: none; }
+.sbt-tab.on { background: var(--rule); color: #fff; box-shadow: 0 1px 2px rgba(15, 42, 51, .25); }
+.sbt-tab.on .sbt-n { background: rgba(255, 255, 255, .18); color: #fff; }
+.sbt-tab.on .sbt-opt { border-color: rgba(255, 255, 255, .55); color: #fff; }
+@media (hover: hover) and (pointer: fine) { .sbt-tab:not(.on):hover { background: #fff; color: var(--text); } }
+.sbt-tab:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+@media screen and (max-width: 767px) {
+  .sbt-list { flex: 1 1 auto; }
+  .sbt-tab { padding: 7px 12px; font-size: .88rem; }
+}

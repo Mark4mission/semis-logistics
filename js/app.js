@@ -3,7 +3,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.53.0";
+  const VERSION = "1.53.1";
   const APP_NAME = "H:drive";
   const APP_ALIAS = "ARGOS (Air-cargo Risk & Guard Operations System)";
   /* 데이터 캐시는 탭 sessionStorage 에만(탭 닫기·로그아웃 시 소멸). 화면 설정(LS_UI)만 localStorage */
@@ -1432,17 +1432,20 @@ const SeMIS = (() => {
       (app && app.classList.contains("panel-collapsed")));
   };
 
-  function bundleBadge(bd) {
-    let n = 0, txt = "";
-    bundleMembers(bd).forEach(m => { const v = navBadgeOf(m); if (/^\d+$/.test(v)) n += Number(v); else if (v && !txt) txt = v; });
-    return txt || (n ? String(n) : "");
+  /* 탭 묶음 안 화면 — 패널에서 묶음 이름 아래 늘 펼쳐 보인다(이름은 화면 위 탭과 같게) */
+  function navSubHTML(x) {
+    const badge = navBadgeOf(x), def = modules[x.module], opt = !!(def && def.optional);
+    return '<button type="button" class="nav-item nav-sub' + (opt ? " is-opt" : "") + '" data-route="' + esc(x.module) + '" title="' + esc(x.label) + (opt ? " (선택 실행)" : "") + '">' +
+      '<span class="nav-lbl">' + esc(x.tab || x.label) + '</span>' + (opt ? '<span class="nav-tag is-opt">선택</span>' : badge ? '<span class="nav-meta">' + esc(badge) + '</span>' : "") + '</button>';
   }
   function navItemHTML(m) {
     if (m.type === "bundle") {
-      const ms = bundleMembers(m), badge = bundleBadge(m);
-      return '<button type="button" class="nav-item nav-bundle" data-route="' + esc(ms[0] ? ms[0].module : "") + '" data-routes="' +
+      const ms = bundleMembers(m);
+      return '<div class="nav-grp" role="group" aria-label="' + esc(m.label) + '">' +
+        '<button type="button" class="nav-item nav-bundle" data-route="' + esc(ms[0] ? ms[0].module : "") + '" data-routes="' +
         esc(ms.map(x => x.module).join(" ")) + '" title="' + esc(m.label + " — " + ms.map(x => x.tab || x.label).join(" · ")) + '">' +
-        '<span class="nav-lbl">' + esc(m.label) + '</span>' + (badge ? '<span class="nav-meta">' + esc(badge) + '</span>' : "") + '</button>';
+        '<span class="nav-lbl">' + esc(m.label) + '</span></button>' +
+        '<div class="nav-subs">' + ms.map(navSubHTML).join("") + '</div></div>';
     }
     if (m.type === "board") {
       const nb = window.SemisBoard && window.SemisBoard.navBadge ? window.SemisBoard.navBadge(m.board) : "";
@@ -1708,8 +1711,12 @@ const SeMIS = (() => {
     route = String(route || "");
     const bid = boardIdOf(route);
     if (bid) route = "board/" + bid;
-    $$(".nav-item").forEach(el => el.classList.toggle("active", el.dataset.route === route ||
-      (!!el.dataset.routes && el.dataset.routes.split(" ").indexOf(route) >= 0)));
+    /* 탭 묶음 이름은 '지금 이 묶음 안'(cur)만 — 강조는 그 안의 화면 줄이 받는다 */
+    $$(".nav-item").forEach(el => {
+      const inBundle = !!el.dataset.routes && el.dataset.routes.split(" ").indexOf(route) >= 0;
+      if (el.classList.contains("nav-bundle")) { el.classList.remove("active"); el.classList.toggle("cur", inBundle); return; }
+      el.classList.toggle("active", el.dataset.route === route || inBundle);
+    });
     $$(".rail-btn.util").forEach(el => el.classList.toggle("active", el.dataset.route === route));
     const role = currentUser && currentUser.role;
     const mn = menuOfRoute(route);

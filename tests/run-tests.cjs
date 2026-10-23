@@ -1388,7 +1388,10 @@ function makeServer(opts = {}) {
       go(e, "reg-safety");
       eq(q(e, "#nav-menu .hub.on").dataset.hub, "hub-doc");
       ok(q(e, "#crumbs").textContent.includes("규정 · 문서") && q(e, "#crumbs").textContent.includes("규정") && q(e, "#crumbs").textContent.includes("안전관리 규정"));
-      ok(q(e, '#nav-menu .nav-bundle[data-routes~="reg-safety"]').classList.contains("active"), "탭 묶음 메뉴 강조");
+      ok(q(e, '#nav-menu .nav-bundle[data-routes~="reg-safety"]').classList.contains("cur"), "탭 묶음 이름 = 지금 묶음(cur)");
+      ok(!q(e, '#nav-menu .nav-bundle[data-routes~="reg-safety"]').classList.contains("active"), "묶음 이름은 강조하지 않음");
+      ok(q(e, '#nav-menu .nav-grp .nav-sub.active[data-route="reg-safety"]'), "묶음 아래 화면 줄 강조");
+      eq(qa(e, '#nav-menu .hub[data-hub="hub-doc"] .nav-grp .nav-sub').map(b => b.textContent).join(","), "항공보안,안전관리,위험물", "패널에 묶음 아래 화면 늘 펼침(탭 이름)");
       eq(qa(e, "#subtabs .sbt-tab").map(b => b.textContent).join(","), "항공보안,안전관리,위험물");
       eq(q(e, "#subtabs .sbt-tab.on").dataset.route, "reg-safety");
       q(e, '#subtabs [data-route="reg-dg"]').click(); e.S.renderView();
@@ -1422,11 +1425,27 @@ function makeServer(opts = {}) {
     t("H08 navBadge: 규정 건수가 메뉴 옆에 표시", () => {
       e.S.data.regulations = [{ id: "r1", scope: "safety", title: "a", ideas: [] }, { id: "r2", scope: "safety", title: "b", ideas: [] }];
       e.S.saveSilent(); e.S.renderNav();
-      eq(q(e, '#nav-menu .nav-bundle[data-routes~="reg-safety"] .nav-meta').textContent, "2", "탭 묶음 = 안의 배지 합");
+      eq(q(e, '#nav-menu .nav-sub[data-route="reg-safety"] .nav-meta').textContent, "2", "묶음 아래 화면 줄에 배지");
+      ok(!q(e, '#nav-menu .nav-bundle[data-routes~="reg-safety"] .nav-meta'), "묶음 이름에는 배지 없음(아래 줄과 겹침)");
       go(e, "reg-safety");
       eq(q(e, '#subtabs [data-route="reg-safety"] .sbt-n').textContent, "2");
       ok(!q(e, '#subtabs [data-route="reg-dg"] .sbt-n'), "0건은 표시 안 함");
       e.S.data.regulations = []; e.S.saveSilent(); e.S.renderNav();
+    });
+    t("H08a 패널 묶음 아래 화면 줄: 누르면 그 화면 · 선택 실행 표시 · 숨긴 화면 빠짐 · 본문 위 탭은 상자형", () => {
+      go(e, "dashboard");
+      q(e, '#rail-hubs [data-hub="hub-ops"]').click();
+      eq(qa(e, '#nav-menu .hub[data-hub="hub-ops"] .nav-grp .nav-sub').map(b => b.dataset.route).join(","), "phonebook,contacts,crisis");
+      q(e, '#nav-menu .nav-sub[data-route="crisis"]').click(); e.S.renderView();
+      eq(e.w.location.hash, "#/crisis");
+      ok(q(e, '#nav-menu .nav-sub.active[data-route="crisis"]') && q(e, '#nav-menu .nav-bundle.cur[data-routes~="crisis"]'));
+      eq(q(e, "#subtabs .sbt-name").textContent, "연락처");
+      eq(q(e, "#subtabs .sbt-tab.on").getAttribute("aria-current"), "page");
+      ok(q(e, '#nav-menu .nav-sub.is-opt[data-route="selfcheck"] .nav-tag'), "선택 실행 화면 표시");
+      const mc = e.S.data.menus.find(x => x.module === "crisis");
+      mc.hidden = true; e.S.saveSilent(); e.S.renderNav();
+      ok(!q(e, '#nav-menu .nav-sub[data-route="crisis"]'), "숨긴 화면은 패널에서 빠짐");
+      mc.hidden = false; e.S.saveSilent(); e.S.renderNav();
     });
     t("H09 고정한 메뉴(홈 허브) = quick 항목 · 다른 허브 소속만", () => {
       const pins = qa(e, '#nav-menu .hub[data-hub="hub-home"] .nav-pin').map(x => x.textContent);
@@ -7239,7 +7258,7 @@ function makeServer(opts = {}) {
       const rs = e.S.data.patrol.filter(r => r.date === "2026-09-29");
       eq(rs.length, 1); eq(rs[0].id, "x1"); ok(rs[0].am && rs[0].pm && rs[0].ng.length === 1); eq(rs[0].note, "갑 메모\n을 메모");
       e.S.renderNav();
-      ok(q(e, '#nav-menu .nav-bundle[data-routes~="daily-safety"] .nav-meta'), "메뉴 배지(탭 묶음 합)");
+      ok(q(e, '#nav-menu .nav-sub[data-route="daily-safety"] .nav-meta'), "메뉴 배지(묶음 아래 화면 줄)");
       go(e, "daily-safety");
       ok(q(e, '#subtabs [data-route="daily-safety"] .sbt-n').textContent.match(/\d/), "탭 배지");
       ok(e.w.SemisSearch.search("을 메모").some(h => h.group === "일일 보안 · 안전 순찰일지"), "통합 검색");
