@@ -11,7 +11,7 @@
 | 접속 주소 | https://mark4mission.github.io/semis-logistics/ |
 | 저장소 | GitHub `Mark4mission/semis-logistics` (공개) · Mac `~/SeMIS_Logistics` |
 | 테스트 | `npm test` 575건 전부 통과(v1.54.0) · Edge `deno test --allow-net --allow-env tools/edge/semis-logi-argo.test.ts` 6건(deno 없으면 `npm i deno@2` 를 스크래치에) · SQL PGlite `node tools/sql/semis-logi-argo.test.mjs tools/sql/semis-logi-argo.sql` 19건 · 게시판 `node tools/sql/semis-logi-bbs.test.mjs tools/sql/semis-logi-bbs.sql` 78건(`npm i --no-save @electric-sql/pglite` 후, 끝나면 `npm prune`) |
-| 백엔드 | Supabase `mzyuzrxkdcpzxojenwat` — 테이블 `semis_logi_store`(세션 RLS), **비공개** 버킷 `semis-logi-files`, 비공개 스키마 `semis_logi_private`(계정 · 세션 · 로그인 시도 · 접속 기록 · 권한표), RPC `semis_logi_*`, 비공개 게시판 표 `bbs_posts` · `bbs_comments` · `bbs_reads`(RPC `semis_logi_bbs_*`), Edge Function `semis-logi-files`(서명 URL · 이수증 판독 · 데스크 판독 · 사본, v12) · `semis-logi-favicon` · `semis-logi-adsb`(운항, pg_cron 2분) · **`semis-logi-argo`(아르고, v4)** |
+| 백엔드 | Supabase `mzyuzrxkdcpzxojenwat` — 테이블 `semis_logi_store`(세션 RLS), **비공개** 버킷 `semis-logi-files`, 비공개 스키마 `semis_logi_private`(계정 · 세션 · 로그인 시도 · 접속 기록 · 권한표), RPC `semis_logi_*`, 비공개 게시판 표 `bbs_posts` · `bbs_comments` · `bbs_reads`(RPC `semis_logi_bbs_*`), Edge Function `semis-logi-files`(서명 URL · 이수증 판독 · 데스크 판독 · 사본, v12) · `semis-logi-favicon` · `semis-logi-adsb`(운항, pg_cron 2분) · **`semis-logi-argo`(아르고, v5)** |
 
 ## 2. 새 세션 시작
 
@@ -193,7 +193,6 @@ Claude가 할 일(순서대로):
 
 ## 7. 미결 · 주의 (열린 일만 — 끝나면 HISTORY.md 로)
 
-- **아르고 안내 지식 재배포 대기(v1.54)**: `docs/ARGO-GUIDE.md` 일정관리 항목(점검 일정 완료) 두 줄을 고쳐 `tools/edge/argo-guide.ts` 를 다시 만들었으나 Edge `semis-logi-argo` 는 v4 그대로(세션의 운영 배포 차단). MCP `deploy_edge_function`(이름 semis-logi-argo · verify_jwt false · 파일 index.ts = `tools/edge/semis-logi-argo.ts` + argo-guide.ts)로 배포하면 v5
 - **점검 일정 완료 운영 확인(v1.54)**: 컨테이너에 운영 세션이 없어 실서버에서 체크 → 보안 기록부 하드카피 집계 반영은 못 봄(하네스 = 가짜 서버 + 단위 시험). 첫 사용 때 일정 ○ → 보안 기록부 '기록 현황'에서 그날이 완료로 바뀌는지 한 번 볼 것
 - **게시판 메뉴 저장(v1.53)**: 시스템관리자가 v1.53 으로 한 번 접속하면 운영 menus 에 허브 '게시판' · 메뉴 3개가 저장된다(그 전에도 각 화면은 정규화로 보임). 배포 직후 열려 있던 옛 탭은 새로고침 — 옛 탭에서 쓴 공지는 옛 `notices` 행에만 남는다(SQL 이관 부분을 다시 실행하면 B001 로, 중복 없음)
 - **게시판 읽기 등급 변경**: 이미 올린 첨부는 올릴 때의 폴더(`bbsN`) 등급을 따른다 — 읽기 등급을 올리면 민감한 첨부는 다시 올릴 것
@@ -221,7 +220,7 @@ Claude가 할 일(순서대로):
 
 | 버전 | 날짜 | 내용 |
 |---|---|---|
-| v1.54.0 | 10-23 | **점검 일정 완료 체크**(Mark: 매일 반복 점검을 날마다 완료 처리할 방법이 없음 → 선택 '보안 기록부에 확인 반영' · '그날 묶음 한 번에 + 양식별' · '주기 점검도 함께'). 일정관리 '[점검] 매일 점검' · 주기 점검 칩에 ○(호버) / ✓ — 누르면 그날(그 주기) 양식 모두 하드카피 집계 '확인', ✓ 은 해제. 일정을 누르면 상세 창에 양식별 체크(전산 기록 · 이상은 잠금, 설명은 ⓘ) + 저장, 앞날 · 권한 밖은 예전 상세. 모바일 목록 행에도 체크, 상세 창 버튼 4개는 바로 가기를 아이콘만으로. 기록부 누락 · 점검 · 교육 대시보드 · 수검 증빙에 그대로 반영. 아르고 안내 지식 일정관리 항목 보강(Edge 재배포는 §7 대기). 테스트 VZ07 (575 통과). axe(상세 창 PC · 모바일) 0 · 1440/390 넘침 0 |
+| v1.54.0 | 10-23 | **점검 일정 완료 체크**(Mark: 매일 반복 점검을 날마다 완료 처리할 방법이 없음 → 선택 '보안 기록부에 확인 반영' · '그날 묶음 한 번에 + 양식별' · '주기 점검도 함께'). 일정관리 '[점검] 매일 점검' · 주기 점검 칩에 ○(호버) / ✓ — 누르면 그날(그 주기) 양식 모두 하드카피 집계 '확인', ✓ 은 해제. 일정을 누르면 상세 창에 양식별 체크(전산 기록 · 이상은 잠금, 설명은 ⓘ) + 저장, 앞날 · 권한 밖은 예전 상세. 모바일 목록 행에도 체크, 상세 창 버튼 4개는 바로 가기를 아이콘만으로. 기록부 누락 · 점검 · 교육 대시보드 · 수검 증빙에 그대로 반영. 아르고 안내 지식 일정관리 항목 보강(Edge `semis-logi-argo` v5, Mark 승인 후 배포). 테스트 VZ07 (575 통과). axe(상세 창 PC · 모바일) 0 · 1440/390 넘침 0 |
 | v1.53.1 | 10-23 | **탭 묶음 찾기 쉽게**(Mark: 연락처 · 비상연락망 · 위기대응 조직 탭이 눈에 안 띔 → '둘 다' 선택) — 패널: 묶음 이름 아래 화면 줄을 늘 펼침(왼쪽 안내선 · 지금 화면 굵은 막대 + 강조 · 배지 · 선택 표시는 화면 줄로, 묶음 이름은 `.cur`) · 본문 위: 묶음 이름 + 상자형 탭(회색 바탕 띠 · 선택 = 진한 바탕 흰 글자). 5개 묶음(점검 · 순찰 / 수검 대응 / 보안교육 / 연락처 / 규정) 공통. axe 0 · 1440/390 넘침 0. 테스트 H05 · H08 · PT14 갱신 · H08a (574 통과) |
 | v1.53.0 | 10-22 | **문서형 구획 · 게시판** — 디자인: 본문 14px(PC 17 → 14 · 모바일 15 → 14), 작은 글자 .72rem 이상으로 정리, 카드 = 위 2px 진한 선 + 제목 아래 가는 선 · 모서리 4px · 그림자 없음, 표 머리 실선, 버튼 · 입력 높이 줄임, 허브 배너 낮춤(Mark 선택: 14px · 문서형 구획). 게시판: 허브 '게시판'(Mark 선택) · 기본 3개(공지사항 · 일반게시판 · 자료실) · 게시판 ID(B001~) · 기능 토글 10종 · 메뉴 유형 '게시판' · 서버 표 + RPC(쪽 · 검색 · 권한 · 작성자) · 첨부 폴더 bbs1~4 · 열람 확인 · 댓글 · 답글 · 이동 · 휴지통 · 실시간 · 메뉴 배지 · 통합 검색 · 대시보드 공지 · 아르고 공지 등록 → B001. 공지만 게시판으로 전환(Mark 선택), 운영 공지 1건 이관. Edge files v12 · argo v4(안내 지식). DB 는 MCP 마이그레이션 `semis_logi_security_28_bbs*` 6개 + 지우기 · 관리 함수 2개는 'delete' 구문 확인 창이 MCP 에서 자동 취소되어 Mark 가 SQL 편집기로 실행(함수 9 · anon 만 실행 확인). 테스트 BB01~BB16 · PGlite 78 (573 통과). axe(기존 #sup-search 이름 불일치 1건 제외) · 1440/390 넘침 0 |
 | v1.52.0 | 10-20 | **수검 자료 요청 목록** — 기관이 보낸 자료제출 요구서를 번호 그대로 체크리스트로(`chkSrc.kind "req"` · 한 묶음 · 인쇄 머리 '요청 자료' · 비고 칸 넓게 · CHK-LIST 불러오기 숨김). 항목 `rel[]` = 같은 내용의 점검관용 CHK-LIST 번호 → 근거 요지(여러 번호) · 연결 화면 증빙 판단 번호(`evMid`), `dids[]` = 고른 증빙 문서(문서 서가 id, 순서 유지 · 없는 문서 · 중복 제외) — 항목 수정 창에 'CHK-LIST 연계' · '증빙 문서' 고르기. 운영: 서울지방항공청 정기점검(11.9) 수검 + 29항목(SSOP Rev.01 조항 · 연계 · 증빙 문서 121건 · 의견 · 점수) + 일정 1건 SQL 등록(반영 직전 값 `semis_store_history`). 테스트 TA12 (557 통과) |
