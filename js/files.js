@@ -28,10 +28,13 @@
     const t = String(raw).replace(/^[\s\u00a0\u200b]*(?:[\u2190-\u27bf\u2b00-\u2bff\ufe0f\u{1f000}-\u{1faff}]+[\s\u00a0]*)*/u, "").trim();
     return t || nameFromUrl(urlOf(el));
   }
+  /* doc = 엑셀 · 워드 · 한글 · 파워포인트 · CSV · 글 — preview.js 가 브라우저에서 직접 그린다 */
   function kindOf(url, name) {
     const s = String(name || "") + " " + String(url || "");
     if (/^data:image\//i.test(url) || IMG_RE.test(s)) return "image";
     if (PDF_RE.test(s)) return "pdf";
+    const P = window.SemisPreview;
+    if (P && !/^data:/i.test(String(url || "")) && (P.kindOf(name) || (!/\.[A-Za-z0-9]{1,6}$/.test(String(name || "")) && P.kindOf(nameFromUrl(url))))) return "doc";
     return "file";
   }
   function extOf(name, url) {
@@ -137,11 +140,54 @@
     const stage = $$1("[data-fv-stage]");
     setZoom(false);
     stage.dataset.kind = c.kind;
+    gen++;
+    if (c.kind === "doc") { stage.innerHTML = `<div class="fv-none fv-wait" role="status">${icon("refresh", 30)}<b>${esc(c.name)}</b><span>미리보기를 만드는 중…</span></div>`; renderDoc(stage, c); return; }
     stage.innerHTML = c.kind === "image"
       ? `<img class="fv-img" src="${esc(c.url)}" alt="${esc(c.name)}">`
       : c.kind === "pdf"
         ? `<iframe class="fv-frame" src="${esc(c.url)}" title="${esc(c.name)}"></iframe>`
-        : `<div class="fv-none">${icon("doc", 34)}<b>${esc(c.name)}</b><span>${esc(extOf(c.name, c.url) || "파일")} 형식은 미리보기를 지원하지 않습니다</span></div>`;
+        : noneHTML(c, (extOf(c.name, c.url) || "파일") + " 형식은 미리보기를 지원하지 않습니다");
+  }
+  const noneHTML = (c, msg) => `<div class="fv-none">${icon("doc", 34)}<b>${esc(c.name)}</b><span>${esc(msg)}</span></div>`;
+
+  /* 문서 미리보기 — 받은 파일을 그 자리에서 HTML 로(스크립트 없는 sandbox 문서). 늦게 도착한 결과는 버린다 */
+  let gen = 0;
+  const cache = new Map();
+  async function renderDoc(stage, c) {
+    const my = gen;
+    let r = cache.get(c.url);
+    if (!r) {
+      try {
+        if (!window.SemisPreview) throw new Error("preview");
+        r = await window.SemisPreview.fromUrl(c.url, c.name);
+        cache.set(c.url, r);
+        while (cache.size > 6) cache.delete(cache.keys().next().value);
+      } catch (e) {
+        if (my === gen && stage.isConnected) stage.innerHTML = noneHTML(c, e && e.big ? "파일이 커서(20MB 초과) 미리보기를 생략했습니다" : "미리보기를 열지 못했습니다");
+        return;
+      }
+    }
+    if (my !== gen || current() !== c || !stage.isConnected) return;
+    showDoc(stage, c, r, 0);
+  }
+  function showDoc(stage, c, r, i) {
+    const part = r.parts[i] || r.parts[0];
+    const tabs = r.parts.length > 1 ? `<div class="fv-sheets" role="tablist" aria-label="시트">${r.parts.map((p, k) =>
+      `<button type="button" role="tab" class="fv-sheet" data-fv-sheet="${k}" aria-selected="${k === i}" tabindex="${k === i ? 0 : -1}">${esc(p.name || "시트 " + (k + 1))}</button>`).join("")}</div>` : "";
+    const notes = part.notes && part.notes.length ? `<p class="fv-note">${esc(part.notes.join(" · "))}</p>` : "";
+    stage.innerHTML = `<div class="fv-docwrap">${tabs || notes ? `<div class="fv-dochead">${tabs}${notes}</div>` : ""}` +
+      `<iframe class="fv-frame fv-docf" sandbox="" referrerpolicy="no-referrer" title="${esc(c.name)} 미리보기"></iframe></div>`;
+    stage.querySelector("iframe").setAttribute("srcdoc", part.doc);
+    stage.querySelectorAll("[data-fv-sheet]").forEach(b => {
+      b.onclick = () => { showDoc(stage, c, r, Number(b.dataset.fvSheet)); const nb = stage.querySelector(`[data-fv-sheet="${b.dataset.fvSheet}"]`); if (nb) nb.focus(); };
+      b.onkeydown = (ev) => {
+        if (ev.key !== "ArrowRight" && ev.key !== "ArrowLeft") return;
+        ev.preventDefault(); ev.stopPropagation();
+        const k = (i + (ev.key === "ArrowRight" ? 1 : -1) + r.parts.length) % r.parts.length;
+        showDoc(stage, c, r, k);
+        const nb = stage.querySelector(`[data-fv-sheet="${k}"]`); if (nb) nb.focus();
+      };
+    });
   }
   function open(items, at) {
     list = (items || []).filter(x => x && x.url);
@@ -165,6 +211,7 @@
   }
   function reset() {
     const d = document.getElementById("fv-viewer");
+    gen++;
     document.documentElement.classList.remove("fv-viewing");
     zoom = false;
     if (pushed) { pushed = false; try { history.back(); } catch (e) { /* noop */ } }
@@ -220,5 +267,5 @@
     });
   }
 
-  window.SemisFiles = { open, close, download, downloadHref, kindOf, nameOf, nameFromUrl, openFrom, get list() { return list; } };
+  window.SemisFiles = { open, close, download, downloadHref, kindOf, nameOf, nameFromUrl, openFrom, get list() { return list; }, clearCache: () => cache.clear() };
 })();

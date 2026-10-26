@@ -3,7 +3,7 @@
    실행: npm test  (jsdom 필요: npm install)
    구성: [C] 코어(해시·계정·메뉴·정규화·권한·라우터·예정 모듈)
          [D] 대시보드·공지·현황판  [S] 시스템 설정  [M] 이식 모듈 스모크(일정·회의록·연락망·검색)
-         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [IM] 한글 입력 보호  [FL] 운항 현황  [AU] 수검 대응 센터  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [SEC] 서버 보안(비공개 파일·살균·CSP)  [PT] 순찰일지  [SK] 자체 보안점검(수준관리지침 별표 · HWPX)  [UP] 점검 표시 · 다가오는 점검  [CM] v1.29 화면 정돈  [CN] v1.30 편집 모드 · 모바일 접기  [ED] v1.39 보안교육 이수 등록(배포용)  [TA] v1.41 점검교육 · 수검 자료  [DK] v1.47 메인 데스크  [UI] v1.48 지원 카드 · 공통 패널 · 부엉이  [AR] v1.49 아르고 AI 도우미  [DS] v1.55 문서 · 규정 검색  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
+         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [IM] 한글 입력 보호  [FL] 운항 현황  [AU] 수검 대응 센터  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [SEC] 서버 보안(비공개 파일·살균·CSP)  [PT] 순찰일지  [SK] 자체 보안점검(수준관리지침 별표 · HWPX)  [UP] 점검 표시 · 다가오는 점검  [CM] v1.29 화면 정돈  [CN] v1.30 편집 모드 · 모바일 접기  [ED] v1.39 보안교육 이수 등록(배포용)  [TA] v1.41 점검교육 · 수검 자료  [DK] v1.47 메인 데스크  [UI] v1.48 지원 카드 · 공통 패널 · 부엉이  [AR] v1.49 아르고 AI 도우미  [DS] v1.55 문서 · 규정 검색  [PV] v1.56 첨부 미리보기  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
    ═══════════════════════════════════════════════════════ */
 "use strict";
 const fs = require("fs");
@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/loginguard.js", "js/app.js", "js/argo-owl.js", "js/panel.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/docshelf.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/board.js", "js/cares.js", "js/hazfind.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/contracts.js", "js/partners.js", "js/kcra.js", "js/seccases.js", "js/dissem.js", "js/scrstats.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/docread.js", "js/desk.js", "js/argo.js", "js/selfcheck.js", "js/auddash.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
+const FILES = ["js/loginguard.js", "js/app.js", "js/argo-owl.js", "js/panel.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/preview.js", "js/docshelf.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/board.js", "js/cares.js", "js/hazfind.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/contracts.js", "js/partners.js", "js/kcra.js", "js/seccases.js", "js/dissem.js", "js/scrstats.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/docread.js", "js/desk.js", "js/argo.js", "js/selfcheck.js", "js/auddash.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -3623,7 +3623,9 @@ function makeServer(opts = {}) {
     const openAttr = () => { const d = viewer(); return !!(d && (d.open || d.hasAttribute("open"))); };
 
     t("FV01 형식 판정 · 이름 정리(앞머리 📎 제거 · alt · 주소 폴백)", () => {
-      eq(F.kindOf(SUPA, "회의자료.docx"), "file");
+      eq(F.kindOf(SUPA, "회의자료.docx"), "doc", "워드는 문서 미리보기");
+      eq(F.kindOf("https://x/y/a.zip", "자료.zip"), "file");
+      eq(F.kindOf("https://x/y/a.hwp", "공문.hwp"), "file", "구 형식(HWP)은 미리보기 없음");
       eq(F.kindOf("https://x/y/a.PDF", "규정.pdf"), "pdf");
       eq(F.kindOf("https://x/y/a.webp", "체계도.webp"), "image");
       eq(F.kindOf("data:image/png;base64,AA", ""), "image");
@@ -3656,8 +3658,8 @@ function makeServer(opts = {}) {
       eq(q(e, "#fv-viewer .fv-ext").textContent, "DOCX");
       eq(q(e, "#fv-viewer .fv-pos").textContent, "1 / 3", "같은 글의 첨부 3개");
       eq(q(e, "#fv-viewer [data-fv=del]").hidden, false, "편집 중이면 삭제 가능");
-      eq(q(e, "#fv-viewer [data-fv-stage]").dataset.kind, "file");
-      ok(q(e, "#fv-viewer .fv-none"), "미리보기 미지원 안내");
+      eq(q(e, "#fv-viewer [data-fv-stage]").dataset.kind, "doc");
+      ok(q(e, "#fv-viewer .fv-none"), "미리보기 준비 · 실패 안내");
       eq(q(e, '#fv-viewer [data-fv="tab"]').getAttribute("href"), SUPA);
     });
     t("FV04 ← → 로 다음 첨부 — 이미지는 미리보기, PDF는 프레임", () => {
@@ -10771,6 +10773,242 @@ function makeServer(opts = {}) {
       ok(html.indexOf("js/docshelf.js") < html.indexOf("js/search.js") && html.indexOf("js/regulations.js") < html.indexOf("js/search.js"), "읽는 순서");
       const c = read("css/main.css");
       ok(/\.dkb-t, \.dkb-t\.nb-file \{/.test(c) && /\.dk-hl \{/.test(c), "게시판형 · 강조 스타일");
+    });
+  }
+
+  /* ══════════ [PV] v1.56 첨부 미리보기 — 엑셀(서식) · 워드 · 한글 · 파워포인트 · CSV · 글 ══════════ */
+  {
+    const NODE_TE = new (require("util").TextEncoder)();
+    const pvEnv = () => {
+      const e = makeEnv(); loginAs(e, "hq");
+      for (const k of ["TextEncoder", "TextDecoder", "CompressionStream", "DecompressionStream"]) if (!e.w[k]) e.w[k] = globalThis[k];
+      return e;
+    };
+    const zipOf = async (e, files) => e.w.SemisHwpx.zip(Object.keys(files).map(n => ({ name: n, data: NODE_TE.encode(files[n]), store: true })));
+    const X = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+    const NS_M = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+    const XLSX = {
+      "xl/workbook.xml": X + `<workbook ${NS_M}><workbookPr/><sheets><sheet name="사용대장" sheetId="1" r:id="rId1"/><sheet name="숨김" sheetId="2" state="hidden" r:id="rId2"/><sheet name="요약" sheetId="3" r:id="rId3"/></sheets></workbook>`,
+      "xl/_rels/workbook.xml.rels": X + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="w" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="w" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Type="w" Target="/xl/worksheets/sheet3.xml"/></Relationships>',
+      "xl/theme/theme1.xml": X + '<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:themeElements><a:clrScheme name="x"><a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1><a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="44546A"/></a:dk2><a:lt2><a:srgbClr val="E7E6E6"/></a:lt2><a:accent1><a:srgbClr val="4472C4"/></a:accent1><a:accent2><a:srgbClr val="ED7D31"/></a:accent2><a:accent3><a:srgbClr val="A5A5A5"/></a:accent3><a:accent4><a:srgbClr val="FFC000"/></a:accent4><a:accent5><a:srgbClr val="5B9BD5"/></a:accent5><a:accent6><a:srgbClr val="70AD47"/></a:accent6><a:hlink><a:srgbClr val="0563C1"/></a:hlink><a:folHlink><a:srgbClr val="954F72"/></a:folHlink></a:clrScheme></a:themeElements></a:theme>',
+      "xl/styles.xml": X + `<styleSheet ${NS_M}><numFmts count="1"><numFmt numFmtId="164" formatCode="yyyy&quot;년&quot; m&quot;월&quot; d&quot;일&quot;"/></numFmts>
+        <fonts count="4"><font><sz val="11"/><color theme="1"/><name val="맑은 고딕"/></font><font><b/><sz val="16"/><color rgb="FF1F4E79"/></font><font><color theme="4" tint="-0.249977111117893"/></font><font><color rgb="FF000000;background:url(x)"/></font></fonts>
+        <fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFFF2CC"/></patternFill></fill></fills>
+        <borders count="2"><border><left/><right/><top/><bottom/></border><border><left style="thin"><color indexed="64"/></left><right style="medium"><color rgb="FFC00000"/></right><top style="thin"/><bottom style="double"/></border></borders>
+        <cellXfs count="7"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="164" fontId="0" fillId="2" borderId="1"/><xf numFmtId="4" fontId="2" fillId="0" borderId="1"/><xf numFmtId="0" fontId="3" fillId="0" borderId="0"><alignment wrapText="1"/></xf><xf numFmtId="10" fontId="0" fillId="0" borderId="0"/><xf numFmtId="0" fontId="0" fillId="0" borderId="0"><alignment indent="2"/></xf></cellXfs></styleSheet>`,
+      "xl/sharedStrings.xml": X + `<sst ${NS_M}><si><t>보안스티커 사용대장</t></si><si><t>&lt;script&gt;alert(1)&lt;/script&gt;" onmouseover="x</t></si><si><t xml:space="preserve">첫 줄
+둘째 줄</t></si><si><r><t>일련</t></r><r><rPr><b/></rPr><t>번호</t></r><rPh><t>イチレン</t></rPh></si><si><t>왼쪽으로 길게 넘치는 제목 글자</t></si></sst>`,
+      "xl/worksheets/sheet1.xml": X + `<worksheet ${NS_M}><sheetFormatPr defaultRowHeight="16.5"/><cols><col min="1" max="1" width="20" customWidth="1"/><col min="4" max="4" width="9" hidden="1"/></cols><sheetData>
+        <row r="1" ht="30" customHeight="1"><c r="A1" s="1" t="s"><v>0</v></c></row>
+        <row r="2"><c r="A2" s="2"><v>46296</v></c><c r="B2" s="3"><v>1234.5</v></c><c r="C2" t="b"><v>1</v></c><c r="D2"><v>999</v></c><c r="E2" s="5"><v>0.256</v></c></row>
+        <row r="3" hidden="1"><c r="A3" t="s"><v>1</v></c></row>
+        <row r="4"><c r="A4" t="s"><v>4</v></c><c r="C4" s="4" t="s"><v>2</v></c><c r="E4" t="e"><v>#DIV/0!</v></c></row>
+        <row r="5"><c r="A5" t="s"><v>1</v></c><c r="B5" t="s"><v>3</v></c><c r="C5" t="inlineStr"><is><t>인라인</t></is></c><c r="E5" s="6" t="s"><v>3</v></c><c r="F5" s="2"><f>SUM(B2:B4)</f></c></row>
+      </sheetData><mergeCells count="1"><mergeCell ref="A1:C1"/></mergeCells><drawing r:id="rId9"/></worksheet>`,
+      "xl/worksheets/sheet2.xml": X + `<worksheet ${NS_M}><sheetData><row r="1"><c r="A1"><v>1</v></c></row></sheetData></worksheet>`,
+      "xl/worksheets/sheet3.xml": X + `<worksheet ${NS_M}><sheetViews><sheetView showGridLines="0"/></sheetViews><sheetData><row r="2"><c r="B2"><v>-5</v></c></row></sheetData></worksheet>`
+    };
+    const parseDoc = (e, html) => new e.w.DOMParser().parseFromString(html, "text/html");
+
+    t("PV01 엑셀 표시 형식: 천 단위 · 소수 · % · 지수 · 날짜(한글 요일 · 오전/오후) · 경과 시간 · 숫자 사이 글자 · 회계 0 · 음수 괄호(빨강)", () => {
+      const e = pvEnv();
+      const F = (n, c) => e.w.SemisPreview.format(n, c, false).t;
+      eq(F(1234.5, "#,##0.00"), "1,234.50"); eq(F(0.256, "0.0%"), "25.6%"); eq(F(12345.678, "0.00E+00"), "1.23E+04");
+      eq(F(46296, "yyyy-mm-dd"), "2026-10-01"); eq(F(46296.75, 'yyyy"년" m"월" d"일" (aaa)'), "2026년 10월 1일 (목)");
+      eq(F(46296.6041666, "[$-412]yyyy-mm-dd AM/PM h:mm"), "2026-10-01 오후 2:30"); eq(F(0.5, "h:mm AM/PM"), "12:00 PM");
+      eq(F(1.5, "[h]:mm:ss"), "36:00:00"); eq(F(46296, "mmm-yy"), "Oct-26"); eq(F(1234567, "000-00-00000"), "000-12-34567");
+      eq(F(0, '_-* #,##0_-;-* #,##0_-;_-* "-"_-;_-@_-').trim(), "-"); eq(F(1234, '_-* #,##0_-;-* #,##0_-;_-* "-"_-;_-@_-').trim(), "1,234");
+      eq(F(0.1 + 0.2, "General"), "0.3"); eq(F(1.255, "0.0#"), "1.26", "이진 오차 정리"); eq(F(123, '0"개"'), "123개"); eq(F(5, "00"), "05");
+      eq(F(1234567.891, "#,##0.0,"), "1,234.6", "끝 쉼표 = 천 단위 나눔"); eq(F(-3, "0"), "-3");
+      const neg = e.w.SemisPreview.format(-5, "#,##0;[Red](#,##0)", false);
+      eq(neg.t, "(5)"); eq(neg.color, "FF0000");
+      e.w.close();
+    });
+
+    await ta("PV02 엑셀 미리보기: 시트(숨김 제외) · 병합 · 숨긴 행/열 · 날짜/숫자 서식 · 글꼴 · 채우기 · 테두리 · 줄바꿈 · 넘침 · 글은 모두 이스케이프", async () => {
+      const e = pvEnv();
+      const r = await e.w.SemisPreview.build("보안스티커 사용대장.xlsx", await zipOf(e, XLSX));
+      eq(r.kind, "xlsx"); eq(r.parts.map(p => p.name).join(","), "사용대장,요약", "숨긴 시트 제외");
+      const html = r.parts[0].doc;
+      ok(!/<script/i.test(html) && /&lt;script&gt;alert\(1\)&lt;\/script&gt;&quot; onmouseover=&quot;x/.test(html), "글 이스케이프");
+      ok(!/url\(x\)/.test(html), "색 값 검사(주입 차단)");
+      const d = parseDoc(e, html);
+      eq(Array.from(d.querySelectorAll("thead th")).map(x => x.textContent).join(","), ",A,B,C,E,F", "숨긴 D열 제외");
+      eq(Array.from(d.querySelectorAll("tbody th.rh")).map(x => x.textContent).join(","), "1,2,4,5", "숨긴 3행 제외");
+      const title = d.querySelector("tbody tr td");
+      eq(title.getAttribute("colspan"), "3", "A1:C1 병합(숨김 열 없음)"); eq(title.textContent, "보안스티커 사용대장");
+      const row2 = Array.from(d.querySelectorAll("tbody tr")[1].querySelectorAll("td")).map(x => x.textContent);
+      eq(row2.join("|"), "2026년 10월 1일|1,234.50|TRUE|25.60%|", "날짜 · 숫자 · 논리 · %(기본 10 = 0.00%)");
+      const css = d.querySelector("style").textContent;
+      const cssOf = (td) => { const k = (td.className || "").split(" ").find(x => /^s\d+$/.test(x)); const m = k ? new RegExp("\\." + k + "\\{([^}]*)\\}").exec(css) : null; return m ? m[1] : ""; };
+      ok(/font-weight:700/.test(cssOf(title)) && /font-size:16pt/.test(cssOf(title)) && /color:#1F4E79/i.test(cssOf(title)) && /text-align:center/.test(cssOf(title)), "제목 글꼴 · 정렬");
+      const a2 = d.querySelectorAll("tbody tr")[1].querySelector("td");
+      ok(/background:#FFF2CC/i.test(cssOf(a2)) && /border-left:1px solid #000000/.test(cssOf(a2)) && /border-right:2px solid #C00000/.test(cssOf(a2)) && /border-bottom:3px double/.test(cssOf(a2)), "채우기 · 테두리");
+      const b2 = d.querySelectorAll("tbody tr")[1].querySelectorAll("td")[1];
+      ok(/border-left:2px solid #C00000/.test(cssOf(b2)), "이웃 칸 오른쪽 선을 공유 변에");
+      ok(/color:#[0-9A-F]{6}/i.test(cssOf(b2)) && !/color:#4472C4/i.test(cssOf(b2)), "테마 색 + 명암(tint)");
+      ok(/text-align:right/.test(cssOf(b2)), "숫자 오른쪽");
+      const r4 = d.querySelectorAll("tbody tr")[2].querySelectorAll("td");
+      ok(r4[0].classList.contains("ov"), "빈 오른쪽 칸으로 넘침");
+      ok(/white-space:pre-wrap/.test(cssOf(r4[2])) && /첫 줄\n둘째 줄/.test(r4[2].textContent), "줄바꿈 칸");
+      eq(r4[3].textContent, "#DIV/0!"); ok(/text-align:center/.test(cssOf(r4[3])), "오류 가운데");
+      const r5 = d.querySelectorAll("tbody tr")[3].querySelectorAll("td");
+      eq(r5[1].textContent, "일련번호", "서식 글 이어 붙임 · 윗주 제외"); eq(r5[2].textContent, "인라인"); ok(/padding-left:21px/.test(cssOf(r5[3])), "들여쓰기");
+      eq(r5[4].textContent, "", "계산값 없는 수식은 빈 칸");
+      ok(r.parts[0].notes.some(x => /그림/.test(x)), "그림 · 차트 안내");
+      const d2 = parseDoc(e, r.parts[1].doc);
+      ok(/border-left:none/.test(d2.querySelector("style").textContent) || /border-left:none/.test(d2.body.innerHTML), "눈금선 끔");
+      ok(Array.from(d2.querySelectorAll("tbody td")).some(td => td.textContent === "-5"), "음수 일반 형식");
+      e.w.close();
+    });
+
+    await ta("PV03 워드 미리보기: 제목 · 굵게 · 목록 번호(가나다 · 글머리) · 표 병합(가로 · 세로) · 쪽 나눔 · 이스케이프 · 그림 안내", async () => {
+      const e = pvEnv();
+      const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+      const files = {
+        "word/styles.xml": X + `<w:styles ${W}><w:docDefaults><w:rPrDefault><w:rPr><w:sz w:val="20"/></w:rPr></w:rPrDefault></w:docDefaults>
+          <w:style w:type="paragraph" w:styleId="1"><w:name w:val="heading 1"/><w:rPr><w:b/><w:sz w:val="32"/></w:rPr></w:style>
+          <w:style w:type="paragraph" w:styleId="ListBullet"><w:name w:val="List Bullet"/><w:pPr><w:numPr><w:numId w:val="2"/></w:numPr></w:pPr></w:style>
+          <w:style w:type="table" w:styleId="TableGrid"><w:name w:val="Table Grid"/><w:tblPr><w:tblBorders><w:top w:val="single" w:sz="4"/><w:left w:val="single" w:sz="4"/><w:bottom w:val="single" w:sz="4"/><w:right w:val="single" w:sz="4"/><w:insideH w:val="single" w:sz="4"/><w:insideV w:val="single" w:sz="4"/></w:tblBorders></w:tblPr></w:style></w:styles>`,
+        "word/numbering.xml": X + `<w:numbering ${W}><w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="ganada"/><w:lvlText w:val="%1."/></w:lvl></w:abstractNum>
+          <w:abstractNum w:abstractNumId="1"><w:lvl w:ilvl="0"><w:numFmt w:val="bullet"/><w:lvlText w:val=""/></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num><w:num w:numId="2"><w:abstractNumId w:val="1"/></w:num></w:numbering>`,
+        "word/document.xml": X + `<w:document ${W}><w:body>
+          <w:p><w:pPr><w:pStyle w:val="1"/></w:pPr><w:r><w:t>보안검색 협조 요청</w:t></w:r></w:p>
+          <w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t xml:space="preserve">관련: </w:t></w:r><w:r><w:rPr><w:b/><w:color w:val="C00000"/></w:rPr><w:t>&lt;img src=x onerror=alert(1)&gt;</w:t></w:r></w:p>
+          <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>첫째</w:t></w:r></w:p>
+          <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>둘째</w:t></w:r></w:p>
+          <w:p><w:pPr><w:pStyle w:val="ListBullet"/></w:pPr><w:r><w:t>글머리</w:t></w:r></w:p>
+          <w:tbl><w:tblPr><w:tblStyle w:val="TableGrid"/></w:tblPr><w:tblGrid><w:gridCol w:w="2000"/><w:gridCol w:w="2000"/><w:gridCol w:w="2000"/></w:tblGrid>
+            <w:tr><w:tc><w:tcPr><w:vMerge w:val="restart"/></w:tcPr><w:p><w:r><w:t>정기</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:gridSpan w:val="2"/><w:shd w:fill="D9E2F3"/></w:tcPr><w:p><w:r><w:t>일시</w:t></w:r></w:p></w:tc></w:tr>
+            <w:tr><w:tc><w:tcPr><w:vMerge/></w:tcPr><w:p/></w:tc><w:tc><w:p><w:r><w:t>11-09</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>지방청</w:t></w:r></w:p></w:tc></w:tr></w:tbl>
+          <w:p><w:r><w:t>앞</w:t></w:r><w:r><w:br w:type="page"/></w:r><w:r><w:t>뒤</w:t></w:r><w:r><w:drawing><wp:inline xmlns:wp="x"/></w:drawing></w:r></w:p>
+          <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr></w:body></w:document>`
+      };
+      const r = await e.w.SemisPreview.build("협조.docx", await zipOf(e, files));
+      const html = r.parts[0].doc;
+      ok(!/<img/i.test(html) && /&lt;img src=x onerror=alert\(1\)&gt;/.test(html), "이스케이프");
+      const d = parseDoc(e, html);
+      const pages = d.querySelectorAll(".pg");
+      eq(pages.length, 2, "쪽 나눔"); ok(/width:595\.3pt/.test(pages[0].getAttribute("style")), "A4 폭");
+      ok(/font-weight:700/.test(d.querySelector(".pg p span").getAttribute("style")) && /font-size:16pt/.test(d.querySelector(".pg p span").getAttribute("style")), "제목 스타일");
+      ok(/text-align:center/.test(d.querySelectorAll(".pg p")[1].getAttribute("style")), "가운데");
+      ok(/color:#C00000/.test(d.querySelectorAll(".pg p")[1].innerHTML), "글자 색");
+      const lis = Array.from(d.querySelectorAll(".li")).map(x => x.textContent.trim());
+      eq(lis.join(","), "가.,나.,•", "가나다 · 글머리(기호 글꼴은 •)");
+      const tds = d.querySelectorAll("table td");
+      eq(tds[0].getAttribute("rowspan"), "2", "세로 병합"); eq(tds[1].getAttribute("colspan"), "2", "가로 병합"); eq(tds.length, 4);
+      ok(/background:#D9E2F3/.test(tds[1].getAttribute("style")) && /border-top:0\.5pt solid #000000/.test(tds[1].getAttribute("style")), "칸 음영 · 표 스타일 테두리");
+      ok(/앞/.test(pages[0].textContent) && /뒤/.test(pages[1].textContent), "나눔 앞뒤");
+      ok(r.parts[0].notes.some(x => /그림/.test(x)));
+      e.w.close();
+    });
+
+    await ta("PV04 파워포인트 미리보기: 슬라이드 순서(presentation.xml) · 제목 · 글머리 · 표 · 그림 안내", async () => {
+      const e = pvEnv();
+      const P = 'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+      const sp = (ph, txt, y) => `<p:sp><p:nvSpPr><p:cNvPr id="1" name="x"/><p:cNvSpPr/><p:nvPr>${ph ? `<p:ph type="${ph}"/>` : ""}</p:nvPr></p:nvSpPr><p:spPr><a:xfrm><a:off x="0" y="${y}"/></a:xfrm></p:spPr><p:txBody>${txt}</p:txBody></p:sp>`;
+      const files = {
+        "ppt/presentation.xml": X + `<p:presentation ${P}><p:sldIdLst><p:sldId id="256" r:id="rId3"/><p:sldId id="257" r:id="rId2"/></p:sldIdLst></p:presentation>`,
+        "ppt/_rels/presentation.xml.rels": X + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId2" Type="s" Target="slides/slide1.xml"/><Relationship Id="rId3" Type="s" Target="slides/slide2.xml"/></Relationships>',
+        "ppt/slides/slide2.xml": X + `<p:sld ${P}><p:cSld><p:spTree>${sp("", '<a:p><a:pPr lvl="1"/><a:r><a:rPr b="1"/><a:t>&lt;b&gt;굵게&lt;/b&gt;</a:t></a:r></a:p>', 3000)}${sp("title", "<a:p><a:r><a:t>첫 슬라이드</a:t></a:r></a:p>", 100)}<p:pic/></p:spTree></p:cSld></p:sld>`,
+        "ppt/slides/slide1.xml": X + `<p:sld ${P}><p:cSld><p:spTree><p:graphicFrame><p:xfrm><a:off x="0" y="0"/></p:xfrm><a:graphic><a:graphicData><a:tbl><a:tr><a:tc gridSpan="2"><a:txBody><a:p><a:r><a:t>호기</a:t></a:r></a:p></a:txBody></a:tc><a:tc hMerge="1"><a:txBody/></a:tc></a:tr></a:tbl></a:graphicData></a:graphic></p:graphicFrame></p:spTree></p:cSld></p:sld>`
+      };
+      const r = await e.w.SemisPreview.build("협의회.pptx", await zipOf(e, files));
+      const d = parseDoc(e, r.parts[0].doc);
+      const sl = d.querySelectorAll(".sl");
+      eq(sl.length, 2);
+      eq(sl[0].querySelector("h2").textContent, "첫 슬라이드", "목록 순서 · 제목 먼저");
+      ok(sl[0].querySelector(".bu") && /&lt;b&gt;굵게/.test(sl[0].innerHTML) && sl[0].querySelector("span[style*='font-weight:700']"), "글머리 · 굵게 · 이스케이프");
+      eq(sl[1].querySelector("td").getAttribute("colspan"), "2"); eq(sl[1].querySelectorAll("td").length, 1, "병합된 칸 생략");
+      ok(r.parts[0].notes.some(x => /그림/.test(x)));
+      e.w.close();
+    });
+
+    await ta("PV05 한글(HWPX) 미리보기: hwpx.js 의 A4 그리기로 구역마다 · 표 · 글", async () => {
+      const e = pvEnv();
+      const u8 = new Uint8Array(require("fs").readFileSync(path.join(ROOT, "assets/forms/nas/b1.hwpx")));
+      const r = await e.w.SemisPreview.build("별표1.hwpx", u8);
+      eq(r.kind, "hwpx");
+      const d = parseDoc(e, r.parts[0].doc);
+      ok(d.querySelector(".hx-doc") && d.querySelectorAll(".hx-t").length >= 2, "쪽 · 표");
+      ok(/Field Security Check/.test(d.body.textContent), "본문 글");
+      ok(!/<script/i.test(r.parts[0].doc));
+      e.w.close();
+    });
+
+    await ta("PV06 CSV(EUC-KR · 따옴표) · 글(TXT 이스케이프) · 지원하지 않는 형식", async () => {
+      const e = pvEnv();
+      const P = e.w.SemisPreview;
+      const csv = new Uint8Array(Buffer.from([0xc0, 0xcc, 0xb8, 0xa7, 0x2c, 0xbc, 0xf6, 0xb7, 0xae, 0x0a, 0x22, 0xc8, 0xab, 0x2c, 0x20, 0x41, 0x22, 0x2c, 0x31, 0x32, 0x0a]));   // "이름,수량\n"홍, A",12
+      const r = await P.build("목록.csv", csv);
+      const d = parseDoc(e, r.parts[0].doc);
+      eq(Array.from(d.querySelectorAll("tbody tr")[1].querySelectorAll("td")).map(x => x.textContent).join("|"), "홍, A|12", "EUC-KR · 따옴표 안 쉼표");
+      eq(d.querySelectorAll("tbody tr")[0].querySelector("td").textContent, "이름");
+      const tx = await P.build("메모.txt", NODE_TE.encode("가 <b>나</b>\n다"));
+      ok(/&lt;b&gt;나&lt;\/b&gt;/.test(tx.parts[0].doc) && !/<b>나/.test(tx.parts[0].doc), "글 이스케이프");
+      eq(P.kindOf("a.xls"), ""); eq(P.kindOf("a.hwp"), ""); eq(P.kindOf("a.XLSX"), "xlsx"); eq(P.kindOf("a.xlsm"), "xlsx");
+      let err = null; try { await P.build("x.xlsx", new Uint8Array([1, 2, 3])); } catch (x) { err = x; }
+      ok(err, "깨진 파일은 오류");
+      e.w.close();
+    });
+
+    await ta("PV07 첨부 뷰어: 엑셀 → 시트 탭 · 스크립트 없는 프레임(sandbox) · 탭 전환(키보드) · 늦게 온 결과 무시 · 큰 파일 · 실패 안내", async () => {
+      const e = pvEnv();
+      const u8 = await zipOf(e, XLSX);
+      let calls = 0, hold = null;
+      e.w.fetch = async (u) => {
+        calls++;
+        if (/slow/.test(u)) await new Promise(res => { hold = res; });
+        if (/broken/.test(u)) return { ok: false, status: 404, headers: { get: () => null } };
+        if (/big/.test(u)) return { ok: true, status: 200, headers: { get: (k) => (k === "content-length" ? String(30 * 1024 * 1024) : null) }, arrayBuffer: async () => new ArrayBuffer(0) };
+        return { ok: true, status: 200, headers: { get: () => null }, arrayBuffer: async () => u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength) };
+      };
+      const F = e.w.SemisFiles;
+      F.clearCache();
+      F.open([{ url: "https://files.test/보안스티커 사용대장.xlsx", name: "보안스티커 사용대장.xlsx", kind: "doc" }, { url: "https://files.test/slow.xlsx", name: "느림.xlsx", kind: "doc" },
+        { url: "https://files.test/big.xlsx", name: "큰.xlsx", kind: "doc" }, { url: "https://files.test/broken.docx", name: "깨짐.docx", kind: "doc" }], 0);
+      ok(q(e, "#fv-viewer .fv-wait"), "준비 중 표시");
+      for (let i = 0; i < 40 && !q(e, "#fv-viewer iframe.fv-docf"); i++) await tick(10);
+      const fr = q(e, "#fv-viewer iframe.fv-docf");
+      ok(fr, "문서 프레임"); eq(fr.getAttribute("sandbox"), "", "스크립트 · 같은 출처 모두 막음");
+      ok(/<table class="xl"/.test(fr.getAttribute("srcdoc")) && /보안스티커 사용대장/.test(fr.getAttribute("srcdoc")));
+      const tabs = qa(e, "#fv-viewer [data-fv-sheet]");
+      eq(tabs.map(b => b.textContent).join(","), "사용대장,요약"); eq(tabs[0].getAttribute("aria-selected"), "true");
+      ok(/그림/.test(q(e, "#fv-viewer .fv-note").textContent), "시트 안내");
+      tabs[1].click();
+      eq(q(e, "#fv-viewer [data-fv-sheet='1']").getAttribute("aria-selected"), "true");
+      ok(/-5/.test(q(e, "#fv-viewer iframe.fv-docf").getAttribute("srcdoc")), "둘째 시트");
+      q(e, "#fv-viewer [data-fv-sheet='1']").dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }));
+      eq(q(e, "#fv-viewer [data-fv-sheet='0']").getAttribute("aria-selected"), "true", "→ 로 다음 탭(끝에서 처음)");
+      eq(q(e, "#fv-viewer .fv-pos").textContent, "1 / 4", "탭 키는 첨부를 넘기지 않음");
+      q(e, "#fv-viewer [data-fv=next]").click();             // 느린 파일 — 기다리는 사이 다음으로
+      ok(q(e, "#fv-viewer .fv-wait"));
+      q(e, "#fv-viewer [data-fv=next]").click();
+      for (let i = 0; i < 40 && !/20MB/.test((q(e, "#fv-viewer .fv-none span") || {}).textContent || ""); i++) await tick(10);
+      ok(/20MB/.test(q(e, "#fv-viewer .fv-none span").textContent), "큰 파일 안내");
+      if (hold) hold();
+      await tick(30);
+      eq(q(e, "#fv-title").textContent, "큰.xlsx", "늦게 온 결과가 화면을 바꾸지 않음"); ok(!q(e, "#fv-viewer iframe.fv-docf"));
+      q(e, "#fv-viewer [data-fv=next]").click();
+      for (let i = 0; i < 40 && !/열지 못했습니다/.test((q(e, "#fv-viewer .fv-none span") || {}).textContent || ""); i++) await tick(10);
+      ok(/열지 못했습니다/.test(q(e, "#fv-viewer .fv-none span").textContent), "실패 안내");
+      q(e, "#fv-viewer [data-fv=next]").click();
+      for (let i = 0; i < 40 && !q(e, "#fv-viewer iframe.fv-docf"); i++) await tick(10);
+      const before = calls;
+      ok(q(e, "#fv-viewer iframe.fv-docf"), "처음 파일 다시"); eq(calls, before, "한 번 그린 파일은 다시 받지 않음");
+      F.close();
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+
+    t("PV08 위생: 스크립트 · 외부 주소 없음 · index.html 에 defer 로 · 미리보기 안 되는 구 형식은 그대로 안내", () => {
+      const src = read("js/preview.js");
+      ok(!/<script/i.test(src.replace(/\/\*[\s\S]*?\*\//g, "")) && !/https?:\/\/(?!schemas\.openxmlformats\.org)/.test(src), "스크립트 · 외부 주소 없음");
+      ok(/<script src="js\/preview\.js\?v=[\d.]+" defer><\/script>/.test(read("index.html")));
+      ok(/sandbox=""/.test(read("js/files.js")) && !/allow-scripts/.test(read("js/files.js")));
+      const e = pvEnv();
+      eq(e.w.SemisFiles.kindOf("https://x/a.xls", "옛 대장.xls"), "file");
+      eq(e.w.SemisFiles.kindOf("https://x/y/%EB%8C%80%EC%9E%A5.xlsx", ""), "doc", "이름 없으면 주소에서");
+      e.w.close();
     });
   }
 
