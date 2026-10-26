@@ -297,9 +297,10 @@
   const TABS = [["today", "오늘"], ["status", "기록 현황"], ["list", "기록 목록"], ["docs", "보고서 · 증빙"]];
   /* 종이 기록 · 결과 보고서 — 증빙 문서 서가(js/docshelf.js) */
   if (window.SemisDocs) SemisDocs.define(MOD, [
-    { id: "monthly", label: "월간 자체 보안점검" }, { id: "quarterly", label: "분기 자체 보안점검 · Self Audit" }, { id: "surprise", label: "불시 점검 · 대테러 훈련" },
-    { id: "hazmat", label: "위해물품 관리대장 (월별)" }, { id: "hazmgr", label: "위해물품 관리책임자" }, { id: "patrol", label: "순찰 · 브리핑" }, { id: "misc", label: "기타" }
-  ]);
+    { id: "monthly", label: "월간 자체 보안점검", short: "월간 점검" }, { id: "quarterly", label: "분기 자체 보안점검 · Self Audit", short: "분기 · Self Audit" },
+    { id: "surprise", label: "불시 점검 · 대테러 훈련", short: "불시 · 대테러" }, { id: "hazmat", label: "위해물품 관리대장 (월별)", short: "위해물품 대장" },
+    { id: "hazmgr", label: "위해물품 관리책임자", short: "관리책임자" }, { id: "patrol", label: "순찰 · 브리핑" }, { id: "misc", label: "기타" }
+  ], { tab: "docs" });
   if (typeof window !== "undefined") (window.SemisDeep = window.SemisDeep || {})[MOD] = (sub) => { if (TABS.some(x => x[0] === sub)) { tab = sub; q = ""; } };
   const docsHTML = () => `<section class="card">${window.SemisDocs ? SemisDocs.groupsHTML(MOD) : ui.empty("문서 서가를 불러오지 못했습니다.")}</section>`;
   const routeNow = () => (typeof location !== "undefined" ? location.hash.replace(/^#\//, "") : "") || "dashboard";

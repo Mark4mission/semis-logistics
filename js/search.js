@@ -7,7 +7,7 @@ const SemisSearch = (() => {
   const D = () => S().data;
   const esc = (s) => S().esc(s);
 
-  /* 프로바이더: { id, group, icon, module?, minRank?, items() => [{title, sub?, text?, route?, url?}] }
+  /* 프로바이더: { id, group, icon, module?, minRank?, items() => [{title, sub?, text?, route?, url?, pick?(검색어)}] }
      module = 권한 게이트(해당 모듈 메뉴의 vis) + 기본 이동 라우트, minRank = 추가 권한 하한, text = 검색 대상(없으면 title+sub) */
   const providers = [];
   function register(p) {
@@ -236,7 +236,7 @@ const SemisSearch = (() => {
   function goItem(it) {
     closePalette();
     if (it.url) { window.open(it.url, "_blank", "noopener"); return; }
-    if (typeof it.pick === "function") { try { it.pick(); } catch (e) { /* 화면 상태 지정 실패는 이동만 */ } }
+    if (typeof it.pick === "function") { try { it.pick(lastQ || ""); } catch (e) { /* 화면 상태 지정 실패는 이동만 */ } }
     if (it.route) S().navigate(it.route);
   }
   function closePop() { active = -1; }
@@ -353,4 +353,8 @@ const SemisSearch = (() => {
   return { init, search, register, terms, open: openPalette, close: closePalette, isOpen, homeItems };
 })();
 
-if (typeof window !== "undefined") window.SemisSearch = SemisSearch;
+if (typeof window !== "undefined") {
+  window.SemisSearch = SemisSearch;
+  /* search.js 보다 먼저 읽힌 파일(문서 서가 · 규정)이 맡겨 둔 프로바이더 */
+  (window.__semisSearchQ || []).splice(0).forEach(p => SemisSearch.register(p));
+}

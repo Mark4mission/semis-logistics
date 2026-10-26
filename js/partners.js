@@ -31,10 +31,10 @@
   const TEAMS = ["A조", "B조", "C조", "일근"];
 
   if (window.SemisDocs) SemisDocs.define(MOD, [
-    { id: "license", label: "인허가 · 지정" }, { id: "roster", label: "요원 현황 제출자료" }, { id: "inspect", label: "정기 · 불시 점검" },
-    { id: "edu", label: "교육 확인" }, { id: "tsa", label: "TSA 교육 확인" }, { id: "drug", label: "향정신성 물질 교육" },
-    { id: "sems", label: "보안관리체계 (SeMS)" }, { id: "misc", label: "기타" }
-  ]);
+    { id: "license", label: "인허가 · 지정" }, { id: "roster", label: "요원 현황 제출자료", short: "요원 현황" }, { id: "inspect", label: "정기 · 불시 점검" },
+    { id: "edu", label: "교육 확인" }, { id: "tsa", label: "TSA 교육 확인", short: "TSA 교육" }, { id: "drug", label: "향정신성 물질 교육", short: "향정신성 교육" },
+    { id: "sems", label: "보안관리체계 (SeMS)", short: "SeMS" }, { id: "misc", label: "기타" }
+  ], { tab: "vendor" });
 
   /* 정기교육 만료 — 교육훈련지침 제13조: 1년 되는 날 전후 30일 안 이수면 기존 기한에서 1년 연장, 아니면 이수일부터 1년.
      시작점 = 인증평가(검색요원) 또는 초기교육(감독자). 이수 기간 경과 후 SUSP_M 개월까지 자격 정지, 그 뒤는 회복 기한 경과.

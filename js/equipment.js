@@ -584,7 +584,7 @@
   if (window.SemisDocs) SemisDocs.define(MOD, [
     { id: "cert", label: "장비 성능 인증 · 허가" }, { id: "proc", label: "운영 · 점검 절차" }, { id: "cctv", label: "CCTV · 영상정보" },
     { id: "rad", label: "방사선 안전" }, { id: "misc", label: "기타" }
-  ]);
+  ], { tab: "docs" });
   (window.SemisDeep = window.SemisDeep || {})[MOD] = (sub) => { if (TABS.some(x => x[0] === sub)) tab = sub; };
   function render(root) {
     const s = C().state;

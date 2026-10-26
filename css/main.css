@@ -5784,6 +5784,40 @@ button.hc-d:focus-visible { outline: 2px solid var(--primary); outline-offset: 1
 .dk-top { display: flex; justify-content: flex-end; margin: -4px 0 6px; }
 .dk-empty { margin: 8px 0; font-size: .84rem; color: var(--text-3); }
 .dk-card .card-title { margin-bottom: 10px; }
+.dk-hl { color: var(--primary-dark); background: var(--primary-soft); border-radius: 3px; padding: 0 1px; }
+.dk-fhit { margin-top: 2px; font-size: .8rem; color: var(--text-3); overflow-wrap: anywhere; }
+.dk-qbar { padding-top: 0; }
+/* 문서 서가 게시판형(문서가 많은 화면) — 게시판(bb-*) 문법에 문서 칸만 더한다 */
+.dkb-bar .bb-cat-b { display: inline-flex; align-items: center; gap: 5px; }
+.dkb-cn { font-size: .78rem; font-weight: 500; color: var(--text-3); }
+.bb-cat-b[aria-pressed="true"] .dkb-cn { color: rgba(255, 255, 255, .82); }
+.dkb-tbl col.c-cat { width: 128px; } .dkb-tbl col.c-file { width: 27%; } .dkb-tbl col.c-at { width: 86px; } .dkb-tbl col.c-act { width: 44px; }
+.dkb-tbl td { vertical-align: top; }
+.dkb-tbl td.bb-no, .dkb-tbl td.bb-at, .dkb-tbl td.bb-catc { padding-top: 9px; }
+.dkb-tw { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 7px; min-width: 0; }
+.dkb-t, .dkb-t.nb-file { display: inline; padding: 0; border: 0; border-radius: 0; background: none; color: var(--text); font-size: .9rem; font-weight: 600; line-height: 1.45; overflow-wrap: anywhere; }
+a.dkb-t:hover, a.dkb-t:focus-visible { color: var(--primary-dark); text-decoration: underline; }
+.dkb-tw .dk-ssi { margin-left: 0; }
+.dkb-ob { font-size: .8rem; }
+.dkb-om { flex: none; padding: 0 5px; border-radius: 3px; background: var(--surface); border: 1px solid var(--border); color: var(--text-3); font-size: .74rem; font-weight: 600; }
+.dkb-sub { margin-top: 2px; font-size: .8rem; color: var(--text-3); }
+.dkb-tc .dk-more { margin-top: 4px; }
+.dkb-fc { min-width: 0; }
+.dkb-fn { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.dkb-x { flex: none; padding: 1px 4px; border: 1px solid var(--border); border-radius: 3px; background: var(--surface-2); color: var(--text-3); font-size: .72rem; font-weight: 600; }
+.dkb-fnn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .84rem; color: var(--text-2); }
+.dkb-fc .cell-sub { display: block; margin-top: 2px; }
+.dkb-row.is-old td { background: var(--surface-2); }
+.dkb-row.is-old .dkb-t { font-weight: 500; }
+.dkb-tbl tr.dkb-row:not(.is-old):hover td { background: var(--primary-soft); }
+.dkb-act { text-align: center; }
+.dkb-mlist { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.dkb-mi { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 10px 2px; border-bottom: 1px solid var(--hair); }
+.dkb-mi.is-old { padding-left: 14px; background: var(--surface-2); }
+.dkb-mt { display: flex; align-items: flex-start; gap: 6px; width: 100%; min-width: 0; }
+.dkb-mt .dkb-t { flex: 0 1 auto; min-width: 0; }
+.dkb-mt .dk-edit { margin-left: auto; }
+.dkb-mi .bb-ms { overflow-wrap: anywhere; }
 /* 체크리스트 증빙 문서 칩 */
 .ck-doc { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; min-height: 28px; padding: 0 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface);
   color: var(--text-2); font-size: .82rem; font-weight: 500; }
@@ -5907,7 +5941,8 @@ button.hc-d:focus-visible { outline: 2px solid var(--primary); outline-offset: 1
   .kc-bar { display: none; }
 }
 @media print {
-  .dk-add, .dk-edit, .dk-old-btn, .ck-docmore { display: none !important; }
+  .dk-add, .dk-edit, .dk-old-btn, .ck-docmore, .dkb-ob { display: none !important; }
+  .dk-hl { background: none; color: inherit; font-weight: 700; }
   .dk-grps { grid-template-columns: 1fr 1fr; }
   .pn-p { border-color: #bbb; }
   .dv-ok, .pn-dot { -webkit-print-color-adjust: exact; print-color-adjust: exact; }

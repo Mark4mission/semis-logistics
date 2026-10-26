@@ -3,7 +3,7 @@
    실행: npm test  (jsdom 필요: npm install)
    구성: [C] 코어(해시·계정·메뉴·정규화·권한·라우터·예정 모듈)
          [D] 대시보드·공지·현황판  [S] 시스템 설정  [M] 이식 모듈 스모크(일정·회의록·연락망·검색)
-         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [IM] 한글 입력 보호  [FL] 운항 현황  [AU] 수검 대응 센터  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [SEC] 서버 보안(비공개 파일·살균·CSP)  [PT] 순찰일지  [SK] 자체 보안점검(수준관리지침 별표 · HWPX)  [UP] 점검 표시 · 다가오는 점검  [CM] v1.29 화면 정돈  [CN] v1.30 편집 모드 · 모바일 접기  [ED] v1.39 보안교육 이수 등록(배포용)  [TA] v1.41 점검교육 · 수검 자료  [DK] v1.47 메인 데스크  [UI] v1.48 지원 카드 · 공통 패널 · 부엉이  [AR] v1.49 아르고 AI 도우미  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
+         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [IM] 한글 입력 보호  [FL] 운항 현황  [AU] 수검 대응 센터  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [SEC] 서버 보안(비공개 파일·살균·CSP)  [PT] 순찰일지  [SK] 자체 보안점검(수준관리지침 별표 · HWPX)  [UP] 점검 표시 · 다가오는 점검  [CM] v1.29 화면 정돈  [CN] v1.30 편집 모드 · 모바일 접기  [ED] v1.39 보안교육 이수 등록(배포용)  [TA] v1.41 점검교육 · 수검 자료  [DK] v1.47 메인 데스크  [UI] v1.48 지원 카드 · 공통 패널 · 부엉이  [AR] v1.49 아르고 AI 도우미  [DS] v1.55 문서 · 규정 검색  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
    ═══════════════════════════════════════════════════════ */
 "use strict";
 const fs = require("fs");
@@ -10554,6 +10554,223 @@ function makeServer(opts = {}) {
       eq(small.length, 0, "작은 글자: " + small.join(","));
       ok(/@media screen and \(max-width: 767px\)[\s\S]*\.bb-search \{ margin-left: 0; width: 100%; \}/.test(c));
       ok(BJS.indexOf("SeMIS.isMobile()") > 0 && BJS.indexOf("bb-mlist") > 0, "모바일 목록");
+    });
+  }
+
+  /* ══════════ [DS] v1.55 문서 · 규정 검색 — 파일명 검색 · 게시판형 문서 목록 · 규정 화면 검색칸 하나 ══════════ */
+  {
+    const FU = (n) => ({ name: n, size: 10, url: "https://mzyuzrxkdcpzxojenwat.supabase.co/storage/v1/object/public/semis-logi-files/docs/x_" + encodeURIComponent(n) });
+    /* reg-sec 문서 n건 — ssop 이 대부분, 하나는 이전 판(같은 ser), 하나는 민감보안정보 */
+    const regDocs = (n) => {
+      const out = [];
+      for (let i = 1; i <= n; i++) {
+        const g = i % 5 === 0 ? "tsa" : i % 7 === 0 ? "gov" : "ssop";
+        const dd = String(1 + (i % 28)).padStart(2, "0"), mm = String(1 + (i % 9)).padStart(2, "0");
+        out.push({ id: "rd" + i, mod: "reg-sec", grp: g, title: "첨부 " + i + " 문서", date: "2026-" + mm + "-" + dd, ser: "s" + i, files: [FU("att" + i + ".pdf")] });
+      }
+      out.push({ id: "rd-ssop", mod: "reg-sec", grp: "ssop", title: "KJ 보안표준업무절차(SSOP) 제1차 개정 (Rev.01)", date: "2026-10-13", ser: "SSOP본문", org: "인천화물팀", ssi: true,
+        files: [FU("KJ SSOP_Comp_Rev01(261008).pdf"), FU("KJ SSOP_Rev01.docx")] });
+      out.push({ id: "rd-ssop0", mod: "reg-sec", grp: "ssop", title: "KJ 보안표준업무절차(SSOP) 제정", date: "2025-03-02", ser: "SSOP본문", files: [FU("KJ SSOP_Orig(250302).pdf")] });
+      return out;
+    };
+    const REGS = [
+      { id: "rg1", scope: "sec", title: "항공보안법", rev: "법률 제21414호", date: "2026-01-01", org: "국토교통부", linkUrl: "https://law.go.kr/x", ideas: [] },
+      { id: "rg2", scope: "sec", title: "에어제타 자체보안계획", rev: "Rev.07", date: "2026-05-01", org: "TAA701", fileUrl: FU("TAA701_plan.pdf").url, fileName: "TAA701_자체보안계획_Rev07.pdf", ideas: [] },
+      { id: "rg3", scope: "safety", title: "화물 표준업무절차", rev: "Rev.03", date: "2026-02-01", org: "CYB027", fileUrl: FU("csop.pdf").url, fileName: "CSOP_Rev03.pdf", ideas: [] }
+    ];
+    const setup = (role, nDocs) => {
+      const e = makeEnv(); loginAs(e, role);
+      e.S.data.docs = regDocs(nDocs == null ? 30 : nDocs);
+      e.S.data.regulations = REGS.map(r => Object.assign({}, r));
+      e.w.SemisRegs.setQuery("sec", ""); e.w.SemisRegs.setQuery("safety", "");
+      e.w.SemisDocs.setQuery("reg-sec", "");
+      return e;
+    };
+    const titles = (e, qq) => e.w.SemisSearch.search(qq).map(x => x.group + ":" + x.title);
+
+    t("DS01 통합 검색: 문서는 첨부 파일명 · 판 묶음 · 분류 · 날짜로, 규정은 제목 · 원문 파일명으로 찾는다", () => {
+      const e = setup("hq");
+      ok(titles(e, "SSOP_Comp").includes("관련 문서:KJ 보안표준업무절차(SSOP) 제1차 개정 (Rev.01)"), titles(e, "SSOP_Comp").join("|"));
+      ok(titles(e, "Rev01(261008)").length === 1, "괄호 · 숫자 그대로");
+      ok(titles(e, "ssop_rev01.docx").length === 1, "두 번째 첨부 · 대소문자 무시");
+      ok(titles(e, "att17.pdf").includes("관련 문서:첨부 17 문서"), "파일명");
+      ok(titles(e, "SSOP본문").length >= 1, "판 묶음 이름");
+      ok(titles(e, "TSA · 해외 첨부 15").includes("관련 문서:첨부 15 문서"), "분류 이름 + 제목 낱말");
+      ok(titles(e, "TAA701_자체보안계획").includes("규정:에어제타 자체보안계획"), "규정 원문 파일명");
+      ok(titles(e, "항공보안법").includes("규정:항공보안법"), "규정 제목");
+      ok(titles(e, "CSOP_Rev03").includes("규정:화물 표준업무절차"), "안전관리 규정");
+      const it = e.w.SemisSearch.search("SSOP_Comp")[0];
+      ok(/KJ SSOP_Comp_Rev01\(261008\)\.pdf/.test(it.sub), "결과 아랫줄에 파일명");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+
+    t("DS02 통합 검색 권한: 민감보안정보 문서는 hq 이상만(파일명으로도), 규정 · 문서는 일반 사용자 · 협력업체에 안 보임", () => {
+      const e = setup("manager");
+      eq(titles(e, "SSOP_Comp").length, 0, "manager — SSI 파일명 안 걸림");
+      ok(titles(e, "att3.pdf").length === 1, "manager — 일반 문서는 보임");
+      ok(titles(e, "항공보안법").includes("규정:항공보안법"));
+      loginAs(e, "user");
+      ok(!titles(e, "att3.pdf").length && !titles(e, "항공보안법").some(x => /^규정:/.test(x)), "user — 없음");
+      loginAs(e, "vendor");
+      ok(!titles(e, "att3.pdf").length && !titles(e, "항공보안법").some(x => /^규정:/.test(x)), "vendor — 없음");
+      e.w.close();
+    });
+
+    await ta("DS03 검색 결과를 누르면 그 화면에서 같은 검색어로 걸러진 채 열린다(규정 화면 · 같은 화면 · 협력사 탭)", async () => {
+      const e = setup("hq");
+      go(e, "dashboard");
+      const S2 = e.w.SemisSearch;
+      S2.open();
+      const inp = q(e, "#hdr-search"); inp.value = "att17.pdf";
+      inp.dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      await tick(30); e.S.renderView(); await tick(10);
+      eq(e.w.location.hash, "#/reg-sec");
+      eq(e.w.SemisRegs.getQuery("sec"), "att17.pdf", "규정 화면 검색어");
+      eq(q(e, "#rg-search").value, "att17.pdf", "검색칸에 표시");
+      eq(qa(e, "[data-dkb] tbody tr.dkb-row").length, 1, "문서 한 줄");
+      ok(q(e, "[data-dkb] .dk-hl"), "파일명 강조");
+      /* 이미 그 화면일 때도 다시 그린다 */
+      S2.open(); inp.value = "항공보안법"; inp.dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      await tick(30);
+      eq(q(e, "#rg-search").value, "항공보안법"); eq(qa(e, "[data-rg-row]").length, 1);
+      /* 협력사 — 문서가 있는 탭으로 */
+      e.S.data.docs = e.S.data.docs.concat([{ id: "pd1", mod: "partners", grp: "inspect", title: "분기 점검 결과", date: "2026-09-30", files: [FU("psc_q3.pdf")] }]);
+      e.w.SemisDeep.partners("staff");
+      S2.open(); inp.value = "psc_q3"; inp.dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      await tick(30); e.S.renderView(); await tick(10);
+      eq(e.w.location.hash, "#/partners");
+      ok(q(e, "[data-dk-card=partners]"), "업체 탭의 문서 카드");
+      ok(q(e, "[data-dk-card=partners] .dk-qbar"), "검색 띠(묶음형)");
+      eq(qa(e, "[data-dk-card=partners] .dk-row:not(.is-old)").length, 1);
+      q(e, "[data-dk-card=partners] [data-dk-qclear]").click();
+      ok(!q(e, "[data-dk-card=partners] .dk-qbar"), "검색 해제");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+
+    t("DS04 게시판형 기준: 문서 20건 이상이면 게시판형, 적으면 지금 묶음형", () => {
+      let e = setup("hq", 18);           // 18 + SSOP 2 = 20
+      go(e, "reg-sec");
+      ok(q(e, "[data-dk-card=reg-sec] [data-dkb]") && !q(e, "[data-dk-card=reg-sec] .dk-grps"), "20건 → 게시판형");
+      eq(e.w.SemisDocs.BOARD_MIN, 20);
+      e.w.close();
+      e = setup("hq", 17);
+      go(e, "reg-sec");
+      ok(!q(e, "[data-dk-card=reg-sec] [data-dkb]") && q(e, "[data-dk-card=reg-sec] .dk-grps"), "19건 → 묶음형");
+      e.w.close();
+    });
+
+    t("DS05 게시판형: 분류 탭(건수) · 번호 · 쪽 나누기 · 쪽당 수 · 이전 판 펼치기", () => {
+      const e = setup("hq", 30);
+      go(e, "reg-sec");
+      const card = () => q(e, "[data-dk-card=reg-sec]");
+      const cats = qa(e, "[data-dkb-cat]").map(b => b.textContent.replace(/\s+/g, " ").trim());
+      eq(cats[0], "전체 31", "판 묶음 단위(SSOP 2판 = 1줄)");
+      ok(cats.some(x => /^SSOP · 첨부 \d+$/.test(x)) && cats.some(x => /^TSA · 해외 6$/.test(x)), cats.join("|"));
+      ok(!cats.some(x => /개정 통보|기타/.test(x)), "빈 분류 탭 없음");
+      eq(qa(e, "[data-dkb] tbody tr.dkb-row:not(.is-old)").length, 20, "20개씩");
+      eq(q(e, "[data-dkb] tbody tr .bb-no").textContent.trim(), "31", "최신 문서가 가장 큰 번호");
+      ok(q(e, "[data-dkb] .bb-pager"), "쪽 번호");
+      q(e, '[data-dkb-pg="2"]').click();
+      eq(qa(e, "[data-dkb] tbody tr.dkb-row:not(.is-old)").length, 11, "2쪽");
+      const sz = q(e, "[data-dkb-size]"); sz.value = "50"; sz.dispatchEvent(new e.w.Event("change"));
+      eq(qa(e, "[data-dkb] tbody tr.dkb-row:not(.is-old)").length, 31, "50개씩 = 한 쪽"); ok(!q(e, "[data-dkb] .bb-pager"));
+      q(e, '[data-dkb-cat="tsa"]').click();
+      eq(qa(e, "[data-dkb] tbody tr.dkb-row").length, 6, "TSA 만");
+      ok(qa(e, "[data-dkb] tbody .bb-catc").every(td => /TSA/.test(td.textContent)));
+      eq(q(e, '[data-dkb-cat="tsa"]').getAttribute("aria-pressed"), "true");
+      q(e, '[data-dkb-cat=""]').click();
+      const ob = q(e, "[data-dkb-old]");
+      ok(ob && /이전 판 1/.test(ob.textContent), "이전 판 단추");
+      ob.click();
+      eq(qa(e, "[data-dkb] tr.dkb-row.is-old").length, 1, "이전 판 펼침");
+      ok(card().querySelectorAll(".dk-edit").length > 0, "hq 수정 단추");
+      eq(qa(e, "[data-dk-card=reg-sec] .dk-add").length, 1, "문서 추가는 카드에 하나");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+
+    t("DS06 규정 화면: 검색칸 하나가 규정표와 문서 목록을 함께 거른다 · 입력칸 그대로 · 안내에 문서 건수", () => {
+      const e = setup("hq", 30);
+      go(e, "reg-sec");
+      ok(!q(e, "[data-dkb] .dkb-search"), "문서 목록에 따로 검색칸 없음");
+      ok(/파일명/.test(q(e, "#rg-search").getAttribute("placeholder")), "안내에 파일명");
+      const qi = q(e, "#rg-search");
+      qi.value = "SSOP_Comㅂ"; qi.dispatchEvent(new e.w.Event("input", { bubbles: true }));
+      ok(q(e, "#rg-search") === qi, "입력칸 노드 유지");
+      eq(e.w.SemisRegs.getQuery("sec"), "SSOP_Com", "조합 중 자모 제외");
+      eq(qa(e, "[data-dkb] tbody tr.dkb-row:not(.is-old)").length, 1, "문서 1줄");
+      ok(/문서 1건/.test(q(e, "#rg-fnote").textContent), q(e, "#rg-fnote").textContent);
+      ok(/아래 문서 1건/.test(q(e, "#rg-body .empty").textContent), "규정표 빈 안내에 문서 건수");
+      ok(!q(e, "[data-dkb] [data-dkb-clear]"), "문서 목록 안 해제 단추 없음(위 검색칸이 맡음)");
+      qi.value = "자체보안계획"; qi.dispatchEvent(new e.w.Event("input", { bubbles: true }));
+      eq(qa(e, "[data-rg-row]").length, 1, "규정 1"); ok(q(e, "[data-dkb] .empty-state"), "문서 없음 안내");
+      qi.value = "SSOP_Orig"; qi.dispatchEvent(new e.w.Event("input", { bubbles: true }));
+      eq(qa(e, "[data-dkb] tr.dkb-row.is-old").length, 1, "이전 판에서만 걸리면 펼침");
+      q(e, "#rg-clear").click();
+      eq(qi.value, ""); eq(qa(e, "[data-rg-row]").length, 2); eq(qa(e, "[data-dkb] tbody tr.dkb-row:not(.is-old)").length, 20, "전체 복귀");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+
+    t("DS07 게시판형 자체 검색칸(다른 화면): 파일명으로 거름 · 입력칸 그대로 · 검색 해제", () => {
+      const e = setup("hq", 0);
+      const docs = [];
+      for (let i = 1; i <= 24; i++) docs.push({ id: "ip" + i, mod: "inspection", grp: i % 2 ? "monthly" : "hazmat", title: (i % 2 ? "월간 점검 " : "위해물품 대장 ") + i, date: "2026-" + String(1 + (i % 9)).padStart(2, "0") + "-10", ser: "x" + i, files: [FU("seclog_" + i + ".pdf")] });
+      e.S.data.docs = docs;
+      e.w.SemisDeep.inspection("docs");
+      go(e, "inspection");
+      const qi = q(e, "#dkb-q-inspection");
+      ok(qi, "자체 검색칸");
+      qi.value = "seclog_13"; qi.dispatchEvent(new e.w.Event("input"));
+      ok(q(e, "#dkb-q-inspection") === qi, "입력칸 노드 유지");
+      eq(qa(e, "[data-dkb] tbody tr.dkb-row").length, 1);
+      ok(/월간 점검 1/.test(q(e, '[data-dkb-cat="monthly"]').textContent) && /위해물품 대장 0/.test(q(e, '[data-dkb-cat="hazmat"]').textContent), "탭 건수도 검색 반영");
+      q(e, "[data-dkb-clear]").click();
+      eq(qi.value, ""); eq(qa(e, "[data-dkb] tbody tr.dkb-row").length, 20);
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+
+    t("DS08 민감보안정보: manager 는 게시판형에서도 링크 · 파일명이 보이지 않고 파일명 검색에 걸리지 않는다", () => {
+      const e = setup("manager", 30);
+      go(e, "reg-sec");
+      const row = q(e, '[data-dkb] tr[data-dk="rd-ssop"]');
+      ok(row, "목록에 보임"); ok(!row.querySelector("a"), "링크 없음"); ok(/SSI/.test(row.textContent));
+      ok(!/SSOP_Comp/.test(row.textContent), "파일명 숨김");
+      ok(!q(e, "[data-dk-card=reg-sec] .dk-edit") && !q(e, "[data-dk-card=reg-sec] .dk-add"), "편집 없음");
+      const qi = q(e, "#rg-search"); qi.value = "SSOP_Comp"; qi.dispatchEvent(new e.w.Event("input", { bubbles: true }));
+      eq(qa(e, "[data-dkb] tbody tr.dkb-row").length, 0, "검색 안 걸림");
+      e.w.close();
+    });
+
+    t("DS09 모바일(390): 게시판형은 표 대신 두 줄 목록 · 편집 단추는 편집 모드 전용", () => {
+      const e = setup("hq", 30);
+      Object.defineProperty(e.w, "innerWidth", { value: 390, configurable: true });
+      go(e, "reg-sec");
+      ok(!q(e, "[data-dkb] table"), "표 없음");
+      eq(qa(e, "[data-dkb] .dkb-mi").length, 20);
+      ok(qa(e, "[data-dkb] .dkb-mi .dk-edit").every(b => b.classList.contains("m-ed")), "m-ed");
+      ok(/SSOP · 첨부/.test(q(e, "[data-dkb] .dkb-mi .bb-ms").textContent), "분류 · 날짜 줄");
+      Object.defineProperty(e.w, "innerWidth", { value: 1024, configurable: true });
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+
+    t("DS11 게시판형 A4 인쇄: 인쇄할 때는 쪽 나누기 없이 지금 조건의 문서 전부, 끝나면 원래 쪽으로", () => {
+      const e = setup("hq", 30);
+      go(e, "reg-sec");
+      eq(qa(e, "[data-dkb] tbody tr.dkb-row:not(.is-old)").length, 20);
+      e.w.dispatchEvent(new e.w.Event("beforeprint"));
+      eq(qa(e, "[data-dkb] tbody tr.dkb-row:not(.is-old)").length, 31, "전부"); ok(!q(e, "[data-dkb] .bb-pager"), "쪽 번호 없음");
+      e.w.dispatchEvent(new e.w.Event("afterprint"));
+      eq(qa(e, "[data-dkb] tbody tr.dkb-row:not(.is-old)").length, 20, "복귀"); ok(q(e, "[data-dkb] .bb-pager"));
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+
+    t("DS10 등록 순서: 문서 서가 · 규정은 search.js 보다 먼저 읽혀도 대기열로 바로 등록(지연 재시도 없음)", () => {
+      const dj = read("js/docshelf.js"), rj = read("js/regulations.js"), sj = read("js/search.js");
+      ok(!/regSearch\(n \+ 1\)/.test(dj), "옛 재시도 제거");
+      ok(/__semisSearchQ/.test(dj) && /__semisSearchQ/.test(rj) && /__semisSearchQ \|\| \[\]\)\.splice\(0\)/.test(sj));
+      const html = read("index.html");
+      ok(html.indexOf("js/docshelf.js") < html.indexOf("js/search.js") && html.indexOf("js/regulations.js") < html.indexOf("js/search.js"), "읽는 순서");
+      const c = read("css/main.css");
+      ok(/\.dkb-t, \.dkb-t\.nb-file \{/.test(c) && /\.dk-hl \{/.test(c), "게시판형 · 강조 스타일");
     });
   }
 

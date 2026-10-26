@@ -44,10 +44,20 @@
       open: l.reduce((n, r) => n + ideasOf(r).filter(i => i.status === "검토중").length, 0)
     };
   }
-  const matchQ = (r, q) => !q || [r.title, r.rev, r.org, r.note, r.lang]
-    .some(v => String(v || "").toLowerCase().includes(q));
+  /* 검색 — 낱말마다 모두 들어 있어야(통합 검색과 같은 방식). 원문 · 신구대조표 파일명 포함 */
+  const termsOf = (q) => String(q || "").trim().toLowerCase().split(/\s+/).filter(Boolean).slice(0, 5);
+  const hayOf = (r) => [r.title, r.rev, r.org, r.note, r.lang, r.fileName, r.diffName, r.date].map(v => String(v || "")).join(" \n ").toLowerCase();
+  const matchQ = (r, q) => { const ts = termsOf(q); return !ts.length || ts.every(t => hayOf(r).indexOf(t) >= 0); };
+  const reEsc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  function mark(text, ts) {
+    const v = String(text == null ? "" : text);
+    if (!ts.length) return esc(v);
+    const re = new RegExp("(" + ts.map(reEsc).join("|") + ")", "gi");
+    return v.split(re).map((p, i) => (i % 2 ? '<mark class="dk-hl">' + esc(p) + "</mark>" : esc(p))).join("");
+  }
+  const docsOn = (scope) => !!window.SemisDocs && (SemisDocs.list(SCOPES[scope].route).length > 0 || SeMIS.canEdit());
   function filtered(scope) {
-    const q = (query[scope] || "").toLowerCase();
+    const q = query[scope] || "";
     return byScope(scope).filter(r => matchQ(r, q))
       .sort((a, b) => String(a.org || "힣").localeCompare(String(b.org || "힣"), "ko")
         || String(a.title).localeCompare(String(b.title), "ko"));
@@ -249,9 +259,12 @@
   function tableHTML(scope) {
     const items = filtered(scope);
     const showIdeas = canSeeIdeas();
+    const ts = termsOf(query[scope]);
+    const nDocs = query[scope] && docsOn(scope) ? SemisDocs.count(SCOPES[scope].route, query[scope]) : 0;
     if (!items.length) return query[scope]
-      ? '<div class="empty">"' + esc(query[scope]) + '" 와(과) 일치하는 규정이 없습니다. (전체 ' + byScope(scope).length +
-        '건)<button type="button" class="btn btn-ghost btn-sm" data-rg-clear style="margin-top:10px">검색 해제</button></div>'
+      ? '<div class="empty">"' + esc(query[scope]) + '" 와(과) 일치하는 규정이 없습니다. (전체 ' + byScope(scope).length + '건' +
+        (nDocs ? ' · 아래 문서 ' + nDocs + '건' : "") +
+        ')<button type="button" class="btn btn-ghost btn-sm" data-rg-clear style="margin-top:10px">검색 해제</button></div>'
       : '<div class="empty">등록된 규정이 없습니다.</div>';
     const canWrite = SeMIS.canEdit();
     return `<div class="table-wrap"><table class="tbl tbl-cap" style="--cap:1260px"><thead><tr>
@@ -262,19 +275,21 @@
         ${canWrite ? '<th style="width:44px" class="no-print"><span class="sr-only">수정</span></th>' : ""}</tr></thead><tbody>
       ${items.map(r => {
         const openCnt = ideasOf(r).filter(i => i.status === "검토중").length;
-        const subBits = [r.org, r.note].filter(Boolean).join(" · ");
-        const sub = subBits ? `<div style="font-size:.78rem;color:var(--text-3)">${esc(subBits)}</div>` : "";
+        const subBits = [r.org, r.note].filter(Boolean);
+        const fhit = ts.length ? [r.fileName, r.diffName].filter(n => n && ts.some(t => n.toLowerCase().indexOf(t) >= 0)) : [];
+        const sub = (subBits.length ? `<div style="font-size:.78rem;color:var(--text-3)">${subBits.map(x => mark(x, ts)).join(" · ")}</div>` : "") +
+          (fhit.length ? `<div class="dk-fhit">${fhit.map(n => mark(n, ts)).join(" · ")}</div>` : "");
         const langTag = r.lang ? ` <span class="badge badge-gray reg-lang">${esc(r.lang)}</span>` : "";
         const titleCell = r.fileUrl
-          ? `<button type="button" class="tbl-open" data-rg-pdf="${esc(r.id)}" title="원문 PDF 열람">${SeMIS.icon("doc", 15)}<span>${esc(r.title)}</span></button>`
+          ? `<button type="button" class="tbl-open" data-rg-pdf="${esc(r.id)}" title="원문 PDF 열람">${SeMIS.icon("doc", 15)}<span>${mark(r.title, ts)}</span></button>`
           : (r.linkUrl
-            ? `<a class="tbl-open" href="${esc(r.linkUrl)}" target="_blank" rel="noopener" title="원문 링크 열기">${SeMIS.icon("link", 15)}<span>${esc(r.title)}</span></a>`
-            : `<b>${esc(r.title)}</b>`);
+            ? `<a class="tbl-open" href="${esc(r.linkUrl)}" target="_blank" rel="noopener" title="원문 링크 열기">${SeMIS.icon("link", 15)}<span>${mark(r.title, ts)}</span></a>`
+            : `<b>${mark(r.title, ts)}</b>`);
         return `
       <tr data-rg-row="${esc(r.id)}">
         <td>${titleCell}${langTag}${r.fileUrl && r.linkUrl ? ` <a class="link-btn" href="${esc(r.linkUrl)}" target="_blank" rel="noopener">링크</a>` : ""}${sub}</td>
         <td>${r.diffUrl ? `<button type="button" class="link-btn" data-rg-diff="${esc(r.id)}">보기</button>` : "-"}</td>
-        <td>${r.rev ? `<span class="badge badge-blue" style="white-space:nowrap">${esc(r.rev)}</span>` : "-"}</td>
+        <td>${r.rev ? `<span class="badge badge-blue" style="white-space:nowrap">${mark(r.rev, ts)}</span>` : "-"}</td>
         <td style="font-size:.84rem;white-space:nowrap">${esc(r.date || "-")}</td>
         ${showIdeas ? `<td><button type="button" class="link-btn" data-rg-idea="${esc(r.id)}" title="개정 아이디어 노트">노트 ${ideasOf(r).length}${openCnt ? `<span class="reg-idea-open">${openCnt}</span>` : ""}</button></td>` : ""}
         ${canWrite ? `<td class="no-print"><button type="button" class="mt-btn m-ed" data-rg-edit="${esc(r.id)}" aria-label="규정 수정" title="규정 수정">${SeMIS.icon("edit", 15)}</button></td>` : ""}
@@ -303,22 +318,17 @@
       <div class="card">
         <div class="cal-toolbar">
           <input id="rg-search" class="ct-search" type="search" style="max-width:300px"
-            placeholder="규정명 · 관리번호 · 버전 검색" value="${esc(query[scope])}" autocomplete="off">
+            placeholder="${docsOn(scope) ? "규정명 · 문서명 · 파일명 검색" : "규정명 · 관리번호 · 파일명 검색"}" value="${esc(query[scope])}" autocomplete="off"
+            aria-label="${docsOn(scope) ? "규정 · 문서 검색" : "규정 검색"}">
           <span id="rg-fnote" class="rg-fnote" hidden></span>
           <button type="button" class="btn btn-ghost btn-sm" id="rg-clear" hidden>검색 해제</button>
         </div>
         <div id="rg-body">${tableHTML(scope)}</div>
-      </div>${window.SemisDocs && (SemisDocs.list(sc.route).length || canWrite) ? SemisDocs.card(sc.route, { title: scope === "sec" ? "SSOP 첨부 · 지침 · 통보 문서" : "관련 문서" }) : ""}`;
+      </div>${docsOn(scope) ? SemisDocs.card(sc.route, { title: scope === "sec" ? "SSOP 첨부 · 지침 · 통보 문서" : "관련 문서", q: query[scope] }) : ""}`;
     if (window.SemisDocs) SemisDocs.wire(root, () => renderPage(root, scope));
 
     const wire = () => {
-      $$("#rg-body [data-rg-clear]").forEach(b => b.onclick = () => {
-        query[scope] = ""; $("#rg-search").value = "";
-        $("#rg-body").innerHTML = tableHTML(scope); wire();
-        const note = $("#rg-fnote"), cb = $("#rg-clear");
-        if (note) note.hidden = true;
-        if (cb) cb.hidden = true;
-      });
+      $$("#rg-body [data-rg-clear]").forEach(b => b.onclick = () => clearQuery());
       $$("#rg-body [data-rg-pdf]").forEach(b => b.onclick = (ev) => {
         ev.stopPropagation();
         const r = list().find(v => v.id === b.dataset.rgPdf);
@@ -343,12 +353,20 @@
       const q = query[scope], note = $("#rg-fnote"), btn = $("#rg-clear");
       if (!note || !btn) return;
       note.hidden = !q; btn.hidden = !q;
-      if (q) note.innerHTML = '검색 결과 <b>' + filtered(scope).length + '</b>건 / 전체 ' + byScope(scope).length + '건';
+      if (q) note.innerHTML = '검색 결과 규정 <b>' + filtered(scope).length + '</b>건 / 전체 ' + byScope(scope).length + '건' +
+        (docsOn(scope) ? ' · 문서 <b>' + SemisDocs.count(sc.route, q) + '</b>건' : "");
     };
-    const repaint = () => { $("#rg-body").innerHTML = tableHTML(scope); wire(); paintFilter(); };
+    /* 검색칸 하나로 규정표와 아래 문서 목록을 함께 거른다(검색칸은 다시 그리지 않음 — 한글 조합 보호) */
+    const repaint = () => {
+      $("#rg-body").innerHTML = tableHTML(scope); wire();
+      if (docsOn(scope)) SemisDocs.refresh(root, sc.route, { q: query[scope] });
+      paintFilter();
+    };
     const clearQuery = () => { query[scope] = ""; $("#rg-search").value = ""; repaint(); };
     $("#rg-search").oninput = () => {
-      query[scope] = $("#rg-search").value.trim();
+      const v = SeMIS.ui.searchValue($("#rg-search").value);
+      if (v === query[scope]) return;
+      query[scope] = v;
       repaint();
     };
     $("#rg-clear").onclick = clearQuery;
@@ -358,9 +376,9 @@
   }
 
   if (window.SemisDocs) SemisDocs.define("reg-sec", [
-    { id: "ssop", label: "팀 보안표준업무절차(SSOP) · 첨부" }, { id: "tsa", label: "TSA · 해외 당국 규정" }, { id: "gov", label: "국토부 보안조치 · 지침" },
-    { id: "notice", label: "개정 통보" }, { id: "misc", label: "기타" }
-  ]);
+    { id: "ssop", label: "팀 보안표준업무절차(SSOP) · 첨부", short: "SSOP · 첨부" }, { id: "tsa", label: "TSA · 해외 당국 규정", short: "TSA · 해외" },
+    { id: "gov", label: "국토부 보안조치 · 지침", short: "국토부 지침" }, { id: "notice", label: "개정 통보" }, { id: "misc", label: "기타" }
+  ], { pick: (q) => { query.sec = q; } });
   Object.keys(SCOPES).forEach(scope => {
     SeMIS.registerModule(SCOPES[scope].route, {
       title: SCOPES[scope].title,
@@ -369,10 +387,28 @@
     });
   });
 
+  /* 통합 검색 — 규정(이 파일은 search.js 보다 먼저 읽혀 대기열에 맡긴다) */
+  const modOk = (route) => {
+    const mn = SeMIS.menuForModule ? SeMIS.menuForModule(route) : null;
+    return !!mn && (SeMIS.navVisible ? SeMIS.navVisible(mn) : SeMIS.canSee(mn));
+  };
+  const searchProvider = {
+    id: "regs", group: "규정", ico: "book", minRank: 2,
+    items: () => list().filter(r => r && r.id && SCOPES[r.scope] && modOk(SCOPES[r.scope].route)).map(r => {
+      const sc = SCOPES[r.scope];
+      return {
+        title: r.title, sub: [sc.title, r.rev, r.date, r.org, r.fileName].filter(Boolean).join(" · "),
+        text: [r.title, r.rev, r.org, r.note, r.lang, r.fileName, r.diffName, r.date, sc.title], route: sc.route,
+        pick: (q) => { query[r.scope] = SeMIS.ui.searchValue(q); if (typeof location !== "undefined" && location.hash === "#/" + sc.route) setTimeout(() => SeMIS.renderView(), 0); } };
+    })
+  };
+  if (window.SemisSearch) SemisSearch.register(searchProvider);
+  else (window.__semisSearchQ = window.__semisSearchQ || []).push(searchProvider);
+
   /* 외부 노출(테스트 겸용) */
   window.SemisRegs = {
     SCOPES, LANGS, IDEA_KINDS, IDEA_STATUS,
-    list, byScope, stats, filtered, matchQ, ideasOf, canSeeIdeas,
+    list, byScope, stats, filtered, matchQ, termsOf, ideasOf, canSeeIdeas,
     getQuery: (scope) => query[scope] || "",
     setQuery: (scope, q) => { query[scope] = String(q || ""); },
     regForm, ideaList, ideaForm, viewPdf

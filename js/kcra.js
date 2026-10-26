@@ -19,7 +19,7 @@
   const dayDiff = (a, b) => Math.round((new Date(b + "T00:00:00Z") - new Date(a + "T00:00:00Z")) / 864e5);
 
   if (window.SemisDocs) SemisDocs.define(MOD, [
-    { id: "agree", label: "보안검색업무 협약 · 운영절차서" }, { id: "desig", label: "상용화주 지정" }, { id: "check", label: "현장점검" },
+    { id: "agree", label: "보안검색업무 협약 · 운영절차서", short: "협약 · 운영절차" }, { id: "desig", label: "상용화주 지정" }, { id: "check", label: "현장점검" },
     { id: "std", label: "보안기준 · 절차" }, { id: "stats", label: "통계" }, { id: "misc", label: "기타" }
   ]);
 

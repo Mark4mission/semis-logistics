@@ -89,8 +89,8 @@
   }
 
   if (window.SemisDocs) SemisDocs.define("serp", [
-    { id: "training", label: "위기대응 교육 · 훈련 결과" }, { id: "material", label: "교안 · 시나리오" }, { id: "plan", label: "계획 · 절차" }, { id: "misc", label: "기타" }
-  ]);
+    { id: "training", label: "위기대응 교육 · 훈련 결과", short: "교육 · 훈련 결과" }, { id: "material", label: "교안 · 시나리오" }, { id: "plan", label: "계획 · 절차" }, { id: "misc", label: "기타" }
+  ], { tab: "runs" });
   const TABS = [["init", "초동대응"], ["org", "조직 · 연락망"], ["contacts", "연락처"], ["forms", "체크리스트 · 양식"], ["runs", "대응 기록"], ["doc", "문서 · 개정"]];
   const RTABS = [["tl", "초동조치"], ["ck", "역할별 체크리스트"], ["notify", "통보 · 보고"], ["log", "상황 기록"], ["subs", "사고자료 대장"]];
   let tab = "init", runSel = "", runTab = "tl", roleF = "", cq = "";

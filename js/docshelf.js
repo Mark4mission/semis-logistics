@@ -1,7 +1,8 @@
 /* 증빙 문서 서가 — 화면마다 붙는 '관련 문서' 묶음. 같은 문서의 여러 판(ser)은 최신 판만 보이고 이전 판은 접는다.
    원본은 비공개 버킷(docs/ · 민감보안정보는 docs-ssi/ — hq 이상 열람). 문서 · 판 이름은 공용 DB 에만.
    SeMIS.data.docs = [{ id, mod, grp, title, date, ser, org, note, ssi, mids[], files[{name,size,url}], src, at, by }]
-   사용: define(mod, [{ id, label }]) → card(mod) / shelf(mod, grp) → wire(box) */
+   사용: define(mod, [{ id, label, short? }], { tab?, pick? }) → card(mod, { q? }) / groupsHTML(mod) → wire(box)
+   문서가 BOARD_MIN 건 이상인 화면은 게시판형(분류 탭 · 검색 · 표 · 쪽), 적으면 묶음형. opts.q 를 주면 화면의 검색칸이 거르고 자체 검색칸은 없다 */
 "use strict";
 
 (() => {
@@ -14,12 +15,17 @@
   const uid = () => "dk" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const me = () => { const u = SeMIS.user; return u ? u.name || u.id || "" : ""; };
   const FILE_MAX = 50 * 1024 * 1024;
-  const GROUPS = {};          // mod → [{ id, label }]
+  const GROUPS = {};          // mod → [{ id, label, short }]
+  const OPTS = {};            // mod → { tab: 문서가 있는 탭(SemisDeep), pick(q): 검색 결과로 갈 때 화면 검색어 }
   const open = {};            // 펼친 이전 판 (ser 키)
 
-  function define(mod, groups) { GROUPS[mod] = (groups || []).map(g => ({ id: String(g.id), label: String(g.label || g.id) })); }
+  function define(mod, groups, o) {
+    GROUPS[mod] = (groups || []).map(g => ({ id: String(g.id), label: String(g.label || g.id), short: String(g.short || g.label || g.id) }));
+    OPTS[mod] = o || {};
+  }
   const groupsOf = (mod) => GROUPS[mod] || [];
   const labelOf = (mod, grp) => { const g = groupsOf(mod).find(x => x.id === grp); return g ? g.label : grp || "기타"; };
+  const shortOf = (mod, grp) => { const g = groupsOf(mod).find(x => x.id === grp); return g ? g.short : grp || "기타"; };
   const byDate = (a, b) => String(b.date || "").localeCompare(String(a.date || "")) || String(a.title || "").localeCompare(String(b.title || ""), "ko");
   const serOf = (d) => d.ser || d.id;
 
@@ -54,69 +60,244 @@
   }
 
   const ext = (f) => { const m = /\.([A-Za-z0-9]{1,5})$/.exec(String((f && f.name) || "")); return m ? m[1].toUpperCase() : "FILE"; };
-  function fileLink(f, label, cls) {
-    return `<a class="nb-file ${cls || ""}" href="${esc(f.url)}" target="_blank" rel="noopener" data-name="${esc(f.name || "")}">${esc(label || f.name || "첨부")}</a>`;
+  function fileLink(f, label, cls, ts) {
+    return `<a class="nb-file ${cls || ""}" href="${esc(f.url)}" target="_blank" rel="noopener" data-name="${esc(f.name || "")}">${mark(label || f.name || "첨부", ts)}</a>`;
   }
-  function rowHTML(d, canW, sub) {
-    const locked = !!d.ssi && SeMIS.roleRank() < 3;          // 민감보안정보 원본은 안전보안파트 이상
+
+  /* ── 검색 — 문서 이름 · 첨부 파일명 · 기관 · 비고 · 판 묶음 · 묶음 이름 · 날짜. 잠긴 민감보안정보(SSI)는 파일명을 넣지 않는다 ── */
+  const termsOf = (q) => String(q || "").trim().toLowerCase().split(/\s+/).filter(Boolean).slice(0, 5);
+  const lockedOf = (d) => !!d.ssi && SeMIS.roleRank() < 3;
+  function hay(d) {
+    return [d.title, d.org, d.note, d.ser, labelOf(d.mod, d.grp), shortOf(d.mod, d.grp), d.date, dot(d.date)]
+      .concat(lockedOf(d) ? [] : (d.files || []).map(f => f && f.name))
+      .filter(Boolean).join(" \n ").toLowerCase();
+  }
+  const hits = (d, ts) => !ts.length || ts.every(t => hay(d).indexOf(t) >= 0);
+  const serHit = (s, ts) => hits(s.cur, ts) || s.old.some(d => hits(d, ts));
+  const oldHit = (s, ts) => ts.length > 0 && s.old.some(d => hits(d, ts));     // 이전 판에서만 걸리면 펼쳐 보인다
+  const reEsc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  function mark(text, ts) {
+    const s = String(text == null ? "" : text);
+    if (!ts || !ts.length) return esc(s);
+    const re = new RegExp("(" + ts.map(reEsc).join("|") + ")", "gi");
+    return s.split(re).map((p, i) => (i % 2 ? '<mark class="dk-hl">' + esc(p) + "</mark>" : esc(p))).join("");
+  }
+
+  /* 화면별 상태 — 검색어 · 분류 · 쪽. ext = 화면 검색칸이 검색어를 정한다(규정 화면) */
+  const BOARD_MIN = 20, SIZES = [10, 20, 50, 100];
+  const ST = {};
+  const stOf = (mod) => ST[mod] || (ST[mod] = { q: "", cat: "", page: 1, size: 20, ext: false });
+  function setQuery(mod, q) { const s = stOf(mod); s.q = SeMIS.ui.searchValue(q); s.cat = ""; s.page = 1; }
+  const isBoard = (mod) => list(mod).length >= BOARD_MIN;
+
+  function rowHTML(d, canW, sub, ts) {
+    const locked = lockedOf(d);
     const files = locked ? [] : (d.files || []);
     const f0 = files[0];
     const meta = [dot(d.date), d.org, d.note].filter(Boolean).map(esc).join('<span class="dk-sep">·</span>');
     return `<li class="dk-row${sub ? " is-old" : ""}" data-dk="${esc(d.id)}">
       <span class="dk-ext mono" aria-hidden="true">${esc(f0 ? ext(f0) : "—")}</span>
       <div class="dk-main">
-        <div class="dk-t">${f0 ? fileLink(f0, d.title) : `<span>${esc(d.title)}</span>`}${d.ssi ? ' <span class="dk-ssi" title="민감보안정보">SSI</span>' : ""}</div>
+        <div class="dk-t">${f0 ? fileLink(f0, d.title, "", ts) : `<span>${mark(d.title, ts)}</span>`}${d.ssi ? ' <span class="dk-ssi" title="민감보안정보">SSI</span>' : ""}</div>
         ${meta ? `<div class="dk-meta">${meta}</div>` : ""}
-        ${files.length > 1 ? `<div class="dk-more">${files.slice(1).map(f => fileLink(f, f.name, "dk-f")).join("")}</div>` : ""}
+        ${files.length > 1 ? `<div class="dk-more">${files.slice(1).map(f => fileLink(f, f.name, "dk-f", ts)).join("")}</div>` : ""}
+        ${ts && ts.length && f0 && !hits(Object.assign({}, d, { files: [] }), ts) ? `<div class="dk-fhit">${mark(f0.name, ts)}</div>` : ""}
       </div>
       ${canW ? `<button type="button" class="mt-btn dk-edit m-ed" data-dk-edit="${esc(d.id)}" aria-label="문서 수정">${icon("notes", 15)}</button>` : ""}
     </li>`;
   }
-  function seriesHTML(s, canW) {
+  function seriesHTML(s, canW, ts) {
     const k = serOf(s.cur);
-    const on = !!open[k];
-    return rowHTML(s.cur, canW, false).replace(/<\/li>\s*$/, "")
+    const on = !!open[k] || oldHit(s, ts);
+    return rowHTML(s.cur, canW, false, ts).replace(/<\/li>\s*$/, "")
       + (s.old.length ? `<button type="button" class="link-btn dk-old-btn" data-dk-old="${esc(k)}" aria-expanded="${on}">이전 판 ${s.old.length}</button>` : "")
-      + `</li>` + (s.old.length && on ? `<li class="dk-olds"><ul>${s.old.map(d => rowHTML(d, canW, true)).join("")}</ul></li>` : "");
+      + `</li>` + (s.old.length && on ? `<li class="dk-olds"><ul>${s.old.map(d => rowHTML(d, canW, true, ts)).join("")}</ul></li>` : "");
   }
   function shelf(mod, grp, opts) {
     opts = opts || {};
     const canW = opts.canEdit === undefined ? SeMIS.canEdit() : !!opts.canEdit;
-    const ss = series(mod, grp);
+    const ts = opts.ts || [];
+    const ss = series(mod, grp).filter(s => serHit(s, ts));
     if (!ss.length) return opts.emptyText === null ? "" : `<p class="dk-empty">${esc(opts.emptyText || "등록된 문서가 없습니다.")}</p>`;
-    return `<ul class="dk-list" data-dk-mod="${esc(mod)}" data-dk-grp="${esc(grp || "")}">${ss.map(s => seriesHTML(s, canW)).join("")}</ul>`;
+    return `<ul class="dk-list" data-dk-mod="${esc(mod)}" data-dk-grp="${esc(grp || "")}">${ss.map(s => seriesHTML(s, canW, ts)).join("")}</ul>`;
   }
   /* 문서 추가 — 화면마다 한 곳(묶음은 등록 창에서 고른다) */
   const addBtn = (mod, grp) => `<button type="button" class="link-btn dk-add m-ed" data-dk-add="${esc(mod)}|${esc(grp || "")}">${icon("plus", 14)}<span>문서 추가</span></button>`;
-  /* 화면 전체 묶음 — 정의된 묶음 순서대로(정의 밖 묶음은 뒤에) */
+  /* 묶음 순서 — 정의된 묶음 순서대로(정의 밖 묶음은 뒤에) */
+  function grpIds(mod, only) {
+    const have = Array.from(new Set(list(mod).map(d => d.grp || "")));
+    const defs = groupsOf(mod).filter(g => !only || only.indexOf(g.id) >= 0);
+    return defs.map(g => g.id).concat(only ? [] : have.filter(g => !defs.some(x => x.id === g)));
+  }
+
+  /* ── 게시판형 — 판 묶음 한 줄(최신 판) · 번호는 날짜 순으로 고정(오래된 것 1) ── */
+  function rowsOf(mod) {
+    const m = new Map();
+    list(mod).forEach(d => { const k = (d.grp || "") + "|" + serOf(d); if (!m.has(k)) m.set(k, []); m.get(k).push(d); });
+    const rows = Array.from(m.values()).map(v => ({ cur: v[0], old: v.slice(1) }));
+    rows.forEach((r, i) => { r.no = rows.length - i; });
+    return rows;
+  }
+  function catsHTML(mod) {
+    const s = stOf(mod), ts = termsOf(s.q);
+    const rows = rowsOf(mod).filter(r => serHit(r, ts));
+    const ids = grpIds(mod).filter(g => !g || list(mod, g).length);
+    const btn = (id, lbl, n) => `<button type="button" class="bb-cat-b" data-dkb-cat="${esc(id)}" aria-pressed="${s.cat === id}">${esc(lbl)} <span class="dkb-cn mono">${n}</span></button>`;
+    return btn("", "전체", rows.length) + ids.map(g => btn(g, shortOf(mod, g), rows.filter(r => (r.cur.grp || "") === g).length)).join("");
+  }
+  function trHTML(mod, d, no, canW, ts, oldN, on) {
+    const locked = lockedOf(d), files = locked ? [] : (d.files || []), f0 = files[0];
+    const old = no == null;
+    const sub = [d.org, d.note].filter(Boolean).map(x => mark(x, ts)).join('<span class="dk-sep">·</span>');
+    const k = (d.grp || "") + "|" + serOf(d);
+    const title = f0 ? fileLink(f0, d.title, "dkb-t", ts) : `<span class="dkb-t">${mark(d.title, ts)}</span>`;
+    return `<tr class="dkb-row${old ? " is-old" : ""}" data-dk="${esc(d.id)}">
+      <td class="bb-no mono">${old ? "" : esc(no)}</td>
+      <td class="bb-catc" title="${esc(labelOf(mod, d.grp))}">${old ? "" : mark(shortOf(mod, d.grp), ts)}</td>
+      <td class="dkb-tc" data-role="title"><div class="dkb-tw">${old ? '<span class="dkb-om">이전 판</span>' : ""}${title}${d.ssi ? '<span class="dk-ssi" title="민감보안정보">SSI</span>' : ""}${oldN ? `<button type="button" class="link-btn dkb-ob" data-dkb-old="${esc(k)}" aria-expanded="${on}">이전 판 ${oldN}</button>` : ""}</div>${sub ? `<div class="dkb-sub">${sub}</div>` : ""}${files.length > 1 ? `<div class="dk-more">${files.slice(1).map(f => fileLink(f, f.name, "dk-f", ts)).join("")}</div>` : ""}</td>
+      <td class="dkb-fc">${f0 ? `<span class="dkb-fn" title="${esc(f0.name || "")}"><span class="dkb-x mono">${esc(ext(f0))}</span><span class="dkb-fnn">${mark(f0.name || "", ts)}</span></span>${files.length > 1 ? `<span class="cell-sub">외 ${files.length - 1}</span>` : ""}` : '<span class="cell-sub">-</span>'}</td>
+      <td class="bb-at mono">${esc(dot(d.date) || "-")}</td>
+      ${canW ? `<td class="dkb-act"><button type="button" class="mt-btn dk-edit m-ed" data-dk-edit="${esc(d.id)}" aria-label="문서 수정">${icon("notes", 15)}</button></td>` : ""}
+    </tr>`;
+  }
+  function miHTML(mod, d, canW, ts, oldN, on, old) {
+    const locked = lockedOf(d), files = locked ? [] : (d.files || []), f0 = files[0];
+    const k = (d.grp || "") + "|" + serOf(d);
+    const title = f0 ? fileLink(f0, d.title, "dkb-t", ts) : `<span class="dkb-t">${mark(d.title, ts)}</span>`;
+    const bits = [old ? "이전 판" : mark(shortOf(mod, d.grp), ts), `<span class="mono">${esc(dot(d.date) || "-")}</span>`]
+      .concat(f0 ? [`<span class="dkb-mf">${mark(f0.name || "", ts)}</span>`] : []);
+    return `<div class="dkb-mi${old ? " is-old" : ""}" data-dk="${esc(d.id)}">
+      <div class="dkb-mt">${title}${d.ssi ? '<span class="dk-ssi" title="민감보안정보">SSI</span>' : ""}${canW ? `<button type="button" class="mt-btn dk-edit m-ed" data-dk-edit="${esc(d.id)}" aria-label="문서 수정">${icon("notes", 15)}</button>` : ""}</div>
+      <div class="bb-ms">${bits.join(" · ")}</div>
+      ${oldN ? `<button type="button" class="link-btn dkb-ob" data-dkb-old="${esc(k)}" aria-expanded="${on}">이전 판 ${oldN}</button>` : ""}
+    </div>`;
+  }
+  function pagerHTML(total, page, sz) {
+    const last = Math.max(1, Math.ceil(total / sz));
+    if (last <= 1) return "";
+    const b0 = Math.floor((page - 1) / 10) * 10 + 1, b1 = Math.min(last, b0 + 9);
+    const btn = (p, lbl, aria, dis, cur) => `<button type="button" class="bb-pg${cur ? " on" : ""}" data-dkb-pg="${p}"${dis ? " disabled" : ""}${cur ? ' aria-current="page"' : ""} aria-label="${esc(aria)}">${lbl}</button>`;
+    let h = btn(1, "«", "첫 쪽", page === 1) + btn(Math.max(1, b0 - 1), "‹", "앞 10쪽", b0 === 1);
+    for (let p = b0; p <= b1; p++) h += btn(p, String(p), p + " 쪽", false, p === page);
+    h += btn(Math.min(last, b1 + 1), "›", "다음 10쪽", b1 === last) + btn(last, "»", "끝 쪽", page === last);
+    return `<nav class="bb-pager" aria-label="쪽 이동">${h}<span class="bb-pgi mono">${page} / ${last}</span></nav>`;
+  }
+  let printing = false;
+  function boardBodyHTML(mod, canW, all) {
+    const s = stOf(mod), ts = termsOf(s.q);
+    all = all || printing;
+    if (s.cat && !list(mod, s.cat).length) s.cat = "";
+    const rows = rowsOf(mod).filter(r => serHit(r, ts) && (!s.cat || (r.cur.grp || "") === s.cat));
+    const last = Math.max(1, Math.ceil(rows.length / s.size));
+    s.page = Math.min(last, Math.max(1, s.page || 1));
+    const pg = all ? rows : rows.slice((s.page - 1) * s.size, s.page * s.size);
+    const on = (r) => !!open[(r.cur.grp || "") + "|" + serOf(r.cur)] || oldHit(r, ts);
+    const mob = SeMIS.isMobile();
+    let body;
+    if (!rows.length) body = ui.empty(ts.length || s.cat ? "조건에 맞는 문서가 없습니다." : "등록된 문서가 없습니다.");
+    else if (mob) body = `<div class="dkb-mlist">${pg.map(r => miHTML(mod, r.cur, canW, ts, r.old.length, on(r), false)
+      + (r.old.length && on(r) ? `<div class="dkb-molds">${r.old.map(d => miHTML(mod, d, canW, ts, 0, false, true)).join("")}</div>` : "")).join("")}</div>`;
+    else body = `<div class="table-wrap"><table class="tbl bb-tbl dkb-tbl tbl-keep" data-no-stack>
+        <colgroup><col class="c-no"><col class="c-cat"><col><col class="c-file"><col class="c-at">${canW ? '<col class="c-act">' : ""}</colgroup>
+        <thead><tr><th class="bb-no">번호</th><th>분류</th><th>문서명</th><th>첨부파일</th><th class="bb-at">날짜</th>${canW ? '<th class="dkb-act"><span class="sr-only">수정</span></th>' : ""}</tr></thead>
+        <tbody>${pg.map(r => trHTML(mod, r.cur, r.no, canW, ts, r.old.length, on(r))
+          + (r.old.length && on(r) ? r.old.map(d => trHTML(mod, d, null, canW, ts, 0, false)).join("") : "")).join("")}</tbody></table></div>`;
+    return `<div class="bb-meta">
+        <span>${s.cat ? esc(shortOf(mod, s.cat)) + " " : "전체 "}<b class="mono">${rows.length}</b>건${s.q ? ` · <q>${esc(s.q)}</q> 검색` : ""}</span>
+        ${s.q && !s.ext ? '<button type="button" class="link-btn" data-dkb-clear>검색 해제</button>' : ""}
+        <span class="spacer"></span>
+        ${rows.length > SIZES[0] ? `<select class="bb-size m-hide" data-dkb-size aria-label="쪽당 문서 수">${SIZES.map(n => `<option value="${n}"${n === s.size ? " selected" : ""}>${n}개씩</option>`).join("")}</select>` : ""}
+      </div>${body}${all ? "" : pagerHTML(rows.length, s.page, s.size)}`;
+  }
+  function boardHTML(mod, canW) {
+    const s = stOf(mod);
+    return `<div class="dkb" data-dkb="${esc(mod)}" data-dkb-w="${canW ? 1 : 0}">
+      <div class="bb-bar dkb-bar">
+        <div class="bb-cats" role="group" aria-label="분류" data-dkb-cats>${catsHTML(mod)}</div>
+        ${s.ext ? "" : `<div class="bb-search dkb-search" role="search" aria-label="문서 검색">${ui.search("dkb-q-" + mod, "문서명 · 파일명 검색", s.q)}</div>`}
+      </div>
+      <div class="dkb-body" data-dkb-body>${boardBodyHTML(mod, canW)}</div>
+    </div>`;
+  }
+  function wireBoard(el) {
+    const mod = el.dataset.dkb, s = stOf(mod), canW = el.dataset.dkbW === "1";
+    const cats = $("[data-dkb-cats]", el), body = $("[data-dkb-body]", el);
+    if (!cats || !body) return;
+    const paint = (top, all) => {
+      cats.innerHTML = catsHTML(mod);
+      body.innerHTML = boardBodyHTML(mod, canW, all);
+      inner();
+      if (top) try { if (el.getBoundingClientRect().top < 0 && el.scrollIntoView) el.scrollIntoView({ block: "start" }); } catch (e) { /* 스크롤 실패 무시 */ }
+    };
+    function inner() {
+      $$("[data-dkb-cat]", cats).forEach(b => b.onclick = () => { s.cat = b.dataset.dkbCat; s.page = 1; paint(); });
+      $$("[data-dkb-pg]", body).forEach(b => b.onclick = () => { s.page = Number(b.dataset.dkbPg); paint(true); });
+      $$("[data-dkb-old]", body).forEach(b => b.onclick = () => { const k = b.dataset.dkbOld; open[k] = !open[k]; paint(); });
+      $$("[data-dk-edit]", body).forEach(b => b.onclick = () => form(b.dataset.dkEdit));
+      const sz = $("[data-dkb-size]", body);
+      if (sz) sz.onchange = () => { s.size = Number(sz.value) || 20; s.page = 1; paint(); };
+      const cl = $("[data-dkb-clear]", body);
+      if (cl) cl.onclick = () => { s.q = ""; s.page = 1; if (qi) qi.value = ""; paint(); };
+    }
+    /* 검색칸은 다시 그리지 않는다(한글 조합 보호) — 분류 탭 · 목록만 바꾼다 */
+    const qi = $("#dkb-q-" + (window.CSS && CSS.escape ? CSS.escape(mod) : mod), el);
+    if (qi) qi.oninput = () => { const v = ui.searchValue(qi.value); if (v === s.q) return; s.q = v; s.page = 1; paint(); };
+    el._dkbPaint = paint;
+    inner();
+  }
+  /* A4 인쇄는 쪽 나누기 없이 지금 조건(분류 · 검색어)에 맞는 문서 전부 */
+  if (typeof window !== "undefined" && window.addEventListener) {
+    window.addEventListener("beforeprint", () => { printing = true; $$("[data-dkb]").forEach(el => { if (el._dkbPaint) el._dkbPaint(false, true); }); });
+    window.addEventListener("afterprint", () => { printing = false; $$("[data-dkb]").forEach(el => { if (el._dkbPaint) el._dkbPaint(false, false); }); });
+  }
+
+  /* 화면 전체 문서 — 많으면 게시판형, 적으면 묶음형. opts.q 가 있으면 그 검색어로 거른다 */
   function groupsHTML(mod, opts) {
     opts = opts || {};
+    const s = stOf(mod);
+    if (opts.q !== undefined) {
+      const v = SeMIS.ui.searchValue(opts.q);
+      if (v !== s.q) { s.q = v; s.page = 1; }
+      s.ext = true;
+    }
     const canW = opts.canEdit === undefined ? SeMIS.canEdit() : !!opts.canEdit;
-    const have = Array.from(new Set(list(mod).map(d => d.grp || "")));
-    const defs = groupsOf(mod).filter(g => !opts.only || opts.only.indexOf(g.id) >= 0);
-    const ids = defs.map(g => g.id).concat(opts.only ? [] : have.filter(g => !defs.some(x => x.id === g)));
-    const shown = ids.filter(g => list(mod, g).length);
     const top = canW && !opts.noAdd ? `<div class="dk-top">${addBtn(mod, opts.only && opts.only.length === 1 ? opts.only[0] : "")}</div>` : "";
-    if (!shown.length) return top + ui.empty("등록된 문서가 없습니다.");
-    return top + `<div class="dk-grps">${shown.map(g => {
-      const n = list(mod, g).length;
-      return `<div class="dk-grp"><div class="dk-gh"><h4>${esc(labelOf(mod, g))}</h4><span class="dk-n mono">${n}</span></div>${shelf(mod, g, { canEdit: canW, emptyText: "문서 없음" })}</div>`;
+    if (!opts.only && isBoard(mod)) return top + boardHTML(mod, canW);
+    const ts = termsOf(s.q);
+    const shown = grpIds(mod, opts.only).filter(g => series(mod, g).some(x => serHit(x, ts)));
+    const qbar = s.q && !s.ext ? `<div class="bb-meta dk-qbar"><span><q>${esc(s.q)}</q> 검색 · <b class="mono">${shown.reduce((n, g) => n + series(mod, g).filter(x => serHit(x, ts)).length, 0)}</b>건</span><button type="button" class="link-btn" data-dk-qclear="${esc(mod)}">검색 해제</button></div>` : "";
+    if (!shown.length) return top + qbar + ui.empty(ts.length && list(mod).length ? "조건에 맞는 문서가 없습니다." : "등록된 문서가 없습니다.");
+    return top + qbar + `<div class="dk-grps">${shown.map(g => {
+      const n = ts.length ? series(mod, g).filter(x => serHit(x, ts)).length : list(mod, g).length;
+      return `<div class="dk-grp"><div class="dk-gh"><h4>${esc(labelOf(mod, g))}</h4><span class="dk-n mono">${n}</span></div>${shelf(mod, g, { canEdit: canW, emptyText: "문서 없음", ts })}</div>`;
     }).join("")}</div>`;
   }
   function card(mod, opts) {
     opts = opts || {};
     const canW = opts.canEdit === undefined ? SeMIS.canEdit() : !!opts.canEdit;
     const body = groupsHTML(mod, Object.assign({}, opts, { noAdd: true }));
-    return `<section class="card dk-card" data-dk-card="${esc(mod)}"><div class="card-title">${icon("folder", 18)}<span>${esc(opts.title || "관련 문서")}</span>${canW ? `<span class="spacer"></span>${addBtn(mod, "")}` : ""}</div>${body}</section>`;
+    return `<section class="card dk-card" data-dk-card="${esc(mod)}"><div class="card-title">${icon("folder", 18)}<span>${esc(opts.title || "관련 문서")}</span>${canW ? `<span class="spacer"></span>${addBtn(mod, "")}` : ""}</div><div class="dk-cbody" data-dk-body="${esc(mod)}">${body}</div></section>`;
   }
+  /* 화면 검색칸이 바뀌었을 때 카드 본문만 다시 그린다(검색칸은 카드 밖이라 그대로) */
+  function refresh(scope, mod, opts) {
+    const box = scope ? $(`[data-dk-body="${(window.CSS && CSS.escape ? CSS.escape(mod) : mod)}"]`, scope) : null;
+    if (!box) return false;
+    box.innerHTML = groupsHTML(mod, Object.assign({}, opts || {}, { noAdd: true }));
+    wire(box);
+    return true;
+  }
+  /* 검색어에 걸리는 줄 수(판 묶음 단위) */
+  function count(mod, q) { const ts = termsOf(q); return (isBoard(mod) ? rowsOf(mod) : grpIds(mod).reduce((a, g) => a.concat(series(mod, g)), [])).filter(r => serHit(r, ts)).length; }
 
   let onChange = null;
   function wire(box, after) {
     if (!box) return;
     onChange = after || onChange;
+    $$("[data-dkb]", box).forEach(wireBoard);
     $$("[data-dk-old]", box).forEach(b => b.onclick = () => { const k = b.dataset.dkOld; open[k] = !open[k]; repaint(); });
     $$("[data-dk-edit]", box).forEach(b => b.onclick = () => form(b.dataset.dkEdit));
     $$("[data-dk-add]", box).forEach(b => b.onclick = () => { const [m, g] = b.dataset.dkAdd.split("|"); form("", { mod: m, grp: g }); });
+    $$("[data-dk-qclear]", box).forEach(b => b.onclick = () => { stOf(b.dataset.dkQclear).q = ""; repaint(); });
   }
   function repaint() {
     if (typeof onChange === "function") { try { onChange(); return; } catch (e) { /* 실패 시 화면 전체 다시 그리기 */ } }
@@ -203,16 +384,28 @@
     if (!mn || !(SeMIS.hasModule && SeMIS.hasModule(mod))) return false;
     return SeMIS.navVisible ? SeMIS.navVisible(mn) : SeMIS.canSee(mn);
   };
-  /* 이 파일은 search.js 보다 먼저 읽히므로(화면이 묶음을 먼저 정의하도록) 준비되면 검색에 등록 */
-  (function regSearch(n) {
-    if (!window.SemisSearch) { if (n < 200) setTimeout(() => regSearch(n + 1), 0); return; }
-    SemisSearch.register({
+  /* 검색 결과로 갈 때 — 문서가 있는 탭으로 바꾸고 그 화면 문서 목록을 검색어로 거른다 */
+  function pickTo(mod, q) {
+    const o = OPTS[mod] || {};
+    if (o.tab && window.SemisDeep && typeof SemisDeep[mod] === "function") { try { SemisDeep[mod](o.tab); } catch (e) { /* 탭만 영향 */ } }
+    setQuery(mod, q);
+    if (typeof o.pick === "function") { try { o.pick(stOf(mod).q); } catch (e) { /* 화면 검색어 지정 실패는 이동만 */ } }
+    if (typeof location !== "undefined" && location.hash === "#/" + mod) setTimeout(() => SeMIS.renderView(), 0);
+  }
+  /* 이 파일은 search.js 보다 먼저 읽힌다 → search.js 가 읽힐 때 대기열(__semisSearchQ)을 등록한다 */
+  const searchProvider = {
     id: "docs", group: "관련 문서", ico: "folder", minRank: 2,
-    items: () => all().filter(d => d && d.mod && modVisible(d.mod) && (!d.ssi || SeMIS.roleRank() >= 3)).map(d => ({
-      title: d.title, sub: [labelOf(d.mod, d.grp), dot(d.date), d.org].filter(Boolean).join(" · "),
-      text: [d.title, d.org, d.note].join(" "), route: d.mod }))
-    });
-  })(0);
+    items: () => all().filter(d => d && d.mod && modVisible(d.mod) && (!d.ssi || SeMIS.roleRank() >= 3)).map(d => {
+      const fn = (d.files || []).map(f => f && f.name).filter(Boolean);
+      return {
+        title: d.title, sub: [labelOf(d.mod, d.grp), dot(d.date), d.org].concat(fn).filter(Boolean).join(" · "),
+        text: [d.title, d.org, d.note, d.ser, labelOf(d.mod, d.grp), d.date, dot(d.date)].concat(fn), route: d.mod,
+        pick: (q) => pickTo(d.mod, q) };
+    })
+  };
+  if (window.SemisSearch) SemisSearch.register(searchProvider);
+  else (window.__semisSearchQ = window.__semisSearchQ || []).push(searchProvider);
 
-  window.SemisDocs = { define, groupsOf, labelOf, list, series, latest, forMid, midsOf, evid, shelf, groupsHTML, card, wire, form, daysAgo };
+  window.SemisDocs = { define, groupsOf, labelOf, shortOf, list, series, latest, forMid, midsOf, evid, shelf, groupsHTML, card, refresh, count, wire, form, daysAgo,
+    setQuery, getQuery: (mod) => stOf(mod).q, isBoard, BOARD_MIN, hits: (d, q) => hits(d, termsOf(q)), pickTo };
 })();
