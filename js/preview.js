@@ -5,7 +5,7 @@
 
 (() => {
   const MAX_BYTES = 20 * 1024 * 1024, MAX_ROWS = 3000, MAX_COLS = 120, MAX_CELLS = 180000, MAX_TEXT = 400000;
-  const KIND = { xlsx: "xlsx", xlsm: "xlsx", csv: "csv", tsv: "csv", txt: "text", md: "text", log: "text", docx: "docx", hwpx: "hwpx", pptx: "pptx" };
+  const KIND = { xlsx: "xlsx", xlsm: "xlsx", xls: "xls", csv: "csv", tsv: "csv", txt: "text", md: "text", log: "text", docx: "docx", hwpx: "hwpx", hwp: "hwp", pptx: "pptx" };
   const extOf = (s) => { const m = /\.([A-Za-z0-9]{1,5})(?:[?#]|$)/.exec(String(s || "")); return m ? m[1].toLowerCase() : ""; };
   const kindOf = (name) => KIND[extOf(name)] || "";
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -20,13 +20,50 @@
   const kid = (el, n) => kids(el, n)[0] || null;
   const byTag = (el, n) => (el ? Array.from(el.getElementsByTagNameNS("*", n)) : []);
   const at = (el, n) => (el ? el.getAttribute(n) : null);
-  const num = (v, d) => { const n = Number(v); return isFinite(n) ? n : d; };
+  const num = (v, d) => { if (v == null || v === "") return d; const n = Number(v); return isFinite(n) ? n : d; };
   const f2 = (n) => String(Math.round(n * 100) / 100);
   const REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
   const rid = (el) => (el ? el.getAttribute("r:id") || el.getAttributeNS(REL, "id") || "" : "");
   const onOff = (el) => !!el && !/^(0|false|off|none)$/i.test(at(el, "val") || "");
   const FONT = "'Malgun Gothic','맑은 고딕','Apple SD Gothic Neo','Noto Sans KR','Noto Sans CJK KR',sans-serif";
   const numOf = (name) => Number((/(\d+)\.xml$/.exec(name) || [0, 0])[1]);
+
+  /* ── 패키지(관계 · 그림) ── 그림은 data: 주소로 문서 안에 넣는다(sandbox 문서는 밖을 읽지 않음) */
+  const MIME = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", bmp: "image/bmp", webp: "image/webp", svg: "image/svg+xml" };
+  const MAX_IMG = 16 * 1024 * 1024;
+  function b64(u8) {
+    let s = "";
+    for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+    return btoa(s);
+  }
+  function dirOf(p) { const i = p.lastIndexOf("/"); return i < 0 ? "" : p.slice(0, i + 1); }
+  function joinPath(base, target) {
+    if (!target) return "";
+    if (target[0] === "/") return target.slice(1);
+    const parts = (dirOf(base) + target).split("/"), out = [];
+    parts.forEach(x => { if (x === "..") out.pop(); else if (x && x !== ".") out.push(x); });
+    return out.join("/");
+  }
+  /* 부품(part)의 관계표 → { Id: { path, type } } (외부 주소는 버림) */
+  function relsOf(entries, part) {
+    const rp = dirOf(part) + "_rels/" + part.slice(dirOf(part).length) + ".rels";
+    const e = entries.find(x => x.name === rp);
+    const out = {};
+    if (!e) return out;
+    byTag(xml(e.data), "Relationship").forEach(r => {
+      if (/external/i.test(at(r, "TargetMode") || "")) return;
+      out[at(r, "Id")] = { path: joinPath(part, at(r, "Target") || ""), type: String(at(r, "Type") || "").replace(/^.*\//, "") };
+    });
+    return out;
+  }
+  /* 그림 → data: 주소. 한 문서에 넣는 그림 양에 한도(budget.left) */
+  function mediaURI(entries, path, budget) {
+    const e = entries.find(x => x.name === path);
+    const m = e && MIME[extOf(path)];
+    if (!e || !m) return "";
+    if (budget) { if (budget.left < e.data.length) { budget.over = true; return ""; } budget.left -= e.data.length; }
+    return "data:" + m + ";base64," + b64(e.data);
+  }
 
   /* ── 색 ── */
   const hex6 = (v) => { const s = String(v || "").replace(/^#/, ""); return /^[0-9a-f]{8}$/i.test(s) ? s.slice(2) : /^[0-9a-f]{6}$/i.test(s) ? s : ""; };
@@ -321,6 +358,8 @@
     if (!wb.sheets.length) wb.sheets = entries.filter(e => /^xl\/worksheets\/sheet\d+\.xml$/.test(e.name)).sort((a, b) => numOf(a.name) - numOf(b.name))
       .map((e, i) => ({ name: "Sheet" + (i + 1), path: e.name, hidden: false }));
     wb.get = get;
+    wb.entries = entries;
+    wb.budget = { left: MAX_IMG };
     return wb;
   }
   const colIdx = (s) => { let n = 0; for (const ch of String(s).toUpperCase()) { const c = ch.charCodeAt(0); if (c < 65 || c > 90) break; n = n * 26 + (c - 64); } return n; };
@@ -352,80 +391,118 @@
     const f = format(n, code, wb.d1904);
     return { t: f.t, kind: "n", color: f.color };
   }
-  function sheetHTML(wb, sh) {
+  /* 시트 XML → 모델(엑셀 97-2003 읽기도 같은 모델을 만든다) */
+  function sheetModel(wb, sh) {
     const d = xml(wb.get(sh.path).data);
-    const notes = [];
     const sv = byTag(d, "sheetView")[0];
-    const grid = !sv || !/^(0|false)$/i.test(at(sv, "showGridLines") || "");
     const fp = byTag(d, "sheetFormatPr")[0];
-    const defW = num(at(fp, "defaultColWidth"), 0) || (num(at(fp, "baseColWidth"), 8) + 0.71);
-    const defH = num(at(fp, "defaultRowHeight"), 15) || 15;
-    const colW = {}, colHid = {}, colStyle = {};
+    const m = { name: sh.name, grid: !sv || !/^(0|false)$/i.test(at(sv, "showGridLines") || ""),
+      defW: num(at(fp, "defaultColWidth"), 0) || (num(at(fp, "baseColWidth"), 8) + 0.71), defH: num(at(fp, "defaultRowHeight"), 15) || 15,
+      colW: {}, colHid: {}, colStyle: {}, rowH: {}, rowHid: {}, cells: new Map(), merges: [], maxR: 0, maxC: 0, cut: false, draw: null };
     byTag(d, "col").forEach(c => {
       const a = num(at(c, "min"), 0), b = Math.min(num(at(c, "max"), 0), MAX_COLS + 50);
       for (let k = a; k <= b; k++) {
-        if (at(c, "width") != null) colW[k] = num(at(c, "width"), defW);
-        if (/^(1|true)$/i.test(at(c, "hidden") || "")) colHid[k] = true;
-        if (at(c, "style") != null) colStyle[k] = num(at(c, "style"), 0);
+        if (at(c, "width") != null) m.colW[k] = num(at(c, "width"), m.defW);
+        if (/^(1|true)$/i.test(at(c, "hidden") || "")) m.colHid[k] = true;
+        if (at(c, "style") != null) m.colStyle[k] = num(at(c, "style"), 0);
       }
     });
-    const rowH = {}, rowHid = {};
-    const cells = new Map();
-    let maxR = 0, maxC = 0, cut = false, rowNo = 0;
-    const key = (r, c) => r * 20000 + c;
-    const styled = (s) => { const x = wb.xfs[s]; if (!x) return false; const b = wb.borders[x.border]; return !!(wb.fills[x.fill] || (b && (b.l || b.r || b.t || b.b))); };
+    let rowNo = 0;
     byTag(d, "row").forEach(row => {
       rowNo = num(at(row, "r"), rowNo + 1);
-      if (rowNo > MAX_ROWS) { cut = true; return; }
-      if (at(row, "ht") != null) rowH[rowNo] = num(at(row, "ht"), defH);
-      if (/^(1|true)$/i.test(at(row, "hidden") || "")) rowHid[rowNo] = true;
+      if (rowNo > MAX_ROWS) { m.cut = true; return; }
+      if (at(row, "ht") != null) m.rowH[rowNo] = num(at(row, "ht"), m.defH);
+      if (/^(1|true)$/i.test(at(row, "hidden") || "")) m.rowHid[rowNo] = true;
       let colNo = 0;
       kids(row, "c").forEach(c => {
         const rf = ref(at(c, "r"));
         colNo = rf ? rf.c : colNo + 1;
-        if (colNo > MAX_COLS) { cut = true; return; }
+        if (colNo > MAX_COLS) { m.cut = true; return; }
         const v = kid(c, "v"), is = kid(c, "is");
-        const cell = { s: num(at(c, "s"), 0), t: at(c, "t") || "", v: v ? v.textContent : null, is: is ? byTag(is, "t").filter(t => ln(t.parentNode) !== "rPh").map(t => t.textContent).join("") : "" };
-        cells.set(key(rowNo, colNo), cell);
-        const has = (cell.v != null && cell.v !== "") || cell.is;
-        if (has || styled(cell.s)) { if (rowNo > maxR) maxR = rowNo; if (colNo > maxC) maxC = colNo; }
+        putCell(wb, m, rowNo, colNo, { s: num(at(c, "s"), 0), t: at(c, "t") || "", v: v ? v.textContent : null, is: is ? byTag(is, "t").filter(t => ln(t.parentNode) !== "rPh").map(t => t.textContent).join("") : "" });
       });
     });
-    const merges = [];
-    byTag(d, "mergeCell").forEach(m => {
-      const [a, b] = String(at(m, "ref") || "").split(":").map(ref);
-      if (!a || !b) return;
-      const g = { r0: Math.min(a.r, b.r), c0: Math.min(a.c, b.c), r1: Math.min(Math.max(a.r, b.r), MAX_ROWS), c1: Math.min(Math.max(a.c, b.c), MAX_COLS) };
-      if (g.r0 > MAX_ROWS || g.c0 > MAX_COLS) return;
-      merges.push(g);
-      if (g.r1 > maxR) maxR = g.r1;
-      if (g.c1 > maxC) maxC = g.c1;
+    byTag(d, "mergeCell").forEach(mc => {
+      const [a, b] = String(at(mc, "ref") || "").split(":").map(ref);
+      if (a && b) addMerge(m, Math.min(a.r, b.r), Math.min(a.c, b.c), Math.max(a.r, b.r), Math.max(a.c, b.c));
     });
-    if (maxR * Math.max(1, maxC) > MAX_CELLS) { maxR = Math.max(1, Math.floor(MAX_CELLS / Math.max(1, maxC))); cut = true; }
-    if (cut) notes.push("앞 " + maxR.toLocaleString("en-US") + "행 · " + colName(Math.min(maxC, MAX_COLS)) + "열까지만 표시");
-    if (byTag(d, "drawing").length || byTag(d, "legacyDrawing").length) notes.push("그림 · 차트는 표시하지 않음");
+    const D = window.SemisPreview.register && window.SemisPreview.register.draw;
+    if (D) { try { m.draw = D.sheetDrawings(wb.entries, sh.path, d, wb.budget); } catch (e) { m.draw = { items: [], flags: { pic: true } }; } }
+    return m;
+  }
+  const KEY = (r, c) => r * 20000 + c;
+  function putCell(wb, m, r, c, cell) {
+    m.cells.set(KEY(r, c), cell);
+    const x = wb.xfs[cell.s], b = x && wb.borders[x.border];
+    const has = (cell.v != null && cell.v !== "") || cell.is;
+    if (has || (x && (wb.fills[x.fill] || (b && (b.l || b.r || b.t || b.b))))) { if (r > m.maxR) m.maxR = r; if (c > m.maxC) m.maxC = c; }
+  }
+  function addMerge(m, r0, c0, r1, c1) {
+    if (r0 > MAX_ROWS || c0 > MAX_COLS) return;
+    const g = { r0, c0, r1: Math.min(r1, MAX_ROWS), c1: Math.min(c1, MAX_COLS) };
+    m.merges.push(g);
+    if (g.r1 > m.maxR) m.maxR = g.r1;
+    if (g.c1 > m.maxC) m.maxC = g.c1;
+  }
+  const colPx = (w) => Math.max(2, Math.round(w * 7 + 5));
+  /* 모델 → 표 HTML(+ 그림 · 도형은 걸린 칸 안에 겹쳐 놓는다) */
+  function renderSheet(wb, m) {
+    const notes = [];
+    const D = window.SemisPreview.register && window.SemisPreview.register.draw;
+    const items = m.draw ? m.draw.items : [];
+    items.forEach(it => {                                  // 그림이 걸린 칸까지 보이게
+      const r1 = it.to ? it.to.r : it.r, c1 = it.to ? it.to.c : it.c;
+      m.maxR = Math.min(MAX_ROWS, Math.max(m.maxR, r1)); m.maxC = Math.min(MAX_COLS, Math.max(m.maxC, c1));
+    });
+    let { maxR, maxC } = m;
+    if (maxR * Math.max(1, maxC) > MAX_CELLS) { maxR = Math.max(1, Math.floor(MAX_CELLS / Math.max(1, maxC))); m.cut = true; }
+    if (m.cut) notes.push("앞 " + maxR.toLocaleString("en-US") + "행 · " + colName(Math.min(maxC, MAX_COLS)) + "열까지만 표시");
     const anchor = new Map(), covered = new Set();
-    merges.forEach(g => { anchor.set(key(g.r0, g.c0), g); for (let r = g.r0; r <= g.r1; r++) for (let c = g.c0; c <= g.c1; c++) if (r !== g.r0 || c !== g.c0) covered.add(key(r, c)); });
+    m.merges.forEach(g => { anchor.set(KEY(g.r0, g.c0), g); for (let r = g.r0; r <= g.r1; r++) for (let c = g.c0; c <= g.c1; c++) if (r !== g.r0 || c !== g.c0) covered.add(KEY(r, c)); });
     const rows = [], cols = [];
-    for (let r = 1; r <= maxR; r++) if (!rowHid[r]) rows.push(r);
-    for (let c = 1; c <= maxC; c++) if (!colHid[c]) cols.push(c);
-    const cellAt = (r, c) => cells.get(key(r, c));
-    const xfAt = (r, c) => { const x = cellAt(r, c); return wb.xfs[x ? x.s : colStyle[c] != null ? colStyle[c] : 0] || null; };
+    for (let r = 1; r <= maxR; r++) if (!m.rowHid[r]) rows.push(r);
+    for (let c = 1; c <= maxC; c++) if (!m.colHid[c]) cols.push(c);
+    const wOf = (c) => (m.colHid[c] ? 0 : colPx(m.colW[c] != null ? m.colW[c] : m.defW));
+    const hOf = (r) => (m.rowHid[r] ? 0 : (m.rowH[r] != null ? m.rowH[r] : m.defH) * 96 / 72);
+    /* 그림 → 걸린 칸(병합이면 병합 첫 칸)과 그 칸 안 위치 */
+    const drawAt = new Map();
+    items.forEach(it => {
+      let r = it.r, c = it.c, dx = it.dx, dy = it.dy;
+      while (m.rowHid[r] && r < maxR) { r++; dy = 0; }
+      while (m.colHid[c] && c < maxC) { c++; dx = 0; }
+      const g = m.merges.find(x => r >= x.r0 && r <= x.r1 && c >= x.c0 && c <= x.c1);
+      if (g) { for (let k = g.c0; k < c; k++) dx += wOf(k); for (let k = g.r0; k < r; k++) dy += hOf(k); r = g.r0; c = g.c0; }
+      let w = it.w, h = it.h;
+      if ((!w || !h) && it.to) {
+        if (!w) { w = -it.dx + it.to.dx; for (let k = it.c; k < it.to.c; k++) w += wOf(k); }
+        if (!h) { h = -it.dy + it.to.dy; for (let k = it.r; k < it.to.r; k++) h += hOf(k); }
+      }
+      if (w <= 0 || h <= 0) return;
+      const k = KEY(r, c);
+      if (!drawAt.has(k)) drawAt.set(k, []);
+      drawAt.get(k).push(`<div class="dr" style="left:${f2(dx)}px;top:${f2(dy)}px;width:${f2(w)}px;height:${f2(h)}px">${it.render(w, h)}</div>`);
+    });
+    /* 안내 — 그림을 그리면서 모은 표시(차트 자리 · 못 그린 그림)까지 */
+    if (m.draw && m.draw.flags.chart) notes.push("차트는 자리만 표시");
+    if (m.draw && m.draw.flags.chartOff) notes.push("차트는 표시하지 않음");
+    if ((m.draw && m.draw.flags.pic) || (wb.budget && wb.budget.over) || m.legacyPic) notes.push("일부 그림(EMF 등)은 표시하지 않음");
+    const cellAt = (r, c) => m.cells.get(KEY(r, c));
+    const xfAt = (r, c) => { const x = cellAt(r, c); return wb.xfs[x ? x.s : m.colStyle[c] != null ? m.colStyle[c] : 0] || null; };
     const side = (r, c, sd) => {
       if (r < 1 || c < 1) return "";
       const x = xfAt(r, c); const b = x && wb.borders[x.border]; const e = b && b[sd];
       return e && BORDER_CSS[e.s] ? BORDER_CSS[e.s] + " #" + e.c : "";
     };
-    const GRID = grid ? "1px solid #e1e4e8" : "none";
+    const GRID = m.grid ? "1px solid #e1e4e8" : "none";
     const rank = (v) => (v ? parseInt(v, 10) * 10 + (/double/.test(v) ? 4 : /solid/.test(v) ? 3 : /dashed/.test(v) ? 2 : 1) : 0);
     const strong = (a, b) => (rank(b) > rank(a) ? b : a);
     const classes = new Map();
     const cls = (css) => { if (!css) return ""; let k = classes.get(css); if (!k) { k = "s" + classes.size; classes.set(css, k); } return k; };
     const visCount = (list, a, b) => list.filter(x => x >= a && x <= b).length;
-    const empty = (r, c) => { if (covered.has(key(r, c)) || anchor.has(key(r, c))) return false; const x = cellAt(r, c); return !x || ((x.v == null || x.v === "") && !x.is); };
+    const empty = (r, c) => { if (covered.has(KEY(r, c)) || anchor.has(KEY(r, c))) return false; const x = cellAt(r, c); return !x || ((x.v == null || x.v === "") && !x.is); };
     const body = rows.map(r => {
       const tds = cols.map(c => {
-        const k = key(r, c);
+        const k = KEY(r, c);
         if (covered.has(k)) return "";
         const g = anchor.get(k) || { r0: r, c0: c, r1: r, c1: c };
         const x = cellAt(r, c);
@@ -454,28 +531,37 @@
         st.push("border-left:" + (L || GRID), "border-top:" + (T || GRID), "border-right:" + (R || GRID), "border-bottom:" + (B || GRID));
         const cs = visCount(cols, g.c0, g.c1), rs = visCount(rows, g.r0, g.r1);
         const txt = xf.wrap ? val.t : String(val.t).replace(/\r?\n/g, " ");
-        const ov = !xf.wrap && val.kind === "s" && txt && (!h || h === "left") && cs === 1 && empty(r, c + 1);
+        /* 넘치는 글자는 빈 이웃 칸으로(엑셀과 같게: 왼쪽 정렬→오른쪽, 가운데→양쪽, 오른쪽 정렬→왼쪽) */
+        const ovs = !xf.wrap && val.kind === "s" && txt && cs === 1 && !anchor.has(k)
+          ? (!h || h === "left" ? (empty(r, c + 1) ? "ov" : "") : h === "center" ? (empty(r, c - 1) && empty(r, c + 1) ? "ov oc" : "") : h === "right" ? (empty(r, c - 1) ? "ov or" : "") : "") : "";
+        const ov = !!ovs;
+        const dr = drawAt.get(k);
         const c2 = cls(st.join(";"));
+        const klass = [c2, ovs, dr ? "anc" : ""].filter(Boolean).join(" ");
         const tip = !xf.wrap && !ov && txt.length >= 6 ? ` title="${esc(txt)}"` : "";
-        return `<td${c2 || ov ? ` class="${[c2, ov ? "ov" : ""].filter(Boolean).join(" ")}"` : ""}${cs > 1 ? ` colspan="${cs}"` : ""}${rs > 1 ? ` rowspan="${rs}"` : ""}${tip}>${esc(txt)}</td>`;
+        /* 줄바꿈 칸은 행 높이 안에서만(엑셀처럼 잘림) — 그림 위치가 밀리지 않게 */
+        let hh = 0; if (xf.wrap) for (const rr of rows) { if (rr >= g.r0 && rr <= g.r1) hh += hOf(rr); }
+        const inner = xf.wrap && txt ? `<div class="cv" style="max-height:${f2(Math.max(10, hh - 2))}px">${esc(txt)}</div>` : ov && h && h !== "left" ? `<div class="fx">${esc(txt)}</div>` : esc(txt);
+        return `<td${klass ? ` class="${klass}"` : ""}${cs > 1 ? ` colspan="${cs}"` : ""}${rs > 1 ? ` rowspan="${rs}"` : ""}${tip}>${inner}${dr ? dr.join("") : ""}</td>`;
       }).join("");
-      const ht = rowH[r] != null ? rowH[r] : defH;
-      return `<tr style="height:${f2(ht)}pt"><th class="rh">${r}</th>${tds}</tr>`;
+      return `<tr style="height:${f2(hOf(r))}px"><th class="rh">${r}</th>${tds}</tr>`;
     }).join("");
-    const px = (w) => Math.max(2, Math.round(w * 7 + 5));
-    const colgroup = `<col style="width:40px">` + cols.map(c => `<col style="width:${px(colW[c] != null ? colW[c] : defW)}px">`).join("");
+    const colgroup = `<col style="width:40px">` + cols.map(c => `<col style="width:${wOf(c)}px">`).join("");
     const head = `<tr><th class="cn"></th>${cols.map(c => `<th>${colName(c)}</th>`).join("")}</tr>`;
-    const total = 40 + cols.reduce((n, c) => n + px(colW[c] != null ? colW[c] : defW), 0);
+    const total = 40 + cols.reduce((n, c) => n + wOf(c), 0);
     const css = Array.from(classes.entries()).map(([v, k]) => `.${k}{${v}}`).join("\n");
     const tbl = rows.length && cols.length
       ? `<table class="xl" style="width:${total}px"><colgroup>${colgroup}</colgroup><thead>${head}</thead><tbody>${body}</tbody></table>`
       : `<p class="pv-empty">빈 시트입니다.</p>`;
-    return { doc: page(XL_CSS + css, tbl), notes };
+    return { doc: page(XL_CSS + (D ? "\n" + D.DRAW_CSS : "") + "\n" + css, tbl), notes };
   }
+  const sheetHTML = (wb, sh) => renderSheet(wb, sheetModel(wb, sh));
   const XL_CSS = `body{margin:0;background:#fff;color:#111;font:11pt/1.25 ${FONT}}
 .xl{border-collapse:collapse;table-layout:fixed}
-.xl td{padding:1px 3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom;word-break:keep-all;overflow-wrap:anywhere}
+:where(.xl) td{padding:1px 3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom;word-break:keep-all;overflow-wrap:anywhere}
 .xl td.ov{overflow:visible;position:relative;z-index:1}
+.xl .fx{display:flex;white-space:nowrap}.xl td.oc .fx{justify-content:center}.xl td.or .fx{justify-content:flex-end}
+.xl .cv{overflow:hidden}
 .xl thead th{position:sticky;top:0;z-index:3;height:20px;background:#f3f4f6;color:#555;font:500 9pt/1 ${FONT};border:1px solid #d6d9de;text-align:center}
 .xl th.rh{position:sticky;left:0;z-index:2;min-width:32px;background:#f3f4f6;color:#555;font:500 9pt/1 ${FONT};border:1px solid #d6d9de;text-align:center;padding:0 2px}
 .xl thead th.cn{left:0;z-index:4}
@@ -587,6 +673,18 @@
     }
     const counters = {};
     let pics = 0;
+    const docRels = relsOf(entries, "word/document.xml"), budget = { left: MAX_IMG };
+    /* 본문 그림(wp:inline · wp:anchor) — 크기는 extent(EMU → pt) */
+    function imgOf(x) {
+      const blip = byTag(x, "blip")[0];
+      const id = blip ? blip.getAttribute("r:embed") || blip.getAttributeNS(REL, "embed") : "";
+      const rel = id && docRels[id];
+      const u = rel ? mediaURI(entries, rel.path, budget) : "";
+      if (!u) return "";
+      const ext = byTag(x, "extent")[0];
+      const w = num(at(ext, "cx"), 0) / 12700, hh = num(at(ext, "cy"), 0) / 12700;
+      return `<img class="im" src="${u}" alt=""${w && hh ? ` style="width:${f2(w)}pt;height:${f2(hh)}pt"` : ""}>`;
+    }
     function listLabel(numPr) {
       const id = at(kid(numPr, "numId"), "w:val") || "", lv = Math.min(8, num(at(kid(numPr, "ilvl"), "w:val"), 0));
       const lvls = nums[id];
@@ -632,7 +730,9 @@
             else if (m === "noBreakHyphen") h += "-";
             else if (m === "drawing" || m === "pict" || m === "object") {
               const tx = byTag(x, "txbxContent");
-              if (tx.length) tx.forEach(t => { out.boxes.push('<div class="txbx">' + blocks(t) + "</div>"); });
+              const img = imgOf(x);
+              if (img) h += img;
+              else if (tx.length) tx.forEach(t => { out.boxes.push('<div class="txbx">' + blocks(t) + "</div>"); });
               else { pics++; h += '<span class="pic">그림</span>'; }
             }
           });
@@ -758,7 +858,8 @@
     const html = bodyEl ? blocks(bodyEl) : "";
     const pages = html.split(PB).map(h => `<div class="pg" style="width:${f2(wpt)}pt;padding:${pad};font-size:${f2(defSz)}pt">${h || "<p>&#8203;</p>"}</div>`).join("");
     const notes = pics ? ["그림은 표시하지 않음"] : [];
-    return { kind: "docx", parts: [{ name: "", doc: page(PAPER_CSS + "\n.li{white-space:nowrap}", pages), notes }] };
+    if (budget.over) notes.push("큰 그림 일부는 표시하지 않음");
+    return { kind: "docx", parts: [{ name: "", doc: page(PAPER_CSS + "\n.li{white-space:nowrap}\n.im{max-width:100%;height:auto;vertical-align:middle}", pages), notes }] };
   }
 
   /* ── HWPX — hwpx.js 의 A4 그리기를 구역(section)마다 ── */
@@ -776,116 +877,65 @@
     return { kind: "hwpx", parts: [{ name: "", doc: page(css + `\n@media (max-width:600px){.hx-doc{width:auto!important;padding:12px!important;min-height:0!important}}`, body), notes }] };
   }
 
-  /* ── PPTX — 슬라이드마다 글 · 표를 위에서 아래 순서로(배치 · 그림은 원본과 다름) ── */
-  function pptx(entries) {
-    const get = (n) => entries.find(e => e.name === n);
-    const pres = get("ppt/presentation.xml"), rels = get("ppt/_rels/presentation.xml.rels");
-    let order = [];
-    if (pres && rels) {
-      const rmap = {};
-      byTag(xml(rels.data), "Relationship").forEach(r => { rmap[at(r, "Id")] = at(r, "Target") || ""; });
-      order = byTag(xml(pres.data), "sldId").map(s => { const t = rmap[rid(s)] || ""; return t ? "ppt/" + t.replace(/^\/?ppt\//, "").replace(/^\.\//, "") : ""; }).filter(p => p && get(p));
+  /* 바이트 → { kind, parts[{ name, doc, notes[] }], enc? }
+     겉모양(확장자)보다 속(서명)을 따른다: ZIP 이면 OOXML · HWPX, CFB 면 엑셀 97-2003 · 한글 · 암호 걸린 오피스 문서.
+     opts.password — 문서 암호(호출하는 동안만 쓴다) */
+  const fail = (code) => Object.assign(new Error(code), { code });
+  const isZip = (u8) => u8.length > 4 && u8[0] === 0x50 && u8[1] === 0x4B && (u8[2] === 3 || u8[2] === 5 || u8[2] === 7);
+  async function fromZip(u8, k) {
+    if (!window.SemisHwpx || !SemisHwpx.unzip) throw new Error("unzip");
+    const entries = await SemisHwpx.unzip(u8);
+    const has = (n) => entries.some(e => e.name === n);
+    const kind = has("xl/workbook.xml") ? "xlsx" : has("word/document.xml") ? "docx" : has("ppt/presentation.xml") ? "pptx" : has("Contents/header.xml") ? "hwpx" : k;
+    if (kind === "xlsx") return xlsx(entries);
+    if (kind === "docx") return docx(entries);
+    if (kind === "hwpx") return hwpx(entries);
+    if (kind === "pptx") {
+      const D = window.SemisPreview.register && window.SemisPreview.register.draw;
+      if (!D) throw new Error("draw");
+      return D.pptx(entries);
     }
-    if (!order.length) order = entries.filter(e => /^ppt\/slides\/slide\d+\.xml$/.test(e.name)).sort((a, b) => numOf(a.name) - numOf(b.name)).map(e => e.name);
-    if (!order.length) throw new Error("pptx");
-    let pics = 0;
-    const ALG = { ctr: "center", r: "right", just: "justify", dist: "justify" };
-    function paras(txBody, title) {
-      return kids(txBody, "p").map(p => {
-        const pPr = kid(p, "pPr");
-        const lvl = num(at(pPr, "lvl"), 0);
-        const bu = kid(pPr, "buChar"), none = kid(pPr, "buNone");
-        let h = "";
-        kids(p).forEach(r => {
-          const n = ln(r);
-          if (n === "r" || n === "fld") {
-            const rp = kid(r, "rPr"), t = kid(r, "t");
-            const st = [];
-            if (rp && /^(1|true)$/.test(at(rp, "b") || "")) st.push("font-weight:700");
-            if (rp && /^(1|true)$/.test(at(rp, "i") || "")) st.push("font-style:italic");
-            if (rp && at(rp, "u") && at(rp, "u") !== "none") st.push("text-decoration:underline");
-            const clr = rp ? byTag(kid(rp, "solidFill"), "srgbClr")[0] : null;
-            const c = clr ? hex6(at(clr, "val")) : "";
-            if (c && !/^(FFFFFF|000000)$/i.test(c)) st.push("color:#" + c);
-            const tx = t ? esc(t.textContent) : "";
-            if (tx) h += st.length ? `<span style="${st.join(";")}">${tx}</span>` : tx;
-          } else if (n === "br") h += "<br>";
-        });
-        if (!h) return "";
-        const al = ALG[at(pPr, "algn")] || "";
-        const bullet = !title && !none && (bu || lvl > 0) ? `<span class="bu">${bu && at(bu, "char") && !PUA.test(at(bu, "char")) ? esc(at(bu, "char")) : "•"}</span>` : "";
-        return `<p style="${lvl ? "margin-left:" + lvl * 18 + "pt;" : ""}${al ? "text-align:" + al : ""}">${bullet}${h}</p>`;
-      }).join("");
-    }
-    function shapes(tree) {
-      const items = [];
-      kids(tree).forEach(s => {
-        const n = ln(s);
-        const off = byTag(s, "off")[0];
-        const pos = { y: num(at(off, "y"), 0), x: num(at(off, "x"), 0) };
-        if (n === "sp") {
-          const ph = byTag(kid(s, "nvSpPr"), "ph")[0];
-          const title = !!ph && /title/i.test(at(ph, "type") || "");
-          const tb = kid(s, "txBody");
-          const h = tb ? paras(tb, title) : "";
-          if (h) items.push(Object.assign({ h: title ? `<h2>${h.replace(/<\/?p[^>]*>/g, " ").trim()}</h2>` : `<div class="sp">${h}</div>`, title }, pos));
-        } else if (n === "graphicFrame") {
-          const tbl = byTag(s, "tbl")[0];
-          if (tbl) {
-            const rows = kids(tbl, "tr").map(tr => `<tr>${kids(tr, "tc").map(tc => {
-              if (/^(1|true)$/.test(at(tc, "hMerge") || "") || /^(1|true)$/.test(at(tc, "vMerge") || "")) return "";
-              const gs = num(at(tc, "gridSpan"), 1), rs = num(at(tc, "rowSpan"), 1);
-              return `<td${gs > 1 ? ` colspan="${gs}"` : ""}${rs > 1 ? ` rowspan="${rs}"` : ""}>${paras(kid(tc, "txBody"), true)}</td>`;
-            }).join("")}</tr>`).join("");
-            items.push(Object.assign({ h: `<table class="pt">${rows}</table>` }, pos));
-          } else pics++;
-        } else if (n === "grpSp") items.push(...shapes(s));
-        else if (n === "pic") pics++;
-      });
-      return items;
-    }
-    const slides = order.map((p, i) => {
-      const sd = xml(get(p).data);
-      const tree = byTag(sd, "spTree")[0];
-      const items = tree ? shapes(tree).sort((a, b) => (b.title ? 1 : 0) - (a.title ? 1 : 0) || a.y - b.y || a.x - b.x) : [];
-      return `<section class="sl"><div class="sn">슬라이드 ${i + 1}</div>${items.map(x => x.h).join("") || '<p class="emp">글 없음</p>'}</section>`;
-    }).join("");
-    const css = `html{background:#e9ece9}body{margin:0;padding:14px 10px;color:#111;font:12pt/1.5 ${FONT}}
-.sl{box-sizing:border-box;max-width:960px;min-height:240px;margin:0 auto 14px;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.18);padding:22px 32px 26px;position:relative}
-.sn{position:absolute;top:8px;right:12px;font-size:8.5pt;color:#888}
-.sl h2{margin:0 0 10px;font-size:18pt;line-height:1.3}
-.sl p{margin:2px 0;white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere}
-.sp+.sp{margin-top:8px}
-.bu{display:inline-block;width:1.1em;color:#555}
-.pt{border-collapse:collapse;margin:8px 0;font-size:10.5pt}.pt td{border:1px solid #999;padding:3px 6px;vertical-align:top}
-.emp{color:#999}`;
-    const notes = pics ? ["그림 · 도형은 표시하지 않음 · 배치는 원본과 다름"] : ["배치는 원본과 다름"];
-    return { kind: "pptx", parts: [{ name: "", doc: page(css, slides), notes }] };
+    throw fail("kind");
   }
-
-  /* 바이트 → { kind, parts[{ name, doc, notes[] }] } */
-  async function build(name, u8) {
+  async function build(name, u8, opts) {
     const k = kindOf(name);
     if (!k) throw new Error("kind");
     if (u8.length > MAX_BYTES) throw Object.assign(new Error("big"), { big: true });
     if (k === "csv") return csv(u8);
     if (k === "text") return text(u8);
-    if (!window.SemisHwpx || !SemisHwpx.unzip) throw new Error("unzip");
-    const entries = await SemisHwpx.unzip(u8);
-    if (k === "xlsx") return xlsx(entries);
-    if (k === "docx") return docx(entries);
-    if (k === "hwpx") return hwpx(entries);
-    return pptx(entries);
+    const R = window.SemisPreview.register || {};
+    if (isZip(u8)) return fromZip(u8, k);
+    if (R.cfb && R.cfb.isCFB(u8)) {
+      const doc = R.cfb.cfb(u8);
+      if (doc.has("EncryptionInfo") && doc.has("EncryptedPackage")) {
+        const inner = R.cfb.officeDecrypt(doc, opts && opts.password);
+        if (!isZip(inner)) throw fail("enc");
+        const out = await fromZip(inner, k);
+        out.enc = true;
+        return out;
+      }
+      if (doc.has("Workbook") || doc.has("Book")) { if (!R.xls) throw fail("xls"); return R.xls.xls(doc, opts); }
+      if (doc.has("FileHeader")) { if (!R.hwp) throw fail("hwp"); return R.hwp.hwp(doc, opts); }
+      if (doc.has("WordDocument") || doc.has("PowerPoint Document")) throw fail("legacy");
+      throw fail("cfb");
+    }
+    if (k === "hwp" && /^HWP Document File V[1-3]/.test(new TextDecoder("latin1").decode(u8.subarray(0, 24)))) throw fail("legacy");
+    throw fail("format");
   }
-  async function fromUrl(url, name) {
+  /* 받기만(암호를 다시 넣을 때 다시 받지 않게 바이트를 돌려준다) */
+  async function bytes(url) {
     let u = url;
     try { if (window.SemisFileAuth) u = await SemisFileAuth.resolve(url); } catch (e) { /* 원래 주소로 시도 */ }
     const res = await fetch(u);
     if (!res.ok) throw new Error("fetch " + res.status);
     const len = Number(res.headers && res.headers.get ? res.headers.get("content-length") : 0) || 0;
     if (len > MAX_BYTES) throw Object.assign(new Error("big"), { big: true });
-    return build(name || url, new Uint8Array(await res.arrayBuffer()));
+    return new Uint8Array(await res.arrayBuffer());
   }
+  async function fromUrl(url, name, opts) { return build(name || url, await bytes(url), opts); }
 
-  window.SemisPreview = { kindOf, build, fromUrl, format, general, MAX_BYTES, MAX_ROWS, colName, csvRows };
+  window.SemisPreview = { kindOf, build, bytes, fromUrl, format, general, MAX_BYTES, MAX_ROWS, colName, csvRows,
+    /* 함께 쓰는 도구(preview-draw.js · preview-old.js) */
+    _h: { esc, dec, xml, ln, kids, kid, byTag, at, num, f2, rid, hex6, tint, FONT, numOf, extOf, relsOf, mediaURI, b64, joinPath, MAX_IMG, page: (c, b) => page(c, b), PAPER_CSS: () => PAPER_CSS, onOff,
+      PALETTE, putCell, addMerge, renderSheet, colPx, MAX_ROWS, MAX_COLS, hwpx: (e) => hwpx(e) } };
 })();

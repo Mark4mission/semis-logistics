@@ -1,7 +1,7 @@
 {
   "name": "semis-logistics",
   "private": true,
-  "version": "1.56.0",
+  "version": "1.57.0",
   "description": "H:drive(별칭 ARGOS) — 에어제타 인천화물팀 안전보안 종합정보 플랫폼 (정적 웹앱, 구 SeMIS · Logistics)",
   "type": "commonjs",
   "scripts": {

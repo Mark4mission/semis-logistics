@@ -153,22 +153,64 @@
   /* 문서 미리보기 — 받은 파일을 그 자리에서 HTML 로(스크립트 없는 sandbox 문서). 늦게 도착한 결과는 버린다 */
   let gen = 0;
   const cache = new Map();
-  async function renderDoc(stage, c) {
+  /* 암호 걸린 문서 — 받은 바이트는 이 첨부를 보는 동안만, 맞은 암호는 뷰어를 닫을 때까지만(다음 첨부에 먼저 시도) 메모리에 둔다 */
+  let held = null, sessPw = "";
+  const MSG = { legacy: "이전 버전 형식이라 미리보기를 지원하지 않습니다", enc: "이 방식의 문서 암호는 미리보기를 지원하지 않습니다",
+    dist: "배포용 한글 문서는 미리보기를 지원하지 않습니다", hwppw: "암호가 걸린 한글 문서는 미리보기를 지원하지 않습니다" };
+  async function renderDoc(stage, c, typed) {
     const my = gen;
     let r = cache.get(c.url);
     if (!r) {
       try {
         if (!window.SemisPreview) throw new Error("preview");
-        r = await window.SemisPreview.fromUrl(c.url, c.name);
+        const P = window.SemisPreview;
+        const u8 = held && held.url === c.url ? held.u8 : await (P.bytes ? P.bytes(c.url) : null);
+        if (!u8) { r = await P.fromUrl(c.url, c.name); }
+        else {
+          held = { url: c.url, u8 };
+          const isPw = (e) => e && (e.code === "pw" || e.code === "badpw");
+          let used = typed != null ? typed : null;
+          try { r = await P.build(c.name, u8, used ? { password: used } : undefined); }
+          catch (e) {
+            if (!isPw(e)) throw e;
+            /* 암호 없이 안 열리면 — 이번 뷰어에서 맞았던 암호를 한 번 더(같은 묶음의 첨부는 암호가 같은 경우가 많다) */
+            if (typed == null && sessPw) {
+              try { r = await P.build(c.name, u8, { password: sessPw }); used = sessPw; }
+              catch (e2) { if (!isPw(e2)) throw e2; }
+            }
+            if (!r) {
+              if (my === gen && stage.isConnected) pwForm(stage, c, typed != null && e.code === "badpw");
+              return;
+            }
+          }
+          if (r.enc && used) sessPw = used;
+        }
+        held = null;
         cache.set(c.url, r);
         while (cache.size > 6) cache.delete(cache.keys().next().value);
       } catch (e) {
-        if (my === gen && stage.isConnected) stage.innerHTML = noneHTML(c, e && e.big ? "파일이 커서(20MB 초과) 미리보기를 생략했습니다" : "미리보기를 열지 못했습니다");
+        held = null;
+        if (my === gen && stage.isConnected) stage.innerHTML = noneHTML(c, e && e.big ? "파일이 커서(20MB 초과) 미리보기를 생략했습니다" : (e && MSG[e.code]) || "미리보기를 열지 못했습니다");
         return;
       }
     }
     if (my !== gen || current() !== c || !stage.isConnected) return;
     showDoc(stage, c, r, 0);
+  }
+  function pwForm(stage, c, wrong) {
+    stage.innerHTML = `<div class="fv-none fv-pw">${icon("lock", 30)}<b>${esc(c.name)}</b><span>암호가 걸린 문서입니다</span>`
+      + `<form class="fv-pwf" novalidate><input type="password" class="fv-pwi" autocomplete="off" spellcheck="false" aria-label="문서 암호" placeholder="문서 암호">`
+      + `<button type="submit" class="fv-btn fv-primary">열기</button></form><p class="fv-pwmsg" role="alert">${wrong ? "암호가 맞지 않습니다" : ""}</p></div>`;
+    const f = stage.querySelector("form"), inp = f.querySelector("input"), btn = f.querySelector("button");
+    f.onsubmit = (ev) => {
+      ev.preventDefault();
+      const v = inp.value;
+      if (!v) { inp.focus(); return; }
+      inp.disabled = true; btn.disabled = true; btn.textContent = "여는 중…";
+      stage.querySelector(".fv-pwmsg").textContent = "";
+      setTimeout(() => { renderDoc(stage, c, v); }, 30);     // 화면이 '여는 중' 으로 바뀐 뒤 계산
+    };
+    try { inp.focus({ preventScroll: true }); } catch (e) { inp.focus(); }
   }
   function showDoc(stage, c, r, i) {
     const part = r.parts[i] || r.parts[0];
@@ -212,6 +254,8 @@
   function reset() {
     const d = document.getElementById("fv-viewer");
     gen++;
+    held = null; sessPw = "";
+    for (const [k, v] of Array.from(cache.entries())) if (v && v.enc) cache.delete(k);   // 암호를 푼 결과는 닫으면 버린다
     document.documentElement.classList.remove("fv-viewing");
     zoom = false;
     if (pushed) { pushed = false; try { history.back(); } catch (e) { /* noop */ } }

@@ -2446,6 +2446,14 @@ button.dscr-cell { transition: background-color .15s ease; }
 .fv-none b { font-size: 1rem; font-weight: 600; word-break: break-all; }
 .fv-none span { font-size: .84rem; color: var(--rail-text); }
 .fv-wait .ico { animation: bb-spin 1s linear infinite; }
+.fv-stage[data-kind="doc"] > .fv-none { margin: auto; }
+.fv-pwf { display: flex; gap: 6px; width: min(320px, 100%); margin-top: 4px; }
+.fv-pwi { flex: 1; min-width: 0; min-height: 38px; padding: 0 12px; border: 1px solid rgba(255,255,255,.28); border-radius: 6px;
+  background: rgba(255,255,255,.08); color: #fff; font-size: .9rem; }
+.fv-pwi::placeholder { color: #8fa5ab; }
+.fv-pwi:focus-visible { outline: 2px solid #7dd3c8; outline-offset: 1px; }
+.fv-pwf .fv-btn:disabled, .fv-pwi:disabled { opacity: .6; }
+.fv-pwmsg { min-height: 1.2em; margin: 0; font-size: .84rem; color: #fca5a5; }
 /* 문서 미리보기(엑셀 · 워드 · 한글 · PPT · CSV · 글) — 시트 탭 · 안내 + 문서 프레임 */
 .fv-stage[data-kind="doc"] { display: flex; align-items: stretch; justify-content: stretch; padding: 10px 14px 14px; }
 .fv-docwrap { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
