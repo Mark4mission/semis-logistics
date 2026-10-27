@@ -843,7 +843,7 @@
           : `<button type="button" class="btn btn-primary btn-sm" id="sc-done">${icon("check", 16)}<span>점검 완료</span></button>`) : ""}
         <button type="button" class="btn btn-ghost btn-sm" id="sc-hwpx">${icon("down", 16)}<span>HWPX</span></button>
         <button type="button" class="btn btn-ghost btn-sm" id="sc-pv">${icon("eye", 16)}<span>미리보기</span></button>
-        <button type="button" class="btn btn-ghost btn-sm no-print" id="sc-print" data-print-btn="1" title="별표 양식으로 인쇄">${icon("print", 17)}<span>Print</span></button>
+        <button type="button" class="btn btn-ghost btn-sm no-print" id="sc-print" data-print-btn="1" title="별표 양식으로 인쇄">${icon("print", 17)}<span>인쇄</span></button>
         ${canDel(r) ? `<button type="button" class="btn btn-ghost btn-sm m-ed" id="sc-del">${icon("trash", 16)}<span>삭제</span></button>` : ""}
       </div>`;
     const appr = f.kind === "fsc" ? `<div class="sc-apprw"><div class="sc-appr-h">결재란</div><div class="sc-appr">${f.head.apprL.map((lb, i) =>
@@ -1175,7 +1175,7 @@
       w ? `<button type="button" class="btn btn-primary btn-sm" id="sc-add">${icon("plus", 16)}<span>점검</span></button>` : "",
       tab === "forms" && SeMIS.canEdit() ? `<button type="button" class="btn btn-ghost btn-sm m-ed" id="sc-cfg" title="누가 · 누구를 · 주기">${icon("edit", 16)}<span>안내 편집</span></button>` : "",
       tab === "forms" && SeMIS.isAdmin() ? `<button type="button" class="btn btn-ghost btn-sm m-ed" id="sc-vis" title="표시 · 흐리게 · 숨김">${icon("eye", 16)}<span>표시 관리</span></button>` : "",
-      tab === "ana" ? `<button type="button" class="btn btn-ghost btn-sm no-print" id="sc-aprint" data-print-btn="1" title="별표 15 양식으로 인쇄">${icon("print", 17)}<span>Print</span></button>` : ""
+      tab === "ana" ? `<button type="button" class="btn btn-ghost btn-sm no-print" id="sc-aprint" data-print-btn="1" title="별표 15 양식으로 인쇄">${icon("print", 17)}<span>인쇄</span></button>` : ""
     ].join("");
     root.innerHTML = ui.head({ title: TITLE, meta: MARK + " — 항공보안감독관 점검표(수준관리지침 별표) 사용", actions: acts }).replace('<span class="spacer">', '<span class="sc-opt" title="의무 사항 아님 — 필요할 때 실행 · 대시보드 · 통계 · 일정 제외">선택 실행</span><span class="spacer">')
       + `<div class="eq-tabs" role="tablist" aria-label="자체 보안점검 화면">${TABS.map(([id, lb]) =>

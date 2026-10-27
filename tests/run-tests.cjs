@@ -23,6 +23,8 @@ function t(name, fn) {
   catch (e) { failed++; failures.push("✗ " + name + " — " + e.message); }
 }
 async function ta(name, fn) {
+  if (process.env.T_ONLY && !new RegExp(process.env.T_ONLY).test(name)) return;   // 개발용: 이름이 맞는 비동기 시험만(묶음 안 순서에 기대는 시험은 같이 골라야 함)
+  if (process.env.T_TRACE) process.stderr.write("· " + name.slice(0, 60) + "\n");
   try { await fn(); passed++; }
   catch (e) { failed++; failures.push("✗ " + name + " — " + e.message); }
 }
@@ -653,7 +655,7 @@ function makeServer(opts = {}) {
       ok(q(e, "#view iframe.embed-frame"));
       eq(q(e, "#view iframe").getAttribute("src"), lk.url);
       ok(!q(e, "#view").textContent.includes("차단"), "안내 문구 제거");
-      eq(q(e, "#view .page-head [data-print-btn]").textContent.trim(), "Print");
+      eq(q(e, "#view .page-head [data-print-btn]").textContent.trim(), "인쇄");
       const c = read("css/main.css"), pm = c.slice(c.indexOf("@media print"));
       ok(/\.embed-frame \{ display: block;[^}]*height: 232mm/.test(pm), "인쇄 시 프레임 표시");
       ok(!/\.embed-frame \{ display: none/.test(pm), "인쇄 시 프레임 숨김 금지");
@@ -1452,17 +1454,25 @@ function makeServer(opts = {}) {
       ok(pins.some(x => x.includes("비상연락망")), "연락망");
       ok(pins.some(x => x.includes("SeMIS v2")), "링크");
     });
-    t("H10 모바일 하단 탭(v1.29 홈 · 일정 · 순찰 · 운항): 권한에 맞춰 표시 · 전체 → 시트", () => {
-      eq(qa(e, "#tabbar .tab-btn[data-route]").map(b => b.dataset.route).join(","), "dashboard,schedule,daily-safety,flight");
+    t("H10 모바일 하단 탭(v1.59 홈 · 검색 · 올리기 · 아르고 · 전체): 권한에 맞춰 표시 · 전체 → 시트", () => {
+      eq(qa(e, "#tabbar .tab-btn[data-route]").map(b => b.dataset.route).join(","), "dashboard");
+      eq(qa(e, "#tabbar .tab-btn[data-sup]").map(b => b.dataset.sup).join(","), "search,desk,argo", "3종 지원");
+      eq(qa(e, "#tabbar .tab-btn").map(b => b.textContent.trim()).join(","), "홈,검색,올리기,아르고,전체");
       ok(q(e, "#tabbar .tab-all"));
       q(e, "#tabbar .tab-all").click();
       ok(q(e, "#app").classList.contains("sheet-open"));
       ok(q(e, "#sidebar-backdrop").classList.contains("show"));
       go(e, "schedule");
       ok(!q(e, "#app").classList.contains("sheet-open"), "이동 시 닫힘");
-      ok(q(e, '#tabbar [data-route="schedule"]').classList.contains("active"));
+      go(e, "dashboard");
+      ok(q(e, '#tabbar [data-route="dashboard"]').classList.contains("active"));
+      q(e, '#tabbar [data-sup="search"]').click();
+      ok(e.w.SemisPanel.isOpen("search"), "검색 탭 → 검색 패널");
+      e.w.SemisPanel.close("search");
       const e2 = makeEnv(); loginAs(e2, "user");
-      eq(qa(e2, "#tabbar .tab-btn[data-route]").map(b => b.dataset.route).join(","), "dashboard,flight", "일반사용자(운항 현황은 전체 공개)");
+      eq(qa(e2, "#tabbar .tab-btn").map(b => b.dataset.route || b.dataset.sup || "all").join(","), "dashboard,search,desk,argo,all", "일반사용자도 올리기(본인 접수)");
+      const e3 = makeEnv(); loginAs(e3, "vendor");
+      eq(qa(e3, "#tabbar .tab-btn[data-sup]").map(b => b.dataset.sup).join(","), "search", "협력업체 = 검색만");
     });
     t("H11 패널 접기(데스크톱) · 태블릿 떠 있는 패널", () => {
       Object.defineProperty(e.w, "innerWidth", { value: 1440, configurable: true });
@@ -1486,7 +1496,9 @@ function makeServer(opts = {}) {
       q(e, "#sup-search").click();
       ok(P.isOpen("search"), "지원 카드 검색");
       ok(q(e, "#pnl-search .pnl-body #hdr-search"), "입력칸이 패널 본문으로 옮겨짐");
-      ok(qa(e, "#hdr-search-pop .sp-item").length >= 5, "검색어가 없으면 메뉴 목록");
+      ok(q(e, "#hdr-search-pop .sp-chip.is-go"), "검색어가 없으면 자주 찾는 것");
+      q(e, "#hdr-search-pop [data-menus]").click();
+      ok(qa(e, "#hdr-search-pop .sp-item").length >= 5, "전체 메뉴 보기 → 메뉴 목록");
       ok(qa(e, "#hdr-search-pop .sp-group").map(x => x.textContent).indexOf("홈") >= 0, "허브별 묶음");
       q(e, "#hdr-search").dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
       ok(!P.isOpen("search"), "Esc 닫기");
@@ -1562,7 +1574,7 @@ function makeServer(opts = {}) {
         go(e, r);
         const btn = q(e, "#view [data-print-btn]");
         ok(btn, r + " 인쇄 버튼 없음");
-        eq(btn.textContent.trim(), "Print");
+        eq(btn.textContent.trim(), "인쇄");
         ok(btn.classList.contains("no-print"));
       });
     });
@@ -3773,7 +3785,7 @@ function makeServer(opts = {}) {
       ok(q(e, '#view button.lk-card[data-go="embed/lk-b"]'), "내부 화면 카드");
       ok(q(e, '#view .page-head a[href="' + set.url + '"]'), "묶음 자체 주소도 열 수 있다");
       ok(q(e, "#view .lk-note"), "사내망 안내");
-      eq(q(e, "#view .page-head [data-print-btn]").textContent.trim(), "Print");
+      eq(q(e, "#view .page-head [data-print-btn]").textContent.trim(), "인쇄");
       eq(q(e, "#view").getAttribute("data-hub"), "hub-home", "허브 배너 유지");
       ok(q(e, "#view").classList.contains("view-mid"));
       ok(q(e, "#crumbs").textContent.includes("SCAN 폴더"));
@@ -3952,7 +3964,7 @@ function makeServer(opts = {}) {
       ok(!qa(e, ".cr-line").some(l => l.querySelector(".cr-tel") && l.textContent.indexOf("갑일") >= 0), "동명이인 → 번호 잇지 않음");
       ok(q(e, ".cr-ref[data-jump=notes]"));
       ok(q(e, "#cr-notes a[href='tel:0200000000']"));
-      ok(q(e, ".page-head .print-btn, .page-head [data-print], .page-head .btn-print") || q(e, ".page-head").textContent.indexOf("Print") >= 0, "인쇄 버튼");
+      ok(q(e, ".page-head .print-btn, .page-head [data-print], .page-head .btn-print") || q(e, ".page-head").textContent.indexOf("인쇄") >= 0, "인쇄 버튼");
       ok(!q(e, "#cr-add") && !q(e, "#cr-import") && !q(e, ".cr-edit"), "manager 편집 없음");
       eq(e.errors.length, 0, e.errors.join(" | "));
     });
@@ -4162,7 +4174,7 @@ function makeServer(opts = {}) {
       eq(qa(e, ".sp-ph").length, 3); eq(qa(e, ".sp-ti").length, 4);
       q(e, "[data-role-f=cargo]").click(); eq(qa(e, ".sp-ti").length, 1);
       q(e, "[data-role-f='']").click();
-      ok(q(e, ".page-head").textContent.indexOf("Print") >= 0);
+      ok(q(e, ".page-head").textContent.indexOf("인쇄") >= 0);
       ok(!q(e, ".sp-ed"), "manager 편집 없음");
       eq(e.errors.length, 0, e.errors.join(" | "));
     });
@@ -4412,7 +4424,7 @@ function makeServer(opts = {}) {
       ok(q(e, ".tc-ci[data-chain=c2] [data-flow-open='보안']"), "보고 체계도 연결");
       ok(q(e, ".tc-tsoc a[href='tel:+10000000001']"), "국제 번호");
       eq(qa(e, ".tc-tsoci li").length, 6);
-      ok(q(e, ".page-head").textContent.indexOf("Print") >= 0);
+      ok(q(e, ".page-head").textContent.indexOf("인쇄") >= 0);
       ok(!q(e, ".sp-ed") && !q(e, "#tc-step-add"), "manager 편집 없음");
       eq(e.errors.length, 0, e.errors.join(" | "));
     });
@@ -4668,7 +4680,7 @@ function makeServer(opts = {}) {
       ok(q(e, ".pb-sec[data-group=gb] .pb-mailall[href='mailto:a@x.com,b@x.com']"), "구역 전체 메일");
       ok(!q(e, ".pb-sec[data-group=ga] .pb-mailall"));
       ok(q(e, ".pb-notes").textContent.indexOf("참고 하나") >= 0);
-      ok(q(e, ".page-head").textContent.indexOf("Print") >= 0 && q(e, ".page-head").textContent.indexOf("기준 26년 9월") >= 0);
+      ok(q(e, ".page-head").textContent.indexOf("인쇄") >= 0 && q(e, ".page-head").textContent.indexOf("기준 26년 9월") >= 0);
       ok(!q(e, "#pb-add") && !q(e, ".pb-edit") && !q(e, "#pb-groups"), "manager 편집 없음");
       eq(e.errors.length, 0, e.errors.join(" | "));
     });
@@ -4850,7 +4862,7 @@ function makeServer(opts = {}) {
       go(e, "flight");
       await new Promise(r => setTimeout(r, 60));
       ok(calls.some(u => u.indexOf("semis-logi-adsb?trail=1&events=1") >= 0), "경로·기록 포함 조회");
-      ok(q(e, ".page-head [data-print-btn], .page-head .print-btn") || q(e, ".page-head").textContent.includes("Print"), "인쇄 버튼");
+      ok(q(e, ".page-head [data-print-btn], .page-head .print-btn") || q(e, ".page-head").textContent.includes("인쇄"), "인쇄 버튼");
       const stats = qa(e, "#fo-stats .stat").map(x => x.textContent);
       ok(stats[0].indexOf("2") >= 0, "비행 중 2: " + stats[0]);
       ok(stats[1].indexOf("1") >= 0, "인천 지상 1");
@@ -5286,7 +5298,7 @@ function makeServer(opts = {}) {
         findings: [{ id: "of1", type: "car", ref: "자체보안계획 7.3", text: "검색 기록 서명 누락", status: "done", doneDate: "2025-11-01" }] }];
       A.setMaster(FAKE_MASTER);
       loginAs(e, "hq"); go(e, "audit");
-      ok(q(e, ".page-head").textContent.indexOf("Print") >= 0, "인쇄 버튼");
+      ok(q(e, ".page-head").textContent.indexOf("인쇄") >= 0, "인쇄 버튼");
       eq(qa(e, "tr[data-aud]").length, 0, "기본 필터 = 진행 중(종결 제외)");
       q(e, "#au-add").click();
       setv("#af-org", "서울지방항공청"); setv("#af-kind", "정기점검");
@@ -7291,9 +7303,9 @@ function makeServer(opts = {}) {
       let printed = 0; e.w.print = () => { printed++; };
       q(e, "#view .ph-more").click();
       const items = qa(e, "#asheet .asheet-item").map(b => b.textContent.trim());
-      ok(items.indexOf("Print") >= 0, items.join(","));
+      ok(items.indexOf("인쇄") >= 0, items.join(","));
       eq(q(e, "#asheet .asheet-t").textContent, "안전보안 일정관리");
-      qa(e, "#asheet .asheet-item").find(b => b.textContent.trim() === "Print").click();
+      qa(e, "#asheet .asheet-item").find(b => b.textContent.trim() === "인쇄").click();
       ok(q(e, "#view #print-head"), "원래 Print 버튼 동작(인쇄 머리말)");
       ok(!q(e, "#asheet.on"), "시트 닫힘");
     });
@@ -7346,7 +7358,7 @@ function makeServer(opts = {}) {
       ok(!q(e2, ".today-card"), "user 없음"); e2.w.close();
     });
     t("CM07 하단 탭 아이콘 · 모바일 CSS는 화면 한정(인쇄 폭이 max-width 조건에 걸리지 않게)", () => {
-      ok(q(e, '#tabbar [data-route="daily-safety"] svg') && q(e, '#tabbar [data-route="flight"] svg'));
+      ok(q(e, '#tabbar [data-route="dashboard"] svg') && q(e, '#tabbar [data-sup="search"] svg') && q(e, '#tabbar [data-sup="desk"] svg'));
       const css = read("css/main.css"), k = css.indexOf("── 화면 정돈 (모바일 우선)");
       ok(k > 0);
       const tail = css.slice(k);
@@ -9374,7 +9386,7 @@ function makeServer(opts = {}) {
     const AI = (o) => Object.assign({ type: "other", title: "", summary: "", date: "", org: "", conf: 0.9, certs: [], events: [], dissem: null, audit: null, case: null, hardcopy: null, shelf: null }, o);
     const enc = (s) => new TextEncoder().encode(s);
 
-    await ta("DK01 메뉴 없음 · 지원 카드(hq 이상) · 권한표 desk 3/3 · 동기화 키 · #/desk 는 hq 만 패널", async () => {
+    await ta("DK01 메뉴 없음 · 지원 카드(내부 직원) · 권한표 desk 3/3 · 동기화 키 · #/desk → 패널(직원은 올리기 · 내가 올린 문서) · 협력업체 없음", async () => {
       const e = deskEnv("hq");
       ok(!e.S.data.menus.some(x => x.type === "module" && x.module === "desk"), "메뉴(시드 · 운영) 없음");
       eq(e.S.sortedMenus().filter(x => x.parent === "hub-home")[0].module, "schedule", "홈 허브 첫 메뉴 = 일정관리");
@@ -9383,15 +9395,24 @@ function makeServer(opts = {}) {
       ok(ACL.desk && ACL.desk[0] === 3 && ACL.desk[1] === 3, "권한표 3/3");
       ok(e.Sync.SYNC_KEYS.indexOf("desk") >= 0, "동기화 키");
       loginAs(e, "manager");
-      eq(q(e, "#sup-desk").hidden, true, "manager 숨김");
-      eq(q(e, "#hdr-desk").hidden, true, "manager 상단바 숨김");
+      eq(q(e, "#sup-desk").hidden, false, "manager 도 보임(본인 접수)");
+      eq(q(e, "#hdr-desk").hidden, false, "manager 상단바");
       go(e, "desk");
       await tick(10);
-      ok(!e.w.SemisPanel.isOpen("desk") && !q(e, "#dk-drop"), "manager 는 데스크 패널 없음");
+      ok(e.w.SemisPanel.isOpen("desk"), "manager 패널");
+      eq(qa(e, "#pnl-desk .pnl-tab").map(b => b.dataset.tab).join(), "up,mine", "올리기 · 내가 올린 문서");
+      ok(q(e, "#dk-drop"), "올리는 칸");
+      ok(!q(e, "#pnl-desk [data-dk-areas]"), "분야별 담당은 안전보안파트만");
       eq(e.w.location.hash, "#/dashboard", "주소는 대시보드로");
+      e.w.SemisPanel.close("desk");
+      loginAs(e, "vendor");
+      eq(q(e, "#sup-desk").hidden, true, "협력업체 숨김");
+      go(e, "desk");
+      await tick(10);
+      ok(!e.w.SemisPanel.isOpen("desk"), "협력업체는 패널 없음");
     });
 
-    await ta("DK02 글 뽑기: DOCX 문단 · 표 / XLSX 공유 문자열 · 날짜 서식 · 시트 순서 / HWPX 표 / 구 형식은 판독 불가", async () => {
+    await ta("DK02 글 뽑기: DOCX 문단 · 표 / XLSX 공유 문자열 · 날짜 서식 · 시트 순서 / HWPX 표 / HWP · XLS(미리보기 엔진) / DOC · PPT 는 판독 불가", async () => {
       const e = deskEnv();
       const H = e.w.SemisHwpx, R = e.w.SemisDocRead;
       const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
@@ -9412,9 +9433,22 @@ function makeServer(opts = {}) {
       const hwpx = await H.zip([{ name: "Contents/section0.xml", store: true, data: enc(`<hs:sec xmlns:hs="urn:s" xmlns:hp="urn:p"><hp:p><hp:run><hp:t>제목</hp:t></hp:run>
         <hp:run><hp:tbl><hp:tr><hp:tc><hp:subList><hp:p><hp:run><hp:t>칸1</hp:t></hp:run></hp:p></hp:subList></hp:tc><hp:tc><hp:subList><hp:p><hp:run><hp:t>칸2</hp:t></hp:run></hp:p></hp:subList></hp:tc></hp:tr></hp:tbl></hp:run></hp:p></hs:sec>`) }]);
       eq(await R.textOf("c.hwpx", hwpx), "제목\n칸1 | 칸2", "문단 안의 표");
-      eq(R.kindOf("x.HWP"), "legacy"); eq(R.kindOf("x.pdf"), "pdf"); eq(R.kindOf("x.jpeg"), "image"); eq(R.kindOf("x.zip"), "other");
-      const ex = await R.extract(new e.w.File([new Uint8Array([1, 2])], "old.hwp"));
-      eq(ex.mode, "none", "구 형식");
+      eq(R.kindOf("x.HWP"), "hwp"); eq(R.kindOf("x.XLS"), "xls"); eq(R.kindOf("x.doc"), "legacy"); eq(R.kindOf("x.ppt"), "legacy");
+      eq(R.kindOf("x.pdf"), "pdf"); eq(R.kindOf("x.jpeg"), "image"); eq(R.kindOf("x.zip"), "other");
+      const ex = await R.extract(new e.w.File([new Uint8Array([1, 2])], "old.doc"));
+      eq(ex.mode + "|" + ex.why, "none|legacy", "구 형식(DOC · PPT)");
+      ok(/PDF/.test(R.whyText(ex)), "PDF 로 저장 안내");
+      const bad = await R.extract(new e.w.File([new Uint8Array([1, 2])], "깨짐.hwp"));
+      eq(bad.mode, "none", "깨진 HWP");
+      eq(R.htmlText('<p>제목</p><table><tr><td>가</td><td>나<br>다</td></tr></table><ul><li>항목</li></ul>'), "제목\n가 | 나 다\n항목", "미리보기 HTML → 글");
+      const FXd = (n) => new Uint8Array(require("fs").readFileSync(path.join(ROOT, "tests/fixtures/preview", n)));
+      const hw = await R.textOf("a.hwp", FXd("sample.hwp"));
+      ok(/^시험 문서\n제1조\(목적\)/.test(hw) && /정기 \| 90일/.test(hw), "HWP 5.0 본문 · 표: " + hw.slice(0, 80));
+      const xl = await R.textOf("b.xls", FXd("plain.xls"));
+      ok(/^\[시트\] 순찰일지\n보안 순찰일지\n일자 \| 구역/.test(xl), "XLS 97 시트 · 표: " + xl.slice(0, 80));
+      const lk = await R.extract(new e.w.File([FXd("enc-rc4.xls")], "lock.xls"));
+      eq(lk.mode + "|" + lk.why, "none|pw", "암호 걸린 XLS");
+      ok(/암호/.test(R.whyText(lk)), "암호 안내");
       const tx = await R.extract(new e.w.File([enc("﻿공지\n내용")], "n.txt"));
       eq(tx.mode + "|" + tx.text, "text|공지\n내용", "텍스트 BOM 제거");
     });
@@ -9463,7 +9497,7 @@ function makeServer(opts = {}) {
       eq(ph.map(a => a.k + ":" + a.on).join(), "hc:true,shelf:true");
       const po = DK.plan(DK.clean(AI({ type: "other" })));
       eq(po.map(a => a.k + ":" + a.on).join(), "shelf:false", "서가 위치 없으면 꺼짐");
-      eq(DK.check(po[0]), "문서 서가 위치를 고르세요.");
+      eq(DK.check(po[0]), "문서함 위치(화면 · 묶음)를 고르세요.");
     });
 
     await ta("DK05 반영 — 이수 기록: 새 인원 · 계산과 같은 유효기한은 비움 · 다음 이수 기간 일정(덮어쓰기) · 파일은 training/", async () => {
@@ -9555,10 +9589,16 @@ function makeServer(opts = {}) {
       await tick(40);
       const card = q(e, '.dk-item[data-dk="' + lg.id + '"]');
       ok(card, "확인 대기 카드");
-      const acts = qa(e, ".dk-act");
+      const acts = qa(e, ".dkc-row");
       eq(acts.length, 1); ok(acts[0].classList.contains("on"));
-      eq(q(e, '.dk-act [data-f="assignee"]').value, "안전담당", "분야 담당");
-      const t = q(e, '.dk-act [data-f="title"]'); t.value = "안전 회의"; t.dispatchEvent(new e.w.Event("input", { bubbles: true }));
+      ok(/회의/.test(q(e, ".dkc-say .dkc-s").textContent) && /1곳/.test(q(e, ".dkc-say .dkc-s").textContent), "한 문장 확인");
+      eq(q(e, ".dkc-row .dkc-rt b").textContent, "일정에 저장", "저장할 곳 이름");
+      ok(q(e, ".dkc-row .dk-ab").hidden, "고칠 칸은 접혀 있음");
+      q(e, ".dkc-row [data-fix]").click();
+      ok(!q(e, ".dkc-row .dk-ab").hidden, "[고치기] → 펼침");
+      eq(q(e, '.dkc-row [data-f="assignee"]').value, "안전담당", "분야 담당");
+      const t = q(e, '.dkc-row [data-f="title"]'); t.value = "안전 회의"; t.dispatchEvent(new e.w.Event("input", { bubbles: true }));
+      ok(/이대로 저장 · 1곳/.test(q(e, ".dkc-go").textContent), "저장 단추");
       await DK.apply(lg.id);
       eq(calls.filter(c => c.indexOf("copy:") === 0).join(), "copy:desk/zz_a.docx>schedules");
       eq(lg.status, "done"); ok(!("ai" in lg), "판독 결과 지움");
@@ -9568,43 +9608,55 @@ function makeServer(opts = {}) {
       ok(!q(e, ".dk-item[data-dk]"), "대기 카드 없음");
       ok(q(e, "#pnl-desk .dk-none"), "대기 없음 표시");
       e.w.SemisPanel.setTab("desk", "log");
-      ok(q(e, "#dk-log").textContent.includes("안전 회의"), "접수 대장");
-      eq(q(e, "#pnl-desk .pnl-print").hidden, false, "접수 대장은 Print");
+      ok(q(e, "#dk-log").textContent.includes("안전 회의"), "올린 문서 기록");
+      eq(q(e, "#pnl-desk .pnl-print").hidden, false, "기록 탭은 인쇄");
     });
 
-    await ta("DK08 판독 실패 · 구 형식 · 보관만 · 지우기 · 수동 추가 · 검사 문구", async () => {
+    await ta("DK08 읽기 실패 · 구 형식(DOC) 안내 · 더보기(다시 읽기 · 원본 · 지우기) · 보관만 · 저장할 곳 추가 · 검사 문구", async () => {
       const e = deskEnv();
       const DK = e.w.SemisDesk, Sy = e.w.SemisSync, D = e.S.data;
       Sy.uploadFile = async (file, prefix) => ({ name: file.name, size: 3, url: PUB + prefix + "/zz_" + file.name });
       Sy.filesCall = async () => { const er = new Error("files busy"); er.code = "busy"; throw er; };
       go(e, "desk");
-      await DK.intake([new e.w.File([new Uint8Array([1])], "옛.hwp"), new e.w.File([enc("본문")], "b.txt")]);
+      await DK.intake([new e.w.File([new Uint8Array([1])], "옛.doc"), new e.w.File([enc("본문")], "b.txt")]);
       for (let i = 0; i < 20 && D.desk.log.some(x => x.status !== "wait"); i++) await tick(5);
       const [b, a] = D.desk.log;
-      ok(/구 형식/.test(a.err), "구 형식 안내"); eq(b.err, "AI 사용량이 많습니다. 잠시 뒤 다시 판독하세요.");
+      ok(/PDF/.test(a.err) && a.info, "구 형식은 PDF 로 저장 안내: " + a.err);
+      eq(b.err, "AI 사용량이 많습니다. 잠시 뒤 '다시 읽기'를 눌러 주세요.");
       await tick(40);
       const card = q(e, '.dk-item[data-dk="' + a.id + '"]');
-      ok(!card.querySelector('[data-do="reread"]'), "구 형식은 다시 판독 없음");
-      ok(card.querySelector('[data-do="apply"]').disabled, "반영할 것 없음");
-      card.querySelector('[data-add="event"]').click();
+      ok(card.querySelector(".dkc-info") && !card.querySelector(".dk-err"), "구 형식은 경고가 아닌 안내");
+      ok(q(e, '.dk-item[data-dk="' + b.id + '"] .dk-err'), "읽기 실패는 경고");
+      ok(card.querySelector('[data-do="apply"]').disabled, "저장할 곳 없음");
+      card.querySelector('[data-do="more"]').click();
+      const labels = qa(e, "#asheet .asheet-item").map(x => x.textContent.trim());
+      ok(labels.indexOf("다시 읽기") < 0 && labels.indexOf("원본 보기") >= 0 && labels.indexOf("지우기") >= 0, "구 형식은 다시 읽기 없음: " + labels.join());
+      q(e, '.dk-item[data-dk="' + b.id + '"] [data-do="more"]').click();
+      ok(qa(e, "#asheet .asheet-item").some(x => x.textContent.trim() === "다시 읽기"), "글 문서는 다시 읽기");
+      e.S.closeActionSheet ? e.S.closeActionSheet() : q(e, "#asheet [data-as-close]").click();
+      q(e, '.dk-item[data-dk="' + a.id + '"] [data-add="event"]').click();
       const c2 = q(e, '.dk-item[data-dk="' + a.id + '"]');
-      ok(c2.querySelector('.dk-act.on [data-f="title"]'), "일정 추가");
+      ok(c2.querySelector('.dkc-row.on [data-f="title"]'), "일정 추가");
+      ok(!c2.querySelector(".dkc-row.on .dk-ab").hidden, "추가한 곳은 펼쳐 둠");
+      eq(c2.querySelector(".dkc-row.on .dkc-need").textContent, "일정 이름을 입력하세요.", "빈 칸 안내");
       eq(DK.check({ k: "event", title: "", start: "2026-01-01" }), "일정 이름을 입력하세요.");
       eq(DK.check({ k: "cert", pid: "_new", name: "", cid: "c-cargo-r", date: "2026-01-01" }), "이수자를 고르세요.");
       eq(DK.check({ k: "hc", tid: "nope", date: "2026-01-01" }), "기록부 양식을 고르세요.");
       DK.keep(a.id);
       eq(a.status, "kept");
       await tick(40);
-      q(e, '.dk-item[data-dk="' + b.id + '"] [data-do="drop"]').click();
-      q(e, "#modal-box [data-act=ok]") ? clickOk(e) : qa(e, "#modal-box button").find(x => /확인|삭제/.test(x.textContent)).click();
+      q(e, '.dk-item[data-dk="' + b.id + '"] [data-do="more"]').click();
+      qa(e, "#asheet .asheet-item").find(x => x.textContent.trim() === "지우기").click();
+      q(e, "#modal-box [data-act=ok]") ? clickOk(e) : qa(e, "#modal-box button").find(x => /확인|삭제|지우기/.test(x.textContent)).click();
+      await tick(10);
       ok(!D.desk.log.some(x => x.id === b.id), "지움");
     });
 
-    await ta("DK09 어디서나 끌어다 놓기: 다른 화면에서 놓으면 데스크로 · 첨부 칸이 먼저 처리하면 건드리지 않음 · manager 는 무시", async () => {
+    await ta("DK09 어디서나 끌어다 놓기: 처음 한 번은 묻기(계정별) · 다른 화면에서 놓으면 접수 카운터로 · 첨부 칸이 먼저 처리하면 건드리지 않음 · 직원은 접수함(desk-in) · 협력업체 무시", async () => {
       const e = deskEnv();
-      const Sy = e.w.SemisSync, D = e.S.data;
+      const Sy = e.w.SemisSync, D = e.S.data, P = e.w.SemisPanel;
       const ups = [];
-      Sy.uploadFile = async (file, prefix) => { ups.push(file.name); return { name: file.name, size: 1, url: PUB + prefix + "/zz_" + file.name }; };
+      Sy.uploadFile = async (file, prefix) => { ups.push(prefix + ":" + file.name); return { name: file.name, size: 1, url: PUB + prefix + "/zz_" + file.name }; };
       Sy.filesCall = async () => ({ ok: true, data: AI({}) });
       go(e, "schedule");
       const drop = (target, files, pre) => {
@@ -9616,22 +9668,51 @@ function makeServer(opts = {}) {
       };
       const ev = drop(q(e, "#view"), [new e.w.File([enc("x")], "놓기.txt")]);
       ok(ev.defaultPrevented, "브라우저 기본 동작 막음");
+      await tick(10);
+      ok(/접수 카운터로 보낼까요/.test(q(e, "#modal-box").textContent) && /놓기\.txt/.test(q(e, "#modal-box").textContent), "처음엔 묻기");
+      eq(ups.length, 0, "묻는 동안 올리지 않음");
+      clickOk(e);
       await tick(30);
-      ok(e.w.SemisPanel.isOpen("desk"), "화면 이동 없이 데스크 패널");
-      eq(e.w.location.hash, "#/schedule", "보던 화면 그대로"); eq(ups.join(), "놓기.txt");
+      ok(P.isOpen("desk"), "화면 이동 없이 접수 카운터 패널");
+      eq(e.w.location.hash, "#/schedule", "보던 화면 그대로"); eq(ups.join(), "desk:놓기.txt");
       eq(e.w.SemisDesk.tab, "up");
-      e.w.SemisPanel.close("desk");
+      P.close("desk");
+      drop(q(e, "#view"), [new e.w.File([enc("y")], "둘째.txt")]);
+      await tick(30);
+      ok(P.isOpen("desk") && ups.length === 2, "두 번째부터는 바로");
+      P.close("desk");
       drop(q(e, "#view"), [new e.w.File([enc("y")], "첨부칸.txt")], true);
       await tick(30);
-      eq(ups.length, 1, "첨부 칸이 처리한 파일은 무시");
-      loginAs(e, "manager");
+      eq(ups.length, 2, "첨부 칸이 처리한 파일은 무시");
+      ok(D.desk.log.length >= 2);
+      loginAs(e, "manager", { id: "staff1" });
+      const rpcs = [];
+      Sy.rpc = async (fn, args) => {
+        rpcs.push(fn + (args && args.p ? ":" + args.p.path + ":" + args.p.ftype : ""));
+        if (fn === "semis_logi_desk_submit") return { ok: true, item: { id: "i1", at: new Date().toISOString(), name: args.p.name, size: 1, status: "new" } };
+        if (fn === "semis_logi_desk_mine") return { ok: true, items: [{ id: "i1", at: new Date().toISOString(), name: "m.txt", size: 1, status: "new" }] };
+        return { ok: false };
+      };
+      const n0 = D.desk.log.length;
       drop(q(e, "#view"), [new e.w.File([enc("z")], "m.txt")]);
-      await tick(30);
-      eq(ups.length, 1, "manager 무시");
-      ok(D.desk.log.length >= 1);
+      await tick(10);
+      ok(/안전보안파트가 확인/.test(q(e, "#modal-box").textContent), "직원 계정도 처음엔 묻기(계정별)");
+      clickOk(e);
+      await tick(40);
+      eq(ups[ups.length - 1], "desk-in:m.txt", "직원은 desk-in/");
+      ok(rpcs.indexOf("semis_logi_desk_submit:desk-in/zz_m.txt:text") >= 0, "접수함에 한 줄: " + rpcs.join());
+      eq(D.desk.log.length, n0, "직원은 접수 기록을 직접 쓰지 않음");
+      ok(P.isOpen("desk"));
+      eq(qa(e, "#pnl-desk .pnl-tab").map(b => b.dataset.tab).join(), "up,mine");
+      P.close("desk");
+      loginAs(e, "vendor");
+      const u0 = ups.length;
+      const ev2 = drop(q(e, "#view"), [new e.w.File([enc("v")], "v.txt")]);
+      await tick(20);
+      ok(!ev2.defaultPrevented && ups.length === u0 && !P.isOpen("desk"), "협력업체 무시");
     });
 
-    await ta("DK12 데스크 패널: 배지 = 확인 대기 · 지원 카드 → 올리기 탭 · 부엉이 머리 · 접수 대장 탭(Print → A4 문서) · 분야별 담당은 패널 안 모달 · 검색 결과 · 옛 주소", async () => {
+    await ta("DK12 접수 카운터 패널: 배지 = 확인 대기 · 지원 카드 → 올리기 탭 · 3단계 안내 · 부엉이 머리 · 올린 문서 기록 탭(인쇄 → A4 문서) · 분야별 담당은 패널 안 모달 · 검색 결과 · 옛 주소", async () => {
       const e = deskEnv("hq");
       const P = e.w.SemisPanel, DK = e.w.SemisDesk;
       const f = (n) => ({ name: n, size: 10, url: PUB + "desk/zz_" + n, type: "pdf" });
@@ -9647,26 +9728,30 @@ function makeServer(opts = {}) {
       q(e, "#sup-desk").click();
       ok(P.isOpen("desk"), "지원 카드 → 패널"); eq(DK.tab, "up");
       eq(q(e, "#pnl-desk .pnl-sub").textContent, "확인 대기 2");
+      eq(q(e, "#pnl-desk-t").textContent, "접수 카운터", "이름");
+      eq(qa(e, "#pnl-desk .dkc-steps li").length, 3, "3단계 안내");
+      ok(q(e, "#pnl-desk #dk-drop"), "올리는 칸");
+      eq(qa(e, '#pnl-desk .pnl-tab').map(b => b.textContent.replace(/\d+$/, "").trim()).join(), "올리기 · 확인,올린 문서 기록", "탭 이름");
       ok(q(e, '#pnl-desk .pnl-mark .owl-svg[data-state="idle"]'), "머리 = 부엉이");
       eq(qa(e, "#pnl-desk .dk-item[data-dk]").length, 2);
       eq(q(e, '#pnl-desk .pnl-tab[data-tab="up"] .pnl-n').textContent, "2", "탭 배지");
-      ok(q(e, "#pnl-desk .pnl-print").hidden, "올리기 탭은 Print 없음");
+      ok(q(e, "#pnl-desk .pnl-print").hidden, "올리기 탭은 인쇄 없음");
       q(e, "#pnl-desk [data-dk-areas]").click();
       ok(q(e, "#pnl-desk #modal-overlay:not(.hidden) #dk-a-security"), "분야별 담당 = 패널 안 모달");
       q(e, "#modal-box [data-act=cancel]").click();
       q(e, '#pnl-desk .pnl-tab[data-tab="log"]').click();
       eq(DK.tab, "log");
-      eq(qa(e, "#dk-log tbody tr").length, 1, "접수 대장 1건");
-      eq(q(e, "#pnl-desk .pnl-print").hidden, false, "접수 대장 Print");
+      eq(qa(e, "#dk-log tbody tr").length, 1, "기록 1건");
+      eq(q(e, "#pnl-desk .pnl-print").hidden, false, "기록 탭 인쇄");
       let printed = "";
       e.w.print = () => { printed = q(e, "#pnl-print").textContent; };
       q(e, "#pnl-desk .pnl-print").click();
       await tick(90);
-      ok(printed.includes("메인 데스크 — 접수 대장") && printed.includes("출력일시") && printed.includes("전파 통보"), "A4 문서 = 머리말 + 지금 탭");
+      ok(printed.includes("접수 카운터 — 올린 문서 기록") && printed.includes("출력일시") && printed.includes("전파 통보"), "A4 문서 = 머리말 + 지금 탭: " + printed.slice(0, 80));
       ok(!e.w.document.documentElement.classList.contains("pnl-printing") || true);
       q(e, "#pnl-desk .dk-go").click();
       ok(!P.isOpen("desk"), "반영 바로 가기 → 패널 닫고"); eq(e.w.location.hash, "#/dissem", "그 화면으로");
-      const hits = e.w.SemisSearch.search("메인 데스크").filter(x => x.group === "메인 데스크");
+      const hits = e.w.SemisSearch.search("메인 데스크").filter(x => x.group === "접수 카운터");
       ok(hits.length && typeof hits[0].pick === "function" && !hits[0].route, "검색 결과 = 화면 이동 없이 패널");
       hits[0].pick();
       ok(P.isOpen("desk")); eq(DK.tab, "up");
@@ -9675,10 +9760,11 @@ function makeServer(opts = {}) {
       await tick(10);
       ok(P.isOpen("desk"), "옛 주소 #/desk → 패널"); eq(e.w.location.hash, "#/dashboard", "뒤는 대시보드");
       P.close("desk");
+      eq(e.w.SemisSearch.search("올리기").filter(x => x.group === "접수 카운터").length >= 1, true, "'올리기'로도 찾음");
       loginAs(e, "manager");
-      eq(e.w.SemisSearch.search("메인 데스크").filter(x => x.group === "메인 데스크").length, 0, "manager 검색에 없음");
+      eq(e.w.SemisSearch.search("접수 카운터").filter(x => x.group === "접수 카운터").map(x => x.title).join(), "접수 카운터", "manager = 패널 열기만(기록은 없음)");
       loginAs(e, "vendor");
-      eq(e.w.SemisSearch.search("메인 데스크").filter(x => x.group === "메인 데스크").length, 0, "협력업체 검색에 없음");
+      eq(e.w.SemisSearch.search("접수 카운터").filter(x => x.group === "접수 카운터").length, 0, "협력업체 검색에 없음");
     });
 
     await ta("DK13 점검표 · 체크리스트 → 수검 대응 서가: 묶음 정의 · 판독 목록 · 판독이 못 고르면 제목 · 파일명으로 제안(기록부 스캔 제외) · 반영 · 수검 화면 '점검표 · 자료' 탭 · 검색 이동", async () => {
@@ -9712,11 +9798,12 @@ function makeServer(opts = {}) {
       DK.open("up");
       await tick(20);
       const c1 = q(e, '.dk-item[data-dk="w1"]');
-      eq(c1.querySelector('.dk-act.on [data-f="mod"]').value, "audit", "화면 = 수검 대응 센터");
-      eq(c1.querySelector('.dk-act.on [data-f="grp"]').value, "checklist");
+      eq(c1.querySelector('.dkc-row.on [data-f="mod"]').value, "audit", "화면 = 수검 대응 센터");
+      eq(c1.querySelector('.dkc-row.on [data-f="grp"]').value, "checklist");
+      ok(/수검 대응 센터 › 점검표 · 체크리스트/.test(c1.querySelector(".dkc-row.on .dkc-rt small").textContent), "요약 줄에 위치");
       ok(!c1.querySelector('[data-do="apply"]').disabled, "바로 반영 가능");
       q(e, '.dk-item[data-dk="w2"] [data-add="shelf"]').click();
-      eq(q(e, '.dk-item[data-dk="w2"] .dk-act.on [data-f="mod"]').value, "audit", "수동 추가도 파일명으로 제안");
+      eq(q(e, '.dk-item[data-dk="w2"] .dkc-row.on [data-f="mod"]').value, "audit", "수동 추가도 파일명으로 제안");
       e.w.SemisPanel.close("desk");
       /* 수검 대응 센터 — 점검표 · 자료 탭 */
       go(e, "audit");
@@ -9739,12 +9826,16 @@ function makeServer(opts = {}) {
       ok(/shelf 는 화면 audit · 묶음 checklist/.test(read("tools/edge/semis-logi-files.ts")), "판독 지침");
     });
 
-    t("DK10 서버 원본: desk-read 는 hq 이상 · desk/ 경로만 · 글은 6만 자 · copy 는 desk/ → 다른 폴더(등급 확인) · 폴더 등급", () => {
+    t("DK10 서버 원본: desk-read 는 hq 이상 · desk/ · desk-in/ 경로만 · 글은 6만 자 · copy 는 desk/ · desk-in/ → 다른 폴더(등급 확인) · 폴더 등급 · 직원 접수는 내부 직원만", () => {
       const s = read("tools/edge/semis-logi-files.ts");
       ok(/if \(w\.kind !== "user" \|\| \(w\.rank \?\? 0\) < 3\) return json\(\{ ok: false, error: "forbidden" \}, 403, origin\);\n  const path = String\(body\.path \|\| ""\);\n  if \(!\/\^desk/.test(s), "deskRead 등급 · 경로");
       ok(/const DESK_MAX_TEXT = 60000;/.test(s));
-      ok(/folderOf\(from\) !== "desk"/.test(s) && /folder === "desk"\) return json\(\{ ok: false, error: "prefix" \}/.test(s) && /!canRead\(w, from\) \|\| !canWrite\(w, folder\)/.test(s), "copy 검사");
+      ok(/!isDeskSrc\(from\)\) return json/.test(s) && /folder === "desk" \|\| folder === "desk-in"\) return json\(\{ ok: false, error: "prefix" \}/.test(s) && /!canRead\(w, from\) \|\| !canWrite\(w, folder\)/.test(s), "copy 검사");
       ok(/dissem: 3, desk: 3,?\n/.test(s), "올리기 3");
+      ok(/"desk-in": 1,/.test(s) && /if \(folder === "desk-in" && \(w\.kind !== "user" \|\| STAFF\.indexOf\(w\.role \|\| ""\) < 0\)\) return false;/.test(s), "직원 접수 올리기 = 내부 직원만");
+      ok(/const STAFF = \["admin", "hq", "manager", "user"\];/.test(s) && /role: String\(d\.role \|\| ""\)/.test(s), "세션 role");
+      ok(/\^desk\(-in\)\?\\\/\[A-Za-z0-9\._-\]\{4,160\}\$/.test(s), "판독 경로 desk · desk-in");
+      ok(/'role', coalesce\(c\.role, ''\)/.test(read("tools/sql/semis-logi-desk-inbox.sql")) && /'role', coalesce\(c\.role, ''\)/.test(read("tools/sql/semis-logi-security.sql")), "file_auth role");
       ok(!/desk:/.test(/const READ_RANK[^}]+}/.exec(s)[0]), "열람 기본 3");
       ok(/op === "desk-read"\) return await deskRead\(w, body, origin\)/.test(s) && s.indexOf('op === "desk-read"') > s.indexOf("const w = await whoAmI(req);"), "세션 확인 뒤");
       ok(/전화번호 · 주민번호를 옮기지 않는다/.test(s));
@@ -9763,10 +9854,10 @@ function makeServer(opts = {}) {
 
   /* ══════════ [UI] v1.48 지원 카드 · 공통 패널 · 부엉이 ══════════ */
   {
-    await ta("UI01 지원 카드 권한별: admin · hq = 검색 + 메인 데스크 + 아르고 / manager · user = 검색 + 아르고 / vendor = 검색만", async () => {
+    await ta("UI01 지원 카드 권한별: 내부 직원 = 검색 + 접수 카운터 + 아르고 / vendor = 검색만", async () => {
       const e = makeEnv();
       const vis = () => ["search", "desk", "argo"].filter(id => !q(e, "#sup-" + id).hidden).join(",");
-      for (const [role, want] of [["admin", "search,desk,argo"], ["hq", "search,desk,argo"], ["manager", "search,argo"], ["user", "search,argo"], ["vendor", "search"]]) {
+      for (const [role, want] of [["admin", "search,desk,argo"], ["hq", "search,desk,argo"], ["manager", "search,desk,argo"], ["user", "search,desk,argo"], ["vendor", "search"]]) {
         loginAs(e, role);
         eq(vis(), want, role);
         eq(q(e, "#sup-card").dataset.n, String(want.split(",").length), role + " 칸 수");
@@ -9925,6 +10016,7 @@ function makeServer(opts = {}) {
       const e = makeEnv();
       for (const k of ["TextEncoder", "TextDecoder"]) if (!e.w[k]) e.w[k] = globalThis[k];
       loginAs(e, role || "hq");
+      e.S.setNavPref({ argoAuto: true });   // 기존 시험은 '바로 실행' 기준 — 기본(실행 전 확인)은 AR15
       const A = e.w.SemisArgo;
       A._reset();
       A.setToday("2026-10-09"); e.w.SemisDesk.setToday("2026-10-09"); e.w.SemisTraining.setToday("2026-10-09");
@@ -10131,7 +10223,7 @@ function makeServer(opts = {}) {
       Sy.uploadFile = async (file, prefix) => ({ name: file.name, size: 3, url: PUB + prefix + "/zz_" + file.name });
       const f1 = { fid: "f1", name: "a.pdf", kind: "pdf", file: new e.w.File(["x"], "a.pdf") };
       let x = await run(e, "doc_shelve", { mod: "nope", grp: "x", title: "t", file: "f1" }, ctxOf(A, { f1 }));
-      ok(/서가/.test(x.r.error), "위치 검사");
+      ok(/문서함 위치/.test(x.r.error), "위치 검사: " + x.r.error);
       const sh = e.w.SemisDesk.shelfMods()[0];
       x = await run(e, "doc_shelve", { mod: sh.mod, grp: sh.groups[0].id, title: "점검 결과", ssi: true, file: "f1" }, ctxOf(A, { f1 }));
       ok(x.r.ok && D.docs.some(d => d.title === "점검 결과" && d.ssi && d.files[0].url.includes("/docs-ssi/")), "서가 · 민감");
@@ -10197,15 +10289,17 @@ function makeServer(opts = {}) {
       ok(x.r.courses.length && x.r.colors.length === 12 && x.r.areas.security === "보안담당", "등록 목록");
     });
 
-    await ta("AR10 첨부: 글 문서 → 본문 · PDF 4.5MB 초과 거절 · 구 형식 거절 · 사진 → base64 · 사용자 메시지 블록 순서([첨부 f1: …] 뒤 질문) · 3개 제한", async () => {
+    await ta("AR10 첨부: 글 문서 · 한글(HWP) → 본문 · PDF 4.5MB 초과 거절 · 구 형식(DOC · PPT)은 PDF 안내 · 사진 → base64 · 사용자 메시지 블록 순서([첨부 f1: …] 뒤 질문) · 3개 제한", async () => {
       const e = argoEnv("hq");
       const A = e.w.SemisArgo;
       let x = await A.prepFile(new e.w.File(["교육 안내 본문"], "a.txt", { type: "text/plain" }));
       ok(x.kind === "text" && /교육 안내/.test(x.text), "글");
       x = await A.prepFile(new e.w.File([new Uint8Array(4.6 * 1024 * 1024)], "big.pdf", { type: "application/pdf" }));
       ok(/4\.5MB/.test(x.error), "PDF 크기");
-      x = await A.prepFile(new e.w.File(["x"], "old.hwp"));
-      ok(/구 형식/.test(x.error), "구 형식");
+      x = await A.prepFile(new e.w.File(["x"], "old.doc"));
+      ok(/PDF/.test(x.error), "구 형식(DOC) → PDF 안내: " + x.error);
+      x = await A.prepFile(new e.w.File([new Uint8Array(require("fs").readFileSync(path.join(ROOT, "tests/fixtures/preview/sample.hwp")))], "a.hwp"));
+      ok(x.kind === "text" && /제1조\(목적\)/.test(x.text), "한글(HWP) → 본문");
       x = await A.prepFile(new e.w.File([new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3])], "p.jpg", { type: "image/jpeg" }));
       ok(x.kind === "image" && x.mt === "image/jpeg" && /^[A-Za-z0-9+/=]+$/.test(x.b64), "사진");
       const pdf = await A.prepFile(new e.w.File(["%PDF-1.4"], "c.pdf", { type: "application/pdf" }));
@@ -10565,7 +10659,14 @@ function makeServer(opts = {}) {
       const A = e.w.SemisArgo;
       A._reset();
       const turn = { id: "t1", q: "", files: [], a: "", log: "", cards: [] }; A.conv.turns.push(turn);
-      const r = await A.runTool("notice_add", { title: "보안등급 상향 안내", body: "관심 단계로 올립니다.", pinned: true }, { turn, files: {}, up: {}, log: [] });
+      A.open();
+      const pr = A.runTool("notice_add", { title: "보안등급 상향 안내", body: "관심 단계로 올립니다.", pinned: true }, { turn, files: {}, up: {}, log: [] });
+      await tick(5);
+      const cf = q(e, '#pnl-argo .ag-card.is-confirm');
+      ok(cf && /공지 등록 · 확인해 주세요/.test(cf.textContent) && /보안등급 상향 안내/.test(cf.textContent), "실행 전 확인 카드(기본)");
+      eq(sv.bbs.posts.length, 0, "확인 전에는 쓰지 않음");
+      q(e, '#pnl-argo [data-cf][data-ok="1"]').click();
+      const r = await pr;
       ok(r.ok, JSON.stringify(r));
       const x = sv.bbs.posts[0];
       eq([x.board, x.title, x.pin, x.src].join("/"), "B001/보안등급 상향 안내/true/argo");
@@ -11250,6 +11351,297 @@ function makeServer(opts = {}) {
       eq(calls["일반.hwp"], 1, "암호 없는 결과는 캐시 유지");
       F.close();
       eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+  }
+
+  /* ══════════ [UX] v1.59 전체 UX/UI 개선 — 글자 크기 · 검색(동의어 · 초성 · 일부 일치 · 아르고로) · 시작 칸 · 사용법 · 쉬운 말 · 접수 카운터(직원 접수함) · 아르고 실행 전 확인 ══════════ */
+  {
+    const PUB = "https://mzyuzrxkdcpzxojenwat.supabase.co/storage/v1/object/public/semis-logi-files/";
+    const AI = (o) => Object.assign({ type: "other", title: "", summary: "", date: "", org: "", conf: 0.9, certs: [], events: [], dissem: null, audit: null, case: null, hardcopy: null, shelf: null }, o);
+    const uxEnv = (role, id) => {
+      const e = makeEnv();
+      for (const k of ["TextEncoder", "TextDecoder"]) if (!e.w[k]) e.w[k] = globalThis[k];
+      loginAs(e, role, { id });
+      return e;
+    };
+
+    await ta("UX01 글자 크게 보기: 상단바 · 모바일 시트 단추 · 계정별 기억 · 인쇄는 그대로(@media screen 한정)", async () => {
+      const e = uxEnv("hq", "fs-a");
+      const H = e.w.document.documentElement;
+      eq(qa(e, "#hdr-fs [data-fs]").length, 3, "상단바 가 · 가+ · 가++");
+      eq(qa(e, "#sheet-fs [data-fs]").length, 3, "모바일 시트");
+      ok(!H.classList.contains("fs-1") && !H.classList.contains("fs-2"), "기본 14px");
+      q(e, '#hdr-fs [data-fs="2"]').click();
+      ok(H.classList.contains("fs-2"), "더 크게");
+      eq(q(e, '#hdr-fs [data-fs="2"]').getAttribute("aria-pressed"), "true");
+      eq(q(e, '#sheet-fs [data-fs="2"]').getAttribute("aria-pressed"), "true", "시트 단추도 같이");
+      eq(e.S.fontScale(), 2);
+      loginAs(e, "user", { id: "fs-b" });
+      ok(!H.classList.contains("fs-2"), "다른 계정은 기본");
+      loginAs(e, "hq", { id: "fs-a" });
+      ok(H.classList.contains("fs-2"), "계정별 기억");
+      e.S.setFontScale(1);
+      ok(H.classList.contains("fs-1") && !H.classList.contains("fs-2"));
+      e.S.setFontScale(0);
+      ok(!H.classList.contains("fs-1"));
+      const css = read("css/main.css");
+      ok(/@media screen \{ html\.fs-1 \{ font-size: 16px; \} html\.fs-2 \{ font-size: 18px; \} \}/.test(css), "화면 한정");
+      eq((css.match(/html\.fs-[12]/g) || []).length, 2, "인쇄 규칙에는 없음");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+
+    await ta("UX02 검색: 업무 동의어 · 초성 · 결과 종류 꼬리표 · 일부만 맞는 결과 · 없으면 아르고에게 그대로 · 최근 검색어 · 최근 연 화면", async () => {
+      const e = uxEnv("hq", "sr-a");
+      const SS = e.w.SemisSearch, P = e.w.SemisPanel;
+      e.S.data.schedules.push({ id: "ux-s1", title: "협력사 보안회의", start: "2026-11-05", end: "2026-11-05", allDay: true, memo: "", repeat: { freq: "none", until: "" } });
+      ok(SS.search("조업사 회의").some(x => x.title === "협력사 보안회의"), "동의어(조업사 = 협력사)");
+      ok(SS.search("ㅂㅇㅎㅇ").some(x => x.title === "협력사 보안회의"), "초성");
+      eq(SS.choOf("보안회의"), "ㅂㅇㅎㅇ");
+      ok(SS.altsOf("ra").some(a => a.s === "regulated agent") && SS.altsOf("ra").find(a => a.s === "ra"), "약어 동의어");
+      ok(!SS.search("tra").some(x => x.title === "협력사 보안회의"));
+      const all = SS.searchAll("협력사 없는말없는말");
+      eq(all.full.length, 0, "모두 맞는 결과 없음");
+      ok(all.partial.some(x => x.title === "협력사 보안회의"), "일부만 맞는 결과");
+      eq(SS.kindOf({ group: "일정관리" }), "일정");
+      eq(SS.kindOf({ group: "메뉴 · 링크", url: "https://example.com" }), "사이트");
+      eq(SS.kindOf({ group: "메뉴 · 링크", route: "schedule" }), "화면");
+      SS.open("협력사 보안회의");
+      await tick(5);
+      ok(P.isOpen("search"));
+      const row = qa(e, "#hdr-search-pop .sp-item").find(b => /협력사 보안회의/.test(b.textContent));
+      ok(row && row.querySelector(".sp-kind").textContent === "일정" && /열기/.test(row.querySelector(".sp-act").textContent), "종류 꼬리표 · 할 일");
+      SS.open("협력사 없는말없는말");
+      await tick(5);
+      ok(q(e, "#hdr-search-pop .sp-none") && /딱 맞는 결과가 없습니다/.test(q(e, "#hdr-search-pop .sp-none").textContent), "없음 안내");
+      ok(qa(e, "#hdr-search-pop .sp-group").some(g => /일부만 맞는 결과/.test(g.textContent)), "일부만 맞는 결과 묶음");
+      ok(qa(e, "#hdr-search-pop .sp-try .sp-chip").some(c => c.textContent === "협력사"), "이렇게도 찾아보세요");
+      let asked = "";
+      e.w.SemisArgo.ask = (x) => { asked = x; return true; };
+      q(e, "#hdr-search-pop [data-ask]").click();
+      await tick(5);
+      eq(asked, "협력사 없는말없는말", "아르고에게 그대로");
+      ok(!P.isOpen("search"), "검색 닫고");
+      eq(SS.recentQ()[0], "협력사 없는말없는말", "최근 검색어");
+      SS.open("");
+      await tick(5);
+      ok(qa(e, "#hdr-search-pop .sp-chip").some(b => /협력사 없는말없는말/.test(b.textContent)), "최근 검색어 표시");
+      ok(q(e, "#hdr-search-pop .sp-chip.is-go"), "자주 찾는 것");
+      P.close("search");
+      go(e, "schedule");
+      ok(SS.recentOpen().some(x => x.route === "schedule"), "최근 연 화면");
+      SS.forgetQ();
+      eq(SS.recentQ().length, 0, "모두 지우기");
+      loginAs(e, "user", { id: "sr-b" });
+      eq(SS.recentQ().length, 0, "검색어 기억은 계정별");
+      loginAs(e, "vendor", { id: "sr-v" });
+      eq(SS.searchAll("협력사 없는말없는말").partial.filter(x => x.title === "협력사 보안회의").length, 0, "협력업체는 일정 없음");
+    });
+
+    await ta("UX03 대시보드 시작 칸: 3종 지원 타일(권한별) · 누르면 그 기능 · 1종뿐이면 없음", async () => {
+      const e = uxEnv("user", "st-u");
+      go(e, "dashboard");
+      await tick(5);
+      eq(qa(e, "#view .dash-start [data-sup]").map(b => b.dataset.sup).join(), "search,desk,argo", "직원도 3종");
+      ok(/무엇을 할까요/.test(q(e, "#view .ds-hi h2").textContent));
+      eq(q(e, '#view .dash-start [data-sup="desk"] b').textContent, "접수 카운터");
+      ok(/문서 올리기/.test(q(e, '#view .dash-start [data-sup="desk"] small').textContent), "설명 한 줄");
+      q(e, '#view .dash-start [data-sup="search"]').click();
+      ok(e.w.SemisPanel.isOpen("search"), "검색 타일 → 검색");
+      e.w.SemisPanel.close("search");
+      loginAs(e, "vendor", { id: "st-v" });
+      ok(!q(e, "#view .dash-start"), "협력업체(검색만) → 시작 칸 없음");
+    });
+
+    await ta("UX04 사용법 안내: 상단바 '사용법' → 3단계(검색 · 접수 카운터 · 아르고) · 다음 · Esc · 다 보면 계정에 기록 · 직원 문구", async () => {
+      const e = uxEnv("hq", "tour-a");
+      ok(!q(e, "#tour"), "시험 환경은 자동 시작 안 함");
+      eq(q(e, "#tour-btn").hidden, false, "사용법 단추");
+      q(e, "#tour-btn").click();
+      ok(q(e, "#tour[role=dialog]"), "열림");
+      eq(q(e, "#tour .tour-step").textContent, "1 / 3");
+      eq(q(e, "#tour-t").textContent, "검색");
+      q(e, '#tour [data-tour="next"]').click();
+      eq(q(e, "#tour-t").textContent, "접수 카운터");
+      ok(/이대로 저장/.test(q(e, "#tour-x").textContent), "안전보안파트 문구");
+      q(e, '#tour [data-tour="next"]').click();
+      eq(q(e, '#tour [data-tour="next"]').textContent, "시작하기", "마지막 단계");
+      q(e, '#tour [data-tour="next"]').click();
+      ok(!q(e, "#tour"), "끝");
+      eq(e.S.navPrefs().tourDone, 1, "계정에 기록");
+      eq(e.S.startTour(false), false, "다 본 계정은 자동 시작 없음");
+      loginAs(e, "user", { id: "tour-b" });
+      ok(e.S.startTour(true));
+      q(e, '#tour [data-tour="next"]').click();
+      ok(/안전보안파트가 확인/.test(q(e, "#tour-x").textContent), "직원 문구");
+      q(e, "#tour").dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+      ok(!q(e, "#tour"), "Esc 닫기");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+
+    await ta("UX05 쉬운 말: 지원 카드 설명 · 상단바 검색칸 · 약어 풀이(화면 제목 ⓘ) · 인쇄 · 준비 중 메뉴는 시스템관리자만", async () => {
+      const e = uxEnv("hq", "w-hq");
+      eq(q(e, "#sup-desk .sup-l").textContent, "접수 카운터");
+      eq(q(e, "#sup-desk .sup-d").textContent, "문서 올리기");
+      eq(q(e, "#sup-argo .sup-d").textContent, "AI 도우미");
+      ok(/화면 · 문서 · 사람 · 일정/.test(q(e, "#hdr-search-btn").textContent), "상단 검색칸 안내");
+      ok(/Ctrl K|⌘K/.test(q(e, "#hdr-search-btn .hf-k").textContent), "단축키 표시");
+      eq(q(e, "#hdr-desk .hdr-l").textContent, "접수 카운터");
+      ok(/팀위기대응계획/.test(e.S.glossOf("팀위기대응 (SERP)")), "SERP 풀이");
+      eq(e.S.glossOf("일정관리"), "", "약어 없으면 없음");
+      ok(!/\bRA\b/.test("") && /Regulated Agent/.test(e.S.glossOf("RA 보안검색")), "RA");
+      go(e, "serp");
+      await tick(30);
+      ok(q(e, "#view .term-tip"), "제목 옆 ⓘ");
+      ok(!/<span>Print<\/span>/.test(e.w.document.body.innerHTML), "Print → 인쇄");
+      ok(!/<span>Print<\/span>/.test(["js/panel.js", "js/patrol.js", "js/selfcheck.js", "js/edu-form.js", "edu.html", "js/app.js"].map(read).join("")), "원본에도 없음");
+      eq(e.S.SUP_LABEL.desk, "접수 카운터");
+    });
+
+    await ta("UX06 직원 접수함(안전보안파트 화면): desk-in 만 가져옴(take) → 내용 확인 → '직원 접수' 카드 → 저장하면 접수함 '저장됨'(저장한 곳 이름만) · 지우기 = 반려 · 이미 처리한 건은 다시 안 가져옴", async () => {
+      const e = uxEnv("hq", "in-hq");
+      await tick(5);                    // 로그인 때 시작된 접수함 확인(오프라인)이 끝나게
+      e.w.SemisDesk.setToday("2026-10-09");
+      e.S.data.desk = { cfg: { areas: { security: "보안담당" } }, log: [] };
+      const Sy = e.w.SemisSync, D = e.S.data, DK = e.w.SemisDesk;
+      Sy.auth.token = () => "tok";
+      const rpcs = [], st = {};
+      const box = [{ id: "in1", at: "2026-10-09T01:00:00Z", by: "직원갑", path: "desk-in/zz_a.txt", name: "회의 안내.txt", size: 9 },
+        { id: "in2", at: "2026-10-09T01:00:00Z", by: "직원갑", path: "docs/zz_b.txt", name: "b.txt", size: 9 },
+        { id: "in3", at: "2026-10-09T02:00:00Z", by: "직원을", path: "desk-in/zz_c.txt", name: "기타.txt", size: 9 }];
+      Sy.rpc = async (fn, a) => {
+        rpcs.push(fn + ":" + JSON.stringify(a || {}));
+        if (fn === "semis_logi_desk_inbox") return { ok: true, items: box.filter(b => !st[b.id]) };
+        if (fn === "semis_logi_desk_take") { st[a.p_id] = "taken"; return { ok: true }; }
+        if (fn === "semis_logi_desk_close") { st[a.p_id] = a.p_status; return { ok: true }; }
+        return { ok: false };
+      };
+      Sy.signFiles = async (ps) => ({ urls: Object.fromEntries(ps.map(p => [p, "https://signed.example/" + p])) });
+      e.w.fetch = async () => ({ ok: true, blob: async () => new e.w.Blob(["보안회의 11월 5일"], { type: "text/plain" }) });
+      const reads = [];
+      Sy.filesCall = async (b) => {
+        if (b.op === "desk-read") {
+          reads.push(b.path + ":" + (b.text ? "text" : "file"));
+          return { ok: true, data: AI(b.path.indexOf("zz_a") >= 0 ? { type: "notice", title: "보안회의 안내", events: [{ title: "보안회의", start: "2026-11-05", cat: "meeting", area: "security" }] } : { type: "other", title: "기타" }) };
+        }
+        if (b.op === "copy") return { ok: true, url: PUB + b.prefix + "/cc_" + String(b.from).split("/").pop() };
+        throw new Error("op");
+      };
+      await DK.pullInbox(true);
+      for (let i = 0; i < 40 && (D.desk.log.length < 2 || D.desk.log.some(x => x.status !== "wait")); i++) await tick(5);
+      eq(D.desk.log.map(x => x.inbox).sort().join(), "in1,in3", "desk-in/ 만");
+      ok(!rpcs.some(r => /desk_take.*in2/.test(r)), "다른 폴더 경로는 가져가지 않음");
+      eq(reads.sort().join(), "desk-in/zz_a.txt:text,desk-in/zz_c.txt:text", "원본을 받아 글로 읽음");
+      const a = D.desk.log.find(x => x.inbox === "in1");
+      eq(a.status, "wait"); eq(a.title, "보안회의 안내"); eq(a.by, "직원갑");
+      eq(a.file.url, Sy.PUBLIC_PREFIX + "desk-in/zz_a.txt");
+      eq(DK.pending().length, 2, "확인 대기 2");
+      DK.open("up");
+      await tick(40);
+      ok(/직원 접수/.test(q(e, '.dk-item[data-dk="' + a.id + '"] .dk-ih').textContent), "직원 접수 표시");
+      await DK.apply(a.id);
+      await tick(10);
+      eq(a.status, "done");
+      ok(D.schedules.some(s => s.title === "보안회의"), "일정 저장");
+      eq(st.in1, "done", "접수함 저장됨");
+      ok(rpcs.some(r => r === 'semis_logi_desk_close:{"p_id":"in1","p_status":"done","p_result":"일정"}'), "저장한 곳 이름만: " + rpcs.filter(r => /close/.test(r)).join());
+      const c = D.desk.log.find(x => x.inbox === "in3");
+      DK.drop(c.id);
+      ok(/반려/.test(q(e, "#modal-box").textContent), "반려 안내");
+      clickOk(e);
+      await tick(10);
+      eq(st.in3, "back", "반려");
+      ok(!D.desk.log.some(x => x.id === c.id), "기록에서 지움");
+      const nTake = rpcs.filter(r => /desk_take/.test(r)).length;
+      delete st.in1;                    // 서버에 '저장됨'이 늦게 닿은 경우 — 다시 와도 가져가지 않고 닫기만
+      await DK.pullInbox(true);
+      await tick(10);
+      eq(rpcs.filter(r => /desk_take/.test(r)).length, nTake, "다시 가져가지 않음");
+      eq(st.in1, "done", "닫기만 다시");
+      eq(D.desk.log.length, 1);
+      DK.close();
+      loginAs(e, "user", { id: "in-u" });
+      const n0 = rpcs.length;
+      await DK.pullInbox(true);
+      eq(rpcs.length, n0, "직원 화면은 접수함을 읽지 않음");
+    });
+
+    await ta("UX07 직원 '내가 올린 문서': 상태 · 처리 결과 · 확인 대기만 '올리기 취소' · 배지", async () => {
+      const e = uxEnv("user", "me-u");
+      const Sy = e.w.SemisSync, DK = e.w.SemisDesk, P = e.w.SemisPanel;
+      let items = [{ id: "m1", at: "2026-10-09T01:00:00Z", name: "이수증.pdf", size: 1, status: "new" },
+        { id: "m2", at: "2026-10-08T01:00:00Z", name: "회의 통보.hwp", size: 1, status: "done", result: "일정", done_at: "2026-10-08T05:00:00Z" },
+        { id: "m3", at: "2026-10-07T01:00:00Z", name: "기타.pdf", size: 1, status: "back", done_at: "2026-10-07T05:00:00Z" }];
+      const rpcs = [];
+      Sy.rpc = async (fn, a) => {
+        rpcs.push(fn + ":" + JSON.stringify(a || {}));
+        if (fn === "semis_logi_desk_mine") return { ok: true, items };
+        if (fn === "semis_logi_desk_cancel") { items = items.map(x => x.id === a.p_id ? Object.assign({}, x, { status: "cancel" }) : x); return { ok: true }; }
+        return { ok: false };
+      };
+      DK.open("mine");
+      for (let i = 0; i < 20 && !q(e, "#pnl-desk .dk-tbl"); i++) await tick(10);
+      eq(DK.tab, "mine");
+      const rows = qa(e, "#pnl-desk .dk-tbl tbody tr");
+      eq(rows.length, 3);
+      ok(/확인 대기/.test(rows[0].textContent) && /저장됨/.test(rows[1].textContent) && /일정/.test(rows[1].textContent) && /반려/.test(rows[2].textContent), "상태 · 처리 결과");
+      eq(qa(e, "#pnl-desk [data-cancel]").map(b => b.dataset.cancel).join(), "m1", "확인 대기만 취소");
+      await tick(40);
+      eq(q(e, "#sup-desk .sup-n").textContent, "1", "지원 카드 배지 = 확인 대기");
+      eq(q(e, '#pnl-desk .pnl-tab[data-tab="mine"] .pnl-n').textContent, "1", "탭 배지");
+      q(e, '#pnl-desk [data-cancel="m1"]').click();
+      for (let i = 0; i < 20 && !/올리기 취소/.test((qa(e, "#pnl-desk .dk-tbl tbody tr")[0] || {}).textContent || ""); i++) await tick(10);
+      ok(rpcs.some(r => r === 'semis_logi_desk_cancel:{"p_id":"m1"}'));
+      ok(/올리기 취소/.test(qa(e, "#pnl-desk .dk-tbl tbody tr")[0].textContent), "취소 반영");
+      P.setTab("desk", "up");
+      await tick(20);
+      ok(q(e, "#pnl-desk #dk-drop") && /안전보안파트 확인/.test(q(e, "#pnl-desk .dkc-steps").textContent), "직원 3단계: 올리기 → 안전보안파트 확인 → 저장");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+
+    await ta("UX08 아르고: 등록 · 수정은 기본 '실행 전 확인'(미리보기 · 등록하기/취소) · 취소하면 쓰지 않음 · 안전보안파트만 '바로 실행' 전환 · 시작 화면 칸(찾기 · 알려주기 · 등록하기)", async () => {
+      const e = uxEnv("hq", "ag-hq");
+      const A = e.w.SemisArgo, D = e.S.data;
+      A._reset(); A.setToday("2026-10-09");
+      eq(A.autoRun(), false, "기본 = 실행 전 확인");
+      A.open();
+      eq(qa(e, "#pnl-argo .ag-col-h").map(x => x.textContent.trim()).join(), "찾기,알려주기,등록하기", "시작 화면 3칸");
+      ok(/실행 전 확인/.test(q(e, "#pnl-argo [data-ag-auto]").textContent), "전환 단추");
+      ok(/대화는 이 창\(탭\)을 닫거나 로그아웃하면 지워집니다/.test(q(e, "#pnl-argo").textContent), "대화 보관 안내");
+      const n0 = (D.schedules || []).length;
+      const t = { id: "tq1", q: "", files: [], a: "", cards: [], pending: true };
+      A.conv.turns.push(t);
+      const p = A.runTool("schedule_add", { items: [{ title: "안전 회의", start: "2026-10-14", time: "14:00" }] }, { turn: t, files: {}, up: {}, log: [] });
+      await tick(5);
+      const card = q(e, "#pnl-argo .ag-card.is-confirm");
+      ok(card && /일정 등록 · 확인해 주세요/.test(card.textContent), "확인 카드");
+      ok(/2026\.10\.14 14:00 · 안전 회의/.test(card.textContent), "미리보기: " + (card && card.textContent));
+      eq(q(e, '#pnl-argo [data-cf][data-ok="1"]').textContent, "등록하기", "할 일 이름");
+      eq((D.schedules || []).length, n0, "확인 전엔 쓰지 않음");
+      q(e, '#pnl-argo [data-cf][data-ok="0"]').click();
+      const r = await p;
+      ok(r.cancelled && (D.schedules || []).length === n0, "취소 → 쓰지 않음");
+      q(e, "#pnl-argo [data-ag-auto]").click();
+      eq(A.autoRun(), true, "바로 실행으로");
+      ok(/바로 실행 중/.test(q(e, "#pnl-argo [data-ag-auto]").textContent));
+      const t2 = { id: "tq2", q: "", files: [], a: "", cards: [], pending: true };
+      A.conv.turns.push(t2);
+      const r2 = await A.runTool("schedule_add", { items: [{ title: "안전 회의", start: "2026-10-14" }] }, { turn: t2, files: {}, up: {}, log: [] });
+      ok(r2.ok && D.schedules.some(s => s.title === "안전 회의"), "한 건은 바로 실행");
+      const t3 = { id: "tq3", q: "", files: [], a: "", cards: [], pending: true };
+      A.conv.turns.push(t3);
+      const p3 = A.runTool("schedule_add", { items: [{ title: "가", start: "2026-10-15" }, { title: "나", start: "2026-10-16" }] }, { turn: t3, files: {}, up: {}, log: [] });
+      await tick(5);
+      ok(/일정 등록 2건 · 확인해 주세요/.test(qa(e, "#pnl-argo .ag-card.is-confirm").pop().textContent), "여러 건은 바로 실행이어도 확인");
+      eq(qa(e, '#pnl-argo [data-cf][data-ok="0"]').length, 1, "대기 중인 확인은 하나");
+      q(e, '#pnl-argo [data-cf][data-ok="0"]').click();
+      await p3;
+      A.close();
+      loginAs(e, "user", { id: "ag-u" });
+      A._reset();
+      A.open();
+      ok(!q(e, "#pnl-argo [data-ag-auto]"), "직원은 전환 단추 없음");
+      eq(qa(e, "#pnl-argo .ag-col-h").map(x => x.textContent.trim()).join(), "찾기,알려주기", "직원 = 찾기 · 알려주기");
+      eq(e.errors.length, 0, e.errors.join(" | "));
     });
   }
 

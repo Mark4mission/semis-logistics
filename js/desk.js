@@ -1,17 +1,20 @@
-/* 메인 데스크 — 업무 문서를 올리면 AI 가 읽고 반영안을 낸다. 확인 · 수정 후 '반영'하면 각 화면 자료에 들어간다.
-   화면은 공통 패널(지원 카드 · 상단바 · 어디서나 끌어다 놓기 · #/desk 주소로 연다): 탭 [올리기 · 확인 대기] [접수 대장(A4 인쇄)].
+/* 접수 카운터(옛 이름 메인 데스크, 주소 #/desk · 모듈 id desk 그대로) — 업무 문서를 올리면 AI 가 읽고 저장할 곳을 제안한다. 확인 · 고치기 후 '이대로 저장'하면 각 화면 자료에 들어간다.
+   화면은 공통 패널(지원 카드 · 상단바 · 시작 바 · 모바일 탭 · 어디서나 끌어다 놓기 · #/desk): 안전보안파트 [올리기 · 확인] [올린 문서 기록(A4 인쇄)] / 직원 [올리기] [내가 올린 문서].
    교육 이수증 → 이수 기록 + 다음 이수 기간 일정 / 공문 · 회의 · 행사 → 일정 / 전파 통보 → 보안 전파교육 / 점검 결과 → 수검 지적사항 /
-   보안 처리 보고서 → 보안 처리 대장 / 기록부 · 대장 스캔 → 하드카피 집계 + 문서 서가 / 그 밖 → 문서 서가.
+   보안 처리 보고서 → 보안 처리 대장 / 기록부 · 대장 스캔 → 하드카피 집계 + 문서함 / 그 밖 → 문서함.
    DATA.desk = { cfg{ areas{ security, safety, industrial, dg } — 분야별 일정 담당(이름은 공용 DB 에만) },
-     log[{ id, at, by, file{ name, size, url, type }, status(reading|wait|done|kept), err, type, title, summary, ai(대기 중 판독 결과),
+     log[{ id, at, by, inbox?(직원 접수 id), file{ name, size, url, type }, status(reading|wait|done|kept), err, type, title, summary, ai(대기 중 판독 결과),
            acts[{ k, label, route }], doneAt, doneBy }] }
-   권한: 열람 · 편집 hq(3). 원본은 비공개 버킷 desk/(hq), 반영할 때 대상 화면 폴더로 복사한다(Edge Function op copy). */
+   권한: 열람 · 편집 hq(3). 원본은 비공개 버킷 desk/(hq), 저장할 때 대상 화면 폴더로 복사한다(Edge Function op copy).
+   직원(user · manager): 원본은 desk-in/(올리기 1 · 열람 3) + 비공개 접수함(RPC semis_logi_desk_*). 자기 접수 · 처리 상태만 보고,
+   안전보안파트 화면이 접수함을 가져와 판독 · 확인 · 저장한다(tools/sql/semis-logi-desk-inbox.sql). */
 "use strict";
 
 (() => {
   const { $, $$, esc, toast, openModal, closeModal, confirmModal, ui, icon } = SeMIS;
   const D = () => SeMIS.data;
-  const MOD = "desk", KEY = "desk", TITLE = "메인 데스크", FOLDER = "desk";
+  const MOD = "desk", KEY = "desk", TITLE = "접수 카운터", FOLDER = "desk", FOLDER_IN = "desk-in";
+  const SUB = "문서 올리기 — 파일을 올리면 알아서 정리";
   const FILE_MAX = 50 * 1024 * 1024, LOG_MAX = 500, STALE_MS = 10 * 60 * 1000;
   const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
   const isISO = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ""));
@@ -28,6 +31,7 @@
   const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const me = () => { const u = SeMIS.user; return u ? u.name || u.id || "" : ""; };
   const canW = () => !!SeMIS.user && SeMIS.user.role !== "vendor" && SeMIS.roleRank() >= 3;
+  const canUse = () => { const u = SeMIS.user; return !!u && u.role !== "vendor" && u.role !== "signer" && SeMIS.roleRank() >= 1; };
   const num = (v) => { const n = Number(v); return v === "" || v == null || !isFinite(n) ? null : n; };
   const fmtSize = (n) => (n >= 1048576 ? (n / 1048576).toFixed(1) + "MB" : Math.max(1, Math.round((n || 0) / 1024)) + "KB");
 
@@ -40,15 +44,15 @@
   const CATS = { meeting: ["회의", "blue", ["1d"]], training: ["교육", "green", ["1w", "1d"]], inspection: ["점검 · 심사", "red", ["1w", "1d"]],
     regulation: ["규정 · 절차", "brown", ["1w"]], deadline: ["기한", "red", ["1w", "1d"]], event: ["행사 · 견학", "gray", ["1d"]], other: ["기타", "gray", ["1d"]] };
   const KINDS = {
-    cert: { label: "교육 이수 기록", folder: "training", route: "training" },
-    event: { label: "일정", folder: "schedules", route: "schedule" },
-    dissem: { label: "보안 전파교육", folder: "dissem", route: "dissem" },
-    audit: { label: "수검 · 지적사항", folder: "audits", route: "audit" },
-    case: { label: "보안 처리 대장", folder: "cases", route: "sec-cases" },
-    hc: { label: "기록부 하드카피 확인", folder: "", route: "inspection" },
-    shelf: { label: "문서 서가", folder: "docs", route: "" }
+    cert: { label: "교육 이수 기록", save: "교육 기록에 저장", folder: "training", route: "training" },
+    event: { label: "일정", save: "일정에 저장", folder: "schedules", route: "schedule" },
+    dissem: { label: "보안 전파교육", save: "전파교육에 저장", folder: "dissem", route: "dissem" },
+    audit: { label: "수검 · 지적사항", save: "수검 기록에 저장", folder: "audits", route: "audit" },
+    case: { label: "보안 처리 대장", save: "보안 처리 대장에 저장", folder: "cases", route: "sec-cases" },
+    hc: { label: "기록부 하드카피 확인", save: "하드카피 집계에 저장", folder: "", route: "inspection" },
+    shelf: { label: "문서함", save: "문서함에 저장", folder: "docs", route: "" }
   };
-  const ST = { reading: ["판독 중", "amber"], wait: ["확인 대기", "blue"], done: ["반영", "green"], kept: ["보관", "gray"] };
+  const ST = { reading: ["내용 확인 중", "amber"], wait: ["확인 대기", "blue"], done: ["저장됨", "green"], kept: ["보관", "gray"] };
   const FTYPES = { car: "시정조치", rec: "개선권고", onsite: "현장시정", obs: "관찰사항" };
   const BODIES = { gov: "국토부 · 지방항공청", foreign: "해외 당국 · 화주", internal: "사내 심사" };
   const ROOM = (place) => /회의실/.test(place) && /화물\s*터미널/.test(place);
@@ -220,7 +224,7 @@
         if (!isISO(a.date)) return "기록 날짜를 입력하세요.";
         return "";
       }
-      case "shelf": return !shelfOk(a.mod, a.grp) ? "문서 서가 위치를 고르세요." : !norm(a.title) ? "문서 이름을 입력하세요." : "";
+      case "shelf": return !shelfOk(a.mod, a.grp) ? "문서함 위치(화면 · 묶음)를 고르세요." : !norm(a.title) ? "문서 이름을 입력하세요." : "";
       default: return "알 수 없는 항목";
     }
   }
@@ -244,7 +248,7 @@
     const win = isISO(s.winS);
     let start = win ? s.winS : addDays(s.exp, -30);
     if (start < todayISO()) start = todayISO();
-    const memo = (win ? "이수 기간 " + dot(s.winS) + " ~ " + dot(s.winE) + " · " : "") + "유효기한 " + dot(s.exp) + " — 메인 데스크(" + c.name + ")";
+    const memo = (win ? "이수 기간 " + dot(s.winS) + " ~ " + dot(s.winE) + " · " : "") + "유효기한 " + dot(s.exp) + " — 접수 카운터(" + c.name + ")";
     const id = "dsk_tr_" + p.id + "_" + g.fam;
     const area = g.rule === "dg" ? "dg" : "security";
     const rec = schedRec({ id, src: "desk", title: "[교육] " + p.name + " " + g.name + (win ? " 이수 기간" : " 유효기한 임박"), memo, start, end: start,
@@ -265,7 +269,7 @@
         let pid = a.pid;
         if (pid === "_new") {
           const p = { id: uid("tp"), name: norm(a.name), emp: String(a.emp || "").replace(/\s+/g, "").toUpperCase().slice(0, 20), dept: "", roles: [], apt: {}, left: "",
-            note: "메인 데스크 등록", pledge: "", pledgeFiles: [], createdAt: nowS, createdBy: by };
+            note: "접수 카운터 등록", pledge: "", pledgeFiles: [], createdAt: nowS, createdBy: by };
           t.people.push(p); pid = p.id;
         }
         const calc = window.SemisTraining ? SemisTraining.previewExpire(pid, a.cid, a.date, "") : "";
@@ -339,10 +343,12 @@
         out.push({ k: "hc", label: "하드카피 · " + t.name + " " + lb, route: "inspection" });
       } else if (a.k === "shelf") {
         if (!Array.isArray(D().docs)) D().docs = [];
-        D().docs.push({ id: uid("dk"), mod: a.mod, grp: a.grp, title: norm(a.title), date: isISO(a.date) ? a.date : "", ser: "", org: norm(a.org), note: "",
-          ssi: !!a.ssi, mids: [], files: fileArr(a), src: "desk", at: nowS, by });
+        /* sum = 판독 요약(검색 색인용 — 화면에는 보이지 않음). 민감보안정보 문서는 요약도 남기지 않는다 */
+        const sum = !a.ssi && e && e.summary ? norm(e.summary).slice(0, 300) : "";
+        D().docs.push(Object.assign({ id: uid("dk"), mod: a.mod, grp: a.grp, title: norm(a.title), date: isISO(a.date) ? a.date : "", ser: "", org: norm(a.org), note: "",
+          ssi: !!a.ssi, mids: [], files: fileArr(a), src: "desk", at: nowS, by }, sum ? { sum } : {}));
         const m = shelfMods().find(x => x.mod === a.mod);
-        out.push({ k: "shelf", label: "문서 서가 · " + (m ? m.label : a.mod) + " › " + (window.SemisDocs ? SemisDocs.labelOf(a.mod, a.grp) : a.grp), route: a.mod });
+        out.push({ k: "shelf", label: "문서함 · " + (m ? m.label : a.mod) + " › " + (window.SemisDocs ? SemisDocs.labelOf(a.mod, a.grp) : a.grp), route: a.mod });
       }
     });
     return out;
@@ -351,12 +357,15 @@
   /* ── 접수 · 판독 ── */
   const busy = {};          // id → up | read | apply (이 탭에서 진행 중)
   const temp = [];          // 올리는 중인 파일 [{ id, name, size }]
-  const drafts = {};        // id → 반영안(편집 중)
+  const drafts = {};        // id → 저장할 내용(고치는 중)
+  const fixOpen = {};       // id → { aid: true } — [고치기]로 펼친 줄
   let filterS = "", repaintT = null;
   const ERR = {
-    no_key: "AI 판독 설정이 없습니다.", busy: "AI 사용량이 많습니다. 잠시 뒤 다시 판독하세요.", too_large: "판독 한도(PDF 15MB · 이미지 5MB)를 넘습니다.",
-    unsupported: "판독할 수 없는 형식입니다.", parse: "판독 결과를 해석하지 못했습니다.", forbidden: "권한이 없습니다.", file: "원본 파일을 찾지 못했습니다."
+    no_key: "AI 설정이 없습니다. 시스템관리자에게 알려 주세요.", busy: "AI 사용량이 많습니다. 잠시 뒤 '다시 읽기'를 눌러 주세요.",
+    too_large: "읽을 수 있는 크기(PDF 15MB · 사진 5MB)를 넘습니다. 나눠서 올리거나 '보관만 하기'를 누르세요.",
+    unsupported: "읽을 수 없는 형식입니다.", parse: "읽은 내용을 정리하지 못했습니다. '다시 읽기'를 눌러 주세요.", forbidden: "권한이 없습니다.", file: "원본 파일을 찾지 못했습니다."
   };
+  const PID = "desk";
   function repaint() {
     if (repaintT) return;
     repaintT = setTimeout(() => {
@@ -365,15 +374,16 @@
       if (SeMIS.renderSupport) SeMIS.renderSupport();
     }, 30);
   }
-  let mood = "", moodT = null;      // 부엉이 — 반영 직후 happy · 실패 직후 alert (잠깐)
+  let mood = "", moodT = null;      // 부엉이 — 저장 직후 happy · 실패 직후 alert (잠깐)
   function setMood(m) {
     mood = m; clearTimeout(moodT);
     moodT = setTimeout(() => { mood = ""; repaint(); }, 2600);
   }
 
   async function intake(list) {
-    if (!canW()) { toast("메인 데스크는 안전보안파트 이상만 쓸 수 있습니다.", true); return; }
+    if (!canUse()) { toast("이 계정은 접수 카운터를 쓸 수 없습니다.", true); return; }
     if (!window.SemisSync || !SemisSync.uploadFile || !window.SemisDocRead) { toast("오프라인에서는 올릴 수 없습니다.", true); return; }
+    if (!canW()) return submit(list);
     for (const file of Array.from(list || [])) {
       if (!file) continue;
       if (file.size > FILE_MAX) { toast(file.name + ": 50MB를 넘습니다.", true); continue; }
@@ -404,7 +414,8 @@
     if (!e0) return;
     if (x.mode === "none") {
       e0.status = "wait"; e0.ai = null;
-      e0.err = x.kind === "legacy" ? "구 형식(HWP · DOC · XLS · PPT)은 읽지 못합니다. PDF 로 저장해 올리면 판독합니다." : "내용을 읽지 못했습니다.";
+      e0.err = SemisDocRead.whyText ? SemisDocRead.whyText(x) : "내용을 읽지 못했습니다.";
+      e0.info = true;
       delete busy[id]; SeMIS.save(); repaint();
       return;
     }
@@ -414,16 +425,17 @@
       const d = await SemisSync.filesCall({ op: "desk-read", path: pathOf(e0.file.url), name: e0.file.name, text: x.mode === "text" ? x.text : "", cat: catalog() });
       ai = clean(d.data);
     } catch (er) {
-      err = ERR[er && er.code] || "판독하지 못했습니다.";
+      err = ERR[er && er.code] || "내용을 읽지 못했습니다. '다시 읽기'를 눌러 주세요.";
     }
     const e = findLog(id) || (V().log.unshift(e0), e0);
     e.status = "wait";
+    delete e.info;
     if (ai) { e.ai = ai; e.type = ai.type; e.title = ai.title; e.summary = ai.summary; delete e.err; }
     else { e.ai = null; e.err = err; setMood("alert"); }
-    delete drafts[id]; delete busy[id];
+    delete drafts[id]; delete fixOpen[id]; delete busy[id];
     SeMIS.save(); repaint();
   }
-  /* 다시 판독 — 저장된 원본을 받아 글을 다시 뽑는다 */
+  /* 다시 읽기 — 저장된 원본을 받아 글을 다시 뽑는다(직원 접수를 가져올 때도 이 길) */
   async function reread(id) {
     const e = findLog(id);
     if (!e || busy[id]) return;
@@ -443,14 +455,22 @@
       await read(id, x);
     } catch (er) {
       delete busy[id];
+      if (e.status === "reading") { e.status = "wait"; e.err = "원본을 받지 못했습니다. '다시 읽기'를 눌러 주세요."; SeMIS.save(); }
       toast("원본을 받지 못했습니다.", true); repaint();
     }
+  }
+  /* 처리 결과 한 줄(직원이 보는 '저장한 곳') — 화면 이름만, 사람 이름 · 내용은 넣지 않는다 */
+  const resultText = (acts) => Array.from(new Set((acts || []).map(a => (KINDS[a.k] || {}).label).filter(Boolean))).join(" · ").slice(0, 200);
+  function closeInbox(e, status) {
+    if (!e || !e.inbox || !window.SemisSync || !SemisSync.rpc) return Promise.resolve(false);
+    return SemisSync.rpc("semis_logi_desk_close", { p_id: e.inbox, p_status: status, p_result: status === "done" ? resultText(e.acts) : "" })
+      .then(d => !!(d && d.ok)).catch(() => false);
   }
   async function apply(id) {
     const e = findLog(id), acts = (drafts[id] || []).filter(a => a.on);
     if (!e || busy[id]) return;
-    if (!acts.length) { toast("반영할 항목을 고르세요.", true); return; }
-    for (const a of acts) { const m = check(a); if (m) { toast(KINDS[a.k].label + ": " + m, true); return; } }
+    if (!acts.length) { toast("저장할 곳을 하나 이상 고르세요.", true); return; }
+    for (const a of acts) { const m = check(a); if (m) { (fixOpen[id] = fixOpen[id] || {})[a.id] = true; repaint(); toast(KINDS[a.k].label + ": " + m, true); return; } }
     busy[id] = "apply"; repaint();
     const files = {};
     try {
@@ -460,31 +480,40 @@
         files[fd] = { name: e.file.name, size: e.file.size || 0, url: d.url };
       }
     } catch (er) {
-      delete busy[id]; toast("파일을 옮기지 못했습니다. 다시 시도하세요.", true); repaint();
+      delete busy[id]; toast("파일을 옮기지 못했습니다. 다시 눌러 주세요.", true); repaint();
       return;
     }
     const done = commit(acts, files, e);
     const cur = findLog(id) || e;
     Object.assign(cur, { status: "done", acts: done, doneAt: new Date().toISOString(), doneBy: me() });
-    delete cur.ai; delete cur.err;
-    delete drafts[id]; delete busy[id];
+    delete cur.ai; delete cur.err; delete cur.info;
+    delete drafts[id]; delete fixOpen[id]; delete busy[id];
     setMood("happy");
     SeMIS.save(); repaint();
-    toast("반영했습니다 · " + done.length + "건");
+    closeInbox(cur, "done");
+    const go = done.find(x => x.route && goOk(x.route));
+    const where = Array.from(new Set(done.map(x => (KINDS[x.k] || {}).label).filter(Boolean)));
+    toast("저장했습니다 — " + (where.length > 2 ? where.slice(0, 2).join(" · ") + " 외 " + (where.length - 2) + "곳" : where.join(" · ")), false,
+      go ? { label: "바로 가기", run: () => { close(); SeMIS.navigate(go.route); } } : null);
   }
+  const goOk = (route) => { const mn = SeMIS.menuForModule && SeMIS.menuForModule(route); return !!(mn && SeMIS.navVisible(mn) && SeMIS.hasModule(route)); };
   function keep(id) {
     const e = findLog(id);
     if (!e) return;
     Object.assign(e, { status: "kept", doneAt: new Date().toISOString(), doneBy: me(), acts: [] });
-    delete e.ai; delete drafts[id];
+    delete e.ai; delete drafts[id]; delete fixOpen[id];
     SeMIS.save(); repaint();
+    closeInbox(e, "kept");
+    toast("보관했습니다. '올린 문서 기록'에서 찾을 수 있습니다.");
   }
   function drop(id) {
     const e = findLog(id);
     if (!e) return;
-    confirmModal("접수 기록을 지웁니다. 각 화면에 반영한 자료는 그대로 남습니다.", () => {
+    const fromStaff = !!e.inbox;
+    confirmModal(fromStaff ? "직원이 올린 문서를 처리하지 않고 지웁니다. 올린 사람 화면에는 '반려'로 보입니다." : "올린 기록을 지웁니다. 각 화면에 저장한 자료는 그대로 남습니다.", async () => {
+      if (fromStaff && !(await closeInbox(e, "back"))) { toast("접수함에 알리지 못했습니다. 잠시 뒤 다시 지워 주세요.", true); return; }
       V().log = logs().filter(x => x.id !== id);
-      delete drafts[id];
+      delete drafts[id]; delete fixOpen[id];
       if (SeMIS.isAdmin() && SemisSync.deleteFile) SemisSync.deleteFile(pathOf(e.file.url)).catch(() => {});
       SeMIS.save(); repaint();
     });
@@ -492,7 +521,87 @@
   const draftOf = (e) => drafts[e.id] || (drafts[e.id] = plan(e.ai || null, e.file && e.file.name));
   const stale = (e) => e.status === "reading" && !busy[e.id] && Date.now() - Date.parse(e.at || 0) > STALE_MS;
 
-  /* ── 화면: 반영안 카드 ── */
+  /* ── 직원 접수(안전보안파트 미만) — desk-in/ 에 올리고 비공개 접수함에 한 줄. 안전보안파트 화면이 가져가 판독한다 ── */
+  let mine = null, mineAt = 0;
+  const MST = { new: ["확인 대기", "blue"], taken: ["확인 중", "amber"], done: ["저장됨", "green"], kept: ["보관", "gray"], back: ["반려", "red"], cancel: ["올리기 취소", "gray"] };
+  async function submit(list) {
+    let sent = 0;
+    for (const file of Array.from(list || [])) {
+      if (!file) continue;
+      if (file.size > FILE_MAX) { toast(file.name + ": 50MB를 넘습니다.", true); continue; }
+      const id = uid("up");
+      temp.push({ id, name: file.name, size: file.size || 0 });
+      repaint();
+      try {
+        const k = SemisDocRead.kindOf(file.name);
+        const f = k === "image" && SemisDocRead.prep ? await SemisDocRead.prep(file) : file;
+        const up = await SemisSync.uploadFile(f, FOLDER_IN);
+        const d = await SemisSync.rpc("semis_logi_desk_submit", { p: { path: pathOf(up.url), name: String(up.name || f.name || "file").slice(0, 160), size: up.size || f.size || 0, ftype: SemisDocRead.kindOf(f.name || file.name) } });
+        if (!d || !d.ok) throw Object.assign(new Error("submit"), { code: d && d.error });
+        if (Array.isArray(mine) && d.item) mine.unshift(d.item);
+        sent++;
+      } catch (er) {
+        toast("올리지 못했습니다: " + file.name + (er && er.code === "rate" ? " — 잠시 뒤 다시 올려 주세요." : ""), true);
+      } finally {
+        const i = temp.findIndex(t => t.id === id);
+        if (i >= 0) temp.splice(i, 1);
+        repaint();
+      }
+    }
+    if (sent) { toast("올렸습니다. 안전보안파트가 확인한 뒤 알맞은 화면에 정리합니다."); loadMine(true); }
+  }
+  async function loadMine(force) {
+    if (!canUse() || canW() || !window.SemisSync || !SemisSync.rpc) return;
+    if (!force && mine && Date.now() - mineAt < 20000) return;
+    try {
+      const d = await SemisSync.rpc("semis_logi_desk_mine", {});
+      if (d && d.ok && Array.isArray(d.items)) { mine = d.items; mineAt = Date.now(); repaint(); }
+    } catch (e) { /* 다음에 다시 */ }
+  }
+  async function cancelMine(id) {
+    try {
+      const d = await SemisSync.rpc("semis_logi_desk_cancel", { p_id: id });
+      if (!d || !d.ok) throw new Error("cancel");
+      toast("올리기를 취소했습니다.");
+    } catch (e) { toast("취소하지 못했습니다. 이미 확인 중일 수 있습니다.", true); }
+    loadMine(true);
+  }
+  const minePending = () => (Array.isArray(mine) ? mine.filter(x => x.status === "new" || x.status === "taken").length : 0);
+
+  /* 안전보안파트 화면 — 직원 접수를 가져와 '확인 대기'로(한 사람만 가져가도록 서버가 잠근다) */
+  let inboxBusy = 0, inboxAt = 0;          // inboxBusy = 시작 시각(응답 없는 요청이 90초 넘게 막지 않게)
+  const kindOfName = (n) => (window.SemisDocRead ? SemisDocRead.kindOf(n) : "other");
+  async function pullInbox(force) {
+    if (!canW() || (inboxBusy && Date.now() - inboxBusy < 90000) || !window.SemisSync || !SemisSync.rpc || !SemisSync.auth || !SemisSync.auth.token || !SemisSync.auth.token()) return;
+    if (!force && Date.now() - inboxAt < 60000) return;
+    inboxBusy = inboxAt = Date.now();
+    try {
+      const d = await SemisSync.rpc("semis_logi_desk_inbox", {});
+      const list = d && d.ok && Array.isArray(d.items) ? d.items : [];
+      for (const it of list) {
+        if (!it || !it.id || !/^desk-in\//.test(String(it.path || ""))) continue;
+        const have = logs().find(e => e.inbox === it.id);
+        if (have) { if (have.status === "done" || have.status === "kept") closeInbox(have, have.status); continue; }
+        const t = await SemisSync.rpc("semis_logi_desk_take", { p_id: it.id }).catch(() => null);
+        if (!t || !t.ok || logs().some(e => e.inbox === it.id)) continue;
+        const e = { id: uid("dk"), at: it.at || new Date().toISOString(), by: str(it.by, 40), inbox: it.id,
+          file: { name: str(it.name, 160) || "file", size: Number(it.size) || 0, url: SemisSync.PUBLIC_PREFIX + it.path, type: kindOfName(it.name) },
+          status: "reading", type: "", title: "", summary: "" };
+        const v = V();
+        v.log.unshift(e);
+        if (v.log.length > LOG_MAX) v.log = v.log.slice(0, LOG_MAX);
+        SeMIS.save(); repaint();
+        reread(e.id);
+      }
+    } catch (er) { /* 다음 차례에 */ }
+    inboxBusy = 0;
+  }
+  function remoteInbox() {
+    if (canW()) pullInbox(true);
+    else if (isOpen()) loadMine(true);
+  }
+
+  /* ── 화면: 확인 카드 ── */
   const opt = (v, lb, cur) => `<option value="${esc(v)}"${String(cur) === String(v) ? " selected" : ""}>${esc(lb)}</option>`;
   const fld = (lb, html, wide) => `<label class="dk-f${wide ? " dk-w" : ""}"><span>${esc(lb)}</span>${html}</label>`;
   const inp = (a, f, lb, type, wide, extra) => fld(lb, `<input${type ? ` type="${type}"` : ""} data-f="${f}" value="${esc(a[f] == null ? "" : a[f])}"${extra || ""}>`, wide);
@@ -529,7 +638,7 @@
           + (isNew ? sel(a, "body", "구분", Object.keys(BODIES).map(k => opt(k, BODIES[k], a.body)).join("")) + inp(a, "org", "점검 기관") + inp(a, "kind", "점검 유형")
             + inp(a, "start", "시작일", "date") + inp(a, "end", "종료일", "date") : "")
           + `<div class="dk-w dk-finds">${(a.findings || []).map((f, i) => `<div class="dk-find" data-fi="${i}">
-              <label class="dk-ck"><input type="checkbox" data-ff="on"${f.on ? " checked" : ""}><span class="sr-only">반영</span></label>
+              <label class="dk-ck"><input type="checkbox" data-ff="on"${f.on ? " checked" : ""}><span class="sr-only">저장</span></label>
               <select data-ff="type" aria-label="지적 구분">${Object.keys(FTYPES).map(k => opt(k, FTYPES[k], f.type)).join("")}</select>
               <input data-ff="text" value="${esc(f.text)}" aria-label="지적 내용">
               <input data-ff="ref" value="${esc(f.ref)}" placeholder="근거" aria-label="근거 조항">
@@ -556,57 +665,121 @@
       default: return "";
     }
   }
-  function actHTML(a) {
-    return `<div class="dk-act${a.on ? " on" : ""}" data-aid="${esc(a.id)}">
-      <label class="dk-ah"><input type="checkbox" data-f="on"${a.on ? " checked" : ""}><b>${esc(KINDS[a.k].label)}</b></label>
-      <div class="dk-ab">${actBody(a)}</div></div>`;
+  /* 저장할 곳 한 줄 요약 — 무엇이 어디에 들어가는지만 */
+  function rowSub(a) {
+    const d = (s) => (isISO(s) ? dot(s) : "");
+    switch (a.k) {
+      case "cert": {
+        const p = a.pid === "_new" ? null : people().find(x => x.id === a.pid);
+        const c = courseOf(a.cid);
+        return [p ? p.name : (norm(a.name) ? norm(a.name) + "(새 인원)" : "이수자 미정"), c ? c.name : (a.course || "과정 미정"), a.date ? "수료 " + d(a.date) : ""].filter(Boolean).join(" · ")
+          + (a.sched ? " · 다음 교육 일정 포함" : "");
+      }
+      case "event": return [d(a.start) + (isISO(a.end) && a.end > a.start ? "~" + d(a.end) : "") + (isHM(a.time) ? " " + a.time : ""), norm(a.title), a.assignee ? "담당 " + norm(a.assignee) : ""].filter(Boolean).join(" · ");
+      case "dissem": return [d(a.date), norm(a.title)].filter(Boolean).join(" · ");
+      case "audit": {
+        const au = a.auditId !== "_new" ? audits().find(x => x.id === a.auditId) : null;
+        const n = (a.findings || []).filter(f => f.on && norm(f.text)).length;
+        return (au ? auditTitle(au) : "새 수검 · " + [norm(a.org), norm(a.kind)].filter(Boolean).join(" ")) + " · 지적 " + n + "건";
+      }
+      case "case": { const t = caseTypes().find(x => x.id === a.type); return [t ? t.label : "유형 미정", d(a.date), norm(a.ref)].filter(Boolean).join(" · "); }
+      case "hc": { const t = tplOf(a.tid); return [t ? t.name : "양식 미정", d(a.date), t && t.cycle === "event" ? (Number(a.count) || 1) + "건" : a.result === "ng" ? "이상" : "확인"].filter(Boolean).join(" · "); }
+      case "shelf": {
+        const m = shelfMods().find(x => x.mod === a.mod);
+        return [(m ? m.label : "화면 미정") + (a.grp && window.SemisDocs ? " › " + SemisDocs.labelOf(a.mod, a.grp) : ""), norm(a.title)].filter(Boolean).join(" · ") + (a.ssi ? " · 민감보안정보" : "");
+      }
+      default: return "";
+    }
+  }
+  function actHTML(e, a) {
+    const msg = a.on ? check(a) : "";
+    const dup = a.k === "cert" && a.pid !== "_new" && dupRec(a.pid, a.cid, a.date);
+    const open = !!((fixOpen[e.id] || {})[a.id]) || !!msg;
+    return `<div class="dkc-row${a.on ? " on" : ""}" data-aid="${esc(a.id)}">
+      <div class="dkc-rh"><label class="dkc-ck"><input type="checkbox" data-f="on"${a.on ? " checked" : ""}>
+        <span class="dkc-rt"><b>${esc(KINDS[a.k].save)}</b><small>${esc(rowSub(a))}</small></span></label>
+        ${dup ? ui.chip("이미 등록된 기록", "amber") : ""}${msg ? `<span class="dkc-need">${icon("alert", 14)}${esc(msg)}</span>` : ""}
+        <button type="button" class="btn btn-ghost dkc-fix" data-fix aria-expanded="${open}">${icon(open ? "chevup" : "edit", 16)}<span>${open ? "접기" : "고치기"}</span></button></div>
+      <div class="dk-ab"${open ? "" : " hidden"}>${actBody(a)}</div></div>`;
+  }
+  /* 한 문장 확인 — 판독 결과에서 핵심 값만 강조 */
+  function sayHTML(e, acts) {
+    const ai = e.ai, k = (s) => `<mark class="dkc-k">${esc(s)}</mark>`;
+    if (!ai) return "";
+    let s = "";
+    const T = ai.type;
+    if (T === "cert" && ai.certs.length) {
+      const c = ai.certs[0], cr = courseOf(c.cid);
+      s = k(c.name || "이름 미상") + "님의 " + k((cr && cr.name) || c.course || "교육") + " 이수증입니다." + (c.date ? " 수료일은 " + k(dot(c.date)) + "입니다." : "")
+        + (ai.certs.length > 1 ? " 이 문서에 " + k(ai.certs.length + "명") + "이 있습니다." : "");
+    } else if (T === "notice" && ai.events.length) {
+      const v = ai.events[0];
+      s = k(v.title) + " — " + k(dot(v.start) + (v.time ? " " + v.time : "")) + " 일정이 있는 문서입니다.";
+    } else if (T === "dissem" && ai.dissem) s = k(ai.dissem.title) + " 전파 통보입니다." + (ai.dissem.due ? " 기한은 " + k(dot(ai.dissem.due)) + "입니다." : "");
+    else if (T === "audit" && ai.audit) {
+      const n = ai.audit.findings.length;
+      s = k([ai.audit.org || ai.org, ai.audit.kind].filter(Boolean).join(" ") || "점검") + " 결과입니다." + (n ? " 지적사항 " + k(n + "건") + "이 있습니다." : "");
+    } else if (T === "special" && ai.case) { const t = caseTypes().find(x => x.id === ai.case.type); s = k(t ? t.label : "보안 처리") + " 보고서입니다." + (ai.case.date ? " 처리일은 " + k(dot(ai.case.date)) + "입니다." : ""); }
+    else if (T === "hardcopy" && ai.hardcopy) { const t = tplOf(ai.hardcopy.tid); s = k(t ? t.name : "기록부") + " 스캔입니다."; }
+    else s = ai.title ? k(ai.title) + " 문서입니다." : "";
+    const n = acts.filter(a => a.on).length;
+    s += n ? " 아래 " + k(n + "곳") + "에 저장할까요?" : " 저장할 곳을 고르거나 '보관만 하기'를 누르세요.";
+    return `<div class="dkc-say"><span class="dkc-owl" aria-hidden="true">${window.SemisOwl ? SemisOwl.svg("idle", 36) : ""}</span><div><p class="dkc-s">${s}</p>${ai.summary ? `<p class="dkc-sum">${esc(ai.summary)}</p>` : ""}</div></div>`;
   }
   function itemHTML(e) {
     const b = busy[e.id];
-    const st = b === "read" || e.status === "reading" ? (stale(e) ? ["판독 중단", "red"] : ST.reading) : b === "apply" ? ["반영 중", "amber"] : ST[e.status] || ST.wait;
+    const st = b === "read" || e.status === "reading" ? (stale(e) ? ["읽기 멈춤", "red"] : ST.reading) : b === "apply" ? ["저장 중", "amber"] : ST[e.status] || ST.wait;
     const ty = TYPES[e.type];
     const acts = e.status === "wait" && !b ? draftOf(e) : [];
     const lock = !!b || e.status === "reading" && !stale(e);
-    return `<article class="dk-item" data-dk="${esc(e.id)}">
+    const n = acts.filter(a => a.on).length;
+    return `<article class="dk-item dkc" data-dk="${esc(e.id)}">
       <header class="dk-ih">${icon("doc", 18)}<a class="nb-file dk-fn" href="${esc(e.file.url)}" target="_blank" rel="noopener" data-name="${esc(e.file.name)}">${esc(e.file.name)}</a>
-        <small class="mono">${esc(fmtSize(e.file.size))}</small>${ty ? ui.chip(ty[0], ty[1]) : ""}${ui.chip(st[0], st[1])}<span class="spacer"></span>
-        <small class="dk-by">${esc(dot(String(e.at || "").slice(0, 10)))} ${esc(e.by || "")}</small></header>
-      ${e.title || e.summary ? `<div class="dk-sum">${e.title ? `<b>${esc(e.title)}</b>` : ""}${e.summary ? `<p>${esc(e.summary)}</p>` : ""}</div>` : ""}
-      ${e.err ? `<p class="dk-err" role="alert">${esc(e.err)}</p>` : ""}
-      ${acts.length ? `<div class="dk-acts">${acts.map(actHTML).join("")}</div>` : ""}
-      ${e.status === "wait" && !b ? `<div class="dk-add"><span>추가</span>
+        <small class="mono">${esc(fmtSize(e.file.size))}</small>${e.inbox ? ui.chip("직원 접수", "blue") : ""}${ty ? ui.chip(ty[0], ty[1]) : ""}${ui.chip(st[0], st[1])}<span class="spacer"></span>
+        <small class="dk-by">${esc(dot(String(e.at || "").slice(0, 10)))} ${esc(e.by || "")}</small>
+        <button type="button" class="icon-btn dkc-more" data-do="more" aria-label="${esc(e.file.name)} 더보기" title="더보기"${lock ? " disabled" : ""}>${icon("more", 20)}</button></header>
+      ${e.status === "wait" && !b ? sayHTML(e, acts) : ""}
+      ${e.status === "reading" || b === "read" ? `<p class="dkc-wait">${stale(e) ? "읽기가 멈췄습니다. 더보기(…) › '다시 읽기'를 눌러 주세요." : "내용을 읽고 있습니다. 창을 닫아도 계속 읽습니다."}</p>` : ""}
+      ${e.err ? `<p class="${e.info ? "dkc-info" : "dk-err"}" role="${e.info ? "note" : "alert"}">${icon(e.info ? "info" : "alert", 16)}<span>${esc(e.err)}</span></p>` : ""}
+      ${acts.length ? `<div class="dkc-acts">${acts.map(a => actHTML(e, a)).join("")}</div>` : ""}
+      ${e.status === "wait" && !b ? `<div class="dkc-add"><span>저장할 곳 추가</span>
         <button type="button" class="link-btn" data-add="event">${icon("plus", 14)}<span>일정</span></button>
         <button type="button" class="link-btn" data-add="cert">${icon("plus", 14)}<span>이수 기록</span></button>
-        <button type="button" class="link-btn" data-add="shelf">${icon("plus", 14)}<span>문서 서가</span></button></div>` : ""}
-      <footer class="dk-foot">
-        <button type="button" class="link-btn danger" data-do="drop"${lock ? " disabled" : ""}>지우기</button><span class="spacer"></span>
-        ${e.file.type !== "legacy" && e.file.type !== "other" ? `<button type="button" class="btn btn-ghost btn-sm" data-do="reread"${lock ? " disabled" : ""}>다시 판독</button>` : ""}
-        <button type="button" class="btn btn-ghost btn-sm" data-do="keep"${lock ? " disabled" : ""}>보관만</button>
-        <button type="button" class="btn btn-primary btn-sm" data-do="apply"${lock || !acts.some(a => a.on) ? " disabled" : ""}>반영</button></footer></article>`;
+        <button type="button" class="link-btn" data-add="shelf">${icon("plus", 14)}<span>문서함</span></button></div>
+      <footer class="dkc-foot">
+        <button type="button" class="btn btn-ghost dkc-keep" data-do="keep"${lock ? " disabled" : ""}>보관만 하기</button><span class="spacer"></span>
+        <button type="button" class="btn btn-primary dkc-go" data-do="apply"${lock || !n ? " disabled" : ""}>${icon("check", 18)}<span>이대로 저장${n ? " · " + n + "곳" : ""}</span></button></footer>` : ""}</article>`;
   }
 
   /* ── 패널 ── */
-  const PID = "desk";
   let tab = "up";
   const pending = () => logs().filter(e => e.status === "wait" || e.status === "reading");
   const reading = () => logs().filter(e => (e.status === "reading" && !stale(e)) || busy[e.id] === "read").length + temp.length;
   function headPatch() {
+    if (!canW()) {
+      const n = minePending();
+      return { sub: SUB, mascot: mood || (temp.length ? "thinking" : "idle"),
+        tabs: [{ id: "up", label: "올리기" }, { id: "mine", label: "내가 올린 문서", badge: n || "" }] };
+    }
     const n = pending().length, r = reading();
     return {
-      sub: [r ? "판독 중 " + r : "", n ? "확인 대기 " + n : ""].filter(Boolean).join(" · "),
+      sub: [r ? "내용 확인 중 " + r : "", n ? "확인 대기 " + n : ""].filter(Boolean).join(" · ") || SUB,
       mascot: mood || (r ? "thinking" : "idle"),
-      tabs: [{ id: "up", label: "올리기 · 확인 대기", badge: n || "" }, { id: "log", label: "접수 대장" }]
+      tabs: [{ id: "up", label: "올리기 · 확인", badge: n || "" }, { id: "log", label: "올린 문서 기록" }]
     };
   }
   function open(t) {
-    if (!canW()) { toast("접근 권한이 없습니다.", true); return null; }
-    if (t === "up" || t === "log") tab = t;
+    if (!canUse()) { toast("이 계정은 접수 카운터를 쓸 수 없습니다.", true); return null; }
+    const tabs = canW() ? ["up", "log"] : ["up", "mine"];
+    if (tabs.indexOf(t) >= 0) tab = t;
+    if (tabs.indexOf(tab) < 0) tab = "up";
+    if (canW()) pullInbox(); else loadMine();
     return SeMIS.ui.panel(Object.assign({
       id: PID, title: TITLE, tab, cls: "pnl-desk",
-      onTab: (x) => { tab = x; }, render: paint,
-      actions: '<button type="button" class="link-btn head-link" data-dk-areas>분야별 담당</button>',
+      onTab: (x) => { tab = x; if (x === "mine") loadMine(); }, render: paint,
+      actions: canW() ? '<button type="button" class="link-btn head-link" data-dk-areas>분야별 담당</button>' : "",
       onActs: (box) => { const b = box.querySelector("[data-dk-areas]"); if (b) b.onclick = areasForm; },
-      print: () => TITLE + " — 접수 대장"
+      print: () => TITLE + " — " + (tab === "mine" ? "내가 올린 문서" : "올린 문서 기록")
     }, headPatch()));
   }
   const close = () => { if (window.SemisPanel) SemisPanel.close(PID); };
@@ -617,37 +790,69 @@
   }
   function logHTML() {
     const rs = logRows();
-    const segs = [["", "전체"], ["done", "반영"], ["kept", "보관"]];
+    const segs = [["", "전체"], ["done", "저장됨"], ["kept", "보관"]];
     return `<div class="toolbar no-print"><div class="seg" role="group" aria-label="처리 상태">${segs.map(([v, lb]) => `<button type="button" class="seg-btn" data-dks="${v}" aria-pressed="${filterS === v}">${lb}</button>`).join("")}</div>
         <span class="spacer"></span><small class="dk-cnt">${rs.length}건</small></div>
-      ${rs.length ? `<div class="table-wrap"><table class="tbl dk-tbl"><thead><tr><th>접수</th><th>파일</th><th>구분</th><th>제목</th><th>반영</th><th>처리</th></tr></thead>
+      ${rs.length ? `<div class="table-wrap"><table class="tbl dk-tbl"><thead><tr><th>올린 날</th><th>파일</th><th>구분</th><th>제목</th><th>저장한 곳</th><th>처리</th></tr></thead>
       <tbody>${rs.map(e => { const ty = TYPES[e.type]; return `<tr>
-        <td class="mono">${esc(dot(String(e.at || "").slice(0, 10)))}<div class="cell-sub">${esc(e.by || "")}</div></td>
+        <td class="mono">${esc(dot(String(e.at || "").slice(0, 10)))}<div class="cell-sub">${esc(e.by || "")}${e.inbox ? " · 직원 접수" : ""}</div></td>
         <td><a class="nb-file" href="${esc(e.file.url)}" target="_blank" rel="noopener" data-name="${esc(e.file.name)}">${esc(e.file.name)}</a></td>
         <td>${ty ? ui.chip(ty[0], ty[1]) : "-"}</td><td data-role="title">${esc(e.title || "-")}</td>
         <td>${(e.acts || []).length ? (e.acts || []).map(a => `<button type="button" class="dk-go" data-go="${esc(a.route || "")}">${esc(a.label)}</button>`).join("") : '<span class="cell-sub">보관</span>'}</td>
         <td class="mono">${esc(dot(String(e.doneAt || "").slice(0, 10)))}<div class="cell-sub">${esc(e.doneBy || "")}</div></td></tr>`; }).join("")}</tbody></table></div>`
-        : ui.empty("접수 기록이 없습니다.")}`;
+        : ui.empty("올린 문서 기록이 없습니다.")}`;
+  }
+  function mineHTML(all) {
+    if (!Array.isArray(mine)) return `<p class="dkc-wait">불러오는 중입니다…</p>`;
+    const rs = all ? mine : mine.slice(0, 5);
+    if (!rs.length) return all ? ui.empty("아직 올린 문서가 없습니다.") : "";
+    const row = (x) => { const s = MST[x.status] || MST.new; return `<tr>
+        <td class="mono">${esc(dot(String(x.at || "").slice(0, 10)))}</td>
+        <td data-role="title">${esc(x.name || "")}</td>
+        <td>${ui.chip(s[0], s[1])}</td>
+        <td>${esc(x.status === "done" ? (x.result || "저장됨") : x.status === "back" ? "처리하지 않음 — 필요하면 안전보안파트에 문의" : x.status === "kept" ? "문서만 보관" : "")}</td>
+        <td class="td-act">${x.status === "new" ? `<button type="button" class="link-btn danger" data-cancel="${esc(x.id)}">올리기 취소</button>` : esc(dot(String(x.done_at || "").slice(0, 10)))}</td></tr>`; };
+    return `${all ? "" : `<h3 class="dkc-h">내가 올린 문서 <small>최근 ${rs.length}건</small></h3>`}
+      <div class="table-wrap"><table class="tbl dk-tbl"><thead><tr><th>올린 날</th><th>파일</th><th>상태</th><th>처리 결과</th><th>처리일</th></tr></thead>
+      <tbody>${rs.map(row).join("")}</tbody></table></div>
+      ${!all && mine.length > rs.length ? `<button type="button" class="link-btn" data-tab-mine>${mine.length}건 모두 보기</button>` : ""}`;
+  }
+  function stepsHTML() {
+    const hq = canW();
+    const r = hq ? reading() : temp.length, w = hq ? pending().filter(e => e.status === "wait").length : 0;
+    const cur = r ? 2 : w ? 3 : 1;
+    const names = hq ? ["파일 올리기", "내용 확인 중", "확인하고 저장"] : ["파일 올리기", "안전보안파트 확인", "알맞은 화면에 저장"];
+    return `<ol class="dkc-steps" aria-label="진행 단계">${names.map((nm, i) => {
+      const k = i + 1, done = hq && k < cur, now = hq ? k === cur : k === 1;
+      return `<li class="${done ? "is-done" : ""}${now ? " is-now" : ""}"${now ? ' aria-current="step"' : ""}><span class="dkc-n" aria-hidden="true">${done ? icon("check", 16) : k}</span><span>${esc(nm)}</span></li>`;
+    }).join("")}</ol>${hq && r ? '<p class="dkc-note">창을 닫아도 계속 읽습니다. 다 되면 접수 카운터 숫자로 알려 드립니다.</p>' : ""}`;
   }
   function upHTML() {
-    const pd = pending();
+    const hq = canW();
+    const pd = hq ? pending() : [];
     const asNames = (SeMIS.assignees ? SeMIS.assignees() : []).map(a => a.name);
-    return `<section class="dk-drop no-print" id="dk-drop">
-          <span class="dk-dico">${icon("down", 28)}</span>
-          <div class="dk-dt"><b>문서를 끌어다 놓거나 선택하세요</b><small>PDF · 이미지 · 한글(HWPX) · 워드 · 엑셀 · 파워포인트 · 텍스트</small></div>
-          <div class="dk-db"><button type="button" class="btn btn-primary btn-sm" id="dk-pick">${icon("plus", 16)}<span>파일 선택</span></button>
-            <button type="button" class="btn btn-ghost btn-sm dk-cam" id="dk-cam">${icon("image", 16)}<span>촬영</span></button></div>
-          <input type="file" id="dk-file" multiple hidden><input type="file" id="dk-photo" accept="image/*" capture="environment" hidden></section>`
+    return stepsHTML() + `<section class="dkc-drop no-print" id="dk-drop">
+          <span class="dk-dico">${icon("up", 28)}</span>
+          <div class="dk-dt"><b>파일을 여기에 놓으세요</b><small>PDF · 사진 · 한글 · 워드 · 엑셀 · 파워포인트 — 어느 화면에서든 끌어다 놓아도 됩니다</small></div>
+          <div class="dk-db"><button type="button" class="btn btn-primary dkc-pick" id="dk-pick">${icon("plus", 18)}<span>파일 고르기</span></button>
+            <button type="button" class="btn btn-ghost dk-cam" id="dk-cam">${icon("image", 18)}<span>사진 찍기</span></button></div>
+          <input type="file" id="dk-file" multiple hidden><input type="file" id="dk-photo" accept="image/*" capture="environment" hidden></section>
+        <ul class="dkc-ex no-print" aria-label="올리면 이렇게 정리됩니다">
+          <li><b>교육 이수증</b><span>교육 기록 + 다음 교육 일정</span></li>
+          <li><b>공문 · 회의 통보</b><span>일정</span></li>
+          <li><b>점검 결과</b><span>수검 · 지적사항</span></li></ul>`
       + (temp.length || pd.length ? `<section class="dk-queue" aria-label="확인 대기">
           ${temp.map(t => `<article class="dk-item is-up"><header class="dk-ih">${icon("doc", 18)}<span class="dk-fn">${esc(t.name)}</span><small class="mono">${esc(fmtSize(t.size))}</small>${ui.chip("올리는 중", "amber")}</header></article>`).join("")}
           ${pd.map(itemHTML).join("")}</section>`
-        : `<div class="dk-none"><span class="dk-owl"></span><p>확인 대기 문서가 없습니다.</p></div>`)
+        : hq ? `<div class="dk-none"><span class="dk-owl"></span><p>확인할 문서가 없습니다.</p></div>` : "")
+      + (hq ? "" : `<section class="dkc-mine">${mineHTML(false)}</section>`)
       + `<datalist id="dk-dl-as">${asNames.map(n => `<option value="${esc(n)}"></option>`).join("")}</datalist>`;
   }
   function paint(body, h) {
-    body.innerHTML = tab === "log" ? `<section class="dk-log" id="dk-log">${logHTML()}</section>` : upHTML();
+    body.innerHTML = tab === "log" ? `<section class="dk-log" id="dk-log">${logHTML()}</section>`
+      : tab === "mine" ? `<section class="dk-log">${mineHTML(true)}</section>` : upHTML();
     const pb = h && h.el ? h.el.querySelector(".pnl-print") : null;
-    if (pb) pb.hidden = tab !== "log";
+    if (pb) pb.hidden = tab === "up";
     const ow = body.querySelector(".dk-owl");
     if (ow && window.SemisOwl) SemisOwl.mount(ow, { size: 96, state: "idle" });
     wire(body);
@@ -678,17 +883,20 @@
     const ar = $("#dk-areas", root); if (ar) ar.onclick = areasForm;
     $$("[data-dks]", root).forEach(b => b.onclick = () => { filterS = b.dataset.dks; if (isOpen()) SemisPanel.refresh(PID); });
     $$("[data-go]", root).forEach(b => b.onclick = () => { if (!b.dataset.go) return; close(); SeMIS.navigate(b.dataset.go); });
+    $$("[data-cancel]", root).forEach(b => b.onclick = () => cancelMine(b.dataset.cancel));
+    $$("[data-tab-mine]", root).forEach(b => b.onclick = () => SemisPanel.setTab(PID, "mine"));
     $$(".dk-item[data-dk]", root).forEach(wireItem);
   }
   function wireItem(card) {
     const id = card.dataset.dk, e = findLog(id);
     if (!e) return;
-    const repaintCard = () => {
+    const repaintCard = (focusSel) => {
       const n = document.createElement("div");
       n.innerHTML = itemHTML(findLog(id) || e);
       const nc = n.firstElementChild;
       card.replaceWith(nc);
       wireItem(nc);
+      if (focusSel) { const f = nc.querySelector(focusSel); if (f) { try { f.focus(); } catch (er) { /* 포커스 불가 */ } } }
     };
     const onEdit = (ev) => {
       const el = ev.target, box = el.closest("[data-aid]");
@@ -702,25 +910,47 @@
       }
       if (!el.dataset.f) return;
       setField(a, el);
-      if (ev.type === "change" && (el.hasAttribute("data-re") || el.dataset.f === "on" || el.dataset.f === "area")) repaintCard();
+      if (ev.type === "change" && (el.hasAttribute("data-re") || el.dataset.f === "on" || el.dataset.f === "area"))
+        repaintCard('[data-aid="' + a.id + '"] [data-f="' + el.dataset.f + '"]');
+      else if (ev.type === "change") {          // 요약 줄 · 확인 문장만 새로
+        const sub = box.querySelector(".dkc-rt small");
+        if (sub) sub.textContent = rowSub(a);
+      }
     };
     card.addEventListener("input", onEdit);
     card.addEventListener("change", onEdit);
+    $$("[data-fix]", card).forEach(b => b.onclick = () => {
+      const aid = b.closest("[data-aid]").dataset.aid;
+      const m = fixOpen[id] = fixOpen[id] || {};
+      m[aid] = b.getAttribute("aria-expanded") !== "true";
+      repaintCard('[data-aid="' + aid + '"] [data-fix]');
+    });
     $$("[data-fadd]", card).forEach(b => b.onclick = () => {
       const a = (drafts[id] || []).find(x => x.id === b.closest("[data-aid]").dataset.aid);
       if (a) { (a.findings = a.findings || []).push({ on: true, type: "obs", ref: "", text: "", due: "" }); repaintCard(); }
     });
     $$("[data-add]", card).forEach(b => b.onclick = () => {
       const ds = draftOf(e), k = b.dataset.add, ai = e.ai || null;
-      if (k === "event") ds.push(eventAct({ title: (ai && ai.title) || "", start: (ai && ai.date) || todayISO(), end: "", time: "", timeEnd: "", place: "", cat: "other", area: "", memo: "" }, true));
-      else if (k === "cert") ds.push(certAct({ name: "", emp: "", cid: "", date: "", expire: "", org: "", certNo: "", hours: null, course: "" }, true));
-      else ds.push(shelfAct(guessShelf(ai, e.file && e.file.name), true, ai));
-      repaintCard();
+      let a;
+      if (k === "event") a = eventAct({ title: (ai && ai.title) || "", start: (ai && ai.date) || todayISO(), end: "", time: "", timeEnd: "", place: "", cat: "other", area: "", memo: "" }, true);
+      else if (k === "cert") a = certAct({ name: "", emp: "", cid: "", date: "", expire: "", org: "", certNo: "", hours: null, course: "" }, true);
+      else a = shelfAct(guessShelf(ai, e.file && e.file.name), true, ai);
+      ds.push(a);
+      (fixOpen[id] = fixOpen[id] || {})[a.id] = true;
+      repaintCard('[data-aid="' + a.id + '"] [data-fix]');
     });
     $$("[data-do]", card).forEach(b => b.onclick = () => {
       const d = b.dataset.do;
-      if (d === "apply") apply(id); else if (d === "keep") keep(id); else if (d === "drop") drop(id); else if (d === "reread") reread(id);
+      if (d === "apply") apply(id); else if (d === "keep") keep(id); else if (d === "more") moreSheet(e, b);
     });
+  }
+  function moreSheet(e, from) {
+    const canRe = e.file.type !== "legacy" && e.file.type !== "other";
+    const items = [];
+    if (canRe) items.push({ label: "다시 읽기", icon: icon("refresh"), run: () => reread(e.id) });
+    items.push({ label: "원본 보기", icon: icon("eye"), run: () => { const a = document.querySelector('[data-dk="' + e.id + '"] .dk-fn'); if (a) a.click(); } });
+    items.push({ label: e.inbox ? "처리하지 않고 지우기(반려)" : "지우기", icon: icon("trash"), danger: true, run: () => drop(e.id) });
+    SeMIS.actionSheet(items, { title: e.file.name }, from);
   }
   function areasForm() {
     if (!canW()) return;
@@ -737,12 +967,26 @@
     };
   }
 
-  /* ── 어디서나 끌어다 놓기 — 다른 화면의 첨부 칸은 그대로(그 칸이 먼저 처리) ── */
+  /* ── 어디서나 끌어다 놓기 — 다른 화면의 첨부 칸은 그대로(그 칸이 먼저 처리). 계정마다 처음 한 번은 보낼지 묻는다 ── */
   const deskOn = () => { const app = document.getElementById("app"); return !!SeMIS.supportOk && SeMIS.supportOk("desk") && !!app && !app.classList.contains("hidden"); };
   const modalOpen = () => { const m = document.getElementById("modal-overlay"); return !!m && !m.classList.contains("hidden"); };
   const hasFiles = (ev) => !!ev.dataTransfer && Array.from(ev.dataTransfer.types || []).indexOf("Files") >= 0;
   let dragT = null;
   const dragOff = () => { clearTimeout(dragT); dragT = null; document.body.classList.remove("desk-drag"); };
+  function sendDropped(l) {
+    const go = () => {
+      tab = "up";
+      if (!isOpen()) open("up"); else SemisPanel.setTab(PID, "up");
+      intake(l);
+    };
+    const P = SeMIS.navPrefs ? SeMIS.navPrefs() : {};
+    if (P.dropOk || isOpen()) { go(); return; }
+    openModal(`<h3>접수 카운터로 보낼까요?</h3>
+      <p class="dkc-ask">${l.length === 1 ? "<b>" + esc(l[0].name) + "</b>" : "<b>파일 " + l.length + "개</b>"}를 접수 카운터에 올립니다. ${canW() ? "내용을 읽고 저장할 곳을 제안합니다." : "안전보안파트가 확인한 뒤 알맞은 화면에 정리합니다."}</p>
+      <div class="modal-actions"><button type="button" class="btn btn-ghost" data-act="cancel">취소</button><button type="button" class="btn btn-primary" data-act="ok">보내기</button></div>`);
+    $("#modal-box [data-act=cancel]").onclick = closeModal;
+    $("#modal-box [data-act=ok]").onclick = () => { closeModal(); if (SeMIS.setNavPref) SeMIS.setNavPref({ dropOk: 1 }); go(); };
+  }
   if (typeof window !== "undefined" && window.addEventListener) {
     window.addEventListener("dragover", (ev) => {
       if (ev.defaultPrevented || !hasFiles(ev) || !deskOn() || modalOpen()) return;
@@ -758,22 +1002,26 @@
       ev.preventDefault();
       const l = Array.from(ev.dataTransfer.files || []);
       if (!l.length) return;
-      tab = "up";
-      if (!isOpen()) open("up"); else SemisPanel.setTab(PID, "up");
-      intake(l);
+      sendDropped(l);
     });
+    /* 직원 접수 가져오기 — 3분마다(탭이 보일 때) · 다시 보일 때 */
+    setInterval(() => { if (typeof document === "undefined" || document.visibilityState !== "hidden") pullInbox(); }, 180000);
+    if (typeof document !== "undefined") document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") pullInbox(); });
   }
 
-  SeMIS.registerSupport("desk", { ok: canW, badge: () => pending().length || "", open: () => open() });
+  SeMIS.registerSupport("desk", { ok: canUse, badge: () => (canW() ? pending().length : minePending()) || "", open: () => open() });
+  if (SeMIS.onSupport) SeMIS.onSupport(() => { if (canW()) pullInbox(); });
   SeMIS.registerPanelRoute(MOD, () => open());
   SeMIS.onRerender(() => { if (isOpen()) repaint(); });
   if (window.SemisSearch) SemisSearch.register({
-    id: MOD, group: TITLE, ico: "doc", minRank: 3,
-    items: () => [{ title: TITLE, sub: "문서 올리기 · 확인 대기 " + pending().length, text: [TITLE, "문서 올리기", "접수 대장"], route: "", pick: () => open("up") }]
-      .concat(logs().map(e => ({ title: e.title || e.file.name, sub: [(TYPES[e.type] || [""])[0], dot(String(e.at || "").slice(0, 10)), (ST[e.status] || [""])[0]].filter(Boolean).join(" · "),
-        text: [e.title, e.summary, e.file.name], route: "", pick: () => open(e.status === "wait" || e.status === "reading" ? "up" : "log") })))
+    id: MOD, group: TITLE, ico: "doc", minRank: 1,
+    items: () => (canUse() ? [{ title: TITLE, sub: SUB + (canW() ? " · 확인 대기 " + pending().length : ""), text: [TITLE, "메인 데스크", "문서 올리기", "올린 문서", "접수", "업로드"], route: "", pick: () => open("up") }] : [])
+      .concat(canW() ? logs().map(e => ({ title: e.title || e.file.name, sub: [(TYPES[e.type] || [""])[0], dot(String(e.at || "").slice(0, 10)), (ST[e.status] || [""])[0]].filter(Boolean).join(" · "),
+        text: [e.title, e.summary, e.file.name], route: "", pick: () => open(e.status === "wait" || e.status === "reading" ? "up" : "log") })) : [])
   });
 
-  window.SemisDesk = { TYPES, KINDS, CATS, AREAS, clean, plan, guessShelf, check, commit, catalog, matchPerson, nextTraining, intake, read, apply, keep, folderFor, pathOf, shelfMods,
-    drafts, busy, open, close, isOpen, pending, get tab() { return tab; }, setToday(t) { fixedToday = isISO(t) ? t : ""; } };
+  window.SemisDesk = { TYPES, KINDS, CATS, AREAS, clean, plan, guessShelf, check, commit, catalog, matchPerson, nextTraining, intake, read, reread, apply, keep, drop, folderFor, pathOf, shelfMods,
+    drafts, busy, fixOpen, open, close, isOpen, pending, sayHTML, rowSub, itemHTML, pullInbox, remoteInbox, loadMine, submit, sendDropped, resultText,
+    TITLE, SUB, canUse, canW, get mine() { return mine; }, set mine(v) { mine = v; },
+    get tab() { return tab; }, setToday(t) { fixedToday = isISO(t) ? t : ""; } };
 })();

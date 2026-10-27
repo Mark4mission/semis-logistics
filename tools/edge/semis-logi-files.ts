@@ -1,4 +1,4 @@
-/* H:drive(별칭 ARGOS) — Supabase Edge Function "semis-logi-files" (v1.15 · v1.39 edu-upload · edu-read · v1.47 desk-read · copy)
+/* H:drive(별칭 ARGOS) — Supabase Edge Function "semis-logi-files" (v1.15 · v1.39 edu-upload · edu-read · v1.47 desk-read · copy · v1.59 desk-in)
    비공개 버킷 semis-logi-files 의 유일한 출입구. 브라우저는 버킷에 직접 접근하지 못한다.
    - 인증: 요청 헤더 x-semis-token (로그인 세션) → public.semis_logi_file_auth() 로 확인
    - op "sign"   : 파일 열람용 서명 URL(1시간) — 폴더별 열람 등급 확인
@@ -12,6 +12,8 @@
    - v1.40 폴더: docs(열람 2) · docs-ssi(3, 민감보안정보) · contracts(3) · cases(2) · dissem(2) — 올리기는 모두 3(hq)
    - v1.47 메인 데스크: desk/ 폴더(열람 · 올리기 3). op "desk-read" = 접수 문서 판독(hq 이상, 목록은 화면이 보냄 · 이름 · 연락처는 보내지 않음),
      op "copy" = desk/ 원본을 반영 대상 폴더로 복사(원본 열람 · 대상 폴더 올리기 등급 확인)
+   - v1.59 접수 카운터 직원 접수: desk-in/ 폴더(올리기 1 = 내부 직원만 — 협력업체 · 서명 세션 제외, 열람 3).
+     접수 줄은 비공개 표(tools/sql/semis-logi-desk-inbox.sql). desk-read · copy 는 desk/ · desk-in/ 원본 모두
    - 배포: Supabase MCP deploy_edge_function (verify_jwt false — 위의 세션 확인으로 대신). 이 파일이 원본. */
 
 const SUPA = Deno.env.get("SUPABASE_URL")!;
@@ -36,6 +38,7 @@ const WRITE_RANK: Record<string, number> = {
   minutes: 2, "minutes-sign": 2, seclog: 2, threat: 2, patrol: 2,
   schedules: 3, notices: 3, attach: 3, contacts: 3, crisis: 3, regs: 3, "regs-diff": 3, audits: 3, training: 3,
   docs: 3, "docs-ssi": 3, contracts: 3, cases: 3, dissem: 3, desk: 3,
+  "desk-in": 1,                           // v1.59 직원 접수(내부 직원만 — canWrite 에서 role 확인)
   bbs1: 1, bbs2: 2, bbs3: 3, bbs4: 4      // 게시판 글쓰기 · 첨부(쓰기 권한은 서버 RPC 가 게시판별로 한 번 더 확인)
 };
 const DEFAULT_READ = 3, DEFAULT_WRITE = 3;
@@ -83,7 +86,8 @@ const DESK_SYSTEM = `당신은 항공화물터미널 안전보안 부서의 문�
 - audit.findings.type: 시정조치 car, 개선권고 rec, 현장시정 onsite, 관찰사항 obs.
 - summary · memo 에 전화번호 · 주민번호를 옮기지 않는다.`;
 
-type Who = { ok: boolean; kind?: string; rank?: number; who?: string };
+type Who = { ok: boolean; kind?: string; rank?: number; role?: string; who?: string };
+const STAFF = ["admin", "hq", "manager", "user"];
 
 function cors(origin: string): Record<string, string> {
   const allow = ORIGINS.includes(origin) || LOCAL_RE.test(origin) ? origin : ORIGINS[0];
@@ -124,7 +128,7 @@ async function whoAmI(req: Request): Promise<Who> {
     });
     if (!r.ok) return { ok: false };
     const d = await r.json();
-    return d && d.ok ? { ok: true, kind: String(d.kind), rank: Number(d.rank) || 0, who: String(d.who || "") } : { ok: false };
+    return d && d.ok ? { ok: true, kind: String(d.kind), rank: Number(d.rank) || 0, role: String(d.role || ""), who: String(d.who || "") } : { ok: false };
   } catch (_e) {
     return { ok: false };
   }
@@ -136,8 +140,10 @@ function canRead(w: Who, path: string): boolean {
 }
 function canWrite(w: Who, folder: string): boolean {
   if (w.kind === "signer") return folder === "minutes-sign";
+  if (folder === "desk-in" && (w.kind !== "user" || STAFF.indexOf(w.role || "") < 0)) return false;
   return (w.rank ?? 0) >= (WRITE_RANK[folder] ?? DEFAULT_WRITE);
 }
+const isDeskSrc = (p: string) => folderOf(p) === "desk" || folderOf(p) === "desk-in";
 
 function newPath(folder: string, name: unknown): string {
   const safe = String(name || "file").replace(/[^A-Za-z0-9._-]/g, "_").slice(-80) || "file";
@@ -246,7 +252,7 @@ async function eduRead(body: Record<string, unknown>, origin: string): Promise<R
   } }, 200, origin);
 }
 
-/* 메인 데스크 판독 — hq 이상 · desk/ 파일. 워드 · 한글 · 엑셀은 화면이 뽑은 글(text)로, PDF · 이미지는 저장소 원본으로 */
+/* 접수 카운터 판독 — hq 이상 · desk/ · desk-in/ 파일. 워드 · 한글 · 엑셀은 화면이 뽑은 글(text)로, PDF · 이미지는 저장소 원본으로 */
 const capped = (v: unknown, n: number) => (Array.isArray(v) ? v.slice(0, n) : []) as Record<string, unknown>[];
 function deskCatalog(c: Record<string, unknown>): string {
   const o = (c && typeof c === "object" ? c : {}) as Record<string, unknown>;
@@ -265,7 +271,7 @@ function deskCatalog(c: Record<string, unknown>): string {
 async function deskRead(w: Who, body: Record<string, unknown>, origin: string): Promise<Response> {
   if (w.kind !== "user" || (w.rank ?? 0) < 3) return json({ ok: false, error: "forbidden" }, 403, origin);
   const path = String(body.path || "");
-  if (!/^desk\/[A-Za-z0-9._-]{4,160}$/.test(path)) return json({ ok: false, error: "path" }, 400, origin);
+  if (!/^desk(-in)?\/[A-Za-z0-9._-]{4,160}$/.test(path)) return json({ ok: false, error: "path" }, 400, origin);
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY") || "";
   if (!apiKey) return json({ ok: false, error: "no_key" }, 200, origin);
   const name = str(body.name, 160);
@@ -309,12 +315,12 @@ async function deskRead(w: Who, body: Record<string, unknown>, origin: string): 
   return json({ ok: true, model, data: o }, 200, origin);
 }
 
-/* desk/ 원본 → 반영 대상 폴더 사본 */
+/* desk/ · desk-in/ 원본 → 저장 대상 폴더 사본 */
 async function copyOut(w: Who, body: Record<string, unknown>, origin: string): Promise<Response> {
   const from = cleanPath(body.from);
   const folder = String(body.prefix || "");
-  if (!from || folderOf(from) !== "desk") return json({ ok: false, error: "path" }, 400, origin);
-  if (!/^[a-z0-9-]{2,30}$/.test(folder) || folder === "desk") return json({ ok: false, error: "prefix" }, 400, origin);
+  if (!from || !isDeskSrc(from)) return json({ ok: false, error: "path" }, 400, origin);
+  if (!/^[a-z0-9-]{2,30}$/.test(folder) || folder === "desk" || folder === "desk-in") return json({ ok: false, error: "prefix" }, 400, origin);
   if (w.kind !== "user" || !canRead(w, from) || !canWrite(w, folder)) return json({ ok: false, error: "forbidden" }, 403, origin);
   const base = from.slice(from.lastIndexOf("/") + 1).replace(/^[a-z0-9]{12,24}_/, "");
   const path = newPath(folder, base);

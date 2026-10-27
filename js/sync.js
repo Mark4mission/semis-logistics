@@ -579,6 +579,10 @@
       try { if (window.SemisBoard) window.SemisBoard.remote(key.slice(4)); } catch (e) { /* 게시판 모듈 없음 */ }
       return;
     }
+    if (key === "desk:in") {           // 직원 접수함 변경 — 안전보안파트 화면은 가져오고, 올린 사람 화면은 상태만 다시 받는다(내용은 알림에 없음)
+      try { if (window.SemisDesk && window.SemisDesk.remoteInbox) window.SemisDesk.remoteInbox(); } catch (e) { /* 데스크 모듈 없음 */ }
+      return;
+    }
     if (!key || !canRead(key)) return;
     if (String(p.by || "").replace(/^.*\//, "") === CLIENT_ID) return;   // 내가 보낸 변경
     queueRemote(key);

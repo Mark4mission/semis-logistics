@@ -399,7 +399,7 @@
       const fn = (d.files || []).map(f => f && f.name).filter(Boolean);
       return {
         title: d.title, sub: [labelOf(d.mod, d.grp), dot(d.date), d.org].concat(fn).filter(Boolean).join(" · "),
-        text: [d.title, d.org, d.note, d.ser, labelOf(d.mod, d.grp), d.date, dot(d.date)].concat(fn), route: d.mod,
+        text: [d.title, d.org, d.note, d.ser, labelOf(d.mod, d.grp), d.date, dot(d.date), d.ssi ? "" : d.sum].concat(fn), route: d.mod,
         pick: (q) => pickTo(d.mod, q) };
     })
   };

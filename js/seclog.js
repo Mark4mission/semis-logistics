@@ -302,7 +302,7 @@
     { id: "hazmgr", label: "위해물품 관리책임자", short: "관리책임자" }, { id: "patrol", label: "순찰 · 브리핑" }, { id: "misc", label: "기타" }
   ], { tab: "docs" });
   if (typeof window !== "undefined") (window.SemisDeep = window.SemisDeep || {})[MOD] = (sub) => { if (TABS.some(x => x[0] === sub)) { tab = sub; q = ""; } };
-  const docsHTML = () => `<section class="card">${window.SemisDocs ? SemisDocs.groupsHTML(MOD) : ui.empty("문서 서가를 불러오지 못했습니다.")}</section>`;
+  const docsHTML = () => `<section class="card">${window.SemisDocs ? SemisDocs.groupsHTML(MOD) : ui.empty("문서함을 불러오지 못했습니다.")}</section>`;
   const routeNow = () => (typeof location !== "undefined" ? location.hash.replace(/^#\//, "") : "") || "dashboard";
   const canW = () => !!SeMIS.user && SeMIS.roleRank() >= 2 && SeMIS.user.role !== "vendor";
   const hay = (a) => a.map(v => String(v || "")).join(" ").toLowerCase();
