@@ -1457,7 +1457,9 @@ function makeServer(opts = {}) {
     t("H10 모바일 하단 탭(v1.59 홈 · 검색 · 올리기 · 아르고 · 전체): 권한에 맞춰 표시 · 전체 → 시트", () => {
       eq(qa(e, "#tabbar .tab-btn[data-route]").map(b => b.dataset.route).join(","), "dashboard");
       eq(qa(e, "#tabbar .tab-btn[data-sup]").map(b => b.dataset.sup).join(","), "search,desk,argo", "3종 지원");
-      eq(qa(e, "#tabbar .tab-btn").map(b => b.textContent.trim()).join(","), "홈,검색,올리기,아르고,전체");
+      const shown = (b) => Array.from(b.childNodes).filter(n => !(n.classList && (n.classList.contains("sr-only") || n.classList.contains("sup-n")))).map(n => n.textContent).join("").trim();
+      eq(qa(e, "#tabbar .tab-btn").map(shown).join(","), "홈,검색,올리기,아르고,전체", "보이는 글자");
+      ok(/올리기 \(접수 카운터\)/.test(q(e, '#tabbar [data-sup="desk"]').textContent) && !q(e, '#tabbar [data-sup="desk"]').hasAttribute("aria-label"), "읽는 이름 = 보이는 글자 + 숨은 설명");
       ok(q(e, "#tabbar .tab-all"));
       q(e, "#tabbar .tab-all").click();
       ok(q(e, "#app").classList.contains("sheet-open"));
@@ -9723,7 +9725,8 @@ function makeServer(opts = {}) {
       ];
       e.S.renderNav();
       eq(q(e, "#sup-desk .sup-n").textContent, "2", "지원 카드 배지");
-      ok(/확인 대기 2건/.test(q(e, "#sup-desk").getAttribute("aria-label")), "배지는 이름에도");
+      ok(/확인 대기 2건/.test(q(e, "#sup-desk .sup-sr").textContent) && q(e, "#sup-desk .sup-n").getAttribute("aria-hidden") === "true", "배지는 숨은 글로 이름에도");
+      ok(!q(e, "#sup-desk").hasAttribute("aria-label") && /확인 대기 2건/.test(q(e, "#sup-desk").title), "이름 = 단추 글자(WCAG 2.5.3) · 말풍선");
       eq(q(e, "#hdr-desk .sup-n").textContent, "2", "상단바 배지");
       q(e, "#sup-desk").click();
       ok(P.isOpen("desk"), "지원 카드 → 패널"); eq(DK.tab, "up");
@@ -11414,6 +11417,8 @@ function makeServer(opts = {}) {
       await tick(5);
       ok(q(e, "#hdr-search-pop .sp-none") && /딱 맞는 결과가 없습니다/.test(q(e, "#hdr-search-pop .sp-none").textContent), "없음 안내");
       ok(qa(e, "#hdr-search-pop .sp-group").some(g => /일부만 맞는 결과/.test(g.textContent)), "일부만 맞는 결과 묶음");
+      const prow = qa(e, "#hdr-search-pop .sp-item").find(b => /협력사 보안회의/.test(b.textContent));
+      eq(prow && prow.querySelector(".sp-kind").textContent, "일정", "일부만 맞는 결과도 본래 종류");
       ok(qa(e, "#hdr-search-pop .sp-try .sp-chip").some(c => c.textContent === "협력사"), "이렇게도 찾아보세요");
       let asked = "";
       e.w.SemisArgo.ask = (x) => { asked = x; return true; };

@@ -457,7 +457,7 @@ const SemisSearch = (() => {
         '<button type="button" class="sp-ask-b" data-ask>물어보기' + S().icon("chevron", 16) + "</button></div>" : "") +
       (tw.length ? '<div class="sp-try"><span>이렇게도 찾아보세요</span>' + tw.map(w => '<button type="button" class="sp-chip" data-q="' + esc(w) + '">' + esc(w) + "</button>").join("") + "</div>" : "") +
       "</div>";
-    if (partial.length) html += groupsHTML(partial.map(it => Object.assign({}, it, { group: "일부만 맞는 결과" })), ts, items.length, true);
+    if (partial.length) html += groupsHTML(partial.map(it => Object.assign({}, it, { kind: kindOf(it), group: "일부만 맞는 결과" })), ts, items.length, true);
     return html;
   }
   function homeHTML() {

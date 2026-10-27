@@ -3,7 +3,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.58.0";
+  const VERSION = "1.59.0";
   const APP_NAME = "H:drive";
   const APP_ALIAS = "ARGOS (Air-cargo Risk & Guard Operations System)";
   /* 데이터 캐시는 탭 sessionStorage 에만(탭 닫기·로그아웃 시 소멸). 화면 설정(LS_UI)만 localStorage */
@@ -1112,10 +1112,13 @@ const SeMIS = (() => {
       const badge = supBadge(id);
       $$('[data-sup="' + id + '"]').forEach(b => {
         b.hidden = !ok;
+        /* 이름은 단추 글자 그대로(보이는 글자 = 읽는 이름, WCAG 2.5.3) — 배지 숫자는 읽지 않고 뒤에 '확인 대기 n건'을 숨은 글로 */
         const nb = b.querySelector(".sup-n");
-        if (nb) { nb.textContent = badge; nb.hidden = !badge; }
-        const lb = SUP_LABEL[id] + (badge ? " — 확인 대기 " + badge + "건" : "") + (id === "search" ? " (" + keyHint() + ")" : "");
-        if (!b.hasAttribute("data-sup-keep")) { b.setAttribute("aria-label", lb); b.title = lb; }
+        if (nb) { nb.textContent = badge; nb.hidden = !badge; nb.setAttribute("aria-hidden", "true"); }
+        let sr = b.querySelector(":scope > .sup-sr");
+        if (nb && !sr) { sr = document.createElement("span"); sr.className = "sup-sr sr-only"; b.appendChild(sr); }
+        if (sr) sr.textContent = badge ? " · 확인 대기 " + badge + "건" : "";
+        b.title = SUP_LABEL[id] + (badge ? " — 확인 대기 " + badge + "건" : "") + (id === "search" ? " (" + keyHint() + ")" : "");
         if (id === "argo" && ok && window.SemisOwl) {
           const ow = b.querySelector(".sup-owl");
           if (ow && !ow.querySelector(".owl-svg")) ow.innerHTML = window.SemisOwl.svg("idle", Number(ow.dataset.z) || (b.id === "sup-argo" ? 32 : 24));
@@ -1766,8 +1769,9 @@ const SeMIS = (() => {
     if (role === "signer") { bar.innerHTML = ""; return; }
     const tabs = MOBILE_TABS.map(t => Object.assign({}, t, { to: tabRoute(t) })).filter(t => t.to);
     bar.innerHTML = tabs.map(t => t.sup
-      ? '<button type="button" class="tab-btn" data-sup="' + esc(t.sup) + '" data-sup-keep aria-label="' + esc(t.label + (t.sup === "desk" ? " (접수 카운터)" : "")) + '">' +
-        (t.sup === "argo" ? '<span class="sup-owl" data-z="24"></span>' : icon(t.ico, 22)) + '<span>' + esc(t.label) + '</span>' + (t.sup === "desk" ? '<b class="sup-n" hidden></b>' : "") + '</button>'
+      ? '<button type="button" class="tab-btn" data-sup="' + esc(t.sup) + '">' +
+        (t.sup === "argo" ? '<span class="sup-owl" data-z="24"></span>' : icon(t.ico, 22)) + '<span>' + esc(t.label) + '</span>' +
+        (t.sup === "desk" ? '<span class="sr-only"> (접수 카운터)</span><b class="sup-n" hidden></b>' : "") + '</button>'
       : '<button type="button" class="tab-btn" data-route="' + esc(t.to) + '"' + (t.hub ? ' data-hub="' + esc(t.hub) + '"' : "") + '>' +
         icon(t.ico, 22) + '<span>' + esc(t.label) + '</span></button>').join("") +
       '<button type="button" class="tab-btn tab-all" data-sheet-open>' + icon("grid", 22) + '<span>전체</span></button>';
