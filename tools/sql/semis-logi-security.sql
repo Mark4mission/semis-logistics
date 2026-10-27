@@ -309,7 +309,7 @@ declare c record;
 begin
   select * into c from semis_logi_private.ctx() limit 1;
   if not found then return jsonb_build_object('ok', false); end if;
-  return jsonb_build_object('ok', true, 'kind', c.kind, 'rank', c.rank, 'who', coalesce(c.login_id, c.kind));
+  return jsonb_build_object('ok', true, 'kind', c.kind, 'rank', c.rank, 'role', coalesce(c.role, ''), 'who', coalesce(c.login_id, c.kind));   -- v1.59 role(semis-logi-desk-inbox.sql)
 end $$;
 
 create or replace function public.semis_logi_logout() returns jsonb

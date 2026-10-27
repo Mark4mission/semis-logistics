@@ -1,6 +1,7 @@
-/* 문서 글 뽑기 — 메인 데스크 판독용.
+/* 문서 글 뽑기 — 접수 카운터 · 아르고 첨부 판독용.
    DOCX · HWPX · PPTX 는 압축을 풀어 문단 · 표(칸은 " | ")를, XLSX 는 시트별 행(칸은 탭, 날짜 서식은 YYYY-MM-DD)을, TXT · CSV 는 그대로 글로 보낸다.
-   PDF · 이미지는 원본을 보낸다(이미지는 긴 변 2400px JPEG 로 줄임). 구 형식(HWP · DOC · XLS · PPT)은 읽지 못한다 */
+   한글 5.0(HWP) · 엑셀 97-2003(XLS)은 첨부 미리보기 엔진(SemisPreview)이 그린 문서에서 글을 뽑는다(암호 · 배포용 문서는 못 읽음).
+   PDF · 이미지는 원본을 보낸다(이미지는 긴 변 2400px JPEG 로 줄임). 옛 워드 · 파워포인트(DOC · PPT)는 읽지 못한다 */
 "use strict";
 
 (() => {
@@ -9,7 +10,7 @@
   const KIND = {
     pdf: "pdf", jpg: "image", jpeg: "image", png: "image", webp: "image", gif: "image", heic: "image", heif: "image",
     docx: "docx", hwpx: "hwpx", xlsx: "xlsx", xlsm: "xlsx", pptx: "pptx", txt: "text", csv: "text", md: "text",
-    hwp: "legacy", doc: "legacy", xls: "legacy", ppt: "legacy"
+    hwp: "hwp", xls: "xls", doc: "legacy", ppt: "legacy"
   };
   const extOf = (name) => { const m = /\.([A-Za-z0-9]{1,5})$/.exec(String(name || "")); return m ? m[1].toLowerCase() : ""; };
   const kindOf = (name) => KIND[extOf(name)] || "other";
@@ -146,10 +147,44 @@
     }
     return s.replace(/^﻿/, "");
   }
+  /* 미리보기 엔진이 그린 문서(HTML) → 글. 표는 행마다 칸을 " | " 로, 문단은 한 줄씩 */
+  function htmlText(html) {
+    const d = new DOMParser().parseFromString(String(html || ""), "text/html");
+    Array.from(d.querySelectorAll("br")).forEach(b => b.replaceWith(" "));
+    const out = [];
+    const walkH = (el) => {
+      Array.from(el.children).forEach(k => {
+        const n = k.tagName;
+        if (n === "STYLE" || n === "SCRIPT" || n === "THEAD") return;
+        if (n === "TABLE") {
+          Array.from(k.querySelectorAll("tr")).forEach(tr => {
+            if (tr.closest("table") !== k || tr.parentNode.tagName === "THEAD") return;
+            const line = Array.from(tr.children).filter(c => c.tagName === "TD").map(c => norm(c.textContent)).join(" | ");
+            if (line.replace(/[|\s]/g, "")) out.push(line);
+          });
+          return;
+        }
+        if (n === "P" || n === "LI" || /^H\d$/.test(n)) { const t = norm(k.textContent); if (t) out.push(t); return; }
+        walkH(k);
+      });
+    };
+    if (d.body) walkH(d.body);
+    return out.join("\n");
+  }
+  /* 한글 5.0 · 엑셀 97-2003 — 미리보기 엔진으로 그린 뒤 글만. 실패하면 code(pw · enc · dist · legacy …)를 던진다 */
+  async function previewText(name, u8) {
+    const P = window.SemisPreview;
+    if (!P || typeof P.build !== "function") throw Object.assign(new Error("preview"), { code: "preview" });
+    const r = await P.build(name, u8);
+    const parts = (r && r.parts) || [];
+    return parts.map(pt => (parts.length > 1 && pt.name ? "[시트] " + pt.name + "\n" : "") + htmlText(pt.doc)).filter(x => x.trim()).join("\n\n");
+  }
+
   /* 압축 문서 · 글 파일 → 글 */
   async function textOf(name, u8) {
     const k = kindOf(name);
     if (k === "text") return clip(decodeText(u8));
+    if (k === "hwp" || k === "xls") return clip(await previewText(name, u8));
     if (["docx", "hwpx", "xlsx", "pptx"].indexOf(k) < 0) return "";
     if (!window.SemisHwpx || !SemisHwpx.unzip) throw new Error("unzip");
     const entries = await SemisHwpx.unzip(u8);
@@ -207,11 +242,22 @@
       const f2 = await prep(file);
       return { kind, mode: /\.(jpe?g|png|webp|gif)$/i.test(String(f2.name || "")) ? "file" : "none", file: f2, text: "" };
     }
-    if (kind === "legacy" || kind === "other") return { kind, mode: "none", file, text: "" };
-    let text = "";
-    try { text = await textOf(file.name, await bytesOf(file)); } catch (e) { text = ""; }
-    return { kind, mode: text.trim() ? "text" : "none", file, text };
+    if (kind === "legacy" || kind === "other") return { kind, mode: "none", file, text: "", why: kind };
+    let text = "", why = "";
+    try { text = await textOf(file.name, await bytesOf(file)); } catch (e) { text = ""; why = String((e && e.code) || ""); }
+    return { kind, mode: text.trim() ? "text" : "none", file, text, why };
+  }
+  /* 읽지 못한 까닭 — 접수 카운터 · 아르고 안내 문구(무엇을 하면 되는지 단계로) */
+  const SAVE_PDF = "한글 · 워드 · 엑셀에서 [파일] → [다른 이름으로 저장] → 파일 형식 'PDF'로 저장해 다시 올리면 자동으로 정리됩니다.";
+  function whyText(x) {
+    const k = x && x.kind, w = x && x.why;
+    if (w === "pw" || w === "hwppw" || w === "enc") return "문서에 암호가 걸려 있어 내용을 읽지 못했습니다. 암호를 푼 뒤 저장하거나, " + SAVE_PDF;
+    if (w === "dist") return "배포용 한글 문서라 내용을 읽지 못했습니다. " + SAVE_PDF;
+    if (k === "legacy" || w === "legacy") return "옛 형식(.doc · .ppt · 한글 97 이전)이라 내용을 읽지 못했습니다. " + SAVE_PDF;
+    if (k === "image") return "이 사진 형식은 읽지 못합니다. JPG · PNG 로 저장해 다시 올려 주세요.";
+    if (k === "other") return "읽을 수 없는 파일 형식입니다. PDF · 사진 · 한글 · 워드 · 엑셀 · 파워포인트 파일을 올려 주세요.";
+    return "내용을 읽지 못했습니다. " + SAVE_PDF;
   }
 
-  window.SemisDocRead = { kindOf, extOf, extract, textOf, xlsxText, xmlText, serialDate, prep, MAX };
+  window.SemisDocRead = { kindOf, extOf, extract, textOf, xlsxText, xmlText, htmlText, serialDate, prep, whyText, SAVE_PDF, MAX };
 })();

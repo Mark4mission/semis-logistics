@@ -7,7 +7,7 @@
 <meta name="robots" content="noindex">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta http-equiv="Content-Security-Policy" content="script-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
-<script src="js/loginguard.js?v=1.58.0"></script>
+<script src="js/loginguard.js?v=1.59.0"></script>
 <title>H:drive — 인천화물팀 안전보안 종합정보</title>
 <meta name="apple-mobile-web-app-title" content="H:drive">
 <link rel="icon" type="image/png" sizes="32x32" href="assets/icon-32.png">
@@ -17,7 +17,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
 <link rel="preload" as="image" href="assets/img/login-dusk.webp" type="image/webp" fetchpriority="high" media="(min-width: 861px)">
-<link rel="stylesheet" href="css/main.css?v=1.58.0">
+<link rel="stylesheet" href="css/main.css?v=1.59.0">
 </head>
 <body>
 
@@ -52,7 +52,7 @@
         </div>
         <button type="submit" class="btn btn-primary login-btn">로그인</button>
         <p id="login-error" class="login-error" role="alert"></p>
-        <p class="login-foot"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>인가된 사용자 전용</p>
+        <p class="login-foot"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>인가된 사용자 전용 · 보안을 위해 창마다 따로 로그인합니다</p>
       </form>
     </div>
   </div>
@@ -73,12 +73,13 @@
       <div class="pb-text"><span class="pb-name"><b>H:</b>drive</span><span class="pb-sub">인천화물팀 안전보안 종합정보</span></div>
       <button type="button" id="sheet-close" class="icon-btn sheet-only" aria-label="메뉴 닫기"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
     </div>
-    <div id="sup-card" class="sup-card" role="group" aria-label="지원" hidden>
-      <button type="button" id="sup-search" class="sup-cell" data-search-open aria-keyshortcuts="Control+K"><span class="sup-ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg></span><span class="sup-l">검색</span><kbd>Ctrl K</kbd></button>
-      <button type="button" id="sup-desk" class="sup-cell" hidden><span class="sup-ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 13.5 6 5.5h12l2.5 8V19a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1z"/><path d="M3.5 13.5h5l1.5 2.5h4l1.5-2.5h5"/><path d="M12 3.5v7"/><path d="m9.5 8 2.5 2.5L14.5 8"/></svg></span><span class="sup-l">메인 데스크</span><b class="sup-n" hidden></b></button>
-      <button type="button" id="sup-argo" class="sup-cell" hidden><span class="sup-owl"></span><span class="sup-l">아르고</span></button>
+    <div id="sup-card" class="sup-card" role="group" aria-label="핵심 기능" hidden>
+      <button type="button" id="sup-search" class="sup-cell" data-sup="search" data-search-open aria-keyshortcuts="Control+K"><span class="sup-ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg></span><span class="sup-t"><b class="sup-l">검색</b><small class="sup-d">화면 · 문서 찾기</small></span></button>
+      <button type="button" id="sup-desk" class="sup-cell" data-sup="desk" hidden><span class="sup-ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 13.5 6 5.5h12l2.5 8V19a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1z"/><path d="M3.5 13.5h5l1.5 2.5h4l1.5-2.5h5"/><path d="M12 10.5v-7"/><path d="m9.5 6 2.5-2.5L14.5 6"/></svg></span><span class="sup-t"><b class="sup-l">접수 카운터</b><small class="sup-d">문서 올리기</small></span><b class="sup-n" hidden></b></button>
+      <button type="button" id="sup-argo" class="sup-cell" data-sup="argo" hidden><span class="sup-owl"></span><span class="sup-t"><b class="sup-l">아르고</b><small class="sup-d">AI 도우미</small></span></button>
     </div>
     <div id="nav-menu" class="nav-menu"></div>
+    <div id="sheet-fs" class="sheet-fs sheet-only" hidden><span>글자 크기</span></div>
     <div class="panel-foot">
       <button id="sync-status" class="sync-dot" type="button" title="동기화 상태"></button>
       <button type="button" id="sheet-logout" class="sheet-only sheet-logout">로그아웃</button>
@@ -92,11 +93,13 @@
     <a class="brand" href="#/dashboard"><img src="assets/mark.svg" alt="" width="30" height="30"><span class="brand-text"><b>H:</b>drive</span></a>
     <nav id="crumbs" class="crumbs" aria-label="현재 위치"></nav>
     <div class="header-right">
-      <div id="hdr-sup" class="hdr-sup" role="group" aria-label="지원" hidden>
-        <button id="hdr-search-btn" class="icon-btn" type="button" data-search-open aria-label="통합 검색 (Ctrl K)" title="통합 검색 (Ctrl K)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg></button>
-        <button id="hdr-desk" class="icon-btn" type="button" hidden aria-label="메인 데스크" title="메인 데스크"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 13.5 6 5.5h12l2.5 8V19a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1z"/><path d="M3.5 13.5h5l1.5 2.5h4l1.5-2.5h5"/><path d="M12 3.5v7"/><path d="m9.5 8 2.5 2.5L14.5 8"/></svg><b class="sup-n" hidden></b></button>
-        <button id="hdr-argo" class="icon-btn hdr-owl" type="button" hidden aria-label="아르고" title="아르고"><span class="sup-owl"></span></button>
+      <button id="hdr-search-btn" class="hdr-find" type="button" data-search-open data-sup="search" aria-keyshortcuts="Control+K" title="검색 (Ctrl K)"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg><span class="hf-l">검색</span><span class="hf-ph">화면 · 문서 · 사람 · 일정</span><kbd class="hf-k">Ctrl K</kbd></button>
+      <div id="hdr-sup" class="hdr-sup" role="group" aria-label="핵심 기능" hidden>
+        <button id="hdr-desk" class="hdr-sb" type="button" data-sup="desk" hidden title="접수 카운터"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 13.5 6 5.5h12l2.5 8V19a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1z"/><path d="M3.5 13.5h5l1.5 2.5h4l1.5-2.5h5"/><path d="M12 10.5v-7"/><path d="m9.5 6 2.5-2.5L14.5 6"/></svg><span class="hdr-l">접수 카운터</span><b class="sup-n" hidden></b></button>
+        <button id="hdr-argo" class="hdr-sb hdr-owl" type="button" data-sup="argo" hidden title="아르고"><span class="sup-owl"></span><span class="hdr-l">아르고</span></button>
       </div>
+      <button id="tour-btn" class="hdr-sb hdr-help" type="button" title="사용법 보기" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.4a2.5 2.5 0 0 1 4.8.9c0 1.6-2.4 2-2.4 3.5"/><path d="M12 16.9v.1"/></svg><span class="hdr-l">사용법</span></button>
+      <div id="hdr-fs" class="hdr-fs" hidden></div>
       <span id="sec-level-badge" class="sec-badge" title="현재 국가 항공보안등급"></span>
       <span id="user-chip" class="user-chip"></span>
       <button id="logout-btn" class="icon-btn" type="button" title="로그아웃" aria-label="로그아웃"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>
@@ -116,7 +119,8 @@
   <div id="hdr-search-wrap" class="hdr-search">
     <label class="hdr-search-f">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>
-      <input id="hdr-search" type="search" placeholder="메뉴 · 공지 · 일정 · 회의록 · 연락망 · 문서" autocomplete="off" aria-label="통합 검색" aria-controls="hdr-search-pop">
+      <input id="hdr-search" type="search" placeholder="예: 홍길동 교육 · 11월 수검 · 비상연락망" autocomplete="off" aria-label="검색어" aria-controls="hdr-search-pop">
+      <kbd class="hdr-search-k" id="hdr-search-k" aria-hidden="true">Ctrl K</kbd>
     </label>
     <div id="hdr-search-pop" class="search-pop" role="region" aria-label="검색 결과"></div>
   </div>
@@ -131,60 +135,60 @@
 <div id="toast-wrap" class="toast-wrap"></div>
 
 <script src="assets/vendor/supabase-js-2.117.2.min.js" defer></script>
-<script src="js/app.js?v=1.58.0" defer></script>
-<script src="js/argo-owl.js?v=1.58.0" defer></script>
-<script src="js/panel.js?v=1.58.0" defer></script>
-<script src="js/qr.js?v=1.58.0" defer></script>
-<script src="js/hero3d.js?v=1.58.0" defer></script>
-<script src="js/modules.js?v=1.58.0" defer></script>
-<script src="js/shortcuts.js?v=1.58.0" defer></script>
-<script src="js/files.js?v=1.58.0" defer></script>
-<script src="js/preview.js?v=1.58.0" defer></script>
-<script src="js/preview-draw.js?v=1.58.0" defer></script>
-<script src="js/preview-cfb.js?v=1.58.0" defer></script>
-<script src="js/preview-xls.js?v=1.58.0" defer></script>
-<script src="js/preview-hwp.js?v=1.58.0" defer></script>
-<script src="js/docshelf.js?v=1.58.0" defer></script>
-<script src="js/calendar.js?v=1.58.0" defer></script>
-<script src="js/minutes.js?v=1.58.0" defer></script>
-<script src="js/contacts.js?v=1.58.0" defer></script>
-<script src="js/flowpdf.js?v=1.58.0" defer></script>
-<script src="js/vault.js?v=1.58.0" defer></script>
-<script src="js/regulations.js?v=1.58.0" defer></script>
-<script src="js/search.js?v=1.58.0" defer></script>
-<script src="js/board.js?v=1.58.0" defer></script>
-<script src="js/cares.js?v=1.58.0" defer></script>
-<script src="js/hazfind.js?v=1.58.0" defer></script>
-<script src="js/screening.js?v=1.58.0" defer></script>
-<script src="js/equipment.js?v=1.58.0" defer></script>
-<script src="js/secpost.js?v=1.58.0" defer></script>
-<script src="js/secdash.js?v=1.58.0" defer></script>
-<script src="js/crisis.js?v=1.58.0" defer></script>
-<script src="js/serp.js?v=1.58.0" defer></script>
-<script src="js/threat.js?v=1.58.0" defer></script>
-<script src="js/phonebook.js?v=1.58.0" defer></script>
-<script src="js/contracts.js?v=1.58.0" defer></script>
-<script src="js/partners.js?v=1.58.0" defer></script>
-<script src="js/kcra.js?v=1.58.0" defer></script>
-<script src="js/seccases.js?v=1.58.0" defer></script>
-<script src="js/dissem.js?v=1.58.0" defer></script>
-<script src="js/scrstats.js?v=1.58.0" defer></script>
-<script src="js/audit.js?v=1.58.0" defer></script>
-<script src="js/training.js?v=1.58.0" defer></script>
-<script src="js/seclog.js?v=1.58.0" defer></script>
-<script src="js/patrol.js?v=1.58.0" defer></script>
-<script src="js/hwpx.js?v=1.58.0" defer></script>
-<script src="js/nasforms.js?v=1.58.0" defer></script>
-<script src="js/docread.js?v=1.58.0" defer></script>
-<script src="js/desk.js?v=1.58.0" defer></script>
-<script src="js/argo.js?v=1.58.0" defer></script>
-<script src="js/selfcheck.js?v=1.58.0" defer></script>
-<script src="js/auddash.js?v=1.58.0" defer></script>
-<script src="js/flightcore.js?v=1.58.0" defer></script>
-<script src="js/flightops.js?v=1.58.0" defer></script>
-<script src="js/sync.js?v=1.58.0" defer></script>
-<script src="js/pow.js?v=1.58.0" defer></script>
-<script src="js/fileauth.js?v=1.58.0" defer></script>
-<script src="js/main.js?v=1.58.0" defer></script>
+<script src="js/app.js?v=1.59.0" defer></script>
+<script src="js/argo-owl.js?v=1.59.0" defer></script>
+<script src="js/panel.js?v=1.59.0" defer></script>
+<script src="js/qr.js?v=1.59.0" defer></script>
+<script src="js/hero3d.js?v=1.59.0" defer></script>
+<script src="js/modules.js?v=1.59.0" defer></script>
+<script src="js/shortcuts.js?v=1.59.0" defer></script>
+<script src="js/files.js?v=1.59.0" defer></script>
+<script src="js/preview.js?v=1.59.0" defer></script>
+<script src="js/preview-draw.js?v=1.59.0" defer></script>
+<script src="js/preview-cfb.js?v=1.59.0" defer></script>
+<script src="js/preview-xls.js?v=1.59.0" defer></script>
+<script src="js/preview-hwp.js?v=1.59.0" defer></script>
+<script src="js/docshelf.js?v=1.59.0" defer></script>
+<script src="js/calendar.js?v=1.59.0" defer></script>
+<script src="js/minutes.js?v=1.59.0" defer></script>
+<script src="js/contacts.js?v=1.59.0" defer></script>
+<script src="js/flowpdf.js?v=1.59.0" defer></script>
+<script src="js/vault.js?v=1.59.0" defer></script>
+<script src="js/regulations.js?v=1.59.0" defer></script>
+<script src="js/search.js?v=1.59.0" defer></script>
+<script src="js/board.js?v=1.59.0" defer></script>
+<script src="js/cares.js?v=1.59.0" defer></script>
+<script src="js/hazfind.js?v=1.59.0" defer></script>
+<script src="js/screening.js?v=1.59.0" defer></script>
+<script src="js/equipment.js?v=1.59.0" defer></script>
+<script src="js/secpost.js?v=1.59.0" defer></script>
+<script src="js/secdash.js?v=1.59.0" defer></script>
+<script src="js/crisis.js?v=1.59.0" defer></script>
+<script src="js/serp.js?v=1.59.0" defer></script>
+<script src="js/threat.js?v=1.59.0" defer></script>
+<script src="js/phonebook.js?v=1.59.0" defer></script>
+<script src="js/contracts.js?v=1.59.0" defer></script>
+<script src="js/partners.js?v=1.59.0" defer></script>
+<script src="js/kcra.js?v=1.59.0" defer></script>
+<script src="js/seccases.js?v=1.59.0" defer></script>
+<script src="js/dissem.js?v=1.59.0" defer></script>
+<script src="js/scrstats.js?v=1.59.0" defer></script>
+<script src="js/audit.js?v=1.59.0" defer></script>
+<script src="js/training.js?v=1.59.0" defer></script>
+<script src="js/seclog.js?v=1.59.0" defer></script>
+<script src="js/patrol.js?v=1.59.0" defer></script>
+<script src="js/hwpx.js?v=1.59.0" defer></script>
+<script src="js/nasforms.js?v=1.59.0" defer></script>
+<script src="js/docread.js?v=1.59.0" defer></script>
+<script src="js/desk.js?v=1.59.0" defer></script>
+<script src="js/argo.js?v=1.59.0" defer></script>
+<script src="js/selfcheck.js?v=1.59.0" defer></script>
+<script src="js/auddash.js?v=1.59.0" defer></script>
+<script src="js/flightcore.js?v=1.59.0" defer></script>
+<script src="js/flightops.js?v=1.59.0" defer></script>
+<script src="js/sync.js?v=1.59.0" defer></script>
+<script src="js/pow.js?v=1.59.0" defer></script>
+<script src="js/fileauth.js?v=1.59.0" defer></script>
+<script src="js/main.js?v=1.59.0" defer></script>
 </body>
 </html>

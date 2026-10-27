@@ -704,7 +704,7 @@
       </section>
       <div class="ed-actions">
         <button type="button" class="ed-btn ed-btn-ghost" id="ed-again">${svg(IC.plus, 18)}<span>이수증 추가 등록</span></button>
-        <button type="button" class="ed-btn ed-btn-ghost" id="ed-dprint">${svg(IC.print, 18)}<span>Print</span></button>
+        <button type="button" class="ed-btn ed-btn-ghost" id="ed-dprint">${svg(IC.print, 18)}<span>인쇄</span></button>
       </div>
     </div>`;
   }

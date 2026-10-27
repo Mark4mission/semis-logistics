@@ -231,6 +231,26 @@
     el.classList.toggle("tone-warn", a.length > 0);
   }
 
+  /* 시작 바 — 첫 화면 맨 위에 핵심 3종(검색 · 접수 카운터 · 아르고)을 큰 칸으로. 권한 없는 칸은 빼고 남은 수만큼 나눈다.
+     누르면 코어가 data-sup 으로 연다(배지 · 부엉이는 SeMIS.renderSupport 가 채움) */
+  const DESK_ICO = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 13.5 6 5.5h12l2.5 8V19a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1z"/><path d="M3.5 13.5h5l1.5 2.5h4l1.5-2.5h5"/><path d="M12 10.5v-7"/><path d="m9.5 6 2.5-2.5L14.5 6"/></svg>';
+  function startHTML() {
+    const ok = (id) => !!(SeMIS.supportOk && SeMIS.supportOk(id));
+    const ids = ["search", "desk", "argo"].filter(ok);
+    if (ids.length < 2) return "";
+    const L = SeMIS.SUP_LABEL || {}, name = (SeMIS.user && SeMIS.user.name) || "";
+    const SHORT = { search: "화면 · 문서 · 사람 · 일정 찾기", desk: "문서 올리기 — 파일을 올리면 알아서 정리", argo: "AI 도우미 — 말로 물어보세요" };
+    const tile = (id) => `<button type="button" class="ds-tile ds-${id}" data-sup="${id}">
+        <span class="ds-ti${id === "argo" ? " is-owl" : ""}">${id === "search" ? ico("search", 26) : id === "desk" ? DESK_ICO : '<span class="sup-owl" data-z="44"></span>'}</span>
+        <span class="ds-tt"><b>${esc(L[id] || id)}</b><small>${esc(SHORT[id])}</small></span>
+        ${id === "search" ? `<kbd class="hf-k">${esc(SeMIS.keyHint ? SeMIS.keyHint() : "Ctrl K")}</kbd>` : id === "desk" ? '<b class="sup-n" hidden></b>' : ""}</button>`;
+    return `<section class="dash-start no-print" aria-label="시작">
+      <div class="ds-hi"><h2>${esc(name ? name + "님, 무엇을 할까요?" : "무엇을 할까요?")}</h2>
+        <p>찾을 때는 검색${ok("desk") ? ", 파일은 접수 카운터(어느 화면에서든 끌어다 놓기)" : ""}${ok("argo") ? ", 모르는 것은 아르고에게" : ""}.</p></div>
+      <div class="ds-tiles" data-n="${ids.length}">${ids.map(tile).join("")}</div>
+    </section>`;
+  }
+
   SeMIS.registerModule("dashboard", {
     title: "대시보드",
     render(root) {
@@ -313,6 +333,7 @@
           <span class="spacer"></span>
           ${acts ? `<div class="head-acts">${acts}</div>` : ""}
         </div>
+        ${startHTML()}
         ${cardVis("status") || todayCard ? `<div class="dash-top${guest ? " guest" : ""}${todayCard ? " has-today" : ""}">${cardVis("status") ? ticketHTML(canWrite) : ""}${todayCard}</div>` : ""}
         ${!guest && cardVis("threat") && menuOk("threat", "SemisThreat") ? SemisThreat.dashHTML() : ""}
         ${!guest && cardVis("serp") && menuOk("serp", "SemisSerp") ? SemisSerp.dashHTML() : ""}
@@ -365,6 +386,7 @@
         if (b) b.click();
       };
       if ($("#btn-add-minute")) $("#btn-add-minute").onclick = () => SemisMinutes.newMinute();
+      if (SeMIS.renderSupport) SeMIS.renderSupport();
     }
   });
 

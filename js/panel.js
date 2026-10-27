@@ -1,4 +1,4 @@
-/* 공통 패널 모달 — 통합 검색 · 메인 데스크 · 아르고가 같은 껍데기를 쓴다(폼용 작은 모달 openModal 과는 별개).
+/* 공통 패널 모달 — 통합 검색 · 접수 카운터 · 아르고가 같은 껍데기를 쓴다(폼용 작은 모달 openModal 과는 별개).
    <dialog> showModal: 화면 중앙 · 같은 크기(데스크톱 최대 960px × 86vh, 모바일 전체 화면) · Esc · 바깥 누르기 · 포커스 가두기 ·
    뒤 화면 스크롤 잠금 · 열고 닫는 움직임(동작 줄이기면 생략). 열린 패널 안에서 뜨는 폼 모달 · 토스트 · 말풍선 · 액션 시트는
    host() 로 패널 안에 붙인다 — 모달 대화상자 밖은 inert 라 그렇지 않으면 가려지고 누를 수 없다.
@@ -49,7 +49,7 @@ window.SemisPanel = (() => {
         '<span class="pnl-mark" aria-hidden="true"></span>' +
         '<div class="pnl-tt"><h2 class="pnl-title" id="pnl-' + esc(id) + '-t"></h2><p class="pnl-sub"></p></div>' +
         '<div class="pnl-acts"></div>' +
-        '<button type="button" class="btn btn-ghost btn-sm pnl-print" hidden>' + icon("print", 17) + '<span>Print</span></button>' +
+        '<button type="button" class="btn btn-ghost btn-sm pnl-print" hidden>' + icon("print", 17) + '<span>인쇄</span></button>' +
         '<button type="button" class="icon-btn pnl-more" aria-label="더보기" title="더보기" hidden><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5.5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="18.5" cy="12" r="1.8"/></svg></button>' +
         '<button type="button" class="pnl-x" aria-label="닫기">' + icon("x", 22) + '</button>' +
       '</header>' +

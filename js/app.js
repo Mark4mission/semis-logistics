@@ -3,7 +3,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.58.0";
+  const VERSION = "1.59.0";
   const APP_NAME = "H:drive";
   const APP_ALIAS = "ARGOS (Air-cargo Risk & Guard Operations System)";
   /* 데이터 캐시는 탭 sessionStorage 에만(탭 닫기·로그아웃 시 소멸). 화면 설정(LS_UI)만 localStorage */
@@ -426,7 +426,7 @@ const SeMIS = (() => {
       secCases: [],      // 보안 처리 대장
       dissem: {},        // 보안 전파교육
       scrStats: {},      // 화물 보안검색 실적 (월별 합계)
-      desk: { cfg: {}, log: [] },  // 메인 데스크 — 분야별 담당 · 접수 대장 (js/desk.js)
+      desk: { cfg: {}, log: [] },  // 접수 카운터 — 분야별 담당 · 올린 문서 기록 (js/desk.js)
       boards: defaultBoards()      // 게시판 정의 (글은 서버 비공개 표 — js/board.js)
     };
   }
@@ -650,7 +650,55 @@ const SeMIS = (() => {
     const st = uiState();
     const all = st.navPrefs || {};
     all[navPrefsKey()] = Object.assign({}, all[navPrefsKey()] || {}, patch);
-    setUiState({ navPrefs: all });
+    try { setUiState({ navPrefs: all }); } catch (e) { /* 저장소 접근 불가 — 이번 화면에만 */ }
+  }
+
+  /* ── 글자 크기(계정별) — 기본 14px, 크게 16px · 더 크게 18px. 화면에서만 바뀌고 A4 인쇄는 그대로(css: @media screen html.fs-1 · fs-2) ── */
+  const FONT_LABEL = ["글자 기본 크기", "글자 크게", "글자 더 크게"];
+  function fontScale() { const v = Number(navPrefs().fontScale) || 0; return v === 1 || v === 2 ? v : 0; }
+  function paintFontSeg() {
+    if (typeof document === "undefined") return;
+    const v = fontScale();
+    $$("[data-fs]").forEach(b => b.setAttribute("aria-pressed", String(Number(b.dataset.fs) === v)));
+  }
+  function applyFont() {
+    if (typeof document === "undefined") return;
+    const h = document.documentElement, v = currentUser ? fontScale() : 0;
+    h.classList.toggle("fs-1", v === 1);
+    h.classList.toggle("fs-2", v === 2);
+    paintFontSeg();
+  }
+  function setFontScale(v) {
+    v = Number(v) === 1 || Number(v) === 2 ? Number(v) : 0;
+    if (v === fontScale()) return;
+    setNavPref({ fontScale: v });
+    applyFont();
+    resetStack();
+    queueTidy();
+    try { window.dispatchEvent(new Event("resize")); } catch (e) { /* 지도 · 3D 크기 다시 맞추기 실패는 무시 */ }
+    toast(FONT_LABEL[v] + "로 바꿨습니다.");
+  }
+  function fontSegHTML() {
+    return '<div class="fs-seg" role="group" aria-label="글자 크기">' + FONT_LABEL.map((lb, i) =>
+      '<button type="button" class="fs-b fs-b' + i + '" data-fs="' + i + '" aria-pressed="false" aria-label="' + lb + '" title="' + lb + '">가</button>').join("") + '</div>';
+  }
+
+  /* ── 업무 약어 풀이 — 화면 제목에 약어가 있으면 ⓘ 말풍선, 메뉴는 마우스를 올리면 풀이(docs/ARGO-GUIDE.md §6 과 같은 뜻) ── */
+  const GLOSS = [
+    [/SERP/, "SERP", "팀위기대응계획 — 비상 상황 초동조치 · 조직 · 연락 체계"],
+    [/상용화주|\bKC\b/, "상용화주(KC)", "Known Consignor — 자체 보안통제를 인정받아 지정된 화주"],
+    [/\bRA\b/, "RA", "Regulated Agent — 운송 화물에 당국이 인정하는 보안통제를 하는 대리점 · 업체"],
+    [/\bDG\b|위험물/, "위험물(DG)", "Dangerous Goods — IATA 위험물 규정(DGR) 기준으로 다루는 화물"],
+    [/SSOP/, "SSOP", "보안표준업무절차 — 인천화물팀(ICNKF) 보안 업무 절차서"],
+    [/수검/, "수검", "기관(국토부 · 지방항공청 · 해외 당국 등)의 점검을 받는 일과 지적사항 조치"],
+    [/하드카피/, "하드카피", "종이 점검표 · 대장 — 디지털화 전 점검은 종이 대장을 보고 집계만 입력"],
+    [/\bSSI\b/, "SSI", "민감보안정보 — 열람 · 취급이 제한되는 정보(안전보안파트 이상만 원문)"],
+    [/CARES/, "CARES", "보안장비 고장신고 · 관리 시스템(별도 사이트)"],
+    [/\bDIP\b/, "DIP", "외교행낭 — 정해진 조건에서 개봉검색 면제 처리"]
+  ];
+  function glossOf(text) {
+    const s = String(text || "");
+    return GLOSS.filter(g => g[0].test(s)).slice(0, 2).map(g => g[1] + ": " + g[2]).join("\n");
   }
 
   /* ── 인증 — 서버 세션 ──
@@ -898,17 +946,28 @@ const SeMIS = (() => {
   }
   /* 열린 패널(모달 대화상자)이 있으면 그 안 — 밖은 inert 라 보이지도 눌리지도 않는다 */
   const layerHost = () => (typeof window !== "undefined" && window.SemisPanel && window.SemisPanel.host()) || document.body;
-  function toast(msg, isErr) {
+  /* act = { label, run } — 토스트 오른쪽 단추(예: 저장한 화면 바로 가기). 단추가 있으면 더 오래(7초) 둔다 */
+  function toast(msg, isErr, act) {
     const wrap = $("#toast-wrap");
     if (!wrap) return;
     const h = layerHost();
     if (h && wrap.parentNode !== h) h.appendChild(wrap);
     const t = document.createElement("div");
-    t.className = "toast" + (isErr ? " err" : "");
-    t.textContent = msg;
+    t.className = "toast" + (isErr ? " err" : "") + (act ? " has-act" : "");
+    t.setAttribute("role", isErr ? "alert" : "status");
+    const m = document.createElement("span");
+    m.textContent = msg;
+    t.appendChild(m);
+    if (act && act.label && typeof act.run === "function") {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "toast-act"; b.textContent = act.label;
+      b.onclick = () => { t.remove(); act.run(); };
+      t.appendChild(b);
+    }
     wrap.appendChild(t);
-    setTimeout(() => { t.style.opacity = "0"; t.style.transition = "opacity .3s"; }, 2200);
-    setTimeout(() => t.remove(), 2600);
+    const life = act ? 7000 : 2200;
+    setTimeout(() => { t.style.opacity = "0"; t.style.transition = "opacity .3s"; }, life);
+    setTimeout(() => t.remove(), life + 400);
   }
 
   /* ── 모달 ── */
@@ -941,7 +1000,7 @@ const SeMIS = (() => {
   }
 
   /* ── A4 인쇄(전 화면 공통) ──
-     모든 화면 머리말(.ds-head/.page-head) 오른쪽, 없으면 맨 위 인쇄 바에 Print 버튼 자동 부착.
+     모든 화면 머리말(.ds-head/.page-head) 오른쪽, 없으면 맨 위 인쇄 바에 '인쇄' 버튼 자동 부착.
      인쇄 시 헤더·사이드바·버튼은 빠지고(@media print) 문서 머리말(시스템명·화면명·출력일시·출력자)이 붙는다 */
   function printTitle(route) {
     const mn = menuForModule(route);
@@ -992,7 +1051,7 @@ const SeMIS = (() => {
     btn.className = "btn btn-ghost btn-sm no-print";
     btn.dataset.printBtn = "1";
     btn.title = "이 화면을 A4 보고용으로 인쇄";
-    btn.innerHTML = icon("print", 17) + "<span>Print</span>";
+    btn.innerHTML = icon("print", 17) + "<span>인쇄</span>";
     btn.onclick = () => printView(route);
     const head = view.querySelector(".ds-head, .page-head");
     if (head) {
@@ -1013,8 +1072,8 @@ const SeMIS = (() => {
   function registerModule(id, def) { modules[id] = def; }
   function hasModule(id) { return !!modules[id]; }
 
-  /* ── 지원 카드(검색 · 메인 데스크 · 아르고) — 허브 패널 맨 위 카드, 패널을 접었을 때 · 태블릿 · 모바일은 상단바 아이콘.
-     권한: 검색 = 서명 세션 빼고 / 메인 데스크 = 내부 hq 이상 / 아르고 = 내부 전 계정(모듈이 있을 때만) */
+  /* ── 지원 카드(핵심 3종: 검색 · 접수 카운터 · 아르고) — 허브 패널 맨 위 카드, 패널을 접었을 때 · 태블릿은 상단바, 모바일은 하단 탭.
+     권한: 검색 = 서명 세션 빼고 / 접수 카운터 = 내부 전 계정(hq 미만은 올리기만 — 저장은 안전보안파트) / 아르고 = 내부 전 계정(모듈이 있을 때만) */
   const support = {};
   const SUPPORT_IDS = ["search", "desk", "argo"];
   function registerSupport(id, def) { support[id] = def || {}; if (currentUser) renderSupport(); }
@@ -1023,7 +1082,7 @@ const SeMIS = (() => {
     if (!currentUser || role === "signer") return false;
     const internal = role !== "vendor";
     if (id === "search") return true;
-    if (id === "desk") return internal && roleRank() >= 3 && !!support.desk && !(support.desk.ok && !support.desk.ok());
+    if (id === "desk") return internal && roleRank() >= 1 && !!support.desk && !(support.desk.ok && !support.desk.ok());
     if (id === "argo") return internal && hasModule("argo");
     return false;
   }
@@ -1034,35 +1093,47 @@ const SeMIS = (() => {
     else if (id === "argo") navigate("argo");
     return true;
   }
-  const SUP_LABEL = { search: "통합 검색", desk: "메인 데스크", argo: "아르고" };
+  /* 핵심 3종 이름 · 한 줄 설명 — 지원 카드 · 상단바 · 대시보드 시작 바 · 모바일 탭이 같은 말을 쓴다 */
+  const SUP_LABEL = { search: "검색", desk: "접수 카운터", argo: "아르고" };
+  const SUP_DESC = { search: "화면 · 문서 · 사람 · 일정 찾기", desk: "문서 올리기 — 파일을 올리면 알아서 정리", argo: "AI 도우미 — 말로 물어보세요" };
+  const isMac = () => typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/i.test(String(navigator.platform || navigator.userAgent || ""));
+  const keyHint = () => (isMac() ? "⌘K" : "Ctrl K");
+  function supBadge(id) {
+    const s = support[id] || {};
+    if (!supportOk(id) || typeof s.badge !== "function") return "";
+    try { const v = s.badge(); return v ? String(v) : ""; } catch (e) { return ""; }
+  }
   function renderSupport() {
     if (typeof document === "undefined") return;
     let n = 0;
     SUPPORT_IDS.forEach(id => {
       const ok = supportOk(id);
       if (ok) n++;
-      const s = support[id] || {};
-      let badge = "";
-      if (ok && typeof s.badge === "function") { try { const v = s.badge(); badge = v ? String(v) : ""; } catch (e) { badge = ""; } }
-      [$("#sup-" + id), $(id === "search" ? "#hdr-search-btn" : "#hdr-" + id)].forEach(b => {
-        if (!b) return;
+      const badge = supBadge(id);
+      $$('[data-sup="' + id + '"]').forEach(b => {
         b.hidden = !ok;
+        /* 이름은 단추 글자 그대로(보이는 글자 = 읽는 이름, WCAG 2.5.3) — 배지 숫자는 읽지 않고 뒤에 '확인 대기 n건'을 숨은 글로 */
         const nb = b.querySelector(".sup-n");
-        if (nb) { nb.textContent = badge; nb.hidden = !badge; }
-        const lb = SUP_LABEL[id] + (badge ? " — 확인 대기 " + badge + "건" : "") + (id === "search" ? " (Ctrl K)" : "");
-        b.setAttribute("aria-label", lb);
-        b.title = lb;
-        if (id === "argo" && ok && !b.querySelector(".owl-svg") && window.SemisOwl) {
+        if (nb) { nb.textContent = badge; nb.hidden = !badge; nb.setAttribute("aria-hidden", "true"); }
+        let sr = b.querySelector(":scope > .sup-sr");
+        if (nb && !sr) { sr = document.createElement("span"); sr.className = "sup-sr sr-only"; b.appendChild(sr); }
+        if (sr) sr.textContent = badge ? " · 확인 대기 " + badge + "건" : "";
+        b.title = SUP_LABEL[id] + (badge ? " — 확인 대기 " + badge + "건" : "") + (id === "search" ? " (" + keyHint() + ")" : "");
+        if (id === "argo" && ok && window.SemisOwl) {
           const ow = b.querySelector(".sup-owl");
-          if (ow) ow.innerHTML = window.SemisOwl.svg("idle", b.id === "sup-argo" ? 34 : 26);
+          if (ow && !ow.querySelector(".owl-svg")) ow.innerHTML = window.SemisOwl.svg("idle", Number(ow.dataset.z) || (b.id === "sup-argo" ? 32 : 24));
         }
       });
     });
+    $$(".hf-k, #hdr-search-k").forEach(k => { k.textContent = keyHint(); });
     const card = $("#sup-card");
     if (card) { card.hidden = !n; card.dataset.n = String(n); }
     const hs = $("#hdr-sup");
-    if (hs) hs.hidden = !n;
+    if (hs) hs.hidden = !(supportOk("desk") || supportOk("argo"));
+    supHooks.forEach(fn => { try { fn(); } catch (e) { /* 시작 바 등 다시 그리기 실패는 무시 */ } });
   }
+  const supHooks = [];
+  function onSupport(fn) { if (typeof fn === "function") supHooks.push(fn); }
 
   /* 패널로 여는 주소(#/desk 등) — 옛 링크 · 즐겨찾기로 오면 대시보드를 그리고 그 위에 패널을 연다 */
   const panelRoutes = {};
@@ -1227,6 +1298,11 @@ const SeMIS = (() => {
     closeSidebar();
     watchView();
     queueTidy();
+    /* 검색 처음 화면의 '최근 연 화면' — 화면 이름만(게시판 글은 게시판으로) */
+    if (window.SemisSearch && SemisSearch.rememberOpen && route === currentRoute()) {
+      const bid = boardIdOf(route);
+      try { SemisSearch.rememberOpen(bid ? "board/" + bid : route, printTitle(bid ? "board/" + bid : route)); } catch (e) { /* 기억 실패는 무시 */ }
+    }
   }
   /* 탭 묶음에 속한 화면이면 본문 위에 묶음 탭(보이는 화면이 둘 이상일 때) */
   function renderSubtabs(route) {
@@ -1435,7 +1511,8 @@ const SeMIS = (() => {
   /* 탭 묶음 안 화면 — 패널에서 묶음 이름 아래 늘 펼쳐 보인다(이름은 화면 위 탭과 같게) */
   function navSubHTML(x) {
     const badge = navBadgeOf(x), def = modules[x.module], opt = !!(def && def.optional);
-    return '<button type="button" class="nav-item nav-sub' + (opt ? " is-opt" : "") + '" data-route="' + esc(x.module) + '" title="' + esc(x.label) + (opt ? " (선택 실행)" : "") + '">' +
+    const gl = glossOf(x.label);
+    return '<button type="button" class="nav-item nav-sub' + (opt ? " is-opt" : "") + '" data-route="' + esc(x.module) + '" title="' + esc(x.label) + (opt ? " (선택 실행)" : "") + (gl ? "\n" + esc(gl) : "") + '">' +
       '<span class="nav-lbl">' + esc(x.tab || x.label) + '</span>' + (opt ? '<span class="nav-tag is-opt">선택</span>' : badge ? '<span class="nav-meta">' + esc(badge) + '</span>' : "") + '</button>';
   }
   function navItemHTML(m) {
@@ -1474,7 +1551,8 @@ const SeMIS = (() => {
     }
     const badge = navBadgeOf(m);
     const def = modules[m.module], opt = !!(def && def.optional);   // 선택 실행 모듈(의무 아님 · 통계 제외) — '선택' 표시
-    return '<' + tag + ' type="button" class="nav-item' + (opt ? " is-opt" : "") + '" data-route="' + esc(m.module) + '" title="' + esc(m.label) + (opt ? " (선택 실행)" : "") + '">' +
+    const gl = glossOf(m.label);
+    return '<' + tag + ' type="button" class="nav-item' + (opt ? " is-opt" : "") + '" data-route="' + esc(m.module) + '" title="' + esc(m.label) + (opt ? " (선택 실행)" : "") + (gl ? "\n" + esc(gl) : "") + '">' +
       '<span class="nav-lbl">' + esc(m.label) + '</span>' + (opt ? '<span class="nav-tag is-opt">선택</span>' : badge ? '<span class="nav-meta">' + esc(badge) + '</span>' : "") + '</' + tag + '>';
   }
   function plannedOpenPref(hubId, liveCount) {
@@ -1493,7 +1571,7 @@ const SeMIS = (() => {
     let h = '<section class="hub" data-hub="' + esc(g.id) + '" aria-label="' + esc(g.label) + '">' +
       '<div class="hub-head"><span class="hub-ico">' + icon(g.ico, 18) + '</span><h2 class="hub-title">' + esc(g.label) + '</h2></div>';
     if (live.length) h += '<div class="hub-items">' + live.map(navItemHTML).join("") + '</div>';
-    if (pins.length) h += '<div class="hub-block hub-pins"><div class="hub-block-t">고정한 메뉴</div>' +
+    if (pins.length) h += '<div class="hub-block hub-pins"><div class="hub-block-t">자주 쓰는 메뉴</div>' +
       pins.map(m => {
         const pinIco = '<span class="pin-ico">' + icon("pin", 15) + '</span>';
         if (m.type === "link" && m.open !== "frame" && !isLinkGroup(m))
@@ -1501,7 +1579,7 @@ const SeMIS = (() => {
         const r = m.type === "board" ? boardRoute(m) : m.type === "link" ? (isLinkGroup(m) ? "links/" : "embed/") + m.id : m.module;
         return '<button type="button" class="nav-pin" data-go="' + esc(r) + '">' + pinIco + '<span>' + esc(m.label) + '</span></button>';
       }).join("") + '</div>';
-    if (planned.length) h += '<div class="hub-block hub-planned' + (open ? " open" : "") + '">' +
+    if (planned.length && isAdmin()) h += '<div class="hub-block hub-planned' + (open ? " open" : "") + '">' +
       '<button type="button" class="hub-block-t hub-toggle" data-toggle-planned="' + esc(g.id) + '" aria-expanded="' + (open ? "true" : "false") + '">' +
       '<span>준비 중인 모듈</span><b class="soon-n">' + planned.length + '</b><span class="chev">' + icon("chevdown", 15) + '</span></button>' +
       '<div class="planned-list">' + planned.map(navItemHTML).join("") + '</div></div>';
@@ -1510,9 +1588,9 @@ const SeMIS = (() => {
     const scOk = !!scMenu && canSee(scMenu);
     const addOk = scOk && isAdmin();
     if (links.length || (addOk && g.id === homeHubId())) {
-      h += '<div class="hub-block hub-links"><div class="hub-block-t"><span class="hb-t">바로가기</span>' +
-        (scOk ? '<button type="button" class="hb-act" data-go="shortcuts" title="바로가기 전체" aria-label="바로가기 전체">' + icon("grid", 15) + '</button>' : "") +
-        (addOk ? '<button type="button" class="hb-act" data-sc-add="' + esc(g.id) + '" title="바로가기 추가" aria-label="' + esc(g.label) + '에 바로가기 추가">' + icon("plus", 16) + '</button>' : "") +
+      h += '<div class="hub-block hub-links"><div class="hub-block-t"><span class="hb-t">외부 사이트</span>' +
+        (scOk ? '<button type="button" class="hb-act" data-go="shortcuts" title="외부 사이트 전체(바로가기 화면)" aria-label="외부 사이트 전체">' + icon("grid", 15) + '</button>' : "") +
+        (addOk ? '<button type="button" class="hb-act" data-sc-add="' + esc(g.id) + '" title="외부 사이트 추가" aria-label="' + esc(g.label) + '에 외부 사이트 추가">' + icon("plus", 16) + '</button>' : "") +
         '</div>' + links.map((m, i) => i < LINKS_SHOWN ? navItemHTML(m) : navItemHTML(m).replace('class="nav-item', 'class="nav-item lk-x')).join("") +
         (links.length > LINKS_SHOWN ? '<button type="button" class="lk-toggle" data-lk-all aria-expanded="false">' + icon("chevdown", 14) +
           '<span>' + (links.length - LINKS_SHOWN) + '개 더 보기</span></button>' : "") + '</div>';
@@ -1529,7 +1607,9 @@ const SeMIS = (() => {
     if (appEl) {
       appEl.classList.toggle("nav-lite", role === "vendor" || role === "signer");
       appEl.classList.toggle("nav-signer", role === "signer");
-      appEl.classList.toggle("panel-collapsed", !!navPrefs().panelCollapsed && role !== "vendor" && role !== "signer");
+      /* 메뉴 패널 — 처음에는 화물팀 관리자 · 일반사용자는 접은 채로(핵심 3종은 상단바), 펼치면 그 설정을 기억 */
+      const pc = navPrefs().panelCollapsed;
+      appEl.classList.toggle("panel-collapsed", (typeof pc === "boolean" ? pc : roleRank() <= 2) && role !== "vendor" && role !== "signer");
     }
     let html = "";
     if (role === "vendor") {
@@ -1661,17 +1741,17 @@ const SeMIS = (() => {
     $("#sidebar-backdrop").classList.add("show");
   }
 
-  /* 모바일 하단 탭 — 권한·숨김에 맞춰 보이는 것만, hub 지정 탭은 그 허브의 첫 운영 모듈로.
-     현장에서 매일 쓰는 순서(연락망·규정은 전체·검색으로) */
+  /* 모바일 하단 탭 — 홈 + 3종 지원(검색 · 올리기 · 아르고) + 전체. 권한에 맞는 것만(그 밖의 화면은 전체 · 검색으로) */
   const MOBILE_TABS = [
     { label: "홈", ico: "home", route: "dashboard" },
-    { label: "일정", ico: "calendar", route: "schedule" },
-    { label: "순찰", ico: "patrol", route: "daily-safety" },
-    { label: "운항", ico: "plane", route: "flight" }
+    { label: "검색", ico: "search", sup: "search" },
+    { label: "올리기", ico: "up", sup: "desk" },
+    { label: "아르고", sup: "argo" }
   ];
   function tabRoute(t) {
     const role = currentUser && currentUser.role;
     if (role === "signer") return null;
+    if (t.sup) return supportOk(t.sup) ? "#" + t.sup : null;
     if (role === "vendor") {
       const routes = vendorAccess(currentUser).routes;
       if (t.route) return routes.indexOf(t.route) >= 0 ? t.route : null;
@@ -1688,9 +1768,12 @@ const SeMIS = (() => {
     const role = currentUser && currentUser.role;
     if (role === "signer") { bar.innerHTML = ""; return; }
     const tabs = MOBILE_TABS.map(t => Object.assign({}, t, { to: tabRoute(t) })).filter(t => t.to);
-    bar.innerHTML = tabs.map(t =>
-      '<button type="button" class="tab-btn" data-route="' + esc(t.to) + '"' + (t.hub ? ' data-hub="' + esc(t.hub) + '"' : "") + '>' +
-      icon(t.ico, 22) + '<span>' + esc(t.label) + '</span></button>').join("") +
+    bar.innerHTML = tabs.map(t => t.sup
+      ? '<button type="button" class="tab-btn" data-sup="' + esc(t.sup) + '">' +
+        (t.sup === "argo" ? '<span class="sup-owl" data-z="24"></span>' : icon(t.ico, 22)) + '<span>' + esc(t.label) + '</span>' +
+        (t.sup === "desk" ? '<span class="sr-only"> (접수 카운터)</span><b class="sup-n" hidden></b>' : "") + '</button>'
+      : '<button type="button" class="tab-btn" data-route="' + esc(t.to) + '"' + (t.hub ? ' data-hub="' + esc(t.hub) + '"' : "") + '>' +
+        icon(t.ico, 22) + '<span>' + esc(t.label) + '</span></button>').join("") +
       '<button type="button" class="tab-btn tab-all" data-sheet-open>' + icon("grid", 22) + '<span>전체</span></button>';
     $$(".tab-btn[data-route]", bar).forEach(b => { b.onclick = () => navigate(b.dataset.route); });
     $(".tab-all", bar).onclick = openSheet;
@@ -1743,6 +1826,14 @@ const SeMIS = (() => {
     const sw = $("#hdr-search-wrap");
     if (sw) sw.classList.toggle("vendor-hide", lite);
     $$("[data-search-open]").forEach(b => b.classList.toggle("vendor-hide", lite));
+    [$("#hdr-fs"), $("#sheet-fs")].forEach(box => {
+      if (!box) return;
+      if (!box.querySelector(".fs-seg")) box.insertAdjacentHTML("beforeend", fontSegHTML());
+      box.hidden = lite;
+    });
+    const tb = $("#tour-btn");
+    if (tb) tb.hidden = lite;
+    applyFont();
     renderSecBadge();
     renderSupport();
     $("#app-version").textContent = "v" + VERSION;
@@ -1777,6 +1868,10 @@ const SeMIS = (() => {
     if (window.SemisFileAuth) SemisFileAuth.start();
     if (announce && currentUser)
       toast(currentUser.role === "signer" ? "서명 화면입니다. 본인 이름을 찾아 서명해 주세요." : currentUser.name + "님, 환영합니다.");
+    /* 처음 쓰는 계정은 핵심 3종 안내(테스트 환경 jsdom 은 제외) */
+    const dom = typeof navigator !== "undefined" && /jsdom/i.test(navigator.userAgent || "");
+    if (currentUser && currentUser.role !== "signer" && currentUser.role !== "vendor" && !dom && !navPrefs().tourDone)
+      setTimeout(() => { if (!document.getElementById("tour")) startTour(false); }, 900);
   }
   function setLoginBusy(on, msg) {
     const f = $("#login-form");
@@ -1874,7 +1969,15 @@ const SeMIS = (() => {
     const sheetLogout = $("#sheet-logout");
     if (sheetLogout) sheetLogout.addEventListener("click", logout);
     $("#menu-toggle").addEventListener("click", togglePanel);
-    ["desk", "argo"].forEach(id => [$("#sup-" + id), $("#hdr-" + id)].forEach(b => { if (b) b.addEventListener("click", () => openSupport(id)); }));
+    /* 핵심 3종 입구(지원 카드 · 상단바 · 시작 바 · 모바일 탭)는 data-sup 하나로 — 나중에 그려지는 단추도 같은 동작 */
+    document.addEventListener("click", (e) => {
+      const b = e.target && e.target.closest && e.target.closest("[data-sup]");
+      if (b && !b.disabled && SUPPORT_IDS.indexOf(b.dataset.sup) >= 0) { e.preventDefault(); openSupport(b.dataset.sup); return; }
+      const f = e.target && e.target.closest && e.target.closest("[data-fs]");
+      if (f) setFontScale(f.dataset.fs);
+    });
+    const tb = $("#tour-btn");
+    if (tb) tb.addEventListener("click", () => startTour(true));
     $("#sidebar-backdrop").addEventListener("click", closeOverlays);
     const sc = $("#sheet-close");
     if (sc) sc.addEventListener("click", closeOverlays);
@@ -1928,7 +2031,7 @@ const SeMIS = (() => {
        SeMIS.icon(name, size)                          선 아이콘 (이모지 대신) */
   const ui = {
     icon,
-    /* 공통 패널 모달(js/panel.js) — 검색 · 메인 데스크 · 아르고 */
+    /* 공통 패널 모달(js/panel.js) — 검색 · 접수 카운터 · 아르고 */
     panel(o) { return typeof window !== "undefined" && window.SemisPanel ? window.SemisPanel.open(o) : null; },
     head(o) {
       o = o || {};
@@ -2126,6 +2229,11 @@ const SeMIS = (() => {
     tidyView();
   }
   function tidyHead(head) {
+    const tt = head.querySelector(":scope > .page-title");
+    if (tt && !head.querySelector(":scope > .term-tip")) {
+      const gl = glossOf(tt.textContent);
+      if (gl) tt.insertAdjacentHTML("afterend", ui.tip(gl, "용어 풀이").replace('class="help-tip"', 'class="help-tip term-tip no-print"'));
+    }
     const btns = headButtons(head);
     const main = btns.find(b => b.classList.contains("btn-primary") && !b.disabled) || null;
     const rest = btns.filter(b => b !== main);
@@ -2363,6 +2471,98 @@ const SeMIS = (() => {
     return w;
   }
 
+  /* ── 사용법 안내 — 검색 → 접수 카운터 → 아르고 순서로 그 단추를 비추는 말풍선(계정별 처음 한 번, 상단바 '사용법'으로 다시) ── */
+  const TOUR = [
+    { id: "search", title: "검색", text: () => "찾고 싶은 말을 넣으면 화면 · 문서 · 사람 · 일정을 한 번에 찾습니다. 어느 화면에서나 위쪽 검색칸(" + keyHint() + ")으로 엽니다." },
+    { id: "desk", title: "접수 카운터", text: () => roleRank() >= 3
+      ? "이수증 · 공문 · 점검 결과 같은 파일을 올리면 내용을 읽고 저장할 곳을 제안합니다. 확인한 뒤 '이대로 저장'을 누르면 각 화면에 들어갑니다."
+      : "이수증 · 공문 · 점검 결과 같은 파일을 올리면 안전보안파트가 확인한 뒤 알맞은 화면에 정리합니다. 처리 상태는 '내가 올린 문서'에서 봅니다." },
+    { id: "argo", title: "아르고 · AI 도우미", text: () => "모르는 것은 말로 물어보세요. 예: '이번 주 일정 알려줘', '보안교육 화면 어디 있어?'" }
+  ];
+  let tourAt = -1, tourSteps = [], tourBack = null;
+  function tourTarget(id) {
+    const vw = window.innerWidth || 1024, vh = window.innerHeight || 768;
+    const els = $$('[data-sup="' + id + '"]').filter(el => !el.hidden && !el.closest("[hidden]") && el.getClientRects().length);
+    const rank = (el) => el.closest("#view") ? 0 : el.closest(".tabbar") ? 1 : el.closest(".header") ? 2 : 3;
+    const inView = (el) => { const r = el.getBoundingClientRect(); return r.width > 4 && r.height > 4 && r.right > 0 && r.left < vw && r.bottom > 0 && r.top < vh * 2; };
+    return els.filter(inView).sort((a, b) => rank(a) - rank(b))[0] || null;
+  }
+  function tourPlace() {
+    const w = document.getElementById("tour");
+    const st = tourSteps[tourAt];
+    if (!w || !st) return;
+    const el = tourTarget(st.id);
+    const hole = w.querySelector(".tour-hole"), pop = w.querySelector(".tour-pop");
+    const vw = window.innerWidth || 1024, vh = window.innerHeight || 768;
+    if (!el) { hole.style.display = "none"; pop.style.left = Math.max(12, (vw - pop.offsetWidth) / 2) + "px"; pop.style.top = Math.max(12, (vh - pop.offsetHeight) / 2) + "px"; return; }
+    let r = el.getBoundingClientRect();
+    if (r.top < 0 || r.bottom > vh) { try { el.scrollIntoView({ block: "center" }); } catch (e) { /* 스크롤 불가 */ } r = el.getBoundingClientRect(); }
+    const pad = 6;
+    hole.style.display = "block";
+    Object.assign(hole.style, { left: (r.left - pad) + "px", top: (r.top - pad) + "px", width: (r.width + pad * 2) + "px", height: (r.height + pad * 2) + "px" });
+    const pw = pop.offsetWidth || 320, ph = pop.offsetHeight || 160;
+    let top = r.bottom + 14;
+    if (top + ph > vh - 10) top = r.top - ph - 14;
+    if (top < 10) top = Math.min(vh - ph - 10, r.bottom + 14);
+    const left = Math.max(12, Math.min(r.left + r.width / 2 - pw / 2, vw - pw - 12));
+    pop.style.left = left + "px"; pop.style.top = Math.max(10, top) + "px";
+  }
+  function tourPaint() {
+    const w = document.getElementById("tour");
+    const st = tourSteps[tourAt];
+    if (!w || !st) return;
+    const last = tourAt === tourSteps.length - 1;
+    w.querySelector(".tour-step").textContent = (tourAt + 1) + " / " + tourSteps.length;
+    w.querySelector("#tour-t").textContent = st.title;
+    w.querySelector(".tour-x").textContent = st.text();
+    const nb = w.querySelector('[data-tour="next"]');
+    nb.textContent = last ? "시작하기" : "다음";
+    tourPlace();
+    try { nb.focus({ preventScroll: true }); } catch (e) { /* 포커스 불가 */ }
+  }
+  function endTour() {
+    const w = document.getElementById("tour");
+    if (w) w.remove();
+    window.removeEventListener("resize", tourPlace);
+    window.removeEventListener("scroll", tourPlace, true);
+    tourAt = -1;
+    setNavPref({ tourDone: 1 });
+    if (tourBack && tourBack.isConnected) { try { tourBack.focus({ preventScroll: true }); } catch (e) { /* 이미 사라짐 */ } }
+    tourBack = null;
+  }
+  function startTour(manual) {
+    if (typeof document === "undefined" || !currentUser || currentUser.role === "signer") return false;
+    if (!manual && navPrefs().tourDone) return false;
+    if (window.SemisPanel) window.SemisPanel.closeAll();
+    closeOverlays();
+    tourSteps = TOUR.filter(t => supportOk(t.id));
+    if (!tourSteps.length) return false;
+    const old = document.getElementById("tour");
+    if (old) old.remove();
+    tourBack = document.activeElement;
+    const w = document.createElement("div");
+    w.id = "tour"; w.className = "tour no-print";
+    w.setAttribute("role", "dialog"); w.setAttribute("aria-modal", "true"); w.setAttribute("aria-labelledby", "tour-t"); w.setAttribute("aria-describedby", "tour-x");
+    w.innerHTML = '<div class="tour-hole" aria-hidden="true"></div><div class="tour-pop"><div class="tour-step mono"></div><h3 id="tour-t"></h3><p class="tour-x" id="tour-x"></p>' +
+      '<div class="tour-acts"><button type="button" class="btn btn-ghost" data-tour="skip">건너뛰기</button><button type="button" class="btn btn-primary" data-tour="next">다음</button></div></div>';
+    document.body.appendChild(w);
+    w.querySelector('[data-tour="skip"]').onclick = endTour;
+    w.querySelector('[data-tour="next"]').onclick = () => { if (tourAt >= tourSteps.length - 1) endTour(); else { tourAt++; tourPaint(); } };
+    w.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); endTour(); return; }
+      if (e.key === "Tab") {
+        const bs = $$("button", w), i = bs.indexOf(document.activeElement);
+        e.preventDefault();
+        bs[(i + (e.shiftKey ? -1 : 1) + bs.length) % bs.length].focus();
+      }
+    });
+    window.addEventListener("resize", tourPlace);
+    window.addEventListener("scroll", tourPlace, true);
+    tourAt = 0;
+    tourPaint();
+    return true;
+  }
+
   /* ── 공개 API ── */
   return {
     boot, registerModule, hasModule, navigate,
@@ -2376,7 +2576,8 @@ const SeMIS = (() => {
     setAccounts, sessionLost, sessionUpdated, devSession, restoreSession, login, enterApp,
     renderNav, renderHeader, renderSecBadge, renderView, renderPlannedView,
     printView, printTitle, printHeadHTML, attachPrintBtn, markHub,
-    registerSupport, renderSupport, openSupport, supportOk, registerPanelRoute, PANEL_ONLY, tidyTables, onRerender,
+    registerSupport, renderSupport, openSupport, supportOk, registerPanelRoute, PANEL_ONLY, tidyTables, onRerender, onSupport,
+    SUP_LABEL, SUP_DESC, keyHint, supBadge, startTour, endTour, fontScale, setFontScale, glossOf, navPrefs, setNavPref,
     icon, ui, ICONS, HUB_ICONS, hubOf, hubOfDeep, hubList, hubEntries, utilEntries, homeHubId,
     isLinkGroup, linkChildren, isIntranet, hostOf, openHub, hubHomeRoute, togglePanel, openSheet,
     LINK_ICONS, LINK_TONES, favOk, linkIconHTML, linkCardHTML, menuForModule,

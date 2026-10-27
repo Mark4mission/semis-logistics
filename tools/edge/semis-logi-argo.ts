@@ -42,7 +42,7 @@ const COLLECTIONS: [string, number, string][] = [
   ["crisis", 2, "위기대응 조직 · 담당자"],
   ["training", 2, "보안교육 인원 · 이수 기록(사람 · 과정 · 수료일 · 유효기한)"],
   ["audits", 2, "수검 · 지적사항"],
-  ["docs", 2, "문서 서가(증빙 문서 목록)"],
+  ["docs", 2, "문서함(증빙 문서 목록)"],
   ["regulations", 2, "규정 목록"],
   ["equipment", 2, "검색장비 대장"],
   ["sec_cases", 2, "보안 처리 대장"],
@@ -67,7 +67,7 @@ function toolList(rank: number): Tool[] {
       description: "H:drive 메뉴 · 화면 · 문서 · 일정 · 회의록 · 연락처 · 교육 기록 등을 이름 · 낱말로 찾는다(이 사용자가 볼 수 있는 것만, 통합 검색과 같은 범위). 결과의 go 는 [[이름|go]] 바로 가기에 쓴다.",
       input_schema: { type: "object", properties: { query: S("찾을 낱말(공백으로 여러 개 — 모두 포함)"), limit: { type: "integer", minimum: 1, maximum: 20 } }, required: ["query"] } },
     { name: "argos_status", min: 1,
-      description: "현황 계산. overview = 오늘 요약(보안등급 · 오늘/이번 주 일정 수 · 교육 만료 · 열린 지적 · 기록부 누락 · 다음 수검), schedule = 기간 일정(반복 일정 날짜별로 펼침 · 점검 기한 포함, 기본 이번 주 월~일), training_due = 교육 만료 · 미이수 · 이수 기간(days 안, 기본 90), audit_open = 열린 수검 지적사항, seclog_missing = 보안 기록부 누락, notices = 최근 공지, sec_level = 국가 항공보안등급, desk_pending = 메인 데스크 확인 대기. 권한 밖 항목은 빠진다.",
+      description: "현황 계산. overview = 오늘 요약(보안등급 · 오늘/이번 주 일정 수 · 교육 만료 · 열린 지적 · 기록부 누락 · 다음 수검), schedule = 기간 일정(반복 일정 날짜별로 펼침 · 점검 기한 포함, 기본 이번 주 월~일), training_due = 교육 만료 · 미이수 · 이수 기간(days 안, 기본 90), audit_open = 열린 수검 지적사항, seclog_missing = 보안 기록부 누락, notices = 최근 공지, sec_level = 국가 항공보안등급, desk_pending = 접수 카운터 확인 대기(안전보안파트). 권한 밖 항목은 빠진다.",
       input_schema: { type: "object", properties: { topic: { type: "string", enum: TOPICS }, from: DATE("시작일"), to: DATE("끝일"), days: { type: "integer", minimum: 1, maximum: 400 } }, required: ["topic"] } },
     { name: "argos_records", min: 1,
       description: "H:drive 자료 목록을 읽는다(읽기 전용, 요약 형태). query = 낱말(공백 구분, 모두 포함), from/to = 항목 날짜 범위. 결과가 길면 잘린다 — 좁혀서 다시 부른다.\n" +
@@ -75,10 +75,10 @@ function toolList(rank: number): Tool[] {
       input_schema: { type: "object", properties: { collection: { type: "string", enum: cols.map((c) => c[0]) }, query: S("낱말"), from: DATE("시작일"), to: DATE("끝일"),
         limit: { type: "integer", minimum: 1, maximum: 200 } }, required: ["collection"] } },
     { name: "argos_catalog", min: 3,
-      description: "등록에 쓰는 목록: 교육 과정(id) · 수검(id) · 보안 기록부 양식 · 처리 유형 · 문서 서가 위치(mod · grp) · 전파 구분 · 일정 색 · 담당자 이름 · 분야별 담당.",
+      description: "등록에 쓰는 목록: 교육 과정(id) · 수검(id) · 보안 기록부 양식 · 처리 유형 · 문서함 위치(mod · grp) · 전파 구분 · 일정 색 · 담당자 이름 · 분야별 담당.",
       input_schema: { type: "object", properties: {} } },
     { name: "schedule_add", min: 3,
-      description: "일정관리에 일정을 등록한다(여러 건 가능 — 2건 이상이면 화면이 한 번 확인).",
+      description: "일정관리에 일정을 등록한다(여러 건 가능 — 화면이 실행 전에 확인 카드를 띄운다).",
       input_schema: { type: "object", properties: { items: { type: "array", minItems: 1, maxItems: 20,
         items: { type: "object", properties: SCHED_FIELDS, required: ["title", "start"] } } }, required: ["items"] } },
     { name: "schedule_update", min: 3,
@@ -89,7 +89,7 @@ function toolList(rank: number): Tool[] {
       input_schema: { type: "object", properties: { id: S("일정 id"), done: { type: "boolean" }, date: DATE("반복 일정 회차"),
         scope: { type: "string", enum: ["one", "future", "all"] } }, required: ["id", "done"] } },
     { name: "schedule_delete", min: 3,
-      description: "일정을 지운다(화면이 한 번 확인). 반복 일정은 전체가 지워진다.",
+      description: "일정을 지운다(화면이 확인 카드를 띄운다). 반복 일정은 전체가 지워진다.",
       input_schema: { type: "object", properties: { id: S("일정 id") }, required: ["id"] } },
     { name: "notice_add", min: 3,
       description: "공지사항 게시판(B001)에 글을 올린다 — 대시보드 공지에도 보인다. pinned 는 상단 고정.",
@@ -100,11 +100,11 @@ function toolList(rank: number): Tool[] {
         expire: DATE("이수증에 적힌 유효기한(계산값과 다를 때만)"), hours: { type: "number" }, org: S("교육기관"), cert_no: S("이수증 번호"),
         file: S("첨부 id(f1 …)"), next_schedule: { type: "boolean" } }, required: ["name", "course_id", "date"] } },
     { name: "doc_shelve", min: 3,
-      description: "첨부 문서를 문서 서가에 보관한다. mod · grp 는 argos_catalog 의 shelves. ssi true = 민감보안정보(안전보안파트 이상만 열람).",
-      input_schema: { type: "object", properties: { mod: S("서가 화면 id"), grp: S("묶음 id"), title: S("문서 이름"), date: DATE("문서 일자"), org: S("발행 기관"),
+      description: "첨부 문서를 문서함에 보관한다. mod · grp 는 argos_catalog 의 shelves. ssi true = 민감보안정보(안전보안파트 이상만 열람).",
+      input_schema: { type: "object", properties: { mod: S("문서함 화면 id"), grp: S("묶음 id"), title: S("문서 이름"), date: DATE("문서 일자"), org: S("발행 기관"),
         ssi: { type: "boolean" }, file: S("첨부 id(f1 …)") }, required: ["mod", "grp", "title", "file"] } },
     { name: "audit_findings_add", min: 3,
-      description: "수검에 지적사항을 추가한다(2건 이상이면 화면이 한 번 확인). 기존 수검은 audit_id(argos_catalog 의 audits), 없으면 new_audit 로 새 수검. type: car 시정조치 · rec 개선권고 · onsite 현장시정 · obs 관찰사항. 조치 기한은 일정에 연동된다.",
+      description: "수검에 지적사항을 추가한다(화면이 실행 전에 확인 카드를 띄운다). 기존 수검은 audit_id(argos_catalog 의 audits), 없으면 new_audit 로 새 수검. type: car 시정조치 · rec 개선권고 · onsite 현장시정 · obs 관찰사항. 조치 기한은 일정에 연동된다.",
       input_schema: { type: "object", properties: { audit_id: S("수검 id"),
         new_audit: { type: "object", properties: { body: { type: "string", enum: ["gov", "foreign", "internal"], description: "gov 국토부 · 지방항공청 / foreign 해외 당국 · 화주 / internal 사내 심사" },
           org: S("점검 기관"), kind: S("점검 유형"), start: DATE("시작일"), end: DATE("종료일") } },
@@ -119,9 +119,9 @@ function toolList(rank: number): Tool[] {
 function staticSystem(rank: number): string {
   const write = rank >= 3
     ? `[자료 등록 · 수정]
-- 사용자가 등록 · 수정 · 완료 · 삭제를 요청하면 되묻지 말고 바로 도구를 부릅니다(지우기 · 여러 건은 화면이 한 번 확인을 받습니다). 날짜처럼 꼭 필요한 값이 없거나 두 가지로 읽힐 때만 한 문장으로 묻습니다.
+- 사용자가 등록 · 수정 · 완료 · 삭제를 요청하면 되묻지 말고 바로 도구를 부릅니다. 화면이 실행 전에 확인 카드(무엇을 · 언제 · 어디에)를 보여 주고 사용자가 단추를 눌러야 실행됩니다. 도구 결과가 cancelled 이면 실행하지 않았다고 짧게 말하고 무엇을 고칠지 묻습니다. 날짜처럼 꼭 필요한 값이 없거나 두 가지로 읽힐 때만 한 문장으로 묻습니다.
 - 기존 항목을 고칠 때는 먼저 argos_records 나 argos_status 로 정확한 id 를 확인합니다. 후보가 여럿이면 사용자에게 고르게 합니다.
-- 교육 과정 · 수검 · 문서 서가 위치 · 담당자는 argos_catalog 로 확인합니다.
+- 교육 과정 · 수검 · 문서함 위치 · 담당자는 argos_catalog 로 확인합니다.
 - 일정 색: 회의 blue · 교육 green · 점검 red · 연차 등 휴무 yellow · 앱 개발 purple · 규정 brown · 중요도 낮음 gray. 인천화물터미널 회의실이면 room true.
 - 실행이 끝나면 무엇을 어디에 했는지 한두 문장으로 말합니다. 화면에 결과 카드와 '되돌리기' 단추가 함께 나옵니다.
 - 사용자 메시지의 [첨부 f1: …] 를 원본으로 보관하려면 도구의 file 에 그 id 를 넣습니다. 이수증 → training_record, 보관 문서 → doc_shelve, 점검 결과 지적사항 → audit_findings_add.`
