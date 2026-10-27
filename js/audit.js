@@ -1245,10 +1245,18 @@
   }
 
   /* ── 렌더 ── */
-  const TABS = [["list", "수검 일정"], ["findings", "지적사항"]];
+  const TABS = [["list", "수검 일정"], ["findings", "지적사항"], ["docs", "점검표 · 자료"]];
+  /* 점검표 · 체크리스트(빈 양식 포함)는 수검 준비 · 점검 활동에 바로 꺼내 쓰도록 이 화면 서가에 둔다(메인 데스크가 판독 때 이 묶음을 고려) */
+  if (window.SemisDocs) SemisDocs.define(MOD, [
+    { id: "checklist", label: "점검표 · 체크리스트", short: "점검표" },
+    { id: "plan", label: "점검 · 심사 계획 · 지침", short: "계획 · 지침" },
+    { id: "misc", label: "기타" }
+  ], { tab: "docs" });
+  (window.SemisDeep = window.SemisDeep || {})[MOD] = (sub) => { if (TABS.some(x => x[0] === sub)) { tab = sub; sel = ""; } };
   function bodyHTML() {
     const a = sel ? byId(sel) : null;
     if (a) return detailHTML(a);
+    if (tab === "docs") return window.SemisDocs ? `<section class="card">${SemisDocs.groupsHTML(MOD)}</section>` : "";
     return tab === "findings" ? findingsHTML() : listHTML();
   }
   function openAudit(id) {
@@ -1259,6 +1267,7 @@
   }
   function wire(root) {
     const box = $("#au-body", root) || root;
+    if (window.SemisDocs && tab === "docs" && !sel) SemisDocs.wire(box, paint);
     $$("[data-aud]", box).forEach(tr => {
       const open = () => openAudit(tr.dataset.aud);
       tr.onclick = (ev) => { if (!ev.target.closest("a")) open(); };
@@ -1392,7 +1401,7 @@
     getState() { return { tab, sel, query, bodyF, stF, fq, fStF, fBodyF, ckSec, ckSt }; },
     setState(o) {
       o = o || {};
-      if (o.tab === "list" || o.tab === "findings") tab = o.tab;
+      if (TABS.some(x => x[0] === o.tab)) tab = o.tab;
       if (o.sel !== undefined) sel = String(o.sel || "");
       if (o.query !== undefined) query = String(o.query || "");
       if (o.bodyF) bodyF = o.bodyF; if (o.stF) stF = o.stF;

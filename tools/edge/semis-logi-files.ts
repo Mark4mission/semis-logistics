@@ -79,6 +79,7 @@ const DESK_SYSTEM = `당신은 항공화물터미널 안전보안 부서의 문�
 - area: 항공 · 화물 보안 security, 항공 · 지상 안전 safety, 산업안전(산안법 · 중대재해) industrial, 위험물 dg. 애매하면 빈 문자열.
 - cid · auditId · tid · case.type · shelf.mod · shelf.grp · dissem.kind 는 아래 목록의 값만. 맞는 것이 없으면 null.
 - shelf 는 문서를 원본째 보관할 곳(점검 기록부 스캔 · 보고서 · 절차서 등). cert · notice 는 보통 null.
+- 점검표 · 체크리스트 · 심사 양식(빈 양식 포함, 사내 · 외부 점검 모두)은 수검 · 점검 활동에 쓰는 문서다: type 은 보통 other, shelf 는 화면 audit · 묶음 checklist. 점검 · 심사 시행 계획(일정 · 대상 · 방법)은 audit · plan. 손으로 채운 기록부 스캔(hardcopy)은 기록부 쪽 서가를 고른다.
 - audit.findings.type: 시정조치 car, 개선권고 rec, 현장시정 onsite, 관찰사항 obs.
 - summary · memo 에 전화번호 · 주민번호를 옮기지 않는다.`;
 

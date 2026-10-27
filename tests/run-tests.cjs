@@ -9681,6 +9681,64 @@ function makeServer(opts = {}) {
       eq(e.w.SemisSearch.search("메인 데스크").filter(x => x.group === "메인 데스크").length, 0, "협력업체 검색에 없음");
     });
 
+    await ta("DK13 점검표 · 체크리스트 → 수검 대응 서가: 묶음 정의 · 판독 목록 · 판독이 못 고르면 제목 · 파일명으로 제안(기록부 스캔 제외) · 반영 · 수검 화면 '점검표 · 자료' 탭 · 검색 이동", async () => {
+      const e = deskEnv("hq");
+      const DK = e.w.SemisDesk, D = e.S.data;
+      const am = DK.shelfMods().find(m => m.mod === "audit");
+      ok(am && am.label === "수검 대응 센터", "화면 목록에 수검 대응 센터");
+      eq(am.groups.map(g => g.id).join(), "checklist,plan,misc");
+      ok(DK.catalog().shelves.some(s => s.mod === "audit" && s.grp === "checklist" && /수검 대응 센터 › 점검표 · 체크리스트/.test(s.label)), "판독 목록");
+      const T1 = "영업운송본부 정기 안전심사 점검표 (내부 안전심사 계획 및 시행지침 [별표2])";
+      const p1 = DK.plan(DK.clean(AI({ type: "other", title: T1, date: "2026-10-06", org: "안전심사팀" })), "점검표(R00_20261006).pdf");
+      eq(p1.map(a => a.k + ":" + a.on + ":" + a.mod + ":" + a.grp).join(), "shelf:true:audit:checklist", "제목으로 제안 · 켜짐");
+      eq(p1[0].title, T1); eq(p1[0].date, "2026-10-06"); eq(DK.check(p1[0]), "");
+      eq(DK.plan(DK.clean(AI({ type: "other" })), "x_CHK-LIST.pdf")[0].mod, "audit", "파일명으로도");
+      eq(DK.plan(DK.clean(AI({ type: "other", title: "Audit Checklist" })))[0].grp, "checklist", "영문");
+      const p2 = DK.plan(DK.clean(AI({ type: "other", title: T1, shelf: { mod: "inspection", grp: "misc", title: "x" } })));
+      eq(p2[0].mod + ":" + p2[0].grp, "inspection:misc", "판독이 고른 위치가 먼저");
+      const p3 = DK.plan(DK.clean(AI({ type: "hardcopy", title: "9월 보안 점검표" })));
+      eq(p3.map(a => a.k + ":" + a.on + ":" + a.mod).join(), "shelf:false:", "손으로 채운 기록부 스캔은 제안 안 함");
+      eq(DK.plan(DK.clean(AI({ type: "other", title: "보안점검 표준절차서" })))[0].mod, "", "표준 · 결과 문서는 제안 안 함");
+      eq(DK.plan(DK.clean(AI({ type: "other", title: "보안 점검 결과 통보" })))[0].on, false);
+      eq(DK.clean(AI({ shelf: { mod: "audit", grp: "plan", title: "계획" } })).shelf.grp, "plan", "판독 결과 audit 묶음 통과");
+      const out = DK.commit(p1, { docs: { name: "c.pdf", size: 9, url: PUB + "docs/zz_c.pdf" } }, {});
+      const dk = D.docs.find(d => d.src === "desk" && d.mod === "audit");
+      ok(dk && dk.grp === "checklist" && dk.files[0].url.includes("/docs/") && dk.org === "안전심사팀", "서가 반영");
+      ok(out.some(o => o.k === "shelf" && o.route === "audit" && /수검 대응 센터 › 점검표 · 체크리스트/.test(o.label)), "반영 요약 · 바로 가기");
+      /* 확인 대기 카드 — 기본 반영안 · 수동 추가 */
+      const f = (n) => ({ name: n, size: 10, url: PUB + "desk/zz_" + n, type: "pdf" });
+      D.desk.log = [{ id: "w1", at: "2026-10-26T01:00:00Z", by: "가", file: f("안전심사 점검표.pdf"), status: "wait", type: "other", title: T1, summary: "", ai: DK.clean(AI({ type: "other", title: T1 })) },
+        { id: "w2", at: "2026-10-26T02:00:00Z", by: "가", file: f("심사 체크리스트.pdf"), status: "wait", type: "notice", title: "심사 안내", summary: "", ai: DK.clean(AI({ type: "notice", title: "심사 안내" })) }];
+      DK.open("up");
+      await tick(20);
+      const c1 = q(e, '.dk-item[data-dk="w1"]');
+      eq(c1.querySelector('.dk-act.on [data-f="mod"]').value, "audit", "화면 = 수검 대응 센터");
+      eq(c1.querySelector('.dk-act.on [data-f="grp"]').value, "checklist");
+      ok(!c1.querySelector('[data-do="apply"]').disabled, "바로 반영 가능");
+      q(e, '.dk-item[data-dk="w2"] [data-add="shelf"]').click();
+      eq(q(e, '.dk-item[data-dk="w2"] .dk-act.on [data-f="mod"]').value, "audit", "수동 추가도 파일명으로 제안");
+      e.w.SemisPanel.close("desk");
+      /* 수검 대응 센터 — 점검표 · 자료 탭 */
+      go(e, "audit");
+      await tick(10);
+      ok(qa(e, "[data-atab]").map(b => b.textContent).join("|") === "수검 일정|지적사항|점검표 · 자료", "탭 3개");
+      q(e, '[data-atab="docs"]').click();
+      await tick(10);
+      const body = q(e, "#au-body").textContent;
+      ok(body.includes("점검표 · 체크리스트") && body.includes(T1), "탭에 문서");
+      ok(q(e, "#au-body [data-dk-add]"), "문서 추가(hq)");
+      q(e, '[data-atab="list"]').click();
+      await tick(10);
+      const hit = e.w.SemisSearch.search("안전심사 점검표").find(x => x.group === "관련 문서" && x.route === "audit");
+      ok(hit, "통합 검색 관련 문서");
+      hit.pick("안전심사");
+      go(e, "audit");
+      await tick(10);
+      eq(q(e, '[data-atab="docs"]').getAttribute("aria-selected"), "true", "검색 결과 → 점검표 · 자료 탭");
+      e.w.SemisAudit.setState({ tab: "docs" }); eq(e.w.SemisAudit.getState().tab, "docs");
+      ok(/shelf 는 화면 audit · 묶음 checklist/.test(read("tools/edge/semis-logi-files.ts")), "판독 지침");
+    });
+
     t("DK10 서버 원본: desk-read 는 hq 이상 · desk/ 경로만 · 글은 6만 자 · copy 는 desk/ → 다른 폴더(등급 확인) · 폴더 등급", () => {
       const s = read("tools/edge/semis-logi-files.ts");
       ok(/if \(w\.kind !== "user" \|\| \(w\.rank \?\? 0\) < 3\) return json\(\{ ok: false, error: "forbidden" \}, 403, origin\);\n  const path = String\(body\.path \|\| ""\);\n  if \(!\/\^desk/.test(s), "deskRead 등급 · 경로");

@@ -172,7 +172,16 @@
     return { id: aid(), k: "shelf", on, mod: s.mod || "", grp: s.grp || "", title: s.title || (ai && ai.title) || "", date: s.date || (ai && ai.date) || todayISO(),
       org: (ai && ai.org) || "", ssi: false };
   }
-  function plan(ai) {
+  /* 점검표 · 체크리스트(빈 양식)는 수검 · 점검 활동에 쓰는 문서 — 판독이 서가 위치를 못 고르면 수검 대응 센터 › 점검표로.
+     손으로 채운 기록부 스캔(hardcopy)은 보안 기록부 쪽이라 제외 */
+  const CHECK_RE = /(?:점검|심사|평가)\s?표(?![준시현])|체크\s?리스트|(?:점검|심사)\s?양식|che?c?k\s?-?\s?list/i;
+  const CHECK_AT = ["audit", "checklist"];
+  function guessShelf(ai, name) {
+    if (ai && ai.type === "hardcopy") return null;
+    if (!CHECK_RE.test([ai && ai.title, name].filter(Boolean).join(" ")) || !shelfOk(CHECK_AT[0], CHECK_AT[1])) return null;
+    return { mod: CHECK_AT[0], grp: CHECK_AT[1], title: (ai && ai.title) || "", date: (ai && ai.date) || "" };
+  }
+  function plan(ai, name) {
     ai = ai || clean({});
     const T = ai.type, out = [];
     ai.certs.forEach(c => out.push(certAct(c, T === "cert")));
@@ -185,7 +194,8 @@
     }
     if (ai.case) out.push(Object.assign({ id: aid(), k: "case", on: T === "special" }, ai.case, { date: ai.case.date || ai.date }));
     if (ai.hardcopy) out.push(Object.assign({ id: aid(), k: "hc", on: T === "hardcopy" && !!ai.hardcopy.tid }, ai.hardcopy, { date: ai.hardcopy.date || ai.date }));
-    if (ai.shelf || T === "hardcopy" || T === "other") out.push(shelfAct(ai.shelf, (T === "hardcopy" || T === "other") && !!ai.shelf, ai));
+    const sh = ai.shelf || (T === "other" ? guessShelf(ai, name) : null);
+    if (sh || T === "hardcopy" || T === "other") out.push(shelfAct(sh, (T === "hardcopy" || T === "other") && !!sh, ai));
     return out;
   }
 
@@ -479,7 +489,7 @@
       SeMIS.save(); repaint();
     });
   }
-  const draftOf = (e) => drafts[e.id] || (drafts[e.id] = plan(e.ai || null));
+  const draftOf = (e) => drafts[e.id] || (drafts[e.id] = plan(e.ai || null, e.file && e.file.name));
   const stale = (e) => e.status === "reading" && !busy[e.id] && Date.now() - Date.parse(e.at || 0) > STALE_MS;
 
   /* ── 화면: 반영안 카드 ── */
@@ -704,7 +714,7 @@
       const ds = draftOf(e), k = b.dataset.add, ai = e.ai || null;
       if (k === "event") ds.push(eventAct({ title: (ai && ai.title) || "", start: (ai && ai.date) || todayISO(), end: "", time: "", timeEnd: "", place: "", cat: "other", area: "", memo: "" }, true));
       else if (k === "cert") ds.push(certAct({ name: "", emp: "", cid: "", date: "", expire: "", org: "", certNo: "", hours: null, course: "" }, true));
-      else ds.push(shelfAct(null, true, ai));
+      else ds.push(shelfAct(guessShelf(ai, e.file && e.file.name), true, ai));
       repaintCard();
     });
     $$("[data-do]", card).forEach(b => b.onclick = () => {
@@ -764,6 +774,6 @@
         text: [e.title, e.summary, e.file.name], route: "", pick: () => open(e.status === "wait" || e.status === "reading" ? "up" : "log") })))
   });
 
-  window.SemisDesk = { TYPES, KINDS, CATS, AREAS, clean, plan, check, commit, catalog, matchPerson, nextTraining, intake, read, apply, keep, folderFor, pathOf, shelfMods,
+  window.SemisDesk = { TYPES, KINDS, CATS, AREAS, clean, plan, guessShelf, check, commit, catalog, matchPerson, nextTraining, intake, read, apply, keep, folderFor, pathOf, shelfMods,
     drafts, busy, open, close, isOpen, pending, get tab() { return tab; }, setToday(t) { fixedToday = isISO(t) ? t : ""; } };
 })();
