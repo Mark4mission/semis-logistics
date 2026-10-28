@@ -164,8 +164,8 @@
     const canWrite = SeMIS.canEdit();
     const p = P();
     const actions = canWrite ? [
-      all.length || groups().length ? `<button type="button" class="btn btn-ghost btn-sm" id="pb-groups">${icon("palette", 16)}<span>구역 관리</span></button>` : "",
-      `<button type="button" class="link-btn head-link m-ed" id="pb-meta">기본 정보</button>`,
+      SeMIS.isAdmin() && (all.length || groups().length) ? `<button type="button" class="btn btn-ghost btn-sm ph-rare" id="pb-groups">${icon("palette", 16)}<span>구역 관리</span></button>` : "",
+      `<button type="button" class="btn btn-ghost btn-sm ph-rare" id="pb-meta">${icon("sliders", 16)}<span>기본 정보</span></button>`,
       `<button type="button" class="btn btn-primary btn-sm" id="pb-add">${icon("plus", 16)}<span>추가</span></button>`
     ].join("") : "";
     const head = ui.head({ title: TITLE, meta: p.asOf ? "기준 " + p.asOf : "", desc: "현장 · 협력사 · 유관기관 업무 연락처", actions });
@@ -258,7 +258,7 @@
   function editRow(id) {
     const r = id ? rows().find(x => x.id === id) : null;
     if (id && !r) return;
-    if (!groups().length) { toast("먼저 구역을 만드세요.", true); editGroups(); return; }
+    if (!groups().length) { toast(SeMIS.isAdmin() ? "먼저 구역을 만드세요." : "구역이 없습니다. 시스템관리자에게 구역 등록을 요청하세요.", true); editGroups(); return; }
     const v = r || { group: grp || groups()[0].id };
     const f = (k, lb, html, wide) => `<div class="form-row${wide ? " pb-wide" : ""}"><label for="pb-f-${k}">${lb}</label>${html}</div>`;
     const inp = (k, ph, list, type) => `<input id="pb-f-${k}" value="${esc(v[k] || "")}" autocomplete="off"${ph ? ` placeholder="${esc(ph)}"` : ""}${list ? ` list="${list}"` : ""}${type ? ` type="${type}" inputmode="${type === "email" ? "email" : "tel"}"` : ""}>`;
@@ -318,6 +318,7 @@
 
   /* 구역 관리 — 이름 · 색 · 순서 · 추가 · 삭제(연락처가 없는 구역만) */
   function editGroups() {
+    if (!SeMIS.isAdmin()) return;   // 구역 구성은 설정 — 시스템관리자
     let work = groups().map(g => Object.assign({}, g));
     const count = (id) => rows().filter(r => r.group === id).length;
     const draw = () => {

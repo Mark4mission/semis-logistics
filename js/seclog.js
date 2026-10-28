@@ -651,7 +651,7 @@
 
   /* ── 점검 양식 (hq) ── */
   function templatesForm() {
-    if (!SeMIS.canEdit()) return;
+    if (!SeMIS.isAdmin()) return;   // 양식은 설정 — 시스템관리자
     const ts = templates(true).map(t => JSON.parse(JSON.stringify(stripVis(t))));
     const hidden = allTemplates().filter(t => t.vis === "hide").map(stripVis);      // 숨긴 양식은 보이지 않게 두고 그대로 저장
     const used = (id) => logs().some(r => r.tid === id);
@@ -972,8 +972,8 @@
   }
   function render(root) {
     const act = [
-      SeMIS.isAdmin() ? `<button type="button" class="link-btn head-link m-ed" id="sl-vis" title="표시 · 흐리게 · 숨김">표시 관리</button>` : "",
-      SeMIS.canEdit() ? `<button type="button" class="link-btn head-link m-ed" id="sl-tpl">점검 양식</button>` : "",
+      SeMIS.isAdmin() ? `<button type="button" class="btn btn-ghost btn-sm ph-rare" id="sl-vis" title="표시 · 흐리게 · 숨김">${icon("eye", 16)}<span>점검 표시 관리</span></button>` : "",
+      SeMIS.isAdmin() ? `<button type="button" class="btn btn-ghost btn-sm ph-rare" id="sl-tpl">${icon("sliders", 16)}<span>점검 양식</span></button>` : "",
       canW() ? `<button type="button" class="btn btn-primary btn-sm" id="sl-add">${icon("plus", 16)}<span>기록</span></button>` : ""
     ].join("");
     root.innerHTML = ui.head({ title: TITLE, meta: "일일 · 정기 · 불시 점검 · 순찰 · 편별 점검", actions: act })

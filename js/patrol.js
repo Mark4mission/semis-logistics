@@ -554,7 +554,7 @@
 
   /* ── 양식 편집 (hq) ── */
   function cfgForm() {
-    if (!SeMIS.canEdit()) return;
+    if (!SeMIS.isAdmin()) return;   // 양식은 설정 — 시스템관리자
     const c = cfg();
     const secs = c.secs.map(s => ({ id: s.id, name: s.name, items: s.items.slice() }));
     const rowHTML = (s, i) => `<div class="pt-csec" data-ci="${i}">
@@ -674,7 +674,7 @@
           return `<li><button type="button" class="pt-item" data-ngt="${esc(it.id)}" aria-pressed="${on}" ${w && !lock ? "" : "disabled"}>
             <span class="pt-item-t">${esc(it.text)}</span><span class="pt-item-v">${on ? "이상" : "이상 없음"}</span></button></li>`;
         }).join("")}</ul></div>` : "").join("") + "</details>"
-        : ui.empty("점검사항이 없습니다.", SeMIS.canEdit() ? `<button type="button" class="btn btn-primary btn-sm" data-pt-cfg="1">${icon("sliders", 15)}<span>양식에서 가져오기</span></button>` : "")}
+        : ui.empty("점검사항이 없습니다.", SeMIS.isAdmin() ? `<button type="button" class="btn btn-primary btn-sm" data-pt-cfg="1">${icon("sliders", 15)}<span>양식에서 가져오기</span></button>` : "")}
     </section>`;
     return nav
       + `<div class="pt-slots${off ? " is-off" : ""}">${slots}${supCard}</div>`
@@ -995,7 +995,7 @@
     if (canW() && dedupe()) SeMIS.save();
     const w = canW(), pend = pending();
     const acts = [
-      SeMIS.canEdit() ? `<button type="button" class="link-btn head-link m-ed" id="pt-cfg">양식</button>` : "",
+      SeMIS.isAdmin() ? `<button type="button" class="btn btn-ghost btn-sm ph-rare" id="pt-cfg">${icon("sliders", 16)}<span>순찰일지 양식</span></button>` : "",
       w && pend.wait.length ? `<button type="button" class="btn btn-soft btn-sm" data-pt-bulk="1">${icon("check", 16)}<span>일괄 확인 <b class="mono">${pend.wait.length}</b></span></button>` : "",
       `<button type="button" class="btn btn-ghost btn-sm no-print" id="pt-print" data-print-btn="1" title="종이 양식으로 인쇄">${icon("print", 17)}<span>인쇄</span></button>`
     ].join("");

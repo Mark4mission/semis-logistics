@@ -622,8 +622,7 @@
     $$("[data-itoggle]", root).forEach(b => b.onclick = (ev) => { ev.stopPropagation(); inspToggle(b.dataset.itoggle); });
     $$("[data-ik]", root).forEach(el => {
       if (el.hasAttribute("data-igo")) return;
-      el.onclick = (ev) => { if (ev.target.closest("[data-igo],[data-itoggle]")) return; inspDetail(el.dataset.ik); };
-      el.onkeydown = (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); inspDetail(el.dataset.ik); } };
+      el.onclick = (ev) => { if (ev.target.closest("[data-igo],[data-itoggle]")) return; inspDetail(el.dataset.ik); };   // 키보드는 안의 제목 단추(Enter → click)
     });
   }
   function assigneeList() {
@@ -874,9 +873,9 @@
   /* 점검 일정 칩 — 끌기 없음, 완료 체크(원본 모듈에 반영) · 눌러 상세 · 아이콘으로 바로 가기 */
   function inspBarHTML(e, style, cls, max) {
     return `<div class="${cls} ev-${esc(pickColor(e.color))} is-insp${e.done ? " done" : ""}${e.late ? " late" : ""}${e.soft ? " soft" : ""}"${style ? ` style="${style}"` : ""}
-        data-ik="${esc(e.ik)}" role="button" tabindex="0" title="${esc(e.title)}${e.sub ? "\n" + esc(e.sub) : ""}">
+        data-ik="${esc(e.ik)}" title="${esc(e.title)}${e.sub ? "\n" + esc(e.sub) : ""}">
       ${inspCheckHTML(e)}
-      <span class="chip-title">${esc(e.title)}</span>${goBtns(e, max || 1)}</div>`;
+      <button type="button" class="chip-title">${esc(e.title)}</button>${goBtns(e, max || 1)}</div>`;
   }
   function barHTML(it, canWrite, style) {
     const e = it.ev;
@@ -1386,10 +1385,10 @@
 
   /* ── 모바일 달력 ── */
   function mEvRow(e, dayIso, canWrite) {
-    if (isInsp(e)) return `<div class="calm-ev ev-${esc(pickColor(e.color))} is-insp has-go${e.done ? " done" : ""}${e.late ? " late" : ""}" data-ik="${esc(e.ik)}" role="button" tabindex="0">
+    if (isInsp(e)) return `<div class="calm-ev ev-${esc(pickColor(e.color))} is-insp has-go${e.done ? " done" : ""}${e.late ? " late" : ""}" data-ik="${esc(e.ik)}">
       <span class="calm-bar" aria-hidden="true"></span>
       <span class="calm-when">종일</span>
-      <span class="calm-body"><b>${esc(e.title)}</b>${e.sub ? `<small>${esc(e.sub)}</small>` : ""}</span>
+      <button type="button" class="calm-body"><b>${esc(e.title)}</b>${e.sub ? `<small>${esc(e.sub)}</small>` : ""}</button>
       <span class="calm-go">${goBtns(e, 2)}</span>
       ${e.done || (inspCan(e) && e.chk.on) ? `<span class="calm-chk">${inspCheckHTML(e)}</span>` : ""}
     </div>`;
@@ -1402,10 +1401,10 @@
     const multi = (e.end || e.start) !== e.start;
     const when = !e.allDay && e.time ? esc(e.time) + (e.timeEnd ? `<small>${esc(e.timeEnd)}</small>` : "") : (multi ? "기간" : "종일");
     const sub = [multi ? md(e.start) + " – " + md(e.end) : "", e.assignee ? String(e.assignee) : ""].filter(Boolean).join(" · ");
-    return `<div class="calm-ev ev-${esc(pickColor(e.color))}${e.done ? " done" : ""}${goOf(e).length ? " has-go" : ""}" data-ev="${esc(e.id)}" data-from="${esc(dayIso)}" data-occ="${esc(e.start)}" role="button" tabindex="0">
+    return `<div class="calm-ev ev-${esc(pickColor(e.color))}${e.done ? " done" : ""}${goOf(e).length ? " has-go" : ""}" data-ev="${esc(e.id)}" data-from="${esc(dayIso)}" data-occ="${esc(e.start)}">
       <span class="calm-bar" aria-hidden="true"></span>
       <span class="calm-when">${when}</span>
-      <span class="calm-body"><b>${esc(e.title)}</b>${sub ? `<small>${esc(sub)}</small>` : ""}</span>
+      <button type="button" class="calm-body"><b>${esc(e.title)}</b>${sub ? `<small>${esc(sub)}</small>` : ""}</button>
       ${goOf(e).length ? `<span class="calm-go">${goBtns(e, 2)}</span>` : ""}
       ${canWrite ? `<span class="calm-chk">${checkHTML(e, canWrite, e.start)}</span>` : (e.done ? '<span class="calm-chk"><span class="chip-check done">✓</span></span>' : "")}
     </div>`;
@@ -1430,8 +1429,8 @@
       const dots = (open.length ? open : evs).slice(0, 3).map(e => `<i class="${e.gcalId && !e.id ? "ev-gcal" : "ev-" + esc(pickColor(e.color))}"></i>`).join("");
       const dw = fromISO(iso).getDay();
       cells += `<button type="button" class="calm-day${other ? " other" : ""}${iso === today ? " today" : ""}${iso === mSel ? " sel" : ""}${dw === 0 ? " sun" : dw === 6 ? " sat" : ""}"
-        data-mday="${iso}"${other ? ' tabindex="-1" aria-hidden="true"' : ""} aria-label="${esc(dayLabel(iso))} 일정 ${evs.length}건">
-        <span class="calm-n">${fromISO(iso).getDate()}</span><span class="calm-dots">${dots}${evs.length > 3 ? "<em>+</em>" : ""}</span></button>`;
+        data-mday="${iso}"${other ? ' tabindex="-1" aria-hidden="true"' : ""}>
+        <span class="calm-n">${fromISO(iso).getDate()}</span><span class="sr-only">, ${esc(dayLabel(iso))} 일정 ${evs.length}건</span><span class="calm-dots">${dots}${evs.length > 3 ? "<em>+</em>" : ""}</span></button>`;
     }
     const evs = eventsOnDay(mSel);
     return `<div class="calm-grid">${DOW.map((d, i) => `<span class="calm-dow${i === 0 ? " sun" : i === 6 ? " sat" : ""}">${d}</span>`).join("")}${cells}</div>
@@ -1509,7 +1508,6 @@
     const open = (el) => canWrite ? eventForm(el.dataset.ev, null, el.dataset.occ) : eventDetail(el.dataset.ev, el.dataset.occ);
     $$("[data-ev]", body).forEach(el => {
       el.onclick = (ev) => { if (ev.target.closest("[data-donetoggle],[data-igo]")) return; open(el); };
-      el.onkeydown = (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); open(el); } };
     });
     $$("[data-gcal]", body).forEach(el => el.onclick = () => gcalDetail(el.dataset.gcal));
     wireInsp(body);

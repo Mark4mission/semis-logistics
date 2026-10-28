@@ -291,8 +291,8 @@
   }
   function equipCard() {
     const K = C();
-    if (!K.has("repairs")) return `<section class="card sd-card" aria-label="장비 가동 · 고장 추이"><h2 class="card-title">장비 가동 · 고장 추이</h2>${wait("고장 기록을 불러오는 중입니다.")}</section>`;
-    if (K.failed("repairs")) return `<section class="card sd-card" aria-label="장비 가동 · 고장 추이"><h2 class="card-title">장비 가동 · 고장 추이</h2>${failBox("CARES 고장 기록을 불러오지 못했습니다. (" + K.state.errs.repairs + ")")}</section>`;
+    if (!K.has("repairs")) return `<section class="card sd-card" aria-label="장비 가동 · 고장 추이"><h2 class="card-title"><span class="ct-t">장비 가동 · 고장 추이</span></h2>${wait("고장 기록을 불러오는 중입니다.")}</section>`;
+    if (K.failed("repairs")) return `<section class="card sd-card" aria-label="장비 가동 · 고장 추이"><h2 class="card-title"><span class="ct-t">장비 가동 · 고장 추이</span></h2>${failBox("CARES 고장 기록을 불러오지 못했습니다. (" + K.state.errs.repairs + ")")}</section>`;
     const e = equipStats();
     const ms = monthly(12);
     const cols = ms.map(m => ({ label: m.label, xl: m.label.replace("월", ""), parts: [{ v: m.xray, color: KIND_COLOR.xray }, { v: m.etd, color: KIND_COLOR.etd }],
@@ -302,7 +302,7 @@
     const bars = rows.map(r => hbar(r.unit.label, r.avail == null ? 0 : r.avail, pct(r.avail), r.count + "건 · " + (r.downMs ? K.fmtDur(r.downMs) : "0분"),
       { low: r.avail != null && r.avail < 0.9, tt: r.unit.label + " · 가동률 " + pct(r.avail) + " · 고장 " + r.count + "건 · 비가동 " + r.downDays + "일 / " + r.days + "일" + (r.mttrMs ? " · 평균 복구 " + K.fmtDur(r.mttrMs) : "") })).join("");
     return `<section class="card sd-card" aria-label="장비 가동 · 고장 추이">
-      <h2 class="card-title">장비 가동 · 고장 추이<span class="dc-meta">최근 12개월</span><span class="spacer"></span><button type="button" class="link-btn" data-sd-equip="analysis">가동 분석</button></h2>
+      <h2 class="card-title"><span class="ct-t">장비 가동 · 고장 추이</span><span class="dc-meta">최근 12개월</span><span class="spacer"></span><button type="button" class="link-btn" data-sd-equip="analysis">전체 보기</button></h2>
       <div class="sd-grid">
         <div class="sd-pane">
           <div class="sd-ph"><b>월별 고장 신고</b>${legend([{ name: "X-ray", color: KIND_COLOR.xray }, { name: "ETD", color: KIND_COLOR.etd }])}</div>
@@ -318,8 +318,8 @@
   }
   function inspCard() {
     const K = C();
-    if (!K.has("history")) return `<section class="card sd-card" aria-label="점검 이행 분석"><h2 class="card-title">점검 이행 분석</h2>${wait("최근 12주 점검 기록을 불러오는 중입니다.")}</section>`;
-    if (K.failed("history")) return `<section class="card sd-card" aria-label="점검 이행 분석"><h2 class="card-title">점검 이행 분석</h2>${failBox("CARES 점검 기록을 불러오지 못했습니다. (" + K.state.errs.inspections + ")")}</section>`;
+    if (!K.has("history")) return `<section class="card sd-card" aria-label="점검 이행 분석"><h2 class="card-title"><span class="ct-t">점검 이행 분석</span></h2>${wait("최근 12주 점검 기록을 불러오는 중입니다.")}</section>`;
+    if (K.failed("history")) return `<section class="card sd-card" aria-label="점검 이행 분석"><h2 class="card-title"><span class="ct-t">점검 이행 분석</span></h2>${failBox("CARES 점검 기록을 불러오지 못했습니다. (" + K.state.errs.inspections + ")")}</section>`;
     const wk = weekly(12);
     const t0 = wk[0].t - 3.5 * DAY, t1 = wk[wk.length - 1].t + 3.5 * DAY;
     const series = ["xray", "etd"].map(k => ({ key: k, name: K.KIND_LABEL[k], color: KIND_COLOR[k], pts: wk.map(w => [w.t, w[k] == null ? null : Math.round(w[k] * 1000) / 10]) }));
@@ -338,7 +338,7 @@
     const an = anomalies(5);
     const lateTxt = (arr) => arr.length ? arr.map(x => x.u.label + (x.gap == null ? " 기록 없음" : " " + x.gap + "일")).join(" · ") : "없음";
     return `<section class="card sd-card" aria-label="점검 이행 분석">
-      <h2 class="card-title">점검 이행 분석<span class="dc-meta">CARES 점검 기록</span><span class="spacer"></span><button type="button" class="link-btn" data-sd-go="scr-status">일일점검 표</button></h2>
+      <h2 class="card-title"><span class="ct-t">점검 이행 분석</span><span class="dc-meta">CARES 점검 기록</span><span class="spacer"></span><button type="button" class="link-btn" data-sd-go="scr-status">전체 보기</button></h2>
       <div class="sd-grid">
         <div class="sd-pane">
           <div class="sd-ph"><b>주별 일일점검 이행률</b><span class="dc-meta">12주 · 어제까지</span>${legend(series)}</div>
@@ -371,7 +371,7 @@
   }
   function envCard() {
     const K = C();
-    const head = `<h2 class="card-title">검색 환경 추이<span class="dc-meta">최근 24시간 · 센서 3분 주기</span><span class="spacer"></span><button type="button" class="link-btn" data-sd-go="scr-status">지금 값</button></h2>`;
+    const head = `<h2 class="card-title"><span class="ct-t">검색 환경 추이</span><span class="dc-meta">최근 24시간 · 센서 3분 주기</span><span class="spacer"></span><button type="button" class="link-btn" data-sd-go="scr-status">전체 보기</button></h2>`;
     if (!K.has("env")) return `<section class="card sd-card" aria-label="검색 환경 추이">${head}${wait("센서 기록을 불러오는 중입니다.")}</section>`;
     const m = envModel();
     if (K.failed("env")) return `<section class="card sd-card" aria-label="검색 환경 추이">${head}${failBox("CARES 센서 기록을 불러오지 못했습니다. (" + K.state.errs.env + ")")}</section>`;
@@ -425,12 +425,25 @@
         <tbody>${tblRows}</tbody></table></div></details>
     </section>`;
   }
+  /* 추이 분석 — 장비 가동 · 점검 이행 · 위해물품 · 검색 환경을 한 카드의 탭으로(화면 블록 4개 이하). 인쇄는 넷 다 */
+  const TREND = [["equip", "장비 가동 · 고장"], ["insp", "점검 이행"], ["haz", "위해물품"], ["env", "검색 환경"]];
+  let trendTab = "equip";
+  function trendHTML() {
+    const parts = { equip: equipCard(), insp: inspCard(), haz: window.SemisHaz ? SemisHaz.sdCard() : "", env: envCard() };
+    const tabs = TREND.filter(([k]) => parts[k]);
+    if (!tabs.some(([k]) => k === trendTab)) trendTab = tabs[0][0];
+    return `<section class="card sd-trend" aria-label="추이 분석">
+      <h2 class="card-title"><span class="ct-t">추이 분석</span><span class="dc-meta">CARES 기록</span></h2>
+      ${ui.tabs("sdt", tabs, trendTab)}
+      ${tabs.map(([k]) => ui.pane("sdt", k, trendTab, parts[k].replace(/^\s*<section class="card sd-card"/, '<section class="sd-sub"'))).join("")}
+    </section>`;
+  }
   function bodyHTML() {
     const s = C().state;
     if (!s.ts && !s.err) return wait("CARES에서 장비 · 점검 · 센서 기록을 불러오는 중입니다.");
     if (s.err && !s.equips.length) return `<section class="card">${ui.empty("CARES에 연결하지 못했습니다. (" + s.err + ")",
       '<button type="button" class="btn btn-ghost btn-sm" data-sd-retry>다시 시도</button>')}</section>`;
-    return equipCard() + inspCard() + (window.SemisHaz ? SemisHaz.sdCard() : "") + envCard();
+    return trendHTML();
   }
   function metaText() {
     return window.SemisScreen && SemisScreen.metaText ? SemisScreen.metaText(C().state) : "CARES";
@@ -499,6 +512,7 @@
     $$("[data-sd-go]", root).forEach(b => b.onclick = () => SeMIS.navigate(b.dataset.sdGo));
     $$("[data-sd-equip]", root).forEach(b => b.onclick = () => { if (window.SemisEquip) SemisEquip.setTab(b.dataset.sdEquip); SeMIS.navigate("scr-equip"); });
     $$("[data-sd-retry]", root).forEach(b => b.onclick = () => refresh(true));
+    ui.wireTabs(root, "sdt", (id) => { trendTab = id; });
     wireCharts(root);
     if (window.SemisHaz) SemisHaz.fill(root);
   }
@@ -542,11 +556,11 @@
       title: TITLE,
       meta: "인천화물터미널 B동",
       actions: `<span class="scr-meta" id="sd-meta">${esc(metaText())}</span>
-        <button type="button" class="btn btn-ghost btn-sm" id="sd-refresh" title="CARES 자료 새로고침">${icon("refresh", 16)}<span>새로고침</span></button>`
+        <button type="button" class="btn btn-ghost btn-sm ph-rare" id="sd-refresh" title="CARES 자료 새로고침">${icon("refresh", 16)}<span>새로고침</span></button>`
     }) + `<div id="sd-kpi">${kpiHTML(s)}</div>` +
       (scrVisible() ? SemisScreen.opsHTML() : "") +
-      (SP ? SP.cardHTML() : "") +
-      `<div id="sd-body">${bodyHTML()}</div>`;
+      `<div id="sd-body">${bodyHTML()}</div>` +
+      (SP ? SP.cardHTML() : "");
     if (SP) SP.mount(root);
     if (window.SemisScreen && document.getElementById("sd-scr")) SemisScreen.mountDash();
     wire($("#sd-body", root));

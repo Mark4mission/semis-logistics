@@ -553,7 +553,7 @@
 
   /* ── 안내 편집(hq 이상) — 누가 · 누구를 · 주기 ── */
   function cfgForm() {
-    if (!SeMIS.canEdit()) return;
+    if (!SeMIS.isAdmin()) return;   // 안내(주체 · 대상 · 주기)는 설정 — 시스템관리자
     const C = selfCfg(), fl = allForms().filter(f => !isHid(f.id));
     const inp = (k, v, ph, max) => `<input data-c="${k}" value="${esc(v)}" placeholder="${esc(ph)}" maxlength="${max || 40}">`;
     const frow = (f) => { const o = offOf(f), b = offBase(f); return `<div class="sc-cfg-r" data-cf="${esc(f.id)}">
@@ -1173,8 +1173,8 @@
     const w = canW();
     const acts = [
       w ? `<button type="button" class="btn btn-primary btn-sm" id="sc-add">${icon("plus", 16)}<span>점검</span></button>` : "",
-      tab === "forms" && SeMIS.canEdit() ? `<button type="button" class="btn btn-ghost btn-sm m-ed" id="sc-cfg" title="누가 · 누구를 · 주기">${icon("edit", 16)}<span>안내 편집</span></button>` : "",
-      tab === "forms" && SeMIS.isAdmin() ? `<button type="button" class="btn btn-ghost btn-sm m-ed" id="sc-vis" title="표시 · 흐리게 · 숨김">${icon("eye", 16)}<span>표시 관리</span></button>` : "",
+      tab === "forms" && SeMIS.isAdmin() ? `<button type="button" class="btn btn-ghost btn-sm ph-rare" id="sc-cfg" title="누가 · 누구를 · 주기">${icon("edit", 16)}<span>점검 안내 편집</span></button>` : "",
+      tab === "forms" && SeMIS.isAdmin() ? `<button type="button" class="btn btn-ghost btn-sm ph-rare" id="sc-vis" title="표시 · 흐리게 · 숨김">${icon("eye", 16)}<span>점검 표시 관리</span></button>` : "",
       tab === "ana" ? `<button type="button" class="btn btn-ghost btn-sm no-print" id="sc-aprint" data-print-btn="1" title="별표 15 양식으로 인쇄">${icon("print", 17)}<span>인쇄</span></button>` : ""
     ].join("");
     root.innerHTML = ui.head({ title: TITLE, meta: MARK + " — 항공보안감독관 점검표(수준관리지침 별표) 사용", actions: acts }).replace('<span class="spacer">', '<span class="sc-opt" title="의무 사항 아님 — 필요할 때 실행 · 대시보드 · 통계 · 일정 제외">선택 실행</span><span class="spacer">')

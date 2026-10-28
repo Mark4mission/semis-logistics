@@ -252,6 +252,13 @@
     }
     let html = "";
     const empty = [];
+    /* 고정한 화면(메뉴 '자주 쓰는 메뉴' 표시) — 허브 패널 '바로가기' 블록과 같은 목록의 전체 화면 */
+    const pins = editMode ? [] : SeMIS.sortedMenus().filter(m => m.quick && (m.type === "module" || m.type === "board") && SeMIS.navVisible(m));
+    if (pins.length) html += `<section class="sc-sec"><h2 class="sc-h"><span class="sc-ht">고정한 화면</span><span class="sc-n">${pins.length}</span></h2><div class="lk-grid sc-grid">${pins.map(m => {
+      const hub = SeMIS.hubOfDeep(m), g = hub ? findMenu(hub) : null;
+      return `<button type="button" class="lk-card" data-go="${esc(m.type === "board" ? "board/" + m.board : m.module)}"><span class="lki lk-ico lki-ico t-amber">${icon("pin", 20)}</span>
+        <span class="lk-b"><span class="lk-t">${esc(m.label)}</span><span class="lk-s">${esc(g ? g.label : "")}</span></span><span class="lk-tag">화면</span><span class="lk-go">${icon("chevron", 16)}</span></button>`;
+    }).join("")}</div></section>`;
     SeMIS.sortedMenus().filter(g => g.type === "group").forEach(g => {
       if (!editMode && SeMIS.menuHidden(g)) return;
       const tops = all.filter(m => m.parent === g.id);

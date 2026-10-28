@@ -85,15 +85,20 @@
     const p = post();
     const title = p.title || "경비대원 배치도";
     const edit = canEdit();
-    const head = `<h2 class="card-title">${esc(title)}${p.asOf ? `<span class="dc-meta">기준 ${esc(dotDate(p.asOf))}</span>` : ""}<span class="spacer"></span>
-      ${edit && hasData() ? `<button type="button" class="btn btn-ghost btn-sm" id="gp-edit">${icon("edit", 16)}<span>편집</span></button>` : ""}</h2>`;
+    /* 접어 둔 채로 시작(계정별 기억) — 자주 바뀌지 않는 도면이라 필요할 때만 펼친다 */
+    const open = isOpen();
+    const s0 = hasData() ? stats() : null;
+    const head = `<h2 class="card-title"><span class="ct-t">${esc(title)}</span><span class="dc-meta">${[p.asOf ? "기준 " + esc(dotDate(p.asOf)) : "", s0 ? s0.total + "곳" : ""].filter(Boolean).join(" · ")}</span><span class="spacer"></span>
+      ${s0 ? `<button type="button" class="btn btn-ghost btn-sm c-act gp-tog" id="gp-tog" aria-expanded="${open}" aria-controls="gp-body"><span>${open ? "접기" : "펼치기"}</span>${icon(open ? "chevup" : "chevdown", 15)}</button>` : ""}
+      ${edit && hasData() ? `<button type="button" class="btn btn-ghost btn-sm c-rare" id="gp-edit">${icon("edit", 16)}<span>배치도 편집</span></button>` : ""}</h2>`;
     if (!hasData()) {
       return `<section class="card gp-card" id="gp-card" aria-label="경비대원 배치도">${head}
         ${ui.empty("등록된 배치도가 없습니다.", edit ? `<button type="button" class="btn btn-primary btn-sm" id="gp-edit">${icon("plus", 16)}<span>배치도 등록</span></button>` : "")}</section>`;
     }
     const s = stats();
     const ps = points();
-    return `<section class="card gp-card" id="gp-card" aria-label="${esc(title)}">${head}
+    return `<section class="card gp-card${open ? "" : " is-fold"}" id="gp-card" aria-label="${esc(title)}">${head}
+      <div class="gp-body" id="gp-body"${open ? "" : " hidden"}>
       <div class="gp-bar">
         <div class="gp-filter" role="group" aria-label="경비 지점 유형">
           <button type="button" class="gp-f" data-gpk="" aria-pressed="${filter ? "false" : "true"}"><span>전체</span><b class="mono">${s.total}</b></button>
@@ -110,8 +115,10 @@
         </div>`).join("")}
       </div>
       ${p.note ? `<p class="gp-note">${esc(p.note)}</p>` : ""}
+      </div>
     </section>`;
   }
+  function isOpen() { try { return !!(SeMIS.navPrefs && SeMIS.navPrefs().gpOpen); } catch (e) { return false; } }
 
   /* ── 동작 ── */
   function placePop(card) {
@@ -165,6 +172,17 @@
     const ed = $("#gp-edit", card);
     if (ed) ed.onclick = () => editor();
     if (!hasData()) return;
+    const tg = $("#gp-tog", card);
+    if (tg) tg.onclick = () => {
+      const on = !isOpen();
+      if (SeMIS.setNavPref) SeMIS.setNavPref({ gpOpen: on });
+      const body = $("#gp-body", card);
+      if (body) body.hidden = !on;
+      card.classList.toggle("is-fold", !on);
+      tg.setAttribute("aria-expanded", String(on));
+      tg.innerHTML = "<span>" + (on ? "접기" : "펼치기") + "</span>" + icon(on ? "chevup" : "chevdown", 15);
+      if (on) applyState(card);
+    };
     if (sel && !points().some(p => p.id === sel)) sel = "";
     $$(".gp-f", card).forEach(b => b.onclick = () => {
       const k = b.dataset.gpk || "";

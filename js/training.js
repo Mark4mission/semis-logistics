@@ -833,7 +833,6 @@
         <span class="spacer m-hide"></span>
         <span class="m-hide">${segHTML("pstate", [["active", "재직"], ["left", "퇴직 · 전출"], ["all", "전체"]], pState)}</span>
         ${mob() ? "" : segHTML("pview", [["list", "목록"], ["grid", "이수 현황표"]], pView)}
-        <button type="button" class="btn btn-ghost btn-sm tr-xls" id="tr-xls" title="만료 · ${DUE_DAYS}일 안 만료 예정 명단(.xlsx)">${icon("down", 14)}<span>만료 예정 Excel</span></button>
       </div>`;
     return band + (pState === "left" ? "" : alertStrip(t)) + `<section class="card" id="tr-plist">${tools}${all.length ? rgLegend(t) : ""}<div id="tr-pbody">${peopleBody(canW, t)}</div></section>`;
   }
@@ -1892,9 +1891,12 @@
     if (pid) { personPage(root, canW); loadPledges(false).then(ch => { if (ch && routeNow() === MOD && pid) repaintSub(); }); return; }
     if (sid) { sessionPage(root, canW); return; }
     const b = (id, ic, label, primary) => `<button type="button" class="btn ${primary ? "btn-primary" : "btn-ghost"} btn-sm" id="${id}">${icon(ic, 16)}<span>${label}</span></button>`;
-    const act = !canW ? "" : tab === "sessions" ? b("tr-sadd", "plus", "교육 기록", true)
+    /* 드물게 쓰는 것(인원 등록 · 이수 등록 페이지 · 만료 예정 명단)은 ⋯ 안 */
+    const rare = (id, ic, label) => `<button type="button" class="btn btn-ghost btn-sm ph-rare" id="${id}">${icon(ic, 16)}<span>${label}</span></button>`;
+    const xls = tab === "people" ? rare("tr-xls", "down", "만료 예정 명단 내려받기(Excel)") : "";
+    const act = (!canW ? "" : tab === "sessions" ? b("tr-sadd", "plus", "교육 기록", true)
       : tab === "catalog" ? b("tr-courses", "sliders", "과정 관리", true)
-      : tab === "pledges" ? "" : b("tr-radd", "plus", "이수 등록", true) + b("tr-padd", "user", "인원 등록") + `<button type="button" class="link-btn head-link" id="tr-edu">이수 등록 페이지</button>`;
+      : tab === "pledges" ? "" : b("tr-radd", "plus", "이수 등록", true) + rare("tr-padd", "user", "인원 등록") + rare("tr-edu", "link", "이수 등록 페이지")) + xls;
     root.innerHTML = ui.head({ title: TITLE, meta: "인천화물팀 · 협력사 기준", actions: act })
       + `<div class="eq-tabs" role="tablist" aria-label="보안교육 화면">${TABS.map(([id, lb]) =>
         `<button type="button" role="tab" class="eq-tab" data-ttab="${id}" aria-selected="${tab === id}">${esc(lb)}</button>`).join("")}</div>`
