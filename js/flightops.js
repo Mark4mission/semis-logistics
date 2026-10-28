@@ -595,7 +595,7 @@
     if (Date.now() - state.ts > REFRESH_MS) refresh(false);
   });
 
-  /* ── 기체 목록 편집 (hq) ── */
+  /* ── 기체 목록 편집 (시스템관리자) ── */
   function fleetModal() {
     if (!SeMIS.isAdmin()) return;
     let rows = fleet().map(f => Object.assign({}, f));

@@ -61,7 +61,7 @@
   };
   /* 자체 점검 주기: 연 1회 이상 + 국토부 수검 7일 전까지(수검 전 90일 안에 끝낸 기록이 있으면 주기만) */
   const SELF = { by: "인천화물팀", cyc: "연 1회 이상 · 국토부 수검 전", months: 12, before: 7, fresh: 90 };
-  /* 안내(누가 · 누구를 · 주기)는 hq 이상이 고친다. selfCheckCfg = { selfBy, months, before, fresh, forms: { 별표 id: { by, target, cyc } }, vis }
+  /* 안내(누가 · 누구를 · 주기)는 시스템관리자가 고친다(selfCheckCfg 2/4). selfCheckCfg = { selfBy, months, before, fresh, forms: { 별표 id: { by, target, cyc } }, vis }
      — 비거나 기본값과 같으면 저장하지 않는다(코드 기본값) */
   const CFG = "selfCheckCfg";
   const CYC_M = { 1: "월 1회 이상", 3: "분기 1회 이상", 6: "반기 1회 이상", 12: "연 1회 이상" };
@@ -551,7 +551,7 @@
       <p class="sc-src">${esc(NF().SRC.title || "")} (${esc(NF().SRC.rev || "")}, ${esc(dot(NF().SRC.date || ""))}) 별표 — 국가법령정보센터 원본 양식 · <a href="${esc(REG_PDF)}" target="_blank" rel="noopener">지침 본문 PDF</a></p>`;
   }
 
-  /* ── 안내 편집(hq 이상) — 누가 · 누구를 · 주기 ── */
+  /* ── 안내 편집(시스템관리자) — 누가 · 누구를 · 주기 ── */
   function cfgForm() {
     if (!SeMIS.isAdmin()) return;   // 안내(주체 · 대상 · 주기)는 설정 — 시스템관리자
     const C = selfCfg(), fl = allForms().filter(f => !isHid(f.id));

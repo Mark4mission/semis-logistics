@@ -1,5 +1,5 @@
 /* 보안 기록부(라우트 inspection) — 주기형 보안 점검 일지(일일 · 월간 · 분기 · 불시 · 위해물품 · 순찰 · 미주행 편별)의 기록과 누락 주기 확인.
-   권한: 기록 mgr(seclog 2/2) · 양식 hq(seclogCfg 2/3). 첨부: 비공개 버킷 seclog/ 폴더. */
+   권한: 기록 mgr(seclog 2/2) · 양식 시스템관리자(seclogCfg 2/4). 첨부: 비공개 버킷 seclog/ 폴더. */
 "use strict";
 
 (() => {
@@ -649,7 +649,7 @@
     if (canW()) recordForm(t.id, "", { date: t.cycle === "day" ? k : periodStart(t, k) > todayISO() ? todayISO() : periodStart(t, k) });
   }
 
-  /* ── 점검 양식 (hq) ── */
+  /* ── 점검 양식 (시스템관리자) ── */
   function templatesForm() {
     if (!SeMIS.isAdmin()) return;   // 양식은 설정 — 시스템관리자
     const ts = templates(true).map(t => JSON.parse(JSON.stringify(stripVis(t))));
