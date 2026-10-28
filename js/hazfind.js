@@ -10,7 +10,7 @@
   const ym2 = (ym) => Number(ym.slice(5, 7)) + "월";
   const ymDot = (ym) => ym.replace("-", ".");
   const fmt = (n) => Number(n || 0).toLocaleString("ko-KR");
-  const link = () => `<a class="link-btn hzf-link" href="${esc(C().HAZ_URL)}" target="_blank" rel="noopener">CARES${icon("external", 13)}</a>`;
+  const link = () => `<a class="link-btn hzf-link" href="${esc(C().HAZ_URL)}" target="_blank" rel="noopener">전체 보기 (CARES)${icon("external", 13)}</a>`;
   const ready = () => !!(C() && C().has("haz"));
   const failed = () => !!(C() && C().failed("haz"));
 
@@ -54,7 +54,7 @@
   }
   function sdCard() {
     return `<section class="card sd-card" aria-label="${TITLE}">
-      <h2 class="card-title">${TITLE}<span class="dc-meta">X-ray 1~3호기</span><span class="spacer"></span>${C() ? link() : ""}</h2>
+      <h2 class="card-title"><span class="ct-t">${TITLE}</span><span class="dc-meta">X-ray 1~3호기</span><span class="spacer"></span>${C() ? link() : ""}</h2>
       <div data-hz="sd">${sdHTML()}</div></section>`;
   }
 

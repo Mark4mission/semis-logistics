@@ -247,8 +247,7 @@
   function procTab() {
     const pl = P(), secs = arr(pl.sections).filter(s => s && s.id);
     return `<div class="tc-proc">
-      ${canW() ? `<div class="tc-bar m-ed"><button type="button" class="btn btn-ghost btn-sm" id="tc-meta-edit">${icon("edit", 15)}<span>기본 정보</span></button>
-        <button type="button" class="btn btn-ghost btn-sm" id="tc-sec-add">${icon("plus", 15)}<span>절</span></button></div>` : ""}
+      ${canW() ? `<div class="tc-bar m-ed"><button type="button" class="btn btn-ghost btn-sm" id="tc-sec-add">${icon("plus", 15)}<span>절</span></button></div>` : ""}
       ${secs.length ? secs.map(secCard).join("") : ui.empty("등록된 절차 원문이 없습니다.")}
       ${tsocCard()}
       ${cmdCard()}
@@ -352,10 +351,9 @@
   function formTab() {
     const pl = P(), fs = arr(pl.files).filter(f => f && f.url);
     return `<div class="tc-form">
-      <div class="tc-bar"><button type="button" class="btn btn-primary btn-sm" id="tc-print-card">${icon("print", 15)}<span>비치용 A4 (가로)</span></button>
+      <div class="tc-bar"><button type="button" class="btn btn-ghost btn-sm" id="tc-print-card">${icon("print", 15)}<span>비치용 A4 (가로)</span></button>
         <button type="button" class="btn btn-ghost btn-sm" id="tc-print-blank">${icon("print", 15)}<span>빈 보고양식</span></button>
-        ${canW() ? `<button type="button" class="btn btn-ghost btn-sm m-ed" id="tc-form-edit">${icon("edit", 15)}<span>양식 편집</span></button>
-        <button type="button" class="btn btn-ghost btn-sm m-ed" id="tc-file-up">${icon("plus", 15)}<span>원본 파일</span></button><input type="file" id="tc-file" hidden>` : ""}</div>
+        ${canW() ? `<input type="file" id="tc-file" hidden>` : ""}</div>
       ${fs.length ? `<div class="au-files tc-orig">${fs.map((f, i) => `<span class="au-file"><a class="nb-file" href="${esc(f.url)}" target="_blank" rel="noopener">${icon("link", 14)}<span>${esc(f.name || "원본")}</span></a>${canW() ? `<button type="button" class="mt-btn danger m-ed" data-orig-del="${i}" aria-label="원본 삭제">${icon("x", 14)}</button>` : ""}</span>`).join("")}</div>` : ""}
       <section class="card tc-paper">${formSecs().length ? paperHTML(formSecs(), null) : ui.empty("등록된 보고양식이 없습니다.")}</section>
     </div>`;
@@ -602,7 +600,11 @@
     } else {
       const body = tab === "proc" ? procTab() : tab === "phones" ? phonesTab() : tab === "form" ? formTab() : tab === "runs" ? runsTab() : guideTab();
       const ng = phonesStat().ng;
-      root.innerHTML = ui.head({ title: pl.title || TITLE, meta: [pl.docRef, pl.asOf ? "기준 " + String(pl.asOf).replace(/-/g, ".") : ""].filter(Boolean).join(" · ") })
+      /* 드물게 쓰는 편집(기본 정보 · 양식 · 원본 파일)은 머리말 ⋯ — 양식 편집은 시스템관리자 */
+      const rare = (id, ic, lb) => `<button type="button" class="btn btn-ghost btn-sm ph-rare" id="${id}">${icon(ic, 16)}<span>${lb}</span></button>`;
+      const hacts = !canW() ? "" : tab === "proc" ? rare("tc-meta-edit", "sliders", "기본 정보")
+        : tab === "form" ? (SeMIS.isAdmin() ? rare("tc-form-edit", "edit", "보고양식 편집") : "") + rare("tc-file-up", "plus", "원본 파일 올리기") : "";
+      root.innerHTML = ui.head({ title: pl.title || TITLE, meta: [pl.docRef, pl.asOf ? "기준 " + String(pl.asOf).replace(/-/g, ".") : ""].filter(Boolean).join(" · "), actions: hacts })
         + quickBar()
         + `<div class="eq-tabs sp-tabs tc-tabs no-print" role="tablist" aria-label="${esc(TITLE)}">${TABS.map(([id, lb]) =>
           `<button type="button" role="tab" class="eq-tab" data-ttab="${id}" aria-selected="${tab === id}">${esc(lb)}${id === "runs" && activeRun() ? ' <i class="sp-dot" aria-hidden="true"></i>' : ""}${id === "phones" && ng ? ` <span class="mono sp-tn">이상 ${ng}</span>` : ""}</button>`).join("")}</div>`
@@ -1303,6 +1305,7 @@
     return out;
   }
   function formEditor() {
+    if (!SeMIS.isAdmin()) return;   // 보고양식 구성은 설정 — 시스템관리자
     openModal(`<h3>보고양식 편집</h3>
       <p class="sp-mhint">@ 제목 · @@ 맨 아래 문구 · &gt; 응대 요령 · ## 섹션 | head·note·ask·obs | 묶음 · 항목ID | 이름 | text·long·one·multi·yn·recv·start | 선택지(쉼표) | 직접 쓰는 선택지 | 문자용 이름</p>
       ${row("tc-fe", "양식 정의", `<textarea id="tc-fe" rows="22" class="mono" spellcheck="false">${esc(formText())}</textarea>`)}

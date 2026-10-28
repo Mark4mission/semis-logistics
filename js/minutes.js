@@ -57,7 +57,7 @@
   const canWrite = () => rank() >= 2;                       // 작성: manager 이상
   const canEditRec = (x) => rank() >= 3 || (!!x && x.byId && x.byId === me());
   const canDelRec = (x) => SeMIS.canDelete() || (canWrite() && !!x && x.byId && x.byId === me());
-  const canManageFolders = () => rank() >= 3;
+  const canManageFolders = () => !!SeMIS.isAdmin();   // 폴더 구성은 설정 — 시스템관리자
 
   /* ── 열람 권한 ── */
   /* 회의록은 참석자의 기록이므로 직급이 아니라 참석 사실로 열람 범위를 정한다.
@@ -491,7 +491,7 @@
         <div class="page-head">
           <div class="page-title">회의록</div>
           <span class="spacer"></span>
-          ${canManageFolders() ? '<button type="button" class="link-btn head-link" id="mn-folders">폴더 관리</button>' : ""}
+          ${canManageFolders() ? '<button type="button" class="btn btn-ghost btn-sm ph-rare" id="mn-folders">' + SeMIS.icon("folder", 16) + '<span>폴더 관리</span></button>' : ""}
           ${canWrite() ? '<button class="btn btn-primary" id="mn-add">+ 새 회의록</button>' : ""}
           <div class="page-desc">회의마다 빈 회의록을 열어 바로 기록 — 폴더 분류 · 참석자 QR 서명 · A4 인쇄
             ${rank() >= 3 ? "" : " · <b>본인이 참석한 회의</b>만 표시됩니다 (계정 이름 또는 이 기기의 QR 서명 이력으로 확인)"}</div>

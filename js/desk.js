@@ -777,7 +777,7 @@
     return SeMIS.ui.panel(Object.assign({
       id: PID, title: TITLE, tab, cls: "pnl-desk",
       onTab: (x) => { tab = x; if (x === "mine") loadMine(); }, render: paint,
-      actions: canW() ? '<button type="button" class="link-btn head-link" data-dk-areas>분야별 담당</button>' : "",
+      actions: SeMIS.isAdmin() ? '<button type="button" class="btn btn-ghost btn-sm ph-rare" data-dk-areas>' + SeMIS.icon("users", 16) + '<span>분야별 담당</span></button>' : "",
       onActs: (box) => { const b = box.querySelector("[data-dk-areas]"); if (b) b.onclick = areasForm; },
       print: () => TITLE + " — " + (tab === "mine" ? "내가 올린 문서" : "올린 문서 기록")
     }, headPatch()));
@@ -953,7 +953,7 @@
     SeMIS.actionSheet(items, { title: e.file.name }, from);
   }
   function areasForm() {
-    if (!canW()) return;
+    if (!SeMIS.isAdmin()) return;   // 분야별 일정 담당은 설정 — 시스템관리자
     const m = isObj(V().cfg.areas) ? V().cfg.areas : {};
     openModal(`<h3>분야별 담당</h3>
       ${AREAS.map(([k, lb]) => `<div class="form-row"><label for="dk-a-${k}">${esc(lb)}</label><input id="dk-a-${k}" value="${esc(m[k] || "")}" list="dk-dl-as" autocomplete="off" placeholder="이름, 이름"></div>`).join("")}

@@ -55,7 +55,7 @@
     const mob = SeMIS.isMobile && SeMIS.isMobile();
     const tools = `<div class="toolbar">${ui.search("dv-q", "제목 · 근거 검색", q)}
         ${ys.length > 1 ? `<div class="seg" role="group" aria-label="연도">${[["", "전체"]].concat(ys.map(v => [v, v])).map(([v, lb]) => `<button type="button" class="seg-btn" data-dvy="${esc(v)}" aria-pressed="${v === yearF}">${esc(lb)}</button>`).join("")}</div>` : ""}
-        <label class="ck-f"><span class="m-hide">구분</span><select id="dv-kind"><option value="">전체</option>${KINDS.map(k => `<option ${k === kindF ? "selected" : ""}>${esc(k)}</option>`).join("")}</select></label></div>`;
+        <label class="ck-f"><span class="m-hide">구분</span><select id="dv-kind" aria-label="구분"><option value="">전체</option>${KINDS.map(k => `<option ${k === kindF ? "selected" : ""}>${esc(k)}</option>`).join("")}</select></label></div>`;
     if (!rs.length) return tools + `<div id="dv-list">${ui.empty(q || kindF || yearF ? "조건에 맞는 전파교육이 없습니다." : "등록된 전파교육이 없습니다.")}</div>`;
     if (mob) return tools + `<div id="dv-list" class="dv-cards">${rs.map(e => { const cv = cover(e); return `<article class="dv-card" data-dv="${esc(e.id)}">
         <div class="dv-ch"><span class="mono">${esc(dot(e.date))}</span>${e.kind ? ui.chip(e.kind, "gray") : ""}<span class="spacer"></span><b class="mono">${cv.of ? cv.n + "/" + cv.of : "-"}</b></div>

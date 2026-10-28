@@ -100,7 +100,7 @@
     return e2.date + " ~ " + (sameYear ? e2.end.slice(5) : e2.end);
   };
 
-  function ticketHTML(canWrite) {
+  function ticketHTML() {
     const d = D();
     const z = zeroDays();
     const cur = SeMIS.secCurrent();
@@ -113,7 +113,6 @@
         <div class="zero-n">${z === null ? "—" : "D+" + z}</div>
         <div class="tk-foot">
           <span class="tk-sub">${z === null ? "기준일이 설정되지 않았습니다" : esc(dotDate(d.safetyBoard.since)) + (d.safetyBoard.note ? " · " + esc(d.safetyBoard.note) : "") + " 기준"}</span>
-          ${canWrite ? '<button type="button" class="tk-btn" id="btn-edit-zero">기준일 설정</button>' : ""}
         </div>
       </div>
       <div class="tk-perf" aria-hidden="true"></div>
@@ -128,16 +127,23 @@
           <div class="lv-bars">${SeMIS.SEC_LEVELS.map((l, i) => `<i class="${i === li ? "on" : ""}" data-tone="${esc(LV_TONE[l])}"></i>`).join("")}</div>
           <div class="lv-names">${SeMIS.SEC_LEVELS.map((l, i) => `<span class="${i === li ? "on" : ""}">${esc(l)}</span>`).join("")}</div>
         </div>
-        <div class="tk-acts">
-          ${SeMIS.roleRank() >= 2 ? '<button type="button" class="tk-btn" id="btn-level-hist">변경 이력</button>' : ""}
-          ${canWrite ? '<button type="button" class="tk-btn" id="btn-edit-level">등급 변경</button>' : ""}
-        </div>
       </div>
+      ${tkItems().length ? `<button type="button" class="tk-more no-print" id="btn-tk-more" aria-label="안전보안 현황 더보기" title="더보기">${ico("more", 18)}</button>` : ""}
     </section>`;
+  }
+  /* 현황판 ⋯ — 1년에 한두 번 쓰는 기능. 기준일 · 등급 변경은 시스템관리자, 이력 보기는 화물팀 관리자 이상 */
+  function tkItems() {
+    const out = [];
+    if (SeMIS.roleRank() >= 2) out.push({ label: "보안등급 변경 이력", icon: ico("repeat"), run: levelHistModal });
+    if (SeMIS.isAdmin()) {
+      out.push({ label: "보안등급 변경", icon: ico("shield"), run: levelForm });
+      out.push({ label: "무재해 기준일 설정", icon: ico("calendar"), run: zeroForm });
+    }
+    return out;
   }
 
   function levelHistModal() {
-    const canWrite = SeMIS.canEdit();
+    const canWrite = SeMIS.isAdmin();
     const hist = SeMIS.levelSorted().slice().reverse();
     openModal(`
       <h3>국가 항공보안등급 변경 이력</h3>
@@ -160,7 +166,7 @@
 
   /* '오늘' 카드 — 지금 챙길 것만 한 장에(행을 누르면 그 화면) */
   function todayRow(o) {
-    return `<button type="button" class="td-row${o.tone ? " tone-" + o.tone : ""}" data-go="${esc(o.go)}"${o.id ? ` id="${esc(o.id)}"` : ""}>
+    return `<button type="button" class="td-row${o.tone ? " tone-" + o.tone : ""}" data-go="${esc(o.go)}"${o.id ? ` id="${esc(o.id)}"` : ""}${o.aid ? ` data-aid="${esc(o.aid)}"` : ""}>
       <span class="td-ico t-${esc(o.color || "teal")}" aria-hidden="true">${ico(o.icon, 19)}</span>
       <span class="td-body"><b class="td-t">${esc(o.title)}</b><span class="td-s">${o.sub || ""}</span></span>
       ${o.val != null && o.val !== "" ? `<span class="td-v">${o.val}</span>` : ""}
@@ -189,6 +195,17 @@
     }
     if (menuOk("flight", "SemisFlight")) rows.push(todayRow({ go: "flight", id: "td-flt", icon: "plane", color: "amber", title: "인천 접근",
       sub: "불러오는 중", val: '<b class="mono">·</b>' }));
+    if (cardVis("screen") && window.SemisScreen && SemisScreen.todayEnv && menuOk("scr-status")) {
+      rows.push(todayRow({ go: "scr-status", id: "td-scr", icon: "scan", color: "teal", title: "검색 환경", sub: "불러오는 중", val: '<b class="mono">·</b>' }));
+    }
+    if (cardVis("audit") && menuOk("audit", "SemisAudit")) {
+      let a = null;
+      try { a = SemisAudit.dashData(); } catch (e) { a = null; }
+      const pr = a && a.nx && SemisAudit.prep ? SemisAudit.prep(a.nx) : null;
+      if (a) rows.push(todayRow({ go: "audit", id: "td-aud", aid: a.nx ? a.nx.id : "", icon: "clipboard", color: a.late ? "rose" : "slate", title: "수검",
+        sub: (a.nx ? esc(SemisAudit.auditTitle(a.nx)) + (pr && pr.total ? " · 준비 " + pr.done + "/" + pr.total : "") : "") + (a.open ? (a.nx ? " · " : "") + "미결 지적 " + a.open + (a.late ? " · <em>기한 경과 " + a.late + "</em>" : "") : ""),
+        val: `<b class="mono">${a.nx ? esc(SemisAudit.ddayText(a.nx)) : a.open}</b>`, tone: a.late ? "bad" : "" }));
+    }
     if (actions.length) rows.push(todayRow({ go: "minutes", icon: "notes", color: late ? "rose" : "slate", title: "회의 결정사항",
       sub: "미완료 " + actions.length + (late ? " · <em>기한 경과 " + late + "</em>" : ""), val: `<b class="mono">${actions.length}</b>`, tone: late ? "bad" : "" }));
     /* 보안교육 자격 — 만료·미이수(빨강) · DUE_DAYS 안 갱신(주황), 있을 때만 */
@@ -201,10 +218,10 @@
     }
     if (!rows.length) return "";
     const d = new Date();
-    return `<section class="today-card" aria-label="오늘">
+    return `<div class="today-strip" role="group" aria-label="오늘">
       <div class="td-head"><h2>오늘</h2><span class="dc-meta mono">${esc(md(t))} ${WEEK[d.getDay()]}</span></div>
-      <div class="td-list">${rows.join("")}</div>
-    </section>`;
+      <div class="td-list" data-n="${rows.length}">${rows.join("")}</div>
+    </div>`;
   }
   /* 인천 접근 행 — 운항 현황 자료가 도착하면 채운다 */
   function paintTodayFlight() {
@@ -245,8 +262,7 @@
         <span class="ds-tt"><b>${esc(L[id] || id)}</b><small>${esc(SHORT[id])}</small></span>
         ${id === "search" ? `<kbd class="hf-k">${esc(SeMIS.keyHint ? SeMIS.keyHint() : "Ctrl K")}</kbd>` : id === "desk" ? '<b class="sup-n" hidden></b>' : ""}</button>`;
     return `<section class="dash-start no-print" aria-label="시작">
-      <div class="ds-hi"><h2>${esc(name ? name + "님, 무엇을 할까요?" : "무엇을 할까요?")}</h2>
-        <p>찾을 때는 검색${ok("desk") ? ", 파일은 접수 카운터(어느 화면에서든 끌어다 놓기)" : ""}${ok("argo") ? ", 모르는 것은 아르고에게" : ""}.</p></div>
+      <div class="ds-hi"><h2>${esc(name ? name + "님, 무엇을 할까요?" : "무엇을 할까요?")}</h2></div>
       <div class="ds-tiles" data-n="${ids.length}">${ids.map(tile).join("")}</div>
     </section>`;
   }
@@ -273,15 +289,19 @@
       const canSched = canWrite && SeMIS.hasModule("schedule") && schedMenu && SeMIS.navVisible(schedMenu);
       const canMinute = window.SemisMinutes && SemisMinutes.canWrite && SemisMinutes.canWrite();
 
-      const acts = [
-        noteB ? `<button type="button" class="btn btn-soft" id="btn-add-notice">${ico("megaphone", 17)}<span>${noteB.kind === "notice" ? "새 공지" : "새 글"}</span></button>` : "",
-        canSched ? `<button type="button" class="btn btn-soft" id="btn-add-sched">${ico("calendar", 17)}<span>일정 추가</span></button>` : "",
-        canMinute ? `<button type="button" class="btn btn-soft" id="btn-add-minute">${ico("notes", 17)}<span>회의록 작성</span></button>` : ""
-      ].join("");
+      /* 머리말 — 만들기 단추 하나(펼치면 공지 · 일정 · 회의록). 하나뿐이면 그 이름으로 바로 */
+      const NEW = [
+        noteB ? { id: "notice", label: noteB.kind === "notice" ? "새 공지" : "새 글", ic: "megaphone" } : null,
+        canSched ? { id: "sched", label: "일정 추가", ic: "calendar" } : null,
+        canMinute ? { id: "minute", label: "회의록 작성", ic: "notes" } : null
+      ].filter(Boolean);
+      const acts = NEW.length > 1
+        ? `<button type="button" class="btn btn-primary" id="btn-new" aria-haspopup="true">${ico("plus", 17)}<span>새로 만들기</span></button>`
+        : NEW.length ? `<button type="button" class="btn btn-primary" id="btn-new">${ico(NEW[0].ic, 17)}<span>${esc(NEW[0].label)}</span></button>` : "";
 
       const upcomingCard = cardVis("upcoming") ? `<section class="sheet-col dash-up" aria-label="다가오는 일정">
           <div class="dc-head"><h2>다가오는 일정</h2><span class="dc-meta">7일 내 <b class="mono" id="dash-soon">${soon}</b>건</span>
-            <span class="spacer"></span><button type="button" class="link-btn" id="btn-go-schedule">일정관리</button></div>
+            <span class="spacer"></span><button type="button" class="link-btn" id="btn-go-schedule" aria-label="다가오는 일정 전체 보기">전체 보기</button></div>
           <div id="upcoming-box" class="up-list">${upShow.length ? upShow.map(s => {
             const dd = new Date(s.start + "T00:00:00");
             const isToday = s.start === today;
@@ -300,30 +320,17 @@
       const bName = bOne ? ((SeMIS.menuForBoard(bOne.id) || {}).label || bOne.name) : "게시판 새 글";
       const noticeCol = dashB.length ? `<section class="sheet-col" aria-label="${esc(bName)}">
           <div class="dc-head"><h2>${esc(bName)}</h2><span class="dc-meta" id="dash-bbs-meta"></span><span class="spacer"></span>
-            ${bOne ? `<button type="button" class="link-btn" data-dash-go="board/${esc(bOne.id)}">전체</button>` : ""}</div>
+            ${bOne ? `<button type="button" class="link-btn" data-dash-go="board/${esc(bOne.id)}" aria-label="${esc(bName)} 전체 보기">전체 보기</button>` : ""}</div>
           <div id="notice-list" class="notice-list"></div>
         </section>` : "";
       const actionCol = cardVis("actions") && window.SemisMinutes ? `<section class="sheet-col" aria-label="회의 결정사항">
-          <div class="dc-head"><h2>회의 결정사항</h2><span class="spacer"></span><button type="button" class="link-btn" id="btn-go-minutes">회의록</button></div>
+          <div class="dc-head"><h2>회의 결정사항</h2><span class="spacer"></span><button type="button" class="link-btn" id="btn-go-minutes" aria-label="회의 결정사항 전체 보기">전체 보기</button></div>
           <div class="dc-nums">
             <div><span>미완료</span><b class="mono" id="dash-open-n">${actions.length}</b></div>
             <div class="${late ? "bad" : ""}"><span>기한 경과</span><b class="mono" id="dash-late-n">${late}</b></div>
           </div>
           <div id="actions-box" class="act-list"></div>
         </section>` : "";
-      const build = cardVis("build") ? buildStatus() : [];
-      const bLive = build.reduce((n, r) => n + r.live, 0), bTot = build.reduce((n, r) => n + r.total, 0);
-      /* 개발 진행 현황은 업무 정보가 아니므로 맨 아래 접힌 줄로 */
-      const buildCol = build.length ? `<details class="dash-build" aria-label="모듈 구축 현황">
-          <summary><span>모듈 구축 현황</span><span class="dc-meta mono"><b>${bLive}</b> / ${bTot}</span></summary>
-          <div class="build-list" id="dash-build">${build.map(r => `
-            <button type="button" class="build-row" ${r.id ? `data-dash-hub="${esc(r.id)}"` : ""}>
-              <span class="br-l">${esc(r.label)}</span>
-              <span class="br-bar"><i style="width:${r.total ? Math.round(r.live / r.total * 100) : 0}%"></i></span>
-              <span class="br-n mono">${r.live}/${r.total}</span>
-            </button>`).join("")}</div>
-        </details>` : "";
-
       const guest = rank < 2;
       const todayCard = guest ? "" : todayHTML(upcoming, actions, late);
       root.innerHTML = `
@@ -331,17 +338,15 @@
           <div class="page-title">대시보드</div>
           <span class="page-meta mono">${esc(dotDate(today))} (${WEEK[now.getDay()]})</span>
           <span class="spacer"></span>
-          ${acts ? `<div class="head-acts">${acts}</div>` : ""}
+          ${acts}
         </div>
-        ${startHTML()}
-        ${cardVis("status") || todayCard ? `<div class="dash-top${guest ? " guest" : ""}${todayCard ? " has-today" : ""}">${cardVis("status") ? ticketHTML(canWrite) : ""}${todayCard}</div>` : ""}
         ${!guest && cardVis("threat") && menuOk("threat", "SemisThreat") ? SemisThreat.dashHTML() : ""}
         ${!guest && cardVis("serp") && menuOk("serp", "SemisSerp") ? SemisSerp.dashHTML() : ""}
-        ${!guest && cardVis("screen") && window.SemisScreen && menuOk("scr-status") ? SemisScreen.dashHTML() : ""}
-        ${!guest && cardVis("audit") && menuOk("audit", "SemisAudit") ? SemisAudit.dashHTML() : ""}
+        ${startHTML()}
+        ${cardVis("status") || todayCard ? `<section class="dash-now${guest ? " guest" : ""}${todayCard ? " has-today" : ""}" aria-label="안전보안 현황">${cardVis("status") ? ticketHTML() : ""}${todayCard}</section>` : ""}
         ${cardVis("flight") && menuOk("flight", "SemisFlight") ? SemisFlight.dashHTML() : ""}
         ${guest ? (noticeCol ? `<section class="dash-card">${noticeCol}</section>` : "")
-          : `<div class="dash-sheet-wrap"><div class="dash-sheet cols-${[upcomingCard, noticeCol, actionCol].filter(Boolean).length}">${upcomingCard}${noticeCol}${actionCol}</div></div>${buildCol}`}`;
+          : `<div class="dash-sheet-wrap"><div class="dash-sheet cols-${[upcomingCard, noticeCol, actionCol].filter(Boolean).length}">${upcomingCard}${noticeCol}${actionCol}</div></div>`}`;
       if (window.SemisHero3D && $("#dash-3d")) SemisHero3D.mount($("#dash-3d"));
       if (window.SemisFlight && $("#dash-flt")) SemisFlight.mountDash();
       if (window.SemisFlight && $("#td-flt")) {
@@ -349,9 +354,10 @@
         if (st0 && st0.ts) paintTodayFlight();
         SemisFlight.load({ events: true }).then(paintTodayFlight).catch(() => {});
       }
-      $$(".today-card [data-go]", root).forEach(el => el.onclick = () => SeMIS.navigate(el.dataset.go));
-      if (window.SemisScreen && $("#dash-scr")) SemisScreen.mountDash();
-      if (window.SemisAudit && $("#dash-aud")) SemisAudit.mountDash();
+      $$(".today-strip [data-go]", root).forEach(el => el.onclick = () => SeMIS.navigate(el.dataset.go));
+      const tdAud = $("#td-aud");   // 다가오는 수검이 있으면 그 수검을 바로 연다
+      if (tdAud && tdAud.dataset.aid && window.SemisAudit && SemisAudit.open) tdAud.onclick = () => SemisAudit.open(tdAud.dataset.aid);
+      if (window.SemisScreen && ($("#dash-scr") || $("#td-scr"))) SemisScreen.mountDash();
       if (window.SemisSerp && $("#dash-serp")) SemisSerp.mountDash();
       if (window.SemisThreat && $("#dash-threat")) SemisThreat.mountDash();
 
@@ -373,19 +379,21 @@
         if ($("#btn-go-minutes")) $("#btn-go-minutes").onclick = () => SeMIS.navigate("minutes");
       }
       if ($("#btn-go-schedule")) $("#btn-go-schedule").onclick = () => SeMIS.navigate("schedule");
-      $$("[data-dash-hub]", root).forEach(el => el.onclick = () => SeMIS.openHub(el.dataset.dashHub));
-
-      if ($("#btn-add-notice")) $("#btn-add-notice").onclick = () => BB.write(noteB.id);
-      if ($("#btn-edit-level")) $("#btn-edit-level").onclick = levelForm;
-      if ($("#btn-edit-zero")) $("#btn-edit-zero").onclick = zeroForm;
-      if ($("#btn-level-hist")) $("#btn-level-hist").onclick = levelHistModal;
-      if ($("#btn-add-sched")) $("#btn-add-sched").onclick = () => {
-        SeMIS.navigate("schedule");
-        SeMIS.renderView();
-        const b = document.getElementById("cal-add");
-        if (b) b.click();
+      const RUN = {
+        notice: () => BB.write(noteB.id),
+        sched: () => {
+          SeMIS.navigate("schedule");
+          SeMIS.renderView();
+          const b = document.getElementById("cal-add");
+          if (b) b.click();
+        },
+        minute: () => SemisMinutes.newMinute()
       };
-      if ($("#btn-add-minute")) $("#btn-add-minute").onclick = () => SemisMinutes.newMinute();
+      if ($("#btn-new")) $("#btn-new").onclick = () => {
+        if (NEW.length === 1) { RUN[NEW[0].id](); return; }
+        SeMIS.actionSheet(NEW.map(x => ({ label: x.label, icon: ico(x.ic), run: RUN[x.id] })), { title: "새로 만들기" }, $("#btn-new"));
+      };
+      if ($("#btn-tk-more")) $("#btn-tk-more").onclick = () => SeMIS.actionSheet(tkItems(), { title: "안전보안 현황" }, $("#btn-tk-more"));
       if (SeMIS.renderSupport) SeMIS.renderSupport();
     }
   });
@@ -513,6 +521,7 @@
   }
 
   function levelForm() {
+    if (!SeMIS.isAdmin()) return;
     const cur = SeMIS.secCurrent();
     openModal(`
       <h3>국가 항공보안등급 변경</h3>
@@ -546,6 +555,7 @@
   }
 
   function zeroForm() {
+    if (!SeMIS.isAdmin()) return;
     const sb = D().safetyBoard || { since: "", note: "" };
     openModal(`
       <h3>무재해 기준일 설정</h3>
@@ -1359,6 +1369,11 @@
           <tr><td style="color:var(--text-2)">동기화</td><td><span id="sysinfo-sync">-</span> <button class="btn btn-ghost btn-sm" id="btn-sync-now" style="margin-left:8px">지금 동기화</button></td></tr>
           <tr><td style="color:var(--text-2)">인증 방식</td><td>서버 확인(bcrypt) · 로그인 세션(탭 단위) · 로그인 시도 제한</td></tr>
           <tr><td style="color:var(--text-2)">관련 시스템</td><td><a href="https://semis.pe.kr/" target="_blank" rel="noopener">SeMIS v2 (항공보안파트) ↗</a></td></tr>
+          ${(() => { const b = buildStatus(); const lv = b.reduce((n, r) => n + r.live, 0), tt = b.reduce((n, r) => n + r.total, 0);
+            return b.length ? `<tr><td style="color:var(--text-2)">모듈 구축 현황</td><td><b class="mono">${lv} / ${tt}</b>
+              <div class="build-list" id="dash-build">${b.map(r => `<div class="build-row"><span class="br-l">${esc(r.label)}</span>
+                <span class="br-bar"><i style="width:${r.total ? Math.round(r.live / r.total * 100) : 0}%"></i></span>
+                <span class="br-n mono">${r.live}/${r.total}</span></div>`).join("")}</div></td></tr>` : ""; })()}
         </table>
       </div>`;
 
@@ -1679,5 +1694,5 @@
   }
 
   window.SemisStorage = { fmtBytes, storeSizes, referencedPaths, orphanFiles, folderName, STORE_LIMIT, DB_LIMIT, FRESH_MS };
-  window.SemisDashFx = { zeroDays, openActions };
+  window.SemisDashFx = { zeroDays, openActions, tkItems, buildStatus };
 })();

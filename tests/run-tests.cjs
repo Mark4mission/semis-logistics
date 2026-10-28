@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/loginguard.js", "js/app.js", "js/argo-owl.js", "js/panel.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/preview.js", "js/preview-draw.js", "js/preview-cfb.js", "js/preview-xls.js", "js/preview-hwp.js", "js/docshelf.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/board.js", "js/cares.js", "js/hazfind.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/contracts.js", "js/partners.js", "js/kcra.js", "js/seccases.js", "js/dissem.js", "js/scrstats.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/docread.js", "js/desk.js", "js/argo.js", "js/selfcheck.js", "js/auddash.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
+const FILES = ["js/loginguard.js", "js/app.js", "js/argo-owl.js", "js/panel.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/preview.js", "js/preview-draw.js", "js/preview-cfb.js", "js/preview-xls.js", "js/preview-hwp.js", "js/docshelf.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/board.js", "js/cares.js", "js/hazfind.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/contracts.js", "js/partners.js", "js/kcra.js", "js/seccases.js", "js/dissem.js", "js/scrstats.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/docread.js", "js/desk.js", "js/argo.js", "js/selfcheck.js", "js/auddash.js", "js/hubhome.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -90,6 +90,13 @@ function submitLogin(env, pw) {
   w.document.querySelector("#login-form").dispatchEvent(new w.Event("submit", { bubbles: true, cancelable: true }));
 }
 const tick = (ms) => new Promise(r => setTimeout(r, ms || 0));
+/* v1.60: 액션 시트(⋯ · 새로 만들기) 항목을 글자로 골라 누름 */
+function sheetPick(env, label) {
+  const its = Array.from(env.w.document.querySelectorAll("#asheet .asheet-item"));
+  const b = its.find(x => x.textContent.trim() === label);
+  if (!b) throw new Error("시트 항목 없음: " + label + " / [" + its.map(x => x.textContent.trim()).join(", ") + "]");
+  b.click();
+}
 
 /* ── 가짜 게시판 서버(RPC semis_logi_bbs_*) — 실제 SQL 은 tools/sql/semis-logi-bbs.test.mjs(PGlite)가 따로 검증 ── */
 const BBS_LV = { all: 1, mgr: 2, hq: 3, admin: 4 };
@@ -608,8 +615,8 @@ function makeServer(opts = {}) {
       e.Sync.stop();
     });
     t("C20 user: 사이드바에 mgr/hq 메뉴 미노출 (규정도 mgr)", () => {
-      const routes = qa(e, ".nav-item").map(b => b.dataset.route).filter(Boolean);
-      ok(routes.indexOf("dashboard") >= 0);
+      const routes = qa(e, ".nav-item, .hub-go").map(b => b.dataset.route).filter(Boolean);
+      ok(routes.indexOf("dashboard") >= 0, "허브 이름(.hub-go) = 대시보드");
       ok(routes.indexOf("schedule") < 0, "schedule는 mgr");
       ok(routes.indexOf("settings") < 0);
       ok(routes.indexOf("reg-sec") < 0, "규정은 mgr 이상");
@@ -627,7 +634,7 @@ function makeServer(opts = {}) {
       const tx = q(e, "#view").textContent;
       ok(tx.includes("공지사항")); ok(tx.includes("무재해 경과일")); ok(tx.includes("국가 항공보안등급"));
       ok(!tx.includes("모듈 구축 현황")); ok(!tx.includes("다가오는 일정"));
-      ok(!q(e, "#btn-edit-level") && !q(e, "#btn-add-notice"), "편집 버튼 없음");
+      ok(!q(e, "#btn-tk-more") && !q(e, "#btn-new"), "편집 · 만들기 단추 없음");
     });
     t("C24 canSee/canEdit 등급표", () => {
       loginAs(e, "manager");
@@ -789,22 +796,25 @@ function makeServer(opts = {}) {
       eq(q(e, ".lv-bars i.on") && qa(e, ".lv-bars i").indexOf(q(e, ".lv-bars i.on")), 0, "5단계 눈금");
       eq(q(e, "#dash-soon").textContent, "0");
       eq(q(e, "#dash-open-n").textContent, "0"); eq(q(e, "#dash-late-n").textContent, "0");
-      ok(q(e, ".page-head #btn-add-notice") && q(e, "#btn-edit-level") && q(e, "#btn-edit-zero"), "hq 편집 버튼");
+      ok(q(e, ".page-head #btn-new") && q(e, "#btn-tk-more"), "hq: 만들기 단추 · 현황 ⋯");
+      eq(e.w.SemisDashFx.tkItems().map(x => x.label).join(), "보안등급 변경 이력", "hq ⋯ = 이력 보기만(등급 · 기준일 변경은 시스템관리자, v1.60)");
     });
-    t("D02 모듈 구축 현황: 허브별 운영/전체 (예정 모듈 포함, 숨김 제외)", () => {
-      ok(q(e, "#view").textContent.includes("모듈 구축 현황"));
-      const rows = qa(e, "#dash-build .build-row");
+    t("D02 모듈 구축 현황: 허브별 운영/전체 (예정 모듈 포함, 숨김 제외) — v1.60 부터 시스템 설정 · 시스템 정보", () => {
+      ok(!q(e, "#view").textContent.includes("모듈 구축 현황") && !q(e, "#dash-build"), "대시보드에는 없음");
+      const rows = e.w.SemisDashFx.buildStatus();
       ok(rows.length >= 6, "허브 6 + 관리");
-      const sec = rows.find(r => r.dataset.dashHub === "hub-sec");
-      eq(sec.querySelector(".br-n").textContent, "6/7", "화물보안 대시보드 · 보안검색 현황 · 검색장비 · 보안 처리 대장 · 상용화주 · 협력사 운영 / 출입 예정");
-      const home = rows.find(r => r.dataset.dashHub === "hub-home");
-      eq(home.querySelector(".br-n").textContent, "5/5", "대시보드 · 일정 · 회의록 · 운항 현황 · 바로가기 (메인 데스크는 v1.48 부터 지원 카드 · 패널)");
-      const aud = rows.find(r => r.dataset.dashHub === "hub-aud");
-      eq(aud.querySelector(".br-n").textContent, "7/7", "대시보드 + 탭 묶음 속 6");
-      ok(rows.find(r => r.dataset.dashHub === "hub-saf"), "예정 모듈만 있는 허브도 구축 현황에");
+      const n = (r) => r.live + "/" + r.total;
+      const sec = rows.find(r => r.id === "hub-sec");
+      eq(n(sec), "6/7", "화물보안 대시보드 · 보안검색 현황 · 검색장비 · 보안 처리 대장 · 상용화주 · 협력사 운영 / 출입 예정");
+      const home = rows.find(r => r.id === "hub-home");
+      eq(n(home), "5/5", "대시보드 · 일정 · 회의록 · 운항 현황 · 바로가기 (메인 데스크는 v1.48 부터 지원 카드 · 패널)");
+      const aud = rows.find(r => r.id === "hub-aud");
+      eq(n(aud), "7/7", "대시보드 + 탭 묶음 속 6");
+      ok(rows.find(r => r.id === "hub-saf"), "예정 모듈만 있는 허브도 구축 현황에");
     });
-    t("D03 무재해 기준일 설정 → D+ 계산", () => {
-      q(e, "#btn-edit-zero").click();
+    t("D03 무재해 기준일 설정(시스템관리자 · 현황 ⋯) → D+ 계산", () => {
+      loginAs(e, "admin"); go(e, "dashboard");
+      q(e, "#btn-tk-more").click(); sheetPick(e, "무재해 기준일 설정");
       const d10 = new Date(Date.now() - 10 * 86400000);   // v1.29: 오늘 = 현지 날짜
       const since = d10.getFullYear() + "-" + String(d10.getMonth() + 1).padStart(2, "0") + "-" + String(d10.getDate()).padStart(2, "0");
       q(e, "#f-since").value = since; q(e, "#f-znote").value = "테스트";
@@ -815,16 +825,20 @@ function makeServer(opts = {}) {
       ok(q(e, ".ticket .tk-sub").textContent.includes("테스트"));
     });
     t("D04 무재해 기준일 미래 → 거부", () => {
-      q(e, "#btn-edit-zero").click();
+      q(e, "#btn-tk-more").click(); sheetPick(e, "무재해 기준일 설정");
       q(e, "#f-since").value = "2999-01-01"; q(e, "#f-save").click();
       ok(!q(e, "#modal-overlay").classList.contains("hidden"), "모달 유지");
       ok(e.S.data.safetyBoard.since !== "2999-01-01");
       e.S.closeModal();
     });
-    t("D05 대시보드 공지 칸 = 공지사항 게시판(B001) · '새 공지'는 게시판 글쓰기", () => {
+    t("D05 대시보드 공지 칸 = 공지사항 게시판(B001) · '새로 만들기 → 새 공지'는 게시판 글쓰기", () => {
+      loginAs(e, "hq"); go(e, "dashboard");
       ok(q(e, "#notice-list"), "공지 칸");
       ok(q(e, '[data-dash-go="board/B001"]'), "전체 → 게시판");
-      q(e, "#btn-add-notice").click();
+      eq(q(e, "#btn-new").textContent.trim(), "새로 만들기");
+      q(e, "#btn-new").click();
+      eq(qa(e, "#asheet .asheet-item").map(b => b.textContent.trim()).join(), "새 공지,일정 추가,회의록 작성", "만들기 목록");
+      sheetPick(e, "새 공지");
       ok(q(e, "#bb-wt") && q(e, "#bb-wed"), "글쓰기 모달(서식 편집기)");
       ok(q(e, "#modal-box").textContent.includes("공지사항"));
       ok(q(e, "#bb-wpin"), "hq 는 상단 고정");
@@ -845,15 +859,16 @@ function makeServer(opts = {}) {
       q(e, "#modal-overlay").dispatchEvent(new e.w.MouseEvent("click", { bubbles: true }));
       ok(q(e, "#modal-overlay").classList.contains("hidden"), "일반 모달은 그대로 바깥 누르기로 닫힘");
     });
-    t("D07 보안등급 변경 → 배지·타일 반영", () => {
-      q(e, "#btn-edit-level").click();
+    t("D07 보안등급 변경(시스템관리자 · 현황 ⋯) → 배지·타일 반영", () => {
+      loginAs(e, "admin"); go(e, "dashboard");
+      q(e, "#btn-tk-more").click(); sheetPick(e, "보안등급 변경");
       q(e, "#f-level").value = "주의"; q(e, "#f-note").value = "테스트";
       q(e, "#f-save").click();
       eq(e.S.secCurrent().level, "주의");
       eq(q(e, "#sec-level-badge").dataset.level, "주의");
       eq(q(e, ".ticket .tk-level").textContent, "주의");
       eq(q(e, ".ticket .tk-level").dataset.tone, "warn");
-      q(e, "#btn-level-hist").click();
+      q(e, "#btn-tk-more").click(); sheetPick(e, "보안등급 변경 이력");
       ok(q(e, "#level-box").textContent.includes("테스트"), "변경 이력 모달");
       e.S.closeModal();
     });
@@ -1378,13 +1393,16 @@ function makeServer(opts = {}) {
       eq(qa(e, "#rail-hubs .rail-btn").map(b => b.dataset.hub).join(","), "hub-home,hub-bbs,hub-sec,hub-aud,hub-ops,hub-doc", "예정 모듈만 있는 안전 관리는 숨김");
       ok(qa(e, "#rail-hubs .rail-btn svg").length === 6);
       eq(qa(e, "#rail-util .rail-btn").map(b => b.dataset.route).join(","), "vault,settings");
-      eq(q(e, '#rail-hubs [data-hub="hub-aud"] span').textContent, "점검교육", "레일 짧은 이름");
+      eq(q(e, '#rail-hubs [data-hub="hub-aud"] span').textContent, "점검 · 교육", "레일 이름 = 패널 이름(v1.60)");
     });
-    t("H05 허브 패널: 현재 허브만 표시(.on) · 대시보드는 홈 허브 첫 항목 · 이동 시 허브 자동 전환 · 경로 표시", () => {
+    t("H05 허브 패널: 현재 허브만 표시(.on) · 대시보드는 허브 이름(목록에서 빠짐, v1.60) · 이동 시 허브 자동 전환 · 경로 표시", () => {
       eq(qa(e, "#nav-menu .hub.on").length, 1);
       eq(q(e, "#nav-menu .hub.on").dataset.hub, "hub-home");
-      eq(q(e, '#nav-menu .hub[data-hub="hub-home"] .hub-items .nav-item').dataset.route, "dashboard");
+      eq(q(e, '#nav-menu .hub[data-hub="hub-home"] .hub-go').dataset.route, "dashboard", "허브 이름 = 대시보드로");
+      ok(!q(e, '#nav-menu .nav-item[data-route="dashboard"]') && !q(e, '#nav-menu .nav-item[data-route="sec-dash"]') && !q(e, '#nav-menu .nav-item[data-route="aud-dash"]'), "목록에 대시보드 항목 없음");
+      eq(q(e, '#nav-menu .hub[data-hub="hub-home"] .hub-items .nav-item').dataset.route, "schedule", "첫 항목 = 일정");
       q(e, '#rail-hubs [data-hub="hub-sec"]').click();
+      eq(e.w.location.hash, "#/sec-dash", "레일 = 허브 대시보드로 바로");
       eq(q(e, "#nav-menu .hub.on").dataset.hub, "hub-sec");
       eq(q(e, '#rail-hubs [data-hub="hub-sec"]').getAttribute("aria-pressed"), "true");
       go(e, "reg-safety");
@@ -1419,8 +1437,8 @@ function makeServer(opts = {}) {
       e.S.renderNav(); go(e, "dashboard");
       ok(q(e, '#nav-menu .hub[data-hub="hub-sec"] .hub-items [data-route="access"]'), "운영 목록");
       ok(!q(e, '#nav-menu .hub[data-hub="hub-sec"] .planned-list [data-route="access"]'), "준비 중에서 제거");
-      const sec = qa(e, "#dash-build .build-row").find(r => r.dataset.dashHub === "hub-sec");
-      eq(sec.querySelector(".br-n").textContent, "7/7");
+      const sec = e.w.SemisDashFx.buildStatus().find(r => r.id === "hub-sec");
+      eq(sec.live + "/" + sec.total, "7/7");
       go(e, "access");
       ok(q(e, "#view .page-head [data-print-btn]"), "키트 머리말에 인쇄 버튼 자동 부착");
     });
@@ -1483,11 +1501,15 @@ function makeServer(opts = {}) {
       e.S.renderNav();
       ok(q(e, "#app").classList.contains("panel-collapsed"), "계정별 저장");
       q(e, '#rail-hubs [data-hub="hub-doc"]').click();
-      ok(q(e, "#app").classList.contains("panel-open"), "접힌 상태에서 허브 클릭 → 떠서 열림");
+      eq(e.w.location.hash, "#/hub/hub-doc", "첫 클릭 = 허브 홈(v1.60)");
+      ok(!q(e, "#app").classList.contains("panel-open"), "패널은 아직");
+      q(e, '#rail-hubs [data-hub="hub-doc"]').click();
+      ok(q(e, "#app").classList.contains("panel-open"), "접힌 상태에서 허브 홈에서 다시 클릭 → 떠서 열림");
       e.S.closeOverlays();
       q(e, "#menu-toggle").click();
       ok(!q(e, "#app").classList.contains("panel-collapsed"));
       Object.defineProperty(e.w, "innerWidth", { value: 1024, configurable: true });
+      q(e, '#rail-hubs [data-hub="hub-ops"]').click();
       q(e, '#rail-hubs [data-hub="hub-ops"]').click();
       ok(q(e, "#app").classList.contains("panel-open"), "태블릿");
       e.S.closeOverlays();
@@ -2424,8 +2446,8 @@ function makeServer(opts = {}) {
       ok(st, "3D 자리"); ok(st.classList.contains("no-print"));
       ok(st.classList.contains("h3d-fallback"), "WebGL 없으면 사진");
       ok(q(e, ".dash-sheet.cols-3 #upcoming-box"), "다가오는 일정은 하단 시트 첫 칸");
-      ok(q(e, "details.dash-build #dash-build"), "모듈 구축 현황은 접힌 줄");
-      ok(q(e, ".dash-top.has-today > .ticket + .today-card"), "3D 카드 옆 '오늘'");
+      ok(!q(e, "#dash-build"), "모듈 구축 현황은 시스템 설정 · 시스템 정보로(v1.60)");
+      ok(q(e, ".dash-now.has-today > .ticket + .today-strip"), "3D 카드 옆 '오늘'");
       eq(e.errors.length, 0, e.errors.join(" | "));
     });
     t("V09 자산: 사진 13장(webp) · three.js 로컬 사본 · CSS가 참조하는 이미지가 모두 존재", () => {
@@ -3067,16 +3089,15 @@ function makeServer(opts = {}) {
     });
     t("SC10 메인 대시보드 검색 환경 띠: 관리자 이상 · 센서 3곳 + 결로 판정 · 나머지는 화물보안 대시보드로 · 일반 사용자 제외", () => {
       go(e, "dashboard");
-      ok(q(e, "#dash-scr"), "띠");
-      eq(q(e, "#dash-scr .dc-head h2").textContent, "검색 환경");
-      eq(qa(e, "#dash-scr .dscr-cell").length, 4);
-      eq(qa(e, "#dash-scr .env-cell").length, 4, "센서 3 + 결로");
-      ok(!q(e, "#dash-scr .ml-row") && !q(e, "#dash-scr .ins-dot") && !q(e, "#dash-scr .mb-c"), "검색 라인 · 점검 · 고장은 빠짐");
-      const txt = q(e, "#dash-scr").textContent;
-      ok(txt.includes("ETD 보호케이스") && txt.includes("CO₂ 2,367"), "기준 초과 지표");
-      ok(txt.includes("수신 없음"), "검색실 오프라인");
-      ok(q(e, '#dash-scr [data-dgo="sec-dash"]'), "화물보안 대시보드 링크");
-      ok(q(e, ".dash-top + #dash-scr, .dash-top + .dash-scr"), "태그 카드 바로 아래");
+      ok(!q(e, "#dash-scr"), "따로 띠 없음(v1.60: '오늘' 줄 한 칸)");
+      const td = q(e, ".today-strip #td-scr");
+      ok(td && td.dataset.go === "scr-status", "'오늘' 줄 · 누르면 보안검색 현황");
+      eq(td.querySelector(".td-t").textContent, "검색 환경");
+      const sub = td.querySelector(".td-s").textContent;
+      ok(/기준 초과 \d/.test(sub) && /수신 없음 \d/.test(sub), "기준 초과 · 검색실 오프라인: " + sub);
+      ok(td.classList.contains("tone-bad"), "기준 초과 = 빨강");
+      ok(/℃|-/.test(td.querySelector(".td-v").textContent), "결로 여유");
+      eq(e.w.SemisScreen.todayEnv(e.w.SemisCares.state).sub, sub, "todayEnv");
       go(e, "sec-dash");
       ok(q(e, "#sd-scr"), "화물보안 대시보드의 화물 보안검색 띠");
       eq(qa(e, "#sd-scr .dscr-cell").length, 3);
@@ -3086,7 +3107,7 @@ function makeServer(opts = {}) {
       eq(qa(e, "#sd-scr .mb-c").length, 6, "최근 6개월");
       ok(!q(e, "#sd-scr .env-cell"), "검색 환경은 메인에만");
       loginAs(e, "user"); go(e, "dashboard");
-      ok(!q(e, "#dash-scr"), "일반 사용자 — 권한 밖");
+      ok(!q(e, "#dash-scr") && !q(e, "#td-scr"), "일반 사용자 — 권한 밖");
       loginAs(e, "manager");
     });
     t("SC11 검색장비 대장: 유형별 묶음 · CARES 연동 · CARES 상태 우선 · 내용연수 임박 · 폐기", () => {
@@ -3338,22 +3359,24 @@ function makeServer(opts = {}) {
       ok(q(e, "#sd-body"), "화면");
       eq(q(e, "#view").getAttribute("data-hub"), "hub-sec", "허브 배너");
       ok(q(e, "#view .page-head [data-print-btn]"), "인쇄 버튼");
-      ok(q(e, '#nav-menu .hub.on[data-hub="hub-sec"] .nav-item.active[data-route="sec-dash"]'), "허브 패널 · 메뉴 강조");
+      ok(q(e, '#nav-menu .hub.on[data-hub="hub-sec"] .hub-go.active[data-route="sec-dash"][aria-current="page"]'), "허브 패널 · 허브 이름 강조(v1.60)");
       Object.defineProperty(e.w, "innerWidth", { value: 1024, configurable: true });
       q(e, '#rail-hubs [data-hub="hub-sec"]').click();
       ok(q(e, "#app").classList.contains("panel-open"), "이미 대시보드 — 태블릿 패널 열림");
       e.S.closeOverlays();
       go(e, "dashboard");
       q(e, '#rail-hubs [data-hub="hub-doc"]').click();
-      eq(e.w.location.hash, "#/dashboard", "다른 허브는 그대로");
+      eq(e.w.location.hash, "#/hub/hub-doc", "대시보드 없는 허브 = 허브 홈(v1.60)");
       e.S.closeOverlays();
       Object.defineProperty(e.w, "innerWidth", { value: 1440, configurable: true });
       loginAs(e, "user"); go(e, "dashboard");
-      eq(e.S.hubHomeRoute("hub-sec"), null, "일반 사용자 — 대시보드 권한 밖");
+      eq(e.S.hubHomeRoute("hub-sec"), null, "일반 사용자 — 허브 자체가 안 보이면 없음");
+      eq(e.S.hubHomeRoute("hub-doc"), "hub/hub-doc", "보이는 허브(대시보드 없음) = 허브 홈");
       loginAs(e, "manager");
       const mn = e.S.data.menus.find(m => m.module === "sec-dash");
       mn.hidden = true;
-      eq(e.S.hubHomeRoute("hub-sec"), null, "숨긴 메뉴");
+      eq(e.S.hubHomeRoute("hub-sec"), "hub/hub-sec", "숨긴 메뉴 → 허브 홈");
+      eq(e.S.hubHomeRoute("hub-none"), null, "없는 허브");
       delete mn.hidden;
     });
     await ta("SD03 CARES 통계: 12개월 고장 · 가동률 · 복구 시간 · 주별 이행률 · 점검 시각 · 이상 항목", async () => {
@@ -3418,13 +3441,13 @@ function makeServer(opts = {}) {
       const labels = qa(e, "#sd-kpi .stat-label").map(x => x.textContent);
       eq(labels.slice(0, 4).join("|"), "장비 가동률|고장 신고|평균 복구 시간|일일점검 이행률");
       eq(qa(e, "#sd-kpi .stat-value")[1].textContent, "3건");
-      eq(qa(e, "#sd-body .sd-card").length, 4, "고장 · 점검 · 위해물품(v1.36) · 환경");
-      eq(qa(e, "#sd-body .sd-card")[0].querySelectorAll(".cc-col").length, 12);
-      eq(qa(e, "#sd-body .sd-card")[0].querySelectorAll(".av-row").length, 8);
+      eq(qa(e, "#sd-body .sd-sub").length, 4, "고장 · 점검 · 위해물품(v1.36) · 환경");
+      eq(qa(e, "#sd-body .sd-sub")[0].querySelectorAll(".cc-col").length, 12);
+      eq(qa(e, "#sd-body .sd-sub")[0].querySelectorAll(".av-row").length, 8);
       ok(q(e, '.lc[data-lc="wk"] polyline'), "주별 선");
       const wkN = e.w.SemisSecDash.weekly(12).reduce((n, w) => n + (w.xray != null) + (w.etd != null), 0);
       ok(wkN >= 8); eq(qa(e, '.lc[data-lc="wk"] .lc-dot').length, wkN, "값 있는 주마다 표식");
-      eq(qa(e, "#sd-body .sd-card")[1].querySelectorAll(".cc-col").length, 24, "0~23시");
+      eq(qa(e, "#sd-body .sd-sub")[1].querySelectorAll(".cc-col").length, 24, "0~23시");
       ok(q(e, '.lc[data-lc="env-t"] polyline') && q(e, '.lc[data-lc="env-h"] polyline') && q(e, '.lc[data-lc="env-m"] polyline'));
       eq(qa(e, '.lc[data-lc="env-t"] .lc-dot').length, 3, "끝점 3");
       eq(qa(e, '.lc[data-lc="env-m"] .lc-rl').length, 2, "3℃ · 0℃ 기준선");
@@ -3532,7 +3555,7 @@ function makeServer(opts = {}) {
       const labels = qa(e, "#sd-kpi .stat-label").map(x => x.textContent);
       ok(labels.indexOf("장비 가동률") < 0 && labels.indexOf("고장 신고") < 0, "실패한 지표는 빼고");
       ok(labels.indexOf("일일점검 이행률") >= 0);
-      const c0 = qa(e, "#sd-body .sd-card")[0];
+      const c0 = qa(e, "#sd-body .sd-sub")[0];
       ok(c0.querySelector(".sd-fail [data-sd-retry]") && !c0.querySelector(".cc-col"), "고장 카드 = 불러오지 못함 + 다시 시도");
       ok(q(e, "#sd-scr").textContent.includes("고장 기록을 불러오지 못했습니다"), "띠의 고장 칸도");
       const n = repCalls.length;
@@ -3573,7 +3596,7 @@ function makeServer(opts = {}) {
       });
       t("HZ02 화물보안 대시보드: 위해물품 카드(이번 달 · 분류 · 호기 · 반입취하 + 12개월 막대) · 요약 지표 · CARES 링크", () => {
         loginAs(e, "manager"); go(e, "sec-dash");
-        const card = qa(e, "#sd-body .sd-card").find(c => c.getAttribute("aria-label") === "위해물품 적발 일지");
+        const card = qa(e, "#sd-body .sd-sub").find(c => c.getAttribute("aria-label") === "위해물품 적발 일지");
         ok(card, "카드");
         eq(card.querySelector(".hzf-big").textContent, "9");
         eq(card.querySelectorAll(".cc-col").length, 12, "12개월");
@@ -4584,6 +4607,7 @@ function makeServer(opts = {}) {
       const ps = e.S.data.threat.phones; eq(ps.length, 3); eq(ps[0].id, "p1"); eq(ps[0].label, "팀장실"); eq(ps[1].id, "p3"); eq(ps[2].grp, "line"); ok(ps[2].id !== "p2");
       q(e, "#tc-rec-edit").click(); q(e, "#tc-r-url").value = "rec.test"; clickOk(e); ok(q(e, "#tc-r-url"), "https 아니면 막음");
       q(e, "#tc-r-url").value = "https://rec2.test"; clickOk(e); eq(e.S.data.threat.rec.url, "https://rec2.test");
+      loginAs(e, "admin");   // v1.60: 보고양식 구성 = 시스템관리자
       TC.setState({ tab: "form" }); e.S.renderView();
       q(e, "#tc-form-edit").click();
       const txt = q(e, "#tc-fe").value;
@@ -4592,6 +4616,8 @@ function makeServer(opts = {}) {
       q(e, "#tc-fe").value = txt + "\nextra | 추가 항목 | text"; clickOk(e);
       const fs = e.S.data.threat.form.secs; eq(fs.length, 4); eq(fs[2].id, "fw", "섹션 id 유지"); eq(fs[3].fields[1].id, "extra"); eq(fs[0].fields[0].auto, "recv");
       const back = TC.parseForm(TC.formText(), fs); eq(JSON.stringify(back.secs), JSON.stringify(fs), "왕복 동일");
+      loginAs(e, "hq"); TC.setState({ tab: "form" }); e.S.renderView();
+      ok(!q(e, "#tc-form-edit") && q(e, "#tc-file-up.ph-rare"), "hq — 양식 편집 없음 · 원본 파일은 ⋯");
       TC.setState({ tab: "proc" }); e.S.renderView();
       q(e, "#tc-sec-add").click(); q(e, "#tc-e-title").value = "새 절"; q(e, "#tc-e-body").value = "가\n\n나"; clickOk(e);
       eq(e.S.data.threat.sections.length, 3); eq(e.S.data.threat.sections[2].body, "가\n나");
@@ -4711,7 +4737,8 @@ function makeServer(opts = {}) {
     });
     t("PB06 hq 편집: 추가(같은 구역 뒤 · 번호 정리) · 필수값 · 조건 해제 · 확인 필요 해제 시 메모 비움 · 삭제", () => {
       loginAs(e, "hq"); go(e, "phonebook");
-      ok(q(e, "#pb-add") && q(e, ".pb-edit") && q(e, "#pb-groups") && q(e, "#pb-meta"));
+      ok(q(e, "#pb-add") && q(e, ".pb-edit") && q(e, "#pb-meta.ph-rare"), "추가 · 편집 · 기본 정보(⋯)");
+      ok(!q(e, "#pb-groups"), "구역 관리는 시스템관리자(v1.60)");
       PB.setState({ grp: "gb" }); e.S.renderView();
       q(e, "#pb-add").click();
       q(e, "#pb-f-group").value = "ga"; q(e, "#pb-f-name").value = "새일"; clickOk(e);
@@ -4729,7 +4756,9 @@ function makeServer(opts = {}) {
       eq(e.S.data.phonebook.rows.length, 4);
       eq(e.errors.length, 0, e.errors.join(" | "));
     });
-    t("PB07 구역 관리: 이름 · 색 · 순서 · 추가 · 연락처 있는 구역 삭제 불가", () => {
+    t("PB07 구역 관리(시스템관리자 · ⋯): 이름 · 색 · 순서 · 추가 · 연락처 있는 구역 삭제 불가", () => {
+      loginAs(e, "admin"); go(e, "phonebook");
+      ok(q(e, "#pb-groups.ph-rare"), "구역 관리 = ⋯");
       q(e, "#pb-groups").click();
       eq(qa(e, ".pb-grow").length, 2);
       ok(qa(e, ".pb-grow")[0].querySelector(".pb-gdel").disabled);
@@ -4755,6 +4784,9 @@ function makeServer(opts = {}) {
       ok(q(e, "#view .empty-state")); ok(q(e, "#pb-add"));
       q(e, "#pb-add").click(); ok(q(e, "#pb-glist"), "구역이 없으면 구역 관리부터");
       e.S.closeModal();
+      loginAs(e, "hq"); e.S.renderView();
+      q(e, "#pb-add").click();
+      ok(q(e, "#modal-overlay").classList.contains("hidden"), "hq — 구역 관리 창 대신 안내(시스템관리자에게 요청)");
       eq(e.errors.length, 0, e.errors.join(" | "));
     });
     t("PB09 공개 저장소 위생: phonebook.js에 번호 · 메일 없음 · 동기화 키 · 권한표 2/3 · CSS", () => {
@@ -4890,8 +4922,11 @@ function makeServer(opts = {}) {
       ok(!q(e, "#dash-flt"), "숨긴 메뉴 → 대시보드에서도 빠짐");
       delete mn.hidden;
     });
-    t("FL06 기체 목록 편집(hq): ICAO 자동 채움 · 잘못된 주소 거부 · 저장", () => {
+    t("FL06 기체 목록 편집(시스템관리자 · ⋯, v1.60): ICAO 자동 채움 · 잘못된 주소 거부 · 저장", () => {
       go(e, "flight");
+      ok(!q(e, "#fo-fleet-edit") && q(e, "#fo-refresh.ph-rare"), "hq — 기체 목록 없음 · 새로고침은 ⋯");
+      loginAs(e, "admin"); go(e, "flight");
+      ok(q(e, "#fo-fleet-edit.ph-rare"), "시스템관리자 — ⋯ 안 기체 목록");
       q(e, "#fo-fleet-edit").click();
       eq(qa(e, "#fl-list .fl-row").length, 15);
       q(e, "#fl-add").click();
@@ -4910,6 +4945,7 @@ function makeServer(opts = {}) {
       go(e, "flight");
       eq(qa(e, "#fo-fleetbox .fo-fleet tbody tr").length, 16);
       e.S.data.fleet = []; e.S.saveSilent();
+      loginAs(e, "hq");
     });
     await ta("FL08 인천 출항: '출항 대기 · 인천 지상'(도착 날짜 · 지상 시간 · 상태) · 오늘 출발의 행선 · 오늘 도착의 출발지", async () => {
       const Y = Fc.kstDayStart(NOW) - 3 * 3600000;                  // 어제 21시(한국)
@@ -5543,20 +5579,23 @@ function makeServer(opts = {}) {
       ok(!q(e, "#au-body"), "권한 없음 → 대시보드");
       loginAs(e, "hq");
     });
-    t("AU11 대시보드 띠: 60일 안 수검 D-day · 준비율 · 미결 지적 / 해당 없으면 없음 / user 없음", () => {
+    t("AU11 대시보드 '오늘' 수검 줄(v1.60): 60일 안 수검 D-day · 준비율 · 미결 지적 / 해당 없으면 없음 / user 없음", () => {
       A.setToday("2026-10-05");
       loginAs(e, "manager"); go(e, "dashboard");
-      ok(q(e, "#dash-aud"), "띠");
-      eq(q(e, "#dash-aud .da-dd").textContent, "D-17");
-      ok(q(e, "#dash-aud .da-t b").textContent.indexOf("서울지방항공청") >= 0);
-      ok(q(e, "#dash-aud [data-dau-f]").textContent.replace(/\s+/g, "").indexOf("미결지적1") >= 0);
-      q(e, "#dash-aud [data-dau-open]").click();
-      eq(A.getState().sel, aid);
+      ok(!q(e, "#dash-aud"), "따로 띠 없음");
+      const row = q(e, ".today-strip #td-aud");
+      ok(row, "'오늘' 수검 줄");
+      eq(row.querySelector(".td-v").textContent, "D-17");
+      const sub = row.querySelector(".td-s").textContent;
+      ok(sub.indexOf("서울지방항공청") >= 0 && sub.replace(/\s+/g, "").indexOf("미결지적1") >= 0, sub);
+      eq(row.dataset.aid, aid);
+      row.click();
+      eq(A.getState().sel, aid, "누르면 그 수검");
       loginAs(e, "user"); go(e, "dashboard");
-      ok(!q(e, "#dash-aud"), "user 없음");
+      ok(!q(e, "#td-aud"), "user 없음");
       const saved = e.S.data.audits;
       e.S.data.audits = []; loginAs(e, "hq"); go(e, "dashboard");
-      ok(!q(e, "#dash-aud"), "해당 없으면 띠 없음");
+      ok(!q(e, "#td-aud"), "해당 없으면 줄 없음");
       e.S.data.audits = saved;
       A.setToday("2026-10-25");
     });
@@ -6512,21 +6551,23 @@ function makeServer(opts = {}) {
       ["자격 유효율", "갱신 · 조치 필요", "SSI 서약", "다음 수검", "미결 지적", "기록부 이행률"].forEach(k => ok(kp.indexOf(k) >= 0, k));
       ok(kp.indexOf("자체 점검") < 0, "자체 보안점검(선택 실행 · v1.42)은 지표에 없음");
       ok(/D-19/.test(kp), "다음 수검 D-day");
-      eq(qa(e, ".ie-card").length, 5, "점검 일정 달력(v1.34) · 다가오는 점검(v1.33) · 교육 · 수검 · 기록부 — 자체 보안점검 카드 없음(v1.42)");
-      ok(qa(e, ".ie-card")[0].classList.contains("ie-cal") && qa(e, ".ie-card")[1].classList.contains("ie-up"), "달력 · 다가오는 점검이 맨 위");
+      eq(qa(e, ".ie-card").length, 3, "점검 일정(다가오는 점검 · 달력 탭) · 교육 · 자격 · 수검 · 기록부(탭) — 블록 4개 이하(v1.60) · 자체 보안점검 카드 없음(v1.42)");
+      ok(qa(e, ".ie-card")[0].classList.contains("ie-sched") && q(e, ".ie-sched .ie-up") && q(e, ".ie-sched .ie-cal"), "점검 일정이 맨 위 · 두 탭");
+      eq(qa(e, '.ie-sched [role="tab"]').map(b => b.textContent).join(), "다가오는 점검,달력");
+      ok(!q(e, ".ie-sched .ie-up").hidden && q(e, ".ie-sched .ie-cal").hidden, "기본 = 다가오는 점검");
       ok(!q(e, ".ie-err"), "카드 오류 없음");
-      const cards = qa(e, ".ie-card:not(.ie-up):not(.ie-cal)");
-      const tc = cards[0];
-      ok(cards[0].querySelectorAll(".ie-sb").length >= 3, "직무별 막대(항공사보안감독자 · 화물보안 업무요원 · 사내보안교관)");
+      const tc = q(e, '.ie-card[aria-label="교육 · 자격"]');
+      ok(tc.querySelectorAll(".ie-sb").length >= 3, "직무별 막대(항공사보안감독자 · 화물보안 업무요원 · 사내보안교관)");
       eq(tc.querySelectorAll(".cc").length, 2); ok(Array.from(tc.querySelectorAll(".cc")).every(c => c.querySelectorAll(".cc-col").length === 12), "12칸");
       const dues = qa(e, ".ie-due");
       ok(dues.length >= 2 && dues.some(b => /을일/.test(b.textContent)) && dues.some(b => /갑일/.test(b.textContent)), "갱신 목록");
       ok(!dues.some(b => /병일/.test(b.textContent)), "영구는 갱신 목록에 없음");
       ok(dues[0].getAttribute("data-st") === "susp", "정지가 맨 위");
-      const ac = cards[1];
+      eq(qa(e, '.ie-rec [role="tab"]').map(b => b.textContent).join(), "수검 대응,보안 기록부", "수검 · 기록부 탭");
+      const ac = q(e, '.ie-rec [data-ct-pane="ier:aud"]');
       ok(/서울지방항공청/.test(ac.textContent) && ac.querySelector(".ie-aud .ie-pg"), "다가오는 수검 · 준비율");
       ok(/미결/.test(ac.textContent) && ac.querySelector('[data-ie-find="late"].bad'), "기한 경과 지적");
-      const sc = cards[2];
+      const sc = q(e, '.ie-rec [data-ct-pane="ier:sl"]');
       eq(sc.querySelectorAll(".ie-sb").length, SL.templates().length, "양식별 이행 막대");
       ok(q(e, "[data-tt]"), "값 말풍선");
       dues.find(b => /을일/.test(b.textContent)).click();
@@ -6539,12 +6580,14 @@ function makeServer(opts = {}) {
       const mn = e.S.data.menus.find(m => m.module === "inspection");
       mn.hidden = true;
       go(e, "aud-dash");
-      eq(qa(e, ".ie-card:not(.ie-up):not(.ie-cal)").length, 2, "보안 기록부 카드 없음");
+      eq(qa(e, ".ie-card").length, 3, "카드 셋");
+      ok(!q(e, '.ie-rec [data-ct-pane="ier:sl"]') && !q(e, '.ie-rec [role="tab"]'), "보안 기록부 칸 · 탭 없음(수검 대응만)");
+      eq(q(e, ".ie-rec .ct-t").textContent, "수검 대응", "탭이 하나면 그 이름");
       ok(!q(e, ".ie-up [data-ie-sl]") && !q(e, ".ie-up .uc-daily"), "숨긴 보안 기록부는 다가오는 점검에서도 빠짐");
       ok(!/기록부 이행률/.test(q(e, "#view .stat-row").textContent));
       delete mn.hidden;
       loginAs(e, "manager"); go(e, "aud-dash");
-      eq(qa(e, ".ie-card").length, 5);
+      eq(qa(e, ".ie-card").length, 3);
       setW(390); go(e, "aud-dash");
       ok(qa(e, ".ie-due").length <= 5, "모바일 목록 5건까지");
       setW(1024);
@@ -6732,9 +6775,12 @@ function makeServer(opts = {}) {
       ok(q(e, "[data-print-btn]"), "Print 버튼");
       SL.setState({ fTid: "" });
     });
-    t("SL10 점검 양식(hq): 항목 줄 편집 · 기록 있는 양식은 삭제 불가 · 시작일 저장 · user 는 메뉴 없음", () => {
+    t("SL10 점검 양식(시스템관리자 · ⋯, v1.60): 항목 줄 편집 · 기록 있는 양식은 삭제 불가 · 시작일 저장 · user 는 메뉴 없음", () => {
       loginAs(e, "hq");
       SL.setState({ tab: "today" }); go(e, "inspection");
+      ok(!q(e, "#sl-tpl") && !q(e, "#sl-vis"), "hq — 양식 · 표시 관리 없음");
+      loginAs(e, "admin"); go(e, "inspection");
+      ok(q(e, "#sl-tpl.ph-rare") && q(e, "#sl-vis.ph-rare"), "시스템관리자 — 머리말 ⋯ 안");
       q(e, "#sl-tpl").click();
       const rows = qa(e, "#sl-tpls .sl-tpl");
       eq(rows.length, FAKE.length);
@@ -7253,9 +7299,10 @@ function makeServer(opts = {}) {
       P.setState({ tab: "day", curDate: "2026-09-02" }); go(e, "daily-safety");
       ok(q(e, ".pt-slot[data-slot=am]").textContent.indexOf("순찰갑") >= 0, "기록 화면 표시");
     });
-    t("PT13 양식(hq): 제목 · 표기 · 시작일 · 구분 · 점검사항 줄 편집(같은 문구는 id 유지) · manager 버튼 없음", () => {
+    t("PT13 양식(시스템관리자 · ⋯, v1.60): 제목 · 표기 · 시작일 · 구분 · 점검사항 줄 편집(같은 문구는 id 유지) · manager · hq 버튼 없음", () => {
       seed(); loginAs(e, "manager"); go(e, "daily-safety"); ok(!q(e, "#pt-cfg"), "manager 양식 버튼 없음");
-      loginAs(e, "hq"); go(e, "daily-safety"); q(e, "#pt-cfg").click();
+      loginAs(e, "hq"); go(e, "daily-safety"); ok(!q(e, "#pt-cfg"), "hq 양식 버튼 없음");
+      loginAs(e, "admin"); go(e, "daily-safety"); ok(q(e, "#pt-cfg.ph-rare"), "⋯ 안"); q(e, "#pt-cfg").click();
       eq(qa(e, "#pt-csecs .pt-csec").length, 3);
       q(e, "#pt-ct").value = "새 제목"; q(e, "#pt-ca").value = ""; q(e, "#pt-cs").value = "2026-09-10";
       const ta = qa(e, "#pt-csecs [data-k=items]")[0]; ta.value = "시험 보안 항목 A\n새 항목 E";
@@ -7350,14 +7397,14 @@ function makeServer(opts = {}) {
     });
     t("CM06 대시보드 '오늘': 순찰 · 오늘 일정(끝낸 일정 제외) · 인천 접근 행 · 누르면 이동 · 일반 사용자는 없음", () => {
       setW(1024); go(e, "dashboard");
-      const rows = qa(e, ".today-card .td-row").map(r => r.dataset.go);
+      const rows = qa(e, ".today-strip .td-row").map(r => r.dataset.go);
       ok(rows.indexOf("daily-safety") >= 0 && rows.indexOf("schedule") >= 0, rows.join(","));
-      const sc = qa(e, ".today-card .td-row").find(r => r.dataset.go === "schedule");
+      const sc = qa(e, ".today-strip .td-row").find(r => r.dataset.go === "schedule");
       ok(sc.textContent.includes("모바일 점검") && !sc.textContent.includes("모바일 회의"), "끝낸 일정 제외");
       ok(!q(e, "#upcoming-box").textContent.includes("모바일 회의"), "다가오는 일정도 끝낸 일정 제외");
       sc.click(); eq(e.w.location.hash, "#/schedule");
       const e2 = makeEnv(); loginAs(e2, "user"); go(e2, "dashboard");
-      ok(!q(e2, ".today-card"), "user 없음"); e2.w.close();
+      ok(!q(e2, ".today-strip"), "user 없음"); e2.w.close();
     });
     t("CM07 하단 탭 아이콘 · 모바일 CSS는 화면 한정(인쇄 폭이 max-width 조건에 걸리지 않게)", () => {
       ok(q(e, '#tabbar [data-route="dashboard"] svg') && q(e, '#tabbar [data-sup="search"] svg') && q(e, '#tabbar [data-sup="desk"] svg'));
@@ -7945,11 +7992,15 @@ function makeServer(opts = {}) {
       ok(SL.nextDue(daily, T0).daily); ok(SL.nextDue(SL.tplOf("t-guard"), T0).event);
       eq(SL.periodEnd({ cycle: "week" }, "W2026-09-28"), "2026-10-04"); eq(SL.periodEnd({ cycle: "month" }, "2026-02"), "2026-02-28");
       SL.templatesForm();
+      ok(e.S.data && q(e, "#modal-overlay").classList.contains("hidden"), "hq — 양식 편집 창 열리지 않음(시스템관리자, v1.60)");
+      loginAs(e, "admin");
+      SL.templatesForm();
       const row = q(e, '#sl-tpls .sl-tpl');
       ok(row.querySelector('[data-k="by"]') && row.querySelector('[data-k="target"]') && row.querySelector('select[data-k="grp"]'), "편집 칸");
       row.querySelector('[data-k="by"]').value = "바꾼 주체";
       clickOk(e);
       eq(e.S.data.seclogCfg.templates[0].by, "바꾼 주체");
+      loginAs(e, "hq");
       e.S.data.seclogCfg.templates = [];
       eq(e.errors.length, 0, e.errors.join(" | "));
     });
@@ -7961,7 +8012,7 @@ function makeServer(opts = {}) {
       e.S.data.selfChecks = [sc("b1", "2026-10-02", "draft", { appr: ["", "", ""] })];
       go(e, "aud-dash");
       const cs = qa(e, ".ie-card");
-      ok(cs[0].classList.contains("ie-cal") && cs[1].classList.contains("ie-up"), "달력 → 다가오는 점검");
+      ok(cs[0].classList.contains("ie-sched") && q(e, ".ie-sched .ie-up:not([hidden])"), "점검 일정 카드 · 다가오는 점검 탭(기본, v1.60)");
       const rs = q(e, ".ie-up .uc-sec.is-recv"), os = q(e, ".ie-up .uc-sec.is-own");
       ok(rs && os && q(e, ".ie-up .uc-split.is-two"), "두 구역");
       ok(rs.compareDocumentPosition(os) & 4, "수검이 먼저");
@@ -7979,7 +8030,7 @@ function makeServer(opts = {}) {
       ok(daily && daily.querySelector('[data-ie-sl="t-daily"]').classList.contains("is-done") && !daily.querySelector('[data-ie-sl="t-uld"]').classList.contains("is-done"), "매일 점검 오늘 상태");
       ok(daily.querySelector('[data-ie-sl="t-patrol"][data-ie-round]'), "순찰은 순찰 기록");
       const hz = os.querySelector('.uc-grp[data-grp="hazmat"] [data-ie-sl="t-hazmat"]');
-      ok(hz && hz.classList.contains("btn-primary"), "30일 안 → 주 버튼");
+      ok(hz && hz.classList.contains("btn-ghost") && hz.closest(".uc-row.is-soon"), "30일 안 → 줄 강조(카드 안 단추는 한 모양, v1.60)");
       hz.click();
       ok(q(e, "#modal-box") && /위해물품 월간 점검/.test(q(e, "#modal-box").textContent), "점검표(기록 폼) 열림");
       e.S.closeModal();
@@ -8014,7 +8065,7 @@ function makeServer(opts = {}) {
       eq(e.errors.length, 0, e.errors.join(" | "));
     });
 
-    t("UP07 자체 점검 안내 편집(hq): 공용 DB selfCheckCfg · 권한표 [2,3] · 비면 기본값 · 바꾼 값만 저장 · 감독관 안내 · 자체 주기 · 수검 전 일수 반영 · 기본값 되돌리기", () => {
+    t("UP07 자체 점검 안내 편집(시스템관리자): 공용 DB selfCheckCfg · 권한표 [2,3] · 비면 기본값 · 바꾼 값만 저장 · 감독관 안내 · 자체 주기 · 수검 전 일수 반영 · 기본값 되돌리기", () => {
       reset(); e.S.data.selfCheckCfg = { forms: {} };
       eq(JSON.stringify(ACL.selfCheckCfg), "[2,3]", "권한표: manager 열람 · hq 편집");
       ok(SEC_SQL.indexOf("semis_logi_security_18_selfcheckcfg") > 0);
@@ -8029,7 +8080,9 @@ function makeServer(opts = {}) {
       loginAs(e, "manager"); S.setState({ tab: "forms", rid: "" }); go(e, "selfcheck");
       ok(!q(e, "#sc-cfg"), "manager 편집 없음");
       loginAs(e, "hq"); go(e, "selfcheck");
-      ok(q(e, "#sc-cfg"), "hq 편집");
+      ok(!q(e, "#sc-cfg"), "hq 없음(시스템관리자, v1.60)");
+      loginAs(e, "admin"); go(e, "selfcheck");
+      ok(q(e, "#sc-cfg.ph-rare"), "시스템관리자 — 머리말 ⋯ 안");
       S.setState({ tab: "list" }); go(e, "selfcheck"); ok(!q(e, "#sc-cfg"), "양식 탭에서만"); S.setState({ tab: "forms" }); go(e, "selfcheck");
       q(e, "#sc-cfg").click();
       eq(qa(e, "#modal-box [data-cf]").length, 9, "별표 9종");
@@ -8058,20 +8111,27 @@ function makeServer(opts = {}) {
       clickOk(e);
       eq(JSON.stringify(e.S.data.selfCheckCfg), '{"forms":{}}', "기본값으로");
       e.S.data.audits = [];
+      loginAs(e, "hq");
       eq(e.errors.length, 0, e.errors.join(" | "));
     });
 
-    t("UP08 대시보드 안내 편집(hq): 보안 기록부 양식 편집 창 바로(자체 보안점검 안내는 그 화면에서만 — v1.42) · manager 없음 · 보안 기록부를 숨기면 버튼 없음", () => {
+    t("UP08 대시보드 안내 편집(시스템관리자 · 카드 ⋯, v1.60): 보안 기록부 양식 편집 창 바로(자체 보안점검 안내는 그 화면에서만 — v1.42) · manager · hq 없음 · 보안 기록부를 숨기면 버튼 없음", () => {
       reset(); e.S.data.selfCheckCfg = { forms: {} };
       loginAs(e, "manager"); go(e, "aud-dash");
       ok(q(e, ".ie-up") && !q(e, "[data-ie-cfg]"), "manager 없음");
       loginAs(e, "hq"); go(e, "aud-dash");
-      q(e, "[data-ie-cfg]").click();
+      ok(!q(e, "[data-ie-cfg]") && !q(e, ".ie-sched .c-more"), "hq 없음");
+      loginAs(e, "admin"); go(e, "aud-dash"); e.S.tidyView();
+      ok(q(e, ".ie-sched .card-title [data-ie-cfg].c-rare") && q(e, ".ie-sched .card-title > .c-more"), "카드 머리 ⋯");
+      eq(q(e, ".ie-sched .c-more").getAttribute("aria-label"), "점검 일정 더보기", "이름 = 카드 제목 + 더보기");
+      q(e, ".ie-sched .c-more").click();
+      sheetPick(e, "점검 안내 편집");
       ok(!q(e, "#modal-box [data-ie-pick]") && q(e, "#sl-tpls .sl-tpl [data-k=by]") && q(e, "#sl-tpls .sl-tpl [data-k=target]"), "보안 기록부 양식 편집 바로");
       e.S.closeModal();
       const mn = e.S.data.menus.find(m => m.module === "inspection"); mn.hidden = true;
-      go(e, "aud-dash"); ok(!q(e, "[data-ie-cfg]"), "보안 기록부를 숨기면 편집 버튼 없음");
+      go(e, "aud-dash"); e.S.tidyView(); ok(!q(e, "[data-ie-cfg]") && !q(e, ".ie-sched .c-more"), "보안 기록부를 숨기면 편집 버튼 · ⋯ 없음");
       delete mn.hidden;
+      loginAs(e, "hq");
       eq(e.errors.length, 0, e.errors.join(" | "));
     });
 
@@ -8082,8 +8142,9 @@ function makeServer(opts = {}) {
       e.S.data.selfChecks = [sc("b4", "2026-10-01", "done")];
       AD.setCal("", ""); go(e, "aud-dash");
       const cal = q(e, ".ie-cal");
-      const ttl = cal.querySelector(".card-title").textContent;
-      ok(/이번 달 점검 일정/.test(ttl) && /2026년 10월/.test(ttl), ttl);
+      eq(q(e, '.ie-sched [data-ct-tab="cal"]').textContent, "달력", "점검 일정 카드의 달력 탭(v1.60)");
+      const ttl = cal.querySelector(".ic-head").textContent;
+      ok(/2026년 10월/.test(ttl), ttl);
       eq(cal.querySelectorAll(".ic-wd").length, 7); eq(cal.querySelectorAll(".ic-c").length % 7, 0);
       eq(cal.querySelector(".ic-c").dataset.ieDay, "2026-09-27", "일요일 시작");
       ok(cal.querySelector('.ic-c[data-ie-day="2026-09-30"]').classList.contains("is-out"), "앞뒤 달은 흐리게");
@@ -8102,14 +8163,14 @@ function makeServer(opts = {}) {
       q(e, '.ie-cal .ic-c[data-ie-day="2026-10-31"]').click();
       ag = q(e, ".ie-cal .ic-ag"); ok(/10\.31\(토\)/.test(ag.textContent) && ag.querySelector(".ic-ag-i.is-due"), "칸 눌러 고르기");
       q(e, '.ie-cal [data-ie-cm="-1"]').click();
-      ok(/^점검 일정/.test(q(e, ".ie-cal .card-title").textContent.trim()) && /2026년 9월/.test(q(e, ".ie-cal .card-title").textContent), "지난달");
+      ok(/2026년 9월/.test(q(e, ".ie-cal .ic-head").textContent), "지난달");
       const sep = day("2026-09-30");
       ok(sep.some(x => /is-late/.test(x) && /위해물품/.test(x)) && sep.some(x => /is-late/.test(x) && /정기 보안점검/.test(x)), sep.join());
       q(e, '.ie-cal [data-ie-cm="1"]').click(); q(e, '.ie-cal [data-ie-cm="1"]').click();
-      ok(/2026년 11월/.test(q(e, ".ie-cal .card-title").textContent), "다음 달");
+      ok(/2026년 11월/.test(q(e, ".ie-cal .ic-head").textContent), "다음 달");
       ok(!q(e, '.ie-cal [data-ie-cm="0"]').disabled);
       q(e, '.ie-cal [data-ie-cm="0"]').click();
-      ok(/2026년 10월/.test(q(e, ".ie-cal .card-title").textContent) && q(e, '.ie-cal [data-ie-cm="0"]').disabled, "이번 달로");
+      ok(/2026년 10월/.test(q(e, ".ie-cal .ic-head").textContent) && q(e, '.ie-cal [data-ie-cm="0"]').disabled, "이번 달로");
       q(e, '.ie-cal .ic-c[data-ie-day="2026-10-31"] .ic-ev.is-due').click();
       ok(/위해물품 월간 점검/.test(q(e, "#modal-box").textContent), "기한 → 기록 폼"); e.S.closeModal();
       q(e, '.ie-cal .ic-c[data-ie-day="2026-10-05"] .ic-ev.is-done').click();
@@ -8179,7 +8240,7 @@ function makeServer(opts = {}) {
     const flat = (el) => el.textContent.replace(/\s+/g, " ").trim();
     loginAs(e, "admin");
 
-    t("VZ01 표시 데이터: 숨김은 양식 · 기록 · 누락 · 증빙에서 빠짐 · 흐리게는 남음(안내 문구) · 양식 편집(hq) 저장해도 숨긴 양식 보존 · 표시 값은 양식에 저장 안 함", () => {
+    t("VZ01 표시 데이터: 숨김은 양식 · 기록 · 누락 · 증빙에서 빠짐 · 흐리게는 남음(안내 문구) · 양식 편집(시스템관리자) 저장해도 숨긴 양식 보존 · 표시 값은 양식에 저장 안 함", () => {
       reset();
       const miss0 = SL.missCount();
       e.S.data.seclogCfg.vis = { "t-uld": { m: "hide" }, "t-hazmat": { m: "dim", msg: "종이 대장 확인" } };
@@ -8191,7 +8252,7 @@ function makeServer(opts = {}) {
       ok(!SL.logs().some(r => r.tid === "t-uld"), "숨긴 양식 기록 제외");
       ok(SL.missCount() < miss0, "누락 수 줄어듦 " + miss0 + " → " + SL.missCount());
       eq(SL.evidence("7.2"), null, "숨긴 양식은 증빙 연결도 없음");
-      loginAs(e, "hq");
+      loginAs(e, "admin");
       SL.templatesForm();
       ok(!qa(e, "#modal-box .sl-tpl input[data-k=name]").some(i => i.value === "ULD 확인"), "편집 창에도 없음");
       clickOk(e);
@@ -8206,7 +8267,7 @@ function makeServer(opts = {}) {
       loginAs(e, "hq"); SL.setState({ tab: "today" }); go(e, "inspection");
       ok(!q(e, "#sl-vis"), "hq 없음");
       loginAs(e, "admin"); go(e, "inspection");
-      ok(q(e, "#sl-vis").classList.contains("m-ed"), "모바일 편집 모드 단추");
+      ok(q(e, "#sl-vis").classList.contains("ph-rare"), "머리말 ⋯ 안(v1.60)");
       const n0 = qa(e, "#view .sl-card:not(.hzf-card)").length;
       eq(n0, 5);
       q(e, "#sl-vis").click();
@@ -8359,7 +8420,7 @@ function makeServer(opts = {}) {
       ok(/미결 지적\s*1/.test(q(e, "#view .stat-row").textContent), q(e, "#view .stat-row").textContent);
       go(e, "aud-dash");
       ok(!/자체 점검/.test(q(e, "#view").textContent) && !q(e, '#view [data-ie-schc], #view [data-ie-scf]'), "대시보드에는 넣지 않음(v1.42 선택 실행)");
-      loginAs(e, "hq"); S.setState({ tab: "forms" }); go(e, "selfcheck");
+      loginAs(e, "admin"); S.setState({ tab: "forms" }); go(e, "selfcheck");
       q(e, "#sc-cfg").click();
       ok(!qa(e, "#modal-box [data-cf]").some(r => r.dataset.cf === "b3"), "안내 편집에서도 빠짐");
       clickOk(e);
@@ -9351,7 +9412,7 @@ function makeServer(opts = {}) {
         ok(qa(e, "#view .page-head .btn-primary").length <= 1, r + " 강조 버튼");
         ok(!qa(e, "#view button").some(b => /\p{Extended_Pictographic}/u.test(b.textContent) && !b.querySelector(".mn-fi-ico")), r + " 그림 문자 버튼(회의록 폴더 아이콘은 사용자가 고르는 값)");
       });
-      go(e, "inspection"); ok(q(e, "#sl-tpl.link-btn") && q(e, "#sl-vis.link-btn"), "기록부 관리 동작 = 글자");
+      go(e, "inspection"); ok(q(e, "#sl-tpl.ph-rare") && q(e, "#sl-vis.ph-rare"), "기록부 관리 동작 = 머리말 ⋯(v1.60)");
       eq(qa(e, "#view .sl-card .btn-primary, #view [data-sl-new].btn-primary").length, 0, "카드 안 강조 없음");
       FILES.forEach(f => ok(!/SeMIS\.user\(\)/.test(read(f)), f + ": SeMIS.user() 호출"));
       e.w.close();
@@ -9739,9 +9800,7 @@ function makeServer(opts = {}) {
       eq(qa(e, "#pnl-desk .dk-item[data-dk]").length, 2);
       eq(q(e, '#pnl-desk .pnl-tab[data-tab="up"] .pnl-n').textContent, "2", "탭 배지");
       ok(q(e, "#pnl-desk .pnl-print").hidden, "올리기 탭은 인쇄 없음");
-      q(e, "#pnl-desk [data-dk-areas]").click();
-      ok(q(e, "#pnl-desk #modal-overlay:not(.hidden) #dk-a-security"), "분야별 담당 = 패널 안 모달");
-      q(e, "#modal-box [data-act=cancel]").click();
+      ok(!q(e, "#pnl-desk [data-dk-areas]"), "hq — 분야별 담당 없음(시스템관리자, v1.60)");
       q(e, '#pnl-desk .pnl-tab[data-tab="log"]').click();
       eq(DK.tab, "log");
       eq(qa(e, "#dk-log tbody tr").length, 1, "기록 1건");
@@ -9764,6 +9823,13 @@ function makeServer(opts = {}) {
       ok(P.isOpen("desk"), "옛 주소 #/desk → 패널"); eq(e.w.location.hash, "#/dashboard", "뒤는 대시보드");
       P.close("desk");
       eq(e.w.SemisSearch.search("올리기").filter(x => x.group === "접수 카운터").length >= 1, true, "'올리기'로도 찾음");
+      loginAs(e, "admin"); e.S.renderNav();
+      q(e, "#sup-desk").click();
+      ok(q(e, ".pnl-has-rare #pnl-desk [data-dk-areas].ph-rare, #pnl-desk.pnl-has-rare [data-dk-areas].ph-rare"), "시스템관리자 — 패널 ⋯ 안 분야별 담당");
+      q(e, "#pnl-desk [data-dk-areas]").click();
+      ok(q(e, "#pnl-desk #modal-overlay:not(.hidden) #dk-a-security"), "분야별 담당 = 패널 안 모달");
+      q(e, "#modal-box [data-act=cancel]").click();
+      P.close("desk");
       loginAs(e, "manager");
       eq(e.w.SemisSearch.search("접수 카운터").filter(x => x.group === "접수 카운터").map(x => x.title).join(), "접수 카운터", "manager = 패널 열기만(기록은 없음)");
       loginAs(e, "vendor");
@@ -11648,6 +11714,211 @@ function makeServer(opts = {}) {
       eq(qa(e, "#pnl-argo .ag-col-h").map(x => x.textContent.trim()).join(), "찾기,알려주기", "직원 = 찾기 · 알려주기");
       eq(e.errors.length, 0, e.errors.join(" | "));
     });
+  }
+
+  /* ══════════ [HV] v1.60 메뉴 접근 · 화면 패턴 — 레일 = 허브 첫 화면 · 허브 홈 · 머리말 ⋯ · 카드 탭 · 설정은 시스템관리자 · 글자 하한 ══════════ */
+  {
+    const e = makeEnv();
+    const setW = (w) => Object.defineProperty(e.w, "innerWidth", { value: w, configurable: true });
+    const rail = () => qa(e, "#rail-hubs .rail-btn").map(b => b.dataset.hub + "=" + e.S.hubHomeRoute(b.dataset.hub)).join(" ");
+    const blocks = () => Array.from(q(e, "#view").children).filter(c => !c.classList.contains("page-head"));
+    t("HV01 레일 = 허브 첫 화면(역할별) · 대시보드 있는 허브는 대시보드, 없는 허브는 허브 홈 · 옛 주소 그대로 · 없는 허브는 대시보드로", () => {
+      setW(1440);
+      loginAs(e, "hq"); e.S.renderNav();
+      eq(rail(), "hub-home=dashboard hub-bbs=hub/hub-bbs hub-sec=sec-dash hub-aud=aud-dash hub-ops=hub/hub-ops hub-doc=hub/hub-doc");
+      loginAs(e, "user"); e.S.renderNav();
+      eq(rail(), "hub-home=dashboard hub-bbs=hub/hub-bbs hub-doc=hub/hub-doc", "권한 밖 허브는 레일에도 없음");
+      ["admin", "hq", "manager", "user"].forEach(r => {
+        loginAs(e, r); e.S.renderNav();
+        e.S.hubList().forEach(g => {
+          const to = e.S.hubHomeRoute(g.id);
+          ok(to, r + " " + g.id + " 첫 화면");
+          go(e, to);
+          eq(q(e, "#view .page-title").textContent, to.indexOf("hub/") === 0 ? g.label : e.S.menuForModule(to).label, r + " " + to + " 제목");
+          ok(q(e, "#view .page-head [data-print-btn]"), r + " " + to + " 인쇄");
+          ok(blocks().length <= 4, r + " " + to + " 블록 " + blocks().length + " ≤ 4");
+        });
+      });
+      loginAs(e, "hq"); e.S.renderNav();
+      ["dashboard", "sec-dash", "aud-dash"].forEach(r => { go(e, r); eq(e.w.location.hash, "#/" + r, "옛 주소(북마크) " + r); ok(q(e, "#view .page-title")); });
+      go(e, "hub/hub-none");
+      eq(q(e, "#view .page-title").textContent, "대시보드", "없는 허브 → 대시보드");
+      ok(/이 허브를 볼 수 없습니다/.test(q(e, "#toast-wrap").textContent), "안내");
+      eq(JSON.stringify(e.S.HUB_DASH), '{"hub-home":"dashboard","hub-sec":"sec-dash","hub-aud":"aud-dash"}');
+      ok(e.S.isHubDash(e.S.menuForModule("sec-dash")) && !e.S.isHubDash(e.S.menuForModule("scr-status")), "isHubDash");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    t("HV02 허브 홈(규정 · 문서): 머리말 · 바로가기(묶음 화면 + 외부 사이트) · 최근 등록 · 개정 → 그 규정 검색 · 허브 이름 강조 · 경로", () => {
+      loginAs(e, "hq"); e.S.renderNav();
+      e.S.data.regulations = [{ id: "r1", scope: "sec", title: "시험 보안 규정", date: "2026-09-01", rev: "Rev.3", ideas: [] },
+        { id: "r2", scope: "safety", title: "시험 안전 규정", date: "2026-10-01", ideas: [] }, { id: "r3", scope: "dg", title: "시험 위험물 기준", date: "2025-01-01", ideas: [] }];
+      e.S.saveSilent();
+      go(e, "hub/hub-doc");
+      eq(q(e, "#view").getAttribute("data-hub"), "hub-doc", "허브 머리말 색");
+      eq(q(e, "#view .page-title").textContent, "규정 · 문서");
+      ok(/\d+개 화면/.test(q(e, "#view .page-meta").textContent));
+      const tiles = qa(e, "#view .hh-tile");
+      eq(tiles.filter(x => x.dataset.hhGo).map(x => x.dataset.hhGo).join(), "reg-sec,reg-safety,reg-dg,contracts", "묶음 아래 화면도 칸으로");
+      eq(q(e, '#view .hh-tile[data-hh-go="reg-sec"] .hh-g').textContent, "규정", "묶음 이름 = 작은 머리");
+      ok(/3건|1건/.test(q(e, '#view .hh-tile[data-hh-go="reg-sec"] .hh-s').textContent), "칸 아래 한 줄(건수)");
+      const ext = tiles.filter(x => x.tagName === "A");
+      ok(ext.length >= 1 && ext.every(a => a.target === "_blank" && a.rel === "noopener"), "외부 사이트 = 새 창 · noopener");
+      const card = q(e, '#view [data-hc="doc-recent"]');
+      eq(Array.from(card.querySelectorAll(".hh-row .hh-x")).map(x => x.textContent).join("|"), "시험 안전 규정|시험 보안 규정|시험 위험물 기준", "최근 날짜 순");
+      ok(q(e, '#nav-menu .hub[data-hub="hub-doc"] .hub-go.active[aria-current="page"][data-route="hub/hub-doc"]'), "패널 허브 이름 강조");
+      ok(q(e, "#crumbs").textContent.includes("규정 · 문서"), "경로");
+      card.querySelector('.hh-row[data-hh-reg="safety"]').click();
+      eq(e.w.location.hash, "#/reg-safety", "누르면 그 규정 화면");
+      go(e, "hub/hub-doc");
+      q(e, '#view .hh-tile[data-hh-go="contracts"]').click();
+      eq(e.w.location.hash, "#/contracts", "칸 → 화면");
+      loginAs(e, "user"); e.S.renderNav(); go(e, "hub/hub-doc");
+      ok(!q(e, '#view .hh-tile[data-hh-go="reg-sec"]') && !q(e, '#view [data-hc="doc-recent"]'), "user — 권한 밖 화면 · 카드 없음");
+      ok(qa(e, "#view a.hh-tile").length >= 1, "외부 사이트는 보임");
+      e.S.data.regulations = []; e.S.saveSilent();
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    t("HV03 허브 홈(비상 · 연락): 최근 대응 · 점검(SERP · 위협전화 · 녹음 전화 점검, 최근 순 · 진행 중 표시) · 카드 머리 '전체 보기' 한 개", () => {
+      loginAs(e, "hq"); e.S.renderNav();
+      e.S.data.serpRuns = [{ id: "s1", kind: "drill", title: "상반기 훈련", start: "2026-06-10T01:00:00Z", end: "2026-06-10T03:00:00Z" }];
+      e.S.data.threatRuns = [{ id: "t1", kind: "real", start: "2026-10-02T01:00:00Z", recv: { dept: "화물터미널" } }];
+      e.S.data.threatChecks = [{ id: "c1", date: "2026-09-15", rows: { p1: {}, p2: {} } }];
+      go(e, "hub/hub-ops");
+      const card = q(e, '#view [data-hc="ops-recent"]');
+      ok(card, "카드");
+      const rows = Array.from(card.querySelectorAll(".hh-row"));
+      eq(rows.map(r => r.querySelector(".hh-k").textContent).join(","), "위협전화 접수,녹음 전화 점검,SERP 훈련", "최근 순");
+      ok(/진행 중/.test(rows[0].textContent) && !/진행 중/.test(rows[2].textContent), "끝나지 않은 접수 = 진행 중");
+      eq(rows[1].querySelector(".hh-x").textContent, "2대 점검");
+      eq(qa(e, '#view [data-hc="ops-recent"] .card-title button').length, 1, "머리 단추 하나");
+      ok(q(e, '#view [data-hc="ops-recent"] .card-title .c-act').textContent === "전체 보기");
+      rows[2].click(); eq(e.w.location.hash, "#/serp");
+      e.S.data.serpRuns = []; e.S.data.threatRuns = []; e.S.data.threatChecks = [];
+    });
+    t("HV04 모바일 '전체' 시트 · 하단 탭: 허브 이름(.hub-go) = 첫 화면 · 대시보드 항목은 목록에 없음 · 누르면 시트 닫힘", () => {
+      setW(390); loginAs(e, "hq"); e.S.renderNav(); go(e, "schedule");
+      q(e, "[data-sheet-open]").click();
+      ok(q(e, "#app").classList.contains("sheet-open"));
+      eq(qa(e, "#nav-menu .hub-go").map(b => b.dataset.route).join(), "dashboard,hub/hub-bbs,sec-dash,aud-dash,hub/hub-ops,hub/hub-doc");
+      ok(!qa(e, "#nav-menu .nav-item").some(b => ["dashboard", "sec-dash", "aud-dash"].indexOf(b.dataset.route) >= 0), "목록에 대시보드 없음");
+      q(e, '#nav-menu .hub-go[data-route="hub/hub-ops"]').click();
+      eq(e.w.location.hash, "#/hub/hub-ops"); e.S.renderView();   // jsdom 은 hashchange 가 늦게 옴
+      ok(!q(e, "#app").classList.contains("sheet-open"), "시트 닫힘");
+      eq(q(e, '#tabbar .tab-btn[data-route]').dataset.route, "dashboard", "하단 탭 홈 = 대시보드");
+      setW(1440);
+    });
+    t("HV05 머리말 ⋯(ph-rare): PC 에서도 드문 기능은 ⋯ 안 · ⋯ 는 인쇄 바로 앞(인쇄는 맨 끝) · PC ⋯ = 드문 기능만(팝오버) · 모바일 ⋯ = 주 단추 밖 전부", () => {
+      setW(1440); loginAs(e, "hq"); e.S.renderNav();
+      e.w.SemisTraining.setState({ tab: "people", pid: "", sid: "" }); go(e, "training"); e.S.tidyView();
+      const head = q(e, "#view .page-head");
+      ok(head.classList.contains("ph-has-rare"), "드문 기능 표시");
+      eq(qa(e, "#view .page-head .ph-rare").map(b => b.id).join(), "tr-padd,tr-edu,tr-xls");
+      const more = q(e, "#view .page-head > .ph-more"), pb = q(e, "#view .page-head > [data-print-btn]");
+      ok(more && pb && more.nextElementSibling === pb && !pb.nextElementSibling, "⋯ → 인쇄(맨 끝)");
+      more.click();
+      ok(q(e, "#asheet.asheet-pop"), "PC = 단추 아래 팝오버");
+      eq(qa(e, "#asheet .asheet-item").map(b => b.textContent.trim()).join("|"), "인원 등록|이수 등록 페이지|만료 예정 명단 내려받기(Excel)");
+      e.S.closeActionSheet();
+      setW(390); go(e, "training"); e.S.tidyView();
+      q(e, "#view .page-head > .ph-more").click();
+      ok(!q(e, "#asheet.asheet-pop"), "모바일 = 아래 시트");
+      const its = qa(e, "#asheet .asheet-item").map(b => b.textContent.trim());
+      ok(its.indexOf("인원 등록") >= 0 && its.indexOf("이수 등록") < 0, "주 단추(이수 등록)는 밖 · 나머지는 안: " + its.join("|"));
+      e.S.closeActionSheet(); setW(1440);
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    t("HV06 카드 안 탭(SeMIS.ui.tabs): 화면 하나 = 탭 모양 하나 · 방향키 · Home/End · 고른 칸만 보임 · 인쇄는 모두 펼침", () => {
+      loginAs(e, "manager"); e.S.renderNav(); e.w.SemisAudDash.setTabs({ sched: "up" }); go(e, "aud-dash");
+      const tabs = qa(e, '#view [data-ct-tabs="ies"] [role="tab"]');
+      eq(tabs.length, 2, "점검 일정 = 다가오는 점검 · 달력");
+      const sel = () => tabs.findIndex(b => b.getAttribute("aria-selected") === "true");
+      const shown = () => qa(e, '#view [data-ct-pane^="ies:"]').filter(p => !p.hidden).map(p => p.dataset.ctPane);
+      eq(sel(), 0); eq(shown().length, 1);
+      tabs[0].dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      eq(sel(), 1, "→"); eq(shown()[0], "ies:" + tabs[1].dataset.ctTab);
+      ok(tabs[1].tabIndex === 0 && tabs[0].tabIndex === -1, "로빙 탭 인덱스");
+      tabs[1].dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "End", bubbles: true }));
+      eq(sel(), tabs.length - 1, "End");
+      tabs[tabs.length - 1].dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "Home", bubbles: true }));
+      eq(sel(), 0, "Home");
+      tabs[1].click(); eq(sel(), 1); eq(shown().join(), "ies:cal");
+      go(e, "aud-dash"); eq(qa(e, '#view [data-ct-tabs="ies"] [role="tab"]')[1].getAttribute("aria-selected"), "true", "다시 그려도 고른 탭 유지");
+      e.w.SemisAudDash.setTabs({ sched: "up" }); go(e, "aud-dash");
+      const t0 = qa(e, '#view [data-ct-tabs="ies"] [role="tab"]')[0];
+      ok(q(e, "#" + t0.getAttribute("aria-controls")).getAttribute("aria-labelledby") === t0.id, "탭 ↔ 칸 연결");
+      const css = read("css/main.css");
+      ok(/@media print \{\s*\.ct-tabs \{ display: none !important; \}\s*\.ct-pane\[hidden\] \{ display: block !important; \}/.test(css), "인쇄 = 모든 칸");
+      ok(!/class="[^"]*\bseg\b[^"]*"[^>]*role="tablist"/.test(read("js/secdash.js") + read("js/auddash.js")), "대시보드 탭은 한 모양");
+    });
+    t("HV07 설정성 기능 = 시스템관리자(⋯ 안): hq 는 단추도 함수도 없음 · 이력 보기는 hq 그대로", () => {
+      const CHECK = [["flight", "#fo-fleet-edit"], ["minutes", "#mn-folders"], ["phonebook", "#pb-groups"], ["daily-safety", "#pt-cfg"], ["inspection", "#sl-tpl"]];
+      e.S.data.phonebook = { groups: [{ id: "g1", name: "가", color: "#178236" }], rows: [{ id: "x1", group: "g1", name: "가", office: "032-000-0000" }] };
+      loginAs(e, "hq"); e.S.renderNav();
+      CHECK.forEach(([r, sel]) => { go(e, r); ok(!q(e, sel), "hq " + r + " " + sel); });
+      eq(e.w.SemisDashFx.tkItems().map(x => x.label).join(), "보안등급 변경 이력");
+      e.w.SemisSeclog.templatesForm(); e.w.SemisPatrol.cfgForm();
+      ok(q(e, "#modal-overlay").classList.contains("hidden"), "함수를 불러도 창 없음");
+      loginAs(e, "admin"); e.S.renderNav();
+      CHECK.forEach(([r, sel]) => { go(e, r); ok(q(e, sel + ".ph-rare"), "admin " + r + " " + sel + " = ⋯"); });
+      eq(e.w.SemisDashFx.tkItems().map(x => x.label).join(), "보안등급 변경 이력,보안등급 변경,무재해 기준일 설정");
+      e.S.data.phonebook = { groups: [], rows: [] };
+      loginAs(e, "hq");
+    });
+    t("HV08 글자 하한: --fs-min(.86rem = 12px) · 화면 글자는 max(var(--fs-min), …) · 인쇄는 원래 크기 · 레일 이름 = 패널 이름", () => {
+      const css = read("css/main.css");
+      ok(/:root \{[^}]*--fs-min: \.86rem;/.test(css), ":root --fs-min");
+      ok(/@media print \{ :root \{ --fs-min: 0rem; \} \}/.test(css), "인쇄 0");
+      const small = [];
+      for (const m of css.matchAll(/font-size:\s*([^;}]+)/g)) {
+        const v = m[1].trim();
+        if (/var\(--fs-min\)/.test(v)) continue;
+        const r = /^([\d.]+)rem/.exec(v);
+        if (r && Number(r[1]) < .86) small.push(v);
+      }
+      eq(small.join(","), "", "하한 밑 rem 글자");
+      ok(css.indexOf("font-size: max(var(--fs-min),") > 0);
+      loginAs(e, "hq"); e.S.renderNav();
+      qa(e, "#rail-hubs .rail-btn").forEach(b => {
+        const g = e.S.data.menus.find(m => m.id === b.dataset.hub);
+        eq(b.querySelector("span").textContent, g.short || g.label, "레일 이름");
+      });
+    });
+    t("HV09 대시보드 정돈: 현황 카드 ⋯(이력 · 설정) · '오늘' 한 줄 띠 · 만들기 단추 하나 · 구축 현황은 시스템 설정 · 블록 4개 이하", () => {
+      loginAs(e, "hq"); e.S.renderNav(); go(e, "dashboard");
+      eq(qa(e, "#view .page-head .btn-primary").length, 1, "머리말 주 단추 하나");
+      ok(!q(e, "#view .tk-btn") && q(e, "#btn-tk-more[aria-label]"), "현황 카드 단추 → ⋯");
+      ok(q(e, ".dash-now .today-strip[role=group]"), "'오늘' 띠");
+      ok(!q(e, "#view #dash-build"), "구축 현황 없음");
+      ok(blocks().length <= 4, "블록 " + blocks().length);
+      loginAs(e, "admin"); go(e, "settings"); q(e, '.tab[data-tab="data"]').click();
+      ok(q(e, "#dash-build") && /모듈 구축 현황/.test(q(e, "#view").textContent), "시스템 설정 · 시스템 정보에 구축 현황");
+      loginAs(e, "hq");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    await ta("HV10 허브 홈(게시판): 최근 글 = 세 게시판 합쳐 8건(semis_logi_bbs_recent · b 지정) · 읽지 않은 글 굵게 · 누르면 그 글", async () => {
+      const sv = makeServer();
+      const e2 = makeEnv({ fetch: sv.fetch });
+      await sv.loginAs(e2, "hq-pw-2222");
+      await tick(10);
+      const add = (b, title, mine) => { const id = ++sv.bbs.seq; sv.bbs.posts.push({ id, board: b, no: id, title, body: "", html: "<p>x</p>", files: [], cat: "", pin: false,
+        aid: mine ? "cargo-ss" : "cargo-user", by: "작성자", at: new Date(Date.now() - (100 - id) * 60000).toISOString(), up: null, views: 0, depth: 0, thread: id, path: "", parent: null }); return id; };
+      add("B001", "공지 하나", true); add("B002", "일반 둘"); const last = add("B003", "자료 셋");
+      e2.w.location.hash = "#/hub/hub-bbs"; e2.S.renderView();
+      ok(q(e2, '#view [data-hc="bbs-recent"] .hh-wait'), "불러오는 중");
+      await tick(60);
+      const rows = qa(e2, '#view [data-hc="bbs-recent"] .hh-row');
+      eq(rows.map(r => r.querySelector(".hh-x").textContent).join("|"), "자료 셋|일반 둘|공지 하나", "최근 순 · 세 게시판");
+      eq(rows[0].getAttribute("href"), "#/board/B003/" + last);
+      ok(rows[0].querySelector(".hh-x").classList.contains("is-unread") && !rows[2].querySelector(".hh-x").classList.contains("is-unread"), "읽지 않은 글");
+      eq(rows[0].querySelector(".hh-k").textContent, "자료실");
+      const call = sv.bbs.calls.filter(c => c.name === "recent").pop();
+      eq(JSON.stringify(call.body), '{"b":["B001","B002","B003"],"n":8}', "RPC 인자");
+      eq(qa(e2, "#view .hh-tile[data-hh-go^='board/']").length, 3, "게시판 칸 3");
+      eq(e2.errors.length, 0, e2.errors.join(" | "));
+      e2.Sync && e2.Sync.stop && e2.Sync.stop();
+      e2.w.close();
+    });
+    e.w.close();
   }
 
   /* ══════════ [W] 릴리스 위생 ══════════ */

@@ -123,12 +123,15 @@ window.SemisPanel = (() => {
     d.className = "pnl no-print" + (o.cls ? " " + o.cls : "");
     if (typeof o.onActs === "function") o.onActs(d.querySelector(".pnl-acts"), handle(o.id));
     d.querySelector(".pnl-more").hidden = !o.print && !o.actions;
+    d.classList.toggle("pnl-has-rare", !!d.querySelector(".pnl-acts .ph-rare"));
   }
   /* 모바일 — 머리 버튼(관리 동작 · Print)은 더보기(…) 시트로. 원래 버튼을 눌러 동작 · 권한 그대로 */
   function more(id, from) {
     const p = P[id];
     if (!p || !S() || !S().actionSheet) return;
-    const bs = Array.from(p.el.querySelectorAll(".pnl-acts button, .pnl-print")).filter(b => !b.hidden && !b.disabled);
+    /* PC 에서는 드물게 쓰는 것(.ph-rare)만, 모바일은 머리 버튼 전부 */
+    const pc = typeof window !== "undefined" && window.innerWidth >= 768;
+    const bs = Array.from(p.el.querySelectorAll(".pnl-acts button, .pnl-print")).filter(b => !b.hidden && !b.disabled && (!pc || b.classList.contains("ph-rare")));
     if (!bs.length) return;
     S().actionSheet(bs.map(b => ({
       label: String(b.textContent || "").replace(/\s+/g, " ").trim() || b.getAttribute("aria-label") || "실행",

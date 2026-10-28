@@ -288,7 +288,7 @@
       title: TITLE,
       meta: "인천화물터미널 B동",
       actions: `<span class="scr-meta" id="scr-meta">${esc(metaText(s))}</span>
-        <button type="button" class="btn btn-ghost btn-sm" id="scr-refresh" title="CARES 자료 새로고침">${icon("refresh", 16)}<span>새로고침</span></button>`
+        <button type="button" class="btn btn-ghost btn-sm ph-rare" id="scr-refresh" title="CARES 자료 새로고침">${icon("refresh", 16)}<span>새로고침</span></button>`
     }) + `<div id="scr-body">${bodyHTML(s)}</div>`;
     wire(root);
     $("#scr-refresh", root).onclick = () => refresh(true);
@@ -323,14 +323,14 @@
     }).join("");
     const rest = m.etd.filter(e => !placed[e.id]);
     const restTxt = rest.map(e => `<span class="ml-e" data-state="${esc(e.state)}" title="${esc(e.label + " · " + placeOf(e))}">${esc(e.short)}</span><small>${esc(placeOf(e))}</small>`).join("");
-    return `<button type="button" class="dscr-cell" data-dgo="scr-status" aria-label="검색 라인 배치 보기">
+    return `<button type="button" class="dscr-cell" data-dgo="scr-status" title="검색 라인 배치 보기">
         <span class="dscr-h">검색 라인</span>
         <span class="ml">${laneRows}${rest.length ? `<span class="ml-rest">${restTxt}</span>` : ""}</span>
       </button>`;
   }
   function cellInsp(m) {
     const K = C();
-    return `<button type="button" class="dscr-cell" data-dgo="scr-status" aria-label="일일점검 현황 보기">
+    return `<button type="button" class="dscr-cell" data-dgo="scr-status" title="일일점검 현황 보기">
         <span class="dscr-h">오늘 일일점검</span>
         <span class="dscr-n mono"><b>${m.done.length}</b>/${m.us.length}</span>
         <span class="ins-dots">${m.us.map(u => `<span class="ins-dot${todayInsp(m.idx, u) ? " on" : ""}" title="${esc(u.label + (todayInsp(m.idx, u) ? " 점검 완료" : " 미점검"))}">${esc(u.short)}</span>`).join("")}</span>
@@ -339,7 +339,7 @@
   }
   function cellFaults(m) {
     const K = C();
-    if (K.failed && K.failed("repairs")) return `<button type="button" class="dscr-cell" data-dgo="scr-equip" data-dtab="repairs" aria-label="고장·수리 이력 보기">
+    if (K.failed && K.failed("repairs")) return `<button type="button" class="dscr-cell" data-dgo="scr-equip" data-dtab="repairs" title="고장·수리 이력 보기">
         <span class="dscr-h">장비 고장<span class="dscr-hm">최근 6개월</span></span>
         <span class="dscr-sub"><b class="warn">고장 기록을 불러오지 못했습니다</b> · 새로고침으로 재조회</span>
       </button>`;
@@ -347,7 +347,7 @@
     const bmax = Math.max(1, ...bars.map(b => b.n));
     const lastR = K.state.repairs.slice().sort((a, b) => (b.reportedAtMs || 0) - (a.reportedAtMs || 0))[0];
     const lastU = lastR ? K.unitById(lastR.equipmentId) : null;
-    return `<button type="button" class="dscr-cell" data-dgo="scr-equip" data-dtab="repairs" aria-label="고장·수리 이력 보기">
+    return `<button type="button" class="dscr-cell" data-dgo="scr-equip" data-dtab="repairs" title="고장·수리 이력 보기">
         <span class="dscr-h">장비 고장<span class="dscr-hm">최근 6개월</span></span>
         <span class="mb" role="img" aria-label="${esc("월별 고장 신고 " + bars.map(b => b.label + " " + b.n + "건").join(", "))}">${bars.map(b => `<span class="mb-c" title="${esc(b.label + " " + b.n + "건")}">
           <span class="mb-v mono">${b.n || ""}</span><span class="mb-bar"><i style="height:${Math.round(b.n / bmax * 100)}%"></i></span><span class="mb-l">${esc(b.label)}</span></span>`).join("")}</span>
@@ -361,7 +361,7 @@
       const mt = K.METRICS.find(x => x.key === k);
       return mt ? mt.label + " " + fmtN(r.vals[k], mt.dec) : k;
     });
-    return `<button type="button" class="dscr-cell env-cell" data-dgo="scr-status" aria-label="${esc(r.name + " 검색 환경 보기")}">
+    return `<button type="button" class="dscr-cell env-cell" data-dgo="scr-status" title="${esc(r.name + " 검색 환경 보기")}">
         <span class="dscr-h"><span class="env-h">${dot(r.offline ? "off" : r.over.length ? "warn" : "ok")}${esc(r.name)}</span><span class="dscr-hm mono">${r.offline ? "오프라인" : esc(K.hm(r.at))}</span></span>
         ${r.offline ? '<span class="env-big off">수신 없음</span>'
           : `<span class="env-big mono"><b>${esc(fmtN(r.vals.temp, 1))}</b>℃<span class="env-rh"><b>${esc(fmtN(r.vals.humidity, 0))}</b>%</span></span>
@@ -372,7 +372,7 @@
   function cellCond(m) {
     const K = C();
     const cond = K.condensation(m.rows);
-    return `<button type="button" class="dscr-cell env-cell" data-dgo="scr-status" data-level="${esc(cond.level)}" aria-label="결로 판정 보기">
+    return `<button type="button" class="dscr-cell env-cell" data-dgo="scr-status" data-level="${esc(cond.level)}" title="결로 판정 보기">
         <span class="dscr-h">결로 판정</span>
         <span class="env-cond-lv">${ui.chip(LV[cond.level][0], LV[cond.level][1])}</span>
         <span class="dscr-n mono">${cond.margin != null ? `<b>${esc(fmtN(cond.margin, 1))}</b>℃ 여유` : "-"}</span>
@@ -399,7 +399,7 @@
     const sdOk = !!(sd && SeMIS.navVisible(sd) && SeMIS.hasModule("sec-dash"));
     return `<section class="dash-scr" id="dash-scr" aria-label="검색 환경">
       <div class="dc-head"><h2>검색 환경</h2><span class="dc-meta" id="dscr-meta">${esc(metaText(s))}</span>
-        <span class="spacer"></span>${sdOk ? '<button type="button" class="link-btn" data-dgo="sec-dash">화물보안</button>' : ""}<button type="button" class="link-btn" data-dgo="scr-status">현황</button></div>
+        <span class="spacer"></span><button type="button" class="link-btn" data-dgo="${sdOk ? "sec-dash" : "scr-status"}">전체 보기</button></div>
       <div class="dscr-body" id="dscr-body">${stripInner(s, "env")}</div>
     </section>`;
   }
@@ -408,9 +408,32 @@
     const s = C().state;
     return `<section class="dash-scr sd-scr" id="sd-scr" aria-label="화물 보안검색">
       <div class="dc-head"><h2>화물 보안검색</h2><span class="dc-meta" id="sdscr-meta">${esc(metaText(s))}</span>
-        <span class="spacer"></span><button type="button" class="link-btn" data-dgo="scr-status">현황</button><button type="button" class="link-btn" data-dgo="scr-equip">검색장비</button></div>
+        <span class="spacer"></span><button type="button" class="link-btn" data-dgo="scr-status" aria-label="보안검색 현황 전체 보기">전체 보기</button></div>
       <div class="dscr-body" id="sdscr-body">${stripInner(s, "ops")}</div>
     </section>`;
+  }
+  /* 메인 대시보드 '오늘' 줄의 검색 환경 칸(#td-scr) — 센서 기준 초과 · 결로 판정 한 줄 */
+  function todayEnv(s) {
+    if (!s.ts && !s.err) return { sub: "불러오는 중", val: "·", tone: "" };
+    if (s.err && !s.equips.length) return { sub: "CARES 연결 안 됨", val: "-", tone: "" };
+    const m = summary(s);
+    const off = m.rows.filter(r => r.offline).length;
+    const cond = C().condensation(m.rows);
+    const sub = (m.over ? "기준 초과 " + m.over : "기준 이내") + " · " + LV[cond.level][0] + (off ? " · 수신 없음 " + off : "");
+    const tone = cond.level === "danger" || m.over ? "bad" : cond.level === "watch" || off ? "warn" : "";
+    const val = cond.margin != null ? fmtN(cond.margin, 1) + "℃" : "-";
+    return { sub, val, tone };
+  }
+  function paintToday() {
+    if (typeof document === "undefined" || !document) return;
+    const el = document.getElementById("td-scr");
+    if (!el) return;
+    const t = todayEnv(C().state);
+    const sb = el.querySelector(".td-s"), vl = el.querySelector(".td-v");
+    if (sb) sb.textContent = t.sub;
+    if (vl) vl.innerHTML = '<b class="mono" title="결로 여유">' + esc(t.val) + "</b>";
+    el.classList.toggle("tone-bad", t.tone === "bad");
+    el.classList.toggle("tone-warn", t.tone === "warn");
   }
   function wireDash(box) {
     $$("[data-dgo]", box).forEach(b => b.onclick = () => {
@@ -423,6 +446,7 @@
   function paintDash() {
     if (typeof document === "undefined" || !document) return;   // 창이 닫힌 뒤 늦게 도착한 응답
     const s = C().state;
+    paintToday();
     [["dash-scr", "dscr", "env"], ["sd-scr", "sdscr", "ops"]].forEach(([id, pre, kind]) => {
       const box = document.getElementById(id);
       if (!box) return;
@@ -433,7 +457,9 @@
   }
   function mountDash() {
     const boxes = ["dash-scr", "sd-scr"].map(id => document.getElementById(id)).filter(Boolean);
-    if (!boxes.length) return;
+    const td = document.getElementById("td-scr");
+    if (!boxes.length && !td) return;
+    if (td) paintToday();
     boxes.forEach(wireDash);
     const v = C().state.ver;
     C().load({ parts: DASH_PARTS }).then(st2 => { if (st2.ver !== v) paintDash(); });
@@ -441,5 +467,5 @@
   }
 
   SeMIS.registerModule(MOD, { title: TITLE, render });
-  window.SemisScreen = { dashHTML, opsHTML, mountDash, paintDash, summary, monthBars, refresh, dashInner, metaText, todayInsp };
+  window.SemisScreen = { dashHTML, opsHTML, mountDash, paintDash, summary, monthBars, refresh, dashInner, metaText, todayInsp, todayEnv, paintToday };
 })();

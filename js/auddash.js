@@ -100,7 +100,7 @@
       tt: m.y + "년 " + m.label + " · 당사 실시 " + m.own + "건(" + m.hours + "시간) · 협력사 확인 " + m.vendor + "건" }));
     const seTot = se.reduce((n, m) => n + m.own + m.vendor, 0), hrs = se.reduce((n, m) => n + m.hours, 0);
     return `<section class="card sd-card ie-card" aria-label="교육 · 자격">
-      <h2 class="card-title">교육 · 자격<span class="dc-meta">재직 ${st.people}명</span><span class="spacer"></span>${TR().exportDue ? `<button type="button" class="link-btn ie-xls" data-ie-xls title="만료 · 만료 예정 명단(.xlsx)">${icon("down", 14)}<span>Excel</span></button>` : ""}<button type="button" class="link-btn" data-ie-go="training">보안교육 · 자격 관리</button></h2>
+      <h2 class="card-title"><span class="ct-t">교육 · 자격</span><span class="dc-meta">재직 ${st.people}명</span><span class="spacer"></span><button type="button" class="link-btn" data-ie-go="training" aria-label="교육 · 자격 전체 보기">전체 보기</button>${TR().exportDue ? `<button type="button" class="btn btn-ghost btn-sm c-rare ie-xls" data-ie-xls>${icon("down", 15)}<span>만료 예정 명단 내려받기(Excel)</span></button>` : ""}</h2>
       <div class="sd-grid ie-grid2">
         <div class="sd-pane">
           <div class="sd-ph"><b>직무별 자격 상태</b>${legend([{ name: "유효", c: STC.good }, { name: "갱신 필요", c: STC.warn }, { name: "정지 · 미이수", c: STC.bad }])}</div>
@@ -125,6 +125,21 @@
     </section>`;
   }
 
+  /* 수검 · 기록부 — 수검 대응과 보안 기록부를 한 카드의 탭으로 */
+  let recTab = "aud";
+  function recCard(t) {
+    const tabs = [], panes = {};
+    if (can("audit") && AU()) { tabs.push(["aud", "수검 대응"]); panes.aud = auditCard(t); }
+    if (can("inspection") && SL()) { tabs.push(["sl", "보안 기록부"]); panes.sl = seclogCard(t); }
+    if (!tabs.length) return "";
+    if (!tabs.some(([k]) => k === recTab)) recTab = tabs[0][0];
+    const strip = (h) => h.replace(/^\s*<section class="card sd-card ie-card"/, '<section class="ie-sub"');
+    return `<section class="card sd-card ie-card ie-rec" aria-label="수검 · 기록부">
+      <h2 class="card-title"><span class="ct-t">${tabs.length > 1 ? "수검 · 기록부" : esc(tabs[0][1])}</span></h2>
+      ${tabs.length > 1 ? ui.tabs("ier", tabs, recTab) : ""}
+      ${tabs.map(([k]) => tabs.length > 1 ? ui.pane("ier", k, recTab, strip(panes[k])) : strip(panes[k])).join("")}
+    </section>`;
+  }
   function auditCard(t) {
     const A = AU();
     const list = (Array.isArray(SeMIS.data.audits) ? SeMIS.data.audits : []).filter(a => a && a.id);
@@ -146,7 +161,7 @@
       </button>`;
     }).join("");
     return `<section class="card sd-card ie-card" aria-label="수검 대응">
-      <h2 class="card-title">수검 대응<span class="dc-meta">올해 ${thisYear}건</span><span class="spacer"></span><button type="button" class="link-btn" data-ie-go="audit">수검 대응 센터</button></h2>
+      <h2 class="card-title"><span class="ct-t">수검 대응</span><span class="dc-meta">올해 ${thisYear}건</span><span class="spacer"></span><button type="button" class="link-btn" data-ie-go="audit" aria-label="수검 대응 전체 보기">전체 보기</button></h2>
       <div class="sd-grid ie-grid2">
         <div class="sd-pane">
           <div class="sd-ph"><b>다가오는 수검</b></div>
@@ -183,7 +198,7 @@
     }).join("");
     const pend = ts.filter(x => { const s = S.status(x, t); return !s.event && !s.cur.done; });
     return `<section class="card sd-card ie-card" aria-label="보안 기록부">
-      <h2 class="card-title">보안 기록부<span class="dc-meta">최근 30일 ${n30}건 · 이상 ${ng30}건</span><span class="spacer"></span><button type="button" class="link-btn" data-ie-go="inspection">보안 기록부</button></h2>
+      <h2 class="card-title"><span class="ct-t">보안 기록부</span><span class="dc-meta">최근 30일 ${n30}건 · 이상 ${ng30}건</span><span class="spacer"></span><button type="button" class="link-btn" data-ie-go="inspection" aria-label="보안 기록부 전체 보기">전체 보기</button></h2>
       <div class="sd-grid ie-grid2">
         <div class="sd-pane">
           <div class="sd-ph"><b>양식별 기록 이행</b>${legend([{ name: "기록", c: STC.good }, { name: "누락", c: STC.bad }])}</div>
@@ -247,7 +262,7 @@
     const dd = now ? "진행 중" : n === null ? "-" : ddText(r.due, t);
     const date = !isISO(r.due) ? "" : r.due.slice(0, 4) === t.slice(0, 4) ? `${md(r.due)}(${wd(r.due)})` : `${r.due.slice(2, 4)}.${md(r.due)}`;   // 다른 해는 연도(요일 대신)
     let act = "";
-    if (r.own && w) act = `<button type="button" class="btn btn-sm ${cls ? "btn-primary" : "btn-ghost"} uc-go" data-ie-sl="${esc(r.sl)}"${r.patrol ? " data-ie-round" : ""}>${icon(r.patrol && !r.dim ? "plus" : "clipboard", 15)}<span>${r.dim ? "집계" : "점검표"}</span></button>`;
+    if (r.own && w) act = `<button type="button" class="btn btn-sm btn-ghost uc-go" data-ie-sl="${esc(r.sl)}"${r.patrol ? " data-ie-round" : ""}>${icon(r.patrol && !r.dim ? "plus" : "clipboard", 15)}<span>${r.dim ? "집계" : "점검표"}</span></button>`;
     else if (r.aud) act = `<span class="uc-recv">${icon("chevron", 15)}</span>`;
     const inner = `<span class="uc-d mono">${esc(dd)}</span>
         <span class="uc-dt mono">${esc(date)}</span>
@@ -285,16 +300,25 @@
         ${groups ? `<div class="uc-grps">${groups}</div>` : `<p class="uc-empty">예정된 점검이 없습니다.</p>`}
       </section>`;
     }
-    const ed = SeMIS.canEdit() && can("inspection") && SL()
-      ? `<button type="button" class="btn btn-ghost btn-sm m-ed" data-ie-cfg title="누가 · 누구를 · 주기">${icon("edit", 15)}<span>안내 편집</span></button>` : "";
-    return `<section class="card sd-card ie-card ie-up" aria-label="다가오는 점검">
-      <h2 class="card-title">다가오는 점검<span class="dc-meta">30일 안 ${U.soon}건${U.late ? " · 지남 " + U.late : ""}</span><span class="spacer"></span>${ed}</h2>
-      <div class="uc-split${recvSec && ownSec ? " is-two" : ""}">${recvSec}${ownSec}</div>
+    return `<div class="uc-split${recvSec && ownSec ? " is-two" : ""}">${recvSec}${ownSec}</div>`;
+  }
+  /* 점검 일정 — 다가오는 점검 · 달력을 한 카드의 탭으로(화면 블록 4개 이하). 안내 편집(설정)은 시스템관리자 ⋯ */
+  let schedTab = "up";
+  function schedCard(t) {
+    const U = upData(t);
+    const ed = SeMIS.isAdmin() && can("inspection") && SL()
+      ? `<button type="button" class="btn btn-ghost btn-sm c-rare" data-ie-cfg>${icon("edit", 15)}<span>점검 안내 편집</span></button>` : "";
+    const tabs = [["up", "다가오는 점검"], ["cal", "달력"]];
+    return `<section class="card sd-card ie-card ie-sched" aria-label="점검 일정">
+      <h2 class="card-title"><span class="ct-t">점검 일정</span><span class="dc-meta">30일 안 ${U.soon}건${U.late ? " · 지남 " + U.late : ""}</span><span class="spacer"></span>${ed}</h2>
+      ${ui.tabs("ies", tabs, schedTab)}
+      ${ui.pane("ies", "up", schedTab, upcomingCard(t), "ie-up")}
+      ${ui.pane("ies", "cal", schedTab, calInner(t), "ie-cal")}
     </section>`;
   }
   /* 안내 편집 — 보안 기록부 양식(주체 · 대상 · 주기) */
   function cfgPick() {
-    if (!SeMIS.canEdit()) return;
+    if (!SeMIS.isAdmin()) return;
     const opts = [];
     if (can("inspection") && SL()) opts.push(["sl", "보안 기록부 양식", "매일 · 월간 · 분기 점검 — 누가 · 누구를 · 주기 · 대상 묶음"]);
     if (opts.length === 1) { pickCfg(opts[0][0]); return; }
@@ -355,14 +379,14 @@
       const es = C.days[d] || [], out = d < C.R.first || d > C.R.last, dw = new Date(utc(d)).getUTCDay();
       const kinds = Object.keys(KORD).filter(k => es.some(e => e.kind === k));
       cells.push(`<div class="ic-c${out ? " is-out" : ""}${d === t ? " is-today" : ""}${d === autoDay ? " is-sel" : ""}${dw === 0 ? " is-sun" : dw === 6 ? " is-sat" : ""}${es.length ? " has-ev" : ""}" data-ie-day="${d}">
-        <button type="button" class="ic-n" data-ie-dayb="${d}" aria-label="${esc(md(d) + "(" + WD[dw] + ") " + (es.length ? es.length + "건" : "일정 없음"))}">${Number(d.slice(8))}</button>
+        <button type="button" class="ic-n" data-ie-dayb="${d}">${Number(d.slice(8))}<span class="sr-only">, ${esc(md(d) + "(" + WD[dw] + ") " + (es.length ? es.length + "건" : "일정 없음"))}</span></button>
         ${es.length ? `<span class="ic-dots" aria-hidden="true">${kinds.map(k => `<i class="is-${k}"></i>`).join("")}</span>
         <ul class="ic-evs">${es.slice(0, MAX).map(e => `<li><button type="button" class="ic-ev is-${e.kind}${e.ng ? " is-ng" : ""}" ${evAttr(e, w)} title="${esc(KLB[e.kind] + " · " + e.name + " — " + e.sub)}">${esc(e.name)}</button></li>`).join("")}${es.length > MAX ? `<li><button type="button" class="ic-more" data-ie-dayb="${d}">+${es.length - MAX}</button></li>` : ""}</ul>` : ""}
       </div>`);
     }
     const title = ym.slice(0, 4) + "년 " + Number(ym.slice(5)) + "월";
-    return `<h2 class="card-title">${ymOf(t) === ym ? "이번 달 점검 일정" : "점검 일정"}<span class="dc-meta">${esc(title)} · ${C.n}건</span><span class="spacer"></span>
-        <span class="ic-nav"><button type="button" class="btn btn-ghost btn-sm" data-ie-cm="-1" aria-label="이전 달">${icon("chevl", 15)}</button><button type="button" class="btn btn-ghost btn-sm" data-ie-cm="0"${ymOf(t) === ym ? " disabled" : ""}>이번 달</button><button type="button" class="btn btn-ghost btn-sm" data-ie-cm="1" aria-label="다음 달">${icon("chevron", 15)}</button></span></h2>
+    return `<div class="ic-head"><b>${esc(title)}</b><span class="dc-meta">${C.n}건</span><span class="spacer"></span>
+        <span class="ic-nav"><button type="button" class="btn btn-ghost btn-sm" data-ie-cm="-1" aria-label="이전 달">${icon("chevl", 15)}</button><button type="button" class="btn btn-ghost btn-sm" data-ie-cm="0"${ymOf(t) === ym ? " disabled" : ""}>이번 달</button><button type="button" class="btn btn-ghost btn-sm" data-ie-cm="1" aria-label="다음 달">${icon("chevron", 15)}</button></span></div>
       <div class="ic-lg">${[["recv", "ICNKF 수검"], ["due", "ICNKF 실행 기한"], ["late", "기한 경과"], ["done", "완료"]].map(([k, v]) => `<span class="is-${k}"><i></i>${esc(v)}</span>`).join("")}</div>
       <div class="ic-grid" role="group" aria-label="${esc(title)}">
         ${WD.map((x, i) => `<span class="ic-wd${i === 0 ? " is-sun" : i === 6 ? " is-sat" : ""}">${x}</span>`).join("")}
@@ -370,7 +394,7 @@
       </div>
       ${calAgenda(autoDay, C.days[autoDay] || [], t, w, !sel)}`;
   }
-  const calCard = (t) => `<section class="card sd-card ie-card ie-cal" aria-label="점검 일정">${calInner(t)}</section>`;
+  const calCard = (t) => `<section class="card sd-card ie-card ie-cal" aria-label="점검 일정">${calInner(t)}</section>`;   // 따로 쓰는 곳(시험) — 화면은 schedCard
   function paintCal() {
     const box = document.querySelector("#view .ie-cal");
     if (!box) return;
@@ -430,20 +454,22 @@
       if (typeof console !== "undefined") console.error("[aud-dash] " + name, err);
       cards.push(`<section class="card ie-card ie-err" aria-label="${esc(name)}"><h2 class="card-title">${esc(name)}</h2><p class="ie-ok">${icon("alert", 16)}<span>이 카드를 표시하지 못했습니다. 새로 고침 후에도 같으면 관리자에게 알려 주세요.</span></p></section>`);
     } };
-    if ((can("inspection") && SL()) || (can("audit") && AU())) { add("점검 일정", calCard); add("다가오는 점검", upcomingCard); }
+    if ((can("inspection") && SL()) || (can("audit") && AU())) add("점검 일정", schedCard);
     if (can("training") && TR()) add("교육 · 자격", trainCard);
-    if (can("audit") && AU()) add("수검 대응", auditCard);
-    if (can("inspection") && SL()) add("보안 기록부", seclogCard);
+    if ((can("audit") && AU()) || (can("inspection") && SL())) add("수검 · 기록부", recCard);
     let kpi = "";
     try { kpi = kpiHTML(t); } catch (err) { if (typeof console !== "undefined") console.error("[aud-dash] kpi", err); }
     root.innerHTML = ui.head({ title: TITLE, meta: "기준 " + dot(t) }) + kpi
       + (cards.length ? cards.join("") : `<section class="card">${ui.empty("볼 수 있는 점검 · 교육 메뉴가 없습니다.")}</section>`);
     wire(root);
+    ui.wireTabs(root, "ies", (id) => { schedTab = id; });
+    ui.wireTabs(root, "ier", (id) => { recTab = id; });
     /* SSI 서약 명단을 받아 오면(처음 한 번) 다시 그린다 */
     if (can("training") && TR() && TR().loadPledges) TR().loadPledges(false).then(ch => { if (ch && (location.hash.replace(/^#\//, "") === MOD)) SeMIS.renderView(); });
   }
 
   SeMIS.registerModule(MOD, { title: TITLE, render });
-  window.SemisAudDash = { render, kpiHTML, upData, upcomingCard, calData, calCard, cfgPick, trainCard, auditCard, seclogCard,
+  window.SemisAudDash = { render, kpiHTML, upData, upcomingCard, schedCard, recCard, calData, calCard, cfgPick, trainCard, auditCard, seclogCard,
+    setTabs(o) { o = o || {}; if (o.sched) schedTab = o.sched; if (o.rec) recTab = o.rec; },
     setToday(t) { fixedToday = isISO(t) ? t : ""; }, setCal(ym, sel) { calYM = /^\d{4}-\d{2}$/.test(ym || "") ? ym : ""; calSel = isISO(sel) ? sel : ""; } };
 })();

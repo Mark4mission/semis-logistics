@@ -3,7 +3,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.59.0";
+  const VERSION = "1.60.0";
   const APP_NAME = "H:drive";
   const APP_ALIAS = "ARGOS (Air-cargo Risk & Guard Operations System)";
   /* 데이터 캐시는 탭 sessionStorage 에만(탭 닫기·로그아웃 시 소멸). 화면 설정(LS_UI)만 localStorage */
@@ -1014,6 +1014,10 @@ const SeMIS = (() => {
       const bd = boardDef(boardIdOf(rt));
       if (bd) return bd.name;
     }
+    if (rt.indexOf("hub/") === 0) {
+      const g = DATA.menus.find(m => m && m.id === rt.slice(4) && m.type === "group");
+      if (g) return g.label;
+    }
     const def = modules[route];
     return (def && def.title) || "화면 출력";
   }
@@ -1171,7 +1175,7 @@ const SeMIS = (() => {
   };
   function applyViewWidth(view, route) {
     const r = String(route);
-    const tier = r.indexOf("embed/") === 0 ? "wide" : (r.indexOf("links/") === 0 || r.indexOf("board/") === 0) ? "mid" : (VIEW_WIDTH[route] || "");
+    const tier = r.indexOf("embed/") === 0 ? "wide" : (r.indexOf("links/") === 0 || r.indexOf("board/") === 0 || r.indexOf("hub/") === 0) ? "mid" : (VIEW_WIDTH[route] || "");
     view.classList.toggle("view-wide", tier === "wide");
     view.classList.toggle("view-mid", tier === "mid");
   }
@@ -1214,7 +1218,7 @@ const SeMIS = (() => {
     const rt = String(route || "");
     if (route && route !== "dashboard" && rt.indexOf("embed/") !== 0) {
       const mn = menuOfRoute(rt);
-      const hid = mn ? hubOfDeep(mn) : null;
+      const hid = rt.indexOf("hub/") === 0 ? rt.slice(4) : mn ? hubOfDeep(mn) : null;
       const g = hid ? DATA.menus.find(x => x.id === hid && x.type === "group") : null;
       if (g) hub = g;
     }
@@ -1268,6 +1272,14 @@ const SeMIS = (() => {
     } else if (route.indexOf("links/") === 0) {
       renderSubtabs("");
       renderLinkGroup(view, route.slice(6));
+    } else if (route.indexOf("hub/") === 0) {
+      renderSubtabs("");
+      const hid = route.slice(4);
+      if (!window.SemisHub || !hubList().some(g => g.id === hid)) {
+        toast("이 허브를 볼 수 없습니다.", true);
+        markHub(view, "dashboard");
+        modules.dashboard.render(view);
+      } else window.SemisHub.render(view, hid);
     } else if (route.indexOf("board/") === 0) {
       renderSubtabs("");
       const bd = boardDef(boardIdOf(route));
@@ -1404,9 +1416,9 @@ const SeMIS = (() => {
     }
     const kids = linkChildren(mn.id);
     const actions = (isAdmin() && modules.shortcuts
-      ? '<button type="button" class="btn btn-ghost btn-sm" data-sc-manage="' + esc(mn.id) + '">' + icon("edit", 16) + '<span>편집</span></button>' : "") +
+      ? '<button type="button" class="btn btn-ghost btn-sm ph-rare" data-sc-manage="' + esc(mn.id) + '">' + icon("edit", 16) + '<span>링크 편집</span></button>' : "") +
       (mn.url
-      ? '<a class="btn btn-soft btn-sm" href="' + esc(mn.url) + '" target="_blank" rel="noopener">' +
+      ? '<a class="btn btn-ghost btn-sm" href="' + esc(mn.url) + '" target="_blank" rel="noopener">' +
         icon("external", 16) + '<span>전체 열기</span></a>' : "");
     root.innerHTML = ui.head({
       title: mn.label,
@@ -1434,6 +1446,9 @@ const SeMIS = (() => {
     return DATA.menus.slice().sort((a, b) => (a.seq || 0) - (b.seq || 0));
   }
   const HOME_HUB = "hub-home";
+  /* 허브 → 그 허브의 전용 대시보드 모듈. 패널 목록에는 그리지 않는다(레일 · 허브 이름이 연다) — 메뉴 자료(권한 · 숨김)는 그대로 */
+  const HUB_DASH = { "hub-home": "dashboard", "hub-sec": "sec-dash", "hub-aud": "aud-dash" };
+  const isHubDash = (m) => !!m && m.type === "module" && !!m.module && HUB_DASH[hubOf(m)] === m.module;
   let activeHub = null;
   const isLive = (m) => m.type === "module" && !(m.planned && !modules[m.module]);
   const isPlannedMenu = (m) => m.type === "module" && !!m.planned && !modules[m.module];
@@ -1493,8 +1508,9 @@ const SeMIS = (() => {
       !(m.type === "module" && m.module === "dashboard") && navVisible(m));
   }
   const UTIL_ICO = { vault: "lock", settings: "sliders" };
+  /* 레일 이름 = 패널 제목과 같은 글자(좁으면 CSS 가 두 줄로) */
   function railLabel(g) {
-    return g.short || String(g.label || "").replace(/\s*[·/]\s*/g, "").replace(/\s+/g, "");
+    return g.short || String(g.label || "");
   }
   function navBadgeOf(m) {
     const def = m.type === "module" ? modules[m.module] : null;
@@ -1561,39 +1577,45 @@ const SeMIS = (() => {
     return !isMobile() && liveCount === 0;
   }
   const LINKS_SHOWN = 5;   // 허브 패널 바로가기는 5개까지, 나머지는 펼쳐 보기
+  /* 바로가기 줄 — 다른 허브에서 고정한 화면(핀) · 이 허브의 외부 사이트를 한 목록으로 */
+  function pinItemHTML(m) {
+    const pinIco = '<span class="pin-ico">' + icon("pin", 15) + '</span>';
+    if (m.type === "link" && m.open !== "frame" && !isLinkGroup(m))
+      return '<a class="nav-pin" href="' + esc(m.url) + '" target="_blank" rel="noopener">' + pinIco + '<span>' + esc(m.label) + '</span></a>';
+    const r = m.type === "board" ? boardRoute(m) : m.type === "link" ? (isLinkGroup(m) ? "links/" : "embed/") + m.id : m.module;
+    return '<button type="button" class="nav-pin" data-go="' + esc(r) + '">' + pinIco + '<span>' + esc(m.label) + '</span></button>';
+  }
   function hubSectionHTML(g, entries) {
+    entries = entries.filter(m => !isHubDash(m));   // 허브 대시보드는 레일 · 허브 이름이 연다
     const live = entries.filter(m => m.type === "bundle" || m.type === "board" || (m.type === "module" && isLive(m)));
     const planned = entries.filter(isPlannedMenu);
     const links = entries.filter(m => m.type === "link");
     const pins = g.id === homeHubId()
       ? sortedMenus().filter(m => m.quick && m.type !== "group" && navVisible(m) && !isPlannedMenu(m) && hubOf(m) !== g.id) : [];
     const open = plannedOpenPref(g.id, live.length);
+    const home = hubHomeRoute(g.id);
     let h = '<section class="hub" data-hub="' + esc(g.id) + '" aria-label="' + esc(g.label) + '">' +
-      '<div class="hub-head"><span class="hub-ico">' + icon(g.ico, 18) + '</span><h2 class="hub-title">' + esc(g.label) + '</h2></div>';
+      '<div class="hub-head"><span class="hub-ico">' + icon(g.ico, 18) + '</span><h2 class="hub-title">' +
+      (home ? '<button type="button" class="hub-go" data-route="' + esc(home) + '" title="' + esc(g.label) + (home.indexOf("hub/") === 0 ? " 첫 화면" : " 대시보드") + '"><span>' + esc(g.label) + '</span>' +
+        '<span class="hub-go-ic" aria-hidden="true">' + icon("chevron", 16) + '</span></button>' : esc(g.label)) + '</h2></div>';
     if (live.length) h += '<div class="hub-items">' + live.map(navItemHTML).join("") + '</div>';
-    if (pins.length) h += '<div class="hub-block hub-pins"><div class="hub-block-t">자주 쓰는 메뉴</div>' +
-      pins.map(m => {
-        const pinIco = '<span class="pin-ico">' + icon("pin", 15) + '</span>';
-        if (m.type === "link" && m.open !== "frame" && !isLinkGroup(m))
-          return '<a class="nav-pin" href="' + esc(m.url) + '" target="_blank" rel="noopener">' + pinIco + '<span>' + esc(m.label) + '</span></a>';
-        const r = m.type === "board" ? boardRoute(m) : m.type === "link" ? (isLinkGroup(m) ? "links/" : "embed/") + m.id : m.module;
-        return '<button type="button" class="nav-pin" data-go="' + esc(r) + '">' + pinIco + '<span>' + esc(m.label) + '</span></button>';
-      }).join("") + '</div>';
     if (planned.length && isAdmin()) h += '<div class="hub-block hub-planned' + (open ? " open" : "") + '">' +
       '<button type="button" class="hub-block-t hub-toggle" data-toggle-planned="' + esc(g.id) + '" aria-expanded="' + (open ? "true" : "false") + '">' +
       '<span>준비 중인 모듈</span><b class="soon-n">' + planned.length + '</b><span class="chev">' + icon("chevdown", 15) + '</span></button>' +
       '<div class="planned-list">' + planned.map(navItemHTML).join("") + '</div></div>';
-    /* 바로가기 블록 — 전체 화면(#/shortcuts) 버튼, 시스템관리자는 이 허브에 바로 추가 */
+    /* 바로가기 블록 — 고정한 화면 + 외부 사이트(고정 먼저). 전체 화면(#/shortcuts) 단추, 시스템관리자는 이 허브에 바로 추가 */
     const scMenu = modules.shortcuts ? menuForModule("shortcuts") : null;
     const scOk = !!scMenu && canSee(scMenu);
     const addOk = scOk && isAdmin();
-    if (links.length || (addOk && g.id === homeHubId())) {
-      h += '<div class="hub-block hub-links"><div class="hub-block-t"><span class="hb-t">외부 사이트</span>' +
-        (scOk ? '<button type="button" class="hb-act" data-go="shortcuts" title="외부 사이트 전체(바로가기 화면)" aria-label="외부 사이트 전체">' + icon("grid", 15) + '</button>' : "") +
+    const lks = links.filter(m => m.quick).concat(links.filter(m => !m.quick));
+    const rows = pins.map(pinItemHTML).concat(lks.map(navItemHTML));
+    if (rows.length || (addOk && g.id === homeHubId())) {
+      h += '<div class="hub-block hub-links"><div class="hub-block-t"><span class="hb-t">바로가기</span>' +
+        (scOk ? '<button type="button" class="hb-act" data-go="shortcuts" title="바로가기 전체" aria-label="바로가기 전체">' + icon("grid", 15) + '</button>' : "") +
         (addOk ? '<button type="button" class="hb-act" data-sc-add="' + esc(g.id) + '" title="외부 사이트 추가" aria-label="' + esc(g.label) + '에 외부 사이트 추가">' + icon("plus", 16) + '</button>' : "") +
-        '</div>' + links.map((m, i) => i < LINKS_SHOWN ? navItemHTML(m) : navItemHTML(m).replace('class="nav-item', 'class="nav-item lk-x')).join("") +
-        (links.length > LINKS_SHOWN ? '<button type="button" class="lk-toggle" data-lk-all aria-expanded="false">' + icon("chevdown", 14) +
-          '<span>' + (links.length - LINKS_SHOWN) + '개 더 보기</span></button>' : "") + '</div>';
+        '</div>' + rows.map((x, i) => i < LINKS_SHOWN ? x : x.replace(/class="(nav-item|nav-pin)/, 'class="$1 lk-x')).join("") +
+        (rows.length > LINKS_SHOWN ? '<button type="button" class="lk-toggle" data-lk-all aria-expanded="false">' + icon("chevdown", 14) +
+          '<span>' + (rows.length - LINKS_SHOWN) + '개 더 보기</span></button>' : "") + '</div>';
     }
     return h + '</section>';
   }
@@ -1691,20 +1713,24 @@ const SeMIS = (() => {
       b.setAttribute("aria-pressed", on ? "true" : "false");
     });
   }
-  /* 허브 대시보드 — 레일에서 허브를 누르면 허브 대시보드로 이동(권한·숨김 따름).
+  /* 허브 대시보드 — 레일 단추 · 패널의 허브 이름 · 모바일 전체 시트의 허브 줄이 바로 연다(모든 허브 같은 동작).
+     전용 대시보드가 있는 허브는 그 화면, 없거나 볼 수 없으면(권한 · 숨김) 공통 허브 홈 #/hub/<허브 id>(js/hubhome.js).
      이미 그 화면이면 허브 패널만 연다(좁은 화면에서 하위 메뉴로 가는 길) */
-  const HUB_HOME = { "hub-sec": "sec-dash", "hub-aud": "aud-dash" };
   function hubHomeRoute(id) {
-    const r = HUB_HOME[id];
-    if (!r || !modules[r]) return null;
-    const mn = menuForModule(r);
-    return mn && navVisible(mn) && hubOf(mn) === id ? r : null;
+    if (!id || !DATA) return null;
+    const r = HUB_DASH[id];
+    if (r && modules[r]) {
+      const mn = menuForModule(r);
+      if (mn && navVisible(mn) && hubOf(mn) === id) return r;
+    }
+    return hubList().some(g => g.id === id) ? "hub/" + id : null;
   }
   function openHub(id) {
     const home = hubHomeRoute(id);
     if (home && currentRoute() !== home) {
       activeHub = id;
       applyHub();
+      closeOverlays();
       navigate(home);
       return;
     }
@@ -1784,7 +1810,7 @@ const SeMIS = (() => {
     if (!el) return;
     const g = hub ? DATA.menus.find(x => x.id === hub) : null;
     const hubName = g ? g.label : (mn && !mn.parent ? "관리" : "");
-    const leaf = mn ? mn.label : ((modules[route] && modules[route].title) || (boardDef(boardIdOf(route)) || {}).name || "");
+    const leaf = mn ? mn.label : route.indexOf("hub/") === 0 ? (g ? g.label : "") : ((modules[route] && modules[route].title) || (boardDef(boardIdOf(route)) || {}).name || "");
     const up = mn && mn.parent ? DATA.menus.find(x => x && x.id === mn.parent && (x.type === "link" || x.type === "bundle")) : null;
     el.innerHTML = (hubName && hubName !== leaf ? '<span class="cr-hub">' + esc(hubName) + '</span>' + icon("chevron", 14) : "") +
       (up && up.label !== leaf ? '<span class="cr-hub">' + esc(up.label) + '</span>' + icon("chevron", 14) : "") +
@@ -1803,7 +1829,12 @@ const SeMIS = (() => {
     $$(".rail-btn.util").forEach(el => el.classList.toggle("active", el.dataset.route === route));
     const role = currentUser && currentUser.role;
     const mn = menuOfRoute(route);
-    const hub = mn ? hubOfDeep(mn) : null;
+    const hub = route.indexOf("hub/") === 0 ? route.slice(4) : mn ? hubOfDeep(mn) : null;
+    $$(".hub-go[data-route]").forEach(el => {
+      const on = el.dataset.route === route;
+      el.classList.toggle("active", on);
+      if (on) el.setAttribute("aria-current", "page"); else el.removeAttribute("aria-current");
+    });
     $$(".tab-btn[data-route]").forEach(el => {
       el.classList.toggle("active", el.dataset.route === route || (!!el.dataset.hub && el.dataset.hub === hub));
     });
@@ -2100,6 +2131,38 @@ const SeMIS = (() => {
       return ' data-mf="' + esc(k) + '"' + (force || mfOpen.has(currentRoute() + "|" + k) ? " data-mf-on" : "");
     },
     mfSet(el, on) { mfToggle(el, on); },
+    /* 카드 안 탭 — 한 카드에 묶은 여러 내용(블록 4개 이하 규칙). tabs = [[id, 이름]], 내용 칸은 data-ct-pane="key:id"(고르지 않은 칸은 hidden).
+       wireTabs(root, key, onPick) 가 누르기 · ←/→ · Home/End 를 붙인다. 인쇄는 CSS 가 모든 칸을 편다 */
+    tabs(key, tabs, sel) {
+      return '<div class="eq-tabs ct-tabs" role="tablist" data-ct-tabs="' + esc(key) + '">' + tabs.map(([id, lb]) =>
+        '<button type="button" role="tab" class="eq-tab" id="ctt-' + esc(key + "-" + id) + '" aria-controls="ctp-' + esc(key + "-" + id) + '" aria-selected="' + (id === sel) +
+        '" tabindex="' + (id === sel ? 0 : -1) + '" data-ct-tab="' + esc(id) + '">' + esc(lb) + '</button>').join("") + '</div>';
+    },
+    pane(key, id, sel, html, cls) {
+      return '<div class="ct-pane' + (cls ? " " + esc(cls) : "") + '" role="tabpanel" id="ctp-' + esc(key + "-" + id) + '" aria-labelledby="ctt-' + esc(key + "-" + id) +
+        '" data-ct-pane="' + esc(key + ":" + id) + '"' + (id === sel ? "" : " hidden") + '>' + html + '</div>';
+    },
+    wireTabs(root, key, onPick) {
+      const tl = root && root.querySelector('[data-ct-tabs="' + key + '"]');
+      if (!tl) return;
+      const tabs = $$("[data-ct-tab]", tl);
+      const pick = (b, focus) => {
+        const id = b.dataset.ctTab;
+        tabs.forEach(x => { const on = x === b; x.setAttribute("aria-selected", String(on)); x.tabIndex = on ? 0 : -1; });
+        $$('[data-ct-pane^="' + key + ':"]', root).forEach(p => { p.hidden = p.dataset.ctPane !== key + ":" + id; });
+        if (focus) b.focus();
+        if (onPick) onPick(id);
+      };
+      tabs.forEach((b, i) => {
+        b.onclick = () => pick(b);
+        b.onkeydown = (e) => {
+          const n = e.key === "ArrowRight" ? i + 1 : e.key === "ArrowLeft" ? i - 1 : e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : null;
+          if (n == null) return;
+          e.preventDefault();
+          pick(tabs[(n + tabs.length) % tabs.length], true);
+        };
+      });
+    },
     /* 점검 표시 관리(시스템관리자) — 표시 · 흐리게 · 숨김.
        rows[{ id, name, sub, m(""|"dim"|"hide"), msg }] · onSave(map): map = { id: { m, msg? } }(표시는 넣지 않음 · msg 는 기본 문구와 다를 때만) */
     VIS_MSG: "하드카피본 확인",
@@ -2235,9 +2298,12 @@ const SeMIS = (() => {
       if (gl) tt.insertAdjacentHTML("afterend", ui.tip(gl, "용어 풀이").replace('class="help-tip"', 'class="help-tip term-tip no-print"'));
     }
     const btns = headButtons(head);
-    const main = btns.find(b => b.classList.contains("btn-primary") && !b.disabled) || null;
+    /* ph-rare = 드물게 쓰는 기능 — 어느 폭에서나 숨기고 ⋯ 안에(PC 는 이것만, 모바일은 주 단추 밖 전부) */
+    const rare = btns.filter(b => b.classList.contains("ph-rare"));
+    const main = btns.find(b => b.classList.contains("btn-primary") && !b.disabled && !b.classList.contains("ph-rare")) || null;
     const rest = btns.filter(b => b !== main);
     btns.forEach(b => b.classList.toggle("ph-hide", b !== main));
+    head.classList.toggle("ph-has-rare", rare.length > 0);
     const view = head.closest("#view");
     const eds = hasEdits(view);
     let done = head.querySelector(":scope > .ph-done");
@@ -2264,21 +2330,46 @@ const SeMIS = (() => {
       more.title = "더보기";
       more.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5.5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="18.5" cy="12" r="1.8"/></svg>';
       more.onclick = () => {
-        const list = headButtons(head).filter(b => b.classList.contains("ph-hide"));
-        const items = list.map(b => ({
-          label: txtOf(b).replace(/^[+＋]\s*/, "") || b.title || b.getAttribute("aria-label") || "실행",
-          icon: b.querySelector("svg") ? b.querySelector("svg").outerHTML : "",
-          danger: b.classList.contains("btn-danger"), disabled: !!b.disabled,
-          run: () => b.click()
-        }));
-        if (hasEdits(head.closest("#view"))) {
+        const mob = isMobile();
+        const list = headButtons(head).filter(b => mob ? b.classList.contains("ph-hide") : b.classList.contains("ph-rare"));
+        const items = list.map(sheetItem);
+        if (mob && hasEdits(head.closest("#view"))) {
           const on = editingNow();
           items.unshift({ label: on ? "편집 끝내기" : "편집", icon: icon(on ? "check" : "edit"), run: () => setEditMode(!on) });
         }
         actionSheet(items, { title: txtOf(head.querySelector(".page-title")) }, more);
       };
-      head.appendChild(more);
     }
+    /* 자리: 인쇄 단추 바로 앞(인쇄는 늘 맨 오른쪽 끝) */
+    const pb = head.querySelector(":scope > [data-print-btn]");
+    if (pb ? more.nextElementSibling !== pb : more.parentNode !== head) head.insertBefore(more, pb || null);
+  }
+  /* 원래 단추 → 액션 시트 항목(누르면 원래 단추를 click() — 권한 · 동작 그대로) */
+  function sheetItem(b) {
+    return {
+      label: txtOf(b).replace(/^[+＋]\s*/, "") || b.title || b.getAttribute("aria-label") || "실행",
+      icon: b.querySelector("svg") ? b.querySelector("svg").outerHTML : "",
+      danger: b.classList.contains("btn-danger") || b.classList.contains("danger"), disabled: !!b.disabled,
+      run: () => b.click()
+    };
+  }
+  /* 카드 머리의 드문 기능(.c-rare) — 늘 숨기고 머리 끝 ⋯ 하나로 */
+  function tidyCardHeads(view) {
+    $$(".card-title, .dc-head", view).forEach(h => {
+      const rare = () => $$(".c-rare", h).filter(b => !b.hidden && !b.disabled && b.style.display !== "none");
+      let mo = h.querySelector(":scope > .c-more");
+      if (!rare().length) { if (mo) mo.remove(); return; }
+      if (mo) return;
+      mo = document.createElement("button");
+      mo.type = "button";
+      mo.className = "icon-btn c-more no-print";
+      const ttl = (() => { const c = h.cloneNode(true); $$("button, a, .dc-meta, .badge, .ct-n", c).forEach(x => x.remove()); return txtOf(c); })();
+      mo.setAttribute("aria-label", (ttl ? ttl + " " : "") + "더보기");
+      mo.title = "더보기";
+      mo.innerHTML = icon("more", 18);
+      mo.onclick = () => actionSheet(rare().map(sheetItem), { title: ttl }, mo);
+      h.appendChild(mo);
+    });
   }
   /* 모바일 접기 — ui.mf() 로 표시한 묶음. 머리 끝에 펼침 단추(키보드 · 화면낭독용)를 붙이고 상태를 맞춘다 */
   const mfOpen = new Set();
@@ -2411,6 +2502,7 @@ const SeMIS = (() => {
         if (sc && r.getAttribute("tabindex") !== "0") { r.setAttribute("tabindex", "0"); r.setAttribute("role", "group"); r.setAttribute("aria-label", "요약 수치"); }
         else if (!sc && r.hasAttribute("tabindex")) { r.removeAttribute("tabindex"); r.removeAttribute("role"); r.removeAttribute("aria-label"); }
       });
+      tidyCardHeads(view);
       tidyTables(view);
       tidyFolds(view);
       tidyTabs(view);
@@ -2452,8 +2544,10 @@ const SeMIS = (() => {
     const old = document.getElementById("asheet");
     if (old && old.parentNode) old.parentNode.removeChild(old);
     sheetBack = from || null;
+    /* PC(768 이상)에서 단추로 연 목록은 그 단추 아래 작은 목록(팝오버), 모바일은 아래에서 올라오는 시트 */
+    const pop = !!(from && from.getBoundingClientRect) && !isMobile();
     const w = document.createElement("div");
-    w.id = "asheet"; w.className = "asheet no-print";
+    w.id = "asheet"; w.className = "asheet no-print" + (pop ? " asheet-pop" : "");
     w.innerHTML = '<div class="asheet-bd" data-as-close></div>' +
       '<div class="asheet-panel" role="dialog" aria-modal="true" tabindex="-1" aria-label="' + esc(opts.title || "더보기") + '">' +
       '<div class="asheet-list">' + (opts.title ? '<div class="asheet-t">' + esc(opts.title) + '</div>' : "") + items.map((it, i) =>
@@ -2465,10 +2559,40 @@ const SeMIS = (() => {
     $$("[data-as]", w).forEach(b => {
       b.onclick = () => { const it = items[Number(b.dataset.as)]; sheetBack = null; closeActionSheet(); if (it && it.run) it.run(); };
     });
-    w.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); e.preventDefault(); closeActionSheet(); } });
+    w.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { e.stopPropagation(); e.preventDefault(); closeActionSheet(); return; }
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp" && e.key !== "Home" && e.key !== "End") return;
+      const its = $$(".asheet-item:not([disabled])", w);
+      if (!its.length) return;
+      e.preventDefault();
+      const i = its.indexOf(document.activeElement);
+      const n = e.key === "Home" ? 0 : e.key === "End" ? its.length - 1 : e.key === "ArrowDown" ? (i + 1) % its.length : (i <= 0 ? its.length - 1 : i - 1);
+      its[n].focus();
+    });
+    if (pop) placePop(w, from);
     const raf = (typeof window !== "undefined" && window.requestAnimationFrame) || ((f) => setTimeout(f, 16));
-    raf(() => { w.classList.add("on"); const pn = w.querySelector(".asheet-panel"); if (pn) { try { pn.focus({ preventScroll: true }); } catch (e) {} } });
+    raf(() => {
+      w.classList.add("on");
+      const first = pop ? w.querySelector(".asheet-item:not([disabled])") : null;
+      const pn = first || w.querySelector(".asheet-panel");
+      if (pn) { try { pn.focus({ preventScroll: true }); } catch (e) {} }
+    });
     return w;
+  }
+  /* 팝오버 자리 — 단추 오른쪽 끝에 맞춰 아래(모자라면 위). 시트가 패널(dialog) 안에 붙어도 맞도록 시트 상자 기준 좌표 */
+  function placePop(w, from) {
+    const pn = w.querySelector(".asheet-panel");
+    if (!pn) return;
+    const r = from.getBoundingClientRect(), base = w.getBoundingClientRect();
+    const vw = base.width || window.innerWidth || 1024, vh = base.height || window.innerHeight || 768;
+    const pw = pn.offsetWidth || 240, ph = pn.offsetHeight || 200;
+    let left = r.right - base.left - pw;
+    left = Math.max(8, Math.min(left, vw - pw - 8));
+    let top = r.bottom - base.top + 6;
+    if (top + ph > vh - 8 && r.top - base.top - ph - 6 > 8) top = r.top - base.top - ph - 6;
+    pn.style.left = left + "px";
+    pn.style.top = Math.max(8, top) + "px";
+    pn.style.transformOrigin = (r.right - base.left - left) + "px " + (top > r.top - base.top ? "0" : "100%");
   }
 
   /* ── 사용법 안내 — 검색 → 접수 카운터 → 아르고 순서로 그 단추를 비추는 말풍선(계정별 처음 한 번, 상단바 '사용법'으로 다시) ── */
@@ -2579,7 +2703,7 @@ const SeMIS = (() => {
     registerSupport, renderSupport, openSupport, supportOk, registerPanelRoute, PANEL_ONLY, tidyTables, onRerender, onSupport,
     SUP_LABEL, SUP_DESC, keyHint, supBadge, startTour, endTour, fontScale, setFontScale, glossOf, navPrefs, setNavPref,
     icon, ui, ICONS, HUB_ICONS, hubOf, hubOfDeep, hubList, hubEntries, utilEntries, homeHubId,
-    isLinkGroup, linkChildren, isIntranet, hostOf, openHub, hubHomeRoute, togglePanel, openSheet,
+    isLinkGroup, linkChildren, isIntranet, hostOf, openHub, hubHomeRoute, HUB_DASH, isHubDash, togglePanel, openSheet, navBadgeOf, isLive, isPlannedMenu, boardRoute,
     LINK_ICONS, LINK_TONES, favOk, linkIconHTML, linkCardHTML, menuForModule,
     closeSidebar, closeOverlays, bundleOf, bundleMembers, hubModules, renderSubtabs,
     isMobile, actionSheet, closeActionSheet, tidyView, labelTable, setEditMode, mfToggle,

@@ -121,7 +121,7 @@
 
   function headActions(b) {
     return (canWrite(b) ? `<button type="button" class="btn btn-primary" id="bb-write">${icon("edit", 16)}<span>글쓰기</span></button>` : "") +
-      (isAdmin() ? `<button type="button" class="link-btn head-link m-hide" id="bb-cfg">게시판 설정</button>` : "");
+      (isAdmin() ? `<button type="button" class="btn btn-ghost btn-sm ph-rare" id="bb-cfg">${icon("sliders", 16)}<span>게시판 설정</span></button>` : "");
   }
   function wireHead(view, b) {
     const w = $("#bb-write", view); if (w) w.onclick = () => write(b.id);
