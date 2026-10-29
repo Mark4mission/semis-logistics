@@ -1659,10 +1659,10 @@ function makeServer(opts = {}) {
       eq(Sync.status, "online");
     });
     await ta("Y04 로컬 변경 → 디바운스 push · 서버가 작성자 계정 기록", async () => {
-      e.S.data.safetyBoard.since = "2026-01-01"; e.S.save();
+      e.S.data.secPost.asOf = "2026-01-01"; e.S.save();   // hq 가 쓰는 컬렉션(설정 컬렉션은 v1.60.1 부터 시스템관리자)
       await Sync._flush();
-      const row = server.rows.find(r => r.key === "safetyBoard");
-      eq(row.value.since, "2026-01-01");
+      const row = server.rows.find(r => r.key === "secPost");
+      eq(row.value.asOf, "2026-01-01");
       ok(row.updated_by.indexOf("cargo-ss/") === 0, row.updated_by);
     });
     t("Y05 원격 변경 반영(applyRemote) → 화면 갱신", () => {
@@ -1739,14 +1739,23 @@ function makeServer(opts = {}) {
     });
     await ta("Y13 서버가 쓰기를 거절(권한) → 로컬을 서버 값으로 되돌리고 알림", async () => {
       server.forceDeny = true;
-      const before = JSON.stringify(e.S.data.safetyBoard);
-      e.S.data.safetyBoard.note = "거절될 변경"; e.S.save();
+      const before = JSON.stringify(e.S.data.secPost);
+      e.S.data.secPost.note = "거절될 변경"; e.S.save();
       await Sync._flush().catch(() => {});
       await tick(20);
       server.forceDeny = false;
-      eq(Sync._canon(e.S.data.safetyBoard), Sync._canon(JSON.parse(before)), "되돌림");
-      eq(Sync.pendingKeys().indexOf("safetyBoard"), -1);
+      eq(Sync._canon(e.S.data.secPost), Sync._canon(JSON.parse(before)), "되돌림");
+      eq(Sync.pendingKeys().indexOf("secPost"), -1);
       ok(q(e, "#toast-wrap").textContent.includes("권한"), "알림");
+    });
+    await ta("Y13a hq 는 시스템관리자 전용 설정 컬렉션(safetyBoard 등, 권한표 쓰기 4)을 서버로 보내지 않음(v1.60.1)", async () => {
+      const n0 = server.calls.length;
+      e.S.data.safetyBoard.note = "hq 변경"; e.S.save();
+      await Sync._flush().catch(() => {});
+      const sent = server.calls.slice(n0).filter(c => c.method === "POST" && /semis_logi_store/.test(c.url)).map(c => JSON.stringify(c.body || ""));
+      ok(sent.length >= 0 && !sent.some(b => b.indexOf("\"safetyBoard\"") >= 0), "safetyBoard 전송 안 함");
+      eq(Sync.pendingKeys().indexOf("safetyBoard"), -1, "대기열에도 없음");
+      e.S.data.safetyBoard.note = "";
     });
     await ta("Y14 변경 알림(Broadcast) → 그 컬렉션만 다시 읽음 · 내 변경 알림은 무시", async () => {
       const i = server.rows.findIndex(r => r.key === "notices");
@@ -6622,7 +6631,7 @@ function makeServer(opts = {}) {
       const mn = e.S.data.menus.find(m => m.type === "module" && m.module === "inspection");
       ok(mn && !mn.planned && mn.label === "보안 기록부" && mn.vis === "mgr" && mn.parent === "bd-check");
       ok(Array.isArray(e.S.data.seclog) && Array.isArray(e.S.data.seclogCfg.templates), "기본 데이터");
-      eq(ACL.seclog.join(","), "2,2"); eq(ACL.seclogCfg.join(","), "2,3");
+      eq(ACL.seclog.join(","), "2,2"); eq(ACL.seclogCfg.join(","), "2,4");
       const edge = read("tools/edge/semis-logi-files.ts");
       ok(/READ_RANK[\s\S]*seclog: 2[\s\S]*WRITE_RANK[\s\S]*seclog: 2/.test(edge), "파일 폴더 열람 2 · 올리기 2");
     });
@@ -7066,7 +7075,7 @@ function makeServer(opts = {}) {
       ok(m && m.type === "module" && !m.planned && !m.desc); eq(m.parent, "bd-check"); eq(m.vis, "mgr"); eq(m.label, "일일 보안 · 안전 순찰일지"); eq(m.tab, "순찰일지");
       ok(Array.isArray(e.S.data.patrol) && Array.isArray(e.S.data.patrolPeople) && e.S.data.patrolCfg && !Array.isArray(e.S.data.patrolCfg), "기본 데이터");
       ["patrol", "patrolCfg", "patrolPeople"].forEach(k => ok(e.Sync.SYNC_KEYS.indexOf(k) >= 0, k));
-      eq(ACL.patrol.join(","), "2,2"); eq(ACL.patrolCfg.join(","), "2,3"); eq(ACL.patrolPeople.join(","), "2,2");
+      eq(ACL.patrol.join(","), "2,2"); eq(ACL.patrolCfg.join(","), "2,4"); eq(ACL.patrolPeople.join(","), "2,2");
       const edge = read("tools/edge/semis-logi-files.ts");
       ok(/READ_RANK[\s\S]*patrol: 2[\s\S]*WRITE_RANK[\s\S]*patrol: 2/.test(edge), "파일 폴더 patrol 열람 2 · 올리기 2");
       ok(/<script src="js\/patrol\.js\?v=[\d.]+" defer><\/script>/.test(read("index.html")), "defer 스크립트");
@@ -8067,7 +8076,7 @@ function makeServer(opts = {}) {
 
     t("UP07 자체 점검 안내 편집(시스템관리자): 공용 DB selfCheckCfg · 권한표 [2,3] · 비면 기본값 · 바꾼 값만 저장 · 감독관 안내 · 자체 주기 · 수검 전 일수 반영 · 기본값 되돌리기", () => {
       reset(); e.S.data.selfCheckCfg = { forms: {} };
-      eq(JSON.stringify(ACL.selfCheckCfg), "[2,3]", "권한표: manager 열람 · hq 편집");
+      eq(JSON.stringify(ACL.selfCheckCfg), "[2,4]", "권한표: manager 열람 · 시스템관리자 편집");
       ok(SEC_SQL.indexOf("semis_logi_security_18_selfcheckcfg") > 0);
       ok(e.Sync.SYNC_KEYS.indexOf("selfCheckCfg") >= 0);
       e.S.data.selfCheckCfg = []; e.S.normalizeData();
@@ -11894,6 +11903,16 @@ function makeServer(opts = {}) {
       ok(q(e, "#dash-build") && /모듈 구축 현황/.test(q(e, "#view").textContent), "시스템 설정 · 시스템 정보에 구축 현황");
       loginAs(e, "hq");
       eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    t("HV11 설정성 자료 서버 잠금: 설정만 담은 7개 컬렉션 쓰기 4 · 섞인 칸(구역 · 보고양식 · 분야별 담당)은 트리거가 서버 값 유지 · 세션 없는 SQL 은 통과", () => {
+      ["safetyBoard", "levelHistory", "fleet", "minuteFolders", "seclogCfg", "patrolCfg", "selfCheckCfg"].forEach(k => eq(ACL[k][1], 4, k + " 쓰기 4"));
+      eq(ACL.phonebook.join(","), "2,3"); eq(ACL.threat.join(","), "2,3"); eq(ACL.desk.join(","), "3,3");
+      const A = read("tools/sql/semis-logi-admin-cfg.sql");
+      ok(/where key in \('safetyBoard', 'levelHistory', 'fleet', 'minuteFolders', 'seclogCfg', 'patrolCfg', 'selfCheckCfg'\)/.test(A), "마이그레이션 = 권한표 7개");
+      ok(/when 'phonebook' then array\['groups'\] when 'threat' then array\['form'\] when 'desk' then array\['cfg', 'areas'\]/.test(A), "섞인 칸 3곳");
+      ok(/if r < 0 or r >= 4 then return new; end if;/.test(A), "SQL(-1) · 시스템관리자는 통과");
+      ok(/create trigger semis_logi_store_1_admin before insert or update on public\.semis_logi_store/.test(A), "트리거 이름 순서 = 충돌 확인(0_) 다음");
+      ok(/revoke all on function semis_logi_private\.guard_admin_fields\(\) from public, anon, authenticated;/.test(A), "함수 실행 권한 막음");
     });
     await ta("HV10 허브 홈(게시판): 최근 글 = 세 게시판 합쳐 8건(semis_logi_bbs_recent · b 지정) · 읽지 않은 글 굵게 · 누르면 그 글", async () => {
       const sv = makeServer();

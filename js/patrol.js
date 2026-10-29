@@ -50,7 +50,7 @@
      patrolPeople = [{ id, name, roles[](patrol · sup), sign(서명 이미지 주소), signAt, active, order }] — 명단은 공용 DB에만
      patrol       = [{ id, date, am, pm, sup, off{ name, sign, at, by }, note, ng[{ id, sec, t, note }], createdAt/By, updatedAt/By }]
        am · pm · sup = { pid, name, sign, t(순찰 시각, 확인은 없음), at, by } — 서명 주소는 그때 것을 그대로 남긴다
-     권한: 기록 · 순찰자 등록 mgr(patrol · patrolPeople 2/2) · 양식 hq(patrolCfg 2/3). 서명 이미지: 비공개 버킷 patrol/ 폴더 */
+     권한: 기록 · 순찰자 등록 mgr(patrol · patrolPeople 2/2) · 양식 시스템관리자(patrolCfg 2/4). 서명 이미지: 비공개 버킷 patrol/ 폴더 */
   /* ── 양식 ── */
   function cfg() {
     const c = obj(D()[CFG]);
@@ -552,7 +552,7 @@
     SeMIS.save(); paint();
   }
 
-  /* ── 양식 편집 (hq) ── */
+  /* ── 양식 편집 (시스템관리자) ── */
   function cfgForm() {
     if (!SeMIS.isAdmin()) return;   // 양식은 설정 — 시스템관리자
     const c = cfg();

@@ -69,16 +69,16 @@ revoke all on all sequences in schema semis_logi_private from public, anon, auth
 
 /* 권한 서열: admin 4 · hq 3 · manager 2 · user/vendor 1 · 9 = 앱에서 읽기·쓰기 불가 */
 insert into semis_logi_private.key_acl(key, read_rank, write_rank) values
-  ('menus',1,4), ('notices',1,3), ('levelHistory',1,3), ('safetyBoard',1,3), ('fleet',1,3), ('chatRooms',1,3),
-  ('minutes',1,2), ('minuteFolders',1,2),
+  ('menus',1,4), ('notices',1,3), ('levelHistory',1,4), ('safetyBoard',1,4), ('fleet',1,4), ('chatRooms',1,3),   -- 보안등급 · 무재해 기준일 · 기체 목록 = 시스템관리자 (semis_logi_security_29_admin_cfg)
+  ('minutes',1,2), ('minuteFolders',1,4),
   ('schedules',2,2), ('assignees',2,4), ('assigneesSeeded',2,4), ('gcal',2,4),
   ('contacts',2,3), ('crisis',2,3), ('regulations',2,3), ('equipment',2,3), ('audits',2,3), ('phonebook',2,3), ('training',2,3), ('caresCfg',2,9),
-  ('seclog',2,2), ('seclogCfg',2,3),   -- 보안 기록부 (v1.22): 기록은 manager 가 남김 · 점검 양식은 hq (마이그레이션 semis_logi_security_11_seclog)
+  ('seclog',2,2), ('seclogCfg',2,4),   -- 보안 기록부 (v1.22): 기록은 manager 가 남김 · 점검 양식은 시스템관리자 (마이그레이션 semis_logi_security_11_seclog · 29_admin_cfg)
   ('serp',2,3), ('serpRuns',2,2),     -- 팀위기대응계획 (v1.25): 계획은 hq · 대응 기록은 manager 가 남김 (마이그레이션 semis_logi_security_14_serp)
   ('threat',2,3), ('threatRuns',2,2), ('threatChecks',2,2),   -- 테러 위협전화 대응 (v1.26): 절차는 hq · 접수 기록 · 녹음 전화 점검은 manager (마이그레이션 semis_logi_security_15_threat)
-  ('patrol',2,2), ('patrolCfg',2,3), ('patrolPeople',2,2),   -- 일일 보안 · 안전 순찰일지 (v1.27): 기록 · 순찰자 서명은 manager · 양식은 hq (마이그레이션 semis_logi_security_16_patrol)
+  ('patrol',2,2), ('patrolCfg',2,4), ('patrolPeople',2,2),   -- 일일 보안 · 안전 순찰일지 (v1.27): 기록 · 순찰자 서명은 manager · 양식은 시스템관리자 (마이그레이션 semis_logi_security_16_patrol · 29_admin_cfg)
   ('selfChecks',2,2),   -- 자체 보안점검 (v1.32): 수준관리지침 별표 점검 기록 · 지적 조치는 manager 가 남김 (마이그레이션 semis_logi_security_17_selfcheck)
-  ('selfCheckCfg',2,3), -- 자체 보안점검 안내 (v1.34): 주체 · 대상 · 주기 — hq 편집 (마이그레이션 semis_logi_security_18_selfcheckcfg)
+  ('selfCheckCfg',2,4), -- 자체 보안점검 안내 (v1.34): 주체 · 대상 · 주기 — 시스템관리자 편집 (마이그레이션 semis_logi_security_18_selfcheckcfg · 29_admin_cfg)
   ('secPost',2,3), ('secPostImg',2,3), -- 경비대원 배치도 (v1.28, 민감보안정보): manager 열람 · hq 편집 (마이그레이션 semis_logi_security_15_secpost)
   ('docs',2,3), ('partners',2,3), ('contracts',2,3), ('kcra',2,3), ('secCases',2,3), ('dissem',2,3), ('scrStats',2,3),   -- 점검교육 · 수검대응 자료 (v1.41): manager 열람 · hq 편집, 원본 파일은 폴더 등급(docs-ssi · contracts = hq) (마이그레이션 semis_logi_security_23_audit_ta — 번호 23 은 edu_simple 과 겹치나 별개 마이그레이션)
   ('vault',3,3),
