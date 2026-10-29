@@ -22,7 +22,7 @@ const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const BUCKET = "semis-logi-files";
 const STORAGE = SUPA + "/storage/v1";
 const PUBLIC_PREFIX = "https://mzyuzrxkdcpzxojenwat.supabase.co/storage/v1/object/public/" + BUCKET + "/";
-const ORIGINS = ["https://mark4mission.github.io", "https://logistics.semis.pe.kr"];
+const ORIGINS = ["https://hdrive.kr", "https://mark4mission.github.io"];   // github.io = 예비 주소(도메인 문제 때 사용자 도메인을 빼면 바로 이 주소로 동작)
 const LOCAL_RE = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 const EXPIRES = 3600;
 const MAX_SIZE = 50 * 1024 * 1024;

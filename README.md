@@ -3,7 +3,7 @@
 **H:drive**(별칭 **ARGOS** — Air-cargo Risk & Guard Operations System)는 에어제타 **인천화물팀 안전보안파트**의 화물터미널 안전 · 보안 업무 플랫폼이다.
 본사 항공보안파트의 [SeMIS v2](https://semis.pe.kr) 플랫폼 구조에서 출발했지만 데이터 · 메뉴 · 화면은 완전히 분리된 독립 사이트다(이름 내력 SeMIS · Logistics → ARGOS(v1.46) → H:drive(v1.50) — 저장소 · 주소 · DB 이름은 그대로).
 
-**접속 주소: https://mark4mission.github.io/semis-logistics/** (GitHub Pages, `main` push 시 자동 반영)
+**접속 주소: https://hdrive.kr/** (GitHub Pages 사용자 도메인 · 가비아 DNS, `main` push 시 자동 반영 — 예전 주소 `mark4mission.github.io/semis-logistics/` 는 새 주소로 자동 이동)
 
 - 세션 인계서: [docs/HANDOFF.md](docs/HANDOFF.md) — 새 작업은 여기서 시작(현황 · 배포 · 메뉴 구조 · 규칙 · 미결)
 - 지난 경위: [docs/HISTORY.md](docs/HISTORY.md) · 설계서: [docs/DESIGN.md](docs/DESIGN.md) · 새 모듈 견본: [docs/module-template.js](docs/module-template.js)

@@ -193,8 +193,8 @@ v2와의 차이: 구버전 구글시트 연동 제거, 해제 UI 개편(멤버 �
 
 ## 7. 배포
 
-- GitHub `Mark4mission/semis-logistics` → GitHub Pages(main, root). 주소 `https://mark4mission.github.io/semis-logistics/`.
-- 커스텀 도메인은 추후 `logistics.semis.pe.kr` CNAME(가비아 DNS) 등록 시 `CNAME` 파일 추가로 전환 가능.
+- GitHub `Mark4mission/semis-logistics` → GitHub Pages(main, root). 주소 `https://hdrive.kr/`(v1.60.2 사용자 도메인 — 저장소 `CNAME` 파일 · 가비아 DNS A ×4 + www CNAME, HTTPS 강제). 예전 주소 `https://mark4mission.github.io/semis-logistics/` 는 새 주소로 자동 이동.
+- Edge Function(argo · files · favicon)의 허용 출처 `ORIGINS` = [`https://hdrive.kr`, `https://mark4mission.github.io`(예비 주소)] — 주소를 바꾸면 세 함수를 함께 고쳐 재배포.
 - 릴리스: `npm run bump <ver>` → 테스트 → `git push`(main push 시 자동 반영).
 
 ## 8. 테스트

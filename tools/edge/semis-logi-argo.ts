@@ -12,7 +12,7 @@ import { GUIDE } from "./argo-guide.ts";
 
 const SUPA = Deno.env.get("SUPABASE_URL")!;
 const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
-const ORIGINS = ["https://mark4mission.github.io", "https://logistics.semis.pe.kr"];
+const ORIGINS = ["https://hdrive.kr", "https://mark4mission.github.io"];   // github.io = 예비 주소(도메인 문제 때 사용자 도메인을 빼면 바로 이 주소로 동작)
 const LOCAL_RE = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 const AI_URL = "https://api.anthropic.com/v1/messages";
 const AI_MODELS = ["claude-sonnet-5-5", "claude-sonnet-4-5", "claude-haiku-4-5"];
