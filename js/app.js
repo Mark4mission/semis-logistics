@@ -3,7 +3,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.60.1";
+  const VERSION = "1.60.2";
   const APP_NAME = "H:drive";
   const APP_ALIAS = "ARGOS (Air-cargo Risk & Guard Operations System)";
   /* 데이터 캐시는 탭 sessionStorage 에만(탭 닫기·로그아웃 시 소멸). 화면 설정(LS_UI)만 localStorage */
@@ -802,7 +802,7 @@ const SeMIS = (() => {
   /* QR에 넣을 접속 주소 — 현재 배포 주소를 그대로 사용 */
   function signUrlFor(rec) {
     const code = signCodeFor(rec);
-    let base = "https://mark4mission.github.io/semis-logistics/";
+    let base = "https://hdrive.kr/";
     try {
       const l = location;
       if (l && l.protocol && l.protocol.indexOf("http") === 0)

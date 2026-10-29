@@ -13,7 +13,7 @@
 
 const SUPA = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
-const ORIGINS = ["https://mark4mission.github.io", "https://logistics.semis.pe.kr"];
+const ORIGINS = ["https://hdrive.kr", "https://mark4mission.github.io"];   // github.io = 예비 주소(도메인 문제 때 사용자 도메인을 빼면 바로 이 주소로 동작)
 const LOCAL_RE = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36 SeMIS-Logistics-favicon";
 const PAGE_MAX = 512 * 1024;

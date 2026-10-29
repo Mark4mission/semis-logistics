@@ -10470,6 +10470,19 @@ function makeServer(opts = {}) {
       ok(/semisl:argo:/.test(read("js/app.js")), "로그아웃 때 대화 지움");
       ok(/@media screen and \(max-width: 767px\) \{\n  \.ag-log/.test(read("css/main.css")), "모바일 CSS 는 screen");
     });
+
+    t("DOM01 접속 주소 hdrive.kr: Edge 3개 허용 출처 같음 · 대표 주소 먼저 · 쓰지 않는 주소 없음 · QR 기본 주소 · 안내 문서", () => {
+      const lists = ["argo", "files", "favicon"].map(n => {
+        const m = /const ORIGINS = (\[[^\]]*\]);/.exec(read("tools/edge/semis-logi-" + n + ".ts"));
+        return m ? JSON.parse(m[1]) : null;
+      });
+      ok(lists.every(l => Array.isArray(l) && l[0] === "https://hdrive.kr"), "대표 주소가 첫째(허용 밖 출처의 기본 응답)");
+      ok(lists.every(l => JSON.stringify(l) === JSON.stringify(lists[0])), "세 함수 같은 목록");
+      ok(lists[0].every(o => /^https:\/\/[a-z0-9.-]+$/.test(o)) && !lists[0].some(o => /semis\.pe\.kr|\*/.test(o)), "https 출처만 · 예전 예정 주소 없음");
+      ok(read("js/app.js").includes('let base = "https://hdrive.kr/";'), "QR 기본 주소(파일로 열었을 때)");
+      ok(read("README.md").includes("**접속 주소: https://hdrive.kr/**") && read("docs/HANDOFF.md").includes("| 접속 주소 | https://hdrive.kr/"), "안내 문서");
+      ok(!fs.existsSync(path.join(ROOT, "CNAME")) || read("CNAME").trim() === "hdrive.kr", "CNAME 은 hdrive.kr 만");
+    });
   }
 
   /* ══════════ [BB] 게시판 — 메뉴 · 목록 · 읽기 · 쓰기 · 댓글 · 관리 · 대시보드 · 아르고 · 서버 원본 ══════════ */
