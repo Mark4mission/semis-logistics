@@ -6962,3 +6962,38 @@ button.chip-title:focus-visible, button.calm-body:focus-visible { outline: 2px s
 /* 공통 패널 머리의 드문 기능 — PC 도 ⋯ 안 */
 .pnl-acts .ph-rare { display: none !important; }
 @media screen and (min-width: 768px) { .pnl.pnl-has-rare .pnl-more:not([hidden]) { display: inline-flex; } }
+
+/* ── K드라이브 동기화(시스템 설정 탭) ── */
+.ks-strip { margin-bottom: 14px; }
+.ks-strip .stat-row { margin-bottom: 0; }
+.ks-strip.is-stale .stat-row { box-shadow: inset 0 0 0 2px var(--accent); border-radius: var(--radius-xs); }
+.ks-warn { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0 0; padding: 8px 12px; border-left: 3px solid var(--accent); background: var(--accent-soft); color: var(--text); font-size: max(var(--fs-min), .9rem); }
+.ks-warn .ico { flex: none; margin-top: 2px; color: var(--accent-dark); }
+.ks-path { overflow-wrap: anywhere; }
+.ks-none { margin: 10px 2px; color: var(--text-3); }
+.ks-note { margin: 10px 2px 0; color: var(--text-2); font-size: max(var(--fs-min), .86rem); }
+.ks-sub h3 { margin: 14px 0 6px; font-size: .95rem; }
+.ks-sub h3:first-child { margin-top: 6px; }
+.ks-sub h3 small { display: block; margin-top: 2px; font-weight: 400; color: var(--text-3); font-size: max(var(--fs-min), .84rem); }
+.ks-sub .seg { margin: 4px 0 10px; }
+.ks-ips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.ks-ips li { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 10px; border: 1px solid var(--border); border-radius: var(--radius-xs); background: var(--surface-2); }
+.ks-ipadd { display: flex; gap: 6px; margin-top: 10px; max-width: 420px; }
+.ks-ipadd input { flex: 1; min-width: 0; }
+.ks-keywarn { display: flex; gap: 8px; align-items: flex-start; padding: 8px 12px; background: var(--danger-soft); color: var(--text); border-left: 3px solid var(--danger); }
+.ks-keywarn .ico { flex: none; margin-top: 2px; color: var(--danger); }
+.ks-det { max-height: 60vh; overflow: auto; }
+.ks-ssi { margin-top: 26px; }
+.rail-btn.util { position: relative; }
+.rail-dot { position: absolute; top: 7px; right: 9px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--sidebar-bg); }
+@media screen and (max-width: 767px) {
+  .ks-ssi { margin-top: 0; }
+  .ks-ipadd { max-width: none; }
+}
+@media print {
+  html.ks-printing #view .tabs, html.ks-printing #view .ks-strip, html.ks-printing #view .ks-card:not(.ks-print-on) { display: none !important; }
+  html.ks-printing #view .ks-print-on .ct-pane[hidden] { display: block !important; }
+}
+.ks-tbl .td-act { white-space: nowrap; }
+.ks-tbl td:nth-child(3) { white-space: nowrap; }
+.ks-ipadd input { min-height: 34px; padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-xs); background: var(--surface); color: var(--text); }

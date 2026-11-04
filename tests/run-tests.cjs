@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/loginguard.js", "js/app.js", "js/argo-owl.js", "js/panel.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/preview.js", "js/preview-draw.js", "js/preview-cfb.js", "js/preview-xls.js", "js/preview-hwp.js", "js/docshelf.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/board.js", "js/cares.js", "js/hazfind.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/contracts.js", "js/partners.js", "js/kcra.js", "js/seccases.js", "js/dissem.js", "js/scrstats.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/docread.js", "js/desk.js", "js/argo.js", "js/selfcheck.js", "js/auddash.js", "js/hubhome.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
+const FILES = ["js/loginguard.js", "js/app.js", "js/argo-owl.js", "js/panel.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/preview.js", "js/preview-draw.js", "js/preview-cfb.js", "js/preview-xls.js", "js/preview-hwp.js", "js/docshelf.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/board.js", "js/cares.js", "js/hazfind.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/contracts.js", "js/partners.js", "js/kcra.js", "js/seccases.js", "js/dissem.js", "js/scrstats.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/docread.js", "js/desk.js", "js/argo.js", "js/selfcheck.js", "js/auddash.js", "js/hubhome.js", "js/ksync.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -386,6 +386,8 @@ function makeServer(opts = {}) {
     }
   };
   Object.assign(rpc, bbsFake(srv, (o) => { const s = sessOf(o), a = accOf(s); return a && a.role !== "vendor" ? { id: a.id, name: a.name, rank: RANK[a.role] } : null; }));
+  srv.rpc = rpc;                                            // 시험이 RPC 를 더한다(K드라이브 동기화 등)
+  srv.rankOf = (o) => rankOf(sessOf(o));
   const reply = (status, body) => Promise.resolve({ ok: status >= 200 && status < 300, status,
     json: () => Promise.resolve(body), headers: { get: () => null } });
   const FOLDER_READ = { notices: 1, attach: 1, minutes: 1, "minutes-sign": 1, schedules: 2, contacts: 2, crisis: 2, regs: 2, "regs-diff": 2 };
@@ -398,7 +400,9 @@ function makeServer(opts = {}) {
     let m;
     if ((m = /\/rest\/v1\/rpc\/([a-z_]+)/.exec(u))) {
       const f = rpc[m[1]];
-      return f ? reply(200, f(body || {}, o)) : reply(404, {});
+      if (!f) return reply(404, {});
+      const out = f(body || {}, o);
+      return out && out.__status ? reply(out.__status, out.body || {}) : reply(200, out);
     }
     if (u.indexOf("/rest/v1/semis_logi_store") >= 0) {
       const s = sessOf(o), r = rankOf(s);
@@ -672,7 +676,7 @@ function makeServer(opts = {}) {
       loginAs(e, "admin");
       go(e, "settings");
       ok(q(e, "#view").textContent.includes("시스템 설정"));
-      eq(qa(e, ".tab").length, 7);   // 메뉴·게시판·사용자·담당자·데이터·저장소·보안
+      eq(qa(e, ".tab").length, 8);   // 메뉴·게시판·사용자·담당자·데이터·저장소·보안·K드라이브 동기화
     });
     t("C28a 시스템 정보 — 이름 H:drive · 별칭 ARGOS", () => {
       q(e, '.tab[data-tab="data"]').click();
@@ -11951,6 +11955,220 @@ function makeServer(opts = {}) {
       e2.w.close();
     });
     e.w.close();
+  }
+
+  /* ══════════ [KS] v1.61 K드라이브 동기화(시스템 설정 탭 · 레일 배지 · 에이전트 계획 · 서버 규칙 대조) ══════════ */
+  {
+    const ksFake = (sv) => {
+      const k = sv.ks = { calls: [], alert: false, stale: false, agents: [], maps: [], holds: [], files: [], last: [], runs: [], events: [], folders: [{ path: "안전보안", depth: 1, n: 2 }, { path: "안전보안/점검표", depth: 2, n: 12 }],
+        state: { daily_at: "08:30", requested_at: null, net: { ok: false, at: "2026-11-04T00:10:00Z", msg: "K드라이브 응답 없음" }, ip_allow: [], ip_seen: [{ ip: "198.51.100.5", at: "2026-11-04T00:00:00Z", agent: 1 }], mass_limit: { files: 200, ratio: 0.3 } } };
+      const deny = { __status: 403, body: { code: "42501", message: "semis_ksync_admin" } };
+      const h = (name, fn) => { sv.rpc["semis_logi_ksync_" + name] = (b, o) => { k.calls.push({ name, b }); return sv.rankOf(o) >= 4 ? fn(b || {}) : deny; }; };
+      h("status", () => ({ ok: true, now: new Date().toISOString(), state: k.state, agents: k.agents, maps: k.maps, last: k.runs[0] || null, today: k.runs[0] || null, last_ok: null,
+        counts: { hold: k.holds.length, ev_new: 0, wait: k.files.length }, stale: k.stale, alert: k.alert }));
+      h("pending", () => ({ ok: true, holds: k.holds, files: k.files, last: k.last }));
+      h("runs", () => ({ ok: true, runs: k.runs }));
+      h("events", (b) => ({ ok: true, events: k.events.filter(e => !b.p || !b.p.kind || e.kind === b.p.kind), counts: { bad_key: 2, scope: 1 } }));
+      h("folders", () => ({ ok: true, folders: k.folders }));
+      ["request", "map_start", "map_delete", "resolve", "hold", "settings", "ip_approve", "agent_revoke"].forEach(n => h(n, () => ({ ok: true })));
+      h("map_save", (b) => (b.p && b.p.k_path === "dup" ? { ok: false, error: "k_dup" } : { ok: true, id: 9 }));
+      h("agent_new", () => ({ ok: true, id: 7, key: "c0ffee".repeat(10) + "abcd" }));
+      return k;
+    };
+    const setup = async () => {
+      const sv = makeServer();
+      const ks = ksFake(sv);
+      const e = makeEnv({ fetch: sv.fetch });
+      await sv.loginAs(e, "admin-pw-111");
+      await tick(10);
+      return { sv, ks, e };
+    };
+    const openTab = async (e) => { go(e, "settings"); await tick(5); q(e, '.tab[data-tab="ksync"]').click(); await tick(40); };
+    await ta("KS01 시스템 설정 'K드라이브 동기화' 탭: 상태 띠 5칸 · 설치 안내 한 줄 · 카드 4 · 머리말 [지금 동기화 요청][⋯][인쇄] · 다른 탭으로 가면 단추 정리", async () => {
+      const { sv, ks, e } = await setup();
+      await openTab(e);
+      eq(qa(e, "#tab-body .ks-strip .stat").length, 5, "상태 띠");
+      eq(qa(e, "#tab-body .ks-strip .stat-label").map(x => x.textContent).join(","), "에이전트,사내망,마지막 성공,다음 예정,오늘 결과");
+      ok(/에이전트 키를 발급/.test(q(e, "#tab-body .ks-warn").textContent), "키 없음 안내");
+      eq(qa(e, "#tab-body .ks-card").map(c => c.dataset.ksCard).join(","), "maps,pend,runs,sec", "카드 4");
+      const head = q(e, "#view .page-head");
+      eq(qa(e, "#view .page-head .btn-primary").map(b => b.textContent.trim()).join(), "지금 동기화 요청", "주 단추 하나");
+      eq(qa(e, "#view .page-head .ph-rare").map(b => b.textContent.trim()).join(), "에이전트 키 발급,에이전트 키 폐기,매일 실행 시각,대량 변경 한도", "드문 기능은 ⋯");
+      const kids = Array.from(head.children).filter(x => x.matches("button"));
+      ok(kids[kids.length - 1].hasAttribute("data-print-btn"), "인쇄는 맨 끝");
+      ["status", "pending", "runs", "events", "folders"].forEach(n => ok(ks.calls.some(c => c.name === n), "불러오기 " + n));
+      q(e, '.tab[data-tab="security"]').click();
+      eq(qa(e, "#view .page-head .ks-hb").length, 0, "다른 탭 → 단추 정리");
+      ks.agents = [{ id: 1, name: "Mac", created_at: new Date().toISOString(), last_seen_at: new Date().toISOString(), version: "1.61.0", host: "m" }];
+      await openTab(e);
+      ok(/허용 IP 가 없어/.test(q(e, "#tab-body .ks-warn").textContent), "허용 IP 없음 안내");
+      ks.state.ip_allow = ["198.51.100.5/32"]; ks.stale = true;
+      await openTab(e);
+      ok(/사내망\(VPN\)/.test(q(e, "#tab-body .ks-warn").textContent) && q(e, "#tab-body .ks-strip.is-stale"), "이틀 넘게 실패 → 경고 · 이유 한 줄");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS02 폴더 연결: [연결 추가] = K 폴더 목록 · 문서함 있는 화면 › 분류만 · 미리보기 → [시작] · ⋯ 멈춤 · 지우기 · 오류 문구", async () => {
+      const { ks, e } = await setup();
+      await openTab(e);
+      q(e, "#ks-map-add").click();
+      const opts = qa(e, "#ks-kp option").map(o => o.value).filter(Boolean);
+      eq(opts.join(","), "안전보안,안전보안/점검표", "K 폴더 목록");
+      const tg = qa(e, "#ks-tg option").map(o => o.value).filter(Boolean);
+      ok(tg.length > 5 && tg.every(v => { const [m, g] = v.split("|"); return e.w.SemisDocs.groupsOf(m).some(x => x.id === g); }), "화면 › 분류 = SemisDocs.define");
+      ok(tg.indexOf("audit|checklist") >= 0, "수검 대응 › 점검표");
+      clickOk(e); await tick(5);
+      ok(!ks.calls.some(c => c.name === "map_save"), "폴더 안 고르면 저장 안 함");
+      q(e, "#ks-kp").value = "안전보안/점검표"; q(e, "#ks-tg").value = "audit|checklist"; q(e, "#ks-dir").value = "k2h"; q(e, "#ks-ssi").checked = true;
+      clickOk(e); await tick(30);
+      eq(JSON.stringify(ks.calls.find(c => c.name === "map_save").b.p), '{"dir":"k2h","ssi":true,"k_path":"안전보안/점검표","mod":"audit","grp":"checklist"}', "연결 저장 인자");
+      ks.maps = [{ id: 9, k_path: "안전보안/점검표", mod: "audit", grp: "checklist", dir: "both", ssi: false, state: "preview", preview: null, n_files: 0, n_wait: 0 },
+        { id: 10, k_path: "보안/<img src=x onerror=alert(1)>", mod: "audit", grp: "plan", dir: "h2k", ssi: true, state: "active", preview: null, n_files: 4, n_wait: 1, last_run_at: "2026-11-04T00:00:00Z" }];
+      await openTab(e);
+      ok(q(e, '[data-ks-start="9"]').disabled && /미리보기 건수를 기다리는/.test(q(e, "#tab-body").textContent), "미리보기 전 시작 못 함");
+      eq(qa(e, "#tab-body img").length, 0, "서버 값은 글자로만(태그 주입 없음)");
+      ks.maps[0].preview = { k2h: 3, h2k: 1, link: 0, del: 0, skip: 2, total: 6 };
+      await openTab(e);
+      ok(/미리보기 K→H 3 · H→K 1 · 건너뜀 2/.test(q(e, "#tab-body").textContent), "미리보기 건수");
+      q(e, '[data-ks-start="9"]').click(); clickOk(e); await tick(30);
+      eq(ks.calls.filter(c => c.name === "map_start").map(c => c.b.p_id).join(), "9", "시작");
+      q(e, '[data-ks-map="10"]').click(); sheetPick(e, "멈춤"); await tick(30);
+      eq(JSON.stringify(ks.calls.filter(c => c.name === "map_save").pop().b.p), '{"id":10,"pause":true}', "멈춤");
+      q(e, '[data-ks-map="10"]').click(); sheetPick(e, "연결 지우기"); clickOk(e); await tick(30);
+      eq(ks.calls.filter(c => c.name === "map_delete").map(c => c.b.p_id).join(), "10", "지우기");
+      ks.folders = [];
+      q(e, "#ks-map-add").click();
+      eq(q(e, "#ks-kp").tagName, "SELECT", "폴더 목록은 처음 불러온 것");
+      e.w.SemisKsync._st.folders = [];
+      q(e, "#ks-map-add").click();
+      eq(q(e, "#ks-kp").tagName, "INPUT", "폴더 목록이 없으면 직접 입력");
+      q(e, "#ks-kp").value = "dup"; q(e, "#ks-tg").value = "audit|plan";
+      clickOk(e); await tick(30);
+      ok(/이미 연결했거나 겹치는 K 폴더/.test(q(e, "#toast") ? q(e, "#toast").textContent : e.w.document.body.textContent), "오류는 쉬운 말로");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS03 확인 필요: 보류 [승인 · 거절] · 삭제 대기 [삭제 확정 · 복원](어느 쪽에서 지웠는지) · 충돌 · 건너뜀 · 오류(이유) — 인자 그대로", async () => {
+      const { ks, e } = await setup();
+      ks.maps = [{ id: 1, k_path: "점검표", mod: "audit", grp: "checklist", dir: "both", state: "active", n_files: 3 }];
+      ks.holds = [{ map: 1, k_path: "점검표", mod: "audit", grp: "checklist", run: 41, n: 250, base: 300, at: "2026-11-04T00:00:00Z" }];
+      ks.files = [{ id: 5, map: 1, rel_path: "a.xlsx", state: "del_k", note: "" }, { id: 6, map: 1, rel_path: "b.pdf", state: "del_h", note: "" },
+        { id: 7, map: 1, rel_path: "c.xlsx", state: "conflict", note: "K 쪽이 늦게 고침" }, { id: 8, map: 1, rel_path: "big.zip", state: "skip", note: "too_large" }];
+      ks.last = [{ m: 1, f: "run.bat", a: "skip", r: "type_block" }];
+      await openTab(e);
+      eq(qa(e, "[data-ct-tabs=kspend] [data-ct-tab]").map(b => b.textContent).join("|"), "대량 변경 보류 1|삭제 대기 2|충돌 1|건너뜀 · 오류 2", "탭 건수");
+      ok(/250건 \/ 맞춘 파일 300건/.test(q(e, '[data-ct-pane="kspend:hold"]').textContent), "보류 건수");
+      q(e, '[data-ks-hold="approve"]').click(); clickOk(e); await tick(30);
+      eq(JSON.stringify(ks.calls.filter(c => c.name === "hold").pop().b.p), '{"run_id":"41","act":"approve","map":"1"}', "승인");
+      q(e, '[data-ks-hold="reject"]').click(); clickOk(e); await tick(30);
+      eq(ks.calls.filter(c => c.name === "hold").pop().b.p.act, "reject", "거절");
+      const del = q(e, '[data-ct-pane="kspend:del"]').textContent;
+      ok(/K드라이브에서 지움/.test(del) && /H:drive 에서 지움/.test(del), "어느 쪽에서 지웠는지");
+      q(e, '[data-ks-res="confirm"][data-id="5"]').click(); clickOk(e); await tick(30);
+      eq(JSON.stringify(ks.calls.filter(c => c.name === "resolve").pop().b.p), '{"ids":[5],"act":"confirm"}', "삭제 확정");
+      q(e, '[data-ks-res="restore"][data-id="6"]').click(); await tick(30);
+      eq(JSON.stringify(ks.calls.filter(c => c.name === "resolve").pop().b.p), '{"ids":[6],"act":"restore"}', "복원(바로)");
+      q(e, '[data-ks-res="dismiss"][data-id="7"]').click(); await tick(30);
+      eq(ks.calls.filter(c => c.name === "resolve").pop().b.p.act, "dismiss", "충돌 확인");
+      const sk = q(e, '[data-ct-pane="kspend:skip"]').textContent;
+      ok(/50MB 초과/.test(sk) && /실행 파일 · 스크립트/.test(sk), "건너뜀 이유를 쉬운 말로");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS04 보안: 허용 IP · 후보 [허용] · 추가 · 지우기 / 에이전트 키 발급(원문 한 번 · 닫으면 지움) · 90일 교체 안내 · 폐기 / 이벤트 종류 거르기 · 카드 인쇄", async () => {
+      const { ks, e } = await setup();
+      ks.agents = [{ id: 3, name: "Mac", created_at: new Date(Date.now() - 100 * 864e5).toISOString(), created_by: "관리자", last_seen_at: new Date().toISOString(), last_ip: "198.51.100.5", version: "1.61.0", host: "m" }];
+      ks.state.ip_allow = ["203.0.113.0/24"];
+      ks.events = [{ id: 1, at: "2026-11-04T00:00:00Z", kind: "bad_key", ip: "192.0.2.9", detail: { act: "hello" } }, { id: 2, at: "2026-11-04T00:00:00Z", kind: "scope", ip: "198.51.100.5", detail: { act: "get", map: 1 } }];
+      await openTab(e);
+      q(e, '[data-ks-ipok="198.51.100.5"]').click(); clickOk(e); await tick(30);
+      eq(ks.calls.filter(c => c.name === "ip_approve").pop().b.p_ip, "198.51.100.5", "후보 IP 허용");
+      q(e, "#ks-ip").value = "198.51.100.0/28"; q(e, "#ks-ip-add").click(); await tick(30);
+      eq(JSON.stringify(ks.calls.filter(c => c.name === "settings").pop().b.p), '{"ip_allow":["203.0.113.0/24","198.51.100.0/28"]}', "IP 추가");
+      q(e, '[data-ks-ipdel="203.0.113.0/24"]').click(); clickOk(e); await tick(30);
+      eq(JSON.stringify(ks.calls.filter(c => c.name === "settings").pop().b.p), '{"ip_allow":[]}', "IP 지우기");
+      ok(/교체 권장 · 100일/.test(q(e, '[data-ct-pane="kssec:key"]').textContent), "90일 지난 키 교체 안내");
+      q(e, '[data-ks-revoke="3"]').click(); clickOk(e); await tick(30);
+      eq(ks.calls.filter(c => c.name === "agent_revoke").pop().b.p_id, 3, "폐기");
+      q(e, "#ks-key-new").click(); clickOk(e); await tick(30);
+      const key = "c0ffee".repeat(10) + "abcd";
+      eq(q(e, "#ks-key").value, key, "키 원문은 발급 창에 한 번");
+      ok(q(e, "#modal-box").hasAttribute("data-sticky"), "바깥 누르기로 닫히지 않음");
+      clickOk(e); await tick(20);
+      ok(!JSON.stringify(e.w.SemisKsync._st).includes(key) && !e.w.document.body.innerHTML.includes(key), "닫으면 화면 · 상태에 남지 않음");
+      eq(qa(e, '[data-ks-evk]').map(b => b.textContent).join("|"), "전체|틀린 키 2|연결 밖 접근 1", "종류별 건수 칩");
+      q(e, '[data-ks-evk="scope"]').click(); await tick(30);
+      eq(ks.calls.filter(c => c.name === "events").pop().b.p.kind, "scope", "종류 거르기");
+      eq(qa(e, '[data-ct-pane="kssec:ev"] tbody tr').length, 1, "거른 이벤트");
+      q(e, '[data-ks-print="sec"]').click();
+      ok(e.w.document.documentElement.classList.contains("ks-printing") && q(e, '[data-ks-card="sec"]').classList.contains("ks-print-on"), "카드 하나만 인쇄");
+      eq(q(e, "#print-head .ph-title").textContent, "K드라이브 동기화 — 보안", "인쇄 머리");
+      e.w.dispatchEvent(new e.w.Event("afterprint"));
+      ok(!e.w.document.documentElement.classList.contains("ks-printing"), "인쇄 뒤 원래대로");
+      q(e, "#ks-req").click(); await tick(30);
+      ok(ks.calls.some(c => c.name === "request"), "지금 동기화 요청");
+      q(e, "#ks-daily").click(); q(e, "#ks-dt").value = "07:40"; clickOk(e); await tick(30);
+      eq(ks.calls.filter(c => c.name === "settings").pop().b.p.daily_at, "07:40", "매일 실행 시각");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS05 레일 '시스템 설정' 배지: 시스템관리자 · 문제 있을 때만(이틀 실패 · 보류 · 새 보안 이벤트) · 다른 계정은 서버가 42501 · 탭 없음", async () => {
+      const { sv, ks, e } = await setup();
+      e.w.__ksyncPoll = true;
+      ks.alert = true;
+      await e.w.SemisKsync.poll(true); await tick(10);
+      const util = qa(e, "#rail-util .rail-btn").find(b => b.dataset.route === "settings");
+      ok(util && util.querySelector(".rail-dot") && /확인/.test(util.getAttribute("aria-label")), "레일 배지");
+      ks.alert = false;
+      await e.w.SemisKsync.poll(true); await tick(10);
+      ok(!qa(e, "#rail-util .rail-btn").find(b => b.dataset.route === "settings").querySelector(".rail-dot"), "문제 없으면 배지 없음");
+      const e2 = makeEnv({ fetch: sv.fetch });
+      await sv.loginAs(e2, "hq-pw-2222"); await tick(10);
+      e2.w.__ksyncPoll = true;
+      const n0 = ks.calls.length;
+      await e2.w.SemisKsync.poll(true);
+      eq(ks.calls.length, n0, "hq 는 묻지도 않음");
+      eq(e2.w.SemisKsync.badge(), "", "hq 배지 없음");
+      go(e2, "settings");
+      ok(!q(e2, '.tab[data-tab="ksync"]'), "hq 화면에 탭 없음");
+      const r = await e2.w.SemisSync.rpc("semis_logi_ksync_status", {}).then(() => "ok", (x) => x.status);
+      eq(r, 403, "서버도 거절(42501)");
+      e.Sync.stop(); e.w.close(); e2.Sync.stop(); e2.w.close();
+    });
+    t("KS06 에이전트 계획 단위 시험(tools/ksync/test/plan.test.mjs) · 문법", () => {
+      const cp = require("child_process");
+      const r = cp.spawnSync(process.execPath, [path.join(ROOT, "tools/ksync/test/plan.test.mjs")], { encoding: "utf8", timeout: 60000 });
+      eq(r.status, 0, (r.stdout || "") + (r.stderr || ""));
+      ok(/0 실패/.test(r.stdout), r.stdout);
+      ["ksync.mjs", "lib.mjs", "plan.mjs"].forEach(f => eq(cp.spawnSync(process.execPath, ["--check", path.join(ROOT, "tools/ksync", f)]).status, 0, f));
+    });
+    t("KS07 서버 규칙 대조: 실행 파일 · H 차단 형식 · 대량 한도 기본값(SQL = 에이전트) · 경로 규칙(Edge = 파일 함수) · Edge 는 Origin 거절 · 키 원문을 DB 로 보내지 않음", () => {
+      const sql = read("tools/sql/semis-logi-ksync.sql"), plan = read("tools/ksync/plan.mjs"), edge = read("tools/edge/semis-logi-ksync.ts"), files = read("tools/edge/semis-logi-files.ts");
+      const kSql = /ksync_k_blocked[\s\S]*?\\\.\(([^)]+)\)\$/.exec(sql)[1], kJs = /K_BLOCK = \/\\\.\(([^)]+)\)\$\/i/.exec(plan)[1];
+      eq(kJs, kSql, "K 차단 목록");
+      ["exe", "bat", "cmd", "com", "scr", "msi", "ps1", "vbs", "js", "jse", "wsf", "sh", "command", "app", "jar", "lnk", "url", "hta", "html?"].forEach(x => ok(kJs.split("|").indexOf(x) >= 0, "필수 차단 " + x));
+      eq(/H_BLOCK = \/\\\.\(([^$]+)\)\$\/i/.exec(plan)[1], /ksync_h_blocked[\s\S]*?\\\.\((.+?)\)\$/.exec(sql)[1], "H 차단 목록");
+      ok(/"files": 200, "ratio": 0\.3, "min": 20/.test(sql) && /lim\.files\) \|\| 200, ratio = Number\(lim && lim\.ratio\) \|\| 0\.3, min = Number\(lim && lim\.min\) \|\| 20/.test(plan), "대량 한도 기본값");
+      const np = (s) => /function newPath\(folder: string, name: unknown\): string \{([\s\S]*?)\n\}/.exec(s)[1].trim();
+      eq(np(edge), np(files), "newPath 같음");
+      ok(/MAX_SIZE = 50 \* 1024 \* 1024/.test(edge) && /MAX_SIZE = 50 \* 1024 \* 1024/.test(plan) && /50 \* 1024 \* 1024/.test(sql), "50MB");
+      ok(/req\.headers\.get\("origin"\)/.test(edge) && !/Access-Control-Allow-Origin/.test(edge), "Origin 거절 · CORS 없음");
+      ok(/sha256hex\(key\)/.test(edge) && /p_key_hash: hash/.test(edge) && !/p_key: /.test(edge), "키는 sha256 만");
+      ok(/cf-connecting-ip[\s\S]*x-forwarded-for[\s\S]*pop\(\)/.test(edge) && /cf-connecting-ip[\s\S]*x-forwarded-for/.test(SEC_SQL), "IP 규칙 = SQL client_ip");
+      ok(/grant execute on function public\.semis_logi_ksync_agent\(text, text, text, jsonb\) to service_role;/.test(sql) && /revoke all on function public\.semis_logi_ksync_agent\(text, text, text, jsonb\) from public, anon, authenticated;/.test(sql), "입구는 서비스 권한만");
+      ok(!/updated_at\s*=\s*(old|v_|p_)/.test(sql), "updated_at 을 되돌리지 않음");
+    });
+    t("KS08 공개 저장소 위생: 에이전트 · 문서에 실제 주소 · IP · 키 없음(예시 · 시험용 주소만)", () => {
+      const fs2 = require("fs");
+      const list = ["tools/ksync/ksync.mjs", "tools/ksync/lib.mjs", "tools/ksync/plan.mjs", "tools/ksync/install.sh", "tools/ksync/uninstall.sh", "tools/ksync/test/plan.test.mjs", "tools/ksync/test/e2e.test.mjs",
+        "tools/edge/semis-logi-ksync.ts", "tools/edge/semis-logi-ksync.test.ts", "tools/sql/semis-logi-ksync.sql", "tools/sql/semis-logi-ksync.test.mjs", "js/ksync.js"].concat(fs2.existsSync(path.join(ROOT, "docs/KSYNC.md")) ? ["docs/KSYNC.md"] : []);
+      list.forEach(f => {
+        const s = read(f);
+        (s.match(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g) || []).forEach(ip => ok(/^(192\.0\.2|198\.51\.100|203\.0\.113)\.|^0\.0\.0\.0$|^10\.0\.0\.1$|^127\.0\.0\.1$/.test(ip), f + " IP " + ip));   // 문서용 예시(RFC 5737) · 시험용 사설 · 루프백만
+        (s.match(/smb:\/\/[^\s"'`)\]]+/g) || []).forEach(u => ok(/smb:\/\/(<|h\/|nas\.example|\$\{|" \+|host|' \+)/.test(u) || /^smb:\/\/(<서버>|\[)/.test(u), f + " SMB 주소 " + u));
+        ok(!/["'`][0-9a-f]{64}["'`]/.test(s), f + " 64자리 키 · 해시 문자열");
+      });
+    });
   }
 
   /* ══════════ [W] 릴리스 위생 ══════════ */

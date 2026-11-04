@@ -578,6 +578,7 @@
   /* ── 시스템 설정(관리자 전용) ── */
   SeMIS.registerModule("settings", {
     title: "시스템 설정",
+    navBadge: () => (window.SemisKsync ? SemisKsync.badge() : ""),
     render(root) {
       if (!SeMIS.isAdmin()) {
         root.innerHTML = '<div class="card"><div class="empty">시스템관리자 전용 메뉴입니다.</div></div>';
@@ -596,11 +597,14 @@
           <button class="tab" data-tab="data">데이터 관리</button>
           <button class="tab" data-tab="storage">저장소 관리</button>
           <button class="tab" data-tab="security">보안</button>
+          <button class="tab" data-tab="ksync">K드라이브 동기화</button>
         </div>
         <div id="tab-body"></div>`;
       const tabs = { menus: renderMenuTab, boards: (box) => { if (window.SemisBoard) SemisBoard.adminTab(box); else box.innerHTML = ""; }, users: renderUserTab, assignees: renderAssigneeTab,
-        data: renderDataTab, storage: renderStorageTab, security: renderSecurityTab };
+        data: renderDataTab, storage: renderStorageTab, security: renderSecurityTab,
+        ksync: (box) => { if (window.SemisKsync) SemisKsync.tab(box); else box.innerHTML = ""; } };
       $$(".tab").forEach(t => t.onclick = () => {
+        $$("#view .page-head .ks-hb").forEach(b => b.remove());     // K드라이브 동기화 탭의 머리말 단추
         $$(".tab").forEach(x => x.classList.remove("active"));
         t.classList.add("active");
         tabs[t.dataset.tab]($("#tab-body"));
