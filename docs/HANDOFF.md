@@ -209,6 +209,7 @@ Claude가 할 일(순서대로):
 
 ## 7. 미결 · 주의 (열린 일만 — 끝나면 HISTORY.md 로)
 
+- **⚠ K드라이브 동기화 v1.61 — 리뷰 결함 수정 먼저(운영 적용 금지)**: PR #7 독립 리뷰에서 41건 — 치명 1(Edge 가 Node fetch 의 `sec-fetch-mode` 헤더 때문에 실제 에이전트를 모두 거절) · 확인 7 · 미검증 28(클라우드 한도로 검증 중단). 목록 · 수정 방법 · 로컬 이어 하기 = `docs/KSYNC-REVIEW.md`, 수정 중간 상태 = 브랜치 `claude/ksync-wip`(SQL 일부만 — 시험 깨짐). 수정 · 시험이 끝난 뒤 아래 순서로 운영 적용
 - **K드라이브 동기화 운영 적용(v1.61) — 남은 일**(코드 · 시험 · PR 까지 끝, 운영은 아무것도 바꾸지 않음):
   1. Supabase 마이그레이션 `semis_logi_security_30_ksync` = `tools/sql/semis-logi-ksync.sql` 통째로(Mark 확인 뒤) → `select has_function_privilege('anon', 'public.semis_logi_ksync_agent(text,text,text,jsonb)', 'EXECUTE')` = false · `semis_logi_ksync_status()` 를 hq 세션으로 부르면 42501 확인
   2. Edge `semis-logi-ksync` 배포(verify_jwt false, 파일 하나) → 키 없이 POST = 401 `auth` · Origin 붙이면 403 `origin`
