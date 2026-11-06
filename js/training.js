@@ -630,6 +630,10 @@
   const PL = { rows: null, at: 0, busy: null, err: "", failAt: 0 };
   const PL_TTL = 10 * 60000;
   const PL_STATE = { valid: ["유효", "green"], left: ["퇴직 · 전출", "gray"], void: ["무효", "red"] };
+  /* 회사 CI(심벌 + AIRZETA) — 관리대장 인쇄 머리말용, SeMIS v2 관리대장과 같은 모양 · 색 */
+  const CI_SVG = `<svg class="tr-plci" viewBox="0 0 200 40" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="AIRZETA">
+      <g transform="translate(-4 -5.5) scale(.5)"><polygon points="84.6,15.1 61.3,15.1 10.9,55.1 37.2,55.1 37.2,38.9 65,38.9" fill="#df4552"/><polygon points="86.1,41.8 67.3,41.8 67.3,63.2 39.5,63.2 12.6,87.9 52.4,87.9" fill="#1b3088"/></g>
+      <text x="46" y="31" textLength="150" lengthAdjust="spacingAndGlyphs" font-family="'Arial Black', Arial, Helvetica, sans-serif" font-size="30" font-weight="900" font-style="italic" fill="#1b3088">AIRZETA</text></svg>`;
   function loadPledges(force) {
     if (!force && PL.rows && Date.now() - PL.at < PL_TTL) return Promise.resolve(false);
     if (!force && PL.failAt && Date.now() - PL.failAt < 60000) return Promise.resolve(false);
@@ -1234,7 +1238,7 @@
           : ui.empty(base.length ? "조건에 맞는 서약이 없습니다." : "서약 기록이 없습니다.")}
           <p class="tr-plnote m-hide">사번 · 서명이 들어간 국토부 제출용 관리대장은 SeMIS v2 '비밀 취급 / SSI'에서 출력합니다.</p></div>
         <div class="print-only tr-plprint">
-          <div class="tr-plcap"><b>민감보안정보 취급자 관리대장 — ${esc(scopeLb)}</b><span>기준일 ${esc(dot(t))} · 총원 ${rows.length - offN}명${offN ? ` (해지 ${offN}명 제외)` : ""}</span></div>
+          <div class="tr-plcap"><span class="tr-plttl">${CI_SVG}<b>민감보안정보 취급자 관리대장 — ${esc(scopeLb)}</b></span><span>기준일 ${esc(dot(t))} · 총원 ${rows.length - offN}명${offN ? ` (해지 ${offN}명 제외)` : ""}</span></div>
           <table class="tr-plptbl"><thead><tr><th style="width:8%">연번</th><th style="width:17%">이름</th><th style="width:29%">소속부서</th><th style="width:16%">직책</th><th style="width:15%">지정일</th><th style="width:15%">해지일</th></tr></thead>
           <tbody>${rows.map((r, i) => `<tr${r.state === "valid" ? "" : ' class="is-off"'}><td class="c">${i + 1}</td><td><b>${esc(r.name)}</b></td><td>${esc(r.dept)}</td><td>${esc(r.position)}</td><td class="c">${esc(dot(r.date))}</td><td class="c od">${r.state === "valid" ? "" : esc(dot(r.off))}</td></tr>`).join("")}</tbody></table>
           <p class="tr-plpfoot">국가항공보안계획 8.14.3 — 해지(퇴직 · 전출 · 무효)는 해지일과 취소선으로 표시하고 총원에서 제외 · 지정일 = 보안서약일</p>

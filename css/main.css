@@ -3504,10 +3504,12 @@ button.ck-link:active { transform: scale(.97); }
 }
 @media print {
   #tr-pllist .toolbar, #tr-plbody { display: none !important; }
-  .tr-plcap { display: flex; justify-content: space-between; gap: 6mm; margin-bottom: 2mm; font-size: 9pt; }
+  .tr-plcap { display: flex; justify-content: space-between; align-items: center; gap: 6mm; margin-bottom: 2mm; font-size: 9pt; }
+  .tr-plttl { display: flex; align-items: center; gap: 3mm; }
+  .tr-plci { height: 5.5mm; width: auto; display: block; flex: none; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .tr-plcap span { color: #444; }
   .tr-plptbl { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 9pt; }
-  .tr-plptbl th, .tr-plptbl td { border: 1px solid #9aa7a7; padding: 1.4mm 1.8mm; overflow-wrap: break-word; }
+  .tr-plptbl th, .tr-plptbl td { border: 1px solid #9aa7a7; padding: 1.4mm 1.8mm; overflow-wrap: break-word; text-align: center; }
   .tr-plptbl thead { display: table-header-group; }
   .tr-plptbl thead th { background: #e7eeed !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .tr-plptbl tr { break-inside: avoid; }

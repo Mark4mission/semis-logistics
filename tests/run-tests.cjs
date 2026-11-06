@@ -6140,6 +6140,8 @@ function makeServer(opts = {}) {
       ok(offTr && offTr.classList.contains("is-off") && offTr.querySelector("td.od").textContent === "2026.10.15", "해지자: 취소선 행 · 해지일");
       ok(qa(e, ".tr-plptbl tbody tr.is-off").length === 1 && qa(e, ".tr-plptbl tbody td.od").filter(x => x.textContent).length === 1, "유효자는 해지일 비움");
       ok(/8\.14\.3/.test(q(e, ".tr-plpfoot").textContent), "근거 조항");
+      ok(q(e, ".tr-plcap .tr-plttl svg.tr-plci[aria-label='AIRZETA']"), "머리말 왼쪽 회사 CI");
+      ok(/\.tr-plptbl th, \.tr-plptbl td \{[^}]*text-align: center; \}/.test(read("css/main.css")), "모든 칸 가운데 정렬");
       ok(qa(e, ".tr-pltbl tbody tr.is-off").length === 1 && /해지 2026\.10\.15/.test(q(e, ".tr-pltbl tbody tr.is-off").textContent), "화면: 해지 표시");
       ok(q(e, "[data-print-btn]"), "Print 버튼");
       const qi = q(e, "#tr-q"); qi.value = "뉴욕"; qi.dispatchEvent(new e.w.Event("input"));
