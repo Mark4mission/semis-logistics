@@ -3488,6 +3488,8 @@ button.ck-link:active { transform: scale(.97); }
 .tr-plnote { margin: 10px 0 0; font-size: max(var(--fs-min), .8rem); color: var(--text-3); }
 .tr-pltbl .c-no { width: 56px; text-align: center; color: var(--text-3); }
 .tr-pltbl .c-date { white-space: nowrap; }
+.tr-pltbl tr.is-off .c-name b { text-decoration: line-through; color: var(--text-2); }
+.tr-ploff { display: block; margin-top: 2px; font-size: max(var(--fs-min), .8rem); color: var(--text-3); white-space: nowrap; }
 @media (max-width: 640px) {
   .tr-pltbl thead { display: none; }
   .tr-pltbl, .tr-pltbl tbody { display: block; }
@@ -3510,6 +3512,10 @@ button.ck-link:active { transform: scale(.97); }
   .tr-plptbl thead th { background: #e7eeed !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .tr-plptbl tr { break-inside: avoid; }
   .tr-plptbl td.c { text-align: center; }
+  .tr-plptbl tr.is-off td { color: #444; }
+  .tr-plptbl tr.is-off td:not(.od) { text-decoration: line-through; text-decoration-color: #111; }
+  .tr-plptbl tr.is-off td.od { color: #111; font-weight: 700; }
+  .tr-plpfoot { margin: 2.5mm 0 0; font-size: 8pt; color: #555; }
 }
 
 /* ── 보안 기록부 (js/seclog.js, 라우트 inspection) ── */

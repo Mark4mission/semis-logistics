@@ -624,7 +624,8 @@
   }
 
   /* ── SSI 서약 — SeMIS v2 보안서약서 명단 ──
-     RPC semis_logi_pledges(manager 이상): 사람별 최신 서약 { name, dept, position, date, state, n } — 사번 · 서명 없음.
+     RPC semis_logi_pledges(manager 이상): 사람별 최신 서약 { name, dept, position, date, state, off(해지일), n } — 사번 · 서명 없음.
+     해지(퇴직 · 전출 · 무효)는 해지일부터 취소선 · 총원 제외(국가항공보안계획 8.14.3), 해지일 + 90일이 지나면 SeMIS 서버가 지운다.
      10분 캐시, 실패하면 1분 동안 다시 부르지 않는다(다시 그리기와 맞물린 반복 호출 방지). */
   const PL = { rows: null, at: 0, busy: null, err: "", failAt: 0 };
   const PL_TTL = 10 * 60000;
@@ -639,7 +640,7 @@
       if (!d || !d.ok) throw new Error((d && d.error) || "pledges");
       PL.rows = (Array.isArray(d.rows) ? d.rows : []).filter(r => r && r.name)
         .map(r => ({ name: norm(r.name), dept: norm(r.dept), position: norm(r.position), date: isISO(r.date) ? r.date : "",
-                     state: PL_STATE[r.state] ? r.state : "valid", n: Number(r.n) || 1 }));
+                     state: PL_STATE[r.state] ? r.state : "valid", off: isISO(r.off) ? r.off : "", n: Number(r.n) || 1 }));
       PL.at = Date.now(); PL.err = ""; PL.failAt = 0;
       return true;
     }).catch(e => { PL.err = String((e && e.message) || e); PL.failAt = Date.now(); return false; })
@@ -1208,6 +1209,7 @@
       && (!q || hay([r.name, r.dept, r.position]).indexOf(q.toLowerCase()) >= 0))
       .sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(a.name).localeCompare(String(b.name), "ko"));
     const valid = PL.rows.filter(r => r.state === "valid").length;
+    const offN = rows.filter(r => r.state !== "valid").length;
     const scopeLb = plScope === "all" ? "전사" : "인천화물팀";
     const who = (p) => `<button type="button" class="tbl-open" data-tperson="${esc(p.id)}">${esc(p.name)}</button>`;
     return ui.stats([
@@ -1225,16 +1227,17 @@
         </div>
         <div id="tr-plbody" class="no-print">${rows.length ? `<div class="table-wrap"><table class="tbl tbl-cap tr-pltbl" style="--cap:1180px">
           <thead><tr><th class="c-no">번호</th><th>서약일</th><th>성명</th><th>소속</th><th>직위</th><th>상태</th></tr></thead>
-          <tbody>${rows.map((r, i) => `<tr><td class="c-no mono">${i + 1}</td><td class="c-date mono">${esc(dot(r.date))}</td>
+          <tbody>${rows.map((r, i) => `<tr${r.state === "valid" ? "" : ' class="is-off"'}><td class="c-no mono">${i + 1}</td><td class="c-date mono">${esc(dot(r.date))}</td>
             <td class="c-name"><b>${esc(r.name)}</b>${r.n > 1 ? ` <small class="tr-src" title="서약 ${r.n}회">재서약 ${r.n - 1}</small>` : ""}</td>
             <td class="c-dept">${esc(r.dept || "-")}</td><td class="c-pos">${esc(r.position || "-")}</td>
-            <td class="c-st">${ui.chip((PL_STATE[r.state] || PL_STATE.valid)[0], (PL_STATE[r.state] || PL_STATE.valid)[1])}</td></tr>`).join("")}</tbody></table></div>`
+            <td class="c-st">${ui.chip((PL_STATE[r.state] || PL_STATE.valid)[0], (PL_STATE[r.state] || PL_STATE.valid)[1])}${r.state !== "valid" && r.off ? `<small class="mono tr-ploff">해지 ${esc(dot(r.off))}</small>` : ""}</td></tr>`).join("")}</tbody></table></div>`
           : ui.empty(base.length ? "조건에 맞는 서약이 없습니다." : "서약 기록이 없습니다.")}
-          <p class="tr-plnote m-hide">사번 · 서명이 들어간 국토부 제출용 명단은 SeMIS v2 '비밀 취급 / SSI'에서 출력합니다.</p></div>
+          <p class="tr-plnote m-hide">사번 · 서명이 들어간 국토부 제출용 관리대장은 SeMIS v2 '비밀 취급 / SSI'에서 출력합니다.</p></div>
         <div class="print-only tr-plprint">
-          <div class="tr-plcap"><b>보안서약서 작성자 명단 — ${esc(scopeLb)}</b><span>기준일 ${esc(dot(t))} · ${rows.length}명${plState === "all" ? " · 상태 전체" : ""}</span></div>
-          <table class="tr-plptbl"><thead><tr><th style="width:9%">번호</th><th style="width:28%">소속</th><th style="width:17%">직위</th><th style="width:18%">성명</th><th style="width:16%">서약일</th><th style="width:12%">상태</th></tr></thead>
-          <tbody>${rows.map((r, i) => `<tr><td class="c">${i + 1}</td><td>${esc(r.dept)}</td><td>${esc(r.position)}</td><td><b>${esc(r.name)}</b></td><td class="c">${esc(dot(r.date))}</td><td class="c">${esc((PL_STATE[r.state] || PL_STATE.valid)[0])}</td></tr>`).join("")}</tbody></table>
+          <div class="tr-plcap"><b>민감보안정보 취급자 관리대장 — ${esc(scopeLb)}</b><span>기준일 ${esc(dot(t))} · 총원 ${rows.length - offN}명${offN ? ` (해지 ${offN}명 제외)` : ""}</span></div>
+          <table class="tr-plptbl"><thead><tr><th style="width:8%">연번</th><th style="width:17%">이름</th><th style="width:29%">소속부서</th><th style="width:16%">직책</th><th style="width:15%">지정일</th><th style="width:15%">해지일</th></tr></thead>
+          <tbody>${rows.map((r, i) => `<tr${r.state === "valid" ? "" : ' class="is-off"'}><td class="c">${i + 1}</td><td><b>${esc(r.name)}</b></td><td>${esc(r.dept)}</td><td>${esc(r.position)}</td><td class="c">${esc(dot(r.date))}</td><td class="c od">${r.state === "valid" ? "" : esc(dot(r.off))}</td></tr>`).join("")}</tbody></table>
+          <p class="tr-plpfoot">국가항공보안계획 8.14.3 — 해지(퇴직 · 전출 · 무효)는 해지일과 취소선으로 표시하고 총원에서 제외 · 지정일 = 보안서약일</p>
         </div>
       </section>`;
   }
