@@ -13,7 +13,9 @@
   const FSTATE = { del_k: "K드라이브에서 지움", del_h: "H:drive 에서 지움", conflict: "충돌", skip: "건너뜀", error: "오류", restore: "복원 대기", trash: "삭제 확정 대기" };
   const EVK = { bad_key: "틀린 키", revoked_key: "폐기한 키", ip_denied: "허용 밖 IP", rate: "횟수 초과", mass_hold: "대량 변경 보류", type_block: "실행 파일 차단", hash_mismatch: "해시 불일치", scope: "연결 밖 접근" };
   const WHY = { too_large: "50MB 초과", type: "올리지 않는 형식", type_block: "실행 파일 · 스크립트(K 에 쓰지 않음)", name: "쓸 수 없는 이름", dir: "이 연결의 방향 밖", hash: "해시 불일치", changed: "읽는 중 바뀜",
-    no_folder: "K 폴더 없음", quota: "하루 전송량 상한", ssi: "민감보안정보", upload: "올리기 실패", download: "받기 실패", path: "연결 폴더 밖 경로", held: "보류" };
+    no_folder: "K 폴더 없음", quota: "하루 전송량 상한", ssi: "민감보안정보", upload: "올리기 실패", download: "받기 실패", path: "연결 폴더 밖 경로", held: "보류",
+    mark: "서버가 맞춘 기록 일부를 받지 않음", state: "연결을 멈추거나 지워서 이 연결은 중단", run: "서버에서 이 실행이 이미 끝나 중단",
+    apply: "문서함에 등록하지 못함(그 사이 H:drive 에 새 판 등) — 다음 실행에서 다시 맞춤" };
   const st = { s: null, p: null, runs: null, ev: null, folders: null, evKind: "", err: "", busy: false, alert: false, at: 0, box: null };
 
   const pad = (n) => String(n).padStart(2, "0");
@@ -31,22 +33,39 @@
   const mapOf = (id) => ((st.s && st.s.maps) || []).find(m => m.id === id);
   const errText = (e) => (e && e.status === 403 ? "시스템관리자만 쓸 수 있습니다." : "서버에 연결할 수 없습니다.");
   const ERR = { k_path: "K 폴더 경로를 확인하세요(연결 폴더 안 상대 경로).", target: "화면 · 분류를 고르세요.", k_dup: "이미 연결했거나 겹치는 K 폴더입니다.", target_dup: "그 화면 · 분류는 이미 다른 폴더와 연결되어 있습니다.",
-    locked: "맞춘 파일이 있어 폴더 · 화면을 바꿀 수 없습니다. 연결을 지우고 새로 만드세요.", ip: "IP 형식을 확인하세요(너무 넓은 범위는 넣을 수 없음).", daily_at: "시각 형식(HH:MM)", mass_limit: "한도 값을 확인하세요.", gone: "이미 처리되었습니다.", state: "지금 상태에서는 할 수 없습니다.", bad: "입력을 확인하세요." };
+    locked: "맞춘 파일이 있어 폴더 · 화면을 바꿀 수 없습니다. 연결을 지우고 새로 만드세요.", ip: "IP 형식을 확인하세요(너무 넓은 범위는 넣을 수 없음).", daily_at: "시각 형식(HH:MM)", mass_limit: "한도 값을 확인하세요.", gone: "이미 처리되었습니다.", state: "지금 상태에서는 할 수 없습니다.", bad: "입력을 확인하세요.",
+    preview: "미리보기 건수가 온 뒤에 시작할 수 있습니다." };
   const fail = (d) => toast(ERR[(d && d.error) || ""] || "처리하지 못했습니다.", true);
+  const isDom = () => typeof navigator !== "undefined" && /jsdom/i.test(navigator.userAgent || "");
+  /* #tab-body 는 설정 탭이 모두 함께 쓰는 칸 — 늦게 온 결과가 다른 탭 위에 그려지지 않게 */
+  const on = () => !!(st.box && st.box.isConnected && document.querySelector('#view .tab.active[data-tab="ksync"]'));
+  const alertOf = () => !!(st.s && (st.s.stale || (st.s.counts && st.s.counts.hold) || st.evNew));
 
   /* ── 불러오기 ── */
-  async function load(full) {
+  /* quiet = 원격 변경 등으로 화면만 다시 그린 것 — 아무도 보고 있지 않을 수 있어(숨은 창) '본 것'으로 하지 않는다 */
+  async function load(full, quiet) {
     st.busy = true;
     try {
+      /* 보안 이벤트 목록을 실제로 보여 줄 때만 '본 것' — 종류로 거른 목록은 다른 종류의 새 이벤트를 보여 주지 않는다 */
+      const look = !quiet && st.secTab === "ev" && !st.evKind && on();
       const jobs = [rpc("semis_logi_ksync_status"), rpc("semis_logi_ksync_pending"), rpc("semis_logi_ksync_runs", { p: { limit: 30 } }),
-        rpc("semis_logi_ksync_events", { p: { kind: st.evKind || null, limit: 100 } })];
+        rpc("semis_logi_ksync_events", { p: { kind: st.evKind || null, limit: 100, seen: look } })];
       if (full || !st.folders) jobs.push(rpc("semis_logi_ksync_folders"));
       const r = await Promise.all(jobs);
       st.s = r[0]; st.p = r[1]; st.runs = r[2].runs || []; st.ev = r[3]; if (r[4]) st.folders = r[4].folders || [];
       st.err = "";
-      setAlert(!!(st.s && (st.s.stale || (st.s.counts && st.s.counts.hold))));     // 이 화면을 본 것 = 보안 이벤트 확인
+      st.evNew = !look && !!(st.s && st.s.counts && st.s.counts.ev_new);
+      if (full && st.evNew && on()) { st.secTab = "ev"; st.evKind = ""; await seen(); }     // 새 보안 이벤트는 열 때 그 칸을 전체로 펴서 보여 준다
+      setAlert(alertOf());
     } catch (e) { st.err = errText(e); }
     st.busy = false;
+  }
+  async function seen() {
+    if (st.evKind) return;     // 거른 목록으로는 '본 것'이 아니다 — [전체]를 볼 때
+    try {
+      const d = await rpc("semis_logi_ksync_events", { p: { kind: st.evKind || null, limit: 100, seen: true } });
+      if (d && d.ok) { st.ev = d; st.evNew = false; setAlert(alertOf()); }
+    } catch (e) { /* 다음에 목록을 볼 때 다시 */ }
   }
   function setAlert(v) {
     st.at = Date.now();
@@ -58,19 +77,21 @@
   function badge() { return SeMIS.isAdmin && SeMIS.isAdmin() && st.alert ? "확인" : ""; }
   async function poll(force) {
     if (!SeMIS.user || !SeMIS.isAdmin() || !window.SemisSync) return;
-    const dom = typeof navigator !== "undefined" && /jsdom/i.test(navigator.userAgent || "");
-    if (dom && !window.__ksyncPoll) return;
+    if (isDom() && !window.__ksyncPoll) return;
     if (!force && Date.now() - st.at < 10 * 60 * 1000) return;
     st.at = Date.now();
     try { const s = await rpc("semis_logi_ksync_status"); if (s && s.ok) setAlert(!!s.alert); } catch (e) { /* 다음 확인 때 */ }
   }
+  /* 화면을 다시 그리지 않아도 10분마다 — 숨은 탭에서는 묻지 않는다 */
+  function tick() { if (document.visibilityState !== "hidden") poll(true); }
 
   /* ── 화면 ── */
-  async function tab(box) {
+  /* again = 같은 화면을 다시 그린 것(사용자가 탭을 연 것이 아님) — 보던 칸을 그대로 두고 새 보안 이벤트를 '본 것'으로 하지 않는다 */
+  async function tab(box, again) {
     st.box = box;
     heads();
     box.innerHTML = '<div class="card"><div class="empty">불러오는 중…</div></div>';
-    await load(true);
+    await load(!again, !!again);
     if (st.box === box && box.isConnected !== false) paint();
   }
   /* 시스템 설정 머리말: [지금 동기화 요청] [⋯ 에이전트 키 발급 · 폐기 · 매일 실행 시각 · 대량 변경 한도] [인쇄] */
@@ -78,7 +99,8 @@
     const head = $("#view .page-head");
     if (!head) return;
     $$(".ks-hb", head).forEach(b => b.remove());
-    const pb = head.querySelector("[data-print-btn]");
+    /* 화면을 처음 그릴 때는 인쇄 단추가 아직 없다 — 코어가 설명 앞에 붙이므로 그 앞에 두어야 인쇄가 끝에 온다 */
+    const pb = head.querySelector("[data-print-btn]") || head.querySelector(":scope > .page-desc");
     const mk = (cls, id, ico, label) => { const b = document.createElement("button"); b.type = "button"; b.className = "btn btn-sm ks-hb " + cls; b.id = id; b.innerHTML = icon(ico, 16) + "<span>" + esc(label) + "</span>"; head.insertBefore(b, pb || null); return b; };
     mk("btn-primary", "ks-req", "refresh", "지금 동기화 요청").onclick = request;
     mk("btn-ghost ph-rare", "ks-key-new", "lock", "에이전트 키 발급").onclick = keyNew;
@@ -88,7 +110,7 @@
   }
   function paint() {
     const box = st.box;
-    if (!box) return;
+    if (!on()) return;
     if (st.err || !st.s) { box.innerHTML = `<div class="card"><div class="empty">${esc(st.err || "불러오지 못했습니다.")}</div></div>`; return; }
     box.innerHTML = stripHTML() + mapsHTML() + pendHTML() + runsHTML() + secHTML();
     wire(box);
@@ -153,7 +175,18 @@
     const p = st.p || {}, holds = p.holds || [], files = p.files || [], last = p.last || [];
     const del = files.filter(f => f.state === "del_k" || f.state === "del_h"), conf = files.filter(f => f.state === "conflict");
     const wait = files.filter(f => f.state === "restore" || f.state === "trash");
-    const skip = files.filter(f => f.state === "skip" || f.state === "error").concat(last.map(x => ({ last: true, map: x.m, rel_path: x.f, state: x.a, note: x.r })));
+    /* 기준선이 있는 파일은 건너뛸 때 그 줄 상태도 바뀌고 실행 기록에도 남는다 — 연결 · 경로마다 한 번.
+       기록에 경로 대신 H 파일 이름이 남는 것은 H 쪽에서 건너뛴 줄(쓸 수 없는 이름 · 실행 파일)뿐 — 그 이유일 때만 H 이름으로 맞춰야 같은 이름의 다른 K 파일 줄을 숨기지 않는다 */
+    const hSide = (r) => r === "name" || r === "type_block";
+    const once = new Set();
+    const skip = files.filter(f => f.state === "skip" || f.state === "error").concat(last.map(x => ({ last: true, map: x.m, rel_path: x.f, state: x.a, note: x.r })))
+      .filter(f => {
+        const k = f.map + "|" + f.rel_path;
+        if (once.has(k) || (f.last && once.has("h|" + k + "|" + f.note))) return false;
+        once.add(k);
+        if (!f.last && f.h_name && hSide(f.note)) once.add("h|" + f.map + "|" + f.h_name + "|" + f.note);
+        return true;
+      });
     const n = holds.length + del.length + conf.length + skip.length;
     const mp = (id) => { const m = mapOf(id); return m ? m.k_path : ""; };
     const row = (f, acts) => `<tr><td data-role="title"><span class="ks-path">${esc(f.rel_path || f.h_name || "")}</span><div class="cell-sub">${esc(mp(f.map))}</div></td>
@@ -228,7 +261,7 @@
     try {
       const d = await rpc(name, args);
       if (!d || !d.ok) { fail(d); return null; }
-      if (okMsg) toast(okMsg);
+      if (okMsg) toast(typeof okMsg === "function" ? okMsg(d) : okMsg);
       await load(false); paint();
       return d;
     } catch (e) { toast(errText(e), true); return null; }
@@ -237,7 +270,7 @@
     /* 숨어 있던 칸의 표는 처음 정돈 때 잴 수 없었다 — 고를 때 다시(모바일 한 줄 쌓기) */
     const retidy = () => { if (SeMIS.tidyTables) SeMIS.tidyTables(box); };
     ui.wireTabs(box, "kspend", retidy);
-    ui.wireTabs(box, "kssec", (id) => { st.secTab = id; retidy(); });
+    ui.wireTabs(box, "kssec", (id) => { st.secTab = id; retidy(); if (id === "ev" && st.evNew) seen(); });
     const add = $("#ks-map-add", box); if (add) add.onclick = () => mapForm();
     $$("[data-ks-start]", box).forEach(b => b.onclick = () => {
       const m = mapOf(Number(b.dataset.ksStart));
@@ -253,7 +286,9 @@
     });
     $$("[data-ks-res]", box).forEach(b => b.onclick = () => {
       const a = b.dataset.ksRes;
-      const go = () => act("semis_logi_ksync_resolve", { p: { ids: [Number(b.dataset.id)], act: a } }, a === "confirm" ? "삭제를 확정했습니다." : a === "restore" ? "복원을 요청했습니다." : "확인했습니다.");
+      // K 에서 지운 뒤 H 에 새 판이 생긴 줄은 서버가 지우지 않고 충돌로 돌린다(kept)
+      const go = () => act("semis_logi_ksync_resolve", { p: { ids: [Number(b.dataset.id)], act: a } },
+        a === "confirm" ? (d) => (d.kept ? "H:drive 에 새 판이 있어 지우지 않았습니다 — '충돌'에서 확인하세요." : "삭제를 확정했습니다.") : a === "restore" ? "복원을 요청했습니다." : "확인했습니다.");
       if (a === "confirm") confirmModal("삭제를 확정할까요? 지워진 쪽에 맞춰 다른 쪽도 지웁니다(H:drive 문서는 변경 이력 90일 · K 파일은 휴지통 폴더 30일).", go); else go();
     });
     $$("[data-ks-run]", box).forEach(b => b.onclick = () => runDetail(Number(b.dataset.ksRun)));
@@ -324,15 +359,21 @@
     };
   }
 
+  /* 발급 요청 중 — 창을 닫았다 다시 열어도 두 번째 키를 만들지 않는다(키 창은 응답이 오면 열린다) */
+  let issuing = false;
   function keyNew() {
+    if (issuing) { toast("키를 발급하는 중입니다 — 잠시 뒤 키 창이 열립니다."); return; }
     openModal(`<h3>에이전트 키 발급</h3>
       <div class="form-row"><label for="ks-kn">이름</label><input id="ks-kn" value="Mac" maxlength="40" autocomplete="off"></div>
       <div class="modal-actions"><button type="button" class="btn btn-ghost" data-act="cancel">취소</button><button type="button" class="btn btn-primary" data-act="ok">발급</button></div>`);
     $("#modal-box [data-act=cancel]").onclick = closeModal;
-    $("#modal-box [data-act=ok]").onclick = async () => {
+    const btn = $("#modal-box [data-act=ok]");
+    btn.onclick = async () => {
+      if (issuing) return;
+      issuing = true; btn.disabled = true;     // 두 번 누르면 키가 둘 — 첫 키는 원문을 볼 수 없다
       let d;
-      try { d = await rpc("semis_logi_ksync_agent_new", { p_name: $("#ks-kn").value }); } catch (e) { toast(errText(e), true); return; }
-      if (!d || !d.ok || !/^[0-9a-f]{64}$/.test(d.key || "")) { fail(d); return; }
+      try { d = await rpc("semis_logi_ksync_agent_new", { p_name: $("#ks-kn").value }); } catch (e) { btn.disabled = false; toast(errText(e), true); return; } finally { issuing = false; }
+      if (!d || !d.ok || !/^[0-9a-f]{64}$/.test(d.key || "")) { btn.disabled = false; fail(d); return; }
       let key = d.key;
       openModal(`<h3>새 에이전트 키</h3>
         <p class="ks-keywarn">${icon("alert", 16)}<span>이 창을 닫으면 다시 볼 수 없습니다. Mac 에서 <b>tools/ksync/install.sh</b> 를 실행해 키체인에 넣으세요.</span></p>
@@ -407,5 +448,6 @@
   }
 
   SeMIS.onRerender(() => { poll(false); });
-  window.SemisKsync = { tab, badge, poll, load, paint, get _st() { return st; } };
+  if (!isDom()) setInterval(tick, 10 * 60 * 1000);
+  window.SemisKsync = { tab, badge, poll, load, paint, _tick: tick, get _st() { return st; } };
 })();

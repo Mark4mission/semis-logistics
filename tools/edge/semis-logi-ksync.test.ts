@@ -1,5 +1,6 @@
 // semis-logi-ksync 로컬 검증 — 실제 SQL(tools/sql/semis-logi-ksync.sql)을 PGlite 에 올리고, PostgREST RPC · 저장소만 가짜로 바꿔 끼운 뒤
 // 함수를 실제로 띄워 요청한다(외부 침입 방어: 키 없음 · 틀린 키 · 폐기 키 · 허용 IP 밖 · 빈 허용 목록 · Origin · 횟수 초과 · 연결 밖 문서).
+// 요청은 Node fetch(에이전트)처럼 늘 sec-fetch-mode: cors 를 단다 — 그 헤더로 에이전트를 막지 않는지 모든 시험에서 함께 본다.
 // 실행: deno test --node-modules-dir=none --allow-net --allow-env --allow-read tools/edge/semis-logi-ksync.test.ts   (포트 8000 사용, PGlite 는 npm: 으로 받음)
 import { assertEquals } from "jsr:@std/assert@1";
 import { PGlite } from "npm:@electric-sql/pglite@0.5.15";
@@ -35,6 +36,7 @@ const admin = async (sql: string, p: unknown[] = []) => {
 type Call = { url: string; headers: Record<string, string>; body: Record<string, unknown> };
 const calls: Call[] = [];
 const objects = new Map<string, Uint8Array>();
+const streams = new Map<string, () => ReadableStream<Uint8Array>>();     // 저장소 파일을 조각으로 흘려 줌(얼마나 읽었는지 셈)
 const deleted: string[] = [];
 const realFetch = globalThis.fetch;
 globalThis.fetch = (async (input: Request | URL | string, init?: RequestInit) => {
@@ -54,18 +56,19 @@ globalThis.fetch = (async (input: Request | URL | string, init?: RequestInit) =>
   m = /\/storage\/v1\/object\/sign\/semis-logi-files\/(.+)$/.exec(url);
   if (m) return new Response(JSON.stringify({ signedURL: "/object/sign/semis-logi-files/" + m[1] + "?token=dn" }), { status: 200 });
   m = /\/storage\/v1\/object\/semis-logi-files\/(.+)$/.exec(url);
+  if (m && streams.has(decodeURIComponent(m[1]))) return new Response(streams.get(decodeURIComponent(m[1]))!(), { status: 200 });
   if (m) { const o = objects.get(decodeURIComponent(m[1])); return o ? new Response(o as BodyInit, { status: 200 }) : new Response("no", { status: 404 }); }
   if (url.endsWith("/storage/v1/object/semis-logi-files") && init?.method === "DELETE") { (body.prefixes as string[]).forEach((p) => { deleted.push(p); objects.delete(p); }); return new Response("[]", { status: 200 }); }
   return new Response("{}", { status: 404 });
 }) as typeof fetch;
 
-await import("./semis-logi-ksync.ts");
+const { handle } = await import("./semis-logi-ksync.ts");
 const PUB = "https://mzyuzrxkdcpzxojenwat.supabase.co/storage/v1/object/public/semis-logi-files/";
 const IP = "198.51.100.20";
 const sha = async (s: string | Uint8Array) => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", (typeof s === "string" ? new TextEncoder().encode(s) : s) as BufferSource)), (b) => b.toString(16).padStart(2, "0")).join("");
 let KEY = "";
 const post = async (body: unknown, o: { key?: string; ip?: string; xff?: string; headers?: Record<string, string>; method?: string; raw?: string } = {}) => {
-  const h: Record<string, string> = { "content-type": "application/json", ...(o.headers || {}) };
+  const h: Record<string, string> = { "content-type": "application/json", "sec-fetch-mode": "cors", ...(o.headers || {}) };
   if (o.key !== "") h["x-ksync-key"] = o.key ?? KEY;
   if (o.xff) h["x-forwarded-for"] = o.xff; else h["cf-connecting-ip"] = o.ip ?? IP;
   const r = await realFetch("http://localhost:8000/", { method: o.method || "POST", headers: h, body: o.method === "GET" ? undefined : (o.raw ?? JSON.stringify(body)) });
@@ -83,7 +86,9 @@ Deno.test("브라우저 차단: Origin · Sec-Fetch 헤더가 있으면 거절�
   r = await post({ act: "hello" }, { method: "OPTIONS", headers: { origin: "https://evil.example" } });
   assertEquals(r.status, 403, "사전 요청도 거절");
   r = await post({ act: "hello" }, { headers: { "sec-fetch-site": "cross-site" } });
-  assertEquals(r.d.error, "origin", "Sec-Fetch");
+  assertEquals([r.status, r.d.error], [403, "origin"], "Sec-Fetch-Site");
+  r = await post({ act: "hello" }, { key: "", headers: { "sec-fetch-mode": "cors" } });
+  assertEquals([r.status, r.d.error], [401, "auth"], "Sec-Fetch-Mode 만 있으면 통과(Node fetch 가 늘 보냄) → 키 확인으로");
   r = await post({}, { method: "GET" });
   assertEquals(r.status, 405);
   r = await post(null, { raw: "{bad" });
@@ -92,6 +97,23 @@ Deno.test("브라우저 차단: Origin · Sec-Fetch 헤더가 있으면 거절�
   assertEquals(r.d.error, "bad", "모르는 동작");
   r = await post(null, { raw: JSON.stringify({ act: "hello", pad: "x".repeat(2 * 1024 * 1024) }) });
   assertEquals(r.status, 413, "본문 상한");
+});
+
+Deno.test("본문 상한: Content-Length 없이(chunked) 2MB 를 넘으면 읽는 중에 끊고 413", async () => {
+  const CH = 64 * 1024, N = 100;
+  let pulled = 0;
+  const body = () => new ReadableStream<Uint8Array>({
+    pull(c) { if (pulled >= N) { c.close(); return; } pulled++; c.enqueue(new Uint8Array(CH).fill(32)); }
+  }, { highWaterMark: 0 });
+  const req = new Request("http://localhost/", { method: "POST", body: body(), headers: { "content-type": "application/json" } });
+  assertEquals(req.headers.get("content-length"), null, "Content-Length 없음");
+  const res = await handle(req);
+  assertEquals([res.status, await res.json()], [413, { ok: false, error: "too_large" }]);
+  assertEquals(pulled < N && pulled * CH <= 2 * 1024 * 1024 + 2 * CH, true, "상한을 넘은 곳에서 그만 읽음: " + pulled + " 조각");
+  pulled = 0;
+  const r = await realFetch("http://localhost:8000/", { method: "POST", headers: { "content-type": "application/json", "sec-fetch-mode": "cors" }, body: body() });
+  assertEquals(r.status, 413, "실제 HTTP(chunked)");
+  await r.body?.cancel();
 });
 
 Deno.test("키: 없음 · 틀림 · 폐기 → 401 auth(같은 코드) · 기록 · DB 에는 sha256 만", async () => {
@@ -104,10 +126,10 @@ Deno.test("키: 없음 · 틀림 · 폐기 → 401 auth(같은 코드) · 기록
   assertEquals([r.status, r.d], [401, { ok: false, error: "auth" }], "틀린 키");
   r = await post({ act: "hello" }, { key: "x'; drop table--" });
   assertEquals(r.d.error, "auth", "형식 아닌 키");
-  assertEquals(await events("bad_key"), 3);
+  assertEquals(await events("bad_key"), 1, "기록은 IP 마다 15분에 한 줄(차단 셈은 따로)");
   const old = await admin("select public.semis_logi_ksync_agent_new('old')") as { key: string; id: number };
   await admin("select public.semis_logi_ksync_agent_revoke($1)", [old.id]);
-  r = await post({ act: "hello" }, { key: old.key });
+  r = await post({ act: "hello" }, { key: old.key, ip: "198.51.100.9" });
   assertEquals([r.status, r.d.error], [401, "auth"], "폐기 키");
   assertEquals(await events("revoked_key"), 1);
   r = await post({ act: "hello" });
@@ -134,9 +156,10 @@ Deno.test("허용 IP: 비어 있으면 hello 만(후보 IP) · 허용 밖 거절
   assertEquals([r.status, r.d.error], [403, "ip"], "첫 항목은 믿지 않음(꾸밀 수 있음)");
 });
 
-Deno.test("올리기 · 내려받기: 문서함 등록 · 해시 불일치 거절(파일 지움) · 연결 밖 문서 · 실행 파일 차단", async () => {
+Deno.test("올리기 3단계(begin → 업로드 → verify → apply) · 해시 불일치 거절(파일 지움) · 에이전트 경로 · 주소 무시 · 연결 밖 문서 · 실행 파일 차단", async () => {
   await admin("select public.semis_logi_ksync_map_save($1::jsonb)", [JSON.stringify({ k_path: "점검표", mod: "audit", grp: "checklist" })]);
   const mapId = await one("select id from semis_logi_private.ksync_maps") as number;
+  await db.query("update semis_logi_private.ksync_maps set preview = '{\"total\": 0}'::jsonb where id = $1", [mapId]);     // [시작]은 미리보기 건수가 온 뒤에만
   await admin("select public.semis_logi_ksync_map_start($1)", [mapId]);
   await db.query("insert into public.semis_logi_store(key, value) values ('docs', $1::jsonb)", [JSON.stringify([
     { id: "d1", mod: "audit", grp: "checklist", title: "가", date: "2026-10-01", files: [{ name: "가.pdf", size: 4, url: PUB + "docs/aaaaaaaaaaaa_a.pdf" }] },
@@ -146,33 +169,88 @@ Deno.test("올리기 · 내려받기: 문서함 등록 · 해시 불일치 거�
   const run = (await post({ act: "run", phase: "start", trigger: "manual" })).d.run;
   const bytes = new TextEncoder().encode("엑셀 내용");
   const h = await sha(bytes);
-  let r = await post({ act: "put", run, map: mapId, rel_path: "2026/점검표.xlsx", size: bytes.length, sha256: h, mtime: "2026-11-04T00:00:00Z", mode: "new" });
+  const nDocs = async () => (await one("select jsonb_array_length(value) from public.semis_logi_store where key = 'docs'")) as number;
+  // begin — 에이전트가 경로 · 폴더 · ssi · 이름 부분을 보내도 쓰지 않음(폴더는 SQL, 이름 부분은 Edge)
+  calls.length = 0;
+  let r = await post({ act: "put", phase: "begin", run, map: mapId, rel_path: "2026/점검표.xlsx", size: bytes.length, sha256: h, mtime: "2026-11-04T00:00:00Z", mode: "new",
+    path: "docs-ssi/zzzzzzzzzzzz_evil.xlsx", ssi: true, part: "zzzzzzzzzzzz_evil.xlsx", prefix: "https://evil.example/" });
   assertEquals(r.d.ok, true, JSON.stringify(r.d));
   const path = String(r.d.path);
   assertEquals(/^docs\/[a-z0-9]{12,24}_{4}\.xlsx$/.test(path), true, "files 함수와 같은 경로 규칙: " + path);
-  assertEquals(String(r.d.upload).startsWith("https://supa.test/storage/v1/object/upload/sign/semis-logi-files/"), true);
+  assertEquals(r.d.url, PUB + path);
+  assertEquals(String(r.d.upload).startsWith("https://supa.test/storage/v1/object/upload/sign/semis-logi-files/" + path), true, "SQL 이 정한 경로로 업로드 서명");
   assertEquals(r.d.type, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-  r = await post({ act: "put", phase: "commit", path });
+  const sent = calls.find((c) => c.url.endsWith("/semis_logi_ksync_agent") && c.body.p_act === "put")!.body.p as Record<string, unknown>;
+  assertEquals(Object.keys(sent).sort(), ["map", "mode", "mtime", "part", "rel_path", "run", "sha256", "size"], "SQL 로 넘기는 칸(경로 · ssi · 주소 앞부분 없음)");
+  assertEquals("docs/" + sent.part, path, "이름 부분(part)만 넘기고 SQL 이 폴더를 붙임");
+  // verify — 업로드 전이면 거절, 업로드 뒤 저장소에서 다시 재어 확인. 등록은 아직
+  r = await post({ act: "put", phase: "verify", path });
   assertEquals([r.status, r.d.error], [409, "state"], "올리기 전 확인 = 거절");
   objects.set(path, bytes);
-  r = await post({ act: "put", phase: "commit", path });
-  assertEquals(r.d.ok, true, "확인 → 등록");
+  const n0 = await nDocs();
+  r = await post({ act: "apply", run, paths: [path] });
+  assertEquals([r.status, r.d.docs, await nDocs()], [200, {}, n0], "올렸어도 확인(verify) 전에는 등록 안 됨");
+  r = await post({ act: "put", phase: "verify", path });
+  assertEquals([r.status, r.d], [200, { ok: true }], "확인");
+  assertEquals(await nDocs(), n0, "확인만으로는 문서함에 안 넣음");
+  r = await post({ act: "put", phase: "verify", path });
+  assertEquals([r.status, r.d.error], [409, "state"], "같은 확인 두 번 불가");
+  r = await post({ act: "put", phase: "verify", path: "docs/../x" });
+  assertEquals([r.status, r.d.error], [400, "bad"], "경로 형식");
+  // apply — 에이전트가 보낸 주소 앞부분은 무시하고 PUBLIC_PREFIX
+  calls.length = 0;
+  r = await post({ act: "apply", run, paths: [path], prefix: "https://evil.example/storage/v1/object/public/semis-logi-files/" });
+  assertEquals(r.d.ok, true, JSON.stringify(r.d));
+  const docId = (r.d.docs as Record<string, string>)[path];
+  assertEquals(/^ks[0-9a-f]{12}$/.test(docId), true, "등록 " + JSON.stringify(r.d));
+  assertEquals((calls.find((c) => c.body.p_act === "put_apply")!.body.p as Record<string, unknown>).prefix, PUB, "주소 앞부분은 Edge 가 넣음");
   const docs = await one("select value from public.semis_logi_store where key = 'docs'") as Record<string, unknown>[];
-  const nd = docs.find((d) => d.id === r.d.doc)!;
+  const nd = docs.find((d) => d.id === docId)!;
   assertEquals([nd.title, nd.src, (nd.files as Record<string, unknown>[])[0].name, (nd.files as Record<string, unknown>[])[0].url], ["점검표", "ksync", "점검표.xlsx", PUB + path]);
+  r = await post({ act: "apply", run, paths: [path] });
+  assertEquals([r.d.ok, r.d.docs], [true, {}], "같은 등록 두 번 불가");
+  r = await post({ act: "apply", run, paths: "x" });
+  assertEquals([r.status, r.d.error], [400, "bad"], "경로 목록 형식");
+  // 모르는 단계
+  r = await post({ act: "put", phase: "commit", path });
+  assertEquals([r.status, r.d.error], [400, "bad"], "모르는 단계");
+  r = await post({ act: "put", run, map: mapId, rel_path: "y.pdf", size: 1, sha256: h, mtime: "2026-11-04T00:00:00Z", mode: "new" });
+  assertEquals([r.status, r.d.error], [400, "bad"], "단계 없음");
   // 해시 불일치 — 올린 내용이 시작 때 sha256 과 다르면 지우고 기록
-  r = await post({ act: "put", run, map: mapId, rel_path: "b.pdf", size: 3, sha256: await sha("abc"), mtime: "2026-11-04T00:00:00Z", mode: "new" });
+  r = await post({ act: "put", phase: "begin", run, map: mapId, rel_path: "b.pdf", size: 3, sha256: await sha("abc"), mtime: "2026-11-04T00:00:00Z", mode: "new" });
   const p2 = String(r.d.path);
   objects.set(p2, new TextEncoder().encode("xyz"));
-  r = await post({ act: "put", phase: "commit", path: p2 });
+  r = await post({ act: "put", phase: "verify", path: p2 });
   assertEquals([r.status, r.d], [409, { ok: false, error: "hash" }]);
-  assertEquals([deleted.includes(p2), await events("hash_mismatch")], [true, 1], "파일 지움 · 기록");
-  r = await post({ act: "put", run, map: mapId, rel_path: "a/../../etc/passwd", size: 1, sha256: h, mtime: "2026-11-04T00:00:00Z", mode: "new" });
+  assertEquals([deleted.includes(p2), objects.has(p2), await events("hash_mismatch")], [true, false, 1], "파일 지움 · 기록");
+  r = await post({ act: "apply", run, paths: [p2] });
+  assertEquals(r.d.docs, {}, "불일치한 올리기는 등록 안 됨");
+  // 시작 때 크기보다 큰 파일 — 서명 업로드 URL 은 크기를 막지 않는다. 크기를 넘는 순간 읽기를 끊고 불일치로(지움 · 기록)
+  r = await post({ act: "put", phase: "begin", run, map: mapId, rel_path: "big.pdf", size: 3, sha256: await sha("abc"), mtime: "2026-11-04T00:00:00Z", mode: "new" });
+  const p3 = String(r.d.path);
+  const CH = 64 * 1024, N = 100;
+  let pulled = 0;
+  objects.set(p3, new Uint8Array(0));
+  streams.set(p3, () => new ReadableStream<Uint8Array>({ pull(c) { if (pulled >= N) { c.close(); return; } pulled++; c.enqueue(new Uint8Array(CH).fill(97)); } }, { highWaterMark: 0 }));
+  r = await post({ act: "put", phase: "verify", path: p3 });
+  streams.delete(p3);
+  assertEquals([r.status, r.d], [409, { ok: false, error: "hash" }], "큰 파일 → 불일치");
+  assertEquals(pulled <= 2, true, "크기를 넘은 곳에서 그만 읽음: " + pulled + " 조각");
+  assertEquals([deleted.includes(p3), objects.has(p3), await events("hash_mismatch")], [true, false, 2], "파일 지움 · 기록");
+  r = await post({ act: "apply", run, paths: [p3] });
+  assertEquals(r.d.docs, {}, "큰 파일 올리기는 등록 안 됨");
+  r = await post({ act: "put", phase: "begin", run, map: mapId, rel_path: "a/../../etc/passwd", size: 1, sha256: h, mtime: "2026-11-04T00:00:00Z", mode: "new" });
   assertEquals(r.d.error, "bad", "경로 탈출");
-  r = await post({ act: "put", run, map: mapId, rel_path: "x.zip", size: 50 * 1024 * 1024 + 1, sha256: h, mtime: "2026-11-04T00:00:00Z", mode: "new" });
+  r = await post({ act: "put", phase: "begin", run, map: mapId, rel_path: "x.zip", size: 50 * 1024 * 1024 + 1, sha256: h, mtime: "2026-11-04T00:00:00Z", mode: "new" });
   assertEquals([r.status, r.d.error], [413, "too_large"]);
-  r = await post({ act: "put", run, map: mapId, rel_path: "x.html", size: 1, sha256: h, mtime: "2026-11-04T00:00:00Z", mode: "new" });
+  r = await post({ act: "put", phase: "begin", run, map: mapId, rel_path: "x.html", size: 1, sha256: h, mtime: "2026-11-04T00:00:00Z", mode: "new" });
   assertEquals([r.status, r.d.error], [415, "type"]);
+  // 충돌(K 가 이김) 새 판의 비교용 H 주소(h_url)는 글자일 때만 넘긴다 — SQL 이 등록 때 지금 판에 있는지 대 보기만 한다
+  calls.length = 0;
+  await post({ act: "put", phase: "begin", run, map: mapId, rel_path: "c.pdf", size: 1, sha256: h, mtime: "2026-11-04T00:00:00Z", mode: "new", h_url: PUB + "docs/aaaaaaaaaaaa_a.pdf" });
+  await post({ act: "put", phase: "begin", run, map: mapId, rel_path: "d.pdf", size: 1, sha256: h, mtime: "2026-11-04T00:00:00Z", mode: "new", h_url: { x: 1 } });
+  assertEquals(calls.filter((c) => c.body.p_act === "put").map((c) => (c.body.p as Record<string, unknown>).h_url), [PUB + "docs/aaaaaaaaaaaa_a.pdf", undefined],
+    "비교용 H 주소는 글자만 넘김");
   // 내려받기
   r = await post({ act: "get", run, map: mapId, doc: "d1", url: PUB + "docs/aaaaaaaaaaaa_a.pdf" });
   assertEquals([r.d.ok, r.d.sha256, r.d.size, r.d.expires], [true, await sha("pdf1"), 4, 600], "sha256 · 10분");

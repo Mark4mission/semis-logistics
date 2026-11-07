@@ -1,20 +1,22 @@
 #!/usr/bin/env node
 /* H:drive K드라이브 동기화 에이전트(Mac · launchd) — 나가는 HTTPS 만, 들어오는 포트 없음. 서버가 보낼 수 있는 것은 '지금 동기화 요청' 표시 하나.
-   순서: 잠금 → (오늘 끝냈고 30분 안에 서버를 봤으면 끝) → 사내망 확인(SMB TCP 445) → hello → 마운트 → 색인 · 계획(plan.mjs) · 실행 → 끝 보고.
+   순서: 잠금 → (오늘 끝냈고 25분 안에 서버를 봤으면 끝) → 사내망 확인(SMB TCP 445) → hello → 마운트 → 색인 · 계획(plan.mjs) · 실행 → 끝 보고.
    명령: --once(지금 한 번) · --dry-run(계획만 출력) · --status. 설정 ~/Library/Application Support/hdrive-ksync/config.json(600), 키는 키체인(hdrive-ksync). */
 import fsp from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { pathToFileURL } from "node:url";
-import { plan, MAX_SIZE, conflictName, dirOf, K_BLOCK } from "./plan.mjs";
+import { plan, MAX_SIZE, K_BLOCK } from "./plan.mjs";
 import * as L from "./lib.mjs";
 
 export const VERSION = "1.61.0";
 const MIN = 60e3;
+/* 실행 전체를 멈추는 오류 — 망 · 서버(게이트웨이 포함: 처리했는지 모름) · 키 · IP · 분당 상한(한 번 쉬고도) */
+const fatalCode = (c) => c === "network" || c === "server" || c === "auth" || c === "ip" || c === "rate";
 
 export async function runAgent(deps, args = {}) {
   const log = deps.log, now0 = deps.now();
-  const release = await L.lock(deps.paths.lock, now0);
+  const release = await L.lock(deps.paths.lock, now0, deps.isAgent);
   if (!release) { log("info", "다른 실행이 진행 중"); return { status: "locked" }; }
   try { return await agent(deps, args); }
   catch (e) { log("error", "중단: " + (e.code || e.message)); return { status: "error", code: e.code || e.message }; }
@@ -30,22 +32,23 @@ async function agent(deps, args) {
   if (bad) { log("error", "설정: " + bad); return { status: "config", msg: bad }; }
   const smb = L.parseSmb(cfg.smbUrl);
   const st = Object.assign({}, await L.readJson(paths.state, {}));
-  const save = () => L.writeJson(paths.state, st);
-  if (st.logDay !== today) { await L.pruneLog(paths.log, now); st.logDay = today; }
+  const save = () => (args.dryRun ? Promise.resolve() : L.writeJson(paths.state, st));      // --dry-run 은 출력만(상태 · 기록 정리 · 서버 보고 · 알림 없음)
+  if (!args.dryRun && st.logDay !== today) { await L.pruneLog(paths.log, now); st.logDay = today; }
   const dailyAt = L.hhmm(st.dailyAt) ?? L.hhmm(cfg.dailyAt) ?? 8 * 60 + 30;
   const due = L.kstMin(now) >= dailyAt && st.lastOkDay !== today;
   const seen = now - Number(st.lastSeen || 0);
   if (!args.once && !args.dryRun && !args.status) {
-    if (st.lastOkDay === today && seen < 30 * MIN) return { status: "done-today" };
+    if (st.lastOkDay === today && seen < 25 * MIN) return { status: "done-today" };     // 30분 간격 실행이 조금 일찍 깨어나도 그 회차는 서버를 본다
     if (!due && seen < 5 * MIN) return { status: "recent" };
   }
   const key = await deps.key();
   if (!key) { log("error", "키체인에 에이전트 키가 없습니다(install.sh)"); return { status: "nokey" }; }
-  const srv = L.makeClient(deps.fetch, cfg.server, key, deps.sleep);
+  const srv = L.makeClient(deps.fetch, cfg.server, key, deps.sleep, deps.now);
 
-  const netr = await deps.netCheck(smb.host);
+  const netr = await L.netRetry(deps.netCheck, smb.host, deps.sleep);
   if (!netr.ok) {
     if (args.status) { deps.out({ net: false, lastOk: st.lastOk || null, lastSeen: st.lastSeen || null }); return { status: "offline" }; }
+    if (args.dryRun) { deps.out({ net: false, msg: netr.msg }); return { status: "offline" }; }
     if (due || args.once) {
       if (args.once || now - Number(st.netAt || 0) >= 60 * MIN) {
         try { await srv.call("net", { ok: false, msg: "K드라이브 응답 없음(" + netr.msg + ")" }); st.netAt = now; } catch (e) { log("warn", "연결 안 됨 보고 실패: " + e.code); }
@@ -76,7 +79,8 @@ async function agent(deps, args) {
     return { status: "status" };
   }
   if (!hello.allow) { log("info", "허용 IP 대기 — 대시보드 '보안'에서 이 IP 를 [허용]"); await save(); return { status: "wait-ip" }; }
-  const due2 = L.kstMin(now) >= (L.hhmm(hello.daily_at) ?? dailyAt) && st.lastOkDay !== today;
+  const dailyMin = L.hhmm(hello.daily_at) ?? dailyAt;
+  const due2 = L.kstMin(now) >= dailyMin && st.lastOkDay !== today;
   let trigger = hello.requested ? "manual" : due2 ? (st.offlineDay === today ? "net" : "daily") : "";
   if (args.once && !trigger) trigger = "manual";
   if (!trigger && !args.dryRun) { await save(); return { status: "idle" }; }
@@ -84,9 +88,9 @@ async function agent(deps, args) {
   let mount;
   try { mount = await deps.mountRoot(smb); }
   catch (e) { log("error", "K드라이브 마운트 실패"); await save(); return { status: "mount" }; }
-  const full = await srv.call("hello", { full: true });
-  const lists = new Map((full.lists || []).map(l => [l.map, l]));
-  const maps = (full.maps || []).filter(m => m.state !== "paused" && lists.has(m.id));
+  let full = await srv.call("hello", { full: true });
+  let lists = new Map((full.lists || []).map(l => [l.map, l]));
+  let maps = (full.maps || []).filter(m => m.state !== "paused" && lists.has(m.id));
 
   if (args.dryRun) {
     for (const m of maps) {
@@ -94,8 +98,9 @@ async function agent(deps, args) {
       if (!root) { deps.out({ map: m.id, k_path: m.k_path, error: "no_folder" }); continue; }
       const li = lists.get(m.id);
       const idx = await L.indexDir(root, new Map(li.base.map(b => [b.rel_path, b])));
-      const p = plan({ map: m.state === "preview" ? Object.assign({}, m, { hold: { ok: true } }) : m, baseline: li.base, kList: idx.list, hList: li.h, limit: full.mass_limit, today });
-      deps.out({ map: m.id, k_path: m.k_path, state: m.state, held: p.held, counts: p.counts, actions: p.planned.map(a => [a.op, a.rel || "", a.mode || a.state || ""].join(" ").trim()) });
+      const p = plan({ map: m.state === "preview" ? Object.assign({}, m, { hold: { ok: true } }) : m, baseline: li.base, kList: idx.list, kErr: idx.errors, kCapped: idx.capped, hList: li.h, limit: full.mass_limit, today });
+      deps.out({ map: m.id, k_path: m.k_path, state: m.state, held: p.held, fatal: p.fatal || undefined, errors: idx.errors.map(e => (e.f + " " + e.r).trim()), counts: p.counts,
+        actions: p.planned.map(a => [a.op, a.rel || "", a.mode || a.state || ""].join(" ").trim()) });
     }
     await save();
     return { status: "dry-run" };
@@ -105,29 +110,47 @@ async function agent(deps, args) {
   log("info", "동기화 시작(" + trigger + ") 회차 " + run);
   const tot = { k2h: 0, h2k: 0, conflicts: 0, skipped: 0, errors: 0 }, detail = [], mapRes = [];
   let result = "ok", msg = "";
+  const carry = Array.isArray(st.marks) ? st.marks.slice() : [], unsent = [];     // 못 보낸 기준선 표시 — 다음 실행이 계획 전에 보낸다
+  const olds = st.olds && typeof st.olds === "object" ? st.olds : {};             // H 이전 판으로 이미 올린 K 쪽 판(줄 → sha)
   try {
+    if (carry.length && (await replay(srv, run, full, carry, log))) {
+      // 회차를 함께 보낸다 — 서버가 덮어쓰기로 셀 판 묶음을 이 기준선으로 다시 잡는다(다시 이은 줄의 옛 판 묶음을 서버만 세지 않게)
+      full = await srv.call("hello", { full: true, run });
+      lists = new Map((full.lists || []).map(l => [l.map, l]));
+      maps = (full.maps || []).filter(m => m.state !== "paused" && lists.has(m.id));
+    }
     if (st.foldersDay !== today) {
       try { await srv.call("folders", { list: await L.folderTree(mount) }); st.foldersDay = today; } catch (e) { log("warn", "폴더 목록 보고 실패: " + e.code); }
     }
     for (const m of maps) {
-      const r = await syncMap({ deps, srv, run, mount, today, limit: full.mass_limit }, m, lists.get(m.id));
+      const r = await syncMap({ deps, srv, run, mount, today, limit: full.mass_limit, unsent, olds }, m, lists.get(m.id));
       ["k2h", "h2k", "conflicts", "skipped", "errors"].forEach(k => { tot[k] += r[k] || 0; });
       r.detail.forEach(d => detail.push(d));
-      mapRes.push({ id: m.id, held: !!r.held, n: r.n || 0, base: r.base || 0, done: !r.held && !r.preview && !r.fatal, n_files: r.n_files });
+      // done = 그 연결을 끝까지 맞춤 — 서버는 이때만 승인한 보류를 지운다(전송량 상한 등으로 중간에 멈추면 아님)
+      mapRes.push({ id: m.id, held: !!r.held, n: r.n || 0, base: r.base || 0, done: !r.held && !r.preview && !r.fatal && !r.quota && !r.stop, n_files: r.n_files });
       if (r.quota) { msg = "하루 전송량 상한"; break; }
     }
     if (st.trashDay !== today) {
-      for (const m of maps) { const root = await mapRoot(mount, m); if (root) await L.cleanTrash(root, now); }
+      for (const m of maps) {
+        // 휴지통 정리 실패가 이미 끝낸 동기화를 '실패'로 만들지 않게 — 경고만
+        try { const root = await mapRoot(mount, m); if (root) await L.cleanTrash(root, now); }
+        catch (e) { log("warn", "휴지통 정리 실패: " + m.k_path + " " + (e.code || e.message)); }
+      }
       st.trashDay = today;
     }
   } catch (e) {
     result = "fail"; msg = "중단: " + (e.code || "error"); log("error", msg);
   }
+  if (carry.length || unsent.length) { st.marks = carry.concat(unsent); log("warn", "보내지 못한 기준선 표시는 다음 실행에서 먼저 보냄"); } else delete st.marks;
+  if (Object.keys(olds).length) st.olds = olds; else delete st.olds;
   if (result !== "fail") result = tot.errors || msg ? "partial" : mapRes.some(x => x.held) ? "held" : "ok";
   try {
     await srv.call("run", Object.assign({ phase: "end", run, result, msg, detail: detail.slice(-200), maps: mapRes }, tot));
   } catch (e) { log("warn", "끝 보고 실패: " + e.code); }
-  if (result !== "fail") { st.lastOk = new Date(now).toISOString(); st.lastOkDay = today; }
+  if (result !== "fail") {
+    st.lastOk = new Date(now).toISOString();
+    if (L.kstMin(now) >= dailyMin) st.lastOkDay = today;     // 매일 시각 전에 시작한 수동 · --once 실행은 그날 매일 실행을 대신하지 않는다
+  }
   log("info", `동기화 ${result} — K→H ${tot.k2h} · H→K ${tot.h2k} · 충돌 ${tot.conflicts} · 건너뜀 ${tot.skipped} · 오류 ${tot.errors}`);
   await save();
   return { status: result, run, tot, maps: mapRes };
@@ -145,6 +168,25 @@ async function mapRoot(mount, m) {
   } catch (e) { return ""; }
 }
 
+/* 지난 실행이 보내지 못한 기준선 표시(받아 놓은 파일 · 다시 이은 줄) — 계획 전에 먼저 보낸다. 안 보내면 이미 맞춘 파일을
+   양쪽 다 바뀐 것으로 보아 가짜 충돌 · 중복 판이 생긴다. 멈춘 연결 것은 다시 켤 때까지 두고, 지운 연결 것은 버린다. 하나라도 보냈으면 true */
+async function replay(srv, run, full, carry, log) {
+  let sent = 0;
+  for (const k of carry.slice()) {
+    const mm = (full.maps || []).find(x => x.id === k.map);
+    if (mm && mm.state !== "active") continue;
+    if (mm) {
+      try {
+        const r = await srv.call("mark", { run, map: k.map, items: k.items });
+        sent++;
+        if (r.bad) log("warn", "지난 기준선 표시 중 서버가 받지 않은 것 " + r.bad + "건");
+      } catch (e) { if (fatalCode(e.code)) throw e; log("warn", "지난 기준선 표시 보내기 실패: " + e.code); continue; }
+    }
+    carry.splice(carry.indexOf(k), 1);
+  }
+  return sent > 0;
+}
+
 async function syncMap(ctx, m, li) {
   const { deps, srv, run, mount, today } = ctx;
   const log = deps.log;
@@ -153,113 +195,202 @@ async function syncMap(ctx, m, li) {
   const root = await mapRoot(mount, m);
   if (!root) { res.errors++; res.fatal = true; line(m.k_path, "error", "no_folder"); log("error", "연결 폴더 없음: " + m.k_path); return res; }
   const byRel = new Map(li.base.map(b => [b.rel_path, b]));
-  const idx = await L.indexDir(root, byRel);
+  const idx = await L.indexDir(root, byRel, { cleanBefore: deps.now() - 864e5 });
   idx.errors.forEach(e => { res.errors++; line(e.f, "error", e.r); });
-  res.n_files = idx.list.length;
+  if (idx.capped) { res.errors++; line(m.k_path, "error", "too_many"); }
   const preview = m.state === "preview";
-  const p = plan({ map: preview ? Object.assign({}, m, { hold: { ok: true } }) : m, baseline: li.base, kList: idx.list, hList: li.h, limit: ctx.limit, today });
-  if (preview) { await srv.call("preview", { map: m.id, counts: p.counts }); res.preview = true; return res; }
+  const p = plan({ map: preview ? Object.assign({}, m, { hold: { ok: true } }) : m, baseline: li.base, kList: idx.list, kErr: idx.errors, kCapped: idx.capped, hList: li.h, limit: ctx.limit, today });
+  if (p.fatal) { res.fatal = true; log("error", "연결 폴더를 다 읽지 못해 건너뜀(" + p.fatal + "): " + m.k_path); return res; }
+  res.n_files = idx.list.length;
+  // 센 설정의 시각(hello 의 updated_at)을 함께 보낸다 — 그 사이 관리자가 설정을 고쳤으면 서버가 옛 설정으로 센 건수를 버린다
+  if (preview) {
+    // 그 사이 관리자가 [시작] · 멈춤 · 지우기를 눌렀으면(state) 이 건수만 버린다 — 실행 전체를 멈추면 뒤의 연결을 맞추지 못한다
+    try { await srv.call("preview", { map: m.id, counts: p.counts, updated_at: m.updated_at }); }
+    catch (e) {
+      if (fatalCode(e.code)) throw e;
+      if (e.code !== "state") { res.errors++; line(m.k_path, "error", e.code); }
+      log("warn", "미리보기 건수를 보내지 못함(" + e.code + "): " + m.k_path);
+    }
+    res.preview = true; return res;
+  }
   res.n = p.n; res.base = p.base;
   if (p.held) { res.held = true; line(m.k_path, "held", p.n + "건"); log("warn", `대량 변경 보류: ${m.k_path} ${p.n}건 / ${p.base}건 — 대시보드에서 승인`); return res; }
   p.detail.forEach(d => { if (d.a !== "k2h" && d.a !== "h2k") res.detail.push(d); });
   const absOf = (rel) => { const k = idx.list.find(x => x.rel === rel); return k ? k.abs : L.safeAbs(root, rel); };
   const marks = [];
+  /* 서버가 받은 뒤에만 지운다 — 받아 놓은 파일의 기준선 표시를 잃으면 다음 실행이 그 파일을 충돌로 본다.
+     실행 전체 오류가 아닌데 못 보냄(연결을 멈춤 · 회차 끝남) → 이 연결만 멈춘다(stop) */
   const flush = async () => {
     while (marks.length) {
-      const items = marks.splice(0, 200);
-      const r = await srv.call("mark", { run, map: m.id, items });
+      const items = marks.slice(0, 200);
+      let r;
+      try { r = await srv.call("mark", { run, map: m.id, items }); }
+      catch (e) { throw fatalCode(e.code) ? e : Object.assign(new Error("stop"), { code: "stop", why: e.code }); }
+      marks.splice(0, items.length);
+      if (r.bad && !r.held) { res.errors += r.bad; line(m.k_path, "error", "mark"); log("warn", "서버가 받지 않은 표시 " + r.bad + "건: " + m.k_path); }
       if (r.held) throw Object.assign(new Error("held"), { code: "held" });
     }
   };
-  const cf = new Map();
-  const order = (a) => (a.op === "rename" ? 0 : a.op === "trash" || a.op === "drop" ? 3 : a.op === "state" || a.op === "event" ? 2 : 1);
+  const halt = (e) => {
+    if (e.code === "held") { res.held = true; line(m.k_path, "held", "서버 보류"); log("warn", "서버가 대량 변경으로 보류: " + m.k_path); return true; }
+    if (e.code === "stop") { res.stop = e.why || "mark"; res.errors++; line(m.k_path, "error", res.stop); log("warn", "표시를 보내지 못해 이 연결만 멈춤(" + res.stop + "): " + m.k_path); return true; }
+    return false;
+  };
+  /* 못 보낸 기준선 표시('set')는 상태 파일에 두었다가 다음 실행이 계획 전에 보낸다 */
+  const keepSets = () => {
+    const s = marks.filter(x => x.op === "set");
+    for (let i = 0; i < s.length; i += 200) ctx.unsent.push({ map: m.id, items: s.slice(i, i + 200) });
+    marks.length = 0;
+  };
+  /* 확인(verify)까지 끝난 올리기 — 문서함 등록은 모아서 한 번(공용 행 docs 를 한 번만 고침: 이력 · 변경 알림 한 번).
+     등록하지 않은 올리기는 서버에서 1시간 뒤 없어지므로, 내려받기가 길게 이어져도 가장 오래된 것이 20분이 되면 등록한다 */
+  const pend = [];
+  let pendAt = 0;
+  const apply = async () => {
+    const done = new Set();
+    let why = "apply";
+    while (pend.length) {
+      const batch = pend.splice(0, 50);
+      let docs = {};
+      why = "apply";
+      try { docs = (await srv.call("apply", { run, paths: batch.map(x => x.path) })).docs || {}; }
+      catch (e) { if (fatalCode(e.code)) throw e; why = e.code || "apply"; }
+      for (const x of batch) {
+        if (docs[x.path]) { done.add(x.path); res.k2h += x.a.mode === "old" ? 0 : 1; if (x.a.state === "conflict") res.conflicts++; line(x.rel, "k2h", x.a.mode); }
+        else if (x.a.mode !== "old") { res.errors++; line(x.rel, "error", why); if (x.a.row) marks.push({ op: "state", id: x.a.row, state: "error", note: why }); }
+        // 이전 판 등록 실패는 부른 쪽(keepOld)이 그 내려받기를 멈추고 한 번만 기록한다
+      }
+    }
+    return { done, why };
+  };
+  /* H 가 이긴 충돌의 K 쪽 판 — K 파일을 충돌 사본 이름으로 옮기기 전에 올려 확인하고 H 이전 판 등록까지 끝낸다.
+     옮긴 뒤에 실패하면 기준선은 H 와 같아지고 사본은 색인에서 빠져, K 수정이 H 로 영영 가지 않는다.
+     여기서 실패하면 받은 파일을 버려 K 파일 · 기준선이 그대로 남고, 다음 실행이 다시 충돌로 본다 */
+  const oldKey = (row) => m.id + "/" + row;
+  const keepOld = async (old, src, rel) => {
+    // 지난 실행에서 이미 등록했는데 K 파일 이름을 못 바꿈(공유에서 열려 있음 등) — 다시 올리지 않고 이름 바꾸기 · 놓기만 다시
+    if (ctx.olds[oldKey(old.row)] === old.k.sha) return;
+    const x = { path: await putOne(ctx, m, old, rel, src), a: old, rel };
+    pend.push(x);                                         // 이전 판은 그 앞 판들과 함께 · 그 뒤에 등록
+    const r = await apply();
+    if (!r.done.has(x.path)) throw Object.assign(new Error(r.why), { code: r.why });
+    ctx.olds[oldKey(old.row)] = old.k.sha;
+  };
+  const kc = new Map();
+  let skipped = 0;
+  const order = (a) => (a.op === "rename" || a.op === "relink" ? 0 : a.op === "trash" || a.op === "drop" ? 3 : a.op === "state" || a.op === "event" ? 2 : 1);
   const acts = p.actions.slice().sort((a, b) => order(a) - order(b));
   let phase = -1;
-  for (const a of acts) {
-    if (order(a) !== phase) { await flush(); phase = order(a); }
-    try {
-      if (a.op === "rename") marks.push({ op: "rename", id: a.row, rel_path: a.rel, k_mtime: L.isoMs(a.k.mtime) });
-      else if (a.op === "state") marks.push({ op: "state", id: a.row, state: a.state, note: a.note || "" });
-      else if (a.op === "event") marks.push({ op: "event", kind: a.kind, f: a.f });
-      else if (a.op === "drop") marks.push({ op: "drop", id: a.row });
-      else if (a.op === "link") marks.push({ op: "set", rel_path: a.rel, k_size: a.k.size, k_mtime: L.isoMs(a.k.mtime), k_sha256: a.k.sha, doc_id: a.it.doc, h_url: a.it.url });
-      else if (a.op === "trash") {
-        const abs = await absOf(a.rel);
-        await L.moveAside(root, abs, a.rel, "trash", deps.now());
-        marks.push({ op: "drop", id: a.row });
-        line(a.rel, "trash", "휴지통 폴더로");
-      } else if (a.op === "kconf") {
-        const abs = await absOf(a.rel);
-        const to = await L.uniquePath(path.join(path.dirname(abs), path.basename(conflictName(a.rel, today, 1))));
-        await fsp.rename(abs, to);
-        cf.set(a.to, path.join(dirOf(a.rel), path.basename(to)).replace(/^\//, ""));
-      } else if (a.op === "put") {
-        await putOne(ctx, m, root, a, cf, absOf);
-        res.k2h += a.mode === "old" ? 0 : 1;
-        if (a.state === "conflict") res.conflicts++;
-        line(a.rel, "k2h", a.mode);
-      } else if (a.op === "get") {
-        const ok = await getOne(ctx, m, root, a, absOf, marks);
-        if (ok) { res.h2k++; if (a.state === "conflict") res.conflicts++; line(a.rel, "h2k", a.copy ? "충돌 사본" : ""); }
-        else { res.errors++; line(a.rel, "error", "hash"); }
-        await flush();
+  try {
+    for (const a of acts) {
+      if (order(a) !== phase) {
+        // 올리기는 1단계에만 있다 — 다음 단계의 기준선 · 상태 표시는 등록(apply)이 만든 줄을 본다
+        try { await apply(); await flush(); }
+        catch (e) { if (!halt(e)) throw e; break; }
+        phase = order(a);
       }
-    } catch (e) {
-      const code = e.code || "error";
-      if (code === "held") { res.held = true; line(m.k_path, "held", "서버 보류"); log("warn", "서버가 대량 변경으로 보류: " + m.k_path); break; }
-      if (code === "quota") { res.quota = true; res.errors++; line(a.rel, "error", "quota"); break; }
-      if (code === "network" || code === "server" || code === "auth" || code === "ip") throw e;
-      res.errors++; line(a.rel || a.f || "", "error", code);
-      log("warn", `실패 ${a.op} ${a.rel || ""}: ${code}`);
-      if (a.row && a.op !== "state" && a.op !== "drop") marks.push({ op: "state", id: a.row, state: "error", note: code });
+      try {
+        if (pend.length && deps.now() - pendAt > 20 * MIN) await apply();
+        if (a.op === "rename") marks.push({ op: "rename", id: a.row, rel_path: a.rel, k_mtime: L.isoMs(a.k.mtime) });
+        else if (a.op === "relink") marks.push({ op: "set", id: a.row, rel_path: a.rel, k_size: a.k_size, k_mtime: a.k_mtime, k_sha256: a.k_sha256, doc_id: a.it.doc, h_url: a.it.url, state: a.state, note: a.note });
+        else if (a.op === "state") marks.push({ op: "state", id: a.row, state: a.state, note: a.note || "" });
+        else if (a.op === "event") marks.push({ op: "event", kind: a.kind, f: a.f });
+        else if (a.op === "drop") marks.push({ op: "drop", id: a.row });
+        else if (a.op === "link") marks.push({ op: "set", rel_path: a.rel, k_size: a.k.size, k_mtime: L.isoMs(a.k.mtime), k_sha256: a.k.sha, doc_id: a.it.doc, h_url: a.it.url });
+        else if (a.op === "trash") {
+          const abs = await absOf(a.rel);
+          // 계획한 뒤(확정한 뒤) K 에서 고친 파일은 옮기지 않는다 — 다음 실행이 고친 것으로 보고 H 로 다시 올린다
+          const ks = await fsp.lstat(abs);
+          if (!ks.isFile() || ks.size !== a.k.size || Math.floor(ks.mtimeMs) !== a.k.mtime) throw Object.assign(new Error("changed"), { code: "changed" });
+          await L.moveAside(root, abs, a.rel, "trash", deps.now());
+          marks.push({ op: "drop", id: a.row });
+          line(a.rel, "trash", "휴지통 폴더로");
+        } else if (a.op === "kconf") kc.set(a.row, a);          // K 파일 이름은 H 판을 받아 확인한 뒤에 바꾼다(getOne)
+        else if (a.op === "put") {
+          if (a.mode === "old") continue;                         // H 가 이긴 충돌의 K 쪽 판 — 같은 줄의 내려받기(getOne → keepOld)가 올린다
+          const t0 = deps.now();
+          pend.push({ path: await putOne(ctx, m, a, a.rel, await absOf(a.rel)), a, rel: a.rel });
+          if (pend.length === 1) pendAt = t0;
+          if (pend.length >= 50) await apply();
+        } else if (a.op === "get") {
+          const conf = !a.copy && a.row ? kc.get(a.row) : null;
+          if (conf) kc.delete(a.row);
+          const old = conf && acts.find(x => x.op === "put" && x.mode === "old" && x.row === a.row);
+          const got = await getOne(ctx, m, root, a, absOf, marks, conf, old ? (src, rel) => keepOld(old, src, rel) : null);
+          if (got) {
+            if (a.row && !a.copy) delete ctx.olds[oldKey(a.row)];
+            res.h2k++; if (a.state === "conflict") res.conflicts++; line(got.rel, "h2k", a.copy ? "충돌 사본" : "");
+          } else { res.errors++; line(a.rel, "error", "hash"); }
+          await flush();
+        }
+      } catch (e) {
+        const code = e.code || "error";
+        if (halt(e)) break;
+        if (code === "quota") { res.quota = true; res.errors++; line(a.rel, "error", "quota"); break; }
+        if (fatalCode(code)) throw e;
+        if (code === "changed") { skipped++; line(a.rel || "", "skip", "changed"); log("info", "색인한 뒤 바뀜 — 다음 실행에서: " + (a.rel || "")); continue; }
+        res.errors++; line(a.rel || a.f || "", "error", code);
+        log("warn", `실패 ${a.op} ${a.rel || ""}: ${code}`);
+        // K 쪽 판을 이미 H 이전 판으로 올렸으면 충돌로 둔다(다음 실행이 다시 올리지 않고 K 파일 이름 바꾸기만 다시)
+        const old = a.op === "get" && acts.find(x => x.op === "put" && x.mode === "old" && x.row === a.row);
+        const kept = !!old && ctx.olds[oldKey(a.row)] === old.k.sha;
+        if (a.row && a.op !== "state" && a.op !== "drop") marks.push({ op: "state", id: a.row, state: kept ? "conflict" : "error", note: kept ? "H:drive 쪽이 늦게 고침" : code });
+      }
     }
-  }
-  try { await flush(); } catch (e) { if (e.code === "held") res.held = true; else throw e; }
-  res.skipped = p.counts.skip;
+    if (!res.stop) { try { await apply(); await flush(); } catch (e) { if (e.code === "held") res.held = true; else if (!halt(e)) throw e; } }
+  } catch (e) { keepSets(); throw e; }
+  if (marks.length) keepSets();
+  res.skipped = p.counts.skip + skipped;
   return res;
 }
 
-async function putOne(ctx, m, root, a, cf, absOf) {
+/* 올리기 3단계 중 앞의 둘: 시작(서버가 폴더 · 저장 경로를 정함) → 서명 URL 로 올림 → 확인(서버가 저장소에서 다시 잼). 등록(apply)은 syncMap 이 모아서 */
+async function putOne(ctx, m, a, rel, src) {
   const { srv, run } = ctx;
-  const rel = a.mode === "old" ? (cf.get(a.rel) || a.rel) : a.rel;
-  const abs = await absOf(rel);
-  const buf = await fsp.readFile(abs);
+  const buf = await fsp.readFile(src);
   if (buf.length > MAX_SIZE) throw Object.assign(new Error("too_large"), { code: "too_large" });
   const sha = L.sha256Buf(buf);
   if (sha !== a.k.sha) throw Object.assign(new Error("changed"), { code: "changed" });       // 색인한 뒤 바뀜 — 다음 실행에서
-  const b = await srv.call("put", { run, map: m.id, rel_path: rel, size: buf.length, sha256: sha, mtime: L.isoMs(a.k.mtime), mode: a.mode, row: a.row, state: a.state, ssi: !!m.ssi });
+  const b = await srv.call("put", { phase: "begin", run, map: m.id, rel_path: rel, size: buf.length, sha256: sha, mtime: L.isoMs(a.k.mtime), mode: a.mode, row: a.row, state: a.state, h_url: a.h_url });
   const up = await ctx.deps.fetch(b.upload, { method: "PUT", headers: { "Content-Type": b.type || "application/octet-stream", "x-upsert": "false" }, body: buf });
   if (!up.ok) throw Object.assign(new Error("upload"), { code: "upload" });
-  await srv.call("put", { phase: "commit", path: b.path });
+  await srv.call("put", { phase: "verify", path: b.path });
+  return b.path;
 }
 
-async function getOne(ctx, m, root, a, absOf, marks) {
-  const { srv, run, deps } = ctx;
+/* conf = 같은 줄의 kconf(H 가 이긴 충돌) — 받아서 확인한 뒤에야 K 파일을 충돌 사본 이름으로 바꾼다(받기 실패 때 K 수정이 사본 이름에 갇히지 않게).
+   keepOld = 그 K 쪽 판을 사본 이름으로 H 이전 판에 올려 등록하는 일 — 이름을 바꾸기 전에 끝낸다(실패하면 받은 것을 버림) */
+async function getOne(ctx, m, root, a, absOf, marks, conf, keepOld) {
+  const { srv, run, deps, today } = ctx;
   const target = a.rel;
   if (K_BLOCK.test(target) || K_BLOCK.test(a.it.name)) throw Object.assign(new Error("type_block"), { code: "type_block" });
   const g = await srv.call("get", { run, map: m.id, doc: a.it.doc, url: a.it.url });
   if (K_BLOCK.test(String(g.name || ""))) throw Object.assign(new Error("type_block"), { code: "type_block" });
-  let absT = await L.safeAbs(root, target);
+  const absT = await L.safeAbs(root, target);
   let dl;
   try { dl = await L.download(deps.fetch, g.url, path.dirname(absT), g.sha256, g.size); }
   catch (e) {
     if (e.code !== "hash") throw e;
     marks.push({ op: "event", kind: "hash_mismatch", f: target });
     if (a.row && !a.copy) marks.push({ op: "state", id: a.row, state: "error", note: "hash" });
-    return false;
+    return null;
   }
+  let got;
   try {
-    if (a.backup) { const ab = await absOf(a.backup); try { await fsp.lstat(ab); await L.moveAside(root, ab, a.backup, "prev", deps.now()); } catch (e) { if (e.code !== "ENOENT") throw e; } }
-    if (a.copy) absT = await L.uniquePath(absT);
-    else { try { await fsp.lstat(absT); await L.moveAside(root, absT, target, "prev", deps.now()); } catch (e) { if (e.code !== "ENOENT") throw e; } }
-    await fsp.rename(dl.tmp, absT);
+    const confAbs = conf ? await absOf(conf.rel) : "";
+    const to = conf && keepOld ? await L.conflictPath(root, conf.rel, today) : "";
+    if (to) await keepOld(confAbs, L.relOf(root, to));
+    got = await L.place(root, dl.tmp, target, {
+      backup: a.backup ? { abs: await absOf(a.backup), rel: a.backup, k: a.k } : null,
+      conf: conf ? { abs: confAbs, rel: conf.rel, k: conf.k, to } : null,
+      copy: a.copy ? a.base : "", today, now: deps.now() });
   } catch (e) { await fsp.rm(dl.tmp, { force: true }); throw e; }
   if (!a.copy) {
-    const st = await fsp.lstat(absT);
-    marks.push({ op: "set", id: a.row || undefined, rel_path: target, k_size: st.size, k_mtime: L.isoMs(st.mtimeMs), k_sha256: g.sha256,
+    const st = await fsp.lstat(got.abs);
+    marks.push({ op: "set", id: a.row || undefined, rel_path: got.rel, k_size: st.size, k_mtime: L.isoMs(st.mtimeMs), k_sha256: g.sha256,
       doc_id: a.it.doc, h_url: a.it.url, state: a.state || "ok", note: a.state === "conflict" ? "H:drive 쪽이 늦게 고침" : "" });
   }
-  return true;
+  return got;
 }
 
 /* ── 명령줄 ── */

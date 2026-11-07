@@ -11960,18 +11960,29 @@ function makeServer(opts = {}) {
   /* ══════════ [KS] v1.61 K드라이브 동기화(시스템 설정 탭 · 레일 배지 · 에이전트 계획 · 서버 규칙 대조) ══════════ */
   {
     const ksFake = (sv) => {
-      const k = sv.ks = { calls: [], alert: false, stale: false, agents: [], maps: [], holds: [], files: [], last: [], runs: [], events: [], folders: [{ path: "안전보안", depth: 1, n: 2 }, { path: "안전보안/점검표", depth: 2, n: 12 }],
+      const k = sv.ks = { calls: [], alert: false, stale: false, evNew: 0, agents: [], maps: [], holds: [], files: [], last: [], runs: [], events: [], folders: [{ path: "안전보안", depth: 1, n: 2 }, { path: "안전보안/점검표", depth: 2, n: 12 }],
         state: { daily_at: "08:30", requested_at: null, net: { ok: false, at: "2026-11-04T00:10:00Z", msg: "K드라이브 응답 없음" }, ip_allow: [], ip_seen: [{ ip: "198.51.100.5", at: "2026-11-04T00:00:00Z", agent: 1 }], mass_limit: { files: 200, ratio: 0.3 } } };
       const deny = { __status: 403, body: { code: "42501", message: "semis_ksync_admin" } };
       const h = (name, fn) => { sv.rpc["semis_logi_ksync_" + name] = (b, o) => { k.calls.push({ name, b }); return sv.rankOf(o) >= 4 ? fn(b || {}) : deny; }; };
       h("status", () => ({ ok: true, now: new Date().toISOString(), state: k.state, agents: k.agents, maps: k.maps, last: k.runs[0] || null, today: k.runs[0] || null, last_ok: null,
-        counts: { hold: k.holds.length, ev_new: 0, wait: k.files.length }, stale: k.stale, alert: k.alert }));
+        counts: { hold: k.holds.length, ev_new: k.evNew, wait: k.files.length }, stale: k.stale, alert: k.alert || k.evNew > 0 }));
       h("pending", () => ({ ok: true, holds: k.holds, files: k.files, last: k.last }));
       h("runs", () => ({ ok: true, runs: k.runs }));
-      h("events", (b) => ({ ok: true, events: k.events.filter(e => !b.p || !b.p.kind || e.kind === b.p.kind), counts: { bad_key: 2, scope: 1 } }));
+      h("events", (b) => {
+        if (b.p && b.p.seen === true && !b.p.kind) k.evNew = 0;     // 서버는 seen 이고 종류로 거르지 않을 때만 ev_seen_at 을 옮긴다
+        return { ok: true, events: k.events.filter(e => !b.p || !b.p.kind || e.kind === b.p.kind), counts: { bad_key: 2, scope: 1 } };
+      });
       h("folders", () => ({ ok: true, folders: k.folders }));
       ["request", "map_start", "map_delete", "resolve", "hold", "settings", "ip_approve", "agent_revoke"].forEach(n => h(n, () => ({ ok: true })));
-      h("map_save", (b) => (b.p && b.p.k_path === "dup" ? { ok: false, error: "k_dup" } : { ok: true, id: 9 }));
+      h("map_save", (b) => {
+        if (b.p && b.p.k_path === "dup") return { ok: false, error: "k_dup" };
+        const m = b.p && b.p.id != null && !b.p.pause ? k.maps.find(x => x.id === b.p.id) : null;
+        if (m) {     // 서버 규칙: 미리보기 연결의 방향 · SSI 가 바뀌면 옛 건수를 버리고 다시 센다
+          if (m.state === "preview" && (b.p.dir !== m.dir || !!b.p.ssi !== !!m.ssi)) m.preview = null;
+          m.dir = b.p.dir; m.ssi = !!b.p.ssi;
+        }
+        return { ok: true, id: 9 };
+      });
       h("agent_new", () => ({ ok: true, id: 7, key: "c0ffee".repeat(10) + "abcd" }));
       return k;
     };
@@ -11984,6 +11995,12 @@ function makeServer(opts = {}) {
       return { sv, ks, e };
     };
     const openTab = async (e) => { go(e, "settings"); await tick(5); q(e, '.tab[data-tab="ksync"]').click(); await tick(40); };
+    /* 늦게 오는 응답 — 주소가 맞는 요청을 open() 할 때까지 붙잡는다 */
+    const hold = (e, re) => {
+      const f0 = e.w.fetch, waits = [];
+      e.w.fetch = (u, o) => (re.test(String(u)) ? new Promise(r => waits.push(() => r(f0(u, o)))) : f0(u, o));
+      return { open: () => { e.w.fetch = f0; waits.splice(0).forEach(fn => fn()); } };
+    };
     await ta("KS01 시스템 설정 'K드라이브 동기화' 탭: 상태 띠 5칸 · 설치 안내 한 줄 · 카드 4 · 머리말 [지금 동기화 요청][⋯][인쇄] · 다른 탭으로 가면 단추 정리", async () => {
       const { sv, ks, e } = await setup();
       await openTab(e);
@@ -12168,6 +12185,301 @@ function makeServer(opts = {}) {
         (s.match(/smb:\/\/[^\s"'`)\]]+/g) || []).forEach(u => ok(/smb:\/\/(<|h\/|nas\.example|\$\{|" \+|host|' \+)/.test(u) || /^smb:\/\/(<서버>|\[)/.test(u), f + " SMB 주소 " + u));
         ok(!/["'`][0-9a-f]{64}["'`]/.test(s), f + " 64자리 키 · 해시 문자열");
       });
+    });
+    await ta("KS09 미리보기 연결의 방향 · SSI 를 바꾸면 옛 건수 대신 '건수를 기다리는 중' · [시작] 꺼짐", async () => {
+      const { ks, e } = await setup();
+      const pv = { k2h: 3, h2k: 1, link: 0, del: 0, skip: 0, total: 4 };
+      ks.maps = [{ id: 9, k_path: "안전보안/점검표", mod: "audit", grp: "checklist", dir: "both", ssi: false, state: "preview", preview: Object.assign({}, pv), n_files: 0, n_wait: 0 }];
+      await openTab(e);
+      ok(/미리보기 K→H 3 · H→K 1/.test(q(e, '[data-ks-card="maps"]').textContent) && !q(e, '[data-ks-start="9"]').disabled, "미리보기 건수 · 시작 가능");
+      q(e, '[data-ks-map="9"]').click(); sheetPick(e, "방향 · SSI 바꾸기");
+      q(e, "#ks-dir").value = "k2h"; clickOk(e); await tick(30);
+      eq(JSON.stringify(ks.calls.filter(c => c.name === "map_save").pop().b.p), '{"dir":"k2h","ssi":false,"id":9}', "방향 저장 인자");
+      let txt = q(e, '[data-ks-card="maps"]').textContent;
+      ok(/미리보기 건수를 기다리는 중/.test(txt) && !/K→H 3/.test(txt), "방향 바꿈 → 옛 건수 대신 기다리는 중");
+      ok(q(e, '[data-ks-start="9"]').disabled, "건수가 다시 올 때까지 시작 못 함");
+      ks.maps[0].preview = Object.assign({}, pv);
+      await openTab(e);
+      q(e, '[data-ks-map="9"]').click(); sheetPick(e, "방향 · SSI 바꾸기");
+      q(e, "#ks-ssi").checked = true; clickOk(e); await tick(30);
+      txt = q(e, '[data-ks-card="maps"]').textContent;
+      ok(/미리보기 건수를 기다리는 중/.test(txt) && !/K→H 3/.test(txt) && q(e, '[data-ks-start="9"]').disabled, "SSI 바꿈 → 기다리는 중");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS10 늦게 온 불러오기 · 동작 결과는 다른 설정 탭 · 다른 화면 위에 그리지 않음", async () => {
+      const { ks, e } = await setup();
+      let g = hold(e, /ksync_status/);
+      go(e, "settings"); await tick(5);
+      q(e, '.tab[data-tab="ksync"]').click(); await tick(10);
+      q(e, '.tab[data-tab="data"]').click();
+      g.open(); await tick(40);
+      ok(q(e, "#dash-build") && !q(e, "#tab-body .ks-strip"), "탭을 열자마자 다른 탭으로 → 그 탭 그대로");
+      await openTab(e);
+      ok(q(e, "#tab-body .ks-strip"), "K드라이브 탭");
+      g = hold(e, /ksync_status/);
+      q(e, "#ks-req").click(); await tick(10);
+      ok(ks.calls.some(c => c.name === "request"), "요청은 보냄");
+      q(e, '.tab[data-tab="security"]').click();
+      g.open(); await tick(40);
+      ok(q(e, '#view .tab.active[data-tab="security"]') && !q(e, "#tab-body .ks-strip"), "동작 뒤 다시 불러와도 보안 탭 그대로");
+      g = hold(e, /ksync_status/);
+      q(e, '.tab[data-tab="ksync"]').click(); await tick(10);
+      go(e, "dashboard");
+      g.open(); await tick(40);
+      ok(!q(e, "#view .ks-strip") && !q(e, "#view .ks-card"), "다른 화면으로 옮긴 뒤 → 그리지 않음");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS11 보안 이벤트: 탭을 열기만 해서는 '본 것'이 아님 · 새 이벤트가 있으면 '보안 이벤트' 칸으로 열고 그때 본 것 · 레일 배지는 볼 때까지", async () => {
+      const { ks, e } = await setup();
+      ks.events = [{ id: 1, at: "2026-11-04T00:00:00Z", kind: "bad_key", ip: "192.0.2.9", detail: { act: "hello" } }];
+      const seenArgs = () => ks.calls.filter(c => c.name === "events").map(c => c.b.p.seen);
+      await openTab(e);
+      eq(seenArgs().join(), "false", "새 이벤트 없음 → 본 것으로 하지 않음");
+      ok(!q(e, '[data-ct-pane="kssec:ip"]').hidden && q(e, '[data-ct-pane="kssec:ev"]').hidden, "보안 카드는 허용 IP 칸");
+      ks.evNew = 1;
+      e.w.__ksyncPoll = true; await e.w.SemisKsync.poll(true); await tick(10);
+      eq(e.w.SemisKsync.badge(), "확인", "새 이벤트 → 레일 배지");
+      q(e, "#ks-req").click(); await tick(40);
+      eq(seenArgs().pop(), false, "동작 뒤 다시 불러와도 허용 IP 칸이면 본 것 아님");
+      eq(ks.evNew, 1, "서버 표시 그대로");
+      eq(e.w.SemisKsync.badge(), "확인", "배지 그대로");
+      q(e, '[data-ct-tabs="kssec"] [data-ct-tab="ev"]').click(); await tick(30);
+      eq(seenArgs().pop(), true, "보안 이벤트 칸을 펴면 그때 본 것");
+      eq(ks.evNew, 0); eq(e.w.SemisKsync.badge(), "", "배지 꺼짐");
+      q(e, '[data-ct-tabs="kssec"] [data-ct-tab="ip"]').click();
+      go(e, "dashboard"); ks.evNew = 2;
+      const n0 = seenArgs().length;
+      await openTab(e);
+      eq(seenArgs().slice(n0).join(), "false,true", "새 이벤트가 있으면 열 때 그 칸을 펴고 본 것");
+      ok(!q(e, '[data-ct-pane="kssec:ev"]').hidden && q(e, '[data-ct-tabs="kssec"] [data-ct-tab="ev"]').getAttribute("aria-selected") === "true", "보안 이벤트 칸");
+      eq(ks.evNew, 0); eq(e.w.SemisKsync.badge(), "", "본 뒤 배지 꺼짐");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS12 화면을 다시 그려도(삭제 확정 뒤 원격 변경 등) 보던 설정 탭에 남음 · 다른 화면에서 들어오면 첫 탭", async () => {
+      const { ks, e } = await setup();
+      ks.maps = [{ id: 1, k_path: "점검표", mod: "audit", grp: "checklist", dir: "both", state: "active", n_files: 3 }];
+      ks.files = [{ id: 5, map: 1, rel_path: "a.xlsx", state: "del_k", note: "" }];
+      await openTab(e);
+      q(e, '[data-ks-res="confirm"][data-id="5"]').click(); clickOk(e); await tick(30);
+      e.S.renderView(); await tick(40);     // 문서함(docs) 원격 변경 = 화면 다시 그리기
+      eq(q(e, "#view .tab.active").dataset.tab, "ksync", "K드라이브 탭 그대로");
+      ok(q(e, "#tab-body .ks-strip"), "다시 불러와 그림");
+      const btns = Array.from(q(e, "#view .page-head").children).filter(x => x.matches("button"));
+      eq(btns.filter(b => b.classList.contains("ks-hb")).length, 5, "머리말 단추 한 벌");
+      ok(btns[btns.length - 1].hasAttribute("data-print-btn"), "인쇄는 맨 끝");
+      q(e, '.tab[data-tab="data"]').click(); e.S.renderView();
+      eq(q(e, "#view .tab.active").dataset.tab, "data", "다른 탭도 그대로");
+      ok(q(e, "#dash-build") && !qa(e, "#view .page-head .ks-hb").length, "그 탭 내용 · K드라이브 단추 없음");
+      go(e, "dashboard"); go(e, "settings");
+      eq(q(e, "#view .tab.active").dataset.tab, "menus", "다른 화면에서 들어오면 메뉴 관리");
+      ok(q(e, "#menu-tree"), "메뉴 트리");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS13 건너뜀 · 오류: 기준선 줄과 마지막 실행 기록에 함께 있으면 연결 · 경로마다 한 줄(H 쪽 기록은 H 파일 이름)", async () => {
+      const { ks, e } = await setup();
+      ks.maps = [{ id: 1, k_path: "점검표", mod: "audit", grp: "checklist", dir: "both", state: "active", n_files: 3 },
+        { id: 2, k_path: "계획", mod: "audit", grp: "plan", dir: "both", state: "active", n_files: 1 }];
+      ks.files = [{ id: 8, map: 1, rel_path: "big.zip", state: "skip", note: "too_large" }, { id: 9, map: 1, rel_path: "양식/규정.hwp", h_name: "규정.hwp", state: "skip", note: "name" }];
+      ks.last = [{ m: 1, f: "big.zip", a: "skip", r: "too_large" }, { m: 1, f: "규정.hwp", a: "skip", r: "name" }, { m: 2, f: "big.zip", a: "skip", r: "too_large" },
+        { m: 1, f: "run.bat", a: "skip", r: "type_block" }, { m: 1, f: "run.bat", a: "skip", r: "type_block" }];
+      await openTab(e);
+      const rows = qa(e, '[data-ct-pane="kspend:skip"] tbody tr');
+      eq(rows.map(r => r.querySelector(".ks-path").textContent + "@" + r.querySelector(".cell-sub").textContent).join("|"), "big.zip@점검표|양식/규정.hwp@점검표|big.zip@계획|run.bat@점검표", "연결 · 경로마다 한 줄");
+      eq(qa(e, '[data-ct-pane="kspend:skip"] [data-ks-res="dismiss"]').length, 2, "기준선 줄([확인] 있는 줄)이 남음");
+      eq(q(e, '[data-ct-tabs="kspend"] [data-ct-tab="skip"]').textContent, "건너뜀 · 오류 4", "탭 건수");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS14 레일 배지 10분마다 다시 확인: 보이는 탭 · 시스템관리자만 · jsdom 에서는 타이머를 걸지 않음", async () => {
+      ok(/if \(!isDom\(\)\) setInterval\(tick, 10 \* 60 \* 1000\);/.test(read("js/ksync.js")), "10분 타이머(jsdom 제외)");
+      const { sv, ks, e } = await setup();
+      const n = () => ks.calls.filter(c => c.name === "status").length;
+      const n0 = n();
+      e.w.SemisKsync._tick(); await tick(20);
+      eq(n(), n0, "jsdom 은 시험이 켤 때만");
+      e.w.__ksyncPoll = true; ks.alert = true;
+      e.w.SemisKsync._tick(); await tick(20);
+      eq(n(), n0 + 1, "보이는 탭 → 확인");
+      eq(e.w.SemisKsync.badge(), "확인", "배지");
+      e.w.SemisKsync._tick(); await tick(20);
+      eq(n(), n0 + 2, "마지막 확인과 상관없이 10분마다");
+      Object.defineProperty(e.w.document, "visibilityState", { value: "hidden", configurable: true });
+      e.w.SemisKsync._tick(); await tick(20);
+      eq(n(), n0 + 2, "숨은 탭은 묻지 않음");
+      const e2 = makeEnv({ fetch: sv.fetch });
+      await sv.loginAs(e2, "hq-pw-2222"); await tick(10);
+      e2.w.__ksyncPoll = true;
+      const m0 = ks.calls.length;
+      e2.w.SemisKsync._tick(); await tick(20);
+      eq(ks.calls.length, m0, "시스템관리자 밖은 묻지 않음");
+      e.Sync.stop(); e.w.close(); e2.Sync.stop(); e2.w.close();
+    });
+    await ta("KS15 에이전트 키 [발급]: 요청 중 단추 꺼짐 — 두 번 눌러도 키 하나 · 실패하면 다시 누를 수 있음", async () => {
+      const { sv, ks, e } = await setup();
+      await openTab(e);
+      const g = hold(e, /ksync_agent_new/);
+      q(e, "#ks-key-new").click();
+      const b = q(e, "#modal-box [data-act=ok]");
+      b.click(); b.click(); await tick(10);
+      ok(b.disabled, "요청 중 꺼짐");
+      g.open(); await tick(30);
+      eq(ks.calls.filter(c => c.name === "agent_new").length, 1, "키 하나");
+      ok(q(e, "#ks-key"), "키 창");
+      clickOk(e); await tick(20);
+      const ok0 = sv.rpc.semis_logi_ksync_agent_new;
+      sv.rpc.semis_logi_ksync_agent_new = () => ({ ok: false, error: "bad" });
+      q(e, "#ks-key-new").click();
+      const b2 = q(e, "#modal-box [data-act=ok]");
+      b2.click(); await tick(30);
+      ok(!b2.disabled && b2.isConnected, "실패 → 다시 누를 수 있음");
+      sv.rpc.semis_logi_ksync_agent_new = ok0;
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS16 원격 변경으로 화면만 다시 그리면 보던 보안 칸 그대로 · 새 보안 이벤트를 '본 것'으로 하지 않음(숨은 창) — 탭 · 칸을 직접 열 때만", async () => {
+      const { ks, e } = await setup();
+      ks.events = [{ id: 1, at: "2026-11-04T00:00:00Z", kind: "bad_key", ip: "192.0.2.9", detail: { act: "hello" } }];
+      const seenArgs = () => ks.calls.filter(c => c.name === "events").map(c => c.b.p.seen);
+      const pane = () => qa(e, '[data-ct-pane^="kssec:"]').filter(p => !p.hidden).map(p => p.dataset.ctPane).join();
+      const vis = (v) => Object.defineProperty(e.w.document, "visibilityState", { value: v, configurable: true });
+      await openTab(e);
+      eq(pane(), "kssec:ip", "허용 IP 칸");
+      vis("hidden"); ks.evNew = 1;
+      let n0 = seenArgs().length;
+      e.S.renderView(); await tick(40);     // 다른 사람이 자료를 바꿈 = 숨은 창에서 화면 다시 그리기
+      eq(q(e, "#view .tab.active").dataset.tab, "ksync", "K드라이브 탭 그대로");
+      eq(seenArgs().slice(n0).join(), "false", "다시 그리기는 본 것 아님");
+      eq(ks.evNew, 1, "서버 표시 그대로");
+      eq(pane(), "kssec:ip", "보던 칸 그대로(보안 이벤트 칸으로 바꾸지 않음)");
+      eq(e.w.SemisKsync.badge(), "확인", "레일 배지 그대로");
+      vis("visible");
+      q(e, '[data-ct-tabs="kssec"] [data-ct-tab="ev"]').click(); await tick(30);
+      eq(seenArgs().pop(), true, "보안 이벤트 칸을 누르면 그때 본 것");
+      eq(ks.evNew, 0);
+      ks.evNew = 3; n0 = seenArgs().length;
+      e.S.renderView(); await tick(40);
+      eq(seenArgs().slice(n0).join(), "false", "보안 이벤트 칸을 펴 둔 채 다시 그려도 본 것 아님");
+      eq(ks.evNew, 3, "서버 표시 그대로");
+      eq(pane(), "kssec:ev", "보안 이벤트 칸 그대로");
+      eq(e.w.SemisKsync.badge(), "확인", "배지 그대로");
+      q(e, '[data-ct-tabs="kssec"] [data-ct-tab="ev"]').click(); await tick(30);
+      eq(seenArgs().pop(), true, "펴 둔 칸을 다시 누르면 본 것");
+      eq(ks.evNew, 0); eq(e.w.SemisKsync.badge(), "", "배지 꺼짐");
+      ks.evNew = 1; n0 = seenArgs().length;
+      q(e, '.tab[data-tab="ksync"]').click(); await tick(40);
+      eq(seenArgs().slice(n0).join(), "true", "탭을 직접 열면(보안 이벤트 칸) 본 것");
+      eq(ks.evNew, 0);
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS17 보안 이벤트를 종류로 거른 동안은 '본 것'을 보내지 않음 · 새 이벤트가 있으면 탭을 열 때 전체로 펴고 본 것", async () => {
+      const { ks, e } = await setup();
+      ks.events = [{ id: 1, at: "2026-11-04T00:00:00Z", kind: "scope", ip: "198.51.100.5", detail: { act: "get" } }];
+      const evp = () => ks.calls.filter(c => c.name === "events").map(c => c.b.p);
+      const rowsTxt = () => q(e, '[data-ct-pane="kssec:ev"]').querySelector("tbody") ? q(e, '[data-ct-pane="kssec:ev"] tbody').textContent : "";
+      await openTab(e);
+      q(e, '[data-ct-tabs="kssec"] [data-ct-tab="ev"]').click(); await tick(10);
+      q(e, '[data-ks-evk="scope"]').click(); await tick(30);
+      eq(evp().pop().kind, "scope", "종류 거르기");
+      ks.events.push({ id: 2, at: "2026-11-05T00:00:00Z", kind: "bad_key", ip: "192.0.2.9", detail: { act: "hello" } });
+      ks.evNew = 1;
+      q(e, "#ks-req").click(); await tick(40);     // 거른 채 다시 불러오기
+      eq(evp().pop().seen, false, "거른 목록은 본 것 아님");
+      eq(ks.evNew, 1, "서버 표시 그대로");
+      eq(e.w.SemisKsync.badge(), "확인", "레일 배지 그대로");
+      const n0 = evp().length;
+      q(e, '[data-ct-tabs="kssec"] [data-ct-tab="ev"]').click(); await tick(30);
+      eq(evp().length, n0, "거른 채 칸을 눌러도 본 것으로 보내지 않음");
+      eq(e.w.SemisKsync.badge(), "확인", "배지 그대로");
+      q(e, '.tab[data-tab="security"]').click(); await tick(10);
+      q(e, '.tab[data-tab="ksync"]').click(); await tick(40);
+      eq(JSON.stringify(evp().pop()), '{"kind":null,"limit":100,"seen":true}', "새 이벤트로 열면 전체 목록으로 본 것");
+      eq(ks.evNew, 0); eq(e.w.SemisKsync.badge(), "", "배지 꺼짐");
+      ok(/틀린 키/.test(rowsTxt()) && /연결 밖 접근/.test(rowsTxt()), "새 이벤트가 목록에 보임");
+      eq(q(e, '[data-ks-evk=""]').getAttribute("aria-pressed"), "true", "[전체]");
+      ks.evNew = 1;
+      q(e, '[data-ks-evk="scope"]').click(); await tick(30);
+      eq(evp().pop().seen, false, "다시 거르면 본 것 아님");
+      eq(e.w.SemisKsync.badge(), "확인", "배지 다시 켜짐");
+      q(e, '[data-ks-evk=""]').click(); await tick(30);
+      eq(JSON.stringify(evp().pop()), '{"kind":null,"limit":100,"seen":true}', "[전체]를 보면 본 것");
+      eq(ks.evNew, 0); eq(e.w.SemisKsync.badge(), "", "배지 꺼짐");
+      ok(!evp().some(p => p.seen === true && p.kind), "거른 종류와 '본 것'을 함께 보내지 않음");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS18 에이전트 키 [발급] 요청 중 창을 닫았다 다시 열어도 키 하나 · 닫은 뒤 온 키도 키 창으로", async () => {
+      const { ks, e } = await setup();
+      await openTab(e);
+      const key = "c0ffee".repeat(10) + "abcd";
+      const g = hold(e, /ksync_agent_new/);
+      q(e, "#ks-key-new").click();
+      clickOk(e); await tick(10);
+      q(e, "#modal-box [data-act=cancel]").click();     // 요청 중에도 [취소] · 바깥 누르기 · Esc 로 닫힘
+      ok(!q(e, "#modal-box [data-act=ok]"), "발급 창 닫힘");
+      q(e, "#ks-key-new").click(); await tick(5);
+      const b = q(e, "#modal-box [data-act=ok]");
+      if (b) b.click();
+      await tick(10);
+      const msg = e.w.document.body.textContent;
+      g.open(); await tick(30);
+      eq(ks.calls.filter(c => c.name === "agent_new").length, 1, "키 하나");
+      ok(/키를 발급하는 중/.test(msg), "다시 열면 발급 중 안내");
+      eq(q(e, "#ks-key") ? q(e, "#ks-key").value : "", key, "닫은 뒤 온 키도 키 창으로");
+      ok(q(e, "#modal-box").hasAttribute("data-sticky"), "키 창은 바깥 누르기로 닫히지 않음");
+      clickOk(e); await tick(20);
+      q(e, "#ks-key-new").click();
+      ok(q(e, "#modal-box [data-act=ok]") && !q(e, "#modal-box [data-act=ok]").disabled, "끝나면 다시 발급할 수 있음");
+      clickOk(e); await tick(30);
+      eq(ks.calls.filter(c => c.name === "agent_new").length, 2, "다음 발급");
+      clickOk(e); await tick(20);
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS19 건너뜀 · 오류: H 파일 이름으로 맞추는 것은 H 쪽 이유(이름 · 실행 파일)일 때만 — 같은 이름의 다른 K 파일 줄은 남김", async () => {
+      const { ks, e } = await setup();
+      ks.maps = [{ id: 1, k_path: "점검표", mod: "audit", grp: "checklist", dir: "both", state: "active", n_files: 3 }];
+      ks.files = [{ id: 9, map: 1, rel_path: "양식/규정.hwp", h_name: "규정.hwp", state: "skip", note: "name" },
+        { id: 10, map: 1, rel_path: "양식/지침.hwp", h_name: "지침.hwp", state: "skip", note: "too_large" }];
+      ks.last = [{ m: 1, f: "규정.hwp", a: "skip", r: "name" }, { m: 1, f: "규정.hwp", a: "skip", r: "too_large" },
+        { m: 1, f: "양식/지침.hwp", a: "skip", r: "too_large" }, { m: 1, f: "지침.hwp", a: "skip", r: "too_large" }];
+      await openTab(e);
+      const rows = qa(e, '[data-ct-pane="kspend:skip"] tbody tr');
+      eq(rows.map(r => r.querySelector(".ks-path").textContent + ":" + r.children[1].querySelector(".cell-sub").textContent).join("|"),
+        "양식/규정.hwp:쓸 수 없는 이름|양식/지침.hwp:50MB 초과|규정.hwp:50MB 초과|지침.hwp:50MB 초과", "H 쪽 줄만 H 이름으로 묶고 다른 K 파일 줄은 남김");
+      eq(qa(e, '[data-ct-pane="kspend:skip"] [data-ks-res="dismiss"]').length, 2, "기준선 줄([확인] 있는 줄)");
+      eq(q(e, '[data-ct-tabs="kspend"] [data-ct-tab="skip"]').textContent, "건너뜀 · 오류 4", "탭 건수");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS20 삭제 확정을 서버가 충돌로 돌림(H 에 새 판) · 미리보기 건수가 버려진 뒤 [시작] 거절 · 표시를 못 보낸 이유 — 쉬운 말로", async () => {
+      const { sv, ks, e } = await setup();
+      ks.maps = [{ id: 1, k_path: "점검표", mod: "audit", grp: "checklist", dir: "both", state: "active", n_files: 3 },
+        { id: 2, k_path: "양식", mod: "audit", grp: "plan", dir: "both", ssi: false, state: "preview", preview: { k2h: 1, h2k: 0, link: 0, del: 0, skip: 0, total: 1 }, n_files: 0, n_wait: 0 }];
+      ks.files = [{ id: 5, map: 1, rel_path: "a.xlsx", state: "del_k", note: "" }, { id: 6, map: 1, rel_path: "b.xlsx", state: "error", note: "apply" }];
+      ks.last = [{ m: 1, f: "점검표", a: "error", r: "mark" }, { m: 2, f: "양식", a: "error", r: "state" }, { m: 1, f: "점검표/하위", a: "error", r: "run" },
+        { m: 1, f: "c.xlsx", a: "error", r: "apply" }];
+      sv.rpc.semis_logi_ksync_resolve = (b) => { ks.calls.push({ name: "resolve", b }); return { ok: true, n: 0, kept: 1 }; };
+      sv.rpc.semis_logi_ksync_map_start = (b) => { ks.calls.push({ name: "map_start", b }); return { ok: false, error: "preview" }; };
+      await openTab(e);
+      const sk = q(e, '[data-ct-pane="kspend:skip"]').textContent;
+      ok(/서버가 맞춘 기록 일부를 받지 않음/.test(sk) && /연결을 멈추거나 지워서/.test(sk) && /이 실행이 이미 끝나/.test(sk), "표시를 못 보낸 이유 " + sk);
+      // 등록하지 못한 올리기(그 사이 H 새 판) — 기준선 줄 · 실행 기록 모두 코드('apply')가 아닌 쉬운 말
+      eq((sk.match(/문서함에 등록하지 못함\(그 사이 H:drive 에 새 판 등\)/g) || []).length, 2, "등록하지 못한 이유 " + sk);
+      ok(!/apply/.test(sk), "코드 그대로 보이지 않음 " + sk);
+      q(e, '[data-ks-res="confirm"][data-id="5"]').click(); clickOk(e); await tick(30);
+      eq(JSON.stringify(ks.calls.filter(c => c.name === "resolve").pop().b.p), '{"ids":[5],"act":"confirm"}', "삭제 확정 인자");
+      ok(/H:drive 에 새 판이 있어 지우지 않았습니다/.test(q(e, "#toast-wrap").textContent), "서버가 지우지 않고 충돌로 돌림 → 그대로 알림");
+      ok(!/삭제를 확정했습니다/.test(q(e, "#toast-wrap").textContent), "확정했다고 하지 않음");
+      q(e, '[data-ks-start="2"]').click(); clickOk(e); await tick(30);
+      eq(ks.calls.filter(c => c.name === "map_start").map(c => c.b.p_id).join(), "2", "시작 요청");
+      ok(/미리보기 건수가 온 뒤에 시작할 수 있습니다/.test(q(e, "#toast-wrap").textContent), "미리보기 건수 없음 → 쉬운 말로");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
     });
   }
 
