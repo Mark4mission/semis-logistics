@@ -9,7 +9,7 @@ import { pathToFileURL } from "node:url";
 import { plan, MAX_SIZE, K_BLOCK } from "./plan.mjs";
 import * as L from "./lib.mjs";
 
-export const VERSION = "1.61.0";
+export const VERSION = "1.62.0";
 const MIN = 60e3;
 /* 실행 전체를 멈추는 오류 — 망 · 서버(게이트웨이 포함: 처리했는지 모름) · 키 · IP · 분당 상한(한 번 쉬고도) */
 const fatalCode = (c) => c === "network" || c === "server" || c === "auth" || c === "ip" || c === "rate";

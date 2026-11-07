@@ -6076,7 +6076,7 @@ function makeServer(opts = {}) {
       { name: "갑일", dept: "영업운송본부 인천화물팀", position: "프로", date: "2026-03-13", state: "valid", n: 2 },
       { name: "동명", dept: "운항본부", position: "기장", date: "2025-11-24", state: "valid", n: 1 },
       { name: "동명", dept: "인천화물팀", position: "파트장", date: "2026-01-10", state: "valid", n: 1 },
-      { name: "을이", dept: "정비본부", position: "프로", date: "2025-10-01", state: "left", n: 1 },
+      { name: "을이", dept: "정비본부", position: "프로", date: "2025-10-01", state: "left", off: "2026-10-15", n: 1 },
       { name: "외부인", dept: "뉴욕지점", position: "지점장", date: "2025-09-30", state: "valid", n: 1 }
     ]);
     t("TR16 SSI 서약 대조: 이름 → SeMIS 서약일 · 동명이인은 소속으로 · 못 가리면 확인 필요 · 입력한 서약일이 더 늦으면 그것 · 퇴직 서약 제외 · 증빙 2.10 · 서약 등록", () => {
@@ -6123,7 +6123,7 @@ function makeServer(opts = {}) {
       eq(c.roles.join(","), "SSI");
       data().people = data().people.filter(x => x.id !== c.id);
     });
-    t("TR17 'SSI 서약' 탭: 인천화물팀(명단 대조 + 소속) / 전사 · 유효 / 전체 · 검색 · 누락 목록 · A4 명단(사번 · 서명 없음)", () => {
+    t("TR17 'SSI 서약' 탭: 인천화물팀(명단 대조 + 소속) / 전사 · 유효 / 전체 · 검색 · 누락 목록 · A4 관리대장(사번 · 서명 없음 · 해지일 · 취소선 · 총원 해지 제외)", () => {
       loginAs(e, "hq");
       TR.pledgesState.rows = PLROWS(); TR.pledgesState.at = Date.now();
       TR.setState({ tab: "pledges", q: "", plScope: "team", plState: "valid", pid: "" }); go(e, "training");
@@ -6137,7 +6137,16 @@ function makeServer(opts = {}) {
       ok(/재서약 1/.test(q(e, ".tr-pltbl").textContent), "재서약 표시");
       const pr = q(e, ".tr-plprint");
       ok(pr && pr.classList.contains("print-only") && qa(e, ".tr-plptbl tbody tr").length === 5, "A4 인쇄용 표");
-      ok(/보안서약서 작성자 명단 — 전사/.test(pr.textContent) && !/사번|서명/.test(pr.querySelector("thead").textContent), "사번 · 서명 열 없음");
+      ok(/민감보안정보 취급자 관리대장 — 전사/.test(pr.textContent) && !/사번|서명/.test(pr.querySelector("thead").textContent), "사번 · 서명 열 없음");
+      eq(qa(e, ".tr-plptbl thead th").map(x => x.textContent).join("|"), "연번|이름|소속부서|직책|지정일|해지일", "국토부 표기 열 순서");
+      ok(/총원 4명 \(해지 1명 제외\)/.test(q(e, ".tr-plcap").textContent), "총원은 해지 제외");
+      const offTr = qa(e, ".tr-plptbl tbody tr").find(tr => /을이/.test(tr.textContent));
+      ok(offTr && offTr.classList.contains("is-off") && offTr.querySelector("td.od").textContent === "2026.10.15", "해지자: 취소선 행 · 해지일");
+      ok(qa(e, ".tr-plptbl tbody tr.is-off").length === 1 && qa(e, ".tr-plptbl tbody td.od").filter(x => x.textContent).length === 1, "유효자는 해지일 비움");
+      ok(/8\.14\.3/.test(q(e, ".tr-plpfoot").textContent), "근거 조항");
+      ok(q(e, ".tr-plcap .tr-plttl svg.tr-plci[aria-label='AIRZETA']"), "머리말 왼쪽 회사 CI");
+      ok(/\.tr-plptbl th, \.tr-plptbl td \{[^}]*text-align: center; \}/.test(read("css/main.css")), "모든 칸 가운데 정렬");
+      ok(qa(e, ".tr-pltbl tbody tr.is-off").length === 1 && /해지 2026\.10\.15/.test(q(e, ".tr-pltbl tbody tr.is-off").textContent), "화면: 해지 표시");
       ok(q(e, "[data-print-btn]"), "Print 버튼");
       const qi = q(e, "#tr-q"); qi.value = "뉴욕"; qi.dispatchEvent(new e.w.Event("input"));
       eq(names().join(","), "외부인", "소속 검색");
@@ -6170,6 +6179,11 @@ function makeServer(opts = {}) {
       const sql = read("tools/sql/semis-logi-pledges.sql");
       ok(/semis_logi_private\.rank_now\(\) < 2/.test(sql) && /grant execute on function public\.semis_logi_pledges\(\) to anon, service_role/.test(sql), "SQL 참조 사본");
       ok(!/'empId'|emp_id\b.*jsonb_build_object|'sign'/.test(sql.slice(sql.indexOf("jsonb_build_object('name'"))), "명단에 사번 · 서명 없음");
+      ok(/'off', case when z\.eff in \('expired', 'void'\)/.test(sql), "해지일");
+      fail = false; e.w.SemisSync.rpc = () => Promise.resolve({ ok: true, rows: [{ name: "가", dept: "", position: "", date: "2026-01-01", state: "void", off: "2026-10-01", n: 1 }, { name: "나", date: "2026-01-02", state: "valid", off: "x" }] });
+      await TR.loadPledges(true);
+      ok(P.rows[0].off === "2026-10-01" && P.rows[1].off === "", "해지일은 날짜만");
+      e.w.SemisSync.rpc = old;
     });
     t("TR20 목록에서 이수 등록: 인원 고르기 → 그 사람에게 필요한 과정 자동 선택(직접 고르면 유지) · 저장", () => {
       loginAs(e, "hq"); TR.setState({ tab: "people", pid: "" }); go(e, "training");
@@ -11957,7 +11971,7 @@ function makeServer(opts = {}) {
     e.w.close();
   }
 
-  /* ══════════ [KS] v1.61 K드라이브 동기화(시스템 설정 탭 · 레일 배지 · 에이전트 계획 · 서버 규칙 대조) ══════════ */
+  /* ══════════ [KS] v1.62 K드라이브 동기화(시스템 설정 탭 · 레일 배지 · 에이전트 계획 · 서버 규칙 대조) ══════════ */
   {
     const ksFake = (sv) => {
       const k = sv.ks = { calls: [], alert: false, stale: false, evNew: 0, agents: [], maps: [], holds: [], files: [], last: [], runs: [], events: [], folders: [{ path: "안전보안", depth: 1, n: 2 }, { path: "안전보안/점검표", depth: 2, n: 12 }],
@@ -12016,7 +12030,7 @@ function makeServer(opts = {}) {
       ["status", "pending", "runs", "events", "folders"].forEach(n => ok(ks.calls.some(c => c.name === n), "불러오기 " + n));
       q(e, '.tab[data-tab="security"]').click();
       eq(qa(e, "#view .page-head .ks-hb").length, 0, "다른 탭 → 단추 정리");
-      ks.agents = [{ id: 1, name: "Mac", created_at: new Date().toISOString(), last_seen_at: new Date().toISOString(), version: "1.61.0", host: "m" }];
+      ks.agents = [{ id: 1, name: "Mac", created_at: new Date().toISOString(), last_seen_at: new Date().toISOString(), version: "1.62.0", host: "m" }];
       await openTab(e);
       ok(/허용 IP 가 없어/.test(q(e, "#tab-body .ks-warn").textContent), "허용 IP 없음 안내");
       ks.state.ip_allow = ["198.51.100.5/32"]; ks.stale = true;
@@ -12094,7 +12108,7 @@ function makeServer(opts = {}) {
     });
     await ta("KS04 보안: 허용 IP · 후보 [허용] · 추가 · 지우기 / 에이전트 키 발급(원문 한 번 · 닫으면 지움) · 90일 교체 안내 · 폐기 / 이벤트 종류 거르기 · 카드 인쇄", async () => {
       const { ks, e } = await setup();
-      ks.agents = [{ id: 3, name: "Mac", created_at: new Date(Date.now() - 100 * 864e5).toISOString(), created_by: "관리자", last_seen_at: new Date().toISOString(), last_ip: "198.51.100.5", version: "1.61.0", host: "m" }];
+      ks.agents = [{ id: 3, name: "Mac", created_at: new Date(Date.now() - 100 * 864e5).toISOString(), created_by: "관리자", last_seen_at: new Date().toISOString(), last_ip: "198.51.100.5", version: "1.62.0", host: "m" }];
       ks.state.ip_allow = ["203.0.113.0/24"];
       ks.events = [{ id: 1, at: "2026-11-04T00:00:00Z", kind: "bad_key", ip: "192.0.2.9", detail: { act: "hello" } }, { id: 2, at: "2026-11-04T00:00:00Z", kind: "scope", ip: "198.51.100.5", detail: { act: "get", map: 1 } }];
       await openTab(e);
