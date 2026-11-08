@@ -3,7 +3,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.61.1";
+  const VERSION = "1.62.0";
   const APP_NAME = "H:drive";
   const APP_ALIAS = "ARGOS (Air-cargo Risk & Guard Operations System)";
   /* 데이터 캐시는 탭 sessionStorage 에만(탭 닫기·로그아웃 시 소멸). 화면 설정(LS_UI)만 localStorage */
@@ -1663,7 +1663,9 @@ const SeMIS = (() => {
         if (m.type === "link" && m.open !== "frame" && !isLinkGroup(m))
           return '<a class="rail-btn util" href="' + esc(m.url) + '" target="_blank" rel="noopener" title="' + esc(m.label) + '" aria-label="' + esc(m.label) + '">' + ico + '</a>';
         const r = m.type === "board" ? boardRoute(m) : m.type === "link" ? (isLinkGroup(m) ? "links/" : "embed/") + m.id : m.module;
-        return '<button type="button" class="rail-btn util" data-route="' + esc(r) + '" title="' + esc(m.label) + '" aria-label="' + esc(m.label) + '">' + ico + '</button>';
+        const nb = navBadgeOf(m), lb = m.label + (nb ? " — " + nb : "");
+        return '<button type="button" class="rail-btn util' + (nb ? " has-dot" : "") + '" data-route="' + esc(r) + '" title="' + esc(lb) + '" aria-label="' + esc(lb) + '">' + ico +
+          (nb ? '<i class="rail-dot" aria-hidden="true"></i>' : "") + '</button>';
       }).join("");
       if (utils.length) html += '<section class="hub hub-util" data-hub="_util" aria-label="관리"><div class="hub-head"><span class="hub-ico">' +
         icon("sliders", 18) + '</span><h2 class="hub-title">관리</h2></div><div class="hub-items">' + utils.map(navItemHTML).join("") + '</div></section>';
