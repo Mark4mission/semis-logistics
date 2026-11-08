@@ -197,10 +197,20 @@ await admin("select public.semis_logi_ksync_ip_approve($1)", [IP]);
 online = false;
 IP = "203.0.113.9";     // 사내망 밖 — '연결 안 됨' 보고(net)만은 허용 IP 밖에서도 받는다
 r = await once();
-eq([r.status, notes.length], ["offline", 1], "사내망 아님 → 알림");
-await once();
-eq(notes.length, 1, "알림은 하루 한 번");
-eq(await one("select count(*)::int from semis_logi_private.ksync_runs where result = 'offline'"), 1, "연결 안 됨 보고(허용 IP 밖에서도)");
+eq([r.status, notes.length, await one("select net ->> 'ok' from semis_logi_private.ksync_state")], ["offline", 0, "false"], "--once · 사내망 아님 → 연결 안 됨 보고 · 기록만(알림 없음)");
+// 매일 창(08:30~09:00) 안에서 깨어났는데 닿지 않음 — 5분 간격 3번(기다림은 주입) 뒤 그날은 건너뜀: 보고 · 알림 한 번
+const W0840 = Date.parse(TODAY + "T08:40:00+09:00"), slept = [];
+// 앞의 실제 시각 실행이 남긴 마지막 서버 확인(lastSeen = 지금)을 지운다 — 남겨 두면 주입한 08:50 깨우기가 '5분 안에 봤음'(recent)으로 끝나 시험 결과가 시험하는 시각에 따라 달라진다
+{ const s0 = JSON.parse(fs.readFileSync(STATE, "utf8")); delete s0.lastSeen; fs.writeFileSync(STATE, JSON.stringify(s0)); }
+r = await runAgent(Object.assign(deps(), { now: () => W0840, sleep: async (ms) => { slept.push(ms); } }), {});
+eq([r.status, slept.filter(x => x === 300000).length, notes, JSON.parse(fs.readFileSync(STATE, "utf8")).skipDay],
+  ["offline", 2, ["K드라이브에 연결하지 못해 오늘 동기화를 건너뜁니다. 내일 08:30~09:00 에 다시 시도합니다."], TODAY], "창 안 · 3번 다 안 됨 → 오늘 건너뜀 · 알림 한 번");
+ok(/오늘 동기화 건너뜀/.test(await one("select net ->> 'msg' from semis_logi_private.ksync_state")), "건너뛴 날은 서버 '사내망' 표시에 남음(대시보드 다음 예정 = 내일)");
+slept.length = 0;
+const rn = rpcLog.length;
+r = await runAgent(Object.assign(deps(), { now: () => W0840 + 10 * 60e3, sleep: async (ms) => { slept.push(ms); } }), {});
+eq([r.status, notes.length, slept.filter(x => x === 300000).length, since(rpcLog, rn, x => x.act === "net").length], ["offline", 1, 0, 0], "같은 날 다시 깨어나도 다시 시도 · 보고 · 알림 없음");
+eq(await one("select count(*)::int from semis_logi_private.ksync_runs where result = 'offline'"), 1, "연결 안 됨 보고(허용 IP 밖에서도 · 하루 한 줄)");
 IP = "198.51.100.5";
 eq(await one("select net ->> 'ok' from semis_logi_private.ksync_state"), "false", "대시보드 사내망: 연결 안 됨");
 online = true;
@@ -902,7 +912,7 @@ const f2 = await rowById(f2Row.id);
 const f2Doc = (await docs()).find(d => d.id === f2?.doc_id);
 eq([r.status, has("f2.pdf") && read("f2.pdf"), kFiles("_H드라이브_휴지통").filter(f => /f2/.test(f)), f2?.state, f2?.note, f2Doc && objText(f2Doc.files[0].url)],
   ["ok", "F2-K", [], "conflict", "K 에서 고친 뒤 삭제 확정", "F2-K"], "#1 확정 뒤 K 수정 → 휴지통으로 옮기지 않음 · H 로 올리고 충돌로");
-// H→K 만인 연결 — K 수정을 H 로 보낼 수 없어 휴지통에 넣으면 30일 뒤 사라진다: K 에 남기고 기준선만 지움(다음 실행부터 할 일 없음)
+// H→K 만인 연결 — K 수정을 H 로 보낼 수 없어 휴지통에 넣으면 업무 폴더에서 사라진다: K 에 남기고 기준선만 지움(다음 실행부터 할 일 없음)
 const f3Row = await delH("f3.pdf", "F3");
 await admin("select public.semis_logi_ksync_map_save($1::jsonb)", [JSON.stringify({ id: M, dir: "h2k" })]);
 await admin("select public.semis_logi_ksync_resolve($1::jsonb)", [JSON.stringify({ ids: [f3Row.id], act: "confirm" })]);

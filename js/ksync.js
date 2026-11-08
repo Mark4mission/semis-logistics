@@ -121,18 +121,34 @@
     const live = (s.agents || []).filter(a => !a.revoked_at).sort((a, b) => String(b.last_seen_at || "").localeCompare(String(a.last_seen_at || "")));
     const ag = live[0];
     const today = s.today, res = today ? RES[today.result || ""] || RES.fail : null;
-    const nowD = new Date(s.now || Date.now());
-    const [hh, mm] = String(state.daily_at || "08:30").split(":").map(Number);
-    const doneToday = !!(s.last_ok && new Date(s.last_ok).toDateString() === nowD.toDateString());
-    const next = doneToday ? "내일 " + state.daily_at : nowD.getHours() * 60 + nowD.getMinutes() < hh * 60 + mm ? "오늘 " + state.daily_at : "사내망 연결 때";
+    const next = schedule(s);
     const warn = setupWarn();
     return `<div class="ks-strip${s.stale ? " is-stale" : ""}">${ui.stats([
       { label: "에이전트", value: ag ? ago(ag.last_seen_at) : "없음", sub: ag ? [ag.version && "v" + ag.version, ag.host].filter(Boolean).join(" · ") : "키 발급 · Mac 설치 필요", tone: ag && ag.last_seen_at && days(ag.last_seen_at) < 2 ? "ok" : "warn" },
       { label: "사내망", value: net.at ? (net.ok ? "연결됨" : "연결 안 됨") : "-", sub: net.at ? "확인 " + fmt(net.at) : "", tone: net.at && !net.ok ? "warn" : net.ok ? "ok" : "muted" },
       { label: "마지막 성공", value: s.last_ok ? fmt(s.last_ok) : "없음", tone: s.stale ? "bad" : "muted" },
-      { label: "다음 예정", value: next, sub: "매일 " + (state.daily_at || "08:30") + " 이후 처음 연결 때", tone: "muted" },
+      { label: "다음 예정", value: next.value, sub: next.sub, tone: "muted" },
       { label: "오늘 결과", value: res ? res[0] : "아직 없음", sub: today ? `K→H ${today.k2h} · H→K ${today.h2k}${today.errors ? " · 오류 " + today.errors : ""}` : "", tone: !res ? "muted" : today.result === "ok" ? "ok" : today.result === "fail" ? "bad" : "warn" }
     ])}${warn ? `<p class="ks-warn" role="status">${icon("alert", 16)}<span>${esc(warn)}</span></p>` : ""}</div>`;
+  }
+  /* 다음 매일 실행 — 한국 시각 시작부터 30분 창(에이전트와 같은 규칙). 창이 지났거나 오늘 끝냈거나(창 시작 뒤에 시작해 성공)
+     연결이 안 돼 오늘을 건너뛰었으면(에이전트가 '오늘 동기화 건너뜀'으로 보고) 내일 — 창이 지난 뒤에는 그날 따라잡지 않는다.
+     끝냄은 오늘 회차의 시작 시각으로 — 에이전트도 시작한 때로 센다(last_ok 는 끝난 시각이라 창 전에 시작한 수동 실행도 끝냄으로 보게 됨).
+     건너뜀은 사내망 표시나 그날의 '연결 안 됨' 줄 — 뒤에 연결되면 hello 가 사내망 표시를 '연결됨'으로 덮어도 그 줄은 남는다 */
+  function schedule(s) {
+    const state = s.state || {}, net = state.net || {}, t = s.today || {}, last = s.last || {};
+    const kst = (t) => new Date(new Date(t).getTime() + 9 * 3600e3);
+    const day = (t) => kst(t).toISOString().slice(0, 10), min = (t) => { const d = kst(t); return d.getUTCHours() * 60 + d.getUTCMinutes(); };
+    const hm = (m) => pad(Math.floor(m / 60)) + ":" + pad(m % 60);
+    const at = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(String(state.daily_at || ""));
+    const start = at ? Number(at[1]) * 60 + Number(at[2]) : 8 * 60 + 30;
+    const win = hm(start) + "~" + hm((start + 30) % 1440);
+    const now = s.now || Date.now(), d0 = day(now), m0 = min(now);
+    const done = !!(t.started_at && day(t.started_at) === d0 && min(t.started_at) >= start && /^(ok|partial|held)$/.test(t.result || ""));
+    const skipped = (net.ok === false && !!net.at && day(net.at) === d0 && /건너뜀/.test(net.msg || ""))
+      || (last.result === "offline" && !!last.started_at && day(last.started_at) === d0 && /건너뜀/.test(last.msg || ""));
+    const later = m0 < start || (m0 < start + 30 && !done && !skipped);
+    return { value: (later ? "오늘 " : "내일 ") + win, sub: "매일 " + win + " · 연결이 안 되면 5분 간격 3번, 그래도 안 되면 다음 날" };
   }
   /* 한 줄 이유 — 설치가 덜 됐거나 이틀 넘게 성공이 없을 때 */
   function setupWarn() {
@@ -204,7 +220,7 @@
           <p class="ks-note">한 번에 많이 바뀌면(랜섬웨어 · 실수 대비) 그 연결만 멈춥니다. 바뀐 내용을 확인한 뒤 승인하면 다음 확인 때 진행하고, 거절하면 연결을 멈춥니다.</p>` : `<p class="ks-none">보류된 연결이 없습니다.</p>`)}
       ${ui.pane("kspend", "del", sel, tbl(del.map(f => row(f, `<button type="button" class="btn btn-ghost btn-sm" data-ks-res="confirm" data-id="${f.id}">삭제 확정</button>
           <button type="button" class="btn btn-ghost btn-sm" data-ks-res="restore" data-id="${f.id}">복원</button>`)).join("") + wait.map(f => row(f, "")).join(""), "삭제 대기가 없습니다.")
-        + (del.length ? `<p class="ks-note">삭제 확정 — K 에서 지웠으면 H:drive 문서를 지우고, H:drive 에서 지웠으면 K 파일을 연결 폴더 안 '_H드라이브_휴지통'으로 옮깁니다(30일 뒤 정리). 복원 — 지워진 쪽에 다시 만듭니다.</p>` : ""))}
+        + (del.length ? `<p class="ks-note">삭제 확정 — K 에서 지웠으면 H:drive 문서를 지우고, H:drive 에서 지웠으면 K 파일을 연결 폴더 안 '_H드라이브_휴지통'으로 옮깁니다. 휴지통은 에이전트가 지우지 않습니다 — 필요하면 직접 정리하세요. 복원 — 지워진 쪽에 다시 만듭니다.</p>` : ""))}
       ${ui.pane("kspend", "conf", sel, tbl(conf.map(f => row(f, `<button type="button" class="btn btn-ghost btn-sm" data-ks-res="dismiss" data-id="${f.id}">확인</button>`)).join(""), "충돌이 없습니다.")
         + (conf.length ? `<p class="ks-note">양쪽에서 함께 고친 파일 — 늦게 고친 쪽이 현재 판이고, 다른 쪽은 H:drive 이전 판과 K '이름 (충돌 날짜)' 파일로 남겼습니다.</p>` : ""))}
       ${ui.pane("kspend", "skip", sel, tbl(skip.map(f => row(f, f.last ? "" : `<button type="button" class="btn btn-ghost btn-sm" data-ks-res="dismiss" data-id="${f.id}">확인</button>`)).join(""), "건너뛴 파일 · 오류가 없습니다."))}
@@ -289,7 +305,7 @@
       // K 에서 지운 뒤 H 에 새 판이 생긴 줄은 서버가 지우지 않고 충돌로 돌린다(kept)
       const go = () => act("semis_logi_ksync_resolve", { p: { ids: [Number(b.dataset.id)], act: a } },
         a === "confirm" ? (d) => (d.kept ? "H:drive 에 새 판이 있어 지우지 않았습니다 — '충돌'에서 확인하세요." : "삭제를 확정했습니다.") : a === "restore" ? "복원을 요청했습니다." : "확인했습니다.");
-      if (a === "confirm") confirmModal("삭제를 확정할까요? 지워진 쪽에 맞춰 다른 쪽도 지웁니다(H:drive 문서는 변경 이력 90일 · K 파일은 휴지통 폴더 30일).", go); else go();
+      if (a === "confirm") confirmModal("삭제를 확정할까요? 지워진 쪽에 맞춰 다른 쪽도 지웁니다(H:drive 문서는 변경 이력 90일 · K 파일은 휴지통 폴더로 옮김 — 휴지통은 에이전트가 지우지 않습니다, 필요하면 직접 정리).", go); else go();
     });
     $$("[data-ks-run]", box).forEach(b => b.onclick = () => runDetail(Number(b.dataset.ksRun)));
     $$("[data-ks-print]", box).forEach(b => b.onclick = () => printCard(b.dataset.ksPrint));
@@ -404,7 +420,8 @@
   function dailyForm() {
     const cur = (st.s && st.s.state && st.s.state.daily_at) || "08:30";
     openModal(`<h3>매일 실행 시각</h3>
-      <div class="form-row"><label for="ks-dt">시각(한국 시각) ${ui.tip("이 시각 이후 Mac 이 사내망에 처음 연결됐을 때 하루 한 번 동기화합니다.", "시각 설명")}</label><input id="ks-dt" type="time" value="${esc(cur)}"></div>
+      <div class="form-row"><label for="ks-dt">매일 실행 시작 시각(30분 안에 시작) ${ui.tip("한국 시각으로 이 시각부터 30분 안에 Mac 이 하루 한 번 동기화합니다. K드라이브에 연결되지 않으면 5분 간격으로 3번 시도하고, 그래도 안 되면 다음 날 같은 때 다시 합니다. 창이 지난 뒤에는 그날 따라잡지 않습니다([지금 동기화 요청]은 언제든).", "시각 설명")}</label><input id="ks-dt" type="time" value="${esc(cur)}"></div>
+      <p class="ks-note">Mac 이 시작 시각에 맞춰 깨어나는 것은 설치 때 시각(Mac 의 config.json 의 dailyAt)을 따르므로, 여기서 바꾸면 Mac 에서 그 값도 고치고 install.sh 를 다시 실행하세요(그대로 두어도 30분마다 깨어나 대개 창 안에 시작합니다).</p>
       <div class="modal-actions"><button type="button" class="btn btn-ghost" data-act="cancel">취소</button><button type="button" class="btn btn-primary" data-act="ok">저장</button></div>`);
     $("#modal-box [data-act=cancel]").onclick = closeModal;
     $("#modal-box [data-act=ok]").onclick = async () => { const d = await act("semis_logi_ksync_settings", { p: { daily_at: $("#ks-dt").value } }, "저장했습니다."); if (d) closeModal(); };

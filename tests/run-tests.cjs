@@ -11978,7 +11978,7 @@ function makeServer(opts = {}) {
         state: { daily_at: "08:30", requested_at: null, net: { ok: false, at: "2026-11-04T00:10:00Z", msg: "K드라이브 응답 없음" }, ip_allow: [], ip_seen: [{ ip: "198.51.100.5", at: "2026-11-04T00:00:00Z", agent: 1 }], mass_limit: { files: 200, ratio: 0.3 } } };
       const deny = { __status: 403, body: { code: "42501", message: "semis_ksync_admin" } };
       const h = (name, fn) => { sv.rpc["semis_logi_ksync_" + name] = (b, o) => { k.calls.push({ name, b }); return sv.rankOf(o) >= 4 ? fn(b || {}) : deny; }; };
-      h("status", () => ({ ok: true, now: new Date().toISOString(), state: k.state, agents: k.agents, maps: k.maps, last: k.runs[0] || null, today: k.runs[0] || null, last_ok: null,
+      h("status", () => ({ ok: true, now: k.now || new Date().toISOString(), state: k.state, agents: k.agents, maps: k.maps, last: k.runs[0] || null, today: "today" in k ? k.today : k.runs[0] || null, last_ok: k.lastOk || null,
         counts: { hold: k.holds.length, ev_new: k.evNew, wait: k.files.length }, stale: k.stale, alert: k.alert || k.evNew > 0 }));
       h("pending", () => ({ ok: true, holds: k.holds, files: k.files, last: k.last }));
       h("runs", () => ({ ok: true, runs: k.runs }));
@@ -12492,6 +12492,53 @@ function makeServer(opts = {}) {
       q(e, '[data-ks-start="2"]').click(); clickOk(e); await tick(30);
       eq(ks.calls.filter(c => c.name === "map_start").map(c => c.b.p_id).join(), "2", "시작 요청");
       ok(/미리보기 건수가 온 뒤에 시작할 수 있습니다/.test(q(e, "#toast-wrap").textContent), "미리보기 건수 없음 → 쉬운 말로");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS21 다음 예정 = 매일 창(한국 시각 시작부터 30분): 창 전 · 창 안 → 오늘 / 오늘 끝냄 · 연결이 안 돼 건너뜀 · 창 지남 → 내일 · 설명 한 줄 · 시작 시각 이름 · 휴지통은 에이전트가 지우지 않음", async () => {
+      const { ks, e } = await setup();
+      const next = async (now, o) => {
+        o = o || {};
+        ks.now = now; ks.lastOk = o.lastOk || null; ks.state.net = o.net || { ok: true, at: "2026-11-07T00:00:00Z", msg: "" };
+        ks.runs = o.last ? [o.last] : []; ks.today = o.today || null;     // 서버처럼 오늘 회차(today)는 '연결 안 됨' 줄을 빼고 따로
+        await openTab(e);
+        const s = qa(e, "#tab-body .ks-strip .stat").find(x => x.querySelector(".stat-label").textContent === "다음 예정");
+        return s.querySelector(".stat-value").textContent + " | " + s.querySelector(".stat-sub").textContent;
+      };
+      const SUB = " | 매일 08:30~09:00 · 연결이 안 되면 5분 간격 3번, 그래도 안 되면 다음 날";
+      const skipNet = { ok: false, at: "2026-11-07T23:41:00Z", msg: "K드라이브 응답 없음(ECONNREFUSED) · 오늘 동기화 건너뜀" };
+      eq(await next("2026-11-07T23:00:00Z"), "오늘 08:30~09:00" + SUB, "창 전(08:00)");
+      eq(await next("2026-11-07T23:40:00Z"), "오늘 08:30~09:00" + SUB, "창 안 · 아직 안 함(08:40)");
+      const run = (start, end, result) => ({ id: 9, started_at: start, ended_at: end, result, trigger: "daily", k2h: 0, h2k: 0, errors: 0 });
+      eq(await next("2026-11-07T23:40:00Z", { today: run("2026-11-07T23:33:00Z", "2026-11-07T23:36:00Z", "ok"), lastOk: "2026-11-07T23:36:00Z" }), "내일 08:30~09:00" + SUB, "창 안 · 오늘 끝냄");
+      eq(await next("2026-11-07T23:40:00Z", { today: run("2026-11-07T23:33:00Z", "2026-11-07T23:36:00Z", "partial"), lastOk: "2026-11-07T23:36:00Z" }), "내일 08:30~09:00" + SUB, "창 안 · 일부만 맞춤도 끝냄(에이전트처럼)");
+      eq(await next("2026-11-07T23:40:00Z", { today: run("2026-11-07T22:00:00Z", "2026-11-07T22:05:00Z", "ok"), lastOk: "2026-11-07T22:05:00Z" }), "오늘 08:30~09:00" + SUB, "창 전에 끝낸 수동 실행은 매일 실행을 대신하지 않음");
+      eq(await next("2026-11-07T23:40:00Z", { today: run("2026-11-07T23:25:00Z", "2026-11-07T23:35:00Z", "ok"), lastOk: "2026-11-07T23:35:00Z" }), "오늘 08:30~09:00" + SUB, "창 전에 시작해 창 안에 끝난 수동 실행도 대신하지 않음(시작 시각으로 셈)");
+      eq(await next("2026-11-07T23:40:00Z", { today: run("2026-11-07T23:33:00Z", "2026-11-07T23:36:00Z", "fail") }), "오늘 08:30~09:00" + SUB, "창 안 · 실패한 회차는 끝냄이 아님");
+      eq(await next("2026-11-07T23:45:00Z", { net: skipNet }), "내일 08:30~09:00" + SUB, "연결이 안 돼 오늘 건너뜀(에이전트 보고) → 내일");
+      eq(await next("2026-11-07T23:45:00Z", { net: Object.assign({}, skipNet, { msg: "K드라이브 응답 없음(ECONNREFUSED)" }) }), "오늘 08:30~09:00" + SUB, "수동 실행의 연결 안 됨 보고는 건너뜀이 아님");
+      eq(await next("2026-11-07T23:45:00Z", { net: Object.assign({}, skipNet, { at: "2026-11-06T23:41:00Z" }) }), "오늘 08:30~09:00" + SUB, "어제 건너뛴 것은 오늘과 무관");
+      const offRow = (start, msg) => ({ id: 8, started_at: start, ended_at: start, result: "offline", trigger: "daily", msg });
+      const netBack = { ok: true, at: "2026-11-07T23:50:00Z", msg: "" };
+      eq(await next("2026-11-07T23:52:00Z", { net: netBack, last: offRow("2026-11-07T23:41:00Z", skipNet.msg) }), "내일 08:30~09:00" + SUB, "건너뛴 뒤 연결됨(hello 가 사내망 표시를 덮음) → 그날의 연결 안 됨 줄로 여전히 내일");
+      eq(await next("2026-11-07T23:52:00Z", { net: netBack, last: offRow("2026-11-07T23:41:00Z", "K드라이브 응답 없음(ECONNREFUSED)") }), "오늘 08:30~09:00" + SUB, "건너뜀이 아닌 연결 안 됨 줄 → 오늘");
+      eq(await next("2026-11-07T23:52:00Z", { net: netBack, last: offRow("2026-11-06T23:41:00Z", skipNet.msg) }), "오늘 08:30~09:00" + SUB, "어제의 건너뜀 줄은 오늘과 무관");
+      eq(await next("2026-11-08T00:10:00Z"), "내일 08:30~09:00" + SUB, "창 지남(09:10) · 오늘 안 했어도 따라잡지 않음 → 내일");
+      ks.state.daily_at = "07:05";
+      eq(await next("2026-11-07T21:00:00Z"), "오늘 07:05~07:35 | 매일 07:05~07:35 · 연결이 안 되면 5분 간격 3번, 그래도 안 되면 다음 날", "시작 시각을 바꾸면 창도");
+      q(e, "#ks-daily").click();
+      ok(/매일 실행 시작 시각\(30분 안에 시작\)/.test(q(e, '#modal-box label[for="ks-dt"]').textContent), "시각은 30분 창의 시작 시각");
+      const wake = (q(e, "#modal-box p.ks-note") || {}).textContent || "";
+      ok(/깨어나는 것은 설치 때 시각/.test(wake) && /install\.sh 를 다시 실행/.test(wake) && /30분마다 깨어나 대개 창 안에 시작/.test(wake), "시각을 바꾸면 Mac 에서 install.sh 다시 실행(정각 깨우기는 설치 때 시각) " + wake);
+      e.w.SeMIS.closeModal();
+      ks.maps = [{ id: 1, k_path: "점검표", mod: "audit", grp: "checklist", dir: "both", state: "active", n_files: 3 }];
+      ks.files = [{ id: 6, map: 1, rel_path: "b.pdf", state: "del_h", note: "" }];
+      await openTab(e);
+      const del = q(e, '[data-ct-pane="kspend:del"]').textContent;
+      ok(/휴지통은 에이전트가 지우지 않습니다 — 필요하면 직접 정리/.test(del) && !/30일/.test(del), "삭제 대기 안내: 휴지통을 지우지 않음 " + del);
+      q(e, '[data-ks-res="confirm"][data-id="6"]').click();
+      const cm = q(e, "#modal-box").textContent;
+      ok(/휴지통은 에이전트가 지우지 않습니다/.test(cm) && !/30일/.test(cm), "삭제 확정 확인 창: 휴지통을 지우지 않음 " + cm);
       eq(e.errors.length, 0, e.errors.join(" | "));
       e.Sync.stop(); e.w.close();
     });

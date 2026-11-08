@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 /* H:drive K드라이브 동기화 에이전트(Mac · launchd) — 나가는 HTTPS 만, 들어오는 포트 없음. 서버가 보낼 수 있는 것은 '지금 동기화 요청' 표시 하나.
    순서: 잠금 → (오늘 끝냈고 25분 안에 서버를 봤으면 끝) → 사내망 확인(SMB TCP 445) → hello → 마운트 → 색인 · 계획(plan.mjs) · 실행 → 끝 보고.
+   매일 동기화는 시작 시각부터 30분 창 안에서만. 그때 K드라이브에 닿지 않으면 5분 간격으로 3번까지 해 보고, 그래도 안 되면 그날은 건너뛴다.
+   K 의 파일은 지우거나 덮지 않는다 — 덮을 옛 파일은 이전판 폴더로, 삭제 확정은 휴지통 폴더로 옮기기만 하고 휴지통도 비우지 않는다.
    명령: --once(지금 한 번) · --dry-run(계획만 출력) · --status. 설정 ~/Library/Application Support/hdrive-ksync/config.json(600), 키는 키체인(hdrive-ksync). */
 import fsp from "node:fs/promises";
 import path from "node:path";
@@ -11,6 +13,7 @@ import * as L from "./lib.mjs";
 
 export const VERSION = "1.62.0";
 const MIN = 60e3;
+const TRIES = 3, RETRY = 5 * MIN;      // 매일 실행이 K드라이브에 닿지 않을 때 — 5분 간격 3번, 그래도 안 되면 다음 날
 /* 실행 전체를 멈추는 오류 — 망 · 서버(게이트웨이 포함: 처리했는지 모름) · 키 · IP · 분당 상한(한 번 쉬고도) */
 const fatalCode = (c) => c === "network" || c === "server" || c === "auth" || c === "ip" || c === "rate";
 
@@ -35,7 +38,9 @@ async function agent(deps, args) {
   const save = () => (args.dryRun ? Promise.resolve() : L.writeJson(paths.state, st));      // --dry-run 은 출력만(상태 · 기록 정리 · 서버 보고 · 알림 없음)
   if (!args.dryRun && st.logDay !== today) { await L.pruneLog(paths.log, now); st.logDay = today; }
   const dailyAt = L.hhmm(st.dailyAt) ?? L.hhmm(cfg.dailyAt) ?? 8 * 60 + 30;
-  const due = L.kstMin(now) >= dailyAt && st.lastOkDay !== today;
+  // 창 안 · 그날 끝내지 않음 · 그날 건너뛰지 않음(연결이 안 돼 다음 날로 넘김)일 때만 매일 실행
+  const win = L.dailyWin(now, dailyAt);
+  const due = win.in && st.lastOkDay !== win.day && st.skipDay !== win.day;
   const seen = now - Number(st.lastSeen || 0);
   if (!args.once && !args.dryRun && !args.status) {
     if (st.lastOkDay === today && seen < 25 * MIN) return { status: "done-today" };     // 30분 간격 실행이 조금 일찍 깨어나도 그 회차는 서버를 본다
@@ -45,33 +50,53 @@ async function agent(deps, args) {
   if (!key) { log("error", "키체인에 에이전트 키가 없습니다(install.sh)"); return { status: "nokey" }; }
   const srv = L.makeClient(deps.fetch, cfg.server, key, deps.sleep, deps.now);
 
-  const netr = await L.netRetry(deps.netCheck, smb.host, deps.sleep);
+  /* 닿는지 — SMB 445(5초 간격 3번이 한 번의 시도) 뒤 hello. 매일 실행은 안 되면 5분 뒤 다시(3번까지, 잠금을 쥔 채 기다림) —
+     hello 의 망 오류(서버까지 못 감)도 같은 시도로 센다. 수동 요청 · --once · --dry-run · --status 는 한 번만 */
+  const tries = due && !args.once && !args.dryRun && !args.status ? TRIES : 1;
+  let netr, hello, herr;
+  for (let i = 0; i < tries; i++) {
+    if (i) {
+      log("info", `K드라이브에 닿지 않아 5분 뒤 다시 시도(${i + 1}/${tries})`);
+      await deps.sleep(RETRY);
+      /* 기다리는 사이 Mac 이 잠들면 시계가 건너뛴다 — 계획보다 늦었고(시도마다 걸리는 몇십 초는 2분 여유 안) 그날 창도 지났으면
+         매일 실행을 하지 않는다(창이 지나면 따라잡지 않음). 그 창은 다시 오지 않으므로 건너뜀 표시가 필요 없고,
+         연결이 안 된 것이 아니라 잠들었던 것이라 연결 안 됨 보고 · '내일' 알림도 없다. 아직 창 안이면 그대로 다시 시도 */
+      const t = deps.now(), w = L.dailyWin(t, dailyAt);
+      if (t - now > i * RETRY + 2 * MIN && !(w.in && w.day === win.day)) {
+        log("info", "다시 시도를 기다리는 사이 Mac 이 잠들어 매일 동기화 창(" + L.winText(dailyAt) + ")이 지남 — 오늘 매일 동기화는 하지 않음");
+        await save();
+        return { status: "missed" };
+      }
+    }
+    herr = null;
+    netr = await L.netRetry(deps.netCheck, smb.host, deps.sleep);
+    if (!netr.ok) continue;
+    try { hello = await srv.call("hello", { ver: VERSION, host: deps.host }); break; }
+    catch (e) { herr = e; if (e.code !== "network" || tries === 1) break; netr = { ok: false, msg: "서버 응답 없음" }; }
+  }
+  if (herr && (herr.code !== "network" || tries === 1)) {
+    log("warn", herr.code === "ip" ? "서버가 이 접속 IP 를 허용하지 않음 — 대시보드 '보안'의 후보 IP 확인" : "서버 연결 실패: " + herr.code);
+    if (args.status) deps.out({ net: true, server: herr.code });
+    return { status: "server", code: herr.code };
+  }
   if (!netr.ok) {
     if (args.status) { deps.out({ net: false, lastOk: st.lastOk || null, lastSeen: st.lastSeen || null }); return { status: "offline" }; }
     if (args.dryRun) { deps.out({ net: false, msg: netr.msg }); return { status: "offline" }; }
-    if (due || args.once) {
-      if (args.once || now - Number(st.netAt || 0) >= 60 * MIN) {
-        try { await srv.call("net", { ok: false, msg: "K드라이브 응답 없음(" + netr.msg + ")" }); st.netAt = now; } catch (e) { log("warn", "연결 안 됨 보고 실패: " + e.code); }
-      }
+    if (tries > 1) {
+      // 그날 매일 실행은 여기서 끝(지금 동기화 요청 · --once 는 그대로 받음) — 보고 · 알림은 이 한 번뿐. 서버도 닿지 않을 수 있어 보고는 되는 만큼만
+      st.skipDay = win.day; st.offlineDay = today;
+      try { await srv.call("net", { ok: false, msg: "K드라이브 응답 없음(" + netr.msg + ") · 오늘 동기화 건너뜀" }); } catch (e) { log("warn", "연결 안 됨 보고 실패: " + e.code); }
+      await deps.notify("K드라이브에 연결하지 못해 오늘 동기화를 건너뜁니다. 내일 " + L.winText(dailyAt) + " 에 다시 시도합니다.");
+      log("info", "K드라이브에 " + tries + "번 닿지 않아 오늘 매일 동기화를 건너뜀 — " + netr.msg);
+    } else if (args.once) {
+      try { await srv.call("net", { ok: false, msg: "K드라이브 응답 없음(" + netr.msg + ")" }); } catch (e) { log("warn", "연결 안 됨 보고 실패: " + e.code); }
       st.offlineDay = today;
-      if (st.notifiedDay !== today) {
-        await deps.notify("K드라이브에 연결할 수 없습니다. 사내망(VPN)에 연결되면 자동으로 동기화합니다");
-        st.notifiedDay = today;
-      }
       log("info", "사내망 아님 — " + netr.msg);
     }
     await save();
     return { status: "offline" };
   }
-
-  let hello;
-  try { hello = await srv.call("hello", { ver: VERSION, host: deps.host }); }
-  catch (e) {
-    log("warn", e.code === "ip" ? "서버가 이 접속 IP 를 허용하지 않음 — 대시보드 '보안'의 후보 IP 확인" : "서버 연결 실패: " + e.code);
-    if (args.status) deps.out({ net: true, server: e.code });
-    return { status: "server", code: e.code };
-  }
-  st.lastSeen = now;
+  st.lastSeen = deps.now();      // 다시 시도로 기다렸으면 시작한 때가 아니라 서버를 본 때(다음 깨우기의 5분 · 25분 판단이 이 값을 본다)
   if (hello.daily_at) st.dailyAt = hello.daily_at;
   if (args.status) {
     deps.out({ version: VERSION, net: true, allow: hello.allow, requested: !!hello.requested, dailyAt: hello.daily_at, lastOk: st.lastOk || null, maps: (hello.maps || []).length });
@@ -80,7 +105,8 @@ async function agent(deps, args) {
   }
   if (!hello.allow) { log("info", "허용 IP 대기 — 대시보드 '보안'에서 이 IP 를 [허용]"); await save(); return { status: "wait-ip" }; }
   const dailyMin = L.hhmm(hello.daily_at) ?? dailyAt;
-  const due2 = L.kstMin(now) >= dailyMin && st.lastOkDay !== today;
+  const win2 = L.dailyWin(now, dailyMin);      // 시작한 시각으로 본다 — 창 안에서 시작해 제때 다시 시도하다 창을 넘겨도 그날 매일 실행(잠들어 늦었으면 위에서 멈춤)
+  const due2 = win2.in && st.lastOkDay !== win2.day && st.skipDay !== win2.day;
   let trigger = hello.requested ? "manual" : due2 ? (st.offlineDay === today ? "net" : "daily") : "";
   if (args.once && !trigger) trigger = "manual";
   if (!trigger && !args.dryRun) { await save(); return { status: "idle" }; }
@@ -130,14 +156,6 @@ async function agent(deps, args) {
       mapRes.push({ id: m.id, held: !!r.held, n: r.n || 0, base: r.base || 0, done: !r.held && !r.preview && !r.fatal && !r.quota && !r.stop, n_files: r.n_files });
       if (r.quota) { msg = "하루 전송량 상한"; break; }
     }
-    if (st.trashDay !== today) {
-      for (const m of maps) {
-        // 휴지통 정리 실패가 이미 끝낸 동기화를 '실패'로 만들지 않게 — 경고만
-        try { const root = await mapRoot(mount, m); if (root) await L.cleanTrash(root, now); }
-        catch (e) { log("warn", "휴지통 정리 실패: " + m.k_path + " " + (e.code || e.message)); }
-      }
-      st.trashDay = today;
-    }
   } catch (e) {
     result = "fail"; msg = "중단: " + (e.code || "error"); log("error", msg);
   }
@@ -148,8 +166,8 @@ async function agent(deps, args) {
     await srv.call("run", Object.assign({ phase: "end", run, result, msg, detail: detail.slice(-200), maps: mapRes }, tot));
   } catch (e) { log("warn", "끝 보고 실패: " + e.code); }
   if (result !== "fail") {
-    st.lastOk = new Date(now).toISOString();
-    if (L.kstMin(now) >= dailyMin) st.lastOkDay = today;     // 매일 시각 전에 시작한 수동 · --once 실행은 그날 매일 실행을 대신하지 않는다
+    st.lastOk = new Date(deps.now()).toISOString();
+    st.lastOkDay = win2.day;     // 시작한 때의 창 날짜 — 그날 창 전에 시작한 수동 · --once 실행은 전날 창으로 세어 그날 매일 실행을 대신하지 않는다
   }
   log("info", `동기화 ${result} — K→H ${tot.k2h} · H→K ${tot.h2k} · 충돌 ${tot.conflicts} · 건너뜀 ${tot.skipped} · 오류 ${tot.errors}`);
   await save();

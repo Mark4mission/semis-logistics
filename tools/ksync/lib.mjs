@@ -14,6 +14,15 @@ export const kstMin = (t) => { const d = new Date(t + KST); return d.getUTCHours
 export const hhmm = (s) => { const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(String(s || "")); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
 export const isoMs = (ms) => new Date(Math.floor(ms)).toISOString();
 const pad = (n) => String(n).padStart(2, "0");
+/* 매일 동기화 창 — 시작 시각(분)부터 30분. 창이 지난 뒤 처음 켜진 Mac 이 그날 늦게 따라잡지 않게 창 안에서만 돈다.
+   자정을 넘는 창도 시작한 날의 창: day = 가장 가까운 지난 시작의 날짜, in = 지금 그 창 안 */
+export const DAILY_WIN = 30;
+export function dailyWin(t, start) {
+  const off = (kstMin(t) - start + 1440) % 1440;
+  return { in: off < DAILY_WIN, day: kstDay(t - off * 60e3) };
+}
+const hm = (m) => pad(Math.floor(m / 60)) + ":" + pad(m % 60);
+export const winText = (start) => hm(start) + "~" + hm((start + DAILY_WIN) % 1440);
 export const stampKst = (t) => { const d = new Date(t + KST); return d.toISOString().slice(0, 10) + " " + pad(d.getUTCHours()) + pad(d.getUTCMinutes()) + pad(d.getUTCSeconds()); };
 
 export function defaultPaths(home = os.homedir()) {
@@ -156,6 +165,25 @@ export async function safeAbs(root, rel) {
   return abs;
 }
 const exists = async (p) => { try { await fsp.lstat(p); return true; } catch (e) { return false; } };
+/* 덮어쓰지 않고 옮기기 — rename 은 같은 이름이 있으면 말없이 덮는다. 이름을 먼저 O_EXCL 로 차지하고(이미 있으면 실패) 그 빈 자리 위로 옮긴다:
+   확인한 뒤 옮기기 전에 누가 같은 이름을 만들어도 그 파일은 덮지 않고 'changed'(다음 실행이 다시 판단).
+   옮기기가 실패하면 방금 만든 빈 자리만 치운다 — 같은 파일(장치 · 파일 번호가 만든 때와 같음)이고 크기 0 일 때만.
+   SMB 는 옮기기를 끝내고도 오류(시간 초과 · 다시 연결)를 돌려줄 수 있어, 그 자리에 와 있는 것이 옮겨진 사용자 파일(크기 0 이어도)일 수 있다 */
+const changedErr = () => Object.assign(new Error("changed"), { code: "changed" });
+export async function moveNew(src, dst) {
+  let fh;
+  try { fh = await fsp.open(dst, "wx", 0o600); } catch (e) { throw e.code === "EEXIST" ? changedErr() : e; }
+  let mine;
+  try { mine = await fh.stat(); } finally { await fh.close(); }
+  try { await fsp.rename(src, dst); }
+  catch (e) {
+    try {
+      const s = await fsp.lstat(dst);
+      if (s.isFile() && s.size === 0 && s.ino === mine.ino && s.dev === mine.dev) await fsp.unlink(dst);
+    } catch (x) { /* 이미 없음 */ }
+    throw e;
+  }
+}
 /* 같은 이름이 있으면 '이름 (2).확장자' — 계획(freePath)이 고르는 새 이름과 같은 꼴 */
 export async function uniquePath(abs) {
   if (!(await exists(abs))) return abs;
@@ -181,7 +209,7 @@ export async function moveAside(root, abs, rel, kind, now) {
   await noLink(root, path.relative(root, path.dirname(to)).split(path.sep));
   await fsp.mkdir(path.dirname(to), { recursive: true });
   const dst = await uniquePath(to);
-  await fsp.rename(abs, dst);
+  await moveNew(abs, dst);
   return dst;
 }
 /* 충돌 사본 자리 — '이름 (충돌 날짜).확장자', 있으면 '이름 (충돌 날짜 2).확장자' …(색인 제외 규칙 · SQL 과 같은 꼴) */
@@ -193,9 +221,10 @@ export const relOf = (root, abs) => nfc(path.relative(root, abs).split(path.sep)
 /* 받아 확인한 임시 파일을 놓는다. 옮겨 둘 수 있는 K 쪽 것은 추적 중인 파일뿐 — backup(덮어쓸 옛 파일 → 이전판) · conf(H 가 이긴 충돌 → 충돌 사본 이름).
    옮기기 전에 색인 때 크기 · 수정 시각과 같은지 본다(그 사이 바뀌었으면 'changed' — 다음 실행에서 충돌로 판단).
    그 밖에 같은 이름(맥 SMB 는 대소문자를 가리지 않음)의 파일 · 폴더가 있으면 옮기지 않고 새 이름으로. copy = 충돌 사본 이름의 바탕.
-   conf.to = 미리 정한 충돌 사본 자리(그 이름으로 H 이전 판을 이미 등록함) — 그 사이 다른 파일이 차지했으면 덮지 않고 'changed' */
+   conf.to = 미리 정한 충돌 사본 자리(그 이름으로 H 이전 판을 이미 등록함) — 그 사이 다른 파일이 차지했으면 덮지 않고 'changed'.
+   옮기는 곳은 모두 moveNew — 확인과 옮기기 사이에 생긴 같은 이름의 파일도 덮지 않는다 */
 export async function place(root, tmp, rel, o = {}) {
-  const changed = () => Object.assign(new Error("changed"), { code: "changed" });
+  const changed = changedErr;
   const same = async (f) => {
     let st;
     try { st = await fsp.lstat(f.abs); } catch (e) { if (e.code === "ENOENT") return false; throw e; }
@@ -208,32 +237,21 @@ export async function place(root, tmp, rel, o = {}) {
   try {
     if (o.conf) {
       const to = o.conf.to || await conflictPath(root, o.conf.rel, o.today);
-      if (o.conf.to && (await exists(to))) throw changed();
-      await fsp.rename(o.conf.abs, to);
+      await moveNew(o.conf.abs, to);
       confAbs = to;
     }
     if (backup) await moveAside(root, o.backup.abs, o.backup.rel, "prev", o.now || Date.now());
     let abs = o.copy ? await conflictPath(root, o.copy, o.today) : await safeAbs(root, rel);
     if (!o.copy && (await exists(abs))) abs = await uniquePath(abs);
-    await fsp.rename(tmp, abs);
+    await moveNew(tmp, abs);
     return { rel: relOf(root, abs), abs, conf: confAbs ? relOf(root, confAbs) : "" };
   } catch (e) {
-    if (confAbs) { try { await fsp.rename(confAbs, o.conf.abs); } catch (x) { /* 충돌 사본 이름으로 남음 */ } }
+    // 원래 이름에 그 사이 다른 파일이 생겼으면 덮지 않고 충돌 사본 이름으로 둔다
+    if (confAbs) { try { await moveNew(confAbs, o.conf.abs); } catch (x) { /* 충돌 사본 이름으로 남음 */ } }
     throw e;
   }
 }
-/* 휴지통 30일 지난 날짜 폴더 정리 */
-export async function cleanTrash(root, now, days = 30) {
-  const base = path.join(root, TRASH);
-  let n = 0;
-  let ents = [];
-  try { if (!(await fsp.lstat(base)).isDirectory()) return 0; } catch (e) { return 0; }     // 링크면 손대지 않는다(연결 폴더 밖을 지우지 않게)
-  try { ents = await fsp.readdir(base, { withFileTypes: true }); } catch (e) { return 0; }
-  const cut = kstDay(now - days * 864e5);
-  for (const d of ents) if (d.isDirectory() && /^\d{4}-\d{2}-\d{2}$/.test(d.name) && d.name < cut) { await fsp.rm(path.join(base, d.name), { recursive: true, force: true }); n++; }
-  return n;
-}
-/* 내려받기 — 같은 폴더 임시 파일(숨김 이름)에 받고 sha256 · 크기 확인 */
+/* 내려받기 — 같은 폴더 임시 파일(숨김 이름)에 받고 sha256 · 크기 확인. 새 파일로만 만든다(wx — 같은 이름이 있으면 덮지 않고 실패) */
 export async function download(fetchFn, url, dirAbs, expectSha, expectSize) {
   await fsp.mkdir(dirAbs, { recursive: true });
   const tmp = path.join(dirAbs, ".ksync-" + crypto.randomBytes(6).toString("hex") + ".part");
@@ -241,7 +259,7 @@ export async function download(fetchFn, url, dirAbs, expectSha, expectSize) {
   if (!r.ok) throw Object.assign(new Error("download"), { code: "download" });
   const buf = Buffer.from(await r.arrayBuffer());
   if (sha256Buf(buf) !== expectSha || (expectSize != null && buf.length !== Number(expectSize))) throw Object.assign(new Error("hash"), { code: "hash" });
-  await fsp.writeFile(tmp, buf, { mode: 0o644 });
+  await fsp.writeFile(tmp, buf, { mode: 0o644, flag: "wx" });
   return { tmp, size: buf.length };
 }
 export const kBlocked = (name) => K_BLOCK.test(String(name || ""));

@@ -1,6 +1,6 @@
 #!/bin/bash
 # H:drive K드라이브 동기화 에이전트 설치(Mac) — 에이전트를 ~/Library/Application Support/hdrive-ksync/agent 로 복사하고
-# 설정(600) · 키(키체인 hdrive-ksync) · LaunchAgent(kr.hdrive.ksync: 로그인 때 · 30분마다 · 네트워크가 바뀔 때)를 만든다.
+# 설정(600) · 키(키체인 hdrive-ksync) · LaunchAgent(kr.hdrive.ksync: 로그인 때 · 30분마다 · 매일 실행 시작 시각 · 네트워크가 바뀔 때)를 만든다.
 # 실제 주소 · 키는 이 Mac 에만 둔다(저장소에 넣지 않음). 다시 실행하면 갱신(키는 바꿀 때만 다시 입력).
 set -euo pipefail
 
@@ -40,6 +40,12 @@ SMB="${SMB:-$OLD_SMB}"
 ( umask 077; "$NODE" -e 'const fs=require("fs");const p=process.argv[1];let o={};try{o=JSON.parse(fs.readFileSync(p,"utf8"))}catch(e){}
 o.server=process.argv[2];o.smbUrl=process.argv[3];fs.writeFileSync(p,JSON.stringify(o,null,2)+"\n",{mode:0o600})' "$APP/config.json" "$SERVER" "$SMB" )
 chmod 600 "$APP/config.json"
+# 매일 실행 시작 시각(설정 dailyAt, 없으면 08:30) — 30분 간격 깨우기가 30분 창 바로 밖에 걸려도 창이 시작할 때 한 번 깨운다.
+# 있는데 형식이 틀리면 멈춘다 — 에이전트도 그 설정으로는 돌지 않는다(checkConfig). '=' 는 값이 있다는 표시(빈 값도 틀린 형식)
+DAILY="$("$NODE" -e 'try{const v=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).dailyAt;process.stdout.write(v==null?"":"="+String(v))}catch(e){}' "$APP/config.json")"
+if [ -z "$DAILY" ]; then DAILY="08:30"; else DAILY="${DAILY#=}"; fi
+[[ "$DAILY" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] || die "설정 dailyAt 형식(HH:MM)이 맞지 않습니다 — $APP/config.json 을 고친 뒤 다시 실행하세요"
+HOUR=$((10#${DAILY%%:*})); MINUTE=$((10#${DAILY##*:}))
 
 # 3. 키 — 키체인에만. security 가 직접 묻는다(명령줄 · 기록에 남지 않게)
 if "$SECURITY" find-generic-password -s hdrive-ksync -w >/dev/null 2>&1; then
@@ -59,7 +65,7 @@ cp "$SRC/ksync.mjs" "$SRC/plan.mjs" "$SRC/lib.mjs" "$APP/agent/"
 printf '{ "type": "module" }\n' > "$APP/agent/package.json"
 chmod 700 "$APP/agent"; chmod 600 "$APP/agent/"*
 
-# 5. LaunchAgent — 로그인 때 · 30분마다 · 네트워크 설정이 바뀔 때(사내망 · VPN 연결 감지)
+# 5. LaunchAgent — 로그인 때 · 30분마다(지금 동기화 요청 확인) · 매일 실행 시작 시각 · 네트워크 설정이 바뀔 때(사내망 · VPN 연결 감지)
 x() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
 mkdir -p "$(dirname "$PLIST")"
 cat > "$PLIST" <<EOF
@@ -75,6 +81,8 @@ cat > "$PLIST" <<EOF
   </array>
   <key>RunAtLoad</key><true/>
   <key>StartInterval</key><integer>1800</integer>
+  <key>StartCalendarInterval</key>
+  <dict><key>Hour</key><integer>$HOUR</integer><key>Minute</key><integer>$MINUTE</integer></dict>
   <key>WatchPaths</key>
   <array><string>/Library/Preferences/SystemConfiguration</string></array>
   <key>ThrottleInterval</key><integer>60</integer>

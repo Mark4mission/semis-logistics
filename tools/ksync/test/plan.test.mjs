@@ -3,9 +3,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { plan, excluded, safeName, conflictName, limitHit, holdHit, CONFLICT_RE, K_BLOCK, H_BLOCK, MAX_SIZE, PREV, TRASH } from "../plan.mjs";
-import { relOk, safeAbs, parseSmb, checkConfig, kstDay, kstMin, hhmm, indexDir, moveAside, cleanTrash, folderTree, place, conflictPath, netRetry, mountUrl, lock, agentPid, makeClient, PACE } from "../lib.mjs";
+import fsp from "node:fs/promises";
+import * as LIB from "../lib.mjs";
+import { relOk, safeAbs, parseSmb, checkConfig, kstDay, kstMin, hhmm, indexDir, moveAside, moveNew, folderTree, place, conflictPath, netRetry, mountUrl, lock, agentPid, makeClient, PACE, dailyWin, winText } from "../lib.mjs";
 import { runAgent } from "../ksync.mjs";
 
 let pass = 0, fail = 0;
@@ -125,7 +128,7 @@ p = P({ baseline: tr, kList: B.map(r => kOf(r)), hList: [hOf(B[1])] });
 eq([ops(p), (p.actions[0].k || {}).size, (p.actions[0].k || {}).mtime], [["trash::a.xlsx"], 1, T], "삭제 확정 · K 그대로 → 휴지통(옮기기 직전에 대 볼 색인 값)");
 p = P({ map: Object.assign({}, MAP, { dir: "h2k" }), baseline: tr, kList: [kOf(B[0], { sha: H("z"), size: 2 }), kOf(B[1])], hList: [hOf(B[1])] });
 eq([ops(p), (p.actions[0] || {}).row, p.counts.skip, p.counts.conflict, p.detail.map(d => d.a + ":" + d.r)], [["drop::"], 1, 1, 0, ["skip:K 에서 고친 뒤 삭제 확정 · K 에 남김"]],
-  "H→K 만 · 삭제 확정 뒤 K 수정 → 휴지통으로 옮기지 않음(K 수정을 H 로 보낼 수 없어 30일 뒤 사라짐) · K 파일은 두고 기준선만 지움");
+  "H→K 만 · 삭제 확정 뒤 K 수정 → 휴지통으로 옮기지 않음(K 수정을 H 로 보낼 수 없어 업무 폴더에서 사라짐) · K 파일은 두고 기준선만 지움");
 p = P({ map: Object.assign({}, MAP, { dir: "h2k" }), baseline: [B[1]], kList: [kOf(B[0], { sha: H("z"), size: 2 }), kOf(B[1])], hList: [hOf(B[1])] });
 eq([ops(p), p.n], [[], 0], "H→K 만 · 다음 실행: K 에 남긴 파일은 할 일 없음(삭제 대기 · 확정을 되풀이하지 않음)");
 p = P({ map: Object.assign({}, MAP, { dir: "h2k" }), baseline: tr, kList: B.map(r => kOf(r)), hList: [hOf(B[1])] });
@@ -282,6 +285,13 @@ eq([parseSmb("smb://h/"), parseSmb("http://h/s"), parseSmb('smb://h/s"x'), parse
 eq(checkConfig({ server: "https://x.supabase.co/functions/v1/semis-logi-ksync", smbUrl: "smb://h/s" }), "", "설정 정상");
 ok(checkConfig({ server: "http://x/", smbUrl: "smb://h/s" }) && checkConfig({ server: "https://x/", smbUrl: "smb://h/s", dailyAt: "9" }), "설정 거절");
 eq([kstDay(Date.parse("2026-11-03T15:00:00Z")), kstMin(Date.parse("2026-11-03T23:30:00Z")), hhmm("08:30"), hhmm("8:30")], ["2026-11-04", 510, 510, null], "한국 시각");
+/* 매일 창 — 시작부터 30분(끝은 빼고) · 자정을 넘는 창은 시작한 날의 창 */
+const kt = (s) => Date.parse(s + "+09:00");
+eq(["2026-11-04T08:29:59", "2026-11-04T08:30:00", "2026-11-04T08:59:59", "2026-11-04T09:00:00", "2026-11-04T23:00:00"].map(s => { const w = dailyWin(kt(s), 510); return (w.in ? "in" : "out") + ":" + w.day; }),
+  ["out:2026-11-03", "in:2026-11-04", "in:2026-11-04", "out:2026-11-04", "out:2026-11-04"], "매일 창 08:30~09:00");
+eq(["2026-11-04T23:44:00", "2026-11-04T23:50:00", "2026-11-05T00:10:00", "2026-11-05T00:15:00"].map(s => { const w = dailyWin(kt(s), 23 * 60 + 45); return (w.in ? "in" : "out") + ":" + w.day; }),
+  ["out:2026-11-03", "in:2026-11-04", "in:2026-11-04", "out:2026-11-04"], "자정을 넘는 창(23:45~00:15)은 시작한 날");
+eq([winText(510), winText(23 * 60 + 45), winText(7 * 60 + 5)], ["08:30~09:00", "23:45~00:15", "07:05~07:35"], "창 표시");
 
 /* 파일 — 링크 · 경로 탈출 · 색인 · 옮기기 */
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "ksync-unit-"));
@@ -306,8 +316,8 @@ ok(dst.endsWith(path.join("_H드라이브_휴지통", "2026-09-01", "d", "a.pdf"
 fs.writeFileSync(path.join(root, "d", "a.pdf"), "A2");
 const dst2 = await moveAside(root, path.join(root, "d", "a.pdf"), "d/a.pdf", "trash", Date.parse("2026-09-01T00:00:00Z"));
 ok(dst2.endsWith(path.join("2026-09-01", "d", "a (2).pdf")), "같은 날 같은 파일은 '이름 (2)'(계획의 새 이름과 같은 꼴) " + dst2);
-eq(await cleanTrash(root, Date.parse("2026-11-04T00:00:00Z")), 1, "30일 지난 휴지통 정리");
 eq((await folderTree(root)).map(f => f.path), ["d"], "폴더 목록(동기화 폴더 · 링크 제외)");
+ok(!("cleanTrash" in LIB) && !Object.keys(LIB).some(k => /trash|purge/i.test(k)), "휴지통을 비우는 도우미 없음(K 자료를 지우지 않음)");
 
 /* A1 색인 상한 · 읽지 못한 폴더 */
 const capDir = path.join(TMP, "cap");
@@ -379,14 +389,85 @@ eq([threw, rd("y.xlsx"), fs.readdirSync(pr).filter(f => /^y /.test(f))], ["chang
 g = await place(pr, tmpf(8, "HC"), "x (충돌 2026-11-04).xlsx", { copy: "x.xlsx", today: D4 });
 eq([g.rel, rd(g.rel), rd("x (충돌 2026-11-04).xlsx")], ["x (충돌 2026-11-04 3).xlsx", "HC", "earlier"], "A6 K 가 이긴 충돌 사본도 '(충돌 날짜 n)'");
 eq(path.basename(await conflictPath(pr, "z.xlsx", D4)), "z (충돌 2026-11-04).xlsx", "A6 충돌 사본 첫 이름");
+fs.writeFileSync(path.join(pr, "w.xlsx"), "K"); fs.writeFileSync(path.join(pr, "w (충돌 2026-11-04).xlsx"), "OTHER");
+threw = "";
+try { await place(pr, tmpf(9, "H"), "w.xlsx", { conf: { abs: path.join(pr, "w.xlsx"), rel: "w.xlsx", k: kst("w.xlsx"), to: path.join(pr, "w (충돌 2026-11-04).xlsx") }, today: D4 }); } catch (e) { threw = e.code; }
+eq([threw, rd("w.xlsx"), rd("w (충돌 2026-11-04).xlsx")], ["changed", "K", "OTHER"], "미리 정한 충돌 사본 자리를 다른 파일이 차지 → 덮지 않음");
 
-/* A3 휴지통 · 이전판 폴더가 링크면 연결 폴더 밖을 지우거나 옮기지 않음 */
+/* K 파일은 덮지 않는다 — rename 은 같은 이름을 말없이 덮으므로 옮길 이름을 O_EXCL 로 먼저 차지(moveNew) */
+const nc = path.join(TMP, "nc");
+fs.mkdirSync(nc);
+const rdn = (n) => { try { return fs.readFileSync(path.isAbsolute(n) ? n : path.join(nc, n), "utf8"); } catch (e) { return null; } };
+fs.writeFileSync(path.join(nc, "src.pdf"), "SRC"); fs.writeFileSync(path.join(nc, "dst.pdf"), "USER");
+threw = "";
+try { await moveNew(path.join(nc, "src.pdf"), path.join(nc, "dst.pdf")); } catch (e) { threw = e.code; }
+eq([threw, rdn("src.pdf"), rdn("dst.pdf")], ["changed", "SRC", "USER"], "moveNew: 같은 이름이 있으면 옮기지 않음(둘 다 그대로)");
+await moveNew(path.join(nc, "src.pdf"), path.join(nc, "new.pdf"));
+eq([fs.existsSync(path.join(nc, "src.pdf")), rdn("new.pdf")], [false, "SRC"], "moveNew: 빈 이름이면 옮김");
+threw = "";
+try { await moveNew(path.join(nc, "none.pdf"), path.join(nc, "z.pdf")); } catch (e) { threw = e.code; }
+eq([threw, fs.existsSync(path.join(nc, "z.pdf"))], ["ENOENT", false], "moveNew: 옮기기 실패 → 방금 차지한 빈 자리만 치움");
+/* SMB 가 옮기기를 끝내고도 오류를 돌려줌 — 그 자리는 옮겨진 사용자 파일(크기 0)이라 지우지 않음 · 빈 자리에 누가 내용을 썼어도 지우지 않음 */
+const rn0 = fsp.rename;
+fs.writeFileSync(path.join(nc, "empty.pdf"), "");
+fsp.rename = async (a, b) => { await rn0(a, b); throw Object.assign(new Error("timeout"), { code: "ETIMEDOUT" }); };
+threw = "";
+try { await moveNew(path.join(nc, "empty.pdf"), path.join(nc, "moved.pdf")); } catch (e) { threw = e.code; } finally { fsp.rename = rn0; }
+eq([threw, rdn("moved.pdf"), rdn("empty.pdf")], ["ETIMEDOUT", "", null], "moveNew: 옮긴 뒤 오류만 돌아옴 → 옮겨진 크기 0 사용자 파일은 지우지 않음");
+fs.writeFileSync(path.join(nc, "s2.pdf"), "S2");
+fsp.rename = async (a, b) => { fs.writeFileSync(b, "USER-WROTE"); throw Object.assign(new Error("busy"), { code: "EBUSY" }); };
+threw = "";
+try { await moveNew(path.join(nc, "s2.pdf"), path.join(nc, "taken.pdf")); } catch (e) { threw = e.code; } finally { fsp.rename = rn0; }
+eq([threw, rdn("taken.pdf"), rdn("s2.pdf")], ["EBUSY", "USER-WROTE", "S2"], "moveNew: 차지한 빈 자리에 누가 내용을 썼으면 치우지 않음");
+/* 미리 정한 충돌 사본 자리(conf.to)를 확인 뒤 옮기기 전에 누가 차지 — 덮지 않고 'changed'(K 쪽 판 · 받은 판은 제자리) */
+const raceTo = async (target, fn) => {
+  const rl = fsp.lstat, ro = fsp.open;
+  let fired = false;
+  const take = () => { if (!fired) { fired = true; fs.writeFileSync(target, "USER-NEW"); } };
+  fsp.lstat = async (p, ...r) => { try { return await rl(p, ...r); } catch (e) { if (p === target && e.code === "ENOENT") take(); throw e; } };
+  fsp.open = async (p, ...r) => { if (p === target) take(); return ro(p, ...r); };
+  try { await fn(); return "ok"; } catch (e) { return e.code; } finally { fsp.lstat = rl; fsp.open = ro; }
+};
+fs.writeFileSync(path.join(nc, "k.xlsx"), "K-k");
+const kTmp = path.join(nc, ".ksync-0000000000bb.part"), kTo = path.join(nc, "k (충돌 2026-11-04).xlsx");
+fs.writeFileSync(kTmp, "H-k");
+const kK = (() => { const s = fs.statSync(path.join(nc, "k.xlsx")); return { size: s.size, mtime: Math.floor(s.mtimeMs) }; })();
+eq([await raceTo(kTo, () => place(nc, kTmp, "k.xlsx", { conf: { abs: path.join(nc, "k.xlsx"), rel: "k.xlsx", k: kK, to: kTo }, today: D4 })), rdn("k.xlsx"), rdn(kTo), rdn(kTmp)],
+  ["changed", "K-k", "USER-NEW", "H-k"], "미리 정한 충돌 사본 자리를 확인 직후 누가 만든 파일 → 덮지 않음");
+/* 경쟁 — 이름이 비었는지 본(lstat ENOENT) 직후 공유의 다른 사용자가 같은 이름을 만든다(그 이름의 n 번째 확인 뒤) */
+const race = async (target, nth, fn) => {
+  const real = fsp.lstat;
+  let n = 0;
+  fsp.lstat = async (p, ...r) => {
+    try { return await real(p, ...r); }
+    catch (e) { if (p === target && e.code === "ENOENT" && ++n === nth) fs.writeFileSync(target, "USER-NEW"); throw e; }
+  };
+  try { await fn(); return "ok"; } catch (e) { return e.code; } finally { fsp.lstat = real; }
+};
+fs.writeFileSync(path.join(nc, "old.pdf"), "OLD");
+const prevTo = path.join(nc, PREV, "old (2026-11-04 090000).pdf");
+eq([await race(prevTo, 1, () => moveAside(nc, path.join(nc, "old.pdf"), "old.pdf", "prev", T)), rdn("old.pdf"), rdn(prevTo)], ["changed", "OLD", "USER-NEW"],
+  "이전판 자리를 확인한 직후 누가 만든 파일 → 덮지 않음(옛 파일도 제자리)");
+fs.writeFileSync(path.join(nc, "c.xlsx"), "K-c");
+const cTmp = path.join(nc, ".ksync-0000000000aa.part");
+fs.writeFileSync(cTmp, "H-c");
+const cK = (() => { const s = fs.statSync(path.join(nc, "c.xlsx")); return { size: s.size, mtime: Math.floor(s.mtimeMs) }; })();
+eq([await race(path.join(nc, "c.xlsx"), 2, () => place(nc, cTmp, "c.xlsx", { conf: { abs: path.join(nc, "c.xlsx"), rel: "c.xlsx", k: cK }, today: D4 })),
+  rdn("c.xlsx"), rdn("c (충돌 2026-11-04).xlsx"), rdn(".ksync-0000000000aa.part")], ["changed", "USER-NEW", "K-c", "H-c"],
+  "H 판을 놓을 자리를 확인한 직후 누가 만든 파일 → 덮지 않고, K 쪽 판을 되돌릴 때도 덮지 않음(K 쪽 판은 충돌 사본 이름으로 남음)");
+fs.writeFileSync(path.join(nc, ".ksync-0a0a0a0a0a0a.part"), "USER");
+const rb0 = crypto.randomBytes;
+crypto.randomBytes = () => Buffer.from("0a0a0a0a0a0a", "hex");
+threw = "";
+try { await LIB.download(async () => new Response("H"), "https://store.example/dl/x", nc, crypto.createHash("sha256").update("H").digest("hex"), 1); } catch (e) { threw = e.code; } finally { crypto.randomBytes = rb0; }
+eq([threw, rdn(".ksync-0a0a0a0a0a0a.part")], ["EEXIST", "USER"], "내려받기 임시 파일은 새 파일로만 — 같은 이름이 있으면 덮지 않음");
+
+/* A3 휴지통 · 이전판 폴더가 링크면 연결 폴더 밖으로 옮기지 않음 */
 const outside = path.join(TMP, "outside"), lr = path.join(TMP, "lr");
 fs.mkdirSync(path.join(outside, "2026-01-01"), { recursive: true });
 fs.mkdirSync(lr);
 fs.symlinkSync(outside, path.join(lr, TRASH));
 fs.symlinkSync(outside, path.join(lr, PREV));
-eq([await cleanTrash(lr, Date.parse("2026-11-04T00:00:00Z")), fs.existsSync(path.join(outside, "2026-01-01"))], [0, true], "A3 휴지통 폴더가 링크 → 정리하지 않음");
 fs.writeFileSync(path.join(lr, "f.pdf"), "F");
 threw = "";
 try { await moveAside(lr, path.join(lr, "f.pdf"), "f.pdf", "prev", T); } catch (e) { threw = e.code; }
@@ -471,27 +552,27 @@ slp.length = 0;
 for (let i = 0; i <= PACE; i++) await mc.call("get", {});
 eq(slp, [60000 - PACE * 100], "시계가 가면 남은 만큼만 기다림");
 
-/* 에이전트 흐름(가짜 서버 · 가짜 445 · 실제 파일) — A11 · A12 · A13 · A14 · A15 */
+/* 에이전트 흐름(가짜 서버 · 가짜 445 · 실제 파일) — A11 · A12 · A14 · A15 · 매일 창 · 연결 안 될 때 5분 간격 3번 · 휴지통을 비우지 않음 */
 const AG = path.join(TMP, "ag");
 fs.mkdirSync(path.join(AG, "share", "m"), { recursive: true });
 const ST = path.join(AG, "state.json");
 const readSt = () => JSON.parse(fs.readFileSync(ST, "utf8"));
 const agentDeps = (o) => {
-  const calls = [], notes = [], sleeps = [], hello = (o && o.hello) || {};
+  const calls = [], bodies = [], notes = [], sleeps = [], hello = (o && o.hello) || {};
   const d = Object.assign({
     paths: { app: AG, config: path.join(AG, "config.json"), state: ST, lock: path.join(AG, "ksync.lock"), log: path.join(AG, "ksync.log") },
     config: { server: "https://edge.example/functions/v1/semis-logi-ksync", smbUrl: "smb://nas.example/share" },
     log: () => {}, out: () => {}, now: () => T, sleep: async (ms) => { sleeps.push(ms); },
     fetch: async (u, i) => {
       const b = JSON.parse(i.body);
-      calls.push(b.act + (b.phase ? ":" + b.phase : ""));
+      calls.push(b.act + (b.phase ? ":" + b.phase : "")); bodies.push(b);
       const r = b.act === "hello" ? Object.assign({ ok: true, allow: true, daily_at: "08:30", requested: false, maps: [], lists: [], mass_limit: LIM }, hello)
         : b.act === "run" && b.phase === "start" ? { ok: true, run: 7 } : { ok: true };
       return new Response(JSON.stringify(r));
     },
     key: async () => "k", netCheck: async () => ({ ok: true }), mountRoot: async () => path.join(AG, "share"), notify: async (m) => { notes.push(m); }, host: "test"
   }, o || {});
-  return Object.assign(d, { calls, notes, sleeps });
+  return Object.assign(d, { calls, bodies, notes, sleeps });
 };
 const offline = async () => ({ ok: false, msg: "ECONNREFUSED" });
 let dg = agentDeps({ netCheck: offline });
@@ -499,7 +580,128 @@ let rr = await runAgent(dg, { dryRun: true });
 eq([rr.status, dg.calls, dg.notes.length, fs.existsSync(ST), dg.sleeps], ["offline", [], 0, false, [5000, 5000]], "A14 --dry-run 은 사내망 밖에서도 보고 · 알림 · 상태 변경 없음");
 dg = agentDeps({ netCheck: offline });
 rr = await runAgent(dg, {});
-eq([rr.status, dg.calls, dg.notes.length], ["offline", ["net"], 1], "사내망 밖(매일 시각 지남) → 연결 안 됨 보고 · 알림 한 번");
+eq([rr.status, dg.calls, dg.notes.length, dg.sleeps], ["offline", [], 0, [5000, 5000]], "사내망 밖 · 창 밖 깨우기 → 한 번만 보고 끝(보고 · 알림 · 5분 기다림 없음)");
+fs.rmSync(ST, { force: true });
+dg = agentDeps({ netCheck: offline });
+rr = await runAgent(dg, { once: true });
+eq([rr.status, dg.calls, dg.notes.length, dg.sleeps], ["offline", ["net"], 0, [5000, 5000]], "--once · 사내망 밖 → 한 번만 시도 · 연결 안 됨 보고(알림 · 5분 기다림 없음)");
+fs.rmSync(ST, { force: true });
+
+/* 매일 창 08:30~09:00 — 창 안에서만 매일 실행, 창이 지나면 그날은 따라잡지 않음(지금 동기화 요청은 언제든) */
+const K0800 = Date.parse("2026-11-03T23:00:00Z"), K0840 = Date.parse("2026-11-03T23:40:00Z"), K0850 = Date.parse("2026-11-03T23:50:00Z"), K1000 = Date.parse("2026-11-04T01:00:00Z");
+const trig = (d) => (d.bodies.find(b => b.act === "run" && b.phase === "start") || {}).trigger || "";
+dg = agentDeps({ now: () => K0800 });
+rr = await runAgent(dg, {});
+eq([rr.status, dg.calls], ["idle", ["hello"]], "창 전(08:00) → 매일 실행 없음");
+fs.rmSync(ST, { force: true });
+dg = agentDeps({ now: () => K0840 });
+rr = await runAgent(dg, {});
+eq([rr.status, trig(dg), readSt().lastOkDay], ["ok", "daily", "2026-11-04"], "창 안(08:40) → 매일 실행");
+fs.rmSync(ST, { force: true });
+dg = agentDeps({ now: () => K1000 });
+rr = await runAgent(dg, {});
+eq([rr.status, dg.calls, readSt().lastOkDay], ["idle", ["hello"], undefined], "창 뒤(10:00) · 오늘 안 했음 → 따라잡지 않음");
+dg = agentDeps({ now: () => K1000 + 6 * 60e3, hello: { requested: true } });
+rr = await runAgent(dg, {});
+eq([rr.status, trig(dg)], ["ok", "manual"], "창 뒤라도 지금 동기화 요청은 실행");
+fs.rmSync(ST, { force: true });
+dg = agentDeps({ now: () => Date.parse("2026-11-03T22:00:00Z") });
+rr = await runAgent(dg, { once: true });
+eq([rr.status, readSt().lastOkDay === "2026-11-04", !!readSt().lastOk], ["ok", false, true], "A12 창(08:30) 전 --once → 그날 매일 실행을 대신하지 않음");
+dg = agentDeps({ now: () => K0840 });
+rr = await runAgent(dg, {});
+eq([rr.status, trig(dg)], ["ok", "daily"], "A12 그날 창이 오면 매일 실행");
+
+/* 창 안에서 K드라이브에 닿지 않음 — 5분 간격 3번까지(445 를 5초 간격 3번 = 한 번), 그래도 안 되면 그날은 건너뜀 */
+const fails = (n) => { let c = 0; return async () => (++c <= n * 3 ? { ok: false, msg: "ECONNREFUSED" } : { ok: true }); };
+fs.rmSync(ST, { force: true });
+dg = agentDeps({ now: () => K0840, netCheck: fails(1) });
+rr = await runAgent(dg, {});
+eq([rr.status, dg.sleeps, trig(dg), dg.notes, dg.calls.filter(c => c === "net"), readSt().skipDay], ["ok", [5000, 5000, 300000], "daily", [], [], undefined], "첫 시도 실패 → 5분 뒤 두 번째에 연결 · 동기화");
+fs.rmSync(ST, { force: true });
+let helloNet = 0;
+dg = agentDeps({ now: () => K0840 });
+const f0 = dg.fetch;
+dg.fetch = async (u, i) => { if (JSON.parse(i.body).act === "hello" && !helloNet++) throw new TypeError("fetch failed"); return f0(u, i); };
+rr = await runAgent(dg, {});
+eq([rr.status, dg.sleeps.filter(x => x === 300000).length, trig(dg)], ["ok", 1, "daily"], "hello 가 서버까지 못 감(망 오류)도 같은 시도로 셈 → 5분 뒤 다시");
+fs.rmSync(ST, { force: true });
+dg = agentDeps({ now: () => K0840, netCheck: offline });
+rr = await runAgent(dg, {});
+eq([rr.status, dg.sleeps.filter(x => x === 300000), dg.sleeps.length, dg.calls, dg.notes, readSt().skipDay],
+  ["offline", [300000, 300000], 8, ["net"], ["K드라이브에 연결하지 못해 오늘 동기화를 건너뜁니다. 내일 08:30~09:00 에 다시 시도합니다."], "2026-11-04"],
+  "3번 다 실패 → 5분 기다림 두 번 · 오늘 건너뜀 · 연결 안 됨 보고 한 번 · 알림 한 번");
+const net0 = dg.bodies.find(b => b.act === "net") || {};
+ok(/건너뜀/.test(net0.msg) && net0.ok === false, "보고에 '오늘 동기화 건너뜀'(대시보드 다음 예정이 내일로)");
+dg = agentDeps({ now: () => K0850, netCheck: offline });
+rr = await runAgent(dg, {});
+eq([rr.status, dg.calls, dg.notes.length, dg.sleeps.filter(x => x === 300000).length], ["offline", [], 0, 0], "같은 날 다시 깨어남(아직 창 안 · 여전히 안 됨) → 다시 시도 · 보고 · 알림 없음");
+dg = agentDeps({ now: () => K0850 + 6 * 60e3 });
+rr = await runAgent(dg, {});
+eq([rr.status, dg.calls], ["idle", ["hello"]], "같은 날 연결됨(아직 창 안) → 매일 실행은 건너뛴 채");
+dg = agentDeps({ now: () => K0850 + 12 * 60e3, hello: { requested: true } });
+rr = await runAgent(dg, {});
+eq([rr.status, trig(dg)], ["ok", "manual"], "건너뛴 날에도 지금 동기화 요청은 실행");
+dg = agentDeps({ now: () => K0840 + 864e5 });
+rr = await runAgent(dg, {});
+eq([rr.status, trig(dg), readSt().lastOkDay], ["ok", "daily", "2026-11-05"], "다음 날 창 안 → 다시 매일 실행");
+fs.writeFileSync(ST, JSON.stringify({ skipDay: "2026-11-04", lastOkDay: "2026-11-04" }));
+dg = agentDeps({ now: () => K0840 + 864e5 + 2 * 60e3, netCheck: offline });
+rr = await runAgent(dg, {});
+eq([rr.status, dg.sleeps.filter(x => x === 300000).length, dg.notes.length, readSt().skipDay], ["offline", 2, 1, "2026-11-05"], "다음 날 창 안 · 또 안 됨 → 다시 3번 시도");
+/* 창 안이라도 --once · --dry-run · --status 는 한 번만 시도 — 5분 기다림 · 건너뜀 · 알림 없음(--once 만 연결 안 됨 보고) */
+for (const [flag, calls] of [["once", ["net"]], ["dryRun", []], ["status", []]]) {
+  fs.rmSync(ST, { force: true });
+  dg = agentDeps({ now: () => K0840, netCheck: offline });
+  rr = await runAgent(dg, { [flag]: true });
+  eq([rr.status, dg.sleeps, dg.calls, dg.notes, (fs.existsSync(ST) ? readSt() : {}).skipDay || ""], ["offline", [5000, 5000], calls, [], ""],
+    "창 안(08:40) · 연결 안 됨 · " + flag + " → 한 번만 시도");
+}
+/* 창 끝(08:59)에 깨어나 다시 시도하다 창을 넘겨도(세 번째가 09:09) 그날 매일 실행 — 기다림이 시계를 움직인다 */
+fs.rmSync(ST, { force: true });
+let lateClk = Date.parse("2026-11-03T23:59:00Z");
+const lateSl = [];
+dg = agentDeps({ now: () => lateClk, netCheck: fails(2), sleep: async (ms) => { lateSl.push(ms); lateClk += ms; } });
+rr = await runAgent(dg, {});
+eq([rr.status, lateSl.filter(x => x === 300000).length, kstMin(lateClk), trig(dg), readSt().lastOkDay], ["ok", 2, 9 * 60 + 9, "daily", "2026-11-04"],
+  "창 끝에 시작 · 세 번째 시도(09:09)에 연결 → 그날 매일 실행으로 셈");
+eq([readSt().lastSeen, readSt().lastOk], [lateClk, new Date(lateClk).toISOString()], "기다린 뒤 연결 → lastSeen · lastOk 는 시작한 때(08:59)가 아니라 실제 시각(09:09)");
+/* 다시 시도를 기다리는 사이 Mac 이 잠듦(덮었다가 몇 시간 뒤 엶) — 계획보다 늦었고 그날 창도 지났으면 매일 실행 없음 · 건너뜀 표시 · 연결 안 됨 보고 · 알림도 없음.
+   늦었어도 아직 그날 창 안이면 그대로 다시 시도 */
+const jc = { t: 0, sl: [] };
+const jumpDeps = (start, jump, n) => { jc.t = start; jc.sl = []; return agentDeps({ now: () => jc.t, netCheck: fails(n), sleep: async (ms) => { jc.sl.push(ms); jc.t += ms === 300000 ? jump : ms; } }); };
+fs.rmSync(ST, { force: true });
+dg = jumpDeps(Date.parse("2026-11-03T23:45:00Z"), 5 * 3600e3, 1);
+rr = await runAgent(dg, {});
+eq([rr.status, dg.calls, trig(dg), dg.notes, jc.sl.filter(x => x === 300000).length, readSt().lastOkDay, readSt().skipDay, readSt().lastSeen],
+  ["missed", [], "", [], 1, undefined, undefined, undefined], "08:45 첫 시도 실패 · 기다리는 사이 5시간 잠듦(13:45 에 깸) → 매일 실행 · 다시 시도 · 보고 · 알림 없음");
+dg = agentDeps({ now: () => jc.t + 15 * 60e3 });
+rr = await runAgent(dg, {});
+eq([rr.status, dg.calls], ["idle", ["hello"]], "그 뒤 깨우기(14:00) → 창이 지나 매일 실행 없음(건너뜀 표시 없이도)");
+fs.rmSync(ST, { force: true });
+dg = jumpDeps(K0840, 864e5 + 5 * 60e3, 1);
+rr = await runAgent(dg, {});
+eq([rr.status, dg.calls, readSt().lastOkDay], ["missed", [], undefined], "기다리는 사이 하루 넘게 잠들어 다음 날 창(08:45)에 깸 → 전날 몫으로 실행하지 않음");
+fs.rmSync(ST, { force: true });
+dg = jumpDeps(Date.parse("2026-11-03T23:31:00Z"), 8 * 60e3, 2);
+rr = await runAgent(dg, {});
+eq([rr.status, jc.sl.filter(x => x === 300000).length, kstMin(jc.t), trig(dg), readSt().lastOkDay, readSt().lastSeen], ["ok", 2, 8 * 60 + 47, "daily", "2026-11-04", jc.t],
+  "08:31 시작 · 기다릴 때마다 3분씩 늦음(아직 창 안) → 계속 다시 시도 · 세 번째(08:47)에 연결 → 매일 실행");
+/* 대시보드에서 시작 시각을 바꾸면(hello daily_at) 창이 옮겨 간다 — 받은 시각은 상태에 두고, 서버에 닿기 전 판단(다시 시도할지)에 쓴다 */
+const K1010 = Date.parse("2026-11-04T01:10:00Z");
+fs.writeFileSync(ST, JSON.stringify({ dailyAt: "08:30" }));
+dg = agentDeps({ now: () => K1010, hello: { daily_at: "10:00" } });
+rr = await runAgent(dg, {});
+eq([rr.status, trig(dg), readSt().dailyAt, readSt().lastOkDay], ["ok", "daily", "10:00", "2026-11-04"], "시작 시각 10:00 으로 바뀜 → 10:10 깨우기에 매일 실행 · 받은 시각을 상태에 둠");
+fs.rmSync(ST, { force: true });
+dg = agentDeps({ now: () => K0840, hello: { daily_at: "10:00" } });
+rr = await runAgent(dg, {});
+eq([rr.status, dg.calls], ["idle", ["hello"]], "시작 시각 10:00 → 08:40 깨우기는 매일 실행 없음");
+fs.writeFileSync(ST, JSON.stringify({ dailyAt: "10:00" }));
+dg = agentDeps({ now: () => K1010, netCheck: offline });
+rr = await runAgent(dg, {});
+eq([rr.status, dg.sleeps.filter(x => x === 300000).length, dg.notes, readSt().skipDay],
+  ["offline", 2, ["K드라이브에 연결하지 못해 오늘 동기화를 건너뜁니다. 내일 10:00~10:30 에 다시 시도합니다."], "2026-11-04"], "받아 둔 시작 시각(10:00) · 연결 안 됨 → 그 창에서 3번 시도 · 알림에 그 창");
 fs.rmSync(ST, { force: true });
 dg = agentDeps();
 rr = await runAgent(dg, { dryRun: true });
@@ -508,12 +710,8 @@ n445 = 0;
 dg = agentDeps({ netCheck: async () => (++n445 < 3 ? { ok: false, msg: "x" } : { ok: true }) });
 rr = await runAgent(dg, { once: true });
 eq([rr.status, dg.notes.length, dg.sleeps, dg.calls], ["ok", 0, [5000, 5000], ["hello", "hello", "run:start", "folders", "run:end"]], "A15 로그인 직후 445 두 번 실패 → 알림 없이 이어서 동기화");
-eq(readSt().lastOkDay, "2026-11-04", "A12 매일 시각 뒤에 시작한 실행 → 오늘 끝냄");
-fs.rmSync(ST, { force: true });
-dg = agentDeps({ now: () => Date.parse("2026-11-03T22:00:00Z") });
-rr = await runAgent(dg, { once: true });
-eq([rr.status, readSt().lastOkDay || "", !!readSt().lastOk], ["ok", "", true], "A12 매일 시각(08:30) 전 --once → 그날 매일 실행은 남김");
-fs.writeFileSync(ST, JSON.stringify({ lastOkDay: "2026-11-04", lastSeen: T - 26 * 60e3, logDay: "2026-11-04", trashDay: "2026-11-04", foldersDay: "2026-11-04" }));
+eq(readSt().lastOkDay, "2026-11-04", "A12 창 시작 뒤에 시작한 실행 → 오늘 끝냄");
+fs.writeFileSync(ST, JSON.stringify({ lastOkDay: "2026-11-04", lastSeen: T - 26 * 60e3, logDay: "2026-11-04", foldersDay: "2026-11-04" }));
 dg = agentDeps();
 rr = await runAgent(dg, {});
 eq([rr.status, dg.calls], ["idle", ["hello"]], "A11 오늘 끝냈어도 25분 지나면 서버를 봄(지금 동기화 요청 확인)");
@@ -521,17 +719,28 @@ fs.writeFileSync(ST, JSON.stringify({ lastOkDay: "2026-11-04", lastSeen: T - 20 
 dg = agentDeps();
 rr = await runAgent(dg, {});
 eq([rr.status, dg.calls], ["done-today", []], "A11 25분 안이면 서버도 부르지 않음");
-if (NOROOT) {
-  const tsub = path.join(AG, "share", "m", TRASH, "2025-01-01", "sub");
-  fs.mkdirSync(tsub, { recursive: true });
-  fs.writeFileSync(path.join(tsub, "x.pdf"), "x");
-  fs.chmodSync(tsub, 0o500);
-  fs.rmSync(ST, { force: true });
-  dg = agentDeps({ hello: { maps: [{ id: 1, k_path: "m", mod: "a", grp: "b", dir: "both", ssi: false, state: "active", hold: null }], lists: [{ map: 1, h: [], base: [] }] } });
-  rr = await runAgent(dg, { once: true });
-  fs.chmodSync(tsub, 0o755);
-  eq([rr.status, readSt().trashDay], ["ok", "2026-11-04"], "A13 휴지통 정리 실패는 경고만(실행 결과는 그대로)");
-}
+/* 5분 안에 다시 깨어남(네트워크 변경 · 로그인 · 30분 깨우기가 잇달아) — 창 밖이면 445 · 서버 없이 끝, 그날 매일 실행이 남은 창 안이면 막지 않음 */
+const K0830 = Date.parse("2026-11-03T23:30:00Z");
+fs.writeFileSync(ST, JSON.stringify({ lastSeen: K0830 - 2 * 60e3 }));
+dg = agentDeps({ now: () => K0830 });
+rr = await runAgent(dg, {});
+eq([rr.status, trig(dg), readSt().lastOkDay], ["ok", "daily", "2026-11-04"], "2분 전에 서버를 봤어도 창 안(08:30) · 오늘 안 함 → 매일 실행");
+let nRecent = 0;
+fs.writeFileSync(ST, JSON.stringify({ lastSeen: K1000 - 2 * 60e3 }));
+dg = agentDeps({ now: () => K1000, netCheck: async () => { nRecent++; return { ok: true }; } });
+rr = await runAgent(dg, {});
+eq([rr.status, dg.calls, nRecent], ["recent", [], 0], "2분 전에 서버를 봄 · 창 밖(10:00) → 445 · 서버 없이 끝");
+/* 휴지통 폴더는 에이전트가 비우지 않는다 — 오래된 날짜 폴더도 매일 실행 · 수동 실행 뒤 그대로 */
+const trashOld = path.join(AG, "share", "m", TRASH, "2026-10-04"), trashOlder = path.join(AG, "share", "m", TRASH, "2025-01-01", "sub");
+fs.mkdirSync(trashOld, { recursive: true }); fs.mkdirSync(trashOlder, { recursive: true });
+fs.writeFileSync(path.join(trashOld, "x.pdf"), "X"); fs.writeFileSync(path.join(trashOlder, "y.pdf"), "Y");
+const mapM = { maps: [{ id: 1, k_path: "m", mod: "a", grp: "b", dir: "both", ssi: false, state: "active", hold: null }], lists: [{ map: 1, h: [], base: [] }] };
+fs.rmSync(ST, { force: true });
+dg = agentDeps({ now: () => K0840, hello: mapM });
+rr = await runAgent(dg, {});
+const rr2 = await runAgent(agentDeps({ hello: mapM }), { once: true });
+eq([rr.status, trig(dg), rr2.status, rdn(path.join(trashOld, "x.pdf")), rdn(path.join(trashOlder, "y.pdf")), dg.calls.filter(c => c.startsWith("put"))],
+  ["ok", "daily", "ok", "X", "Y", []], "31일 지난 휴지통 날짜 폴더도 실행 뒤 그대로(올리지도 않음)");
 
 /* 올리기 3단계(begin → PUT → verify) · 등록(apply) 모으기 · H 가 이긴 충돌 순서 — 가짜 서버 · 실제 파일 */
 const sha = (s) => crypto.createHash("sha256").update(s).digest("hex");
@@ -806,6 +1015,46 @@ for (const [err, status, errors] of [["state", "ok", 0], ["bad", "partial", 1]])
   rf = await runFake(sv);
   eq([rf.status, kRead("m17", "h17.pdf"), rf.end && rf.end.maps.map(x => [x.id, x.done]), rf.end && rf.end.errors], [status, "H17", [[16, false], [17, true]], errors],
     "미리보기 건수 거절(" + err + ") → 그 연결만 · 다음 연결은 맞춤");
+}
+
+/* 설치 · 제거(install.sh · uninstall.sh) — HOME 은 임시 폴더, 키체인(security) · launchctl 은 가짜 명령 */
+{
+  const IH = path.join(TMP, "home"), BIN = path.join(TMP, "bin"), LC = path.join(TMP, "launchctl.log");
+  const SRC = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+  fs.mkdirSync(BIN, { recursive: true }); fs.mkdirSync(IH, { recursive: true });
+  fs.writeFileSync(path.join(BIN, "security"), "#!/bin/sh\nif [ \"$1\" = find-generic-password ]; then echo " + "a".repeat(64) + "; fi\nexit 0\n", { mode: 0o755 });
+  fs.writeFileSync(path.join(BIN, "launchctl"), "#!/bin/sh\necho \"$@\" >> \"$KSYNC_TEST_LC\"\n", { mode: 0o755 });
+  const sh = (script, input) => spawnSync("/bin/bash", [path.join(SRC, script)], { input, encoding: "utf8", timeout: 30000,
+    env: { PATH: process.env.PATH, HOME: IH, USER: "tester", KSYNC_NODE: process.execPath, KSYNC_SECURITY: path.join(BIN, "security"), KSYNC_LAUNCHCTL: path.join(BIN, "launchctl"), KSYNC_TEST_LC: LC } });
+  const APPD = path.join(IH, "Library", "Application Support", "hdrive-ksync"), PL = path.join(IH, "Library", "LaunchAgents", "kr.hdrive.ksync.plist"), CFG = path.join(APPD, "config.json");
+  const plist = () => fs.readFileSync(PL, "utf8");
+  const cal = () => { const m = /<key>StartCalendarInterval<\/key>\s*<dict><key>Hour<\/key><integer>(\d+)<\/integer><key>Minute<\/key><integer>(\d+)<\/integer><\/dict>/.exec(plist()); return m ? [Number(m[1]), Number(m[2])] : null; };
+  let ri = sh("install.sh", "https://edge.example/functions/v1/semis-logi-ksync\nsmb://nas.example/share\nn\n");
+  eq([ri.status, cal()], [0, [8, 30]], "설치: 매일 실행 시작 시각(기본 08:30)에도 깨움 " + ri.stderr);
+  ok(/<key>RunAtLoad<\/key><true\/>/.test(plist()) && /<key>StartInterval<\/key><integer>1800<\/integer>/.test(plist()) && /<key>WatchPaths<\/key>\s*<array><string>\/Library\/Preferences\/SystemConfiguration<\/string><\/array>/.test(plist()),
+    "설치: 로그인 때 · 30분마다 · 네트워크가 바뀔 때는 그대로");
+  if (fs.existsSync("/usr/bin/plutil")) {
+    const pj = spawnSync("/usr/bin/plutil", ["-convert", "json", "-o", "-", PL], { encoding: "utf8" });
+    const j = JSON.parse(pj.stdout || "{}");
+    eq([pj.status, j.StartCalendarInterval, j.StartInterval, j.RunAtLoad, j.WatchPaths], [0, { Hour: 8, Minute: 30 }, 1800, true, ["/Library/Preferences/SystemConfiguration"]], "설치: plist 형식(plutil)");
+  }
+  eq([fs.readdirSync(path.join(APPD, "agent")).sort(), JSON.parse(fs.readFileSync(CFG, "utf8")).smbUrl, (fs.statSync(CFG).mode & 0o777).toString(8), /bootstrap gui\/\d+ /.test(fs.readFileSync(LC, "utf8"))],
+    [["ksync.mjs", "lib.mjs", "package.json", "plan.mjs"], "smb://nas.example/share", "600", true], "설치: 에이전트 사본 · 설정(600) · LaunchAgent 등록");
+  fs.writeFileSync(CFG, JSON.stringify(Object.assign(JSON.parse(fs.readFileSync(CFG, "utf8")), { dailyAt: "07:05" })));
+  ri = sh("install.sh", "\n\nn\n");
+  eq([ri.status, cal(), JSON.parse(fs.readFileSync(CFG, "utf8")).dailyAt], [0, [7, 5], "07:05"], "다시 설치: 설정 dailyAt(07:05)을 따름 · 주소는 Enter 로 그대로");
+  // 형식이 틀린 dailyAt — 에이전트(checkConfig)가 돌지 않는 설정이면 설치도 멈춤(LaunchAgent 는 그대로 · 다시 등록하지 않음)
+  for (const bad of ["9:5", "", 830]) {
+    fs.writeFileSync(CFG, JSON.stringify(Object.assign(JSON.parse(fs.readFileSync(CFG, "utf8")), { dailyAt: bad })));
+    fs.writeFileSync(LC, "");
+    ri = sh("install.sh", "\n\nn\n");
+    eq([ri.status !== 0, /dailyAt 형식/.test(ri.stderr), cal(), fs.readFileSync(LC, "utf8"), checkConfig({ server: "https://edge.example/f", smbUrl: "smb://nas.example/share", dailyAt: bad })],
+      [true, true, [7, 5], "", "dailyAt 형식(HH:MM)"], "설정 dailyAt 형식이 틀림(" + JSON.stringify(bad) + ") → 에이전트처럼 설치도 멈춤 " + ri.stderr);
+  }
+  fs.writeFileSync(LC, "");
+  const ru = sh("uninstall.sh", "n\n");
+  eq([ru.status, fs.existsSync(PL), fs.existsSync(path.join(APPD, "agent")), fs.existsSync(CFG), /bootout gui\/\d+\/kr\.hdrive\.ksync/.test(fs.readFileSync(LC, "utf8"))], [0, false, false, true, true],
+    "제거: LaunchAgent · 에이전트 사본만 지우고 설정은 남김");
 }
 fs.rmSync(TMP, { recursive: true, force: true });
 
