@@ -3,7 +3,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.62.0";
+  const VERSION = "1.63.0";
   const APP_NAME = "H:drive";
   const APP_ALIAS = "ARGOS (Air-cargo Risk & Guard Operations System)";
   /* 데이터 캐시는 탭 sessionStorage 에만(탭 닫기·로그아웃 시 소멸). 화면 설정(LS_UI)만 localStorage */
@@ -250,6 +250,7 @@ const SeMIS = (() => {
       h("hub-sec", "화물 보안", "scan"),
       m("sec-dash", "화물보안 대시보드", "📊", "sec-dash", "mgr", "hub-sec"),
       m("scr-status", "보안검색 현황", "🔎", "scr-status", "mgr", "hub-sec"),
+      m("us-rescreen", "미주행 재보안검색", "📈", "us-rescreen", "admin", "hub-sec"),
       m("scr-equip", "검색장비 관리", "🔧", "scr-equip", "mgr", "hub-sec"),
       m("sec-cases", "보안 처리 대장", "🗃️", "sec-cases", "mgr", "hub-sec"),
       m("kc-ra", "상용화주 · RA", "🏷️", "kc-ra", "hq", "hub-sec"),
@@ -426,6 +427,7 @@ const SeMIS = (() => {
       secCases: [],      // 보안 처리 대장
       dissem: {},        // 보안 전파교육
       scrStats: {},      // 화물 보안검색 실적 (월별 합계)
+      usRescreen: {},    // 미주행 재보안검색 — 출발지별 월 실적 (js/usrescreen.js)
       desk: { cfg: {}, log: [] },  // 접수 카운터 — 분야별 담당 · 올린 문서 기록 (js/desk.js)
       boards: defaultBoards()      // 게시판 정의 (글은 서버 비공개 표 — js/board.js)
     };
@@ -585,7 +587,7 @@ const SeMIS = (() => {
     arr(obj("seclogCfg", { since: "", templates: [] }), "templates");
     const sc = obj("selfCheckCfg", {});
     if (!isObj(sc.forms)) sc.forms = {};
-    ["serp", "threat", "secPost", "secPostImg", "patrolCfg", "partners", "kcra", "dissem", "scrStats"].forEach(k => obj(k, {}));
+    ["serp", "threat", "secPost", "secPostImg", "patrolCfg", "partners", "kcra", "dissem", "scrStats", "usRescreen"].forEach(k => obj(k, {}));
     const dk = obj("desk", { cfg: {}, log: [] });
     if (!isObj(dk.cfg)) dk.cfg = {};
     dk.log = (Array.isArray(dk.log) ? dk.log : []).filter(x => x && typeof x === "object" && x.id && x.file && typeof x.file === "object");
@@ -1171,7 +1173,7 @@ const SeMIS = (() => {
     minutes: "mid", contacts: "mid", crisis: "mid", serp: "mid", threat: "mid", phonebook: "mid", settings: "mid", vault: "mid",
     "reg-sec": "mid", "reg-safety": "mid", "reg-dg": "mid", "scr-status": "mid", "scr-equip": "mid", audit: "mid", inspection: "mid", shortcuts: "mid", "daily-safety": "mid",
     "sec-dash": "mid", "aud-dash": "mid", training: "mid", selfcheck: "mid",
-    partners: "mid", contracts: "mid", "kc-ra": "mid", "sec-cases": "wide", dissem: "wide"
+    partners: "mid", contracts: "mid", "kc-ra": "mid", "sec-cases": "wide", dissem: "wide", "us-rescreen": "mid"
   };
   function applyViewWidth(view, route) {
     const r = String(route);

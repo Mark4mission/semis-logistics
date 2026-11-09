@@ -19,6 +19,7 @@
     serp:     "mgr",  // 위기대응 띠 — SERP 진행 중일 때만 (js/serp.js)
     threat:   "mgr",  // 위협전화 응대 띠 — 응대 진행 중일 때만 (js/threat.js)
     audit:    "mgr",  // 수검 대응 띠 — 60일 안 수검이 있을 때만 (js/audit.js)
+    usr:      "mgr",  // 미주행 재보안검색 — 최근 달의 전월 대비 변화율만 (js/usrescreen.js)
     build:    "hq"
   };
   const cardVis = (id) => {
@@ -166,7 +167,7 @@
 
   /* '오늘' 카드 — 지금 챙길 것만 한 장에(행을 누르면 그 화면) */
   function todayRow(o) {
-    return `<button type="button" class="td-row${o.tone ? " tone-" + o.tone : ""}" data-go="${esc(o.go)}"${o.id ? ` id="${esc(o.id)}"` : ""}${o.aid ? ` data-aid="${esc(o.aid)}"` : ""}>
+    return `<button type="button" class="td-row${o.tone ? " tone-" + o.tone : ""}${o.cls ? " " + esc(o.cls) : ""}" data-go="${esc(o.go)}"${o.id ? ` id="${esc(o.id)}"` : ""}${o.aid ? ` data-aid="${esc(o.aid)}"` : ""}>
       <span class="td-ico t-${esc(o.color || "teal")}" aria-hidden="true">${ico(o.icon, 19)}</span>
       <span class="td-body"><b class="td-t">${esc(o.title)}</b><span class="td-s">${o.sub || ""}</span></span>
       ${o.val != null && o.val !== "" ? `<span class="td-v">${o.val}</span>` : ""}
@@ -197,6 +198,13 @@
       sub: "불러오는 중", val: '<b class="mono">·</b>' }));
     if (cardVis("screen") && window.SemisScreen && SemisScreen.todayEnv && menuOk("scr-status")) {
       rows.push(todayRow({ go: "scr-status", id: "td-scr", icon: "scan", color: "teal", title: "검색 환경", sub: "불러오는 중", val: '<b class="mono">·</b>' }));
+    }
+    if (cardVis("usr") && menuOk("sec-dash") && window.SemisUsr) {
+      let u = null;
+      try { u = SemisUsr.todayData(); } catch (e) { u = null; }
+      if (u) rows.push(todayRow({ go: "sec-dash", id: "td-usr", cls: "td-wide", icon: "chart", color: "indigo", title: "미주행 재보안검색",
+        sub: esc(Number(u.ym.slice(5)) + "월 · " + (u.prev ? "전월 대비" : "전월 자료 없음")),
+        val: u.prev ? `<span class="ur-tdv"><small>MIX</small><b class="mono">${esc(SemisUsr.chgTxt(u.mix))}</b><small>THRU</small><b class="mono">${esc(SemisUsr.chgTxt(u.thru))}</b></span>` : "" }));
     }
     if (cardVis("audit") && menuOk("audit", "SemisAudit")) {
       let a = null;
@@ -357,6 +365,8 @@
       $$(".today-strip [data-go]", root).forEach(el => el.onclick = () => SeMIS.navigate(el.dataset.go));
       const tdAud = $("#td-aud");   // 다가오는 수검이 있으면 그 수검을 바로 연다
       if (tdAud && tdAud.dataset.aid && window.SemisAudit && SemisAudit.open) tdAud.onclick = () => SemisAudit.open(tdAud.dataset.aid);
+      const tdUsr = $("#td-usr");   // 화물보안 대시보드의 미주행 재보안검색 탭으로
+      if (tdUsr) tdUsr.onclick = () => { if (window.SemisSecDash && SemisSecDash.setTab) SemisSecDash.setTab("usr"); SeMIS.navigate("sec-dash"); };
       if (window.SemisScreen && ($("#dash-scr") || $("#td-scr"))) SemisScreen.mountDash();
       if (window.SemisSerp && $("#dash-serp")) SemisSerp.mountDash();
       if (window.SemisThreat && $("#dash-threat")) SemisThreat.mountDash();

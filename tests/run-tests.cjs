@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/loginguard.js", "js/app.js", "js/argo-owl.js", "js/panel.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/preview.js", "js/preview-draw.js", "js/preview-cfb.js", "js/preview-xls.js", "js/preview-hwp.js", "js/docshelf.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/board.js", "js/cares.js", "js/hazfind.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/contracts.js", "js/partners.js", "js/kcra.js", "js/seccases.js", "js/dissem.js", "js/scrstats.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/docread.js", "js/desk.js", "js/argo.js", "js/selfcheck.js", "js/auddash.js", "js/hubhome.js", "js/ksync.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
+const FILES = ["js/loginguard.js", "js/app.js", "js/argo-owl.js", "js/panel.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/preview.js", "js/preview-draw.js", "js/preview-cfb.js", "js/preview-xls.js", "js/preview-hwp.js", "js/docshelf.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/board.js", "js/cares.js", "js/hazfind.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/contracts.js", "js/partners.js", "js/kcra.js", "js/seccases.js", "js/dissem.js", "js/scrstats.js", "js/usrescreen.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/docread.js", "js/desk.js", "js/argo.js", "js/selfcheck.js", "js/auddash.js", "js/hubhome.js", "js/ksync.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -1368,7 +1368,7 @@ function makeServer(opts = {}) {
       eq(mn("inspection").tab, "보안 기록부");
       eq(mn("dashboard").mv, 2);
       const order = eM.S.sortedMenus().filter(x => x.parent === "hub-sec" && x.type === "module" && !x.planned).map(x => x.module).join(",");
-      eq(order, "sec-dash,scr-status,scr-equip,sec-cases,kc-ra,partners", "시드 순서");
+      eq(order, "sec-dash,scr-status,us-rescreen,scr-equip,sec-cases,kc-ra,partners", "시드 순서");
       eq(eM.S.normalizeData(), false, "멱등");
       /* 옛 화면이 묶음 소속을 풀어 저장해도 다음 정규화가 제자리로 */
       ["phonebook", "contacts", "inspection"].forEach(k => { mn(k).parent = null; });
@@ -1442,7 +1442,7 @@ function makeServer(opts = {}) {
       ok(q(e, '#nav-menu .hub[data-hub="hub-sec"] .hub-items [data-route="access"]'), "운영 목록");
       ok(!q(e, '#nav-menu .hub[data-hub="hub-sec"] .planned-list [data-route="access"]'), "준비 중에서 제거");
       const sec = e.w.SemisDashFx.buildStatus().find(r => r.id === "hub-sec");
-      eq(sec.live + "/" + sec.total, "7/7");
+      eq(sec.live + "/" + sec.total, "8/8");
       go(e, "access");
       ok(q(e, "#view .page-head [data-print-btn]"), "키트 머리말에 인쇄 버튼 자동 부착");
     });
@@ -1650,7 +1650,7 @@ function makeServer(opts = {}) {
     const e = makeEnv({ fetch: server.fetch });
     const { Sync } = e;
     t("Y01 SYNC_KEYS 구성(계정 자료 제외)", () =>
-      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,vault,regulations,equipment,crisis,fleet,audits,phonebook,training,seclog,seclogCfg,serp,serpRuns,threat,threatRuns,threatChecks,patrol,patrolCfg,patrolPeople,secPost,secPostImg,selfChecks,selfCheckCfg,docs,partners,contracts,kcra,secCases,dissem,scrStats,desk,boards"));
+      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,vault,regulations,equipment,crisis,fleet,audits,phonebook,training,seclog,seclogCfg,serp,serpRuns,threat,threatRuns,threatChecks,patrol,patrolCfg,patrolPeople,secPost,secPostImg,selfChecks,selfCheckCfg,docs,partners,contracts,kcra,secCases,dissem,scrStats,desk,boards,usRescreen"));
     t("Y02 SYNC_KEYS는 모두 freshData 컬렉션에 존재", () => Sync.SYNC_KEYS.forEach(k => ok(e.S.data[k] !== undefined, k)));
     await ta("Y03 로그인 전에는 서버를 부르지 않음 · 로그인 후 초기 pull + 쓰기 권한 있는 컬렉션만 시드", async () => {
       await Sync.start();
@@ -12541,6 +12541,220 @@ function makeServer(opts = {}) {
       ok(/휴지통은 에이전트가 지우지 않습니다/.test(cm) && !/30일/.test(cm), "삭제 확정 확인 창: 휴지통을 지우지 않음 " + cm);
       eq(e.errors.length, 0, e.errors.join(" | "));
       e.Sync.stop(); e.w.close();
+    });
+  }
+
+  /* ══════════ [US] 미주행 재보안검색 ══════════ */
+  {
+    const MX = (a, b, c, d) => ({ CHINA: { mawb: a[0], pcs: a[1], wt: a[2] }, HKG: { mawb: b[0], pcs: b[1], wt: b[2] }, HAN: { mawb: c[0], pcs: c[1], wt: c[2] }, ETC: { mawb: d[0], pcs: d[1], wt: d[2] } });
+    const TH = (a, b, c, d) => ({ CHINA: a, HKG: b, HAN: c, ETC: d });
+    const SAMPLE = () => ({ origins: [{ id: "CHINA", c: 0 }, { id: "HKG", c: 1 }, { id: "HAN", c: 2 }], months: {
+      "2025-09": { mix: MX([100, 1000, 10.5], [20, 200, 2], [300, 3000, 30], [80, 800, 8]), thru: TH(50, 60, 20, 10) },
+      "2026-08": { mix: MX([200, 2000, 20.25], [25, 700, 7.3], [290, 8900, 600], [130, 800, 190]), thru: TH(770, 710, 320, 210) },
+      "2026-09": { mix: MX([170, 2800, 90.5], [20, 400, 4.2], [320, 7480, 737.4], [160, 970, 269.1]), thru: TH(950, 810, 300, 210) } } });
+    const usEnv = (role, data) => { const e = makeEnv(); loginAs(e, role); e.w.SemisUsr.setToday("2026-10-15"); e.w.SemisUsr.setState({ reset: true, view: "month", ym: "2026-09" }); e.S.data.usRescreen = data || SAMPLE(); return e; };
+
+    t("US01 메뉴 · 권한: 화물 보안 허브 · 시스템관리자 전용 메뉴 · 서버 권한표 읽기 2 · 쓰기 4 · 정규화 멱등", () => {
+      const e = usEnv("admin");
+      const mn = e.S.menuForModule("us-rescreen");
+      ok(mn && mn.parent === "hub-sec" && mn.vis === "admin", "메뉴 시드");
+      ok(e.S.navVisible(mn), "admin 보임");
+      eq(ACL.usRescreen.join(","), "2,4", "key_acl");
+      ok(e.w.SemisSync.SYNC_KEYS.indexOf("usRescreen") >= 0);
+      eq(e.S.normalizeData(), false, "멱등");
+      loginAs(e, "hq"); ok(!e.S.navVisible(e.S.menuForModule("us-rescreen")), "hq 메뉴 안 보임");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+
+    t("US02 계산: 비중 · 소계 · 전월/전년 대비 · 입력 검사", () => {
+      const e = usEnv("admin"); const U = e.w.SemisUsr;
+      const r = U.rec("2026-09");
+      const c = U.monthCalc(r, U.idsFor(["2026-09"]));
+      eq(c.tot.mawb, 670); eq(c.tot.pcs, 11650); eq(c.tot.wt, 1101.2); eq(c.tot.uld, 2270);
+      eq(c.mix[2].id, "HAN"); eq(Math.round(c.mix[2].p_mawb * 1000), 478, "HAN 320/670");
+      eq(c.mix[3].id, "ETC", "ETC 는 끝");
+      const cmp = U.compare("2026-09");
+      eq(U.chgTxt(cmp.mawb.mom), "▲ 3.9%", "645 → 670");
+      eq(U.chgTxt(cmp.uld.yoy), "▲ 1521.4%", "전년 9월 140 → 2270");
+      eq(U.chgTxt(U.change(5, 0)), "신규"); eq(U.chgTxt(U.change(0, 0)), "– 0.0%"); eq(U.chgTxt(null), "-");
+      ok(U.parseIn("1,234", "mawb").v === 1234); ok(!U.parseIn("12.5", "pcs").ok, "PCs 정수");
+      ok(U.parseIn("202.43837", "wt").ok); ok(!U.parseIn("1.123456", "wt").ok, "소수 6자리");
+      ok(!U.parseIn("-3", "mawb").ok); ok(U.parseIn("", "uld").v === null);
+      eq(U.latest(), "2026-09"); eq(U.ymAdd("2026-01", -1), "2025-12"); eq(U.ymAdd("2025-12", 13), "2027-01");
+      e.w.close();
+    });
+
+    t("US03 월간 입력: 16칸 · Tab 순서 · 입력하면 비중 · 소계만 바뀜(입력칸 그대로) · 잘못된 값 표시 · 저장 · 다시 그려도 입력 유지", () => {
+      const e = usEnv("admin");
+      go(e, "us-rescreen");
+      const ins = qa(e, ".ur-in");
+      eq(ins.length, 16, "MIX 4×3 + THRU 4");
+      eq(ins.slice(0, 4).map(x => x.dataset.k).join("|"), "mix:CHINA:mawb|mix:CHINA:pcs|mix:CHINA:wt|mix:HKG:mawb", "Tab = 행 순서");
+      ok(q(e, ".page-head #ur-save.btn-primary"), "저장 = 주 단추");
+      ok(q(e, '[data-urm="2026-09"][aria-pressed="true"]') && q(e, '[data-urm="2026-11"]').disabled, "앞날 달 막힘");
+      const china = q(e, '.ur-in[data-k="mix:CHINA:mawb"]');
+      china.value = "270"; china.dispatchEvent(new e.w.Event("input", { bubbles: true }));
+      ok(q(e, '.ur-in[data-k="mix:CHINA:mawb"]') === china, "입력칸 노드 그대로");
+      eq(q(e, '[data-t="mawb"]').textContent, "770", "소계");
+      eq(q(e, '[data-p="mix:CHINA:mawb"]').textContent, "35.1%", "270/770");
+      ok(!q(e, "#ur-dirty").hidden, "저장 안 됨 표시");
+      const wt = q(e, '.ur-in[data-k="mix:HAN:wt"]');
+      wt.value = "7.1234567"; wt.dispatchEvent(new e.w.Event("input", { bubbles: true }));
+      ok(wt.classList.contains("bad"), "잘못된 값");
+      e.S.renderView();
+      eq(q(e, '.ur-in[data-k="mix:CHINA:mawb"]').value, "270", "다시 그려도 입력 유지");
+      q(e, "#ur-save").click();
+      eq(e.S.data.usRescreen.months["2026-09"].mix.CHINA.mawb, 170, "잘못된 값이 있으면 저장 안 함");
+      const wt2 = q(e, '.ur-in[data-k="mix:HAN:wt"]'); wt2.value = "737.4"; wt2.dispatchEvent(new e.w.Event("input", { bubbles: true }));
+      q(e, "#ur-save").click();
+      const m = e.S.data.usRescreen.months["2026-09"];
+      eq(m.mix.CHINA.mawb, 270); eq(m.mix.HAN.wt, 737.4); eq(m.thru.HKG, 810); ok(m.by === "Tadmin" && /^\d{4}-/.test(m.at), "저장 정보");
+      ok(q(e, "#ur-dirty").hidden, "저장 후 표시 지움");
+      ok(!("p_mawb" in m.mix.CHINA) && !("tot" in m), "비중 · 소계는 저장하지 않음");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+
+    t("US04 엑셀 붙여넣기: 출발지 이름 + 비중 칸 섞인 블록 · 숫자만 블록 · THRU", () => {
+      const e = usEnv("admin");
+      e.w.SemisUsr.setState({ ym: "2026-10", view: "month", reset: true });
+      go(e, "us-rescreen");
+      ok(!q(e, '.ur-in[data-k="mix:CHINA:mawb"]').value, "빈 달");
+      const paste = (el, text) => { const ev = new e.w.Event("paste", { bubbles: true, cancelable: true }); ev.clipboardData = { getData: () => text }; el.dispatchEvent(ev); return ev.defaultPrevented; };
+      ok(paste(q(e, '.ur-in[data-k="mix:CHINA:mawb"]'), "CHINA\t149\t0.21\t3484\t0.34\t107\t0.1\nHKG\t17\t0.02\t263\t0.03\t3.2\t0\nHAN\t365\t0.5\t4,941\t0.49\t708.2\t0.66\nETC\t182\t0.2\t1354\t0.1\t250.6\t0.2\nS-TTL\t713\t\t10042\t\t1069\t"), "붙여넣기 처리");
+      eq(q(e, '.ur-in[data-k="mix:HAN:pcs"]').value, "4941");
+      eq(q(e, '.ur-in[data-k="mix:ETC:wt"]').value, "250.6");
+      eq(q(e, '[data-t="mawb"]').textContent, "713"); eq(q(e, '[data-t="wt"]').textContent, "1,069.0");
+      ok(paste(q(e, '.ur-in[data-k="thru:HKG"]'), "715\n637\n228"), "숫자만 — 그 칸부터 아래로");
+      eq(q(e, '.ur-in[data-k="thru:HAN"]').value, "637"); eq(q(e, '.ur-in[data-k="thru:ETC"]').value, "228"); eq(q(e, '.ur-in[data-k="thru:CHINA"]').value, "");
+      ok(!paste(q(e, '.ur-in[data-k="thru:CHINA"]'), "917"), "한 칸 값은 기본 붙여넣기");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+
+    t("US05 연간 보기: 12개월 · 합계 · 비중 · 월평균 · 지표 · 값/비중 · 월 누르면 월간 · 행 삭제", () => {
+      const e = usEnv("admin");
+      e.w.SemisUsr.setState({ view: "year", ym: "2026-09", metric: "mawb", ymode: "v" });
+      go(e, "us-rescreen");
+      eq(qa(e, ".ur-year tbody tr").length, 12);
+      eq(qa(e, ".ur-year tbody tr.ur-nil").length, 10, "자료 없는 달");
+      const foot = qa(e, ".ur-year tfoot tr").map(tr => Array.from(tr.children).map(c => c.textContent.trim()).filter(Boolean).join(" "));
+      ok(/^합계 370 45 610 290 1,315/.test(foot[0]), foot[0]);
+      ok(/^비중 28\.1% 3\.4% 46\.4% 22\.1% 100\.0%/.test(foot[1]), foot[1]);
+      ok(/^월평균 185 23 305 145 658/.test(foot[2]), foot[2]);
+      ok(q(e, ".page-head #ur-xlsx.btn-primary"), "연간 = 엑셀이 주 단추");
+      eq(qa(e, ".stat-value").map(x => x.textContent).join("|"), "1,315|24,050|1,918.8|4,280");
+      q(e, '[data-urk="uld"]').click();
+      ok(/THRU ULD/.test(q(e, ".ur-card .card-title").textContent));
+      q(e, '[data-ury="p"]').click();
+      ok(/41\.9%/.test(qa(e, ".ur-year tbody tr")[8].children[1].textContent), "9월 CHINA 950/2270 " + qa(e, ".ur-year tbody tr")[8].children[1].textContent);
+      q(e, '[data-urdel="2026-08"]').click();
+      q(e, "#modal-box [data-act=ok]").click();
+      ok(!e.S.data.usRescreen.months["2026-08"], "8월 삭제");
+      q(e, '[data-urgo="2026-09"]').click();
+      ok(q(e, '.ur-in[data-k="mix:CHINA:mawb"]'), "월간으로");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+
+    t("US06 출발지 관리: 추가(다음 색 칸) · 숨김 · 자료 있는 출발지는 삭제 불가 · ETC 고정", () => {
+      const e = usEnv("admin");
+      go(e, "us-rescreen");
+      q(e, "#ur-origins").click();
+      eq(qa(e, "#ur-olist li").length, 4, "3 + ETC");
+      ok(q(e, '[data-uodel="0"]').disabled, "자료 있는 CHINA 삭제 불가");
+      q(e, "#ur-onew").value = "sgn"; q(e, "#ur-oadd").click();
+      q(e, "#ur-onew").value = "ETC"; q(e, "#ur-oadd").click();
+      eq(qa(e, "#ur-olist li").length, 5, "SGN 추가 · ETC 는 거절");
+      q(e, '[data-uoon="1"]').checked = false; q(e, '[data-uoon="1"]').dispatchEvent(new e.w.Event("change"));
+      q(e, "#ur-osave").click();
+      const U = e.w.SemisUsr;
+      eq(U.originList().map(o => o.id + ":" + o.c + (o.off ? "-" : "")).join(","), "CHINA:0,HKG:1-,HAN:2,SGN:3");
+      eq(U.colorOf("SGN"), U.COLORS[3]); eq(U.colorOf("ETC"), U.ETC_COLOR);
+      e.w.SemisUsr.setState({ ym: "2026-10", reset: true }); e.S.renderView();
+      eq(qa(e, ".ur-grid[data-grid=thru] tbody tr").map(tr => tr.dataset.id).join(","), "CHINA,HAN,SGN,ETC", "숨긴 HKG 는 자료 없는 달에서 빠짐");
+      e.w.SemisUsr.setState({ ym: "2026-09", reset: true }); e.S.renderView();
+      eq(qa(e, ".ur-grid[data-grid=thru] tbody tr").map(tr => tr.dataset.id).join(","), "CHINA,HKG,HAN,SGN,ETC", "자료 있는 달은 보임");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+
+    await ta("US07 엑셀: MIX(월 묶음 + TOTAL · 수식) · THRU(출발지 × 월) · 월별 합계 — 압축 · XML · 수식 계산값", async () => {
+      const e = usEnv("admin"); const U = e.w.SemisUsr;
+      const sh = U.yearBook("2026", "시험");
+      eq(sh.map(s => s.name).join("|"), "MIX|THRU|월별 합계");
+      const mx = sh[0].rows;
+      eq(mx[3].map(c => c.v).join("|"), "월|출발지|MAWB|%|PCs|%|WT(T)|%");
+      eq(mx[4][0].v, "8월"); eq(mx[4][1].v, "CHINA"); eq(mx[4][2].v, 200);
+      eq(mx[4][3].f, 'IF(C$9=0,"",C5/C$9)'); eq(mx[8][2].f, "SUM(C5:C8)"); eq(mx[8][2].v, 645);
+      eq(mx[14][0].v, "TOTAL"); eq(mx[14][2].f, "C5+C10"); eq(mx[14][2].v, 370);
+      eq(mx[18][2].v, 1315); eq(sh[0].merges.join(","), "A5:A9,A10:A14,A15:A19");
+      const th = sh[1].rows;
+      eq(th[3].map(c => c.v).join("|"), "출발지|8월|%|9월|%|TTL|%");
+      eq(th[4][5].f, "B5+D5"); eq(th[4][5].v, 1720); eq(th[8][1].f, "SUM(B5:B8)"); eq(th[8][1].v, 2010);
+      eq(sh[2].rows[6][4].f, "SUM(E5:E6)"); eq(sh[2].rows[6][4].v, 4280);
+      const u8 = await U.xlsxBytes(sh);
+      const files = await e.w.SemisHwpx.unzip(u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength));
+      const fm = {}; files.forEach(f => { fm[f.name] = f.data; });
+      const names = Object.keys(fm).sort();
+      ok(names.indexOf("xl/worksheets/sheet3.xml") >= 0 && names.indexOf("xl/styles.xml") >= 0, names.join(","));
+      const td = new e.w.TextDecoder();
+      names.filter(n => /\.xml$|\.rels$/.test(n)).forEach(n => {
+        const doc = new e.w.DOMParser().parseFromString(td.decode(fm[n]), "application/xml");
+        ok(!doc.getElementsByTagName("parsererror").length, "XML " + n);
+      });
+      const s1 = td.decode(fm["xl/worksheets/sheet1.xml"]);
+      ok(s1.indexOf('<mergeCell ref="A5:A9"/>') > 0 && s1.indexOf("<f>SUM(C5:C8)</f><v>645</v>") > 0, "수식 + 계산값");
+      ok(td.decode(fm["xl/workbook.xml"]).indexOf('fullCalcOnLoad="1"') > 0, "열 때 다시 계산");
+      e.w.close();
+    });
+
+    t("US08 화물보안 대시보드: manager 에게 '미주행 재보안검색' 탭(CARES 대기 중에도) · 지표 4칸 · 출발지 막대 · 비중 · 연도 추이 · 표 · 지표 바꾸기 · 전체 보기는 메뉴 권한", () => {
+      const e = usEnv("manager");
+      go(e, "sec-dash");
+      const tab = qa(e, '[data-ct-tabs="sdt"] [data-ct-tab]').find(b => b.dataset.ctTab === "usr");
+      ok(tab && /미주행 재보안검색/.test(tab.textContent), "탭");
+      tab.click();
+      const pane = q(e, '[data-ct-pane="sdt:usr"]');
+      ok(pane && !pane.hidden);
+      eq(qa(e, ".ur-kpi").length, 4);
+      ok(/전월/.test(q(e, ".ur-kpi .ur-ks").textContent));
+      eq(qa(e, ".ur-cc .cc-col").length, 12, "최근 12개월");
+      eq(qa(e, ".ur-sd .sd-legend")[0].querySelectorAll("span").length, 4, "범례 4");
+      eq(qa(e, ".ur-share .ur-sr").length, 4);
+      ok(q(e, '.lc[data-lc="ur-yoy"] polyline'), "연도 추이 선");
+      ok(/2025년/.test(q(e, ".ur-sd").textContent), "전년 계열");
+      ok(q(e, ".ur-tblv table"), "표로 보기");
+      ok(!q(e, '.ur-sd [data-sd-go="us-rescreen"]'), "manager 는 전체 보기 없음");
+      q(e, '[data-ursd="wt"]').click();
+      ok(/중량/.test(q(e, ".ur-sd .sd-ph b").textContent), "지표 바꿈");
+      ok(q(e, '[data-ursd="wt"][aria-pressed="true"]'));
+      loginAs(e, "admin"); go(e, "sec-dash");
+      ok(q(e, '.ur-sd [data-sd-go="us-rescreen"]'), "admin 전체 보기");
+      e.S.data.usRescreen = {}; go(e, "sec-dash");
+      ok(!qa(e, '[data-ct-tab="usr"]').length, "자료 없으면 탭 없음");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+
+    t("US09 홈 '오늘' 띠: 최근 달 전월 대비 변화율만 · 누르면 대시보드 탭 · 읽기 권한 밖이면 없음", () => {
+      const e = usEnv("manager");
+      go(e, "dashboard");
+      const row = q(e, "#td-usr");
+      ok(row, "행");
+      ok(/9월 · 전월 대비/.test(row.querySelector(".td-s").textContent), row.textContent);
+      eq(row.querySelector(".td-v").textContent, "MIX▲ 3.9%THRU▲ 12.9%", "MAWB 645 → 670 · ULD 2010 → 2270");
+      ok(row.classList.contains("td-wide"), "두 칸 폭");
+      ok(!/670|2,270/.test(row.textContent), "수치 없음");
+      row.click();
+      eq(e.w.location.hash, "#/sec-dash");
+      e.S.renderView();
+      ok(!q(e, '[data-ct-pane="sdt:usr"]').hidden, "탭 열림");
+      loginAs(e, "user"); go(e, "dashboard");
+      ok(!q(e, "#td-usr"), "user 없음");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+
+    t("US10 manager 는 입력 화면을 못 열고(메뉴 권한) · 직접 주소면 읽기 전용", () => {
+      const e = usEnv("manager");
+      go(e, "us-rescreen");
+      ok(!q(e, ".ur-in") && !q(e, "#ur-save") && !q(e, "#ur-origins"), "입력 · 관리 없음");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
     });
   }
 

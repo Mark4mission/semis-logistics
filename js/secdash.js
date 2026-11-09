@@ -425,24 +425,30 @@
         <tbody>${tblRows}</tbody></table></div></details>
     </section>`;
   }
-  /* 추이 분석 — 장비 가동 · 점검 이행 · 위해물품 · 검색 환경을 한 카드의 탭으로(화면 블록 4개 이하). 인쇄는 넷 다 */
-  const TREND = [["equip", "장비 가동 · 고장"], ["insp", "점검 이행"], ["haz", "위해물품"], ["env", "검색 환경"]];
+  /* 추이 분석 — 장비 가동 · 점검 이행 · 위해물품 · 검색 환경 · 미주행 재보안검색을 한 카드의 탭으로(화면 블록 4개 이하). 인쇄는 모두.
+     미주행 재보안검색(js/usrescreen.js)은 H:drive 자료라 CARES 를 기다리는 동안에도 탭으로 보인다(hold = CARES 탭 자리의 대기 · 오류) */
+  const TREND = [["equip", "장비 가동 · 고장"], ["insp", "점검 이행"], ["haz", "위해물품"], ["env", "검색 환경"], ["usr", "미주행 재보안검색"]];
   let trendTab = "equip";
-  function trendHTML() {
-    const parts = { equip: equipCard(), insp: inspCard(), haz: window.SemisHaz ? SemisHaz.sdCard() : "", env: envCard() };
+  const usrPane = () => (window.SemisUsr && SemisUsr.sdOk() ? SemisUsr.sdPane() : "");
+  function trendHTML(hold) {
+    const usr = usrPane();
+    const parts = hold != null ? { equip: hold, usr } : { equip: equipCard(), insp: inspCard(), haz: window.SemisHaz ? SemisHaz.sdCard() : "", env: envCard(), usr };
     const tabs = TREND.filter(([k]) => parts[k]);
     if (!tabs.some(([k]) => k === trendTab)) trendTab = tabs[0][0];
     return `<section class="card sd-trend" aria-label="추이 분석">
-      <h2 class="card-title"><span class="ct-t">추이 분석</span><span class="dc-meta">CARES 기록</span></h2>
+      <h2 class="card-title"><span class="ct-t">추이 분석</span><span class="dc-meta">${usr ? "CARES · 재보안검색 기록" : "CARES 기록"}</span></h2>
       ${ui.tabs("sdt", tabs, trendTab)}
       ${tabs.map(([k]) => ui.pane("sdt", k, trendTab, parts[k].replace(/^\s*<section class="card sd-card"/, '<section class="sd-sub"'))).join("")}
     </section>`;
   }
   function bodyHTML() {
     const s = C().state;
-    if (!s.ts && !s.err) return wait("CARES에서 장비 · 점검 · 센서 기록을 불러오는 중입니다.");
-    if (s.err && !s.equips.length) return `<section class="card">${ui.empty("CARES에 연결하지 못했습니다. (" + s.err + ")",
-      '<button type="button" class="btn btn-ghost btn-sm" data-sd-retry>다시 시도</button>')}</section>`;
+    const usr = !!(window.SemisUsr && SemisUsr.sdOk());
+    if (!s.ts && !s.err) return usr ? trendHTML(wait("CARES에서 장비 · 점검 · 센서 기록을 불러오는 중입니다.")) : wait("CARES에서 장비 · 점검 · 센서 기록을 불러오는 중입니다.");
+    if (s.err && !s.equips.length) {
+      const box = ui.empty("CARES에 연결하지 못했습니다. (" + s.err + ")", '<button type="button" class="btn btn-ghost btn-sm" data-sd-retry>다시 시도</button>');
+      return usr ? trendHTML(box) : `<section class="card">${box}</section>`;
+    }
     return trendHTML();
   }
   function metaText() {
@@ -515,6 +521,7 @@
     ui.wireTabs(root, "sdt", (id) => { trendTab = id; });
     wireCharts(root);
     if (window.SemisHaz) SemisHaz.fill(root);
+    if (window.SemisUsr) SemisUsr.sdWire(root);
   }
   function paint() {
     const box = document.getElementById("sd-body");
@@ -570,5 +577,6 @@
   }
 
   SeMIS.registerModule(MOD, { title: TITLE, render });
-  window.SemisSecDash = { equipStats, monthly, weekly, inspect28, rate28, periodicLate, anomalies, envModel, niceTicks, lineChart, refresh, paint, charts };
+  window.SemisSecDash = { equipStats, monthly, weekly, inspect28, rate28, periodicLate, anomalies, envModel, niceTicks, lineChart, refresh, paint, charts, wireCharts,
+    setTab(id) { if (TREND.some(([k]) => k === id)) trendTab = id; } };
 })();

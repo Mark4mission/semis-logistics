@@ -81,6 +81,7 @@ insert into semis_logi_private.key_acl(key, read_rank, write_rank) values
   ('selfCheckCfg',2,4), -- 자체 보안점검 안내 (v1.34): 주체 · 대상 · 주기 — 시스템관리자 편집 (마이그레이션 semis_logi_security_18_selfcheckcfg · 29_admin_cfg)
   ('secPost',2,3), ('secPostImg',2,3), -- 경비대원 배치도 (v1.28, 민감보안정보): manager 열람 · hq 편집 (마이그레이션 semis_logi_security_15_secpost)
   ('docs',2,3), ('partners',2,3), ('contracts',2,3), ('kcra',2,3), ('secCases',2,3), ('dissem',2,3), ('scrStats',2,3),   -- 점검교육 · 수검대응 자료 (v1.41): manager 열람 · hq 편집, 원본 파일은 폴더 등급(docs-ssi · contracts = hq) (마이그레이션 semis_logi_security_23_audit_ta — 번호 23 은 edu_simple 과 겹치나 별개 마이그레이션)
+  ('usRescreen',2,4),    -- 미주행 재보안검색 (v1.63): manager 열람(화물보안 대시보드) · 입력은 시스템관리자(시험 운영) (마이그레이션 semis_logi_security_31_usrescreen)
   ('vault',3,3),
   ('boards',1,4),        -- 게시판 정의(이름 · 권한 · 기능 토글): 내부 전 계정 열람 · 시스템관리자 편집, 글은 비공개 표(tools/sql/semis-logi-bbs.sql, 마이그레이션 semis_logi_security_28_bbs)
   ('desk',3,3),          -- 메인 데스크 (v1.47): 접수 대장 · 담당 배정 — hq 열람 · 편집 (마이그레이션 semis_logi_security_26_desk)
