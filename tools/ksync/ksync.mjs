@@ -11,7 +11,7 @@ import { pathToFileURL } from "node:url";
 import { plan, MAX_SIZE, K_BLOCK } from "./plan.mjs";
 import * as L from "./lib.mjs";
 
-export const VERSION = "1.62.0";
+export const VERSION = "1.64.0";
 const MIN = 60e3;
 const TRIES = 3, RETRY = 5 * MIN;      // 매일 실행이 K드라이브에 닿지 않을 때 — 5분 간격 3번, 그래도 안 되면 다음 날
 /* 실행 전체를 멈추는 오류 — 망 · 서버(게이트웨이 포함: 처리했는지 모름) · 키 · IP · 분당 상한(한 번 쉬고도) */
@@ -119,12 +119,16 @@ async function agent(deps, args) {
   let maps = (full.maps || []).filter(m => m.state !== "paused" && lists.has(m.id));
 
   if (args.dryRun) {
+    const bs = baseSets(lists, full.paused_base);
     for (const m of maps) {
       const root = await mapRoot(mount, m);
       if (!root) { deps.out({ map: m.id, k_path: m.k_path, error: "no_folder" }); continue; }
+      const since = L.sinceMs(m.since);
+      if (isNaN(since)) { deps.out({ map: m.id, k_path: m.k_path, error: "since" }); continue; }
       const li = lists.get(m.id);
-      const idx = await L.indexDir(root, new Map(li.base.map(b => [b.rel_path, b])));
-      const p = plan({ map: m.state === "preview" ? Object.assign({}, m, { hold: { ok: true } }) : m, baseline: li.base, kList: idx.list, kErr: idx.errors, kCapped: idx.capped, hList: li.h, limit: full.mass_limit, today });
+      const idx = await L.indexDir(root, new Map(li.base.map(b => [b.rel_path, b])), { since, sizes: bs.sizes });
+      const p = plan({ map: m.state === "preview" ? Object.assign({}, m, { hold: { ok: true } }) : m, baseline: li.base, kList: idx.list, kErr: idx.errors, kCapped: idx.capped, hList: li.h, limit: full.mass_limit, today,
+        since, allSha: bs.shas });
       deps.out({ map: m.id, k_path: m.k_path, state: m.state, held: p.held, fatal: p.fatal || undefined, errors: idx.errors.map(e => (e.f + " " + e.r).trim()), counts: p.counts,
         actions: p.planned.map(a => [a.op, a.rel || "", a.mode || a.state || ""].join(" ").trim()) });
     }
@@ -148,8 +152,9 @@ async function agent(deps, args) {
     if (st.foldersDay !== today) {
       try { await srv.call("folders", { list: await L.folderTree(mount) }); st.foldersDay = today; } catch (e) { log("warn", "폴더 목록 보고 실패: " + e.code); }
     }
+    const bs = baseSets(lists, full.paused_base);
     for (const m of maps) {
-      const r = await syncMap({ deps, srv, run, mount, today, limit: full.mass_limit, unsent, olds }, m, lists.get(m.id));
+      const r = await syncMap({ deps, srv, run, mount, today, limit: full.mass_limit, unsent, olds, bs }, m, lists.get(m.id));
       ["k2h", "h2k", "conflicts", "skipped", "errors"].forEach(k => { tot[k] += r[k] || 0; });
       r.detail.forEach(d => detail.push(d));
       // done = 그 연결을 끝까지 맞춤 — 서버는 이때만 승인한 보류를 지운다(전송량 상한 등으로 중간에 멈추면 아님)
@@ -186,6 +191,13 @@ async function mapRoot(mount, m) {
   } catch (e) { return ""; }
 }
 
+/* 모든 연결의 기준선 크기 · 해시 — 기준일 전 파일이라도 크기가 같으면 해시하고(옮긴 파일 후보), 해시가 같으면 새 파일로 다룬다(연결 폴더끼리 옮김).
+   멈춘 연결은 목록이 없어 hello full 의 paused_base(크기 · 해시)로 더한다 */
+function baseSets(lists, paused) {
+  const all = [...lists.values()].flatMap(l => l.base || []).concat(paused || []);
+  return { sizes: new Set(all.map(b => Number(b.k_size))), shas: new Set(all.map(b => b.k_sha256).filter(Boolean)) };
+}
+
 /* 지난 실행이 보내지 못한 기준선 표시(받아 놓은 파일 · 다시 이은 줄) — 계획 전에 먼저 보낸다. 안 보내면 이미 맞춘 파일을
    양쪽 다 바뀐 것으로 보아 가짜 충돌 · 중복 판이 생긴다. 멈춘 연결 것은 다시 켤 때까지 두고, 지운 연결 것은 버린다. 하나라도 보냈으면 true */
 async function replay(srv, run, full, carry, log) {
@@ -212,14 +224,18 @@ async function syncMap(ctx, m, li) {
   const line = (f, a, r) => res.detail.push({ m: m.id, f: String(f || "").slice(0, 200), a, r: r || "" });
   const root = await mapRoot(mount, m);
   if (!root) { res.errors++; res.fatal = true; line(m.k_path, "error", "no_folder"); log("error", "연결 폴더 없음: " + m.k_path); return res; }
+  // 기준일을 읽지 못하면 그 연결을 건너뛴다 — 기준일 없이 맞추면 그 전 파일이 모두 올라간다
+  const since = L.sinceMs(m.since);
+  if (isNaN(since)) { res.errors++; res.fatal = true; line(m.k_path, "error", "since"); log("error", "기준일 형식이 틀려 건너뜀: " + m.k_path); return res; }
   const byRel = new Map(li.base.map(b => [b.rel_path, b]));
-  const idx = await L.indexDir(root, byRel, { cleanBefore: deps.now() - 864e5 });
+  const idx = await L.indexDir(root, byRel, { cleanBefore: deps.now() - 864e5, since, sizes: ctx.bs.sizes });
   idx.errors.forEach(e => { res.errors++; line(e.f, "error", e.r); });
   if (idx.capped) { res.errors++; line(m.k_path, "error", "too_many"); }
   const preview = m.state === "preview";
-  const p = plan({ map: preview ? Object.assign({}, m, { hold: { ok: true } }) : m, baseline: li.base, kList: idx.list, kErr: idx.errors, kCapped: idx.capped, hList: li.h, limit: ctx.limit, today });
+  const p = plan({ map: preview ? Object.assign({}, m, { hold: { ok: true } }) : m, baseline: li.base, kList: idx.list, kErr: idx.errors, kCapped: idx.capped, hList: li.h, limit: ctx.limit, today,
+    since, allSha: ctx.bs.shas });
   if (p.fatal) { res.fatal = true; log("error", "연결 폴더를 다 읽지 못해 건너뜀(" + p.fatal + "): " + m.k_path); return res; }
-  res.n_files = idx.list.length;
+  res.n_files = idx.list.length - (p.counts.old || 0);
   // 센 설정의 시각(hello 의 updated_at)을 함께 보낸다 — 그 사이 관리자가 설정을 고쳤으면 서버가 옛 설정으로 센 건수를 버린다
   if (preview) {
     // 그 사이 관리자가 [시작] · 멈춤 · 지우기를 눌렀으면(state) 이 건수만 버린다 — 실행 전체를 멈추면 뒤의 연결을 맞추지 못한다

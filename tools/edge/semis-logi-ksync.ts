@@ -12,7 +12,7 @@
      get(연결된 문서의 파일만 — sha256 을 재고 서명 URL 10분).
    - 에이전트가 보낸 경로 · 폴더 · ssi · 주소 앞부분은 쓰지 않는다: 폴더(민감보안정보 docs-ssi)는 연결 · 판 묶음을 아는 SQL 이,
      문서함 주소 앞부분은 여기서(PUBLIC_PREFIX) 정한다 — 키를 가진 쪽이 SSI 파일을 docs/ 에 두거나 다른 주소를 등록하지 못하게.
-   - 경로 규칙 · 50MB · 금지 형식은 semis-logi-files 와 같다(newPath — 무작위 접두사, 폴더 docs · 민감보안정보 docs-ssi).
+   - 경로 규칙 · 50MB 는 semis-logi-files 와 같다(newPath — 무작위 접두사, 폴더 docs · 민감보안정보 docs-ssi). 올리지 않는 형식은 SQL ksync_h_blocked(동기화 전용 — 파일 함수보다 넓음).
    - 본문 2MB 상한은 Content-Length 가 없어도(chunked) 읽는 중에 끊는다 — 다 받아 놓고 재면 상한이 메모리를 지키지 못한다.
    - 오류 응답은 짧은 코드만(경로 · 키 · 내부 사유를 돌려주지 않음). 서버는 에이전트에 명령을 보내지 않는다.
    - 배포: Supabase MCP deploy_edge_function (verify_jwt false — 위의 키 확인으로 대신). 이 파일이 원본. */
@@ -28,7 +28,7 @@ const SIGN_SECS = 600;
 const ACTS = ["hello", "net", "folders", "preview", "run", "mark", "put", "apply", "get"];
 const STATUS: Record<string, number> = {
   auth: 401, ip: 403, origin: 403, scope: 403, rate: 429, quota: 429, type: 415, too_large: 413,
-  hash: 409, held: 409, state: 409, run: 409, bad: 400, method: 405, server: 500
+  hash: 409, held: 409, state: 409, run: 409, old: 409, bad: 400, method: 405, server: 500
 };
 
 type Res = { ok?: boolean; error?: string; [k: string]: unknown };

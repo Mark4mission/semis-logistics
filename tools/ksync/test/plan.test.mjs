@@ -277,6 +277,46 @@ eq([p.actions[0].k.size, p.actions[0].k.mtime], [1, T], "A7 H 만 바뀜 — 덮
 eq([conflictName("d/a.xlsx", "2026-11-04", 2), excluded("a (충돌 2026-11-04 2).xlsx", false), excluded("a (충돌 2026-11-04) 2.xlsx", false)],
   ["d/a (충돌 2026-11-04 2).xlsx", true, false], "A6 두 번째 충돌 사본은 '(충돌 날짜 2)' — 색인 제외 규칙(= SQL)과 같은 꼴");
 
+/* v1.64 기준일(since) — 기준선에 없는 K 파일 중 한국 시각 그날 0시 전에 고친 것은 올리지 않고 · 연결만도 하지 않고 · 덮지 않고 건수만(old).
+   기준선 파일은 날짜와 관계없이 맞추고, 다른 연결 기준선과 해시가 같은 옛 파일(연결 폴더끼리 옮김)은 새 파일로 */
+{
+  const SINCE = Date.parse("2025-08-01T00:00:00+09:00"), OLD = SINCE - 864e5, NEW = SINCE + 864e5;
+  const PS = (o) => P(Object.assign({ since: SINCE }, o));
+  p = PS({ kList: [{ rel: "old.pdf", size: 3, mtime: OLD, sha: H("1") }, { rel: "new.pdf", size: 4, mtime: NEW, sha: H("2") }] });
+  eq([ops(p), p.counts.old, p.counts.k2h, p.n, p.counts.total, p.detail.map(d => d.f)], [["put:new:new.pdf"], 1, 1, 0, 1, ["new.pdf"]], "① 기준일 전 새 파일 → 올리지 않음 · 건수만(old) · 변경 수 0 · 기록 줄 · total 에 없음");
+  p = PS({ kList: [{ rel: "old.pdf", size: MAX_SIZE + 1, mtime: OLD, sha: null }, { rel: "o2.pdf", size: 3, mtime: OLD, sha: null }] });
+  eq([ops(p), p.counts.old, p.counts.skip], [[], 2, 0], "① 해시하지 않은 옛 파일(sha 없음)도 옛 파일 — 50MB 건너뜀으로 보지 않음");
+  const BO = [row(1, "a.xlsx", { k_mtime: new Date(OLD).toISOString() })];
+  p = PS({ baseline: BO, kList: [kOf(BO[0], { mtime: OLD, sha: H("z"), size: 2 })], hList: BO.map(r => hOf(r)) });
+  eq([ops(p), p.n, p.counts.old], [["put:version:a.xlsx"], 1, 0], "② 기준선의 옛 파일을 고침(수정 날짜는 기준일 전 그대로) → 새 판");
+  p = PS({ baseline: BO, kList: [kOf(BO[0], { rel: "d/a.xlsx", mtime: OLD })], hList: BO.map(r => hOf(r)) });
+  eq([ops(p), p.counts.old], [["rename::d/a.xlsx"], 0], "③ 기준선 파일을 같은 연결 안에서 옮김(옛 날짜) → 이름 바꿈");
+  p = PS({ kList: [{ rel: "moved.pdf", size: 5, mtime: OLD, sha: H("3") }], allSha: new Set([H("3")]) });
+  eq([ops(p), p.counts.old], [["put:new:moved.pdf"], 0], "④ 다른 연결의 기준선과 해시가 같은 옛 날짜 파일(연결 폴더끼리 옮김) → 올림");
+  p = PS({ kList: [{ rel: "규정.pdf", size: 3, mtime: OLD, sha: null }], hList: [{ doc: "h1", ser: "h1", name: "규정.pdf", url: "uh", size: 9 }] });
+  eq([ops(p), p.counts.old], [["get::규정 (2).pdf"], 1], "⑤ H 에만 있는 문서 이름이 옛 K 파일과 같음(양쪽) → '이름 (2)' 로 받고 옛 파일을 덮지 않음");
+  const hSame = [{ doc: "h1", ser: "h1", name: "same.pdf", url: "uh", size: 4 }];
+  p = PS({ kList: [{ rel: "same.pdf", size: 4, mtime: OLD, sha: H("4") }], hList: hSame });
+  eq([ops(p), p.counts.link, p.counts.old], [["get::same (2).pdf"], 0, 1], "⑥ 옛 K 파일과 이름 · 크기가 같은 H 문서 → 연결만 하지 않음(H 문서는 새 이름으로)");
+  p = PS({ map: Object.assign({}, MAP, { dir: "k2h" }), kList: [{ rel: "same.pdf", size: 4, mtime: OLD, sha: H("4") }], hList: hSame });
+  eq([ops(p), p.counts.link, p.counts.old], [[], 0, 1], "⑥ K → H 만 연결도 연결만 · 올리기 없음");
+  p = PS({ baseline: BO, kList: [], hList: BO.map(r => hOf(r)) });
+  eq([ops(p), p.counts.del], [["state:del_k:a.xlsx"], 1], "⑦ 기준선 파일이 K 에서 사라짐 → K 에서 지움(기준일과 무관)");
+  const many = Array.from({ length: 500 }, (_, i) => ({ rel: "old/" + i + ".pdf", size: 10 + i, mtime: OLD, sha: null }));
+  p = PS({ baseline: B, kList: B.map(r => kOf(r)).concat(many), hList: B.map(r => hOf(r)) });
+  eq([p.held, p.actions.length, p.counts.old, p.n, p.detail.length], [false, 0, 500, 0, 0], "⑧ 옛 파일 500개 → 보류 아님 · 올리기 · 기록 줄 없음");
+  const b1 = Date.parse("2025-07-31T14:59:59Z"), b2 = Date.parse("2025-07-31T15:00:00Z");
+  p = PS({ kList: [{ rel: "x.pdf", size: 1, mtime: b1, sha: H("5") }, { rel: "y.pdf", size: 1, mtime: b2, sha: H("6") }] });
+  eq([ops(p), p.counts.old, SINCE], [["put:new:y.pdf"], 1, b2], "⑨ 경계: 2025-07-31T14:59:59Z 는 옛 파일, 15:00:00Z(한국 8-1 0시)는 새 파일");
+  eq([LIB.sinceMs("2025-08-01"), LIB.sinceMs(""), LIB.sinceMs(null), LIB.sinceMs("2025-02-30"), LIB.sinceMs("2025-8-1"), LIB.sinceMs("2025-08-01T00:00")].map(x => (isNaN(x) ? "NaN" : x)),
+    [b2, 0, 0, "NaN", "NaN", "NaN"], "기준일 → 한국 시각 그날 0시(없으면 0, 없는 날 · 다른 꼴은 NaN)");
+  p = P({ kList: ["cert.pfx", "key.P12", "ca.pem", "pw.kdbx", "바로 가기.lnk", "site.url"].map((n, i) => ({ rel: n, size: 1, mtime: T, sha: H(String(i)) })) });
+  eq([ops(p), p.counts.skip, p.detail.map(d => d.a + ":" + d.r).join()], [[], 6, "skip:type,skip:type,skip:type,skip:type,skip:type,skip:type"], "⑩ 인증서 · 키 보관 · 바로 가기 → 올리지 않고 건너뜀(type)");
+  ok(["a.pfx", "b.p12", "c.pem", "d.kdbx", "e.lnk", "f.url"].every(n => H_BLOCK.test(n)) && !H_BLOCK.test("g.key") && !H_BLOCK.test("h.pdf"), "⑩ H 차단에 인증서 · 바로 가기(.key 는 Keynote 와 같아 막지 않음)");
+  p = P({ kList: [{ rel: "old.pdf", size: 3, mtime: OLD, sha: H("1") }] });
+  eq([ops(p), p.counts.old], [["put:new:old.pdf"], 0], "⑪ 기준일 없음 → 옛 파일도 지금처럼 올림");
+}
+
 /* 도우미 — 경로 · 설정 · 시각 */
 ["a/b.pdf", "가/나 다.xlsx"].forEach(x => ok(relOk(x), "경로 " + x));
 ["/etc/x", "../x", "a/../b", "a//b", "a\\b", "C:x", "", "a/"].forEach(x => ok(!relOk(x), "경로 거절 " + x));
@@ -348,6 +388,21 @@ await indexDir(partDir, new Map());
 eq(fs.readdirSync(partDir).sort(), [".ksync-0123456789ab.part", ".ksync-ba9876543210.part", "a.pdf"], "A9 정리 옵션 없으면 그대로");
 const ip = await indexDir(partDir, new Map(), { cleanBefore: Date.now() - 864e5 });
 eq([fs.readdirSync(partDir).sort(), ip.list.map(x => x.rel)], [[".ksync-ba9876543210.part", "a.pdf"], ["a.pdf"]], "A9 하루 지난 임시 파일만 지움");
+
+/* v1.64 기준일 색인 — 기준선에 없고 기준일 전이며 크기가 어느 연결 기준선과도 다르면 해시하지 않음(올리지 않을 파일) */
+{
+  const sinceDir = path.join(TMP, "since"), SN = Date.parse("2025-08-01T00:00:00+09:00");
+  const hx = (s) => crypto.createHash("sha256").update(s).digest("hex");
+  fs.mkdirSync(sinceDir);
+  const sw = (n, s, t) => { fs.writeFileSync(path.join(sinceDir, n), s); fs.utimesSync(path.join(sinceDir, n), t / 1000, t / 1000); };
+  sw("old.pdf", "OLD1", SN - 864e5); sw("oldsz.pdf", "OLDSIZE", SN - 864e5); sw("new.pdf", "NEW", SN); sw("base.pdf", "BASE", SN - 864e5);
+  const sx = await indexDir(sinceDir, new Map([["base.pdf", { k_sha256: H("b"), k_size: 1, k_mtime: new Date(SN - 9e9).toISOString() }]]), { since: SN, sizes: new Set([7]) });
+  const shaOf = (n) => (sx.list.find(x => x.rel === n) || {}).sha;
+  eq(["old.pdf", "oldsz.pdf", "new.pdf", "base.pdf"].map(shaOf), [null, hx("OLDSIZE"), hx("NEW"), hx("BASE")],
+    "기준일 색인: 옛 파일은 해시 안 함 · 크기가 어느 연결 기준선과 같으면 잼 · 기준일 0시부터는 잼 · 기준선 파일은 날짜와 관계없이");
+  eq(sx.list.length, 4, "옛 파일도 색인에는 남음(이름 차지 — 받는 파일이 덮지 않음)");
+  ok((await indexDir(sinceDir, new Map())).list.every(x => x.sha), "기준일 없음 → 모두 잼(지금과 같음)");
+}
 
 /* 받은 파일 놓기(place) — A2 추적하지 않는 K 항목은 옮기지 않음 · A4 충돌 사본 이름은 받은 뒤 · A6 '(충돌 날짜 2)' · A7 색인 뒤 바뀐 파일은 건드리지 않음 */
 const pr = path.join(TMP, "pl");
@@ -880,7 +935,7 @@ const fakeSrv = (o) => {
     if (x instanceof Response) return x;
     if (x) return new Response(JSON.stringify(x), { status: x.ok ? 200 : 409 });
     let r = { ok: true };
-    if (b.act === "hello") r = { ok: true, allow: true, daily_at: "08:30", requested: false, mass_limit: LIM, maps: o.maps, lists: o.lists };
+    if (b.act === "hello") r = { ok: true, allow: true, daily_at: "08:30", requested: false, mass_limit: LIM, maps: o.maps, lists: o.lists, paused_base: o.paused_base };
     else if (tag === "run:start") r = { ok: true, run: 21 };
     else if (tag === "put:begin") { nUp++; r = { ok: true, path: "docs/z" + nUp, url: "https://store.example/pub/z" + nUp, upload: "https://store.example/up/z" + nUp, type: "application/x-test" }; }
     else if (b.act === "apply") r = { ok: true, docs: Object.fromEntries(b.paths.map(p => [p, "ks-" + p])) };
@@ -1015,6 +1070,43 @@ for (const [err, status, errors] of [["state", "ok", 0], ["bad", "partial", 1]])
   rf = await runFake(sv);
   eq([rf.status, kRead("m17", "h17.pdf"), rf.end && rf.end.maps.map(x => [x.id, x.done]), rf.end && rf.end.errors], [status, "H17", [[16, false], [17, true]], errors],
     "미리보기 건수 거절(" + err + ") → 그 연결만 · 다음 연결은 맞춤");
+}
+
+/* v1.64 기준일 — 에이전트가 연결의 기준일 · 모든 연결 기준선(크기 · 해시)을 색인 · 계획에 넘긴다: 옛 파일은 올리지 않고(미리보기 건수 old),
+   다른 연결 기준선과 해시가 같은 옛 파일은 올림 · 파일 수는 옛 파일을 빼고 · 기준일을 읽지 못하면 그 연결을 건너뜀 · 새 문서 시작에 수정 시각을 보냄 */
+{
+  fs.rmSync(ST, { force: true });
+  const SN = Date.parse("2025-08-01T00:00:00+09:00");
+  const kt = (d, n, s, t) => { fs.writeFileSync(path.join(d, n), s); fs.utimesSync(path.join(d, n), t / 1000, t / 1000); };
+  const d18 = mkK("m18"), d19 = mkK("m19"), d21 = mkK("m21");
+  mkK("m20");
+  kt(d18, "old.pdf", "O18", SN - 864e5); kt(d18, "new.pdf", "N18", SN + 864e5); kt(d18, "moved.pdf", "MOVED", SN - 864e5);
+  kt(d19, "x.pdf", "X19", SN + 864e5);
+  kt(d21, "old.pdf", "O21", SN - 864e5); kt(d21, "new.pdf", "N21", SN + 864e5);
+  sv = fakeSrv({ maps: [mapOf(18, "m18", { since: "2025-08-01" }), mapOf(19, "m19", { since: "2025-02-30" }), mapOf(20, "m20"), mapOf(21, "m21", { state: "preview", since: "2025-08-01" })],
+    lists: [{ map: 18, base: [], h: [] }, { map: 19, base: [], h: [] }, { map: 20, base: [bRow(95, "gone/moved.pdf", "MOVED", "um")], h: [hIt("d95", "moved.pdf", "um")] }, { map: 21, base: [], h: [] }] });
+  // 점검용 --dry-run 도 같은 기준일 · 전체 기준선 — 옮기기 전 이름 확인이 실제 실행과 같게
+  const outs = [];
+  const rd = await runAgent(agentDeps({ mountRoot: async () => FS, fetch: sv.fetch, out: (o) => outs.push(o) }), { dryRun: true });
+  const o18 = outs.find(o => o.map === 18), o21 = outs.find(o => o.map === 21);
+  eq([rd.status, o18 && o18.actions.slice().sort(), o18 && o18.counts.old, outs.find(o => o.map === 19), o21 && o21.counts.old],
+    ["dry-run", ["put moved.pdf new", "put new.pdf new"], 1, { map: 19, k_path: "m19", error: "since" }, 1], "--dry-run: 옛 파일은 계획에 없고 old 로 셈 · 다른 연결 기준선과 해시가 같으면 올림 · 기준일을 못 읽은 연결은 since");
+  rf = await runFake(sv);
+  const bg = sv.bodies.filter(b => b.act === "put" && b.phase === "begin");
+  const pv21 = sv.bodies.find(b => b.act === "preview");
+  eq([rf.status, bg.map(b => b.map + ":" + b.rel_path).sort(), rf.end.maps.find(x => x.id === 18).n_files, rf.end.detail.filter(d => d.r === "since").map(d => d.m + ":" + d.f), rf.end.detail.some(d => /old\.pdf/.test(d.f))],
+    ["partial", ["18:moved.pdf", "18:new.pdf"], 2, ["19:m19"], false], "에이전트: 옛 파일은 올리지 않음 · 다른 연결 기준선과 해시가 같으면 올림 · 파일 수는 옛 파일 빼고 · 기준일을 못 읽은 연결은 건너뜀");
+  eq(bg.map(b => b.rel_path + "@" + b.mtime).sort(), ["moved.pdf@" + new Date(SN - 864e5).toISOString(), "new.pdf@" + new Date(SN + 864e5).toISOString()], "새 문서 시작에 수정 시각(서버도 기준일로 대 봄)");
+  eq([pv21 && pv21.map, pv21 && pv21.counts.k2h, pv21 && pv21.counts.old], [21, 1, 1], "미리보기 건수에 기준일 전 파일 수(old)");
+  // 멈춘 연결은 목록이 없다 — 그 기준선(hello full 의 paused_base)과 해시가 같은 옛 파일도 새 파일로(서버 put_begin 과 같은 '어느 연결이든')
+  fs.rmSync(ST, { force: true });
+  const d22 = mkK("m22");
+  kt(d22, "moved.pdf", "MOVED22", SN - 864e5); kt(d22, "old.pdf", "OLD22", SN - 864e5);
+  sv = fakeSrv({ maps: [mapOf(22, "m22", { since: "2025-08-01" }), mapOf(23, "m23", { state: "paused" })], lists: [{ map: 22, base: [], h: [] }],
+    paused_base: [{ k_size: 7, k_sha256: sha("MOVED22") }] });
+  rf = await runFake(sv);
+  eq([rf.status, sv.bodies.filter(b => b.act === "put" && b.phase === "begin").map(b => b.map + ":" + b.rel_path + ":" + b.mode), rf.end.maps.find(x => x.id === 22).n_files],
+    ["ok", ["22:moved.pdf:new"], 1], "멈춘 연결 폴더에서 옮긴 옛 파일 → 올림(그 밖의 옛 파일은 그대로 뺌)");
 }
 
 /* 설치 · 제거(install.sh · uninstall.sh) — HOME 은 임시 폴더, 키체인(security) · launchctl 은 가짜 명령 */

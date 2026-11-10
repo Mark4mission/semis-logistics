@@ -12542,6 +12542,65 @@ function makeServer(opts = {}) {
       eq(e.errors.length, 0, e.errors.join(" | "));
       e.Sync.stop(); e.w.close();
     });
+    await ta("KS22 v1.64 기준일 · K 폴더 직접 적기: 연결 추가 창(목록 + 직접 적는 칸 · 기준일) · 고친 것만 보냄 · 목록 줄 '기준일 · 기준일 전 N개 뺌' · [시작] 확인 · [삭제 확정] 안내 · 쉬운 말", async () => {
+      const { sv, ks, e } = await setup();
+      await openTab(e);
+      q(e, "#ks-map-add").click();
+      ok(q(e, "#ks-kp").tagName === "SELECT" && q(e, "#ks-kp-in") && q(e, "#ks-since") && q(e, "#ks-since").type === "date", "폴더 목록 · 직접 적는 칸 · 기준일 칸이 함께");
+      q(e, "#ks-kp").value = "안전보안/점검표"; q(e, "#ks-kp").dispatchEvent(new e.w.Event("change"));
+      eq(q(e, "#ks-kp-in").value, "안전보안/점검표", "목록에서 고르면 직접 적는 칸이 채워짐");
+      q(e, "#ks-kp-in").value = "  안전보안/점검표/2025/상반기/가/나/다/라  "; q(e, "#ks-tg").value = "audit|checklist"; q(e, "#ks-since").value = "2025-08-01";
+      clickOk(e); await tick(30);
+      eq(JSON.stringify(ks.calls.filter(c => c.name === "map_save").pop().b.p), '{"dir":"both","ssi":false,"k_path":"안전보안/점검표/2025/상반기/가/나/다/라","mod":"audit","grp":"checklist","since":"2025-08-01"}',
+        "보내는 값 = 직접 적은 칸(앞뒤 공백 정리 · 3단계보다 깊어도) · 기준일");
+      ks.maps = [{ id: 9, k_path: "안전보안/점검표", mod: "audit", grp: "checklist", dir: "both", ssi: false, state: "preview", since: "2025-08-01", preview: { k2h: 3, h2k: 1, link: 0, del: 0, skip: 0, old: 7, total: 4 }, n_files: 0, n_wait: 0 },
+        { id: 10, k_path: "보안", mod: "audit", grp: "plan", dir: "both", ssi: false, state: "active", since: "2025-09-01", preview: { k2h: 1, h2k: 0, old: 2, total: 1 }, n_files: 4, n_wait: 0 },
+        { id: 11, k_path: "기타", mod: "audit", grp: "misc", dir: "both", ssi: false, state: "active", since: "<img src=x onerror=alert(1)>", n_files: 0, n_wait: 0 },
+        { id: 12, k_path: "옛에이전트", mod: "audit", grp: "old", dir: "both", ssi: false, state: "preview", since: "2025-08-01", preview: { k2h: 500, h2k: 0, total: 500 }, n_files: 0, n_wait: 0 }];
+      ks.files = [{ id: 5, map: 10, rel_path: "a.xlsx", state: "del_k", note: "" }];
+      ks.last = [{ m: 10, f: "옛.pdf", a: "error", r: "old" }];
+      await openTab(e);
+      const card = q(e, '[data-ks-card="maps"]').textContent;
+      ok(/미리보기 K→H 3 · H→K 1 · 기준일 2025-08-01 · 기준일 전 7개 뺌/.test(card), "미리보기 줄에 기준일 · 뺀 수 " + card);
+      ok(/기준일 2025-09-01/.test(card) && !/기준일 전 2개/.test(card), "시작한 연결은 기준일만");
+      eq(qa(e, "#tab-body img").length, 0, "서버 값은 글자로만");
+      ok(/기준일 전에 고친 파일이라 서버가 받지 않음/.test(q(e, '[data-ct-pane="kspend:skip"]').textContent), "이유 old 를 쉬운 말로");
+      q(e, '[data-ks-start="12"]').click();
+      const c12 = q(e, "#modal-box").textContent;
+      ok(/기준일 2025-08-01 전에 고친 K 파일은 올리지 않습니다/.test(c12) && !/\d+개는/.test(c12), "[시작] 확인: 미리보기에 old 가 없으면(1.64 전 에이전트) 뺀 수를 0개로 적지 않음 " + c12);
+      e.w.SeMIS.closeModal();
+      q(e, '[data-ks-start="9"]').click();
+      ok(/기준일 2025-08-01 전에 고친 K 파일 7개는 올리지 않습니다/.test(q(e, "#modal-box").textContent), "[시작] 확인에 기준일");
+      clickOk(e); await tick(30);
+      q(e, '[data-ks-res="confirm"][data-id="5"]').click();
+      ok(/다른 연결 폴더로 옮긴 파일은 아닌지 확인하세요/.test(q(e, "#modal-box").textContent), "[삭제 확정] 확인 창 안내 한 줄");
+      e.w.SeMIS.closeModal();
+      q(e, '[data-ks-map="10"]').click(); sheetPick(e, "방향 · SSI 바꾸기");
+      eq(q(e, "#ks-since").value + "|" + q(e, "#ks-since").getAttribute("min"), "2025-09-01|2025-09-01", "고치기 창: 기준일 · 시작한 연결은 더 이른 날을 고르지 못하게");
+      clickOk(e); await tick(30);
+      eq(JSON.stringify(ks.calls.filter(c => c.name === "map_save").pop().b.p), '{"dir":"both","ssi":false,"id":10}', "기준일을 안 고치면 보내지 않음(서버가 그대로 둠)");
+      q(e, '[data-ks-map="10"]').click(); sheetPick(e, "방향 · SSI 바꾸기");
+      q(e, "#ks-since").value = "2025-10-01"; clickOk(e); await tick(30);
+      eq(ks.calls.filter(c => c.name === "map_save").pop().b.p.since, "2025-10-01", "고치면 보냄");
+      sv.rpc.semis_logi_ksync_map_save = (b) => { ks.calls.push({ name: "map_save", b }); return { ok: false, error: b.p.since === "2025-10-02" ? "since" : "locked" }; };
+      q(e, '[data-ks-map="10"]').click(); sheetPick(e, "방향 · SSI 바꾸기");
+      q(e, "#ks-since").value = "2025-10-02"; clickOk(e); await tick(30);
+      ok(/기준일 형식을 확인하세요/.test(q(e, "#toast-wrap").textContent), "오류 since → 쉬운 말");
+      q(e, "#ks-since").value = ""; clickOk(e); await tick(30);
+      ok(/시작한 연결은 기준일을 비우거나 더 이른 날로 바꿀 수 없습니다/.test(q(e, "#toast-wrap").textContent), "오류 locked → 기준일도 설명");
+      // 덜 적었거나 없는 날(2025-02-30 등) — 날짜 칸은 빈 값을 주지만 '기준일 없음'으로 보내지 않음(고치기 창 · 추가 창)
+      const nSave = () => ks.calls.filter(c => c.name === "map_save").length, n0 = nSave();
+      const badDate = () => { Object.defineProperty(q(e, "#ks-since"), "validity", { value: { badInput: true }, configurable: true }); q(e, "#ks-since").value = ""; q(e, "#toast-wrap").innerHTML = ""; };
+      badDate(); clickOk(e); await tick(30);
+      ok(nSave() === n0 && /기준일 형식을 확인하세요/.test(q(e, "#toast-wrap").textContent), "고치기 창: 덜 적은 기준일 → 보내지 않고(기준일을 지우지 않음) 형식 오류");
+      e.w.SeMIS.closeModal();
+      q(e, "#ks-map-add").click();
+      q(e, "#ks-kp-in").value = "보안/2025"; badDate(); clickOk(e); await tick(30);
+      ok(nSave() === n0 && /기준일 형식을 확인하세요/.test(q(e, "#toast-wrap").textContent), "추가 창: 덜 적은 기준일 → 기준일 없이 만들지 않고 형식 오류");
+      e.w.SeMIS.closeModal();
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
   }
 
   /* ══════════ [US] 미주행 재보안검색 ══════════ */
