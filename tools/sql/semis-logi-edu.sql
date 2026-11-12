@@ -34,6 +34,9 @@
    - 적용(2026-10-08): MCP semis_logi_security_24_edu_dedup_merge(edu_cert_key · edu_merge) · _25_edu_submit_sha(submit) — 운영 본문 md5 3개 = 이 파일
    - 적용(2026-10-08): MCP 마이그레이션 semis_logi_security_20_edu_emp(edu_emp_key · edu_merge · reads 열) · _21_edu_read_ok · _22_edu_submit_emp
      — 운영 함수 본문 md5 = 이 파일(4개 일치) · 권한 확인(read_ok = service_role 만)
+   v1.63.1 (2026-11-12) — 저장소 관리: semis_logi_edu_files()(시스템관리자) = 제출에 쓰인 이수증 파일(edu_uploads.used_by 있음) 경로
+   - 공용 DB 에 없는 제출 파일(eduTest · 같은 파일이라 기록에 안 붙은 첨부)이 '미참조'로 떠 지워질 수 있었음(운영 11-12 기준 14개)
+   - 미적용 — 마이그레이션 semis_logi_security_33_edu_files (Mark 승인 후 적용)
    ═══════════════════════════════════════════════════════ */
 
 create table if not exists semis_logi_private.edu_links (
@@ -650,6 +653,15 @@ begin
   return jsonb_build_object('ok', true, 'link', semis_logi_private.edu_link_json(l));
 end $$;
 
+/* 저장소 관리(시스템관리자) — 제출에 쓰인 이수증 파일(used_by 있음). 공용 DB 에 없는 파일(eduTest · 같은 파일이라 기록에 안 붙은 첨부)을 미참조로 지우지 않게 (v1.63.1) */
+create or replace function public.semis_logi_edu_files() returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+begin
+  if not exists (select 1 from semis_logi_private.edu_admin() a where a.rank >= 4) then return jsonb_build_object('ok', false, 'error', 'forbidden'); end if;
+  return jsonb_build_object('ok', true, 'paths', coalesce((select jsonb_agg(u.path order by u.path)
+    from semis_logi_private.edu_uploads u where u.used_by is not null), '[]'::jsonb));
+end $$;
+
 /* ─── 실행 권한 ───
    비공개 보조 함수는 API로 부를 수 없게. 공개 RPC 는 anon · service_role(함수 안에서 링크 · 표 · 세션 확인),
    업로드 기록(claim)은 파일 함수의 서비스 권한만 */
@@ -660,10 +672,10 @@ revoke all on function semis_logi_private.edu_date(text), semis_logi_private.edu
   semis_logi_private.edu_courses(jsonb), semis_logi_private.edu_merge(jsonb, jsonb, jsonb), semis_logi_private.edu_admin(),
   semis_logi_private.edu_link_json(semis_logi_private.edu_links) from public, anon, authenticated;
 revoke execute on function public.semis_logi_edu_info(text), public.semis_logi_edu_ticket(text, jsonb),
-  public.semis_logi_edu_submit(text, text, jsonb), public.semis_logi_edu_links(), public.semis_logi_edu_link_save(jsonb),
+  public.semis_logi_edu_submit(text, text, jsonb), public.semis_logi_edu_links(), public.semis_logi_edu_link_save(jsonb), public.semis_logi_edu_files(),
   public.semis_logi_edu_claim(text, text, text, bigint, text) from public, anon, authenticated;
 grant execute on function public.semis_logi_edu_info(text), public.semis_logi_edu_ticket(text, jsonb),
-  public.semis_logi_edu_submit(text, text, jsonb), public.semis_logi_edu_links(), public.semis_logi_edu_link_save(jsonb)
+  public.semis_logi_edu_submit(text, text, jsonb), public.semis_logi_edu_links(), public.semis_logi_edu_link_save(jsonb), public.semis_logi_edu_files()
   to anon, service_role;
 grant execute on function public.semis_logi_edu_claim(text, text, text, bigint, text) to service_role;
 revoke execute on function public.semis_logi_edu_read_ok(text, text) from public, anon, authenticated;

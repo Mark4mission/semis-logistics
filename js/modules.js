@@ -1631,7 +1631,8 @@
     };
     if (!window.SemisSync || !SemisSync.listFiles) { fail("동기화 모듈이 로드되지 않아 조회할 수 없습니다."); return; }
     const bbsRefs = window.SemisBoard ? SemisBoard.fileRefs() : Promise.resolve([]);
-    Promise.all([SemisSync.listFiles(), bbsRefs]).then(([files, bbs]) => {
+    const eduRefs = SemisSync.rpc("semis_logi_edu_files", {}).then(d => (d && d.ok && Array.isArray(d.paths) ? d.paths : null)).catch(() => null);
+    Promise.all([SemisSync.listFiles(), bbsRefs, eduRefs]).then(([files, bbs, edu]) => {
       if (!$("#st-folders")) return;
       const total = files.reduce((s, f) => s + f.size, 0);
       $("#st-file-gauge").innerHTML = gaugeHTML("파일 스토리지 (semis-logi-files)", total, STORE_LIMIT, files.length + "개 파일");
@@ -1653,11 +1654,11 @@
           <td>${esc(fmtBytes(byFolder[k].bytes))}</td>
           <td>${total ? ((byFolder[k].bytes / total) * 100).toFixed(1) : "0.0"}%</td></tr>`).join("")}
         </tbody></table>` : '<div class="empty">업로드된 파일이 없습니다.</div>';
-      paintOrphans(box, files, bbs);
+      paintOrphans(box, files, bbs, edu);
     }).catch(() => fail("파일 목록을 불러오지 못했습니다. 네트워크를 확인하세요."));
   }
-  /* 게시판 글이 쓰는 파일은 공용 자료에 없어 서버 목록(bbs)으로 더한다 — 목록을 못 받았으면(null) 정리를 잠근다 */
-  function paintOrphans(box, files, bbs) {
+  /* 게시판 글이 쓰는 파일 · 이수 등록 제출 파일(eduTest · 같은 파일 첨부)은 공용 자료에 없어 서버 목록(bbs · edu)으로 더한다 — 하나라도 못 받았으면(null) 정리를 잠근다 */
+  function paintOrphans(box, files, bbs, edu) {
     const refs = referencedPaths();
     const ob = $("#st-orphans");
     if (!ob) return;
@@ -1665,7 +1666,8 @@
     if (!files.length) { ob.innerHTML = '<div class="empty">파일이 없습니다.</div>'; return; }
     const tail = "/object/public/semis-logi-files/";
     (Array.isArray(bbs) ? bbs : []).forEach(u => { const i = String(u).indexOf(tail); if (i >= 0) refs.add(String(u).slice(i + tail.length)); });
-    if (!refs.size || bbs === null) {
+    (Array.isArray(edu) ? edu : []).forEach(p => refs.add(String(p)));
+    if (!refs.size || bbs === null || edu === null) {
       ob.innerHTML = '<div class="empty">⚠️ 참조 관계를 확인하지 못해 정리 기능을 잠갔습니다. (오삭제 방지)</div>';
       return;
     }

@@ -263,5 +263,21 @@ let lim = null;
 for (let i = 0; i < 62 && !lim; i++) { const x = await sub({ name: "", dept: "", roles: [] }); if (x.error === "limit") lim = i; }
 eq(lim, 60, "R01 10분 60회 제한");
 
+/* v1.63.1 저장소 관리 — 제출에 쓰인 이수증 파일(시스템관리자) */
+await setCtx(null);
+eq((await rpc("semis_logi_edu_files", [])).error, "forbidden", "F01 비로그인 거절");
+await setCtx(3);
+eq((await rpc("semis_logi_edu_files", [])).error, "forbidden", "F02 hq 거절(시스템관리자만)");
+await setCtx(4);
+r = await rpc("semis_logi_edu_files", []);
+const fp = (n) => "training/" + n + "_cert.pdf";
+ok(r.ok && ["f1", "f2", "f3", "f7", "t1", "d2", "d3"].every(n => r.paths.indexOf(fp(n)) >= 0), "F03 제출에 쓰인 파일 " + JSON.stringify(r));
+ok(["f4", "f5", "f6"].every(n => r.paths.indexOf(fp(n)) < 0), "F04 올리기만 하고 제출하지 않은 파일은 빠짐");
+const TS = JSON.stringify(await one("select value from public.semis_logi_store where key='training'"));
+ok(["t1", "d2", "d3"].every(n => TS.indexOf(fp(n)) < 0), "F05 공용 DB training 에 없는 제출 파일(eduTest · 같은 파일)도 목록에 있음");
+ok(!(await one("select has_function_privilege('authenticated', 'public.semis_logi_edu_files()', 'execute')"))
+  && (await one("select has_function_privilege('anon', 'public.semis_logi_edu_files()', 'execute')")), "F06 실행 권한 = anon(세션은 함수 안에서 확인) · authenticated 없음");
+await setCtx(null);
+
 console.log(`SQL 검증: ${pass} 통과 / ${fail} 실패`);
 process.exit(fail ? 1 : 0);

@@ -336,6 +336,7 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 
 | 버전 | 날짜 | 내용 |
 |---|---|---|
+| v1.63.1 | 11-12 | 저장소 관리 — 이수 등록 제출 파일(공용 DB 에 없는 `eduTest` · 같은 파일 첨부)을 '미참조'로 보이지 않게: 시스템관리자 RPC `semis_logi_edu_files`(`edu_uploads.used_by`) · 목록을 못 받으면 정리 잠금. 마이그레이션 `semis_logi_security_33_edu_files` 미적용(Mark 승인 대기) |
 | v1.63.0 | 11-09 | 미주행 재보안검색 현황(`us-rescreen`) — 출발지별 MIX · THRU 월 실적 입력 · 월간/연간 보기 · 엑셀(수식) · 화물보안 대시보드 탭 · 홈 '오늘' 줄. 컬렉션 `usRescreen` 2/4(마이그레이션 `semis_logi_security_31_usrescreen`), 2025-08 ~ 2026-10 공용 DB 등록 |
 | v1.0.x | 09-14 | 사이트 구축 · 배포, 관리자 암호(v2 운영 해시) 반영 |
 | v1.1.0 | 09-17 | 일정 담당자 관리(시스템 설정), A4 인쇄 버튼 전 화면 |
