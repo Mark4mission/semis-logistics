@@ -10798,6 +10798,39 @@ function makeServer(opts = {}) {
       ok(read("js/modules.js").indexOf("SemisBoard.fileRefs()") > 0 && /bbs === null/.test(read("js/modules.js")), "목록을 못 받으면 정리 잠금");
       e.Sync.stop();
     });
+    /* v1.64.1 — 이수 등록 제출 파일(eduTest · 같은 파일 첨부)은 공용 DB 에 없어도 서버 목록(semis_logi_edu_files)으로 연결 있는 파일 */
+    const storageEnv = async (edu) => {
+      const { e, sv } = await boardEnv("admin-pw-111");
+      const old = new Date(Date.now() - 3 * 86400000).toISOString();
+      ["notices/keep.png", "training/used.pdf", "training/other.pdf"].forEach(p => { sv.files[p] = { size: 1000, updated: old }; });
+      if (edu) sv.rpc.semis_logi_edu_files = (b, o) => edu(b, o, sv);
+      e.S.data.notices.push({ id: "n-keep", title: "참조", files: [{ name: "keep.png", url: PUBB + "notices/keep.png" }] });
+      go(e, "settings"); await tick(10);
+      q(e, '.tab[data-tab="storage"]').click(); await tick(40);
+      return { e, sv };
+    };
+    await ta("BB14b 저장소 관리: 이수 등록 제출 파일(edu_uploads.used_by)은 공용 DB 에 없어도 미참조 아님", async () => {
+      const { e, sv } = await storageEnv((b, o, s) => s.rankOf(o) >= 4 ? { ok: true, paths: ["training/used.pdf"] } : { ok: false, error: "forbidden" });
+      ok(sv.calls.some(c => /\/rpc\/semis_logi_edu_files$/.test(c.url) && c.token), "세션으로 목록 요청");
+      eq(qa(e, "#st-orphans .st-o").map(c => c.dataset.path).join(","), "training/other.pdf", "제출 파일 · 공용 DB 참조 파일은 빠짐");
+      ok(q(e, "#st-del"), "정리 가능");
+      e.Sync.stop();
+    });
+    await ta("BB14c 저장소 관리: 이수 등록 파일 목록을 못 받으면(권한 없음 · 서버 오류 · 마이그레이션 전 404) 정리 잠금", async () => {
+      for (const edu of [() => ({ ok: false, error: "forbidden" }), () => ({ __status: 500, body: {} }), null]) {
+        const { e } = await storageEnv(edu);
+        ok(/잠갔습니다/.test(q(e, "#st-orphans").textContent) && !q(e, "#st-del") && !qa(e, "#st-orphans .st-o").length, "잠금: " + q(e, "#st-orphans").textContent);
+        e.Sync.stop();
+      }
+    });
+    t("BB14d 서버 원본: semis_logi_edu_files = 시스템관리자 · anon 만 실행(authenticated 없음) · 화면이 부름", () => {
+      const M = read("js/modules.js"), ES = read("tools/sql/semis-logi-edu.sql");
+      ok(/SemisSync\.rpc\("semis_logi_edu_files", \{\}\)/.test(M) && /edu === null/.test(M), "화면 호출 · 못 받으면 잠금");
+      ok(ES.indexOf("create or replace function public.semis_logi_edu_files() returns jsonb") >= 0 && /edu_admin\(\) a where a\.rank >= 4/.test(ES), "선언 · 시스템관리자만");
+      ok(/revoke execute on function [^;]*public\.semis_logi_edu_files\(\)[^;]*from public, anon, authenticated;/.test(ES), "기본 권한 회수");
+      ok(/grant execute on function [^;]*public\.semis_logi_edu_files\(\)[^;]*to anon, service_role;/.test(ES), "anon · service_role 실행");
+      ok(!/grant execute on function [^;]*semis_logi_edu_files\(\)[^;]*authenticated/.test(ES), "authenticated 에 주지 않음");
+    });
     t("BB15 서버 원본: 화면이 부르는 RPC 는 SQL 에 선언 · 인자 이름 일치 · 공개 함수는 anon 만 실행 · boards 권한표 1/4 · 파일 폴더 bbs1~4", () => {
       const used = Array.from(new Set(Array.from(BJS.matchAll(/rpc\("(semis_logi_bbs_\w+)"/g)).map(m => m[1])));
       eq(used.slice().sort().join(","), "semis_logi_bbs_admin,semis_logi_bbs_comment,semis_logi_bbs_delete,semis_logi_bbs_get,semis_logi_bbs_list,semis_logi_bbs_move,semis_logi_bbs_recent,semis_logi_bbs_save,semis_logi_bbs_stats");
