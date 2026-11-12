@@ -1247,7 +1247,7 @@
   /* ── 렌더 ── */
   const TABS = [["list", "수검 일정"], ["findings", "지적사항"], ["docs", "점검표 · 자료"]];
   /* 수검 · 심사 자료는 받는 기관별로 나눈다(K 폴더 하나 = 분류 하나로 연결). 분류 id 는 바꾸거나 지우지 말 것 — 문서와 K 연결이 id 로 묶여 있다.
-     접수 카운터는 점검표 · 체크리스트(빈 양식 포함)를 이름의 분명한 말로만 aeo · foreign · gov · checklist('항공안전' · '안전심사'만), 자체 보안 점검은 보안 기록부, 그 밖은 misc 로 제안한다(desk.js guessShelf).
+     접수 카운터는 점검표 · 체크리스트(빈 양식 포함)를 이름의 분명한 말로만 aeo · foreign · gov · checklist('항공안전' · '정기 · 내부 안전심사'만), 자체 보안 점검(TSA · EU(ACC3) 자체 점검 포함)은 보안 기록부, 그 밖은 misc 로 제안한다(desk.js guessShelf).
      checklist 의 aka = 옛 이름 — 검색 '점검표' · '체크리스트'로 찾고 결과를 눌러도 이 화면 목록에 남는다 */
   if (window.SemisDocs) SemisDocs.define(MOD, [
     { id: "gov", label: "국토부 · 지방항공청 보안점검", short: "국토부 보안점검" },
