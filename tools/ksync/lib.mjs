@@ -13,6 +13,12 @@ export const kstDay = (t) => new Date(t + KST).toISOString().slice(0, 10);
 export const kstMin = (t) => { const d = new Date(t + KST); return d.getUTCHours() * 60 + d.getUTCMinutes(); };
 export const hhmm = (s) => { const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(String(s || "")); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
 export const isoMs = (ms) => new Date(Math.floor(ms)).toISOString();
+/* 연결의 기준일(YYYY-MM-DD) → 한국 시각 그날 0시(ms). 없으면 0, 틀리면 NaN(부른 쪽이 그 연결을 건너뜀 — 기준일 없이 맞추면 옛 파일이 올라간다) */
+export function sinceMs(s) {
+  if (s == null || s === "") return 0;
+  const t = /^\d{4}-\d{2}-\d{2}$/.test(String(s)) ? Date.parse(s + "T00:00:00+09:00") : NaN;
+  return !isNaN(t) && kstDay(t) === s ? t : NaN;
+}
 const pad = (n) => String(n).padStart(2, "0");
 /* 매일 동기화 창 — 시작 시각(분)부터 30분. 창이 지난 뒤 처음 켜진 Mac 이 그날 늦게 따라잡지 않게 창 안에서만 돈다.
    자정을 넘는 창도 시작한 날의 창: day = 가장 가까운 지난 시작의 날짜, in = 지금 그 창 안 */
@@ -92,7 +98,9 @@ export const sha256Buf = (b) => crypto.createHash("sha256").update(b).digest("he
 
 /* 연결 폴더 색인 — 링크는 따라가지 않는다. 크기 · 수정 시각이 기준선과 같으면 해시를 다시 재지 않는다.
    읽지 못한 곳은 errors(폴더는 dir: true — 계획이 그 아래를 '모름'으로 건너뜀), 상한에 닿으면 capped(계획이 그 연결을 건너뜀).
-   opts.cleanBefore 가 있으면 그보다 오래된 내려받기 임시 파일(중단된 실행이 남긴 .ksync-*.part)을 지운다 */
+   opts.cleanBefore 가 있으면 그보다 오래된 내려받기 임시 파일(중단된 실행이 남긴 .ksync-*.part)을 지운다.
+   opts.since(기준일 ms) · opts.sizes(모든 연결 기준선의 크기) — 기준선에 없고 기준일 전이며 크기가 어느 기준선과도 다르면 올리지 않을 파일이라 해시하지 않는다
+   (크기가 같으면 이름 바꿈 · 연결 사이 이동 후보라 잰다) */
 const PART_RE = /^\.ksync-[0-9a-f]{12}\.part$/;
 export async function indexDir(root, baseByRel, opts = {}) {
   const max = opts.maxFiles || 20000;
@@ -118,7 +126,8 @@ export async function indexDir(root, baseByRel, opts = {}) {
       try { st = await fsp.lstat(a); } catch (e) { errors.push({ f: r, r: e.code || "stat" }); continue; }
       const mtime = Math.floor(st.mtimeMs), b = baseByRel && baseByRel.get(r);
       let sha = null;
-      if (st.size <= MAX_SIZE) {
+      const old = !b && opts.since && mtime < opts.since && !(opts.sizes && opts.sizes.has(st.size));
+      if (st.size <= MAX_SIZE && !old) {
         if (b && b.k_sha256 && Number(b.k_size) === st.size && Date.parse(b.k_mtime) === mtime) sha = b.k_sha256;
         else { try { sha = await sha256File(a); } catch (e) { errors.push({ f: r, r: e.code || "read" }); continue; } }
       }

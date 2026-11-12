@@ -263,7 +263,7 @@ let lim = null;
 for (let i = 0; i < 62 && !lim; i++) { const x = await sub({ name: "", dept: "", roles: [] }); if (x.error === "limit") lim = i; }
 eq(lim, 60, "R01 10분 60회 제한");
 
-/* v1.63.1 저장소 관리 — 제출에 쓰인 이수증 파일(시스템관리자) */
+/* v1.64.1 저장소 관리 — 제출에 쓰인 이수증 파일(시스템관리자) */
 await setCtx(null);
 eq((await rpc("semis_logi_edu_files", [])).error, "forbidden", "F01 비로그인 거절");
 await setCtx(3);

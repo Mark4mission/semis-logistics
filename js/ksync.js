@@ -15,7 +15,8 @@
   const WHY = { too_large: "50MB 초과", type: "올리지 않는 형식", type_block: "실행 파일 · 스크립트(K 에 쓰지 않음)", name: "쓸 수 없는 이름", dir: "이 연결의 방향 밖", hash: "해시 불일치", changed: "읽는 중 바뀜",
     no_folder: "K 폴더 없음", quota: "하루 전송량 상한", ssi: "민감보안정보", upload: "올리기 실패", download: "받기 실패", path: "연결 폴더 밖 경로", held: "보류",
     mark: "서버가 맞춘 기록 일부를 받지 않음", state: "연결을 멈추거나 지워서 이 연결은 중단", run: "서버에서 이 실행이 이미 끝나 중단",
-    apply: "문서함에 등록하지 못함(그 사이 H:drive 에 새 판 등) — 다음 실행에서 다시 맞춤" };
+    apply: "문서함에 등록하지 못함(그 사이 H:drive 에 새 판 등) — 다음 실행에서 다시 맞춤",
+    old: "기준일 전에 고친 파일이라 서버가 받지 않음", since: "기준일 형식이 틀려 이 연결은 건너뜀" };
   const st = { s: null, p: null, runs: null, ev: null, folders: null, evKind: "", err: "", busy: false, alert: false, at: 0, box: null };
 
   const pad = (n) => String(n).padStart(2, "0");
@@ -33,7 +34,7 @@
   const mapOf = (id) => ((st.s && st.s.maps) || []).find(m => m.id === id);
   const errText = (e) => (e && e.status === 403 ? "시스템관리자만 쓸 수 있습니다." : "서버에 연결할 수 없습니다.");
   const ERR = { k_path: "K 폴더 경로를 확인하세요(연결 폴더 안 상대 경로).", target: "화면 · 분류를 고르세요.", k_dup: "이미 연결했거나 겹치는 K 폴더입니다.", target_dup: "그 화면 · 분류는 이미 다른 폴더와 연결되어 있습니다.",
-    locked: "맞춘 파일이 있어 폴더 · 화면을 바꿀 수 없습니다. 연결을 지우고 새로 만드세요.", ip: "IP 형식을 확인하세요(너무 넓은 범위는 넣을 수 없음).", daily_at: "시각 형식(HH:MM)", mass_limit: "한도 값을 확인하세요.", gone: "이미 처리되었습니다.", state: "지금 상태에서는 할 수 없습니다.", bad: "입력을 확인하세요.",
+    locked: "바꿀 수 없습니다 — 맞춘 파일이 있으면 폴더 · 화면을, 시작한 연결은 기준일을 비우거나 더 이른 날로 바꿀 수 없습니다. 연결을 지우고 새로 만드세요.", since: "기준일 형식을 확인하세요(YYYY-MM-DD).", ip: "IP 형식을 확인하세요(너무 넓은 범위는 넣을 수 없음).", daily_at: "시각 형식(HH:MM)", mass_limit: "한도 값을 확인하세요.", gone: "이미 처리되었습니다.", state: "지금 상태에서는 할 수 없습니다.", bad: "입력을 확인하세요.",
     preview: "미리보기 건수가 온 뒤에 시작할 수 있습니다." };
   const fail = (d) => toast(ERR[(d && d.error) || ""] || "처리하지 못했습니다.", true);
   const isDom = () => typeof navigator !== "undefined" && /jsdom/i.test(navigator.userAgent || "");
@@ -172,8 +173,10 @@
       const act = m.state === "preview"
         ? `<button type="button" class="btn btn-ghost btn-sm" data-ks-start="${m.id}"${pv ? "" : " disabled"}>시작</button>`
         : m.state === "paused" ? `<button type="button" class="btn btn-ghost btn-sm" data-ks-start="${m.id}">다시 시작</button>` : "";
-      const sub = m.state === "preview" ? (pv ? `미리보기 K→H ${pv.k2h} · H→K ${pv.h2k}${pv.link ? " · 연결만 " + pv.link : ""}${pv.skip ? " · 건너뜀 " + pv.skip : ""}` : "미리보기 건수를 기다리는 중")
+      const sub0 = m.state === "preview" ? (pv ? `미리보기 K→H ${pv.k2h} · H→K ${pv.h2k}${pv.link ? " · 연결만 " + pv.link : ""}${pv.skip ? " · 건너뜀 " + pv.skip : ""}` : "미리보기 건수를 기다리는 중")
         : m.hold && !m.hold.ok ? "대량 변경 보류" : "";
+      const sn = m.since ? "기준일 " + m.since + (m.state === "preview" && pv && pv.old != null ? " · 기준일 전 " + pv.old + "개 뺌" : "") : "";
+      const sub = [sub0, sn].filter(Boolean).join(" · ");
       return `<tr>
         <td data-role="title"><b class="ks-path">${esc(m.k_path)}</b>${sub ? `<div class="cell-sub">${esc(sub)}</div>` : ""}</td>
         <td>${esc(target(m))}</td><td>${esc(DIR[m.dir] || m.dir)}</td><td>${m.ssi ? '<span class="dk-ssi" title="민감보안정보">SSI</span>' : '<span class="cell-sub">-</span>'}</td>
@@ -291,7 +294,9 @@
     $$("[data-ks-start]", box).forEach(b => b.onclick = () => {
       const m = mapOf(Number(b.dataset.ksStart));
       const pv = (m && m.preview) || {};
-      confirmModal(m && m.state === "preview" ? `'${m.k_path}' 동기화를 시작할까요? K→H ${pv.k2h || 0}건 · H→K ${pv.h2k || 0}건을 맞춥니다.` : "이 연결을 다시 시작할까요?",
+      // 뺀 수는 에이전트가 센 때만(1.64 전 에이전트는 old 를 보내지 않음 — 0개로 적지 않는다)
+      const cut = m && m.since ? ` 기준일 ${m.since} 전에 고친 K 파일${pv.old != null ? " " + pv.old + "개는" : "은"} 올리지 않습니다(시작한 뒤 기준일은 더 늦은 날로만 바꿀 수 있음).` : "";
+      confirmModal(m && m.state === "preview" ? `'${m.k_path}' 동기화를 시작할까요? K→H ${pv.k2h || 0}건 · H→K ${pv.h2k || 0}건을 맞춥니다.${cut}` : "이 연결을 다시 시작할까요?",
         () => act("semis_logi_ksync_map_start", { p_id: Number(b.dataset.ksStart) }, "시작했습니다 — Mac 이 다음에 확인할 때 맞춥니다."));
     });
     $$("[data-ks-map]", box).forEach(b => b.onclick = () => mapMenu(Number(b.dataset.ksMap), b));
@@ -305,7 +310,7 @@
       // K 에서 지운 뒤 H 에 새 판이 생긴 줄은 서버가 지우지 않고 충돌로 돌린다(kept)
       const go = () => act("semis_logi_ksync_resolve", { p: { ids: [Number(b.dataset.id)], act: a } },
         a === "confirm" ? (d) => (d.kept ? "H:drive 에 새 판이 있어 지우지 않았습니다 — '충돌'에서 확인하세요." : "삭제를 확정했습니다.") : a === "restore" ? "복원을 요청했습니다." : "확인했습니다.");
-      if (a === "confirm") confirmModal("삭제를 확정할까요? 지워진 쪽에 맞춰 다른 쪽도 지웁니다(H:drive 문서는 변경 이력 90일 · K 파일은 휴지통 폴더로 옮김 — 휴지통은 에이전트가 지우지 않습니다, 필요하면 직접 정리).", go); else go();
+      if (a === "confirm") confirmModal("삭제를 확정할까요? 지워진 쪽에 맞춰 다른 쪽도 지웁니다(H:drive 문서는 변경 이력 90일 · K 파일은 휴지통 폴더로 옮김 — 휴지통은 에이전트가 지우지 않습니다, 필요하면 직접 정리). 다른 연결 폴더로 옮긴 파일은 아닌지 확인하세요.", go); else go();
     });
     $$("[data-ks-run]", box).forEach(b => b.onclick = () => runDetail(Number(b.dataset.ksRun)));
     $$("[data-ks-print]", box).forEach(b => b.onclick = () => printCard(b.dataset.ksPrint));
@@ -350,25 +355,37 @@
     const ts = targets(), edit = !!m, used = new Set(((st.s && st.s.maps) || []).filter(x => !m || x.id !== m.id).map(x => x.mod + "|" + x.grp));
     const fl = st.folders || [];
     const opts = ts.map(t => `<optgroup label="${esc(t.label)}">${t.groups.map(g => `<option value="${esc(t.mod + "|" + g.id)}"${used.has(t.mod + "|" + g.id) ? " disabled" : ""}${m && m.mod === t.mod && m.grp === g.id ? " selected" : ""}>${esc(t.label + " › " + g.label)}</option>`).join("")}</optgroup>`).join("");
+    const started = edit && m.state !== "preview";
     openModal(`<h3>${edit ? "연결 바꾸기" : "폴더 연결 추가"}</h3>
-      <div class="form-row"><label for="ks-kp">K 폴더 ${ui.tip("공유 안의 업무 폴더입니다. 목록은 Mac 에이전트가 하루 한 번 알려 준 폴더 이름(3단계까지)입니다.", "K 폴더 설명")}</label>
-        ${fl.length && !edit ? `<select id="ks-kp"><option value="">고르세요</option>${fl.map(f => `<option value="${esc(f.path)}">${esc("  ".repeat(Math.max(0, f.depth - 1)) + f.path.split("/").pop())} (${esc(String(f.n))})</option>`).join("")}</select>`
+      <div class="form-row"><label for="ks-kp">K 폴더 ${ui.tip("공유 안의 업무 폴더입니다. 목록은 Mac 에이전트가 하루 한 번 알려 준 폴더 이름(3단계까지)입니다. 더 깊은 폴더는 아래 칸에 경로를 직접 적으세요.", "K 폴더 설명")}</label>
+        ${fl.length && !edit ? `<select id="ks-kp"><option value="">고르세요</option>${fl.map(f => `<option value="${esc(f.path)}">${esc("  ".repeat(Math.max(0, f.depth - 1)) + f.path.split("/").pop())} (${esc(String(f.n))})</option>`).join("")}</select>
+          <input id="ks-kp-in" maxlength="200" autocomplete="off" placeholder="직접 적기 — 예: 안전보안/점검표/2025" aria-label="K 폴더 경로 직접 적기">`
           : `<input id="ks-kp" value="${esc(m ? m.k_path : "")}" maxlength="200" autocomplete="off" placeholder="예: 안전보안/점검표"${edit ? " disabled" : ""}>`}</div>
       <div class="form-row"><label for="ks-tg">화면 › 분류</label><select id="ks-tg"${edit ? " disabled" : ""}><option value="">고르세요</option>${opts}</select></div>
+      <div class="form-row"><label for="ks-since">기준일 ${ui.tip("이 날(한국 시각 0시)보다 전에 고친 K 파일은 맞춘 적이 없으면 올리지 않습니다(건수만 셈). 비우면 모두 올립니다. 시작한 뒤에는 더 늦은 날로만 바꿀 수 있습니다.", "기준일 설명")}</label>
+        <input id="ks-since" type="date" value="${esc((m && m.since) || "")}"${started && m.since ? ` min="${esc(m.since)}"` : ""}></div>
       <div class="form-grid">
         <div class="form-row"><label for="ks-dir">방향</label><select id="ks-dir">${Object.keys(DIR).map(k => `<option value="${k}"${(m ? m.dir : "both") === k ? " selected" : ""}>${esc(DIR[k])}</option>`).join("")}</select></div>
         <div class="form-row"><label class="au-opt ks-ssi"><input type="checkbox" id="ks-ssi"${m && m.ssi ? " checked" : ""}> 민감보안정보(SSI) 폴더 ${ui.tip("K 에서 온 문서를 민감보안정보로 등록하고(안전보안파트 이상 열람), H:drive 의 SSI 문서도 이 폴더로 보냅니다. SSI 가 아닌 연결은 SSI 문서를 보내지 않습니다.", "SSI 설명")}</label></div>
       </div>
       <div class="modal-actions"><button type="button" class="btn btn-ghost" data-act="cancel">취소</button><button type="button" class="btn btn-primary" data-act="ok">${edit ? "저장" : "미리보기 요청"}</button></div>`);
     $("#modal-box [data-act=cancel]").onclick = closeModal;
+    // 목록에서 고르면 직접 적는 칸을 채운다(보낼 때는 그 칸 값 — 비었으면 고른 값)
+    const kin = $("#ks-kp-in");
+    if (kin) $("#ks-kp").onchange = () => { kin.value = $("#ks-kp").value; };
     $("#modal-box [data-act=ok]").onclick = async () => {
+      // 덜 적었거나 없는 날(2025-02-30 등)이면 날짜 칸은 빈 값을 준다 — '기준일 없음'으로 보내지 않고 막는다
+      const si = $("#ks-since");
+      if (si.validity && si.validity.badInput) { toast(ERR.since, true); si.focus(); return; }
       const p = { dir: $("#ks-dir").value, ssi: $("#ks-ssi").checked };
-      if (edit) p.id = m.id;
+      const since = String(si.value || "").trim();
+      if (edit) { p.id = m.id; if (since !== (m.since || "")) p.since = since; }     // 바꿨을 때만 보낸다(키가 없으면 서버가 그대로 둠)
       else {
-        const kp = String($("#ks-kp").value || "").trim(), tg = String($("#ks-tg").value || "");
-        if (!kp) { toast("K 폴더를 고르세요.", true); $("#ks-kp").focus(); return; }
+        const kp = String((kin && kin.value.trim()) || $("#ks-kp").value || "").trim(), tg = String($("#ks-tg").value || "");
+        if (!kp) { toast("K 폴더를 고르거나 적으세요.", true); (kin || $("#ks-kp")).focus(); return; }
         if (!tg) { toast("화면 · 분류를 고르세요.", true); $("#ks-tg").focus(); return; }
         Object.assign(p, { k_path: kp, mod: tg.split("|")[0], grp: tg.split("|")[1] });
+        if (since) p.since = since;
       }
       const d = await act("semis_logi_ksync_map_save", { p }, edit ? "저장했습니다." : "연결했습니다 — Mac 이 다음에 확인할 때 미리보기 건수가 나옵니다. 건수를 보고 [시작]하세요.");
       if (d) closeModal();
