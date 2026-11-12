@@ -9863,7 +9863,7 @@ function makeServer(opts = {}) {
       eq(e.w.SemisSearch.search("접수 카운터").filter(x => x.group === "접수 카운터").length, 0, "협력업체 검색에 없음");
     });
 
-    await ta("DK13 점검표 · 체크리스트 → 수검 대응 서가: 묶음 정의 · 판독 목록 · 판독이 못 고르면 제목 · 파일명으로 받는 기관별 제안(gov · foreign · aeo · checklist · 애매하면 misc, 기록부 스캔 제외) · 반영 · 수검 화면 '점검표 · 자료' 탭 · 검색 이동 · 검색 '점검표' 동의어", async () => {
+    await ta("DK13 점검표 · 체크리스트 → 수검 대응 서가: 묶음 정의 · 판독 목록 · 판독이 못 고르면 제목 · 파일명으로 받는 기관별 제안(gov · foreign · aeo · checklist · 자체 점검은 보안 기록부 quarterly · monthly · 애매하면 misc, 기록부 스캔 제외) · SSI 기본(gov · foreign · quarterly) · 반영 · 수검 화면 '점검표 · 자료' 탭 · 검색 이동 · 검색 '점검표' · '체크리스트' 분류 별칭(결과를 눌러도 목록에 남음)", async () => {
       const e = deskEnv("hq");
       const DK = e.w.SemisDesk, D = e.S.data;
       const am = DK.shelfMods().find(m => m.mod === "audit");
@@ -9876,25 +9876,38 @@ function makeServer(opts = {}) {
       eq(p1[0].title, T1); eq(p1[0].date, "2026-10-06"); eq(DK.check(p1[0]), "");
       eq(DK.plan(DK.clean(AI({ type: "other" })), "x_CHK-LIST.pdf")[0].mod, "audit", "파일명으로도");
       eq(DK.plan(DK.clean(AI({ type: "other", title: "Audit Checklist" })))[0].grp, "misc", "영문 · 기관 모름 = 기타");
-      /* 받는 기관별 묶음(Mark 결정 8) — 제목 또는 파일명 */
+      /* 받는 기관별 묶음(Mark 결정 8) — 제목 또는 파일명. SSI K 연결(결정 3 · 9 — gov · foreign · quarterly)이면 SSI 칸 켜짐(/ssi) */
       const at = (title, name) => { const a = DK.plan(DK.clean(AI({ type: "other", title })), name)[0]; return a.mod + "/" + a.grp + (a.ssi ? "/ssi" : ""); };
-      eq(at("서울지방항공청 정기 보안점검 체크리스트"), "audit/gov", "지방항공청 보안점검 → gov");
-      eq(at("서항청 보안 점검표"), "audit/gov", "서항청 → gov");
-      eq(at("", "○ 서지항 정기 보안점검표.pdf"), "audit/gov", "서지항(파일명) → gov");
-      eq(at("국토교통부 항공보안 점검표"), "audit/gov", "국토부 보안 → gov");
-      eq(at("항공보안감독관 점검표"), "audit/gov", "보안감독관 → gov");
-      eq(at("TSA Assessment Checklist"), "audit/foreign", "TSA → foreign");
-      eq(at("", "ICNKF_EU_ACC3_점검표.xlsx"), "audit/foreign", "EU · ACC3(파일명) → foreign");
-      eq(at("해외 당국 평가표"), "audit/foreign", "해외 당국 → foreign");
-      eq(at("AEO 내부심사 점검표"), "audit/aeo", "AEO → aeo");
+      eq(at("서울지방항공청 정기 보안점검 체크리스트"), "audit/gov/ssi", "지방항공청 보안점검 → gov");
+      eq(at("서항청 보안 점검표"), "audit/gov/ssi", "서항청 → gov");
+      eq(at("", "○ 서지항 정기 보안점검표.pdf"), "audit/gov/ssi", "서지항(파일명) → gov");
+      eq(at("국토교통부 항공보안 점검표"), "audit/gov/ssi", "국토부 보안 → gov");
+      eq(at("항공보안감독관 점검표"), "audit/gov/ssi", "보안감독관 → gov");
+      eq(at("서울지방항공청 자체보안계획 이행점검 체크리스트"), "audit/gov/ssi", "자체보안계획 이행점검은 자체 점검 아님 → gov");
+      eq(at("국토부 자체보안계획 점검표"), "audit/gov/ssi", "국토부 자체보안계획 → gov");
+      eq(at("TSA Assessment Checklist"), "audit/foreign/ssi", "TSA → foreign");
+      eq(at("", "ICNKF_EU_ACC3_점검표.xlsx"), "audit/foreign/ssi", "EU · ACC3(파일명) → foreign");
+      eq(at("해외 당국 평가표"), "audit/foreign/ssi", "해외 당국 → foreign");
+      eq(at("AEO 내부심사 점검표"), "audit/aeo", "AEO → aeo · SSI 꺼짐");
       eq(at("AEO 2분기 용역공급업체 안전심사 점검표"), "audit/aeo", "AEO 가 안전심사보다 먼저");
-      eq(at("국토부 항공안전 점검표"), "audit/checklist", "국토부 항공안전 → checklist");
+      eq(at("국토부 항공안전 점검표"), "audit/checklist", "국토부 항공안전 → checklist · SSI 꺼짐");
       eq(at("항공안전감독관 점검 체크리스트"), "audit/checklist", "항공안전감독관 → checklist");
       eq(at("국토교통부 정비 점검표"), "audit/checklist", "국토부 정비 → checklist");
       eq(at("검색장비 정비 점검표"), "audit/misc", "기관 없는 정비 = 기타");
-      eq(at("자체 보안점검 체크리스트"), "audit/misc", "기관 없는 보안점검 = 기타");
-      eq(at("TSA Self Audit 체크리스트"), "audit/misc", "자체 점검(Self Audit)은 TSA 라도 기타");
+      eq(at("산업안전 점검표"), "audit/misc", "산업안전 = 기타");
+      eq(at("소방 안전감독 점검표"), "audit/misc", "소방 = 기타(안전감독이 있어도)");
+      eq(at("국토부 시설 안전 점검표"), "audit/misc", "시설 안전 = 기타(국토부여도)");
+      /* 자체 점검 · Self Audit → 보안 기록부(분기 · Self Audit = quarterly · 월간 = monthly), 그 밖 자체 점검은 수검 기타 */
+      eq(at("자체 보안점검 체크리스트"), "audit/misc", "주기 없는 자체 점검 = 기타");
+      eq(at("TSA Self Audit 체크리스트"), "inspection/quarterly/ssi", "Self Audit 은 TSA 라도 분기 자체 점검");
+      eq(at("2026년 3분기 자체 보안점검 체크리스트"), "inspection/quarterly/ssi", "분기 자체 점검");
+      eq(at("", "SELF-AUDIT_CHECKLIST.xlsx"), "inspection/quarterly/ssi", "Self Audit(파일명)");
+      eq(at("월간 자체 보안점검표"), "inspection/monthly", "월간 자체 점검 · SSI 꺼짐");
+      eq(at("Monthly self inspection checklist"), "inspection/monthly", "영문 월간");
       eq(at("서울지방항공청 점검표"), "audit/misc", "보안 · 안전 구분 없음 = 기타");
+      ok(!DK.plan(DK.clean(AI({ type: "other", title: "x" })))[0].ssi, "제안 없음 = SSI 꺼짐");
+      eq((p => p.mod + "/" + p.grp + "/" + p.ssi)(DK.plan(DK.clean(AI({ type: "other", title: "y", shelf: { mod: "audit", grp: "foreign", title: "y" } })))[0]), "audit/foreign/true", "판독이 고른 foreign 도 SSI 켜짐");
+      eq((p => p.mod + "/" + p.grp + "/" + p.ssi)(DK.plan(DK.clean(AI({ type: "other", title: "y", shelf: { mod: "inspection", grp: "monthly", title: "y" } })))[0]), "inspection/monthly/false", "판독이 고른 monthly 는 꺼짐");
       const p2 = DK.plan(DK.clean(AI({ type: "other", title: T1, shelf: { mod: "inspection", grp: "misc", title: "x" } })));
       eq(p2[0].mod + ":" + p2[0].grp, "inspection:misc", "판독이 고른 위치가 먼저");
       const p3 = DK.plan(DK.clean(AI({ type: "hardcopy", title: "9월 보안 점검표" })));
@@ -9909,7 +9922,8 @@ function makeServer(opts = {}) {
       /* 확인 대기 카드 — 기본 반영안 · 수동 추가 */
       const f = (n) => ({ name: n, size: 10, url: PUB + "desk/zz_" + n, type: "pdf" });
       D.desk.log = [{ id: "w1", at: "2026-10-26T01:00:00Z", by: "가", file: f("안전심사 점검표.pdf"), status: "wait", type: "other", title: T1, summary: "", ai: DK.clean(AI({ type: "other", title: T1 })) },
-        { id: "w2", at: "2026-10-26T02:00:00Z", by: "가", file: f("심사 체크리스트.pdf"), status: "wait", type: "notice", title: "심사 안내", summary: "", ai: DK.clean(AI({ type: "notice", title: "심사 안내" })) }];
+        { id: "w2", at: "2026-10-26T02:00:00Z", by: "가", file: f("심사 체크리스트.pdf"), status: "wait", type: "notice", title: "심사 안내", summary: "", ai: DK.clean(AI({ type: "notice", title: "심사 안내" })) },
+        { id: "w3", at: "2026-10-26T03:00:00Z", by: "가", file: f("gov.pdf"), status: "wait", type: "other", title: "서항청 정기 보안점검 체크리스트", summary: "", ai: DK.clean(AI({ type: "other", title: "서항청 정기 보안점검 체크리스트" })) }];
       DK.open("up");
       await tick(20);
       const c1 = q(e, '.dk-item[data-dk="w1"]');
@@ -9917,6 +9931,10 @@ function makeServer(opts = {}) {
       eq(c1.querySelector('.dkc-row.on [data-f="grp"]').value, "checklist");
       ok(/수검 대응 센터 › 국토부 항공안전 점검/.test(c1.querySelector(".dkc-row.on .dkc-rt small").textContent), "요약 줄에 위치");
       ok(!c1.querySelector('[data-do="apply"]').disabled, "바로 반영 가능");
+      eq(c1.querySelector('.dkc-row.on [data-f="ssi"]').checked, false, "checklist 제안 = SSI 칸 꺼짐(예전대로)");
+      const c3 = q(e, '.dk-item[data-dk="w3"]');
+      eq(c3.querySelector('.dkc-row.on [data-f="grp"]').value, "gov");
+      eq(c3.querySelector('.dkc-row.on [data-f="ssi"]').checked, true, "gov 제안 = SSI 칸 켜짐");
       q(e, '.dk-item[data-dk="w2"] [data-add="shelf"]').click();
       eq(q(e, '.dk-item[data-dk="w2"] .dkc-row.on [data-f="mod"]').value, "audit", "수동 추가도 파일명으로 제안");
       e.w.SemisPanel.close("desk");
@@ -9938,17 +9956,27 @@ function makeServer(opts = {}) {
       await tick(10);
       eq(q(e, '[data-atab="docs"]').getAttribute("aria-selected"), "true", "검색 결과 → 점검표 · 자료 탭");
       e.w.SemisAudit.setState({ tab: "docs" }); eq(e.w.SemisAudit.getState().tab, "docs");
-      /* 검색 — 분류 이름에서 '점검표'가 빠져도 '점검표' · '체크리스트'로 찾음 */
+      /* 검색 — 분류 이름에서 '점검표'가 빠져도 분류 별칭(aka — 옛 이름)으로 '점검표' · '체크리스트'를 찾고, 결과를 누르면 그 검색어로 걸러진 목록에도 남는다 */
+      eq(e.w.SemisDocs.groupsOf("audit").find(g => g.id === "checklist").aka, "점검표 · 체크리스트", "checklist 별칭");
+      ok(!e.w.SemisSearch.altsOf("점검표").some(a => a.s === "점검"), "넓은 동의어는 되돌림");
       D.docs.push({ id: "dk-syn1", mod: "audit", grp: "checklist", title: "감독관 서식 갑", date: "2026-10-01", ser: "", org: "", note: "", ssi: false, mids: [], files: [] });
-      ok(e.w.SemisSearch.search("점검표").some(x => x.title === "감독관 서식 갑" && x.route === "audit"), "검색 '점검표' → '국토부 항공안전 점검' 문서");
-      ok(e.w.SemisSearch.search("체크리스트").some(x => x.title === "감독관 서식 갑"), "검색 '체크리스트'도");
-      ok(e.w.SemisSearch.altsOf("점검표").some(a => a.s === "점검"), "동의어 묶음");
+      for (const w of ["점검표", "체크리스트"]) {
+        const h = e.w.SemisSearch.search(w).find(x => x.title === "감독관 서식 갑" && x.route === "audit");
+        ok(h, "검색 '" + w + "' → '국토부 항공안전 점검' 문서");
+        h.pick(w);
+        go(e, "audit");
+        await tick(10);
+        eq(e.w.SemisDocs.getQuery("audit"), w, "목록 검색어 = " + w);
+        ok(q(e, "#au-body").textContent.includes("감독관 서식 갑"), "결과를 누른 뒤 #au-body 에 문서 — " + w);
+      }
       const guide = read("tools/edge/semis-logi-files.ts");
       ok(/shelf 는 화면 audit 이고 묶음은 받는 기관으로 고른다/.test(guide), "판독 지침 — 받는 기관별");
-      ok(/지방항공청\(서울지방항공청 = 서항청 · 서지항\) 항공보안 점검은 gov/.test(guide), "지침 gov");
+      ok(/지방항공청\(서울지방항공청 = 서항청 · 서지항\) 항공보안 점검\(자체보안계획 이행점검 포함\)은 gov/.test(guide), "지침 gov");
       ok(/TSA · EU\(ACC3\) · 해외 당국 평가는 foreign/.test(guide), "지침 foreign");
       ok(/AEO 인증 · 심사는 aeo/.test(guide), "지침 aeo");
-      ok(/국토부 항공안전 점검\(항공안전감독관 · 운항 · 정비 · 안전 점검\)은 checklist/.test(guide), "지침 checklist");
+      ok(/국토부 항공안전 점검\(항공안전감독관 · 운항 · 정비 감독 · 안전심사\)은 checklist/.test(guide), "지침 checklist");
+      ok(/산업안전 · 소방 · 시설 안전 점검표는 checklist 아님\(misc\)/.test(guide), "지침 산업안전 · 소방 · 시설 = misc");
+      ok(/분기 자체 점검 · Self Audit 은 화면 inspection · 묶음 quarterly, 월간 자체 점검은 inspection · monthly, 그 밖 자체 점검은 audit · misc/.test(guide), "지침 자체 점검 = 보안 기록부");
       ok(/어느 것인지 애매하면 misc/.test(guide), "지침 애매하면 misc");
       ok(!/사내 · 외부 점검 모두/.test(guide), "옛 지침(모두 checklist) 없음");
     });

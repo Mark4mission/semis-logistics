@@ -82,7 +82,7 @@ const DESK_SYSTEM = `당신은 항공화물터미널 안전보안 부서의 문�
 - area: 항공 · 화물 보안 security, 항공 · 지상 안전 safety, 산업안전(산안법 · 중대재해) industrial, 위험물 dg. 애매하면 빈 문자열.
 - cid · auditId · tid · case.type · shelf.mod · shelf.grp · dissem.kind 는 아래 목록의 값만. 맞는 것이 없으면 null.
 - shelf 는 문서를 원본째 보관할 곳(점검 기록부 스캔 · 보고서 · 절차서 등). cert · notice 는 보통 null.
-- 점검표 · 체크리스트 · 심사 양식(빈 양식 포함)은 수검 · 점검 활동에 쓰는 문서다: type 은 보통 other, shelf 는 화면 audit 이고 묶음은 받는 기관으로 고른다 — 국토부 · 지방항공청(서울지방항공청 = 서항청 · 서지항) 항공보안 점검은 gov, TSA · EU(ACC3) · 해외 당국 평가는 foreign, AEO 인증 · 심사는 aeo, 국토부 항공안전 점검(항공안전감독관 · 운항 · 정비 · 안전 점검)은 checklist, 어느 것인지 애매하면 misc. 점검 · 심사 시행 계획(일정 · 대상 · 방법)은 audit · plan. 손으로 채운 기록부 스캔(hardcopy)은 기록부 쪽 서가를 고른다.
+- 점검표 · 체크리스트 · 심사 양식(빈 양식 포함)은 수검 · 점검 활동에 쓰는 문서다: type 은 보통 other, shelf 는 화면 audit 이고 묶음은 받는 기관으로 고른다 — 국토부 · 지방항공청(서울지방항공청 = 서항청 · 서지항) 항공보안 점검(자체보안계획 이행점검 포함)은 gov, TSA · EU(ACC3) · 해외 당국 평가는 foreign, AEO 인증 · 심사는 aeo, 국토부 항공안전 점검(항공안전감독관 · 운항 · 정비 감독 · 안전심사)은 checklist, 산업안전 · 소방 · 시설 안전 점검표는 checklist 아님(misc), 어느 것인지 애매하면 misc. 자체 점검표 · Self Audit 는 보안 기록부로: 분기 자체 점검 · Self Audit 은 화면 inspection · 묶음 quarterly, 월간 자체 점검은 inspection · monthly, 그 밖 자체 점검은 audit · misc. 점검 · 심사 시행 계획(일정 · 대상 · 방법)은 audit · plan. 손으로 채운 기록부 스캔(hardcopy)은 기록부 쪽 서가를 고른다.
 - audit.findings.type: 시정조치 car, 개선권고 rec, 현장시정 onsite, 관찰사항 obs.
 - summary · memo 에 전화번호 · 주민번호를 옮기지 않는다.`;
 

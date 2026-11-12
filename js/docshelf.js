@@ -1,7 +1,8 @@
 /* 증빙 문서 서가 — 화면마다 붙는 '관련 문서' 묶음. 같은 문서의 여러 판(ser)은 최신 판만 보이고 이전 판은 접는다.
    원본은 비공개 버킷(docs/ · 민감보안정보는 docs-ssi/ — hq 이상 열람). 문서 · 판 이름은 공용 DB 에만.
    SeMIS.data.docs = [{ id, mod, grp, title, date, ser, org, note, ssi, mids[], files[{name,size,url}], src, at, by }]
-   사용: define(mod, [{ id, label, short? }], { tab?, pick? }) → card(mod, { q? }) / groupsHTML(mod) → wire(box)
+   사용: define(mod, [{ id, label, short?, aka? }], { tab?, pick? }) → card(mod, { q? }) / groupsHTML(mod) → wire(box)
+   aka = 화면에 보이지 않는 분류 별칭(옛 이름 등) — 통합 검색과 화면 문서 검색이 함께 찾는다
    문서가 BOARD_MIN 건 이상인 화면은 게시판형(분류 탭 · 검색 · 표 · 쪽), 적으면 묶음형. opts.q 를 주면 화면의 검색칸이 거르고 자체 검색칸은 없다 */
 "use strict";
 
@@ -15,17 +16,18 @@
   const uid = () => "dk" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const me = () => { const u = SeMIS.user; return u ? u.name || u.id || "" : ""; };
   const FILE_MAX = 50 * 1024 * 1024;
-  const GROUPS = {};          // mod → [{ id, label, short }]
+  const GROUPS = {};          // mod → [{ id, label, short, aka }]
   const OPTS = {};            // mod → { tab: 문서가 있는 탭(SemisDeep), pick(q): 검색 결과로 갈 때 화면 검색어 }
   const open = {};            // 펼친 이전 판 (ser 키)
 
   function define(mod, groups, o) {
-    GROUPS[mod] = (groups || []).map(g => ({ id: String(g.id), label: String(g.label || g.id), short: String(g.short || g.label || g.id) }));
+    GROUPS[mod] = (groups || []).map(g => ({ id: String(g.id), label: String(g.label || g.id), short: String(g.short || g.label || g.id), aka: String(g.aka || "") }));
     OPTS[mod] = o || {};
   }
   const groupsOf = (mod) => GROUPS[mod] || [];
   const labelOf = (mod, grp) => { const g = groupsOf(mod).find(x => x.id === grp); return g ? g.label : grp || "기타"; };
   const shortOf = (mod, grp) => { const g = groupsOf(mod).find(x => x.id === grp); return g ? g.short : grp || "기타"; };
+  const akaOf = (mod, grp) => { const g = groupsOf(mod).find(x => x.id === grp); return g ? g.aka : ""; };
   const byDate = (a, b) => String(b.date || "").localeCompare(String(a.date || "")) || String(a.title || "").localeCompare(String(b.title || ""), "ko");
   const serOf = (d) => d.ser || d.id;
 
@@ -64,11 +66,11 @@
     return `<a class="nb-file ${cls || ""}" href="${esc(f.url)}" target="_blank" rel="noopener" data-name="${esc(f.name || "")}">${mark(label || f.name || "첨부", ts)}</a>`;
   }
 
-  /* ── 검색 — 문서 이름 · 첨부 파일명 · 기관 · 비고 · 판 묶음 · 묶음 이름 · 날짜. 잠긴 민감보안정보(SSI)는 파일명을 넣지 않는다 ── */
+  /* ── 검색 — 문서 이름 · 첨부 파일명 · 기관 · 비고 · 판 묶음 · 묶음 이름(별칭 포함) · 날짜. 잠긴 민감보안정보(SSI)는 파일명을 넣지 않는다 ── */
   const termsOf = (q) => String(q || "").trim().toLowerCase().split(/\s+/).filter(Boolean).slice(0, 5);
   const lockedOf = (d) => !!d.ssi && SeMIS.roleRank() < 3;
   function hay(d) {
-    return [d.title, d.org, d.note, d.ser, labelOf(d.mod, d.grp), shortOf(d.mod, d.grp), d.date, dot(d.date)]
+    return [d.title, d.org, d.note, d.ser, labelOf(d.mod, d.grp), shortOf(d.mod, d.grp), akaOf(d.mod, d.grp), d.date, dot(d.date)]
       .concat(lockedOf(d) ? [] : (d.files || []).map(f => f && f.name))
       .filter(Boolean).join(" \n ").toLowerCase();
   }
@@ -399,7 +401,7 @@
       const fn = (d.files || []).map(f => f && f.name).filter(Boolean);
       return {
         title: d.title, sub: [labelOf(d.mod, d.grp), dot(d.date), d.org].concat(fn).filter(Boolean).join(" · "),
-        text: [d.title, d.org, d.note, d.ser, labelOf(d.mod, d.grp), d.date, dot(d.date), d.ssi ? "" : d.sum].concat(fn), route: d.mod,
+        text: [d.title, d.org, d.note, d.ser, labelOf(d.mod, d.grp), akaOf(d.mod, d.grp), d.date, dot(d.date), d.ssi ? "" : d.sum].concat(fn), route: d.mod,
         pick: (q) => pickTo(d.mod, q) };
     })
   };

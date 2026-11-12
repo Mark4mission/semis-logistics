@@ -171,31 +171,35 @@
     return { id: aid(), k: "event", on, title: e.title, start: e.start, end: e.end, time: e.time, timeEnd: e.timeEnd, place: e.place, cat: e.cat,
       area: e.area, assignee: areaNames(e.area), room: ROOM(e.place), memo: e.memo, file: src !== false };
   }
+  /* 민감보안정보 K 연결(서항청 보안점검 · TSA 평가 · 분기 점검 · Self Audit — Mark 결정 3 · 9)의 분류를 제안하면 SSI 칸을 켜 둔다. 그 밖은 꺼짐 */
+  const SSI_AT = ["audit/gov", "audit/foreign", "inspection/quarterly"];
   function shelfAct(s, on, ai) {
     s = s || {};
     return { id: aid(), k: "shelf", on, mod: s.mod || "", grp: s.grp || "", title: s.title || (ai && ai.title) || "", date: s.date || (ai && ai.date) || todayISO(),
-      org: (ai && ai.org) || "", ssi: false };
+      org: (ai && ai.org) || "", ssi: SSI_AT.indexOf(s.mod + "/" + s.grp) >= 0 };
   }
-  /* 점검표 · 체크리스트(빈 양식)는 수검 · 점검 활동에 쓰는 문서 — 판독이 서가 위치를 못 고르면 수검 대응 센터에서 받는 기관으로 묶음을 고른다(Mark 결정 11-12):
-     AEO → aeo · TSA · EU(ACC3) · 해외 당국 → foreign · 국토부 · 지방항공청(서항청 · 서지항) 보안점검 → gov · 국토부 항공안전 점검 → checklist ·
-     자체 점검 · Self Audit 이나 애매하면 misc. 손으로 채운 기록부 스캔(hardcopy)은 보안 기록부 쪽이라 제외 */
+  /* 점검표 · 체크리스트(빈 양식)는 수검 · 점검 활동에 쓰는 문서 — 판독이 서가 위치를 못 고르면 받는 기관으로 묶음을 고른다(Mark 결정 11-12):
+     AEO → 수검 aeo · 자체 점검 · Self Audit → 보안 기록부(분기 · Self Audit → quarterly · 월간 → monthly, 그 밖은 수검 misc. 자체보안계획 이행점검은 당국 점검이라 자체 아님) ·
+     TSA · EU(ACC3) · 해외 당국 → foreign · 국토부 · 지방항공청(서항청 · 서지항) 보안점검 → gov · 국토부 항공안전 점검 → checklist(산업안전 · 소방 · 시설 안전은 아님) ·
+     애매하면 misc. 손으로 채운 기록부 스캔(hardcopy)은 보안 기록부 쪽이라 제외 */
   const CHECK_RE = /(?:점검|심사|평가)\s?표(?![준시현])|체크\s?리스트|(?:점검|심사)\s?양식|che?c?k\s?-?\s?list/i;
   const GOV_RE = /국토(?:교통)?부|지방항공청|서항청|서지항/;
   const CHECK_TO = [
     ["aeo", (s) => /(?:^|[^a-z])aeo(?![a-z])|수출입\s?안전관리/i.test(s)],
-    ["misc", (s) => /자체|self/i.test(s)],
+    ["self", (s) => /자체(?!\s?보안\s?계획)|self/i.test(s)],
     ["foreign", (s) => /(?:^|[^a-z])(?:tsa|eu|acc3)(?![a-z])|해외|외국\s?당국/i.test(s)],
     ["gov", (s) => /보안\s?감독/.test(s) || (GOV_RE.test(s) && /보안/.test(s))],
-    ["checklist", (s) => /항공\s?안전|안전\s?(?:심사|감독)|운항\s?감독/.test(s) || (GOV_RE.test(s) && /안전|운항|정비/.test(s))]
+    ["checklist", (s) => !/산업\s?안전|소방|시설\s?안전/.test(s) && (/항공\s?안전|안전\s?(?:심사|감독)|운항\s?감독/.test(s) || (GOV_RE.test(s) && /안전|운항|정비/.test(s)))]
   ];
+  const selfAt = (s) => (/분기|quarter|self\s?-?\s?audit/i.test(s) ? ["inspection", "quarterly"] : /월간|monthly/i.test(s) ? ["inspection", "monthly"] : ["audit", "misc"]);
   function guessShelf(ai, name) {
     if (ai && ai.type === "hardcopy") return null;
     const s = [ai && ai.title, name].filter(Boolean).join(" ");
     if (!CHECK_RE.test(s)) return null;
     const hit = CHECK_TO.find(([, is]) => is(s));
-    const grp = hit ? hit[0] : "misc";
-    if (!shelfOk("audit", grp)) return null;
-    return { mod: "audit", grp, title: (ai && ai.title) || "", date: (ai && ai.date) || "" };
+    const [mod, grp] = !hit ? ["audit", "misc"] : hit[0] === "self" ? selfAt(s) : ["audit", hit[0]];
+    if (!shelfOk(mod, grp)) return null;
+    return { mod, grp, title: (ai && ai.title) || "", date: (ai && ai.date) || "" };
   }
   function plan(ai, name) {
     ai = ai || clean({});
