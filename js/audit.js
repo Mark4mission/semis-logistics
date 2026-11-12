@@ -1246,9 +1246,13 @@
 
   /* ── 렌더 ── */
   const TABS = [["list", "수검 일정"], ["findings", "지적사항"], ["docs", "점검표 · 자료"]];
-  /* 점검표 · 체크리스트(빈 양식 포함)는 수검 준비 · 점검 활동에 바로 꺼내 쓰도록 이 화면 서가에 둔다(접수 카운터가 읽을 때 이 묶음을 고려) */
+  /* 수검 · 심사 자료는 받는 기관별로 나눈다(K 폴더 하나 = 분류 하나로 연결). 분류 id 는 바꾸거나 지우지 말 것 — 문서와 K 연결이 id 로 묶여 있다.
+     접수 카운터는 점검표 · 체크리스트(빈 양식 포함)를 checklist 로 제안한다 */
   if (window.SemisDocs) SemisDocs.define(MOD, [
-    { id: "checklist", label: "점검표 · 체크리스트", short: "점검표" },
+    { id: "gov", label: "국토부 · 지방항공청 보안점검", short: "국토부 보안점검" },
+    { id: "foreign", label: "TSA · 해외 당국 평가", short: "TSA · 해외" },
+    { id: "aeo", label: "AEO 인증 · 심사", short: "AEO" },
+    { id: "checklist", label: "국토부 항공안전 점검", short: "항공안전 점검" },
     { id: "plan", label: "점검 · 심사 계획 · 지침", short: "계획 · 지침" },
     { id: "misc", label: "기타" }
   ], { tab: "docs" });

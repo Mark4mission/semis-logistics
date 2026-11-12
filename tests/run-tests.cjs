@@ -9868,8 +9868,8 @@ function makeServer(opts = {}) {
       const DK = e.w.SemisDesk, D = e.S.data;
       const am = DK.shelfMods().find(m => m.mod === "audit");
       ok(am && am.label === "수검 대응 센터", "화면 목록에 수검 대응 센터");
-      eq(am.groups.map(g => g.id).join(), "checklist,plan,misc");
-      ok(DK.catalog().shelves.some(s => s.mod === "audit" && s.grp === "checklist" && /수검 대응 센터 › 점검표 · 체크리스트/.test(s.label)), "판독 목록");
+      eq(am.groups.map(g => g.id).join(), "gov,foreign,aeo,checklist,plan,misc");
+      ok(DK.catalog().shelves.some(s => s.mod === "audit" && s.grp === "checklist" && /수검 대응 센터 › 국토부 항공안전 점검/.test(s.label)), "판독 목록");
       const T1 = "영업운송본부 정기 안전심사 점검표 (내부 안전심사 계획 및 시행지침 [별표2])";
       const p1 = DK.plan(DK.clean(AI({ type: "other", title: T1, date: "2026-10-06", org: "안전심사팀" })), "점검표(R00_20261006).pdf");
       eq(p1.map(a => a.k + ":" + a.on + ":" + a.mod + ":" + a.grp).join(), "shelf:true:audit:checklist", "제목으로 제안 · 켜짐");
@@ -9886,7 +9886,7 @@ function makeServer(opts = {}) {
       const out = DK.commit(p1, { docs: { name: "c.pdf", size: 9, url: PUB + "docs/zz_c.pdf" } }, {});
       const dk = D.docs.find(d => d.src === "desk" && d.mod === "audit");
       ok(dk && dk.grp === "checklist" && dk.files[0].url.includes("/docs/") && dk.org === "안전심사팀", "서가 반영");
-      ok(out.some(o => o.k === "shelf" && o.route === "audit" && /수검 대응 센터 › 점검표 · 체크리스트/.test(o.label)), "반영 요약 · 바로 가기");
+      ok(out.some(o => o.k === "shelf" && o.route === "audit" && /수검 대응 센터 › 국토부 항공안전 점검/.test(o.label)), "반영 요약 · 바로 가기");
       /* 확인 대기 카드 — 기본 반영안 · 수동 추가 */
       const f = (n) => ({ name: n, size: 10, url: PUB + "desk/zz_" + n, type: "pdf" });
       D.desk.log = [{ id: "w1", at: "2026-10-26T01:00:00Z", by: "가", file: f("안전심사 점검표.pdf"), status: "wait", type: "other", title: T1, summary: "", ai: DK.clean(AI({ type: "other", title: T1 })) },
@@ -9896,7 +9896,7 @@ function makeServer(opts = {}) {
       const c1 = q(e, '.dk-item[data-dk="w1"]');
       eq(c1.querySelector('.dkc-row.on [data-f="mod"]').value, "audit", "화면 = 수검 대응 센터");
       eq(c1.querySelector('.dkc-row.on [data-f="grp"]').value, "checklist");
-      ok(/수검 대응 센터 › 점검표 · 체크리스트/.test(c1.querySelector(".dkc-row.on .dkc-rt small").textContent), "요약 줄에 위치");
+      ok(/수검 대응 센터 › 국토부 항공안전 점검/.test(c1.querySelector(".dkc-row.on .dkc-rt small").textContent), "요약 줄에 위치");
       ok(!c1.querySelector('[data-do="apply"]').disabled, "바로 반영 가능");
       q(e, '.dk-item[data-dk="w2"] [data-add="shelf"]').click();
       eq(q(e, '.dk-item[data-dk="w2"] .dkc-row.on [data-f="mod"]').value, "audit", "수동 추가도 파일명으로 제안");
@@ -9908,7 +9908,7 @@ function makeServer(opts = {}) {
       q(e, '[data-atab="docs"]').click();
       await tick(10);
       const body = q(e, "#au-body").textContent;
-      ok(body.includes("점검표 · 체크리스트") && body.includes(T1), "탭에 문서");
+      ok(body.includes("국토부 항공안전 점검") && body.includes(T1), "탭에 문서");
       ok(q(e, "#au-body [data-dk-add]"), "문서 추가(hq)");
       q(e, '[data-atab="list"]').click();
       await tick(10);
@@ -11043,6 +11043,32 @@ function makeServer(opts = {}) {
       const c = read("css/main.css");
       ok(/\.dkb-t, \.dkb-t\.nb-file \{/.test(c) && /\.dk-hl \{/.test(c), "게시판형 · 강조 스타일");
     });
+    t("DS12 문서함 분류: 수검 대응 gov · foreign · aeo 더함(순서) · checklist 는 이름만 '국토부 항공안전 점검' · 검색장비 facility(기타 앞) · 기존 id 그대로", () => {
+      const e = makeEnv(); loginAs(e, "hq");
+      const SD = e.w.SemisDocs;
+      const ids = (m) => SD.groupsOf(m).map(g => g.id).join();
+      eq(ids("audit"), "gov,foreign,aeo,checklist,plan,misc", "수검 대응 분류 순서");
+      eq(["gov", "foreign", "aeo", "checklist"].map(g => SD.labelOf("audit", g)).join("|"), "국토부 · 지방항공청 보안점검|TSA · 해외 당국 평가|AEO 인증 · 심사|국토부 항공안전 점검");
+      eq(["gov", "foreign", "aeo", "checklist"].map(g => SD.shortOf("audit", g)).join("|"), "국토부 보안점검|TSA · 해외|AEO|항공안전 점검", "게시판형 탭 이름");
+      eq(ids("scr-equip"), "cert,proc,cctv,rad,facility,misc", "검색장비 — 기타 앞");
+      eq(SD.labelOf("scr-equip", "facility"), "시설 보안 · 출입통제");
+      /* 운영 문서 · K 연결은 분류 id 로 묶여 있다 — 하나라도 빠지거나 바뀌면 문서가 날 id 묶음으로 떨어진다 */
+      const KEEP = { audit: "checklist,plan,misc", "scr-equip": "cert,proc,cctv,rad,misc", "scr-status": "stats,haz,proc,misc",
+        "sec-cases": "special,report,incident,proc,misc", "kc-ra": "agree,desig,check,std,stats,misc", partners: "license,roster,inspect,edu,tsa,drug,sems,misc",
+        inspection: "monthly,quarterly,surprise,hazmat,hazmgr,patrol,misc", serp: "training,material,plan,misc", "reg-sec": "ssop,tsa,gov,notice,misc" };
+      Object.keys(KEEP).forEach(m => KEEP[m].split(",").forEach(g => ok(SD.groupsOf(m).some(x => x.id === g), m + "/" + g + " 그대로")));
+      /* 수검 대응 문서 22건(게시판형) — 기존 checklist 문서는 새 이름 탭에, 새 분류는 건수대로 */
+      const FD = (i, grp) => ({ id: "ad" + i, mod: "audit", grp, title: "수검 문서 " + i, date: "2026-10-" + String(10 + i).padStart(2, "0"), ser: "a" + i, files: [] });
+      e.S.data.docs = Array.from({ length: 20 }, (_, i) => FD(i, "checklist")).concat([FD(20, "gov"), FD(21, "aeo"),
+        { id: "eq1", mod: "scr-equip", grp: "facility", title: "출입자 통제기준", date: "2026-09-01", ser: "eq1", files: [] }]);
+      go(e, "audit"); q(e, '[data-atab="docs"]').click();
+      const cats = qa(e, "[data-dkb-cat]").map(b => b.textContent.replace(/\s+/g, " ").trim());
+      eq(cats.join("|"), "전체 22|국토부 보안점검 1|AEO 1|항공안전 점검 20", "분류 탭 — 정의 순서 · 빈 분류 없음");
+      ok(qa(e, "[data-dkb] tbody .bb-catc").some(td => td.getAttribute("title") === "국토부 항공안전 점검"), "표 분류 칸 이름");
+      go(e, "scr-equip"); q(e, '[data-etab="docs"]').click();
+      ok(qa(e, ".dk-grp h4").some(h => /시설 보안 · 출입통제/.test(h.textContent)), "검색장비 문서함에 새 분류");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
   }
 
   /* ══════════ [PV] v1.56 첨부 미리보기 — 엑셀(서식) · 워드 · 한글 · 파워포인트 · CSV · 글 ══════════ */
@@ -12047,7 +12073,8 @@ function makeServer(opts = {}) {
       eq(opts.join(","), "안전보안,안전보안/점검표", "K 폴더 목록");
       const tg = qa(e, "#ks-tg option").map(o => o.value).filter(Boolean);
       ok(tg.length > 5 && tg.every(v => { const [m, g] = v.split("|"); return e.w.SemisDocs.groupsOf(m).some(x => x.id === g); }), "화면 › 분류 = SemisDocs.define");
-      ok(tg.indexOf("audit|checklist") >= 0, "수검 대응 › 점검표");
+      ok(tg.indexOf("audit|checklist") >= 0, "수검 대응 › 국토부 항공안전 점검");
+      ok(["audit|gov", "audit|foreign", "audit|aeo", "scr-equip|facility"].every(v => tg.indexOf(v) >= 0), "새 분류도 연결 대상");
       clickOk(e); await tick(5);
       ok(!ks.calls.some(c => c.name === "map_save"), "폴더 안 고르면 저장 안 함");
       q(e, "#ks-kp").value = "안전보안/점검표"; q(e, "#ks-tg").value = "audit|checklist"; q(e, "#ks-dir").value = "k2h"; q(e, "#ks-ssi").checked = true;

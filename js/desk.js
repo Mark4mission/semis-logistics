@@ -176,7 +176,7 @@
     return { id: aid(), k: "shelf", on, mod: s.mod || "", grp: s.grp || "", title: s.title || (ai && ai.title) || "", date: s.date || (ai && ai.date) || todayISO(),
       org: (ai && ai.org) || "", ssi: false };
   }
-  /* 점검표 · 체크리스트(빈 양식)는 수검 · 점검 활동에 쓰는 문서 — 판독이 서가 위치를 못 고르면 수검 대응 센터 › 점검표로.
+  /* 점검표 · 체크리스트(빈 양식)는 수검 · 점검 활동에 쓰는 문서 — 판독이 서가 위치를 못 고르면 수검 대응 센터 › checklist 묶음으로.
      손으로 채운 기록부 스캔(hardcopy)은 보안 기록부 쪽이라 제외 */
   const CHECK_RE = /(?:점검|심사|평가)\s?표(?![준시현])|체크\s?리스트|(?:점검|심사)\s?양식|che?c?k\s?-?\s?list/i;
   const CHECK_AT = ["audit", "checklist"];

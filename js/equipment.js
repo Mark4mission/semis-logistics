@@ -583,7 +583,7 @@
   const TABS = [["list", "장비 대장"], ["repairs", "고장 · 수리 이력"], ["analysis", "가동 분석"], ["docs", "인증서 · 절차"]];
   if (window.SemisDocs) SemisDocs.define(MOD, [
     { id: "cert", label: "장비 성능 인증 · 허가" }, { id: "proc", label: "운영 · 점검 절차" }, { id: "cctv", label: "CCTV · 영상정보" },
-    { id: "rad", label: "방사선 안전" }, { id: "misc", label: "기타" }
+    { id: "rad", label: "방사선 안전" }, { id: "facility", label: "시설 보안 · 출입통제" }, { id: "misc", label: "기타" }
   ], { tab: "docs" });
   (window.SemisDeep = window.SemisDeep || {})[MOD] = (sub) => { if (TABS.some(x => x[0] === sub)) tab = sub; };
   function render(root) {
