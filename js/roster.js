@@ -169,6 +169,15 @@
   const isEmp = (v) => /^(kj)?\d{4,10}$/i.test(String(v || "").replace(/\.0$/, "").replace(/\s+/g, ""));
   const cleanEmp = (v) => String(v || "").replace(/\.0$/, "").replace(/\s+/g, "");
   const isName = (v) => /^[가-힣]{2,5}$/.test(String(v || "").replace(/\s+/g, "")) || /^[A-Za-z][A-Za-z .'-]{1,30}$/.test(String(v || ""));
+  /* 파트 이름(Mark 11-12) — 'OO파트(수입)' · 'OO파트(통과)' 같은 담당 구분은 한 파트로(수입통과파트는 하나),
+     지원담당 · 지원파트(인원 현황 엑셀은 '인천화물팀(지원담당)')는 부르는 이름 UCC 로 */
+  const UCC = "UCC";
+  const partName = (v) => {
+    const s = norm(v);
+    if (/^(.*\()?지원(담당|파트)\)?$/.test(s) || /^ucc$/i.test(s)) return UCC;
+    const m = /^(.+파트)\s*\(.*\)$/.exec(s);
+    return m ? m[1] : s;
+  };
   const genderOf = (v) => { const s = norm(v).toLowerCase(); return /^(남|남자|m|male)$/.test(s) ? "M" : /^(여|여자|f|female)$/.test(s) ? "F" : ""; };
   function parseRoster(grids) {
     const list = [], info = {};
@@ -187,7 +196,7 @@
         for (let r = h + 1; r < g.length; r++) {
           const row = g[r];
           if (row.some(v => /^※/.test(v))) break;
-          if (norm(row[partCol]) && !isEmp(row[partCol])) part = norm(row[partCol]);
+          if (norm(row[partCol]) && !isEmp(row[partCol])) part = partName(row[partCol]);
           nameCols.forEach((nc, k) => {
             const nm = norm(row[nc]), em = cleanEmp(row[empCols[k]]);
             if (isName(nm) && isEmp(em)) list.push({ name: nm, emp: em, part });
@@ -200,7 +209,7 @@
       for (let r = h + 1; r < g.length; r++) {
         const row = g[r], nm = norm(row[cN]), em = cleanEmp(row[cE]);
         if (!isName(nm) || !isEmp(em)) continue;
-        const nx = { name: nm, emp: em, title: cT >= 0 ? norm(row[cT]) : "", part: cP >= 0 ? norm(row[cP]) : "", gender: cG >= 0 ? genderOf(row[cG]) : "", note: cR >= 0 ? norm(row[cR]) : "" };
+        const nx = { name: nm, emp: em, title: cT >= 0 ? norm(row[cT]) : "", part: cP >= 0 ? partName(row[cP]) : "", gender: cG >= 0 ? genderOf(row[cG]) : "", note: cR >= 0 ? norm(row[cR]) : "" };
         const old = info[empKey(em)];   // 같은 사번이 여러 줄이면 빈 칸이 앞 줄 값을 지우지 않게
         info[empKey(em)] = old ? Object.keys(nx).reduce((o, k) => { o[k] = nx[k] || old[k]; return o; }, {}) : nx;
       }

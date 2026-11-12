@@ -13178,17 +13178,21 @@ function makeServer(opts = {}) {
       const { e } = lnEnv("hq"); const L = e.w.SemisRoster;
       const gridSheet = [["명단 자료"], [], ["부서", "", "사번", "성명", "사번", "성명", "합계"],
         ["ICNKF", "지원담당", "900010.0", "새사람", "900001", "가나다", ""], ["", "", "900011", "둘사람", "", "", ""],
-        ["", "안전보안파트", "900002", "라마바", "900003", "사아자", ""], ["", "수출파트", "900004", "차카타", "", "", ""], ["※ 메모 줄", "", "900099", "메모사람"]];
+        ["", "안전보안파트", "900002", "라마바", "900003", "사아자", ""], ["", "수출파트", "900004", "차카타", "", "", ""],
+        ["", "수입통과파트(수입)", "900015", "수입사람", "", "", ""], ["", "수입통과파트(통과)", "900016", "통과사람", "", "", ""], ["※ 메모 줄", "", "900099", "메모사람"]];
       const infoSheet = [["순번", "성명", "통합사번", "직책", "직급", "성별", "비고"], ["1", "가나다", "900001", "팀원", "차장", "남", ""], ["2", "새사람", "900010", "팀원", "과장", "여", ""]];
       const parsed = L.parseRoster([gridSheet, infoSheet]);
       ok(parsed.grid, "파트 묶음 형식");
-      eq(parsed.people.length, 6, JSON.stringify(parsed.people));
+      eq(parsed.people.length, 8, JSON.stringify(parsed.people));
+      eq(parsed.people.filter(p => /^(수입|통과)사람$/.test(p.name)).map(p => p.part).join(","), "수입통과파트,수입통과파트", "OO파트(수입) · (통과) → 한 파트");
+      const tp = L.parseRoster([[["성명", "사번", "파트"], ["표사람", "900007", "수입통과파트 (통과)"], ["표둘", "900008", "인천화물팀(지원담당)"], ["표셋", "900009", "지원파트"], ["표넷", "900012", "ucc"]]]).people;
+      eq(tp.map(p => p.part).join(","), "수입통과파트,UCC,UCC,UCC", "표 형식도");
       const np = parsed.people.find(p => p.name === "새사람");
-      ok(np.part === "지원담당" && np.emp === "900010" && np.title === "과장" && np.gender === "F", JSON.stringify(np));
-      eq(parsed.people.find(p => p.name === "가나다").part, "지원담당", "같은 줄 두 번째 사람 파트");
+      ok(np.part === "UCC" && np.emp === "900010" && np.title === "과장" && np.gender === "F", JSON.stringify(np));
+      eq(parsed.people.find(p => p.name === "가나다").part, "UCC", "같은 줄 두 번째 사람 파트 — 지원담당 = UCC");
       const df = L.rosterDiff(parsed);
-      eq(df.add.map(p => p.name).join(","), "새사람,둘사람");
-      ok(df.chg.some(x => x.p.id === "p1" && x.d.part === "지원담당" && x.d.title === "차장"), "가나다 파트 · 직급 바뀜 " + JSON.stringify(df.chg.map(x => x.d)));
+      eq(df.add.map(p => p.name).join(","), "새사람,둘사람,수입사람,통과사람");
+      ok(df.chg.some(x => x.p.id === "p1" && x.d.part === "UCC" && x.d.title === "차장"), "가나다 파트 · 직급 바뀜 " + JSON.stringify(df.chg.map(x => x.d)));
       eq(df.gone.map(p => p.id).join(","), "p5", "엑셀에 없는 재직자(퇴직자 · 협력업체 제외)");
       const flat = L.parseRoster([infoSheet]);
       ok(!flat.grid && flat.people.length === 2, "표 형식만 — 퇴직 처리 없음");

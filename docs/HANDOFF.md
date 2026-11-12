@@ -112,7 +112,7 @@ Claude가 할 일(순서대로):
 | phonebook | phonebook.js | mgr | 업무 연락처(구역 9 · 확인 필요) |
 | contacts | contacts.js · flowpdf.js | mgr | 비상연락망 · 보고 체계도 3종(PDF 반자동 반영) |
 | crisis | crisis.js | mgr | 위기대응 조직 · 담당자(엑셀 대조) |
-| roster | roster.js | mgr(보기) · hq(고치기) | **인원 관리**(v1.66) — 임직원 · 협력업체 통합 명단(그룹 = 에어제타 파트 · 그 밖 소속) · 그룹 머리 · 성별 바로 고르기 · 사람 추가 · 고치기 · 인원 현황 엑셀 반영(새로 · 바뀜 · 엑셀에 없음 → 퇴직 · 전출) · 협력사 · 보안요원 명단 가져오기 · 협력업체 소속 목록 · 검색. `window.SemisRoster` { data · people · active · groupOf · groups · orgLabel · parseRoster · rosterDiff … } — 교육 전파 · 서명이 대상 · 이름 찾기에 씀(서버 `learn_people()` 도 같은 행) |
+| roster | roster.js | mgr(보기) · hq(고치기) | **인원 관리**(v1.66) — 임직원 · 협력업체 통합 명단(그룹 = 에어제타 파트 · 그 밖 소속, 파트 = UCC · 안전보안파트 · 수입통과파트 · 수출파트 — 엑셀 반영 때 'OO파트(…)' → 'OO파트', 지원담당 · 지원파트 → UCC) · 그룹 머리 · 성별 바로 고르기 · 사람 추가 · 고치기 · 인원 현황 엑셀 반영(새로 · 바뀜 · 엑셀에 없음 → 퇴직 · 전출) · 협력사 · 보안요원 명단 가져오기 · 협력업체 소속 목록 · 검색. `window.SemisRoster` { data · people · active · groupOf · groups · orgLabel · parseRoster · rosterDiff … } — 교육 전파 · 서명이 대상 · 이름 찾기에 씀(서버 `learn_people()` 도 같은 행) |
 | reg-sec · reg-safety · reg-dg | regulations.js | mgr | 규정 3종 · PDF 뷰어 · 개정 아이디어 · 검색칸 하나가 규정표와 아래 문서 서가를 함께 거름(v1.55 — 낱말 모두 포함 · 원문 · 신구대조표 파일명 포함 · 강조) · 통합 검색 '규정' 그룹 |
 | contracts | contracts.js | hq | 계약 · 협약 |
 | vault | vault.js | hq | 암호 관리(AES-256-GCM, 공용/개인) |
@@ -219,7 +219,7 @@ Claude가 할 일(순서대로):
 
 ## 7. 미결 · 주의 (열린 일만 — 끝나면 HISTORY.md 로)
 
-- **교육 전파 · 서명(v1.66) — 운영 적용 전**: ① 마이그레이션 `semis_logi_learn_1`(= `tools/sql/semis-logi-learn.sql` 전체, `edu_hits` · `pow_check` · `edu_str` 등 기존 함수 사용) ② Edge `semis-logi-learn` 배포(verify_jwt false) ③ main 병합(PR `claude/learn`) ④ 명단(인원 관리): **11-12 Claude 가 SQL 로 등록 끝**(행 `roster`, updated_by `sql/roster-init` — 2026-10 인원 현황 73명 + 비고의 전입 2명 = 75명, 비고의 전출 · 파견 · 정년 3명은 퇴직 · 전출 표시 → 재직 72명). 남은 일 = 성별 입력(엑셀에 성별 열이 없음 — 72명 모두 빈칸) · 전입 1명의 수입/통과 파트 확인(비고 '확인 필요') · 직급 빈칸 9명 · 협력업체 소속 목록 · 협력사 · 보안요원 명단 가져오기 ⑤ 시험 교육 하나로 휴대폰 · PC 흐름 확인 뒤 지움(이수 기록은 ⋯ 삭제 때 `purge` 로 함께 정리)
+- **교육 전파 · 서명(v1.66) — 운영 적용 전**: ① 마이그레이션 `semis_logi_learn_1`(= `tools/sql/semis-logi-learn.sql` 전체, `edu_hits` · `pow_check` · `edu_str` 등 기존 함수 사용) ② Edge `semis-logi-learn` 배포(verify_jwt false) — **11-12 배포 끝(v1)** ③ main 병합(PR `claude/learn`) ④ 명단(인원 관리): **11-12 Claude 가 SQL 로 등록 끝**(행 `roster`, updated_by `sql/roster-init` — 2026-10 인원 현황 73명 + 비고의 전입 2명 = 75명, 비고의 전출 · 파견 · 정년 3명은 퇴직 · 전출 표시 → 재직 72명). 파트는 4개 — UCC(지원파트) · 안전보안파트 · 수입통과파트 · 수출파트(11-12 Mark: 수입통과파트는 한 파트, 지원파트는 통상 UCC — 엑셀의 '수입통과파트(수입)' · '(통과)' · '인천화물팀(지원담당)'은 읽을 때 `partName` 이 바꿈, 운영 행도 SQL `sql/roster-part` 로 맞춤). 남은 일 = 성별 입력(엑셀에 성별 열이 없음 — 72명 모두 빈칸) · 직급 빈칸 9명 · 협력업체 소속 목록 · 협력사 · 보안요원 명단 가져오기 ⑤ 시험 교육 하나로 휴대폰 · PC 흐름 확인 뒤 지움(이수 기록은 ⋯ 삭제 때 `purge` 로 함께 정리)
   - 파일 함수 `semis-logi-files` 는 원본에 `learn: 3` 한 줄만(기본 3 과 같음) — 기본 3 과 같아 재배포 불필요, 다음 정식 재배포 때 함께
   - 동영상은 파일 함수 50MB 상한(버킷 설정 확인 필요) — 더 크면 줄여 올리기. 유튜브 등 외부 영상 넣기는 하지 않음(학습 화면 CSP · 건너뛰기 방지)
   - 아르고 안내 지식(docs/ARGO-GUIDE.md) 메뉴 표에 아직 없음 — 넣으면 `npm run argo:guide` + Edge argo 재배포. 아르고가 교육 자료를 읽게 하려면 `js/argo.js` COLS + Edge COLLECTIONS(AR13)
