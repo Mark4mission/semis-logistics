@@ -9863,7 +9863,7 @@ function makeServer(opts = {}) {
       eq(e.w.SemisSearch.search("접수 카운터").filter(x => x.group === "접수 카운터").length, 0, "협력업체 검색에 없음");
     });
 
-    await ta("DK13 점검표 · 체크리스트 → 수검 대응 서가: 묶음 정의 · 판독 목록 · 판독이 못 고르면 제목 · 파일명으로 받는 기관별 제안(gov · foreign · aeo · checklist 는 항공안전만 · 자체 보안 점검은 보안 기록부 quarterly · monthly · 항공 아닌 안전 · 애매하면 misc, 기록부 스캔 제외) · SSI 기본(gov · foreign · quarterly) · 반영 · 수검 화면 '점검표 · 자료' 탭 · 검색 이동 · 검색 '점검표' · '체크리스트' 분류 별칭(결과를 눌러도 목록에 남음)", async () => {
+    await ta("DK13 점검표 · 체크리스트 → 수검 대응 서가: 묶음 정의 · 판독 목록 · 판독이 못 고르면 제목 · 파일명의 분명한 말로만 제안(먼저 맞는 것 — aeo · foreign · 자체 보안 점검은 보안 기록부 quarterly · monthly · gov · checklist 는 '항공안전' · '안전심사'만 · 그 밖 misc, 기록부 스캔 제외) · SSI 기본(gov · foreign · quarterly) · 반영 · 수검 화면 '점검표 · 자료' 탭 · 검색 이동 · 검색 '점검표' · '체크리스트' 분류 별칭(결과를 눌러도 목록에 남음)", async () => {
       const e = deskEnv("hq");
       const DK = e.w.SemisDesk, D = e.S.data;
       const am = DK.shelfMods().find(m => m.mod === "audit");
@@ -9876,8 +9876,31 @@ function makeServer(opts = {}) {
       eq(p1[0].title, T1); eq(p1[0].date, "2026-10-06"); eq(DK.check(p1[0]), "");
       eq(DK.plan(DK.clean(AI({ type: "other" })), "x_CHK-LIST.pdf")[0].mod, "audit", "파일명으로도");
       eq(DK.plan(DK.clean(AI({ type: "other", title: "Audit Checklist" })))[0].grp, "misc", "영문 · 기관 모름 = 기타");
-      /* 받는 기관별 묶음(Mark 결정 8) — 제목 또는 파일명. SSI K 연결(결정 3 · 9 — gov · foreign · quarterly)이면 SSI 칸 켜짐(/ssi) */
+      /* 분명한 말로만 고른다(Mark 결정 8 — 먼저 맞는 것): aeo → foreign(자체 점검 아님) → 자체 보안 점검(보안 기록부) → gov → checklist('항공안전' · '안전심사'만) → 그 밖 misc.
+         SSI K 연결(결정 3 · 9 — gov · foreign · quarterly)이면 SSI 칸 켜짐(/ssi). misc 는 K 연결이 없어 놓쳐도 되고, checklist(K 양쪽 연결)로 잘못 가면 안 된다 */
       const at = (title, name) => { const a = DK.plan(DK.clean(AI({ type: "other", title })), name)[0]; return a.mod + "/" + a.grp + (a.ssi ? "/ssi" : ""); };
+      /* 1. AEO */
+      eq(at("AEO 내부심사 점검표"), "audit/aeo", "AEO → aeo · SSI 꺼짐");
+      eq(at("AEO 2분기 용역공급업체 안전심사 점검표"), "audit/aeo", "AEO 가 안전심사보다 먼저");
+      eq(at("수출입 안전관리 우수업체 점검표"), "audit/aeo", "수출입 안전관리 우수업체 → aeo");
+      /* 2. 해외 당국(자체 점검 아님) */
+      eq(at("TSA Assessment Checklist"), "audit/foreign/ssi", "TSA → foreign");
+      eq(at("ACC3 Validation Checklist"), "audit/foreign/ssi", "ACC3 → foreign");
+      eq(at("", "ICNKF_EU_ACC3_점검표.xlsx"), "audit/foreign/ssi", "EU · ACC3(파일명) → foreign");
+      eq(at("해외 당국 평가표"), "audit/foreign/ssi", "해외 당국 → foreign");
+      eq(at("TSA 보안 점검표 (가스 · 위험물 구역)"), "audit/foreign/ssi", "구역 이름에 가스가 있어도 foreign");
+      eq(at("TSA 자체 점검표"), "audit/misc", "자체 점검은 foreign 아님 · '보안' 없으면 기타");
+      /* 3. 자체 보안 점검(자체 … 보안 · 보안 … 자체 · Self Audit) → 보안 기록부(분기 · Self Audit = quarterly · 월간 = monthly · 주기 없으면 기타) */
+      eq(at("TSA Self Audit checklist"), "inspection/quarterly/ssi", "영문 Self Audit");
+      eq(at("TSA Self Audit 체크리스트"), "inspection/quarterly/ssi", "Self Audit 은 TSA 라도 분기 자체 점검");
+      eq(at("", "SELF-AUDIT_CHECKLIST.xlsx"), "inspection/quarterly/ssi", "Self Audit(파일명)");
+      eq(at("Quarterly security self audit checklist"), "inspection/quarterly/ssi", "영문 security self");
+      eq(at("2026년 3분기 자체 보안점검 체크리스트"), "inspection/quarterly/ssi", "분기 자체 보안 점검");
+      eq(at("분기 자체 보안점검표 (전기실 출입통제)"), "inspection/quarterly/ssi", "구역 이름에 전기가 있어도 분기 자체 보안 점검");
+      eq(at("월간 자체 보안점검표"), "inspection/monthly", "월간 자체 보안 점검 · SSI 꺼짐");
+      eq(at("보안 자체 점검표(월간)"), "inspection/monthly", "보안 … 자체 순서도");
+      eq(at("자체 보안점검 체크리스트"), "audit/misc", "주기 없는 자체 보안 점검 = 기타");
+      /* 4. 국토부 · 지방항공청 + 보안(자체보안계획 이행점검 포함 — 자체보안계획은 자체 점검 아님) · 항공보안감독관 */
       eq(at("서울지방항공청 정기 보안점검 체크리스트"), "audit/gov/ssi", "지방항공청 보안점검 → gov");
       eq(at("서항청 보안 점검표"), "audit/gov/ssi", "서항청 → gov");
       eq(at("", "○ 서지항 정기 보안점검표.pdf"), "audit/gov/ssi", "서지항(파일명) → gov");
@@ -9885,41 +9908,23 @@ function makeServer(opts = {}) {
       eq(at("항공보안감독관 점검표"), "audit/gov/ssi", "보안감독관 → gov");
       eq(at("서울지방항공청 자체보안계획 이행점검 체크리스트"), "audit/gov/ssi", "자체보안계획 이행점검은 자체 점검 아님 → gov");
       eq(at("국토부 자체보안계획 점검표"), "audit/gov/ssi", "국토부 자체보안계획 → gov");
-      eq(at("TSA Assessment Checklist"), "audit/foreign/ssi", "TSA → foreign");
-      eq(at("", "ICNKF_EU_ACC3_점검표.xlsx"), "audit/foreign/ssi", "EU · ACC3(파일명) → foreign");
-      eq(at("해외 당국 평가표"), "audit/foreign/ssi", "해외 당국 → foreign");
-      eq(at("AEO 내부심사 점검표"), "audit/aeo", "AEO → aeo · SSI 꺼짐");
-      eq(at("AEO 2분기 용역공급업체 안전심사 점검표"), "audit/aeo", "AEO 가 안전심사보다 먼저");
+      eq(at("서울지방항공청 보안점검 체크리스트 (전기실 · 가스저장소 출입통제)"), "audit/gov/ssi", "구역 이름에 전기 · 가스가 있어도 gov");
+      eq(at("국토부 항공보안 점검표 — 건설 공사구역 출입 통제"), "audit/gov/ssi", "건설이 있어도 gov");
+      eq(at("자체보안계획 이행점검 점검표"), "audit/misc", "기관 없는 자체보안계획 = 기타(자체 점검도 아님)");
+      /* 5. '항공안전' · '안전심사'라고 적힌 것만 checklist(K 양쪽 연결) */
       eq(at("국토부 항공안전 점검표"), "audit/checklist", "국토부 항공안전 → checklist · SSI 꺼짐");
       eq(at("항공안전감독관 점검 체크리스트"), "audit/checklist", "항공안전감독관 → checklist");
-      eq(at("국토교통부 정비 점검표"), "audit/checklist", "국토부 정비 → checklist");
-      eq(at("검색장비 정비 점검표"), "audit/misc", "기관 없는 정비 = 기타");
-      eq(at("산업안전 점검표"), "audit/misc", "산업안전 = 기타");
-      eq(at("소방 안전감독 점검표"), "audit/misc", "소방 = 기타(안전감독이 있어도)");
-      eq(at("국토부 시설 안전 점검표"), "audit/misc", "시설 안전 = 기타(국토부여도)");
-      /* checklist 는 국토부 항공안전 점검만(K 양쪽 연결) — 항공이 아닌 '안전 감독'은 기타 */
-      eq(at("고용노동부 안전감독 점검표"), "audit/misc", "노동부 안전감독 = 기타");
-      eq(at("중대재해 안전 감독 체크리스트"), "audit/misc", "중대재해 = 기타");
-      eq(at("산안법 안전 감독 점검표"), "audit/misc", "산안법 = 기타");
-      eq(at("지게차 안전 감독 체크리스트"), "audit/misc", "지게차 = 기타");
-      eq(at("협력업체 안전감독 점검표"), "audit/misc", "항공 · 기관 말 없는 안전감독 = 기타");
-      eq(at("건설현장 안전 감독 점검표"), "audit/misc", "건설 = 기타");
       eq(at("국토부 항공안전감독관 점검표"), "audit/checklist", "국토부 항공안전감독관 → checklist");
+      eq(at("지방항공청 항공안전 점검 체크리스트"), "audit/checklist", "지방항공청 + 항공안전(보안 없음) → checklist");
       eq(at("영업운송본부 정기 안전심사 점검표"), "audit/checklist", "안전심사 → checklist");
-      /* 자체 점검 · Self Audit → 보안 기록부(분기 · Self Audit = quarterly · 월간 = monthly), 그 밖 자체 점검은 수검 기타 */
-      eq(at("분기 산업안전 자체 점검표"), "audit/misc", "산업안전 자체 점검은 보안 기록부 아님");
-      eq(at("소방 자체 점검표(분기)"), "audit/misc", "소방 자체 점검 = 기타");
-      eq(at("월간 소방 자체점검 체크리스트"), "audit/misc", "월간 소방 = 기타");
-      eq(at("월간 산업안전 자체 점검표"), "audit/misc", "월간 산업안전 = 기타");
-      eq(at("자체 안전점검 체크리스트(월간)"), "audit/misc", "자체 안전 점검(보안 아님) = 기타");
-      eq(at("TSA Self Audit checklist"), "inspection/quarterly/ssi", "영문 Self Audit 그대로");
-      eq(at("자체 보안점검 체크리스트"), "audit/misc", "주기 없는 자체 점검 = 기타");
-      eq(at("TSA Self Audit 체크리스트"), "inspection/quarterly/ssi", "Self Audit 은 TSA 라도 분기 자체 점검");
-      eq(at("2026년 3분기 자체 보안점검 체크리스트"), "inspection/quarterly/ssi", "분기 자체 점검");
-      eq(at("", "SELF-AUDIT_CHECKLIST.xlsx"), "inspection/quarterly/ssi", "Self Audit(파일명)");
-      eq(at("월간 자체 보안점검표"), "inspection/monthly", "월간 자체 점검 · SSI 꺼짐");
-      eq(at("Monthly self inspection checklist"), "inspection/monthly", "영문 월간");
-      eq(at("서울지방항공청 점검표"), "audit/misc", "보안 · 안전 구분 없음 = 기타");
+      /* 6. 그 밖은 기타 — 분명한 말이 없으면 놓쳐도 된다(사람이 고름) */
+      for (const t of ["국토교통부 정비 점검표", "국토부 정비 감독 점검표", "운항 감독 점검표", "검색장비 정비 점검표",
+        "국토부 철도안전 점검표", "국토교통부 물류창고 안전점검 체크리스트", "국토부 화물차 운송 안전 점검표", "국토부 시설 안전 점검표",
+        "항공화물터미널 협력업체 안전감독 점검표", "항공화물 조업 안전 감독 체크리스트", "정비고 작업장 안전감독 점검표", "협력업체 안전감독 점검표",
+        "고용노동부 안전감독 점검표", "중대재해 안전 감독 체크리스트", "건설현장 안전 감독 점검표", "소방 안전감독 점검표", "산업안전 점검표",
+        "월간 자체점검표", "Monthly self inspection checklist", "월간 소화기 자체 점검표", "분기 소화기 자체 점검표", "월간 화재예방 자체점검표",
+        "분기 위험물 창고 자체 점검표", "Monthly fire extinguisher self inspection checklist", "분기 산업안전 자체 점검표", "소방 자체 점검표(분기)",
+        "월간 소방 자체점검 체크리스트", "자체 안전점검 체크리스트(월간)", "서울지방항공청 점검표", "위해물품 점검표", "점검표"]) eq(at(t), "audit/misc", t + " = 기타");
       ok(!DK.plan(DK.clean(AI({ type: "other", title: "x" })))[0].ssi, "제안 없음 = SSI 꺼짐");
       eq((p => p.mod + "/" + p.grp + "/" + p.ssi)(DK.plan(DK.clean(AI({ type: "other", title: "y", shelf: { mod: "audit", grp: "foreign", title: "y" } })))[0]), "audit/foreign/true", "판독이 고른 foreign 도 SSI 켜짐");
       eq((p => p.mod + "/" + p.grp + "/" + p.ssi)(DK.plan(DK.clean(AI({ type: "other", title: "y", shelf: { mod: "inspection", grp: "monthly", title: "y" } })))[0]), "inspection/monthly/false", "판독이 고른 monthly 는 꺼짐");
@@ -9985,14 +9990,13 @@ function makeServer(opts = {}) {
         ok(q(e, "#au-body").textContent.includes("감독관 서식 갑"), "결과를 누른 뒤 #au-body 에 문서 — " + w);
       }
       const guide = read("tools/edge/semis-logi-files.ts");
-      ok(/shelf 는 화면 audit 이고 묶음은 받는 기관으로 고른다/.test(guide), "판독 지침 — 받는 기관별");
-      ok(/지방항공청\(서울지방항공청 = 서항청 · 서지항\) 항공보안 점검\(자체보안계획 이행점검 포함\)은 gov/.test(guide), "지침 gov");
-      ok(/TSA · EU\(ACC3\) · 해외 당국 평가는 foreign/.test(guide), "지침 foreign");
-      ok(/AEO 인증 · 심사는 aeo/.test(guide), "지침 aeo");
-      ok(/국토부 항공안전 점검\(항공안전감독관 · 운항 · 정비 감독 · 안전심사\)만 checklist\('안전 감독'은 항공 · 국토부 · 지방항공청 · 운항 · 정비와 함께일 때만\)/.test(guide), "지침 checklist");
-      ok(/항공안전이 아닌 안전\(산업안전 · 소방 · 시설 안전 · 노동부 · 중대재해 · 산안법 · 건설 · 지게차 · 전기 · 가스\) 점검표는 자체 점검이어도 checklist · inspection 이 아니라 audit · misc/.test(guide), "지침 항공 아닌 안전 = misc");
-      ok(/분기 자체 보안 점검 · Self Audit 은 화면 inspection · 묶음 quarterly, 월간 자체 보안 점검은 inspection · monthly, 자체 안전 점검 · 그 밖 자체 점검은 audit · misc/.test(guide), "지침 자체 보안 점검 = 보안 기록부");
-      ok(/어느 것인지 애매하면 misc/.test(guide), "지침 애매하면 misc");
+      ok(/묶음은 분명한 말로만 고르고 먼저 맞는 것을 쓴다/.test(guide), "판독 지침 — 분명한 말 · 먼저 맞는 것");
+      ok(/AEO 인증 · 심사\(수출입 안전관리 우수업체\)는 audit · aeo, TSA · EU\(ACC3\) · 해외 당국 평가\(자체 점검 아님\)는 audit · foreign/.test(guide), "지침 aeo · foreign");
+      ok(/자체 '보안' 점검 · Self Audit 은 보안 기록부\(분기 · Self Audit 은 화면 inspection · 묶음 quarterly, 월간은 inspection · monthly, 주기가 없으면 audit · misc\)/.test(guide), "지침 자체 보안 점검 = 보안 기록부");
+      ok(/지방항공청\(서울지방항공청 = 서항청 · 서지항\) 항공보안 점검\(자체보안계획 이행점검 포함\)은 audit · gov/.test(guide), "지침 gov");
+      ok(/'항공안전' · '안전심사'라고 적힌 점검만 audit · checklist/.test(guide), "지침 checklist");
+      ok(/그 밖\(산업안전 · 소방 · 시설 안전 · '보안'이 없는 자체 점검 등\)과 애매한 것은 audit · misc/.test(guide), "지침 그 밖 · 애매하면 misc");
+      ok(!/'안전 감독'은 항공/.test(guide), "옛 '안전 감독' 조건 없음");
       ok(!/사내 · 외부 점검 모두/.test(guide), "옛 지침(모두 checklist) 없음");
     });
 
