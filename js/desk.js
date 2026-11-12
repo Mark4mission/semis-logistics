@@ -179,19 +179,24 @@
       org: (ai && ai.org) || "", ssi: SSI_AT.indexOf(s.mod + "/" + s.grp) >= 0 };
   }
   /* 점검표 · 체크리스트(빈 양식)는 수검 · 점검 활동에 쓰는 문서 — 판독이 서가 위치를 못 고르면 받는 기관으로 묶음을 고른다(Mark 결정 11-12):
-     AEO → 수검 aeo · 자체 점검 · Self Audit → 보안 기록부(분기 · Self Audit → quarterly · 월간 → monthly, 그 밖은 수검 misc. 자체보안계획 이행점검은 당국 점검이라 자체 아님) ·
-     TSA · EU(ACC3) · 해외 당국 → foreign · 국토부 · 지방항공청(서항청 · 서지항) 보안점검 → gov · 국토부 항공안전 점검 → checklist(산업안전 · 소방 · 시설 안전은 아님) ·
+     AEO → 수검 aeo · 항공안전이 아닌 안전(산업안전 · 소방 · 시설 안전 · 노동부 · 중대재해 · 산안법 · 건설 · 지게차 · 전기 · 가스)은 checklist 도 보안 기록부도 아닌 수검 misc ·
+     자체 보안 점검 · Self Audit → 보안 기록부(분기 · Self Audit → quarterly · 월간 → monthly, 자체 안전 점검 · 그 밖은 수검 misc. 자체보안계획 이행점검은 당국 점검이라 자체 아님) ·
+     TSA · EU(ACC3) · 해외 당국 → foreign · 국토부 · 지방항공청(서항청 · 서지항) 보안점검 → gov ·
+     국토부 항공안전 점검(항공안전감독관 · 운항 · 정비 감독 · 안전심사) → checklist('안전 감독'은 항공 · 국토부 · 지방항공청 · 운항 · 정비와 함께일 때만) ·
      애매하면 misc. 손으로 채운 기록부 스캔(hardcopy)은 보안 기록부 쪽이라 제외 */
   const CHECK_RE = /(?:점검|심사|평가)\s?표(?![준시현])|체크\s?리스트|(?:점검|심사)\s?양식|che?c?k\s?-?\s?list/i;
   const GOV_RE = /국토(?:교통)?부|지방항공청|서항청|서지항/;
+  const NOT_AIR_SAFETY_RE = /산업\s?(?:안전|재해)|산안|중대\s?재해|노동|소방|시설물?\s?안전|건설|지게차|전기|가스/;
   const CHECK_TO = [
     ["aeo", (s) => /(?:^|[^a-z])aeo(?![a-z])|수출입\s?안전관리/i.test(s)],
+    ["misc", (s) => NOT_AIR_SAFETY_RE.test(s)],
     ["self", (s) => /자체(?!\s?보안\s?계획)|self/i.test(s)],
     ["foreign", (s) => /(?:^|[^a-z])(?:tsa|eu|acc3)(?![a-z])|해외|외국\s?당국/i.test(s)],
     ["gov", (s) => /보안\s?감독/.test(s) || (GOV_RE.test(s) && /보안/.test(s))],
-    ["checklist", (s) => !/산업\s?안전|소방|시설\s?안전/.test(s) && (/항공\s?안전|안전\s?(?:심사|감독)|운항\s?감독/.test(s) || (GOV_RE.test(s) && /안전|운항|정비/.test(s)))]
+    ["checklist", (s) => /항공\s?안전|안전\s?심사|운항\s?감독/.test(s) || (/안전\s?감독/.test(s) && /항공|운항|정비/.test(s)) || (GOV_RE.test(s) && /안전|운항|정비/.test(s))]
   ];
-  const selfAt = (s) => (/분기|quarter|self\s?-?\s?audit/i.test(s) ? ["inspection", "quarterly"] : /월간|monthly/i.test(s) ? ["inspection", "monthly"] : ["audit", "misc"]);
+  const selfAt = (s) => (/안전|safety/i.test(s) && !/보안|security/i.test(s) ? ["audit", "misc"]
+    : /분기|quarter|self\s?-?\s?audit/i.test(s) ? ["inspection", "quarterly"] : /월간|monthly/i.test(s) ? ["inspection", "monthly"] : ["audit", "misc"]);
   function guessShelf(ai, name) {
     if (ai && ai.type === "hardcopy") return null;
     const s = [ai && ai.title, name].filter(Boolean).join(" ");
