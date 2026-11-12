@@ -15,7 +15,7 @@
   const FN_ARGO = SUPA_URL + "/functions/v1/semis-logi-argo";
   const CHANNEL = "semis-logi-sync";
 
-  const SYNC_KEYS = ["menus", "notices", "schedules", "assignees", "assigneesSeeded", "minutes", "minuteFolders", "levelHistory", "safetyBoard", "contacts", "gcal", "vault", "regulations", "equipment", "crisis", "fleet", "audits", "phonebook", "training", "seclog", "seclogCfg", "serp", "serpRuns", "threat", "threatRuns", "threatChecks", "patrol", "patrolCfg", "patrolPeople", "secPost", "secPostImg", "selfChecks", "selfCheckCfg", "docs", "partners", "contracts", "kcra", "secCases", "dissem", "scrStats", "desk", "boards", "usRescreen"];
+  const SYNC_KEYS = ["menus", "notices", "schedules", "assignees", "assigneesSeeded", "minutes", "minuteFolders", "levelHistory", "safetyBoard", "contacts", "gcal", "vault", "regulations", "equipment", "crisis", "fleet", "audits", "phonebook", "training", "seclog", "seclogCfg", "serp", "serpRuns", "threat", "threatRuns", "threatChecks", "patrol", "patrolCfg", "patrolPeople", "secPost", "secPostImg", "selfChecks", "selfCheckCfg", "docs", "partners", "contracts", "kcra", "secCases", "dissem", "scrStats", "desk", "boards", "usRescreen", "learn", "roster"];
   /* sessionStorage — 토큰·권한·미전송 목록은 탭을 닫으면 소멸 */
   const SS_TOKEN = "semisl:tok";
   const SS_ME = "semisl:me";
@@ -581,6 +581,10 @@
     }
     if (key === "desk:in") {           // 직원 접수함 변경 — 안전보안파트 화면은 가져오고, 올린 사람 화면은 상태만 다시 받는다(내용은 알림에 없음)
       try { if (window.SemisDesk && window.SemisDesk.remoteInbox) window.SemisDesk.remoteInbox(); } catch (e) { /* 데스크 모듈 없음 */ }
+      return;
+    }
+    if (key === "learn:done") {        // 교육 이수 · 서명 제출 — 비공개 표라 열린 교육 화면 · 대시보드만 다시 받는다
+      try { if (window.SemisLearn && window.SemisLearn.remote) window.SemisLearn.remote(); } catch (e) { /* 교육 모듈 없음 */ }
       return;
     }
     if (!key || !canRead(key)) return;

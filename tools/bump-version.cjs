@@ -29,14 +29,17 @@ html = html.replace(/(href|src)="((?:css|js)\/[\w.-]+\.(?:css|js))(?:\?v=[\d.]+)
   return `${attr}="${file}?v=${ver}"`;
 });
 fs.writeFileSync(htmlPath, html);
-/* v1.39 배포용 이수 등록 화면(edu.html)도 같은 스탬프 */
-const eduPath = path.join(ROOT, "edu.html");
-let m = 0;
-if (fs.existsSync(eduPath)) {
-  const edu = fs.readFileSync(eduPath, "utf8").replace(/(href|src)="((?:css|js)\/[\w.-]+\.(?:css|js))(?:\?v=[\d.]+)?"/g, (x, attr, file) => {
-    m++;
+/* 로그인 없는 공개 화면(edu.html 이수 등록 · learn.html 교육 이수)도 같은 스탬프 */
+const stamped = [];
+["edu.html", "learn.html"].forEach((name) => {
+  const p = path.join(ROOT, name);
+  if (!fs.existsSync(p)) return;
+  let k = 0;
+  const out = fs.readFileSync(p, "utf8").replace(/(href|src)="((?:css|js)\/[\w.-]+\.(?:css|js))(?:\?v=[\d.]+)?"/g, (x, attr, file) => {
+    k++;
     return `${attr}="${file}?v=${ver}"`;
   });
-  fs.writeFileSync(eduPath, edu);
-}
-console.log(`v${ver} — app.js VERSION 갱신, index.html 캐시 스탬프 ${n}건 · edu.html ${m}건 적용`);
+  fs.writeFileSync(p, out);
+  stamped.push(name + " " + k + "건");
+});
+console.log(`v${ver} — app.js VERSION 갱신, index.html 캐시 스탬프 ${n}건 · ${stamped.join(" · ")} 적용`);

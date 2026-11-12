@@ -3,7 +3,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.65.0";
+  const VERSION = "1.66.0";
   const APP_NAME = "H:drive";
   const APP_ALIAS = "ARGOS (Air-cargo Risk & Guard Operations System)";
   /* 데이터 캐시는 탭 sessionStorage 에만(탭 닫기·로그아웃 시 소멸). 화면 설정(LS_UI)만 localStorage */
@@ -277,6 +277,7 @@ const SeMIS = (() => {
       b("bd-edu", "보안교육", "hub-aud"),
       m("training", "보안교육 · 자격 관리", "🎓", "training", "mgr", "bd-edu", { tab: "이수 · 자격" }),
       m("dissem", "보안 전파교육", "📣", "dissem", "mgr", "bd-edu", { tab: "전파교육" }),
+      m("learn", "교육 전파 · 서명", "✍️", "learn", "mgr", "hub-aud"),
 
       h("hub-ops", "비상 · 연락", "users"),
       m("serp", "팀위기대응 (SERP)", "🛟", "serp", "mgr", "hub-ops"),
@@ -285,6 +286,7 @@ const SeMIS = (() => {
       m("phonebook", "업무 연락처", "📇", "phonebook", "mgr", "bd-contact", { tab: "업무 연락처" }),
       m("contacts", "비상연락망 · 보고체계", "☎️", "contacts", "mgr", "bd-contact", { tab: "비상연락망 · 체계도", quick: true }),
       m("crisis", "위기대응 담당자", "🧭", "crisis", "mgr", "bd-contact", { tab: "위기대응 조직" }),
+      m("roster", "인원 관리", "🪪", "roster", "mgr", "hub-ops"),
 
       h("hub-doc", "규정 · 문서", "book"),
       b("bd-regs", "규정", "hub-doc"),
@@ -428,6 +430,8 @@ const SeMIS = (() => {
       dissem: {},        // 보안 전파교육
       scrStats: {},      // 화물 보안검색 실적 (월별 합계)
       usRescreen: {},    // 미주행 재보안검색 — 출발지별 월 실적 (js/usrescreen.js)
+      learn: { courses: [] },              // 교육 전파 · 서명 — 교육 정의 (이수 기록 · 서명은 서버 비공개 표, js/learn.js)
+      roster: { team: "", people: [], orgs: [] }, // 인원 관리 — 임직원 · 협력업체 통합 명단 (명단 · 사번은 공용 DB만, js/roster.js)
       desk: { cfg: {}, log: [] },  // 접수 카운터 — 분야별 담당 · 올린 문서 기록 (js/desk.js)
       boards: defaultBoards()      // 게시판 정의 (글은 서버 비공개 표 — js/board.js)
     };
@@ -588,6 +592,9 @@ const SeMIS = (() => {
     const sc = obj("selfCheckCfg", {});
     if (!isObj(sc.forms)) sc.forms = {};
     ["serp", "threat", "secPost", "secPostImg", "patrolCfg", "partners", "kcra", "dissem", "scrStats", "usRescreen"].forEach(k => obj(k, {}));
+    arr(obj("learn", { courses: [] }), "courses");
+    const lpp = obj("roster", { team: "", people: [], orgs: [] });
+    arr(lpp, "people"); arr(lpp, "orgs");
     const dk = obj("desk", { cfg: {}, log: [] });
     if (!isObj(dk.cfg)) dk.cfg = {};
     dk.log = (Array.isArray(dk.log) ? dk.log : []).filter(x => x && typeof x === "object" && x.id && x.file && typeof x.file === "object");
@@ -1173,7 +1180,7 @@ const SeMIS = (() => {
     minutes: "mid", contacts: "mid", crisis: "mid", serp: "mid", threat: "mid", phonebook: "mid", settings: "mid", vault: "mid",
     "reg-sec": "mid", "reg-safety": "mid", "reg-dg": "mid", "scr-status": "mid", "scr-equip": "mid", audit: "mid", inspection: "mid", shortcuts: "mid", "daily-safety": "mid",
     "sec-dash": "mid", "aud-dash": "mid", training: "mid", selfcheck: "mid",
-    partners: "mid", contracts: "mid", "kc-ra": "mid", "sec-cases": "wide", dissem: "wide", "us-rescreen": "mid"
+    partners: "mid", contracts: "mid", "kc-ra": "mid", "sec-cases": "wide", dissem: "wide", "us-rescreen": "mid", learn: "mid"
   };
   function applyViewWidth(view, route) {
     const r = String(route);

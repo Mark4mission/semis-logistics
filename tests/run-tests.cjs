@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/loginguard.js", "js/app.js", "js/argo-owl.js", "js/panel.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/preview.js", "js/preview-draw.js", "js/preview-cfb.js", "js/preview-xls.js", "js/preview-hwp.js", "js/docshelf.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/board.js", "js/cares.js", "js/hazfind.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/contracts.js", "js/partners.js", "js/kcra.js", "js/seccases.js", "js/dissem.js", "js/scrstats.js", "js/usrescreen.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/docread.js", "js/desk.js", "js/argo.js", "js/selfcheck.js", "js/auddash.js", "js/hubhome.js", "js/ksync.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
+const FILES = ["js/loginguard.js", "js/app.js", "js/argo-owl.js", "js/panel.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/preview.js", "js/preview-draw.js", "js/preview-cfb.js", "js/preview-xls.js", "js/preview-hwp.js", "js/docshelf.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/board.js", "js/cares.js", "js/hazfind.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/contracts.js", "js/partners.js", "js/kcra.js", "js/seccases.js", "js/dissem.js", "js/roster.js", "js/learn-md.js", "js/learn.js", "js/scrstats.js", "js/usrescreen.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/docread.js", "js/desk.js", "js/argo.js", "js/selfcheck.js", "js/auddash.js", "js/hubhome.js", "js/ksync.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -813,7 +813,9 @@ function makeServer(opts = {}) {
       const home = rows.find(r => r.id === "hub-home");
       eq(n(home), "5/5", "대시보드 · 일정 · 회의록 · 운항 현황 · 바로가기 (메인 데스크는 v1.48 부터 지원 카드 · 패널)");
       const aud = rows.find(r => r.id === "hub-aud");
-      eq(n(aud), "7/7", "대시보드 + 탭 묶음 속 6");
+      eq(n(aud), "8/8", "대시보드 + 탭 묶음 속 6 + 교육 전파 · 서명");
+      const ops = rows.find(r => r.id === "hub-ops");
+      eq(ops && n(ops), "6/6", "비상 · 연락 = 팀위기대응 · 위협전화 · 연락처 3 + 인원 관리");
       ok(rows.find(r => r.id === "hub-saf"), "예정 모듈만 있는 허브도 구축 현황에");
     });
     t("D03 무재해 기준일 설정(시스템관리자 · 현황 ⋯) → D+ 계산", () => {
@@ -1650,7 +1652,7 @@ function makeServer(opts = {}) {
     const e = makeEnv({ fetch: server.fetch });
     const { Sync } = e;
     t("Y01 SYNC_KEYS 구성(계정 자료 제외)", () =>
-      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,vault,regulations,equipment,crisis,fleet,audits,phonebook,training,seclog,seclogCfg,serp,serpRuns,threat,threatRuns,threatChecks,patrol,patrolCfg,patrolPeople,secPost,secPostImg,selfChecks,selfCheckCfg,docs,partners,contracts,kcra,secCases,dissem,scrStats,desk,boards,usRescreen"));
+      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,vault,regulations,equipment,crisis,fleet,audits,phonebook,training,seclog,seclogCfg,serp,serpRuns,threat,threatRuns,threatChecks,patrol,patrolCfg,patrolPeople,secPost,secPostImg,selfChecks,selfCheckCfg,docs,partners,contracts,kcra,secCases,dissem,scrStats,desk,boards,usRescreen,learn,roster"));
     t("Y02 SYNC_KEYS는 모두 freshData 컬렉션에 존재", () => Sync.SYNC_KEYS.forEach(k => ok(e.S.data[k] !== undefined, k)));
     await ta("Y03 로그인 전에는 서버를 부르지 않음 · 로그인 후 초기 pull + 쓰기 권한 있는 컬렉션만 시드", async () => {
       await Sync.start();
@@ -12966,6 +12968,503 @@ function makeServer(opts = {}) {
       go(e, "us-rescreen");
       ok(!q(e, ".ur-in") && !q(e, "#ur-save") && !q(e, "#ur-origins"), "입력 · 관리 없음");
       eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+  }
+
+  /* ══════════ [LN] 교육 전파 · 서명 — 관리 화면 · 명단 · 기록부(A4 · 엑셀) · 일정 · 대시보드 · 학습 화면(learn.html) ══════════ */
+  {
+    const LSQL = read("tools/sql/semis-logi-learn.sql");
+    const LEDGE = read("tools/edge/semis-logi-learn.ts");
+    const LHTML = read("learn.html");
+    const LAPP_JS = ["js/learn-md.js", "js/pow.js", "js/learn-app.js"].map(f => read(f)).join("\n;\n");
+    const LSIG = {};
+    [LSQL, read("tools/sql/semis-logi-pow.sql")].forEach(src => { for (const m of src.matchAll(/create or replace function public\.(\w+)\(([^)]*)\)/g))
+      LSIG[m[1]] = m[2].split(",").map(x => x.trim()).filter(Boolean).map(x => ({ n: x.split(/\s+/)[0], opt: /\sdefault\s/i.test(x) })); });
+    const lsigBad = (name, args) => {
+      const sg = LSIG[name];
+      if (!sg) return name + ": 서버에 없는 함수";
+      const keys = Object.keys(args || {});
+      const extra = keys.filter(k => !sg.some(x => x.n === k)), miss = sg.filter(x => !x.opt && keys.indexOf(x.n) < 0).map(x => x.n);
+      return extra.length || miss.length ? name + ": 인자 " + JSON.stringify({ extra, miss }) : "";
+    };
+    const PUB = "https://mzyuzrxkdcpzxojenwat.supabase.co/storage/v1/object/public/semis-logi-files/";
+    const ROSTER = () => ({ team: "인천화물팀", orgs: ["프로에스콤"], people: [
+      { id: "p1", name: "가나다", org: "에어제타", part: "안전보안파트", emp: "900001", gender: "M", title: "과장" },
+      { id: "p2", name: "라마바", org: "에어제타", part: "안전보안파트", emp: "900002", gender: "F", title: "대리" },
+      { id: "p3", name: "사아자", org: "에어제타", part: "안전보안파트", emp: "900003", gender: "M" },
+      { id: "p4", name: "차카타", org: "에어제타", part: "수출파트", emp: "900004", gender: "F" },
+      { id: "p5", name: "파하가", org: "에어제타", part: "수출파트", emp: "900005", gender: "" },
+      { id: "p6", name: "나다라", org: "AAP", part: "", emp: "", gender: "M" },
+      { id: "p7", name: "마바사", org: "에어제타", part: "안전보안파트", emp: "900007", left: "2026-01-01" } ] });
+    const COURSE = (o) => Object.assign({ id: "lc1", code: "abcdefgh2345", state: "open", title: "11월 협의체 결과 회람", kind: "안전", overview: "개요 두 줄", host: "안전보안파트",
+      place: "온라인(H:drive)", start: "2026-11-10", end: "2026-11-20", body: "## 핵심\n- 지게차 통로 확보\n- **보호구** 착용", minSec: 60,
+      items: [{ id: "i1", type: "video", name: "v.mp4", size: 1000, url: PUB + "learn/aa11_v.mp4", dur: 40 }],
+      targets: { groups: ["안전보안파트", "AAP"], add: ["p4"], except: ["p3"] }, excuse: { p2: "병가" }, dissem: "" }, o || {});
+    const ROWS = () => [
+      { rid: "lr1", cid: "lc1", pid: "p1", name: "가나다", org: "에어제타", part: "안전보안파트", emp: "900001", gender: "M", manual: false, state: "ok", start: "2026-11-12 09:00", at: "2026-11-12 09:05", secs: 300, sign: true },
+      { rid: "lr2", cid: "lc1", pid: "p4", name: "차카타", org: "에어제타", part: "수출파트", emp: "900004", gender: "F", manual: false, state: "start", start: "2026-11-12 10:00", at: "", secs: 0, sign: false },
+      { rid: "lr3", cid: "lc1", pid: "", name: "홍길동", org: "프로에스콤", part: "", emp: "", gender: "", manual: true, state: "ok", start: "2026-11-12 11:00", at: "2026-11-12 11:04", secs: 200, sign: true },
+      { rid: "lr4", cid: "lc1", pid: "p5", name: "파하가", org: "에어제타", part: "수출파트", emp: "900005", gender: "", manual: false, state: "ok", start: "2026-11-12 12:00", at: "2026-11-12 12:06", secs: 280, sign: true },
+      { rid: "lr9", cid: "lc1", pid: "p6", name: "나다라", org: "AAP", part: "", emp: "", gender: "M", manual: false, state: "void", start: "2026-11-11 08:00", at: "", secs: 0, sign: true } ];
+    const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+    const lnEnv = (role, o) => {
+      o = o || {};
+      const e = makeEnv();
+      loginAs(e, role);
+      const L = e.w.SemisLearn;
+      L.setToday("2026-11-12"); L.setState({ reset: true });
+      e.S.data.roster = o.people || ROSTER();
+      e.S.data.learn = { courses: o.courses || [COURSE()] };
+      L._setRows(o.rows === null ? null : (o.rows || ROWS()));
+      if (o.signs !== false) L._setSigns("lc1", { lr1: PNG, lr3: PNG, lr4: PNG });
+      e.w.SemisSync.rpc = async (name) => { (e.rpcs = e.rpcs || []).push(name); return name === "semis_logi_learn_stats" ? { ok: true, rows: L._S.rows || [] } : name === "semis_logi_learn_signs" ? { ok: true, signs: { lr1: PNG, lr3: PNG, lr4: PNG } } : name === "semis_logi_learn_admin" ? { ok: true } : { ok: false, error: "test" }; };
+      return { e, L };
+    };
+
+    t("LN01 메뉴 · 권한: 점검 · 교육 허브 독립 메뉴(manager) · 권한표 2/3 · 동기화 키 · 정규화 멱등 · 일반 직원 안 보임", () => {
+      const { e } = lnEnv("hq");
+      const mn = e.S.menuForModule("learn");
+      ok(mn && mn.parent === "hub-aud" && mn.vis === "mgr" && !mn.tab, "메뉴 시드 " + JSON.stringify(mn));
+      eq(ACL.learn.join(","), "2,3"); eq(ACL.roster.join(","), "2,3");
+      ok(/\('learn',2,3\), \('roster',2,3\)/.test(LSQL), "마이그레이션 파일에도 같은 권한표");
+      ok(e.w.SemisSync.SYNC_KEYS.indexOf("learn") >= 0 && e.w.SemisSync.SYNC_KEYS.indexOf("roster") >= 0);
+      const rm = e.S.menuForModule("roster");
+      ok(rm && rm.parent === "hub-ops" && rm.vis === "mgr" && rm.label === "인원 관리", "인원 관리 메뉴 — 비상 · 연락 허브");
+      eq(e.S.normalizeData(), false, "멱등");
+      loginAs(e, "user"); ok(!e.S.navVisible(e.S.menuForModule("learn")), "user 안 보임");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+
+    t("LN02 대상 · 진행 계산: 그룹 · 개별 추가 · 제외 · 퇴직 제외 · 명단 외 · 무효 기록 빼기 · 사유", () => {
+      const { e, L } = lnEnv("hq");
+      const c = e.S.data.learn.courses[0];
+      const P = (id) => e.S.data.roster.people.find(p => p.id === id);
+      ok(L.isTarget(c, P("p1")) && !L.isTarget(c, P("p3")) && L.isTarget(c, P("p4")) && !L.isTarget(c, P("p5")) && L.isTarget(c, P("p6")), "판정");
+      eq(L.groupOf(P("p6")), "AAP"); eq(L.groupOf(P("p1")), "안전보안파트");
+      const g = L.prog(c);
+      eq(g.n, 6, "대상 p1 p2 p4 p6 + 이수한 대상 외 p5 + 명단 외 홍길동");
+      eq(g.ok, 3); eq(g.pct, 50); eq(g.manual, 1); eq(g.start, 1);
+      const m = (nm) => g.mem.find(x => x.name === nm);
+      eq(m("라마바").st, "excused"); eq(m("라마바").note, "병가"); eq(m("차카타").st, "start"); eq(m("나다라").st, "todo", "무효 기록 = 미완료");
+      ok(!m("파하가").tgt && m("파하가").st === "ok", "대상 외 이수"); ok(!m("마바사"), "퇴직자 빠짐");
+      eq(g.groups.map(x => x.g + ":" + x.ok + "/" + x.n).join(","), "수출파트:1/2,안전보안파트:1/2,프로에스콤:1/1,AAP:0/1", "에어제타 파트 먼저 · 소속 이름순(한글 먼저)");
+      eq(L.statusOf(c, "2026-11-09").k, "soon"); eq(L.statusOf(c, "2026-11-21").k, "ended"); eq(L.statusOf(Object.assign({}, c, { state: "draft" })).k, "draft");
+      e.w.close();
+    });
+
+    t("LN03 목록: 진행 중 표 · 완료 막대 · 상태 · 새 교육(hq만) · 명단 단추 · 인쇄 · manager 는 만들기 없음", () => {
+      const { e } = lnEnv("hq", { courses: [COURSE(), COURSE({ id: "lc2", code: "bbbbbbbb2222", title: "예정 교육", start: "2026-11-20", end: "2026-11-30" }), COURSE({ id: "lc3", code: "cccccccc3333", state: "draft", title: "준비 중 교육" })] });
+      go(e, "learn");
+      eq(qa(e, ".ln-tbl tbody tr").length, 1, "진행 중만");
+      ok(/3\/6/.test(q(e, ".ln-tbl tbody tr").textContent) && /50%/.test(q(e, ".ln-tbl tbody tr").textContent), "완료 3/6 · 50%");
+      ok(q(e, ".page-head [data-ln-new].btn-primary") && q(e, "#ln-to-roster.ph-rare"), "새 교육 · 명단");
+      ok(q(e, ".page-head [data-print-btn]"), "인쇄 단추");
+      q(e, '[data-lnf="all"]').click();
+      eq(qa(e, ".ln-tbl tbody tr").length, 3, "전체");
+      ok(/준비 중/.test(q(e, ".ln-tbl").textContent));
+      loginAs(e, "manager"); e.S.renderView();
+      ok(!q(e, "[data-ln-new]"), "manager 만들기 없음");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+
+    t("LN04 상세: 상태 띠 · 탭(대상자 · 파트별) · 상태 칩 · 서명 그림 · 필터 · hq 관리 단추 · 맞춤 인쇄 단추 하나", () => {
+      const { e, L } = lnEnv("hq");
+      L.setState({ view: "detail", sel: "lc1" });
+      go(e, "learn");
+      ok(/11월 협의체 결과 회람/.test(q(e, ".page-title").textContent));
+      eq(qa(e, ".page-head [data-print-btn]").length, 1, "인쇄 단추 하나(기록부)");
+      ok(q(e, '.page-head [data-lnx="link"].btn-primary'), "주소 · QR 주 단추");
+      eq(qa(e, ".ln-mem tbody tr").length, 6);
+      eq(qa(e, ".ln-mem img.ln-sg").length, 3, "서명 그림 3");
+      ok(/명단 외/.test(q(e, ".ln-mem").textContent) && /대상 외/.test(q(e, ".ln-mem").textContent) && /병가/.test(q(e, ".ln-mem").textContent));
+      q(e, '[data-lndf="ok"]').click();
+      eq(qa(e, ".ln-mem tbody tr").length, 3, "완료만");
+      ok(!q(e, '[data-ct-pane="lnd:grp"]').hidden === false, "파트 탭 숨김");
+      eq(qa(e, ".ln-grp tbody tr").length, 4, "파트 · 소속 4");
+      ok(/지게차 통로/.test(q(e, ".ln-info .ln-sum").innerHTML) && q(e, ".ln-info .ln-sum strong"), "요약 서식");
+      loginAs(e, "manager"); e.S.renderView();
+      ok(!q(e, '[data-lnx="link"]') && !q(e, "[data-lnm]") && q(e, '[data-lnx="xlsx"]'), "manager = 보기 · 엑셀만");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+
+    t("LN05 새 교육: 필수 검사 · 대상 그룹 · 개별 추가/제외 · 저장 = 준비 중 + 무작위 코드 · 최소 학습 시간 자동", () => {
+      const { e, L } = lnEnv("hq", { courses: [] });
+      go(e, "learn");
+      q(e, ".page-head [data-ln-new]").click();
+      ok(q(e, "#le-title") && q(e, "#ln-esave.btn-primary"), "만들기 화면");
+      q(e, "#ln-esave").click();
+      eq(e.S.data.learn.courses.length, 0, "교육명 없으면 저장 안 함");
+      q(e, "#le-title").value = "시험 교육";
+      q(e, "#le-body").value = "## 요점\n- 하나\n- 둘"; q(e, "#le-body").dispatchEvent(new e.w.Event("input", { bubbles: true }));
+      ok(/<h3>요점<\/h3>/.test(q(e, "#le-prev").innerHTML), "미리보기");
+      const cb = q(e, '[data-tg="안전보안파트"]'); cb.checked = true; cb.dispatchEvent(new e.w.Event("change", { bubbles: true }));
+      ok(/대상 <b class="mono">3<\/b>명/.test(q(e, "#le-tsum").innerHTML), "그룹 3명 " + q(e, "#le-tsum").innerHTML);
+      const tq = q(e, "#le-tq"); tq.value = "차카타"; tq.dispatchEvent(new e.w.Event("input", { bubbles: true }));
+      const tp = q(e, '[data-tp="p4"]'); tp.checked = true; tp.dispatchEvent(new e.w.Event("change", { bubbles: true }));
+      tq.value = "라마바"; tq.dispatchEvent(new e.w.Event("input", { bubbles: true }));
+      const tp2 = q(e, '[data-tp="p2"]'); tp2.checked = false; tp2.dispatchEvent(new e.w.Event("change", { bubbles: true }));
+      ok(/대상 <b class="mono">3<\/b>명 · 개별 추가 1 · 제외 1/.test(q(e, "#le-tsum").innerHTML), q(e, "#le-tsum").innerHTML);
+      q(e, "#ln-esave").click();
+      const c = e.S.data.learn.courses[0];
+      ok(c && /^[a-z2-9]{12}$/.test(c.code) && /^[abcdefghjkmnpqrstuvwxyz23456789]+$/.test(c.code) && c.state === "draft", "코드 · 준비 중 " + JSON.stringify(c && c.code));
+      eq(JSON.stringify(c.targets), JSON.stringify({ groups: ["안전보안파트"], add: ["p4"], except: ["p2"] }));
+      ok(c.minSec >= 20 && c.minSec % 10 === 0, "최소 학습 시간 " + c.minSec);
+      eq(L.newCode() === L.newCode(), false, "매번 다른 코드");
+      ok(q(e, '.page-head [data-lnx="link"]'), "저장 후 상세");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+
+    t("LN06 주소 · QR: learn.html#코드 · QR 그림 · 준비 중이면 '교육 열기'로 열고 기간 · 내용 확인", () => {
+      const { e, L } = lnEnv("hq", { courses: [COURSE({ state: "draft" })] });
+      L.setState({ view: "detail", sel: "lc1" });
+      go(e, "learn");
+      q(e, '[data-lnx="link"]').click();
+      ok(/learn\.html#abcdefgh2345$/.test(q(e, "#ln-url").textContent), q(e, "#ln-url").textContent);
+      ok(q(e, ".ln-qr svg"), "QR");
+      ok(/준비 중/.test(q(e, "#modal-box").textContent));
+      q(e, "#ln-open").click();
+      eq(e.S.data.learn.courses[0].state, "open");
+      ok(!q(e, "#ln-open"), "연 뒤에는 단추 없음");
+      eq(L.learnUrl("zzzzzzzz2222"), "https://logi.test/learn.html#zzzzzzzz2222");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+
+    t("LN07 교육 실시 결과 기록부(A4): 파트마다 한 장 · 계/남/여 · 미실시 사유 · 서명 그림 · 주관 · 장소 · 일시 · 23명 넘으면 다음 쪽", () => {
+      const { e, L } = lnEnv("hq");
+      const c = e.S.data.learn.courses[0];
+      const html = L.recordHTML(c, { lr1: PNG, lr3: PNG, lr4: PNG });
+      const doc = new JSDOM(html).window.document;
+      eq(doc.querySelectorAll("section.pg").length, 4, "그룹 4장");
+      const pg = Array.from(doc.querySelectorAll("section.pg")).find(s => s.querySelectorAll("tr")[1].children[1].textContent === "안전보안파트");
+      ok(/교육 실시 결과 기록부/.test(pg.querySelector("h1").textContent));
+      const tds = Array.from(pg.querySelectorAll("tr")).map(tr => Array.from(tr.children).map(x => x.textContent.trim()).join("|"));
+      ok(tds.some(r => r === "교육대상|2|1|1|"), "대상 계 · 남 · 여 " + tds.join(" / "));
+      ok(tds.some(r => r === "교육실시|1|1|0|"), "실시");
+      ok(tds.some(r => r === "교육미실시|1|0|1|병가"), "미실시 · 사유");
+      ok(tds.some(r => /안전보안파트\|온라인\(H:drive\)\|'26\. 11\. 10 ~ 11\. 20/.test(r)), "주관 · 장소 · 일시");
+      eq(pg.querySelectorAll("td.sg img").length, 1, "서명 1");
+      ok(/병가/.test(pg.querySelector("td.sg .nt").textContent), "서명 칸 사유");
+      ok(/지게차 통로/.test(pg.querySelector("td.bd").textContent), "교육 내용");
+      eq(L.period(c), "'26. 11. 10 ~ 11. 20");
+      const many = ROSTER(); for (let i = 0; i < 30; i++) many.people.push({ id: "m" + i, name: "사람" + i, org: "에어제타", part: "수출파트", emp: "8000" + i, gender: i % 2 ? "M" : "F" });
+      e.S.data.roster = many;
+      const d2 = new JSDOM(L.recordHTML(COURSE({ id: "lcx", targets: { groups: ["수출파트"], add: [], except: [] } }), {})).window.document;
+      eq(d2.querySelectorAll("section.pg").length, 2, "32명 → 두 쪽");
+      ok(/\(2\/2\)/.test(d2.querySelectorAll("section.pg")[1].textContent), "이어지는 쪽 표시");
+      e.w.close();
+    });
+
+    await ta("LN08 엑셀: 그룹마다 시트 · 양식 칸 병합 · 서명 그림(drawing · media) · 형식 등록 · 인쇄 영역", async () => {
+      const { e, L } = lnEnv("hq");
+      const c = e.S.data.learn.courses[0];
+      const u8 = await L.xlsxBytes(c, { lr1: PNG, lr3: PNG, lr4: PNG });
+      const ents = await e.w.SemisHwpx.unzip(u8);
+      const get = (n) => { const x = ents.find(z => z.name === n); return x ? new TextDecoder().decode(x.data) : ""; };
+      const names = ents.map(x => x.name);
+      ok(names.indexOf("xl/worksheets/sheet4.xml") >= 0 && names.indexOf("xl/worksheets/sheet5.xml") < 0, "시트 4 " + names.join(","));
+      const wb = get("xl/workbook.xml");
+      ok(/name="수출파트"/.test(wb) && /name="안전보안파트"/.test(wb) && /name="AAP"/.test(wb) && /_xlnm\.Print_Area/.test(wb), "시트 이름 · 인쇄 영역");
+      const s2 = get("xl/worksheets/sheet2.xml");
+      ["B4:I4", "C9:I9", "B10:B13", "G10:I10", "D14:F14", "C16:I36", "D38:E38", "H38:I38", "F38:G38"].forEach(m => ok(s2.indexOf('<mergeCell ref="' + m + '"/>') > 0, "병합 " + m));
+      ok(/교육대상/.test(s2) && /병가/.test(s2) && /<drawing r:id="rId1"\/>/.test(s2), "값 · 그림 연결");
+      ok(/\.png/.test(get("xl/drawings/_rels/drawing2.xml.rels")) && /oneCellAnchor/.test(get("xl/drawings/drawing2.xml")), "그림");
+      ok(names.some(n => /^xl\/media\/sign\d+_\d+\.png$/.test(n)), "PNG 파일");
+      const ct = get("[Content_Types].xml");
+      ok(/Extension="png"/.test(ct) && /drawing2\.xml/.test(ct), "형식 등록");
+      e.w.close();
+    });
+
+    t("LN09 명단 엑셀 읽기: 파트 묶음 표(사번 · 성명 쌍) + 사번 표(직급 · 성별) → 파트 · 직급 · 성별, 반영 미리보기(새로 · 바뀜 · 엑셀에 없음)", () => {
+      const { e } = lnEnv("hq"); const L = e.w.SemisRoster;
+      const gridSheet = [["명단 자료"], [], ["부서", "", "사번", "성명", "사번", "성명", "합계"],
+        ["ICNKF", "지원담당", "900010.0", "새사람", "900001", "가나다", ""], ["", "", "900011", "둘사람", "", "", ""],
+        ["", "안전보안파트", "900002", "라마바", "900003", "사아자", ""], ["", "수출파트", "900004", "차카타", "", "", ""], ["※ 메모 줄", "", "900099", "메모사람"]];
+      const infoSheet = [["순번", "성명", "통합사번", "직책", "직급", "성별", "비고"], ["1", "가나다", "900001", "팀원", "차장", "남", ""], ["2", "새사람", "900010", "팀원", "과장", "여", ""]];
+      const parsed = L.parseRoster([gridSheet, infoSheet]);
+      ok(parsed.grid, "파트 묶음 형식");
+      eq(parsed.people.length, 6, JSON.stringify(parsed.people));
+      const np = parsed.people.find(p => p.name === "새사람");
+      ok(np.part === "지원담당" && np.emp === "900010" && np.title === "과장" && np.gender === "F", JSON.stringify(np));
+      eq(parsed.people.find(p => p.name === "가나다").part, "지원담당", "같은 줄 두 번째 사람 파트");
+      const df = L.rosterDiff(parsed);
+      eq(df.add.map(p => p.name).join(","), "새사람,둘사람");
+      ok(df.chg.some(x => x.p.id === "p1" && x.d.part === "지원담당" && x.d.title === "차장"), "가나다 파트 · 직급 바뀜 " + JSON.stringify(df.chg.map(x => x.d)));
+      eq(df.gone.map(p => p.id).join(","), "p5", "엑셀에 없는 재직자(퇴직자 · 협력업체 제외)");
+      const flat = L.parseRoster([infoSheet]);
+      ok(!flat.grid && flat.people.length === 2, "표 형식만 — 퇴직 처리 없음");
+      eq(L.rosterDiff(flat).gone.length, 0);
+      const tbl = new JSDOM('<table><tr><th></th><th>A</th><th>B</th></tr><tr><th>1</th><td rowspan="2">안전</td><td>x</td></tr><tr><th>2</th><td>y</td></tr></table>').window.document.querySelector("table");
+      eq(JSON.stringify(L.gridOf(tbl)), JSON.stringify([[], ["안전", "x"], ["안전", "y"]]), "행 병합 펼치기 · 행/열 번호 제외");
+      e.w.close();
+    });
+
+    t("LN10 인원 관리(독립 메뉴): 그룹 머리 · 성별 바로 고르기(hq) · 성별 미입력 거르기 · 사람 추가 검사 · 교육 화면이 같은 명단을 씀 · 검색", () => {
+      const { e, L } = lnEnv("hq");
+      e.w.SemisRoster.setState({ reset: true });
+      go(e, "roster");
+      ok(/인원 관리/.test(q(e, ".page-title").textContent) && q(e, '.page-head [data-lr="xls"].btn-primary'), "머리말 · 엑셀 반영 주 단추");
+      ok(qa(e, ".ln-ros .ln-gh").length >= 4, "그룹 머리");
+      const sel = q(e, '[data-gp="p5"]'); sel.value = "F"; sel.dispatchEvent(new e.w.Event("change", { bubbles: true }));
+      eq(e.S.data.roster.people.find(p => p.id === "p5").gender, "F");
+      q(e, "#ln-rnog").click();
+      eq(qa(e, ".ln-ros tbody tr:not(.ln-gh)").length, 0, "성별 미입력 없음");
+      q(e, '[data-lr="add"]').click();
+      q(e, "#lp-name").value = "새직원"; q(e, "#lp-emp").value = "900001"; q(e, "#lp-org").value = "에어제타";
+      q(e, "#modal-box [data-act=ok]").click();
+      ok(!e.S.data.roster.people.some(p => p.name === "새직원"), "같은 사번 거절");
+      q(e, "#lp-emp").value = "900077"; q(e, "#modal-box [data-act=ok]").click();
+      ok(e.S.data.roster.people.some(p => p.name === "새직원" && p.emp === "900077"), "추가");
+      ok(L.groups().some(g => g.g === "안전보안파트" && g.n === 3), "교육 화면 그룹 = 인원 관리 명단");
+      const hits = e.w.SemisSearch.search("새직원");
+      ok(JSON.stringify(hits).indexOf("인원 관리") >= 0, "검색 — 인원 관리");
+      loginAs(e, "manager"); e.S.renderView();
+      ok(!q(e, "[data-gp]") && !q(e, '[data-lr="xls"]'), "manager 보기만");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+
+    t("LN11 일정관리 연동: 열린 교육 기간 = [교육] 막대(초록 · 저장 안 함) · 준비 중 제외 · 바로 가기 = 상세", () => {
+      const { e, L } = lnEnv("hq", { courses: [COURSE(), COURSE({ id: "lc3", code: "cccccccc3333", state: "draft", title: "준비" })] });
+      const it = L.calItems("2026-11-01", "2026-11-30");
+      eq(it.length, 1); eq(it[0].title, "[교육] 11월 협의체 결과 회람"); eq(it[0].color, "green"); ok(/완료 3\/6/.test(it[0].sub));
+      eq(L.calItems("2026-12-01", "2026-12-31").length, 0, "기간 밖");
+      e.w.SemisCalendar.setView("month"); e.w.SemisCalendar.setAnchor("2026-11-12"); go(e, "schedule");
+      ok(/\[교육\] 11월 협의체/.test(q(e, "#view").textContent), "일정 화면에 표시");
+      ok(!e.S.data.schedules.some(s => /\[교육\]/.test(s.title || "")), "일정 데이터에 저장 안 함");
+      it[0].go[0].run();
+      e.S.renderView();
+      ok(q(e, '.page-head [data-lnx="xlsx"]'), "상세로");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+
+    t("LN12 대시보드: 점검 · 교육 대시보드 교육 카드 탭(이수 · 자격 · 교육 전파 — 진행 · 완료율) · 홈 '오늘' 한 줄", () => {
+      const { e } = lnEnv("hq");
+      e.w.SemisAudDash.setToday("2026-11-12");
+      go(e, "aud-dash");
+      ok(q(e, '[data-ct-tabs="iet"]'), "교육 카드 탭");
+      ok(/진행 중 1건 · 완료율 50%/.test(q(e, '[data-ct-pane="iet:ln"]').textContent), "완료율 " + q(e, '[data-ct-pane="iet:ln"]').textContent.slice(0, 80));
+      ok(!/교육 전파/.test(q(e, ".stat-row").textContent), "요약 칸 줄은 그대로(6칸)");
+      ok(q(e, '[data-ct-pane="iet:ln"] [data-ln-open="lc1"]'), "진행 중 교육 줄");
+      ok(qa(e, "#view > .card, #view > section.card").length <= 4, "블록 4개 이하");
+      go(e, "dashboard");
+      const row = q(e, "#td-ln");
+      ok(row && /교육 전파/.test(row.textContent) && /11월 협의체/.test(row.textContent) && /50%/.test(row.textContent), row && row.textContent);
+      row.click();
+      eq(e.w.location.hash, "#/learn");
+      e.S.data.learn.courses[0].end = "2026-11-11";
+      go(e, "dashboard");
+      ok(!q(e, "#td-ln"), "진행 중 없으면 줄 없음");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+
+    t("LN13 보안 전파교육 이행표 반영: 연결한 건의 파트 칸에 날짜 · '온라인 이수 n/m'", () => {
+      const { e, L } = lnEnv("hq", { courses: [COURSE({ dissem: "dv1" })] });
+      e.S.data.dissem = { events: [{ id: "dv1", date: "2026-11-09", title: "보안등급 전파", kind: "보안등급 · 경보", targets: ["ss", "exp"], res: {} }] };
+      L.setState({ view: "detail", sel: "lc1" });
+      go(e, "learn");
+      q(e, '[data-lnx="dissem"]').click();
+      const rows = qa(e, "#modal-box [data-dvs]");
+      ok(rows.length >= 2, "완료 있는 그룹");
+      const exp = rows.find(s => /수출/.test(s.closest("tr").textContent));
+      eq(exp.value, "exp", "수출파트 → 수출 칸 추정");
+      q(e, '#modal-box [data-dvi="' + exp.dataset.dvs + '"]').checked = true;
+      clickOk(e);
+      const r = e.S.data.dissem.events[0].res.exp;
+      ok(r && r.date === "2026-11-12" && /온라인 이수 1\/2/.test(r.note), JSON.stringify(r));
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+
+    t("LN14 요약 글 서식: 이스케이프 · 소제목 · 목록 · 번호 · 굵게 · 읽는 시간", () => {
+      const { e } = lnEnv("hq");
+      const M = e.w.SemisLearnMd;
+      const h = M.html("## 제목 <b>\n- 하나 **굵게**\n- <script>x</script>\n\n1. 첫째\n2) 둘째\n문단\n줄");
+      ok(h.indexOf("<script>") < 0 && h.indexOf("&lt;script&gt;") > 0, "이스케이프");
+      ok(/<h3>제목 &lt;b&gt;<\/h3><ul><li>하나 <strong>굵게<\/strong><\/li>/.test(h), h);
+      ok(/<ol><li>첫째<\/li><li>둘째<\/li><\/ol><p>문단<br>줄<\/p>/.test(h), h);
+      eq(M.readSec("짧"), 20); ok(M.readSec("가".repeat(750)) === 100);
+      e.w.close();
+    });
+
+    t("LN15 learn.html: CSP(스크립트 self · 연결/그림/영상은 공용 DB만) · 스크립트 순서 · 캐시 스탬프 · 검색 제외 · 리퍼러 없음 · 인쇄 단추", () => {
+      const csp = /Content-Security-Policy" content="([^"]+)"/.exec(LHTML)[1];
+      ok(/script-src 'self';/.test(csp) && csp.indexOf("unsafe") < 0);
+      ok(/connect-src https:\/\/mzyuzrxkdcpzxojenwat\.supabase\.co;/.test(csp) && /media-src https:\/\/mzyuzrxkdcpzxojenwat\.supabase\.co;/.test(csp));
+      ok(/form-action 'none'/.test(csp) && /object-src 'none'/.test(csp) && /frame-src|default-src 'self'/.test(csp));
+      const scr = Array.from(LHTML.matchAll(/<script src="([^"?]+)\?v=([\d.]+)" defer><\/script>/g));
+      eq(scr.map(m => m[1]).join(","), "js/learn-md.js,js/pow.js,js/learn-app.js");
+      const ver = /const VERSION = "(\d+\.\d+\.\d+)"/.exec(read("js/app.js"))[1];
+      ok(Array.from(LHTML.matchAll(/\?v=([\d.]+)/g)).every(m => m[1] === ver), "스탬프 = VERSION");
+      ok(/name="robots" content="noindex"/.test(LHTML) && /name="referrer" content="no-referrer"/.test(LHTML) && /id="ln-print"/.test(LHTML));
+      ok(/learn\.html/.test(read("tools/bump-version.cjs")), "릴리스 도구");
+      ok(!/<script>/.test(LHTML) && !/onclick=/.test(LHTML), "인라인 스크립트 없음");
+    });
+
+    t("LN16 서버 원본 대조: 공개 RPC = 학습 화면이 부르는 것 · media_ok 서비스 권한만 · Edge learn/ 경로만 · 출처 · 파일 함수 learn 폴더", () => {
+      ["semis_logi_learn_info", "semis_logi_learn_ticket", "semis_logi_learn_find", "semis_logi_learn_start", "semis_logi_learn_submit"].forEach(f => {
+        ok(LSIG[f], f); ok(read("js/learn-app.js").indexOf('"' + f + '"') > 0, "화면이 부름 " + f); });
+      ok(/grant execute on function public\.semis_logi_learn_media_ok\(text, text, text\) to service_role;/.test(LSQL));
+      ok(!/semis_logi_learn_media_ok\(text, text, text\),?\s*\n?\s*public\.semis_logi_learn_stats[\s\S]*?to anon/.test(LSQL.slice(LSQL.indexOf("grant execute"))), "media_ok anon 아님");
+      ok(LEDGE.indexOf("semis_logi_learn_media_ok") > 0 && /LEARN_PATH = \/\^learn\\\/\[A-Za-z0-9\._-\]\{4,160\}\$\//.test(LEDGE), "learn/ 경로만");
+      ok(/const ORIGINS = \["https:\/\/hdrive\.kr", "https:\/\/mark4mission\.github\.io"\]/.test(LEDGE), "허용 출처 = 파일 함수와 같음");
+      ok(/\(w\.rank \?\? 0\) < 3/.test(LEDGE), "요약 = hq 이상");
+      ok(/learn: 3,/.test(read("tools/edge/semis-logi-files.ts")), "파일 함수 learn 폴더");
+      ["js/learn.js", "js/learn-app.js", "tools/sql/semis-logi-learn.sql", "tools/edge/semis-logi-learn.ts"].forEach(f => ok(!/1000\d\d|100[1-3]\d\d/.test(read(f)), "실제 사번 형식 없음 " + f));
+    });
+
+    t("LN17 변경 알림: 'learn:done' 은 교육 화면만 다시 받음(공용 행 없음)", () => {
+      const { e, L } = lnEnv("hq");
+      let n = 0; L.remote = () => { n++; };
+      e.w.SemisSync.onBroadcast({ payload: { key: "learn:done", by: "" } });
+      eq(n, 1);
+      e.w.close();
+    });
+
+    /* ── 학습 화면(learn.html) — 가짜 서버로 3쪽 흐름 ── */
+    function learnServer(o) {
+      o = o || {};
+      const srv = { calls: [], bad: [], tickets: 0, submits: [] };
+      srv.fetch = async (url, opt) => {
+        const u = String(url), body = opt && opt.body ? JSON.parse(opt.body) : {};
+        srv.calls.push({ url: u, body });
+        const J = (d, st) => ({ ok: (st || 200) < 300, status: st || 200, json: async () => d });
+        const rm = /\/rest\/v1\/rpc\/(\w+)$/.exec(u);
+        if (rm) { const b = lsigBad(rm[1], body); if (b) srv.bad.push(b); }
+        if (/rpc\/semis_logi_learn_info$/.test(u)) return J(o.info || { ok: true, title: "11월 협의체 결과 회람", kind: "안전", overview: "개요", host: "안전보안파트", place: "온라인", start: "2026-11-10", end: "2026-11-20", minSec: 30,
+          items: o.items || [{ i: 0, type: "video", name: "v.mp4", dur: 40 }, { i: 1, type: "image", name: "a.png" }], orgs: ["에어제타", "AAP"], parts: ["안전보안파트", "수출파트"] });
+        if (/rpc\/semis_logi_challenge$/.test(u)) return J({ ok: true, c: "c".repeat(32) + ".1999999999.1.sig", d: 1 });
+        if (/rpc\/semis_logi_learn_ticket$/.test(u)) { srv.tickets++; return J({ ok: true, ticket: String(srv.tickets).repeat(48).slice(0, 48), exp: Math.floor(Date.now() / 1000) + 10800 }); }
+        if (/rpc\/semis_logi_learn_find$/.test(u)) return J(o.find || { ok: true, list: body.p_name.replace(/\s/g, "") === "가나다" ? [{ pid: "p1", name: "가나다", org: "에어제타", part: "안전보안파트", emp: "900001", title: "과장", tgt: true, done: null }] : [] });
+        if (/rpc\/semis_logi_learn_start$/.test(u)) return J(o.start ? o.start(body) : { ok: true, rid: "lr" + "1".repeat(18), minSec: 30, elapsed: 40, body: "## 핵심\n- 통로 **확보**", items: [{ i: 0, type: "video", name: "v.mp4", dur: 40 }, { i: 1, type: "image", name: "a.png" }], person: Object.assign({ name: "가나다", org: "에어제타", part: "안전보안파트", emp: "900001" }, body.p.pid ? {} : { name: body.p.name, org: body.p.org, emp: body.p.emp, manual: true }) });
+        if (/functions\/v1\/semis-logi-learn$/.test(u)) return J({ ok: true, urls: [{ i: 0, type: "video", url: "https://mzyuzrxkdcpzxojenwat.supabase.co/storage/v1/object/sign/semis-logi-files/learn/aa_v.mp4?token=t" }, { i: 1, type: "image", url: "https://mzyuzrxkdcpzxojenwat.supabase.co/storage/v1/object/sign/semis-logi-files/learn/bb_a.png?token=t" }] });
+        if (/rpc\/semis_logi_learn_submit$/.test(u)) { srv.submits.push(body); return J(o.submit ? o.submit(body, srv.submits.length) : { ok: true, at: "2026-11-12 10:30", name: "가나다" }); }
+        return J({}, 404);
+      };
+      return srv;
+    }
+    function makeLearn(o) {
+      o = o || {};
+      const vc = new VirtualConsole(), errors = [];
+      vc.on("jsdomError", (er) => { const m = String(er && er.message || er); if (m.indexOf("Not implemented") < 0) errors.push(m); });
+      const dom = new JSDOM(LHTML.replace(/<script[\s\S]*?<\/script>/g, ""), { url: "https://logi.test/learn.html" + (o.hash == null ? "#abcdefgh2345" : o.hash), runScripts: "outside-only", pretendToBeVisual: true, virtualConsole: vc });
+      const w = dom.window;
+      w.scrollTo = () => {};
+      try { const wc = require("crypto").webcrypto; Object.defineProperty(w, "crypto", { value: wc, configurable: true }); } catch (x) { /* 없음 */ }
+      const srv = learnServer(o);
+      w.fetch = srv.fetch;
+      if (o.draft) w.sessionStorage.setItem("semisl:learn:abcdefgh2345", JSON.stringify(o.draft));
+      w.eval(LAPP_JS);
+      w.SemisLearnApp.exportSign = () => PNG;
+      return { dom, w, srv, errors, A: w.SemisLearnApp };
+    }
+    const $l = (x, s) => x.w.document.querySelector(s);
+    const $$l = (x, s) => Array.from(x.w.document.querySelectorAll(s));
+    const lfire = (x, el, type) => el.dispatchEvent(new x.w.Event(type, { bubbles: true }));
+    const ptr = (x, el, type, cx, cy) => { const ev = new x.w.MouseEvent(type, { bubbles: true, cancelable: true, clientX: cx, clientY: cy }); el.dispatchEvent(ev); };
+
+    await ta("LN18 학습 화면 3쪽: 안내 · 이름 확인(사번 표시) → 교육 내용(끝까지 · 동영상 끝까지 전에는 '다음' 없음) → 서명 → '수고하셨습니다.' · 서버 인자 = SQL", async () => {
+      const x = makeLearn();
+      await tick(60);
+      ok(/11월 협의체 결과 회람/.test($l(x, ".ln-hero h1").textContent) && /개요/.test($l(x, ".ln-ov").textContent), "1쪽 안내");
+      ok($l(x, '.ln-step.on[aria-current="step"]').textContent.indexOf("1") >= 0, "단계 1");
+      ok($l(x, "#ln-next1").disabled, "이름 전 다음 막힘");
+      $l(x, "#ln-name").value = "가 나다"; $l(x, "#ln-find").click();
+      await tick(120);
+      const pk = $l(x, '.ln-pick[data-pid="p1"]');
+      ok(pk && /900001/.test(pk.textContent) && /안전보안파트/.test(pk.textContent), "사번 전체 · 파트 표시");
+      eq(pk.getAttribute("aria-pressed"), "true", "한 명이면 바로 선택");
+      ok(!$l(x, "#ln-next1").disabled);
+      $l(x, "#ln-next1").click();
+      await tick(120);
+      eq(x.A.st.view, "p2");
+      ok(/<h3>핵심<\/h3>/.test($l(x, ".ln-body").innerHTML) && $l(x, ".ln-body strong"), "요약 본문");
+      await tick(350);
+      ok($l(x, "video[data-mi]").getAttribute("src").indexOf("/object/sign/") > 0 && $l(x, "img[data-mi]").getAttribute("src"), "자료 서명 주소");
+      ok($l(x, "#ln-next2").hidden, "동영상 전에는 다음 없음");
+      ok(/동영상 1개/.test($l(x, "#ln-foot-t").textContent), $l(x, "#ln-foot-t").textContent);
+      lfire(x, $l(x, "video[data-mi]"), "ended");
+      ok(!$l(x, "#ln-next2").hidden, "다 보면 다음");
+      $l(x, "#ln-next2").click();
+      eq(x.A.st.view, "p3");
+      ok(/900001/.test($l(x, ".ln-who").textContent) && $l(x, "#ln-submit").disabled, "서명 전 제출 막힘");
+      const cv = $l(x, "#ln-canvas");
+      ptr(x, cv, "pointerdown", 10, 10); for (let i = 0; i < 10; i++) ptr(x, cv, "pointermove", 12 + i, 12 + i); ptr(x, cv, "pointerup", 30, 30);
+      ok(!$l(x, "#ln-submit").disabled, "서명 뒤 제출");
+      $l(x, "#ln-submit").click();
+      await tick(80);
+      eq(x.A.st.view, "done");
+      ok(/수고하셨습니다\./.test($l(x, ".ln-done h1").textContent) && /2026-11-12 10:30/.test($l(x, ".ln-done").textContent), "완료 화면");
+      const sb = x.srv.submits[0];
+      ok(sb.p.sign === PNG && /^lr1{18}$/.test(sb.p.rid) && /^[A-Za-z0-9-]{8,64}$/.test(sb.p.sid) && sb.p.secs >= 40, JSON.stringify(sb.p).slice(0, 120));
+      eq(x.srv.bad.join("|"), "", "인자 = SQL");
+      eq(x.srv.tickets, 1, "표 한 번");
+      eq(x.w.sessionStorage.getItem("semisl:learn:abcdefgh2345"), null, "제출 뒤 작성 중 내용 지움");
+      eq(x.errors.length, 0, x.errors.join("|")); x.w.close();
+    });
+
+    await ta("LN19 학습 화면: 명단에 없으면 소속 · (에어제타면 파트 · 사번 필수) 직접 입력 · 이미 이수 · 최소 시간 · 잘못된 주소 · 기간 끝", async () => {
+      const x = makeLearn({ find: { ok: true, list: [] }, start: (b) => b.p.org === "AAP" ? { ok: true, done: "2026-11-11 09:00", person: { name: b.p.name, org: "AAP" } } : { ok: true, rid: "lr" + "2".repeat(18), minSec: 30, elapsed: 0, body: "본문", items: [], person: { name: b.p.name, org: b.p.org, part: b.p.part, emp: b.p.emp, manual: true } },
+        submit: (b, n) => n === 1 ? { ok: false, error: "too_fast", wait: 12 } : { ok: true, at: "2026-11-12 11:00", name: "새사람" } });
+      await tick(60);
+      $l(x, "#ln-name").value = "새사람"; $l(x, "#ln-find").click();
+      await tick(120);
+      ok(/명단에서 찾지 못했습니다/.test($l(x, "#ln-found").textContent) && $l(x, "#ln-m-org"), "직접 입력 칸");
+      const org = $l(x, "#ln-m-org"); org.value = "에어제타"; lfire(x, org, "change");
+      ok($l(x, "#ln-m-emp") && $l(x, "#ln-m-part"), "에어제타 = 파트 · 사번");
+      ok($l(x, "#ln-next1").disabled, "사번 없으면 막힘");
+      const emp = $l(x, "#ln-m-emp"); emp.value = "900088"; lfire(x, emp, "input");
+      const part = $l(x, "#ln-m-part"); part.value = "수출파트"; lfire(x, part, "change");
+      ok(!$l(x, "#ln-next1").disabled);
+      $l(x, "#ln-next1").click();
+      await tick(120);
+      const st = x.srv.calls.find(c => /learn_start$/.test(c.url)).body.p;
+      eq(JSON.stringify(st), JSON.stringify({ name: "새사람", org: "에어제타", part: "수출파트", emp: "900088" }));
+      eq(x.A.st.view, "p2");
+      x.A._seen(); x.A._clock(() => Date.now() + 60000); x.A.foot();
+      ok(!$l(x, "#ln-next2").hidden, "자료 없음 · 시간 지남 → 다음");
+      $l(x, "#ln-next2").click();
+      const cv = $l(x, "#ln-canvas");
+      ptr(x, cv, "pointerdown", 5, 5); for (let i = 0; i < 9; i++) ptr(x, cv, "pointermove", 6 + i, 6);
+      $l(x, "#ln-submit").click();
+      await tick(60);
+      ok(/12초 뒤에 다시 제출/.test($l(x, "#ln-msg").textContent), "최소 시간 안내 " + $l(x, "#ln-msg").textContent);
+      $l(x, "#ln-submit").click();
+      await tick(60);
+      eq(x.A.st.view, "done");
+      eq(x.srv.submits[0].p.sid, x.srv.submits[1].p.sid, "다시 보내도 같은 sid");
+      eq(x.srv.bad.join("|"), "");
+      x.w.close();
+
+      const y = makeLearn({ find: { ok: true, list: [] }, start: (b) => ({ ok: true, done: "2026-11-11 09:00", person: { name: b.p.name, org: "AAP" } }) });
+      await tick(60);
+      $l(y, "#ln-name").value = "외부인"; $l(y, "#ln-find").click(); await tick(100);
+      const o2 = $l(y, "#ln-m-org"); o2.value = "AAP"; lfire(y, o2, "change");
+      ok(!$l(y, "#ln-m-emp"), "협력업체는 사번 없음");
+      $l(y, "#ln-next1").click(); await tick(100);
+      ok(/이미 이수하셨습니다/.test($l(y, ".ln-done h1").textContent), "이미 이수");
+      y.w.close();
+
+      const z = makeLearn({ hash: "#bad" }); await tick(40);
+      ok(/교육 주소를 확인할 수 없습니다/.test($l(z, ".ln-err").textContent)); eq(z.srv.calls.length, 0, "서버 안 부름"); z.w.close();
+      const z2 = makeLearn({ info: { ok: false, error: "after", end: "2026-11-01", title: "지난 교육" } }); await tick(40);
+      ok(/교육 기간이 끝났습니다/.test($l(z2, ".ln-err").textContent) && /2026\.11\.01/.test($l(z2, ".ln-err").textContent) && /지난 교육/.test($l(z2, ".ln-err").textContent)); z2.w.close();
+    });
+
+    await ta("LN20 학습 화면: 동영상 앞으로 건너뛰기 막기 · 빠르게 재생 막기", async () => {
+      const x = makeLearn();
+      await tick(60);
+      $l(x, "#ln-name").value = "가나다"; $l(x, "#ln-find").click(); await tick(100);
+      $l(x, "#ln-next1").click(); await tick(150);
+      const v = $l(x, "video[data-mi]");
+      Object.defineProperty(v, "currentTime", { value: 0, writable: true, configurable: true });
+      for (let k = 1; k <= 5; k++) { v.currentTime = k; lfire(x, v, "timeupdate"); }
+      v.currentTime = 30; lfire(x, v, "seeking");
+      eq(v.currentTime, 5, "본 곳까지만");
+      Object.defineProperty(v, "playbackRate", { value: 2, writable: true, configurable: true });
+      lfire(x, v, "ratechange");
+      eq(v.playbackRate, 1, "1배속");
+      Object.defineProperty(v, "duration", { value: 40, configurable: true });
+      lfire(x, v, "ended");
+      ok($l(x, "#ln-next2").hidden, "건너뛰어 끝나면 시청 완료 아님");
+      x.w.close();
     });
   }
 

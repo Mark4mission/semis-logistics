@@ -39,6 +39,7 @@ const WRITE_RANK: Record<string, number> = {
   schedules: 3, notices: 3, attach: 3, contacts: 3, crisis: 3, regs: 3, "regs-diff": 3, audits: 3, training: 3,
   docs: 3, "docs-ssi": 3, contracts: 3, cases: 3, dissem: 3, desk: 3,
   "desk-in": 1,                           // v1.59 직원 접수(내부 직원만 — canWrite 에서 role 확인)
+  learn: 3,                               // 교육 전파 · 서명 자료(관리 = hq). 학습 화면은 semis-logi-learn 이 시작 기록을 확인한 뒤 서명 URL
   bbs1: 1, bbs2: 2, bbs3: 3, bbs4: 4      // 게시판 글쓰기 · 첨부(쓰기 권한은 서버 RPC 가 게시판별로 한 번 더 확인)
 };
 const DEFAULT_READ = 3, DEFAULT_WRITE = 3;

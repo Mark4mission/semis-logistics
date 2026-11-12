@@ -9,6 +9,7 @@
   const STC = { good: "#2f8f5b", warn: "#d99a0b", bad: "#c2402f" };
   const KIND = { own: "#2b59c3", vendor: "#d97706" };
   const TR = () => window.SemisTraining, AU = () => window.SemisAudit, SL = () => window.SemisSeclog, SC = () => window.SemisSelfcheck;
+  const LN = () => window.SemisLearn;
   const p2 = (n) => String(n).padStart(2, "0");
   let fixedToday = "";
   const todayISO = () => { if (fixedToday) return fixedToday; const d = new Date(); return d.getFullYear() + "-" + p2(d.getMonth() + 1) + "-" + p2(d.getDate()); };
@@ -72,6 +73,24 @@
       tiles.push({ label: "기록부 이행률", value: past ? Math.round(done / past * 100) + "%" : "-", sub: "누락 " + miss + "칸", tone: !past ? "muted" : miss ? "warn" : "ok" });
     }
     return tiles.length ? ui.stats(tiles) : "";
+  }
+
+  /* 교육 — 이수 · 자격(보안교육)과 교육 전파 · 서명을 한 카드의 탭으로(화면 블록 4개 이하) */
+  let eduTab = "tr";
+  function learnPane(t) {
+    const L = LN(), d = L.todayData(t);
+    return `<section class="ie-sub ie-ln"><div class="sd-ph"><b>교육 전파 · 서명</b><span class="dc-meta">${d ? "진행 중 " + d.n + "건" + (d.pct == null ? "" : " · 완료율 " + d.pct + "%") : "진행 중 없음"}</span><span class="spacer"></span><button type="button" class="link-btn" data-ie-go="learn" aria-label="교육 전파 · 서명 전체 보기">전체 보기</button></div>
+      ${L.dashPane(t)}</section>`;
+  }
+  function eduCard(t) {
+    const hasT = can("training") && TR(), hasL = can("learn") && LN() && LN().dashPane;
+    if (hasT && !hasL) return trainCard(t);
+    if (!hasT) return `<section class="card sd-card ie-card" aria-label="교육 전파 · 서명"><h2 class="card-title"><span class="ct-t">교육 전파 · 서명</span></h2>${learnPane(t)}</section>`;
+    const tabs = [["tr", "이수 · 자격"], ["ln", "교육 전파 · 서명"]];
+    if (!tabs.some(([k]) => k === eduTab)) eduTab = "tr";
+    const tc = trainCard(t);
+    const i = tc.indexOf("</h2>"), j = tc.lastIndexOf("</section>");
+    return tc.slice(0, i + 5) + ui.tabs("iet", tabs, eduTab) + ui.pane("iet", "tr", eduTab, tc.slice(i + 5, j)) + ui.pane("iet", "ln", eduTab, learnPane(t)) + "</section>";
   }
 
   function trainCard(t) {
@@ -455,7 +474,7 @@
       cards.push(`<section class="card ie-card ie-err" aria-label="${esc(name)}"><h2 class="card-title">${esc(name)}</h2><p class="ie-ok">${icon("alert", 16)}<span>이 카드를 표시하지 못했습니다. 새로 고침 후에도 같으면 관리자에게 알려 주세요.</span></p></section>`);
     } };
     if ((can("inspection") && SL()) || (can("audit") && AU())) add("점검 일정", schedCard);
-    if (can("training") && TR()) add("교육 · 자격", trainCard);
+    if ((can("training") && TR()) || (can("learn") && LN())) add("교육 · 자격", eduCard);
     if ((can("audit") && AU()) || (can("inspection") && SL())) add("수검 · 기록부", recCard);
     let kpi = "";
     try { kpi = kpiHTML(t); } catch (err) { if (typeof console !== "undefined") console.error("[aud-dash] kpi", err); }
@@ -464,12 +483,14 @@
     wire(root);
     ui.wireTabs(root, "ies", (id) => { schedTab = id; });
     ui.wireTabs(root, "ier", (id) => { recTab = id; });
+    ui.wireTabs(root, "iet", (id) => { eduTab = id; });
+    if (can("learn") && LN()) LN().wireDash(root, () => { if (location.hash.replace(/^#\//, "") === MOD) SeMIS.renderView(); });
     /* SSI 서약 명단을 받아 오면(처음 한 번) 다시 그린다 */
     if (can("training") && TR() && TR().loadPledges) TR().loadPledges(false).then(ch => { if (ch && (location.hash.replace(/^#\//, "") === MOD)) SeMIS.renderView(); });
   }
 
   SeMIS.registerModule(MOD, { title: TITLE, render });
   window.SemisAudDash = { render, kpiHTML, upData, upcomingCard, schedCard, recCard, calData, calCard, cfgPick, trainCard, auditCard, seclogCard,
-    setTabs(o) { o = o || {}; if (o.sched) schedTab = o.sched; if (o.rec) recTab = o.rec; },
+    setTabs(o) { o = o || {}; if (o.sched) schedTab = o.sched; if (o.rec) recTab = o.rec; if (o.edu) eduTab = o.edu; }, eduCard,
     setToday(t) { fixedToday = isISO(t) ? t : ""; }, setCal(ym, sel) { calYM = /^\d{4}-\d{2}$/.test(ym || "") ? ym : ""; calSel = isISO(sel) ? sel : ""; } };
 })();

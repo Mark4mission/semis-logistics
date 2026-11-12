@@ -214,6 +214,12 @@
         sub: (a.nx ? esc(SemisAudit.auditTitle(a.nx)) + (pr && pr.total ? " · 준비 " + pr.done + "/" + pr.total : "") : "") + (a.open ? (a.nx ? " · " : "") + "미결 지적 " + a.open + (a.late ? " · <em>기한 경과 " + a.late + "</em>" : "") : ""),
         val: `<b class="mono">${a.nx ? esc(SemisAudit.ddayText(a.nx)) : a.open}</b>`, tone: a.late ? "bad" : "" }));
     }
+    if (menuOk("learn", "SemisLearn")) {
+      let d = null;
+      try { d = SemisLearn.todayData(); } catch (e) { d = null; }
+      if (d) rows.push(todayRow({ go: "learn", id: "td-ln", icon: "notes", color: d.near ? "amber" : "green", title: "교육 전파",
+        sub: SemisLearn.todaySub(d), val: `<b class="mono">${d.pct == null ? "·" : d.pct + "%"}</b>`, tone: d.near ? "warn" : "" }));
+    }
     if (actions.length) rows.push(todayRow({ go: "minutes", icon: "notes", color: late ? "rose" : "slate", title: "회의 결정사항",
       sub: "미완료 " + actions.length + (late ? " · <em>기한 경과 " + late + "</em>" : ""), val: `<b class="mono">${actions.length}</b>`, tone: late ? "bad" : "" }));
     /* 보안교육 자격 — 만료·미이수(빨강) · DUE_DAYS 안 갱신(주황), 있을 때만 */
@@ -368,6 +374,7 @@
       const tdUsr = $("#td-usr");   // 화물보안 대시보드의 미주행 재보안검색 탭으로
       if (tdUsr) tdUsr.onclick = () => { if (window.SemisSecDash && SemisSecDash.setTab) SemisSecDash.setTab("usr"); SeMIS.navigate("sec-dash"); };
       if (window.SemisScreen && ($("#dash-scr") || $("#td-scr"))) SemisScreen.mountDash();
+      if (window.SemisLearn && $("#td-ln")) SemisLearn.mountToday();
       if (window.SemisSerp && $("#dash-serp")) SemisSerp.mountDash();
       if (window.SemisThreat && $("#dash-threat")) SemisThreat.mountDash();
 
