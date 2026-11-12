@@ -1095,5 +1095,80 @@ eq((await call("hello", {}, { ip: "2001:db8:1:3::1" })).error, "ip", "#13 다른
 eq([await one("select semis_logi_private.ksync_fail_key('::ffff:192.0.2.1')"), await one("select semis_logi_private.ksync_fail_key('192.0.2.1')"),
   await one("select semis_logi_private.ksync_fail_key('nope')")], ["::ffff:192.0.2.1", "192.0.2.1", "nope"], "#13 IPv4 · IPv4 를 담은 IPv6 는 주소 하나 · 모르는 값은 그대로");
 
+// v1.64 기준일(since) — 연결마다 날짜 하나(한국 시각 그날 0시부터). 미리보기 중에는 자유롭게, 시작한 뒤에는 더 늦은 날로만 · 키가 없으면 그대로 ·
+// 서버도 기준선 줄 없는 기준일 전 새 문서를 받지 않음(다른 연결 기준선과 해시가 같으면 받음) · 막는 형식에 인증서 · 바로 가기
+await db.exec(`update semis_logi_private.ksync_state set limits = '{"perMin": 100000, "dayBytes": 1000000000}'::jsonb`);
+await as("a1", "admin");
+const save = (p) => rpc("semis_logi_ksync_map_save", p);
+const sinceOf = (id) => one("select since::text from semis_logi_private.ksync_maps where id = $1", [id]);
+const pvSet = (id) => db.query("update semis_logi_private.ksync_maps set preview = '{\"total\": 1}'::jsonb where id = $1", [id]);
+for (const bad of ["2025-8-1", "2025/08/01", "20250801", "2025-02-30", "2025-13-01", "x", 20250801]) {
+  eq((await save({ k_path: "기준일/가", mod: "audit", grp: "since-a", since: bad })).error, "since", "기준일 형식 오류 " + JSON.stringify(bad));
+}
+eq(await one("select count(*)::int from semis_logi_private.ksync_maps where grp = 'since-a'"), 0, "형식 오류면 만들지 않음");
+r = await save({ k_path: "기준일/가", mod: "audit", grp: "since-a", since: "2025-08-01" });
+const MS = r.id;
+eq([r.ok, await sinceOf(MS)], [true, "2025-08-01"], "새 연결에 기준일");
+const MN = (await save({ k_path: "기준일/나", mod: "audit", grp: "since-b" })).id;
+eq(await sinceOf(MN), null, "기준일 없이 만들면 비어 있음");
+await pvSet(MS);
+eq([(await save({ id: MS, since: "2025-07-01" })).ok, await sinceOf(MS), await one("select preview from semis_logi_private.ksync_maps where id = $1", [MS])], [true, "2025-07-01", null],
+  "미리보기 중에는 더 이른 날도 · 바꾸면 건수를 지우고 다시 셈");
+eq([(await save({ id: MS, since: "" })).ok, await sinceOf(MS)], [true, null], "미리보기 중에는 비우기도(빈 값)");
+eq([(await save({ id: MS, since: "2025-08-01" })).ok, await sinceOf(MS)], [true, "2025-08-01"], "다시 넣기");
+eq([(await save({ id: MS, since: null })).ok, await sinceOf(MS)], [true, null], "null 도 비우기");
+await save({ id: MS, since: "2025-08-01" });
+await pvSet(MS);
+eq([(await save({ id: MS, dir: "both", ssi: false })).ok, await sinceOf(MS), await one("select preview ->> 'total' from semis_logi_private.ksync_maps where id = $1", [MS])], [true, "2025-08-01", "1"],
+  "키 없는 편집(방향 · SSI 만) → 기준일 · 건수 그대로");
+eq((await save({ id: MS, since: "2025-02-30" })).error, "since", "고칠 때도 없는 날은 거절");
+eq((await rpc("semis_logi_ksync_map_start", MS, "::bigint")).ok, true, "기준일 연결 시작");
+for (const [v, why] of [["2025-07-31", "더 이른 날"], ["", "비우기"], [null, "null"]]) eq((await save({ id: MS, since: v })).error, "locked", "시작한 뒤 " + why + " → locked");
+eq(await sinceOf(MS), "2025-08-01", "거절하면 그대로");
+eq((await save({ id: MS, since: "2025-08-01" })).ok, true, "같은 날은 그대로 받음");
+eq([(await save({ id: MS, since: "2025-09-01" })).ok, await sinceOf(MS)], [true, "2025-09-01"], "시작한 뒤 더 늦은 날 → 허용(좁히기)");
+eq([(await save({ id: MS, dir: "both" })).ok, await sinceOf(MS)], [true, "2025-09-01"], "시작한 뒤 키 없는 편집 → 기준일 그대로");
+await pvSet(MN);
+await rpc("semis_logi_ksync_map_start", MN, "::bigint");
+await as(null);
+const hs = await call("hello", { full: true });
+eq([hs.maps.find(m => m.id === MS).since, hs.maps.find(m => m.id === MN).since], ["2025-09-01", null], "hello 연결 정보에 기준일");
+await as("a1", "admin");
+eq([(await save({ id: MN, since: "2025-08-01" })).ok, await sinceOf(MN)], [true, "2025-08-01"], "시작한 뒤 기준일이 없던 연결에 날짜 넣기 = 좁히기 → 허용");
+await save({ id: MN, pause: true });
+eq((await save({ id: MN, since: "2025-07-01" })).error, "locked", "멈춘 연결도 시작한 뒤라 더 이른 날 → locked");
+eq((await rpc("semis_logi_ksync_status")).maps.find(m => m.id === MS).since, "2025-09-01", "상태 연결 목록에 기준일");
+const MP = (await save({ k_path: "기준일/다", mod: "audit", grp: "since-c", since: "2025-08-01" })).id;
+await as(null);
+eq((await call("preview", { map: MP, counts: { k2h: 2, old: 5, total: 2 } })).ok, true, "미리보기 건수에 old");
+eq(await one("select preview - 'at' from semis_logi_private.ksync_maps where id = $1", [MP]), { del: 0, h2k: 0, k2h: 2, old: 5, link: 0, skip: 0, total: 2, conflict: 0 }, "기준일 전 건수(old) 저장");
+// put_begin — 기준일 2025-09-01 = 2025-08-31T15:00:00Z
+const RS = (await call("run", { phase: "start", trigger: "manual" })).run;
+const bS = (rel, o) => begin(rel, Object.assign({ run: RS, map: MS }, o || {}));
+eq((await bS("old.pdf", { mtime: "2025-08-31T14:59:59.999Z", sha256: H64("9f81") })).error, "old", "put_begin: 기준선 줄 없는 기준일 전 새 문서 → old");
+eq((await bS("new.pdf", { mtime: "2025-08-31T15:00:00Z", sha256: H64("9f82") })).ok, true, "put_begin: 기준일 0시(한국)부터는 받음");
+eq((await bS("nomt.pdf", { mtime: undefined, sha256: H64("9f83") })).error, "old", "put_begin: 수정 시각 없음 → old(옛 에이전트도 막음)");
+eq((await bS("badmt.pdf", { mtime: "어제", sha256: H64("9f84") })).error, "old", "put_begin: 수정 시각 틀림 → old");
+await db.query("insert into semis_logi_private.ksync_files(map_id, rel_path, k_size, k_mtime, k_sha256, state) values ($1, 'moved.pdf', 10, now(), $2, 'ok')", [MN, H64("9f85")]);
+eq((await bS("moved.pdf", { mtime: "2025-01-01T00:00:00Z", sha256: H64("9f85") })).ok, true, "put_begin: 다른 연결 기준선과 해시가 같은 옛 파일(연결 폴더끼리 옮김) → 받음");
+r = await call("hello", { full: true });
+eq([r.lists.some(l => l.map === MN), r.paused_base.filter(b => b.k_sha256 === H64("9f85")).map(b => b.k_size), (await call("hello", {})).paused_base],
+  [false, [10], undefined], "hello full: 멈춘 연결은 목록 없이 기준선 크기 · 해시만(paused_base — 에이전트도 그 폴더에서 옮긴 옛 파일을 새 파일로)");
+const RB2 = await one("insert into semis_logi_private.ksync_files(map_id, rel_path, k_size, k_mtime, k_sha256, doc_id, ser, h_url, h_name, state) values ($1, 'base.pdf', 3, now(), $2, 'd-sb', 'sb', $3, 'base.pdf', 'ok') returning id",
+  [MS, H64("9f86"), PUB + "docs/sbsbsbsbsbsb_base.pdf"]);
+eq((await bS("base.pdf", { mode: "version", row: RB2, mtime: "2025-01-01T00:00:00Z", sha256: H64("9f87") })).ok, true, "put_begin: 기준선 줄 있는 새 판은 날짜와 관계없이");
+eq((await bS("base.pdf", { mode: "new", row: RB2, mtime: "2025-01-01T00:00:00Z", sha256: H64("9f88") })).ok, true, "put_begin: 기준선 줄 있는 새 문서(복원 · H 가 첨부를 뺌)도 그대로");
+eq((await bS("base (충돌 2026-11-10).pdf", { mode: "old", row: RB2, mtime: "2025-01-01T00:00:00Z", sha256: H64("9f89") })).ok, true, "put_begin: 충돌 사본(이전 판)도 그대로");
+eq((await begin("old-nosince.pdf", { run: RS, map: M3, mtime: "2020-01-01T00:00:00Z", sha256: H64("9f8a") })).ok, true, "put_begin: 기준일 없는 연결은 지금처럼");
+for (const n of ["a.pfx", "b.P12", "c.pem", "d.kdbx", "e.lnk", "f.URL", "g.html", "h.mjs"]) eq(await one("select semis_logi_private.ksync_h_blocked($1)", [n]), true, "H 로 올리지 않음 " + n);
+for (const n of ["a.key", "b.pdf", "c.pemx", "d.urls", "e.xlsx"]) eq(await one("select semis_logi_private.ksync_h_blocked($1)", [n]), false, "H 로 올림 " + n);
+eq((await bS("cert.pfx", { mtime: "2026-01-01T00:00:00Z", sha256: H64("9f8b") })).error, "type", "put_begin: 인증서 → type");
+// 파일 전체를 다시 실행(마이그레이션 semis_logi_security_32_ksync_since) — 기준일 · 기준선 · 권한 그대로
+await db.exec(SQL);
+eq([await sinceOf(MS), await sinceOf(MN), await one("select count(*)::int from semis_logi_private.ksync_files where map_id = $1", [MN])], ["2025-09-01", "2025-08-01", 1], "다시 실행해도 기준일 · 기준선 그대로");
+eq([await one("select has_function_privilege('service_role', 'public.semis_logi_ksync_agent(text, text, text, jsonb)', 'EXECUTE')"),
+  await one("select has_function_privilege('anon', 'public.semis_logi_ksync_agent(text, text, text, jsonb)', 'EXECUTE')"),
+  await one("select has_function_privilege('anon', 'public.semis_logi_ksync_map_save(jsonb)', 'EXECUTE')")], [true, false, true], "다시 실행해도 권한 그대로");
+
 console.log(`ksync SQL: ${pass} 통과 / ${fail} 실패`);
 process.exit(fail ? 1 : 0);

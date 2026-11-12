@@ -1203,6 +1203,41 @@ for (let i = 0, j = 0; i < stamps.length; i++) { while (stamps[j] <= stamps[i] -
 eq([r.status, stamps.length > PACE, clk - NOW >= 60e3, maxWin <= PACE, (await rowsOf(M)).filter(x => x.rel_path.startsWith("pace/")).length],
   ["ok", true, true, true, 85], "#6 1분에 PACE 넘게 부를 일 → 쉬어 감 · 어느 1분에도 서버가 세는 호출 " + maxWin + " ≤ " + PACE + "(모두 " + stamps.length + ")");
 
+/* 19-11. v1.64 기준일 — 옛 · 새 파일이 섞인 폴더: 미리보기에 기준일 전 파일 수 → [시작] → 새 파일만 등록. 다른 연결 기준선과 해시가 같은 옛 파일(연결 폴더끼리 옮김)은 올림 ·
+   옛 K 파일과 이름 · 크기가 같은 H 문서는 연결만 하지 않고 '이름 (2)' 로 받음 · 옛 에이전트가 옛 파일을 보내도 서버(Edge 를 지나)가 'old' 로 거절 */
+const SND = path.join(MOUNT, "업무", "기준일"), SN = Date.parse("2025-08-01T00:00:00+09:00");
+const shaHex = (b) => crypto.createHash("sha256").update(b).digest("hex");
+const sw = (n, s, t) => { fs.writeFileSync(path.join(SND, n), s); fs.utimesSync(path.join(SND, n), t / 1000, t / 1000); };
+const sRead = (n) => { try { return fs.readFileSync(path.join(SND, n), "utf8"); } catch (e) { return null; } };
+fs.mkdirSync(SND, { recursive: true });
+const mvRow = (await rowsOf(M)).find(x => x.k_sha256 && has(x.rel_path) && shaHex(fs.readFileSync(K(x.rel_path))) === x.k_sha256);
+sw("옛 보고.pdf", "OLD-1", SN - 30 * 864e5); sw("옛 양식.hwp", "OLD-22", SN - 1000); sw("새 보고.pdf", "NEW-1", SN + 864e5); sw("경계.pdf", "EDGE", SN);
+sw("옮김.pdf", fs.readFileSync(K(mvRow.rel_path)), SN - 864e5);
+D = await docs();
+D.push({ id: "dsn", mod: "audit", grp: "since", title: "옛 양식", date: "2025-07-01", files: [{ name: "옛 양식.hwp", size: 6, url: PUB + "docs/snsnsnsnsnsn_old.hwp" }] });
+await setDocs(D);
+putObj("docs/snsnsnsnsnsn_old.hwp", "H-OLD!");
+const MSD = (await admin("select public.semis_logi_ksync_map_save($1::jsonb)", [JSON.stringify({ k_path: "업무/기준일", mod: "audit", grp: "since", since: "2025-08-01" })])).id;
+r = await once();
+const pvS = await one("select preview - 'at' from semis_logi_private.ksync_maps where id = $1", [MSD]);
+eq([r.status, pvS && pvS.k2h, pvS && pvS.old, pvS && pvS.h2k, pvS && pvS.link], ["ok", 3, 2, 1, 0], "기준일 미리보기: 새 2 · 옮긴 옛 파일 1 올림 · 옛 2 뺌 · 이름 · 크기가 같은 H 문서는 연결만 아님(받기)");
+await admin("select public.semis_logi_ksync_map_start($1)", [MSD]);
+r = await once();
+const dSN = (await docs()).filter(d => d.mod === "audit" && d.grp === "since" && d.src === "ksync").map(d => d.files[0].name).sort();
+eq([r.status, dSN, (await rowsOf(MSD)).map(x => x.rel_path).sort(), sRead("옛 보고.pdf"), sRead("옛 양식.hwp"), sRead("옛 양식 (2).hwp")],
+  ["ok", ["경계.pdf", "새 보고.pdf", "옮김.pdf"], ["경계.pdf", "새 보고.pdf", "옛 양식 (2).hwp", "옮김.pdf"], "OLD-1", "OLD-22", "H-OLD!"],
+  "[시작] 뒤 새 파일만 등록(기준일 0시 파일 포함 · 옮긴 옛 파일은 올림) · 옛 K 파일은 그대로(덮지 않음) · H 문서는 '이름 (2)'");
+eq(await one("select n_files from semis_logi_private.ksync_maps where id = $1", [MSD]), 3, "파일 수는 기준일 전 파일을 빼고");
+r = await once();
+eq([r.status, (await rowsOf(MSD)).length, (await docs()).filter(d => d.grp === "since").length], ["ok", 4, 4], "다시 실행해도 그대로(옛 파일은 계속 빠짐)");
+const fnPost = async (b) => { const x = await realFetch(BASE + FN, { method: "POST", headers: { "content-type": "application/json", "x-ksync-key": KEY }, body: JSON.stringify(b) }); return [x.status, (await x.json()).error || "ok"]; };
+const RSN = (await (await realFetch(BASE + FN, { method: "POST", headers: { "content-type": "application/json", "x-ksync-key": KEY }, body: JSON.stringify({ act: "run", phase: "start", trigger: "manual" }) })).json()).run;
+const sndPut = { act: "put", phase: "begin", run: RSN, map: MSD, rel_path: "옛 보고.pdf", size: 5, sha256: shaHex("OLD-1"), mode: "new" };
+eq([await fnPost(Object.assign({ mtime: new Date(SN - 30 * 864e5).toISOString() }, sndPut)), await fnPost(sndPut)], [[409, "old"], [409, "old"]],
+  "옛 에이전트가 기준일 전 파일을 보내도(수정 시각을 빼도) 서버가 거절 — Edge 를 지나 'old'");
+await fnPost({ act: "run", phase: "end", run: RSN, result: "ok" });
+await admin("select public.semis_logi_ksync_map_delete($1)", [MSD]);
+
 /* 20. 동시 실행 막기 · 로컬 상태 · 전체 확인 */
 fs.writeFileSync(path.join(APP, "ksync.lock"), JSON.stringify({ pid: process.pid, at: Date.now() }));
 eq((await once()).status, "locked", "다른 실행 중이면 양보");

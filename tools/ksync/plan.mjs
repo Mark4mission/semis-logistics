@@ -1,18 +1,21 @@
 /* H:drive K드라이브 동기화 — 계획(순수 함수). 파일 · 네트워크를 건드리지 않는다.
-   plan({ map, baseline, kList, kErr, kCapped, hList, limit, today, maxSize }) → { actions[], held, n, base, counts, detail[], fatal }
+   plan({ map, baseline, kList, kErr, kCapped, hList, limit, today, maxSize, since, allSha }) → { actions[], held, n, base, counts, detail[], fatal }
    - baseline = 마지막으로 맞춘 상태(ksync_files 줄), kList = K 색인 [{ rel, size, mtime(ms), sha }], hList = H 쪽 현재 판 [{ doc, ser, name, url, size, at, date, title }]
      + SSI 아닌 연결에서 현재 판이 민감보안정보라 보이지 않는 판 묶음 [{ ser, hidden: true }] — H 에 있으나 내용은 모름(H 삭제로 보지 않음)
    - kErr = 색인 오류 [{ f, r, dir }] — 읽지 못한 파일 · 폴더(그 아래 전부)는 '모름'이라 건너뛴다(K 삭제 · H 로 덮어쓰기로 보지 않음).
      연결 폴더 자체를 못 읽었거나 kCapped(색인 상한)이면 그 연결은 통째로 건너뛴다(fatal)
    - 삭제는 전파하지 않는다(삭제 대기). 양쪽이 바뀌면 수정 시각이 늦은 쪽이 현재 판, 다른 쪽은 남긴다(H 이전 판 / K '이름 (충돌 날짜)').
-   - 변경 · 삭제 대기 수 n 은 서버(ksync_count)와 같은 규칙: 새 판 올리기(판 묶음이 H 에 남은 기준선 줄의 새 문서 포함) · 맞춘 판 묶음 덮어쓰기 · 새 삭제 대기 */
+   - 변경 · 삭제 대기 수 n 은 서버(ksync_count)와 같은 규칙: 새 판 올리기(판 묶음이 H 에 남은 기준선 줄의 새 문서 포함) · 맞춘 판 묶음 덮어쓰기 · 새 삭제 대기
+   - since = 연결의 기준일(한국 시각 그날 0시, ms — 0 이면 없음), allSha = 모든 연결 기준선의 K 해시. 기준선에 없는 K 파일 중 그 전에 고친 것은
+     올리지 않고 · 연결만도 하지 않고 건수만(counts.old — 기록 줄 · total 에 넣지 않음). 해시가 어느 연결 기준선과 같으면(연결 폴더끼리 옮김) 새 파일로 */
 
 export const MAX_SIZE = 50 * 1024 * 1024;
 export const TRASH = "_H드라이브_휴지통";
 export const PREV = "_H드라이브_이전판";
-/* H 로 올리지 않는 형식(semis-logi-files BLOCK_TYPES) · K 로 쓰지 않는 형식(실행 파일 · 스크립트 · 바로 가기 · 디스크 이미지 ·
+/* H 로 올리지 않는 형식(동기화 전용 — html · js 류는 파일 함수 semis-logi-files BLOCK_TYPES 와 같은 뜻, 더해 인증서 · 키 보관 파일 · 바로 가기) ·
+   K 로 쓰지 않는 형식(실행 파일 · 스크립트 · 바로 가기 · 디스크 이미지 ·
    탐색기에서 폴더를 보기만 해도 밖으로 접속하거나 열면 코드가 도는 형식 — 직접 쓴 파일이라 '인터넷에서 받음' 표시가 없다) — SQL 과 같은 목록 */
-export const H_BLOCK = /\.(html?|xht(ml)?|m?js)$/i;
+export const H_BLOCK = /\.(html?|xht(ml)?|m?js|pfx|p12|pem|kdbx|lnk|url)$/i;
 export const K_BLOCK = /\.(exe|bat|cmd|com|scr|msi|msp|ps1|psm1|vbs|vbe|js|jse|wsf|wsh|sh|command|app|jar|lnk|url|hta|html?|pif|cpl|reg|dll|scf|library-ms|searchconnector-ms|chm|hlp|msc|iso|img|vhd|vhdx|appref-ms|website|rdp|xll|wll|wsc|sct|ws|application|settingcontent-ms|theme|themepack|diagcab|cab|appx|appxbundle|msix|msixbundle|gadget|inf|ins|isp|mde|accde|jnlp|ps1xml|psc1|psd1|vb|xht|xhtml|svg|mht|mhtml|shtml)$/i;
 export const CONFLICT_RE = / \(충돌 \d{4}-\d{2}-\d{2}(?: \d+)?\)(\.[^./]{1,10})?$/;
 
@@ -62,7 +65,8 @@ export function plan(input) {
   const kBy = new Map(kList.map(k => [k.rel, k]));
   const rowRel = new Set(rows.map(r => r.rel_path));
   const actions = [], detail = [];
-  const counts = { k2h: 0, h2k: 0, link: 0, del: 0, conflict: 0, skip: 0, total: 0 };
+  const since = Number(input.since) || 0, allSha = input.allSha || new Set();
+  const counts = { k2h: 0, h2k: 0, link: 0, del: 0, conflict: 0, skip: 0, old: 0, total: 0 };
   let n = 0;
   const line = (f, a, r) => detail.push({ m: map.id, f: String(f || "").slice(0, 200), a, r: r || "" });
   const add = (a) => { actions.push(a); return a; };
@@ -230,6 +234,8 @@ export function plan(input) {
   /* K 에만 있는 파일 */
   untrackedK.forEach(k => {
     if (usedK.has(k)) return;
+    // 기준일 전 파일 — 건수만(줄을 남기면 수백 줄이 실행 기록의 오류 줄을 밀어낸다). 이름 · 크기가 같은 H 문서와 '연결만'도 하지 않는다
+    if (since && k.mtime < since && !(k.sha && allSha.has(k.sha))) { counts.old++; return; }
     const it = hList.find(i => !usedH.has(i) && nfc(i.name) === baseOf(k.rel) && Number(i.size) === k.size);
     if (it) { usedH.add(it); counts.link++; line(k.rel, "link", "같은 파일"); add({ op: "link", rel: k.rel, k, it }); return; }
     if (canK2H) putA(k, k.rel, "new", null);
