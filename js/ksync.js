@@ -30,8 +30,12 @@
   const days = (t) => Math.floor((Date.now() - new Date(t).getTime()) / 864e5);
   const modLabel = (mod) => { const mn = SeMIS.menuForModule ? SeMIS.menuForModule(mod) : null; return (mn && mn.label) || mod; };
   const target = (m) => modLabel(m.mod) + " › " + (window.SemisDocs ? SemisDocs.labelOf(m.mod, m.grp) : m.grp);
-  const why = (r) => WHY[r] || r || "";
   const mapOf = (id) => ((st.s && st.s.maps) || []).find(m => m.id === id);
+  /* 방향 밖(dir) = 한 방향 연결에서 보내지 않는 쪽이 더 새로움 — 어느 쪽인지는 연결의 방향으로 */
+  const why = (r, mapId) => {
+    if (r === "dir") { const m = mapId != null ? mapOf(Number(mapId)) : null; if (m && m.dir !== "both") return (m.dir === "h2k" ? "K드라이브" : "H:drive") + " 쪽이 더 새로움 — 이 연결은 한 방향"; }
+    return WHY[r] || r || "";
+  };
   const errText = (e) => (e && e.status === 403 ? "시스템관리자만 쓸 수 있습니다." : "서버에 연결할 수 없습니다.");
   const ERR = { k_path: "K 폴더 경로를 확인하세요(연결 폴더 안 상대 경로).", target: "화면 · 분류를 고르세요.", k_dup: "이미 연결했거나 겹치는 K 폴더입니다.", target_dup: "그 화면 · 분류는 이미 다른 폴더와 연결되어 있습니다.",
     locked: "바꿀 수 없습니다 — 맞춘 파일이 있으면 폴더 · 화면을, 시작한 연결은 기준일을 비우거나 더 이른 날로 바꿀 수 없습니다. 연결을 지우고 새로 만드세요.", since: "기준일 형식을 확인하세요(YYYY-MM-DD).", ip: "IP 형식을 확인하세요(너무 넓은 범위는 넣을 수 없음).", daily_at: "시각 형식(HH:MM)", mass_limit: "한도 값을 확인하세요.", gone: "이미 처리되었습니다.", state: "지금 상태에서는 할 수 없습니다.", bad: "입력을 확인하세요.",
@@ -209,7 +213,7 @@
     const n = holds.length + del.length + conf.length + skip.length;
     const mp = (id) => { const m = mapOf(id); return m ? m.k_path : ""; };
     const row = (f, acts) => `<tr><td data-role="title"><span class="ks-path">${esc(f.rel_path || f.h_name || "")}</span><div class="cell-sub">${esc(mp(f.map))}</div></td>
-      <td>${esc(FSTATE[f.state] || f.state)}${f.note ? `<div class="cell-sub">${esc(why(f.note))}</div>` : ""}</td><td class="td-act">${acts || ""}</td></tr>`;
+      <td>${esc(FSTATE[f.state] || f.state)}${f.note ? `<div class="cell-sub">${esc(why(f.note, f.map))}</div>` : ""}</td><td class="td-act">${acts || ""}</td></tr>`;
     const tbl = (rows, empty) => rows ? `<div class="table-wrap"><table class="tbl ks-tbl"><thead><tr><th>파일</th><th>내용</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p class="ks-none">${esc(empty)}</p>`;
     const sel = holds.length ? "hold" : del.length ? "del" : conf.length ? "conf" : "skip";
     const tabs = [["hold", "대량 변경 보류 " + holds.length], ["del", "삭제 대기 " + del.length], ["conf", "충돌 " + conf.length], ["skip", "건너뜀 · 오류 " + skip.length]];
@@ -462,7 +466,7 @@
     const det = Array.isArray(r.detail) ? r.detail : [];
     const A = { k2h: "K → H:drive", h2k: "H:drive → K", link: "연결만", rename: "이름 바꿈", del_k: "K 에서 지움", del_h: "H:drive 에서 지움", conflict: "충돌", skip: "건너뜀", error: "오류", trash: "휴지통", restore: "복원", held: "보류", drop: "기준선 정리" };
     openModal(`<h3>실행 ${esc(fmt(r.started_at))} · ${esc((RES[r.result || ""] || RES.fail)[0])}</h3>
-      ${det.length ? `<div class="table-wrap ks-det"><table class="tbl ks-tbl"><thead><tr><th>파일</th><th>동작</th><th>이유</th></tr></thead><tbody>${det.map(d => `<tr><td data-role="title"><span class="ks-path">${esc(d.f || "")}</span><div class="cell-sub">${esc((mapOf(d.m) || {}).k_path || "")}</div></td><td>${esc(A[d.a] || d.a)}</td><td>${esc(why(d.r))}</td></tr>`).join("")}</tbody></table></div>`
+      ${det.length ? `<div class="table-wrap ks-det"><table class="tbl ks-tbl"><thead><tr><th>파일</th><th>동작</th><th>이유</th></tr></thead><tbody>${det.map(d => `<tr><td data-role="title"><span class="ks-path">${esc(d.f || "")}</span><div class="cell-sub">${esc((mapOf(d.m) || {}).k_path || "")}</div></td><td>${esc(A[d.a] || d.a)}</td><td>${esc(why(d.r, d.m))}</td></tr>`).join("")}</tbody></table></div>`
         : `<p class="ks-none">${esc(r.msg || "기록한 줄이 없습니다.")}</p>`}
       <div class="modal-actions"><button type="button" class="btn btn-primary" data-act="ok">닫기</button></div>`, { wide: true });
     $("#modal-box [data-act=ok]").onclick = closeModal;

@@ -12755,6 +12755,20 @@ function makeServer(opts = {}) {
       eq(e.errors.length, 0, e.errors.join(" | "));
       e.Sync.stop(); e.w.close();
     });
+    await ta("KS23 v1.68 건너뜀 '방향 밖'(dir)은 어느 쪽이 더 새로운지 연결 방향으로 — K → H 만 = H:drive 쪽 · H → K 만 = K드라이브 쪽(확인 필요 · 실행 기록)", async () => {
+      const { ks, e } = await setup();
+      ks.maps = [{ id: 1, k_path: "한쪽", mod: "audit", grp: "checklist", dir: "k2h", state: "active", n_files: 1 }, { id: 2, k_path: "반대", mod: "audit", grp: "plan", dir: "h2k", state: "active", n_files: 1 }];
+      ks.files = [{ id: 5, map: 1, rel_path: "보고.pdf", state: "skip", note: "dir" }, { id: 6, map: 2, rel_path: "양식.hwp", state: "skip", note: "dir" }];
+      ks.runs = [{ id: 3, started_at: "2026-11-13T00:00:00Z", result: "ok", trigger: "daily", k2h: 0, h2k: 0, conflicts: 0, skipped: 1, errors: 0, msg: "", detail: [{ m: 1, f: "보고.pdf", a: "skip", r: "dir" }] }];
+      await openTab(e);
+      const sk = q(e, '[data-ct-pane="kspend:skip"]').textContent;
+      ok(/H:drive 쪽이 더 새로움 — 이 연결은 한 방향/.test(sk) && /K드라이브 쪽이 더 새로움 — 이 연결은 한 방향/.test(sk), "확인 필요: 방향별 이유 " + sk);
+      q(e, '[data-ks-run="3"]').click();
+      ok(/H:drive 쪽이 더 새로움/.test(q(e, "#modal-box").textContent), "실행 기록 상세도 같은 말");
+      e.w.SeMIS.closeModal();
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
   }
 
   /* ══════════ [US] 미주행 재보안검색 ══════════ */

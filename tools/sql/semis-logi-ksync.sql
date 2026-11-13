@@ -10,7 +10,8 @@
      K 로 가는 실행 파일 차단 · 해시 불일치 거절 · 모든 실행 · 보안 이벤트 기록(180일).
    - 문서함 반영은 공용 행 docs 를 for update 로 잠근 뒤 고친다. updated_at 은 트리거가 찍는다(되돌리지 않는다) —
      열린 화면의 다음 저장은 409 → 병합으로 이어진다. 관리자 세션에서 고칠 때는 잠근 행의 updated_at 을 base_at 으로 넘긴다.
-   - 적용: 마이그레이션 semis_logi_security_30_ksync · v1.64 기준일 · 막는 형식 semis_logi_security_32_ksync_since(이 파일 전체). 이 파일이 원본(다시 실행해도 같은 결과).
+   - 적용: 마이그레이션 semis_logi_security_30_ksync · v1.64 기준일 · 막는 형식 semis_logi_security_32_ksync_since ·
+     v1.68 링크 정확도 semis_logi_security_34_ksync_links(이 파일 전체). 이 파일이 원본(다시 실행해도 같은 결과).
      검증: node tools/sql/semis-logi-ksync.test.mjs tools/sql/semis-logi-ksync.sql (PGlite + pgcrypto)
    ═══════════════════════════════════════════════════════ */
 
@@ -116,6 +117,8 @@ create table if not exists semis_logi_private.ksync_state (
   ev_seen_at   timestamptz
 );
 insert into semis_logi_private.ksync_state(id) values (1) on conflict (id) do nothing;
+-- 새 동작의 깃발(SQL 로만 바꿈 — 끄면 그 전 동작). link_all = H 옛 판까지 · 기준일 전 K 파일도 '연결만' 후보로
+alter table semis_logi_private.ksync_state add column if not exists flags jsonb not null default '{"link_all": false}'::jsonb;
 create table if not exists semis_logi_private.ksync_uploads (    -- 올리기 시작(put begin) → 확인(verify — 저장소에서 다시 잼) → 등록(apply — 문서함 한 번에)
   path     text primary key,
   agent_id bigint not null,
@@ -311,6 +314,34 @@ language sql stable set search_path = '' as $$
       || coalesce((select jsonb_agg(jsonb_build_object('ser', h.ser, 'hidden', true) order by h.ser)
                      from (select distinct fl.ser from fl where not fl.seen) h), '[]'::jsonb)
 $$;
+/* H 쪽 옛 판 — 기준선에 없는 K 파일을 이을 후보로만(flags.link_all). 판 묶음의 현재 판이 아닌 판의 파일, ksync_h_items 와 같은 SSI 거름.
+   현재 판이 숨은 판 묶음({ser, hidden})과 현재 판에 보이는 첨부가 없는 판 묶음은 뺀다(이으면 다음 실행이 그 K 파일을 'H 에서 지움'으로 본다).
+   현재 판에도 있는 주소(첨부를 그대로 이어 쓴 판)도 뺀다 — 현재 판과 같은 파일이라 현재 판으로 짝짓는다 */
+create or replace function semis_logi_private.ksync_h_olds(p_docs jsonb, p_map semis_logi_private.ksync_maps) returns jsonb
+language sql stable set search_path = '' as $$
+  with d as (
+    select x.value as doc, x.idx, coalesce(nullif(x.value ->> 'ser', ''), x.value ->> 'id') as ser
+      from jsonb_array_elements(p_docs) with ordinality x(value, idx)
+     where jsonb_typeof(x.value) = 'object' and x.value ->> 'mod' = p_map.mod and coalesce(x.value ->> 'grp', '') = p_map.grp
+       and coalesce(x.value ->> 'id', '') <> ''
+  ), r as (
+    select d.*, row_number() over (partition by d.ser order by coalesce(d.doc ->> 'date', '') desc, coalesce(d.doc ->> 'title', '') collate "C", d.idx) as rn from d
+  ), fl as (
+    select r.doc, r.ser, r.rn, f.value as file, f.idx as fidx,
+           p_map.ssi or (not coalesce((r.doc ->> 'ssi')::boolean, false) and semis_logi_private.ksync_url_path(f.value ->> 'url') not like 'docs-ssi/%') as seen
+      from r, jsonb_array_elements(case when jsonb_typeof(r.doc -> 'files') = 'array' then r.doc -> 'files' else '[]'::jsonb end) with ordinality f(value, idx)
+     where jsonb_typeof(f.value) = 'object' and coalesce(f.value ->> 'name', '') <> ''
+       and semis_logi_private.ksync_url_path(f.value ->> 'url') is not null
+  )
+  select coalesce(jsonb_agg(jsonb_build_object('ser', o.ser, 'doc', o.doc ->> 'id', 'name', o.file ->> 'name',
+           'size', case when coalesce(o.file ->> 'size', '') ~ '^[0-9]{1,12}$' then (o.file ->> 'size')::bigint else 0 end,
+           'url', o.file ->> 'url', 'date', coalesce(o.doc ->> 'date', '')) order by o.ser, o.rn, o.fidx), '[]'::jsonb)
+    from fl o
+   where o.rn > 1 and o.seen
+     and exists (select 1 from fl c where c.ser = o.ser and c.rn = 1 and c.seen)
+     and not exists (select 1 from fl c where c.ser = o.ser and c.rn = 1 and not c.seen)
+     and not exists (select 1 from fl c where c.rn = 1 and c.file ->> 'url' = o.file ->> 'url')
+$$;
 /* 연결 범위 안 문서의 파일인지 — 범위 밖 · 민감보안정보(SSI 연결 아님)는 null */
 create or replace function semis_logi_private.ksync_doc_file(p_docs jsonb, p_map semis_logi_private.ksync_maps, p_doc text, p_url text) returns jsonb
 language sql stable set search_path = '' as $$
@@ -482,8 +513,10 @@ begin
     maps := maps || jsonb_build_array(jsonb_build_object('id', m.id, 'k_path', m.k_path, 'mod', m.mod, 'grp', m.grp, 'dir', m.dir, 'ssi', m.ssi,
       'state', m.state, 'hold', m.hold, 'updated_at', m.updated_at, 'since', m.since));
     if docs is not null and m.state <> 'paused' then
+      -- olds = 옛 판(링크 후보) — flags.link_all 이 꺼져 있으면 빈 배열(에이전트는 그 전과 같게 동작)
       lists := lists || jsonb_build_array(jsonb_build_object('map', m.id,
         'h', semis_logi_private.ksync_h_items(docs, m),
+        'olds', case when st.flags -> 'link_all' = 'true'::jsonb then semis_logi_private.ksync_h_olds(docs, m) else '[]'::jsonb end,
         'base', coalesce((select jsonb_agg(jsonb_build_object('id', f.id, 'rel_path', f.rel_path, 'k_size', f.k_size, 'k_mtime', f.k_mtime, 'k_sha256', f.k_sha256,
           'doc_id', f.doc_id, 'ser', f.ser, 'h_url', f.h_url, 'h_name', f.h_name, 'h_size', f.h_size, 'state', f.state, 'note', f.note) order by f.rel_path)
           from semis_logi_private.ksync_files f where f.map_id = m.id), '[]'::jsonb)));
@@ -494,7 +527,7 @@ begin
     end if;
   end loop;
   return jsonb_build_object('ok', true, 'allow', true, 'now', now(), 'daily_at', st.daily_at,
-    'requested', st.requested_at is not null, 'requested_at', st.requested_at, 'mass_limit', st.mass_limit, 'maps', maps)
+    'requested', st.requested_at is not null, 'requested_at', st.requested_at, 'mass_limit', st.mass_limit, 'flags', st.flags, 'maps', maps)
     || case when docs is not null then jsonb_build_object('lists', lists, 'paused_base', pbase) else '{}'::jsonb end;
 end $$;
 /* 읽기만 할 때(잠그지 않음) */

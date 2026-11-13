@@ -317,6 +317,59 @@ eq([conflictName("d/a.xlsx", "2026-11-04", 2), excluded("a (충돌 2026-11-04 2)
   eq([ops(p), p.counts.old], [["put:new:old.pdf"], 0], "⑪ 기준일 없음 → 옛 파일도 지금처럼 올림");
 }
 
+/* v1.68 링크 정확도(서버 flags.link_all → linkAll) — 기준선에 없는 K 파일의 짝을 H 옛 판에서도 찾고, 기준일 전 파일도 먼저 이어 본다
+   (기준일은 '올리지 않음'일 뿐). 같은 내용 파일이 여럿이면 이름이 같은 후보로 이름 바꿈을 고른다. 깃발을 끄면 그 전 그대로 */
+{
+  const SINCE = Date.parse("2025-08-01T00:00:00+09:00"), OLD = SINCE - 864e5;
+  const PL = (o) => P(Object.assign({ linkAll: true }, o));
+  const cur = { doc: "dc", ser: "S", name: "보고 v2.pdf", url: "uc", size: 9, title: "t" };
+  const oldv = { doc: "do", ser: "S", name: "보고.pdf", url: "uo", size: 4, date: "2025-01-01" };
+  const k4 = { rel: "보고.pdf", size: 4, mtime: T, sha: H("1") };
+  p = PL({ kList: [k4], hList: [cur], hOlds: [oldv] });
+  eq([ops(p), p.actions[0] && [p.actions[0].it.doc, p.actions[0].it.url], p.counts.link, p.counts.k2h, p.counts.h2k, p.detail.map(d => d.r)],
+    [["link::보고.pdf"], ["do", "uo"], 1, 0, 0, ["옛 판과 같은 파일"]], "① 옛 판과 이름 · 크기가 같음 → 연결만(올리지 않음) · 그 판 묶음의 현재 판은 이번에 받지 않음(K '이름 (2)' 없음)");
+  p = P({ kList: [k4], hList: [cur], hOlds: [oldv] });
+  eq(ops(p), ["put:new:보고.pdf", "get::보고 v2.pdf"], "① 깃발을 끄면 그 전 그대로(옛 판은 보지 않음 — 새 문서로 올리고 현재 판을 받음)");
+  const hSame = [{ doc: "h1", ser: "h1", name: "same.pdf", url: "uh", size: 4 }];
+  p = PL({ since: SINCE, kList: [{ rel: "same.pdf", size: 4, mtime: OLD, sha: H("4") }], hList: hSame });
+  eq([ops(p), p.counts.link, p.counts.old], [["link::same.pdf"], 1, 0], "② 기준일 전 K 파일도 H 짝(현재 판)과 연결만 — 기준일은 '올리지 않음'이지 '잇지 않음'이 아님");
+  p = PL({ since: SINCE, kList: [Object.assign({}, k4, { mtime: OLD })], hList: [cur], hOlds: [oldv] });
+  eq([ops(p), p.counts.old], [["link::보고.pdf"], 0], "② 기준일 전 K 파일 ↔ 옛 판도 연결만");
+  p = PL({ since: SINCE, kList: [{ rel: "same.pdf", size: 4, mtime: OLD, sha: null }], hList: hSame });
+  eq([ops(p), p.counts.old], [["get::same (2).pdf"], 1], "② 해시하지 않은 옛 파일은 잇지 않음(기준선 표시는 K 해시가 있어야 받음) — 그 전처럼 건수만");
+  p = PL({ since: SINCE, kList: [{ rel: "x.pdf", size: 3, mtime: OLD, sha: H("3") }], hList: [cur], hOlds: [oldv] });
+  eq([ops(p), p.counts.old, p.detail.filter(d => d.f === "x.pdf").length], [["get::보고 v2.pdf"], 1, 0], "③ 기준일 전 · 짝 없음 → 올리지 않고 건수만(기록 줄 없음)");
+  p = PL({ kList: [k4], hList: [{ ser: "S", hidden: true }], hOlds: [oldv] });
+  eq(ops(p), ["put:new:보고.pdf"], "④ 숨은 SSI 판 묶음의 옛 판은 후보가 아님");
+  const old2 = { doc: "do2", ser: "S", name: "보고 초안.pdf", url: "uo2", size: 3, date: "2024-12-01" };
+  p = PL({ kList: [k4, { rel: "보고 초안.pdf", size: 3, mtime: T, sha: H("2") }], hList: [cur], hOlds: [oldv, old2] });
+  eq(ops(p), ["link::보고.pdf", "put:new:보고 초안.pdf"], "옛 판은 판 묶음마다 회차에 하나만(둘 다 이으면 다음 실행이 하나 빼고 'H 에서 지움'으로 봄)");
+  const RL = [row(41, "보고.pdf", { k_size: 4, k_sha256: H("1"), doc_id: "do", ser: "S", h_url: "uo", h_name: "보고.pdf", h_size: 4 })];
+  p = PL({ baseline: RL, kList: [kOf(RL[0]), { rel: "사본/보고.pdf", size: 4, mtime: T, sha: H("9") }], hList: [cur], hOlds: [oldv] });
+  eq(ops(p).filter(x => x.startsWith("link")), [], "기준선 줄이 있는 판 묶음의 옛 판은 후보가 아님");
+  // 해시가 실린 H 첨부(해시를 채운 문서)는 해시가 양쪽에 하나뿐이면 이름이 달라도 · 여럿이면 이름도 같을 때만
+  p = PL({ kList: [{ rel: "이름 다름.pdf", size: 4, mtime: T, sha: H("5") }], hList: [Object.assign({}, cur, { sha: H("5") })] });
+  eq(ops(p), ["link::이름 다름.pdf"], "해시가 양쪽에 하나뿐 → 이름이 달라도 연결만");
+  p = PL({ kList: [{ rel: "이름 다름.pdf", size: 4, mtime: T, sha: H("5") }, { rel: "또 다름.pdf", size: 4, mtime: T, sha: H("5") }], hList: [Object.assign({}, cur, { sha: H("5") })] });
+  eq(ops(p).filter(x => x.startsWith("link")), [], "같은 해시 K 파일이 둘 → 해시만으로 잇지 않음");
+  p = PL({ kList: [{ rel: "보고 v2.pdf", size: 4, mtime: T, sha: H("5") }, { rel: "또 다름.pdf", size: 4, mtime: T, sha: H("5") }], hList: [Object.assign({}, cur, { sha: H("5") })] });
+  eq(ops(p).filter(x => x.startsWith("link")), ["link::보고 v2.pdf"], "같은 해시가 여럿이면 해시 + 이름이 같은 후보만");
+  // ⑤ 같은 내용 파일 둘(같은 안내 문서가 여러 폴더에) — 이름 바꿈을 마음대로 고르지 않음
+  const BR = [row(1, "a/안내.pdf", { k_sha256: H("7"), k_size: 5 })];
+  const twin = [{ rel: "b/안내.pdf", size: 5, mtime: T, sha: H("7") }, { rel: "c/다른 이름.pdf", size: 5, mtime: T, sha: H("7") }];
+  p = P({ baseline: BR, kList: twin, hList: BR.map(r => hOf(r)) });
+  eq([ops(p).filter(x => x.startsWith("rename")), p.counts.dup], [[], 1], "⑤ 같은 해시 후보 둘 → 이름 바꿈 안 함 · counts.dup(깃발과 관계없는 보고)");
+  p = PL({ baseline: BR, kList: twin, hList: BR.map(r => hOf(r)) });
+  eq([ops(p).filter(x => x.startsWith("rename")), p.counts.dup], [["rename::b/안내.pdf"], 0], "⑤ linkAll — 이름이 같은 후보를 고름");
+  p = PL({ baseline: BR, kList: twin.concat([{ rel: "d/안내.pdf", size: 5, mtime: T, sha: H("7") }]), hList: BR.map(r => hOf(r)) });
+  eq([ops(p).filter(x => x.startsWith("rename")), p.counts.dup], [[], 1], "⑤ 이름도 같은 후보가 둘 → 고르지 않고 dup");
+  // ⑥ 옛 판에 이은 줄의 다음 실행 — 현재 판이 그 판 묶음의 새 판으로 보인다
+  p = P({ map: Object.assign({}, MAP, { dir: "k2h" }), baseline: RL, kList: [kOf(RL[0])], hList: [cur] });
+  eq([ops(p), p.detail.map(d => d.a + ":" + d.r), p.counts.k2h], [["state:skip:보고.pdf"], ["skip:dir"], 0], "⑥ K → H 만: H 쪽이 더 새로움(dir)으로 건너뜀 — 중복 올리기 없음");
+  p = P({ baseline: RL, kList: [kOf(RL[0])], hList: [cur] });
+  eq([ops(p), p.actions[0].backup, p.n], [["get::보고 v2.pdf"], "보고.pdf", 1], "⑥ 양쪽: 현재 판을 받고 옛 K 파일은 이전판으로(backup)");
+}
+
 /* 도우미 — 경로 · 설정 · 시각 */
 ["a/b.pdf", "가/나 다.xlsx"].forEach(x => ok(relOk(x), "경로 " + x));
 ["/etc/x", "../x", "a/../b", "a//b", "a\\b", "C:x", "", "a/"].forEach(x => ok(!relOk(x), "경로 거절 " + x));
@@ -402,6 +455,8 @@ eq([fs.readdirSync(partDir).sort(), ip.list.map(x => x.rel)], [[".ksync-ba987654
     "기준일 색인: 옛 파일은 해시 안 함 · 크기가 어느 연결 기준선과 같으면 잼 · 기준일 0시부터는 잼 · 기준선 파일은 날짜와 관계없이");
   eq(sx.list.length, 4, "옛 파일도 색인에는 남음(이름 차지 — 받는 파일이 덮지 않음)");
   ok((await indexDir(sinceDir, new Map())).list.every(x => x.sha), "기준일 없음 → 모두 잼(지금과 같음)");
+  const sn = await indexDir(sinceDir, new Map(), { since: SN, sizes: new Set(), names: new Set(["old.pdf|4"]) });
+  eq(["old.pdf", "oldsz.pdf"].map(n => (sn.list.find(x => x.rel === n) || {}).sha), [hx("OLD1"), null], "link_all: 기준일 전 파일 중 H 링크 후보(소문자 이름|크기)와 같은 것만 잼");
 }
 
 /* 받은 파일 놓기(place) — A2 추적하지 않는 K 항목은 옮기지 않음 · A4 충돌 사본 이름은 받은 뒤 · A6 '(충돌 날짜 2)' · A7 색인 뒤 바뀐 파일은 건드리지 않음 */
@@ -935,7 +990,7 @@ const fakeSrv = (o) => {
     if (x instanceof Response) return x;
     if (x) return new Response(JSON.stringify(x), { status: x.ok ? 200 : 409 });
     let r = { ok: true };
-    if (b.act === "hello") r = { ok: true, allow: true, daily_at: "08:30", requested: false, mass_limit: LIM, maps: o.maps, lists: o.lists, paused_base: o.paused_base };
+    if (b.act === "hello") r = { ok: true, allow: true, daily_at: "08:30", requested: false, mass_limit: LIM, maps: o.maps, lists: o.lists, paused_base: o.paused_base, flags: o.flags };
     else if (tag === "run:start") r = { ok: true, run: 21 };
     else if (tag === "put:begin") { nUp++; r = { ok: true, path: "docs/z" + nUp, url: "https://store.example/pub/z" + nUp, upload: "https://store.example/up/z" + nUp, type: "application/x-test" }; }
     else if (b.act === "apply") r = { ok: true, docs: Object.fromEntries(b.paths.map(p => [p, "ks-" + p])) };
@@ -1107,6 +1162,26 @@ for (const [err, status, errors] of [["state", "ok", 0], ["bad", "partial", 1]])
   rf = await runFake(sv);
   eq([rf.status, sv.bodies.filter(b => b.act === "put" && b.phase === "begin").map(b => b.map + ":" + b.rel_path + ":" + b.mode), rf.end.maps.find(x => x.id === 22).n_files],
     ["ok", ["22:moved.pdf:new"], 1], "멈춘 연결 폴더에서 옮긴 옛 파일 → 올림(그 밖의 옛 파일은 그대로 뺌)");
+}
+
+/* v1.68 링크 — 에이전트는 hello 의 flags.link_all 을 따른다: 켜지면 옛 판(lists[].olds)을 계획에 넘기고 기준일 전 파일 중 링크 후보만 해시해 연결만,
+   깃발이 없거나(옛 서버) 꺼지면 그 전 그대로(옛 판 무시 · 기준일 전 파일은 해시도 연결도 안 함) */
+{
+  fs.rmSync(ST, { force: true });
+  const SN = Date.parse("2025-08-01T00:00:00+09:00");
+  const d24 = mkK("m24");
+  fs.writeFileSync(path.join(d24, "보고.pdf"), "OLDV"); fs.utimesSync(path.join(d24, "보고.pdf"), (SN - 864e5) / 1000, (SN - 864e5) / 1000);
+  const L24 = (flags) => ({ flags, maps: [mapOf(24, "m24", { since: "2025-08-01", dir: "k2h" })],
+    lists: [{ map: 24, base: [], h: [hIt("dc24", "보고 v2.pdf", "uc24", { ser: "S24", size: 9 })], olds: [{ ser: "S24", doc: "do24", name: "보고.pdf", size: 4, url: "uo24", date: "2025-01-01" }] }] });
+  for (const f of [undefined, { link_all: false }]) {
+    sv = fakeSrv(L24(f));
+    rf = await runFake(sv);
+    eq([rf.status, sv.items().filter(x => x.op === "set").length, sv.bodies.filter(b => b.act === "put").length], ["ok", 0, 0], "깃발 " + JSON.stringify(f) + " → 옛 판 무시 · 기준일 전 파일은 그대로 뺌");
+  }
+  sv = fakeSrv(L24({ link_all: true }));
+  rf = await runFake(sv);
+  eq([rf.status, sv.items().filter(x => x.op === "set").map(x => [x.rel_path, x.doc_id, x.h_url, x.k_sha256 === sha("OLDV")]), sv.bodies.filter(b => b.act === "put").length],
+    ["ok", [["보고.pdf", "do24", "uo24", true]], 0], "link_all → 기준일 전 K 파일을 해시해 옛 판과 연결만(올리기 없음)");
 }
 
 /* 설치 · 제거(install.sh · uninstall.sh) — HOME 은 임시 폴더, 키체인(security) · launchctl 은 가짜 명령 */

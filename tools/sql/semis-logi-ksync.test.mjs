@@ -1163,8 +1163,45 @@ eq((await begin("old-nosince.pdf", { run: RS, map: M3, mtime: "2020-01-01T00:00:
 for (const n of ["a.pfx", "b.P12", "c.pem", "d.kdbx", "e.lnk", "f.URL", "g.html", "h.mjs"]) eq(await one("select semis_logi_private.ksync_h_blocked($1)", [n]), true, "H 로 올리지 않음 " + n);
 for (const n of ["a.key", "b.pdf", "c.pemx", "d.urls", "e.xlsx"]) eq(await one("select semis_logi_private.ksync_h_blocked($1)", [n]), false, "H 로 올림 " + n);
 eq((await bS("cert.pfx", { mtime: "2026-01-01T00:00:00Z", sha256: H64("9f8b") })).error, "type", "put_begin: 인증서 → type");
-// 파일 전체를 다시 실행(마이그레이션 semis_logi_security_32_ksync_since) — 기준일 · 기준선 · 권한 그대로
+// 20. v1.68 링크 정확도 — 깃발 flags.link_all(기본 꺼짐). 켜면 hello full 의 olds = H 옛 판(현재 판 · 현재 판과 같은 주소 · SSI(SSI 아닌 연결) ·
+//     숨은 판 묶음 · 현재 판에 보이는 첨부가 없는 판 묶음 · 다른 화면 빼고). 옛 판에 '연결만'(mark set)하면 기준선은 그 판의 판 묶음 · 이름 · 크기
+await as(null);
+eq(await one("select flags from semis_logi_private.ksync_state"), { link_all: false }, "깃발 기본값 — link_all 꺼짐");
+const ML = await one("insert into semis_logi_private.ksync_maps(k_path, mod, grp, dir, state) values ('링크/옛판', 'audit', 'olds', 'k2h', 'active') returning id");
+const OD = [
+  { id: "o-cur", mod: "audit", grp: "olds", ser: "보고", title: "보고", date: "2026-11-01", files: [{ name: "보고 v3.pdf", size: 9, url: PUB + "docs/o1o1o1o1o1o1_v3.pdf" }, { name: "부록.pdf", size: 2, url: PUB + "docs/o4o4o4o4o4o4_ap.pdf" }] },
+  { id: "o-v2", mod: "audit", grp: "olds", ser: "보고", title: "보고", date: "2026-06-01", files: [{ name: "보고 v2.pdf", size: 7, url: PUB + "docs/o2o2o2o2o2o2_v2.pdf" }, { name: "부록.pdf", size: 2, url: PUB + "docs/o4o4o4o4o4o4_ap.pdf" }] },
+  { id: "o-v1s", mod: "audit", grp: "olds", ser: "보고", title: "보고", date: "2026-01-01", ssi: true, files: [{ name: "보고 v1.pdf", size: 5, url: PUB + "docs-ssi/o3o3o3o3o3o3_v1.pdf" }] },
+  { id: "h-cur", mod: "audit", grp: "olds", ser: "숨김", title: "숨김", date: "2026-11-01", ssi: true, files: [{ name: "숨 v2.pdf", size: 4, url: PUB + "docs-ssi/o5o5o5o5o5o5_h2.pdf" }] },
+  { id: "h-old", mod: "audit", grp: "olds", ser: "숨김", title: "숨김", date: "2026-01-01", files: [{ name: "숨 v1.pdf", size: 3, url: PUB + "docs/o6o6o6o6o6o6_h1.pdf" }] },
+  { id: "e-cur", mod: "audit", grp: "olds", ser: "빈", title: "빈", date: "2026-11-01", files: [] },
+  { id: "e-old", mod: "audit", grp: "olds", ser: "빈", title: "빈", date: "2026-01-01", files: [{ name: "빈 v1.pdf", size: 3, url: PUB + "docs/o7o7o7o7o7o7_e1.pdf" }] },
+  { id: "x-old", mod: "partners", grp: "olds", ser: "보고", title: "남의 화면", date: "2025-01-01", files: [{ name: "보고 v0.pdf", size: 1, url: PUB + "docs/o8o8o8o8o8o8_x.pdf" }] }];
+await db.query("update public.semis_logi_store set value = value || $1::jsonb where key = 'docs'", [JSON.stringify(OD)]);
+r = await call("hello", { full: true });
+let LO = r.lists.find(l => l.map === ML);
+eq([r.flags, LO.olds], [{ link_all: false }, []], "꺼짐 → 옛 판을 주지 않음(에이전트는 그 전과 같게) · hello 에 깃발");
+await db.exec(`update semis_logi_private.ksync_state set flags = flags || '{"link_all": true}'`);
+r = await call("hello", { full: true });
+LO = r.lists.find(l => l.map === ML);
+eq(LO.olds.map(o => [o.ser, o.doc, o.name, o.size, o.url === PUB + "docs/o2o2o2o2o2o2_v2.pdf", o.date]), [["보고", "o-v2", "보고 v2.pdf", 7, true, "2026-06-01"]],
+  "켜짐 → 옛 판만(현재 판 · 현재 판과 같은 주소의 첨부 · SSI 판 · 숨은 판 묶음 · 현재 판에 첨부가 없는 판 묶음 · 다른 화면 빼고)");
+eq([LO.h.filter(x => x.hidden).map(x => x.ser), LO.h.filter(x => !x.hidden).map(x => x.doc)], [["숨김"], ["o-cur", "o-cur"]], "현재 판 목록은 그대로");
+await db.query("update semis_logi_private.ksync_maps set ssi = true where id = $1", [ML]);
+r = await call("hello", { full: true });
+eq(r.lists.find(l => l.map === ML).olds.map(o => o.doc).sort(), ["h-old", "o-v1s", "o-v2"], "SSI 연결 → SSI 옛 판 · 그 판 묶음도 후보");
+await db.query("update semis_logi_private.ksync_maps set ssi = false where id = $1", [ML]);
+const RLK = (await call("run", { phase: "start", trigger: "manual" })).run;
+r = await call("mark", { run: RLK, map: ML, items: [{ op: "set", rel_path: "보고 v2.pdf", k_size: 7, k_mtime: "2025-01-01T00:00:00Z", k_sha256: H64("0d"), doc_id: "o-v2", h_url: PUB + "docs/o2o2o2o2o2o2_v2.pdf" }] });
+eq([r.ok, r.bad], [true, 0], "옛 판에 연결만(mark set) — 서버가 받음");
+eq(await one("select jsonb_build_array(ser, doc_id, h_name, h_size) from semis_logi_private.ksync_files where map_id = $1", [ML]), ["보고", "o-v2", "보고 v2.pdf", 7], "기준선 = 그 판의 판 묶음 · 이름 · 크기");
+await call("run", { phase: "end", run: RLK, result: "ok" });
+await as("a1", "admin");
+
+// 파일 전체를 다시 실행(마이그레이션 semis_logi_security_32_ksync_since · 34_ksync_links) — 기준일 · 기준선 · 깃발 · 권한 그대로
 await db.exec(SQL);
+eq(await one("select flags from semis_logi_private.ksync_state"), { link_all: true }, "다시 실행해도 깃발 그대로");
+await db.exec(`update semis_logi_private.ksync_state set flags = flags || '{"link_all": false}'`);
 eq([await sinceOf(MS), await sinceOf(MN), await one("select count(*)::int from semis_logi_private.ksync_files where map_id = $1", [MN])], ["2025-09-01", "2025-08-01", 1], "다시 실행해도 기준일 · 기준선 그대로");
 eq([await one("select has_function_privilege('service_role', 'public.semis_logi_ksync_agent(text, text, text, jsonb)', 'EXECUTE')"),
   await one("select has_function_privilege('anon', 'public.semis_logi_ksync_agent(text, text, text, jsonb)', 'EXECUTE')"),

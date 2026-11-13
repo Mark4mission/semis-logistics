@@ -1238,6 +1238,36 @@ eq([await fnPost(Object.assign({ mtime: new Date(SN - 30 * 864e5).toISOString() 
 await fnPost({ act: "run", phase: "end", run: RSN, result: "ok" });
 await admin("select public.semis_logi_ksync_map_delete($1)", [MSD]);
 
+/* 19-12. v1.68 링크 정확도(flags.link_all) — H 옛 판과 이름 · 크기가 같은 기준일 전 K 파일: 첫 회차에 연결만(새 문서 · K '이름 (2)' 없음),
+   다음 회차에 'H 가 더 새로움'으로 현재 판을 받고 옛 K 파일은 이전판으로(양쪽 연결) */
+const LKD = path.join(MOUNT, "업무", "옛판");
+fs.mkdirSync(LKD, { recursive: true });
+fs.writeFileSync(path.join(LKD, "계획.hwp"), "PLAN-V1"); fs.utimesSync(path.join(LKD, "계획.hwp"), (SN - 864e5) / 1000, (SN - 864e5) / 1000);
+D = await docs();
+D.push({ id: "lk2", mod: "audit", grp: "olds", ser: "계획", title: "계획", date: "2026-10-01", files: [{ name: "계획 2차.hwp", size: 7, url: PUB + "docs/lklklklklk22_p2.hwp" }] },
+  { id: "lk1", mod: "audit", grp: "olds", ser: "계획", title: "계획", date: "2025-03-01", files: [{ name: "계획.hwp", size: 7, url: PUB + "docs/lklklklklk11_p1.hwp" }] });
+await setDocs(D);
+putObj("docs/lklklklklk22_p2.hwp", "PLAN-V2"); putObj("docs/lklklklklk11_p1.hwp", "PLAN-V1");
+const MLK = (await admin("select public.semis_logi_ksync_map_save($1::jsonb)", [JSON.stringify({ k_path: "업무/옛판", mod: "audit", grp: "olds", since: "2025-08-01" })])).id;
+r = await once();
+eq(await one("select preview - 'at' from semis_logi_private.ksync_maps where id = $1", [MLK]), { del: 0, h2k: 1, k2h: 0, old: 1, link: 0, skip: 0, total: 1, conflict: 0 },
+  "깃발 꺼짐(기본): 그 전 그대로 — 기준일 전 K 파일은 뺌 · H 현재 판은 받을 것으로 셈");
+await db.exec(`update semis_logi_private.ksync_state set flags = flags || '{"link_all": true}'`);
+await admin("select public.semis_logi_ksync_request()");
+r = await once();
+eq([r.status, await one("select preview - 'at' from semis_logi_private.ksync_maps where id = $1", [MLK])], ["ok", { del: 0, h2k: 0, k2h: 0, old: 0, link: 1, skip: 0, total: 1, conflict: 0 }],
+  "link_all 미리보기: 기준일 전 K 파일이 옛 판과 연결만 1 · 올리기 · 받기 0");
+await admin("select public.semis_logi_ksync_map_start($1)", [MLK]);
+const nD = (await docs()).length;
+r = await once();
+eq([r.status, (await rowsOf(MLK)).map(x => [x.rel_path, x.doc_id, x.h_name]), (await docs()).length, fs.readdirSync(LKD).sort()],
+  ["ok", [["계획.hwp", "lk1", "계획.hwp"]], nD, ["계획.hwp"]], "첫 회차: 옛 판과 연결만 — 새 문서 · K '이름 (2)' 없음");
+r = await once();
+eq([r.status, fs.readFileSync(path.join(LKD, "계획 2차.hwp"), "utf8"), fs.existsSync(path.join(LKD, "계획.hwp")), fs.readdirSync(path.join(LKD, "_H드라이브_이전판")).length,
+  (await rowsOf(MLK)).map(x => [x.rel_path, x.doc_id])], ["ok", "PLAN-V2", false, 1, [["계획 2차.hwp", "lk2"]]], "다음 회차: H 가 더 새로움 → 현재 판을 받고 옛 K 파일은 이전판으로");
+await db.exec(`update semis_logi_private.ksync_state set flags = flags || '{"link_all": false}'`);
+await admin("select public.semis_logi_ksync_map_delete($1)", [MLK]);
+
 /* 20. 동시 실행 막기 · 로컬 상태 · 전체 확인 */
 fs.writeFileSync(path.join(APP, "ksync.lock"), JSON.stringify({ pid: process.pid, at: Date.now() }));
 eq((await once()).status, "locked", "다른 실행 중이면 양보");
