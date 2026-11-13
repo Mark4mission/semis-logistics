@@ -1297,6 +1297,21 @@ await admin("select public.semis_logi_ksync_map_save($1::jsonb)", [JSON.stringif
 r = await once();
 eq([r.status, (await rowById(subRow.id)).state], ["ok", "ok"], "제외를 풀면 평소대로");
 
+/* 19-15. 리뷰 반영 ④ — hello full(계획에 쓸 문서함) 뒤 · 회차 시작 전에 사람이 올린 문서: 회차 시작이 요청 표시를 끄지 않아 다음 깨우기에 받는다
+   (끄면 그 문서는 이 회차 계획에도 없고 요청도 사라져 다음 날 매일 실행까지 늦는다) */
+putObj("docs/rtrtrtrtrt22_mid.pdf", "MID");
+hook.onRpc = async (act, p) => {
+  if (act !== "run" || p.phase !== "start") return;
+  hook.onRpc = null;
+  const d2 = await docs();
+  d2.push({ id: "rt2", mod: "audit", grp: "checklist", title: "사이", date: "2026-11-13", files: [{ name: "사이.pdf", size: 3, url: PUB + "docs/rtrtrtrtrt22_mid.pdf" }] });
+  await db.query("update public.semis_logi_store set value = $1::jsonb, updated_by = 'browser2' where key = 'docs'", [JSON.stringify(d2)]);
+};
+r = await once();
+eq([r.status, has("사이.pdf"), !!(await one("select requested_at from semis_logi_private.ksync_state"))], ["ok", false, true], "회차 시작 직전에 올린 문서 → 이번 회차엔 없고 요청 표시는 남음");
+r = await once();
+eq([r.status, has("사이.pdf") && read("사이.pdf"), await one("select requested_at from semis_logi_private.ksync_state")], ["ok", "MID", null], "다음 회차가 받고 요청 표시를 끔");
+
 /* 20. 동시 실행 막기 · 로컬 상태 · 전체 확인 */
 fs.writeFileSync(path.join(APP, "ksync.lock"), JSON.stringify({ pid: process.pid, at: Date.now() }));
 eq((await once()).status, "locked", "다른 실행 중이면 양보");

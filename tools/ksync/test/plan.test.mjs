@@ -368,6 +368,21 @@ eq([conflictName("d/a.xlsx", "2026-11-04", 2), excluded("a (충돌 2026-11-04 2)
   eq([ops(p), p.detail.map(d => d.a + ":" + d.r), p.counts.k2h], [["state:skip:보고.pdf"], ["skip:dir"], 0], "⑥ K → H 만: H 쪽이 더 새로움(dir)으로 건너뜀 — 중복 올리기 없음");
   p = P({ baseline: RL, kList: [kOf(RL[0])], hList: [cur] });
   eq([ops(p), p.actions[0].backup, p.n], [["get::보고 v2.pdf"], "보고.pdf", 1], "⑥ 양쪽: 현재 판을 받고 옛 K 파일은 이전판으로(backup)");
+  // 리뷰 반영 ① — 현재 판 첨부가 여럿이고 옛 판 이름이 그 중에 없으면 옛 판에 잇지 않는다(다음 실행이 짝을 못 지어 'H 에서 지움' + 현재 판 첨부를 모두 받음)
+  const c2 = [{ doc: "dc", ser: "S", name: "보고 v3.pdf", url: "u3", size: 9 }, { doc: "dc", ser: "S", name: "부록.pdf", url: "ua", size: 2 }];
+  p = PL({ kList: [{ rel: "보고 v2.pdf", size: 7, mtime: T, sha: H("6") }], hList: c2, hOlds: [{ doc: "dv2", ser: "S", name: "보고 v2.pdf", url: "u2", size: 7, date: "2026-06-01" }] });
+  eq(ops(p).filter(x => x.startsWith("link")), [], "① 현재 판 첨부 둘 · 같은 이름 없음 → 옛 판에 잇지 않음(새 문서로 올림)");
+  const c2n = [{ doc: "dc", ser: "S", name: "보고.pdf", url: "u3", size: 9 }, { doc: "dc", ser: "S", name: "부록.pdf", url: "ua", size: 2 }];
+  p = PL({ kList: [k4], hList: c2n, hOlds: [oldv] });
+  eq(ops(p), ["link::보고.pdf"], "① 현재 판 첨부 둘 · 같은 이름 있음 → 옛 판에 연결만");
+  const RN = [row(42, "보고.pdf", { k_size: 4, k_sha256: H("1"), doc_id: "do", ser: "S", h_url: "uo", h_name: "보고.pdf", h_size: 4 })];
+  p = P({ baseline: RN, kList: [kOf(RN[0])], hList: c2n });
+  eq(ops(p).sort(), ["get::부록.pdf", "get::보고.pdf"].sort(), "① 다음 실행: 같은 이름 현재 판과 짝(H 가 더 새로움 — 받기) · 'H 에서 지움' 없음");
+  // 리뷰 반영 ② — 파일 순서와 관계없이 현재 판과 먼저 잇는다(옛 판의 K 사본이 먼저 와도 현재 판의 K 사본이 현재 판과 연결)
+  const cur1 = [{ doc: "dr2", ser: "R", name: "규정_v2.hwp", url: "ur2", size: 6 }], old1 = [{ doc: "dr1", ser: "R", name: "규정_v1.hwp", url: "ur1", size: 5, date: "2025-01-01" }];
+  const kAB = [{ rel: "A/규정_v1.hwp", size: 5, mtime: T, sha: H("a") }, { rel: "B/규정_v2.hwp", size: 6, mtime: T, sha: H("b") }];
+  const pOff = P({ kList: kAB, hList: cur1, hOlds: old1 }), pOn = PL({ kList: kAB, hList: cur1, hOlds: old1 });
+  eq([ops(pOn).sort(), pOn.actions.filter(a => a.op === "link").map(a => a.it.url)], [ops(pOff).sort(), ["ur2"]], "② 옛 판 사본이 먼저 와도 현재 판 사본이 현재 판과 연결 — 깃발을 끈 것과 같은 계획");
 }
 
 /* v1.68 지정 제외 · 보고 — 제외 경로는 '모름'(kErr { r: "excluded" }): 그 아래 기준선 줄은 K 에서 지운 것이 아니라 삭제 대기 · 받기 · 올리기 모두 없음

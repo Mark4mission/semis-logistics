@@ -139,7 +139,8 @@ async function agent(deps, args) {
     return { status: "dry-run" };
   }
 
-  const run = (await srv.call("run", { phase: "start", trigger })).run;
+  // seen = 계획에 쓸 문서함을 받은 시각(hello full 의 now) — 서버는 그 전에 켜진 요청 표시만 끈다(그 뒤 H 에서 고친 것은 다음 깨우기에)
+  const run = (await srv.call("run", { phase: "start", trigger, seen: full.now })).run;
   log("info", "동기화 시작(" + trigger + ") 회차 " + run);
   const tot = { k2h: 0, h2k: 0, conflicts: 0, skipped: 0, errors: 0 }, detail = [], mapRes = [];
   let result = "ok", msg = "";

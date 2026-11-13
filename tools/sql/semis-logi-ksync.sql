@@ -341,7 +341,7 @@ language sql stable set search_path = '' as $$
                      from (select distinct fl.ser from fl where not fl.seen) h), '[]'::jsonb)
 $$;
 /* H 쪽 옛 판 — 기준선에 없는 K 파일을 이을 후보로만(flags.link_all). 판 묶음의 현재 판이 아닌 판의 파일, ksync_h_items 와 같은 SSI 거름.
-   현재 판이 숨은 판 묶음({ser, hidden})과 현재 판에 보이는 첨부가 없는 판 묶음은 뺀다(이으면 다음 실행이 그 K 파일을 'H 에서 지움'으로 본다).
+   현재 판이 숨은 판 묶음({ser, hidden})과 현재 판과 짝지을 수 없는 판 묶음은 뺀다(이으면 다음 실행이 그 K 파일을 'H 에서 지움'으로 본다).
    현재 판에도 있는 주소(첨부를 그대로 이어 쓴 판)도 뺀다 — 현재 판과 같은 파일이라 현재 판으로 짝짓는다 */
 create or replace function semis_logi_private.ksync_h_olds(p_docs jsonb, p_map semis_logi_private.ksync_maps) returns jsonb
 language sql stable set search_path = '' as $$
@@ -364,7 +364,10 @@ language sql stable set search_path = '' as $$
            'url', o.file ->> 'url', 'date', coalesce(o.doc ->> 'date', '')) order by o.ser, o.rn, o.fidx), '[]'::jsonb)
     from fl o
    where o.rn > 1 and o.seen
-     and exists (select 1 from fl c where c.ser = o.ser and c.rn = 1 and c.seen)
+     -- 현재 판에 보이는 첨부가 하나뿐이거나 같은 이름 첨부가 있을 때만 — 그래야 다음 실행이 이은 줄을 현재 판과 짝짓는다
+     -- (첨부가 여럿인데 같은 이름이 없으면 짝을 못 지어 'H 에서 지움'이 되고 현재 판 첨부를 모두 새로 받는다)
+     and ((select count(*) from fl c where c.ser = o.ser and c.rn = 1 and c.seen) = 1
+          or exists (select 1 from fl c where c.ser = o.ser and c.rn = 1 and c.seen and c.file ->> 'name' = o.file ->> 'name'))
      and not exists (select 1 from fl c where c.ser = o.ser and c.rn = 1 and not c.seen)
      and not exists (select 1 from fl c where c.rn = 1 and c.file ->> 'url' = o.file ->> 'url')
 $$;
@@ -523,7 +526,6 @@ begin
   if not p_allow then
     return jsonb_build_object('ok', true, 'allow', false, 'now', now(), 'daily_at', st.daily_at);
   end if;
-  update semis_logi_private.ksync_state set net = jsonb_build_object('ok', true, 'at', now(), 'msg', '') where id = 1;
   if coalesce((p ->> 'full')::boolean, false) then
     docs := semis_logi_private.ksync_docs_lock_free();
     -- 회차 안에서 기준선을 다시 받으면(지난 실행이 못 보낸 표시를 먼저 보낸 뒤) 덮어쓰기로 셀 판 묶음도 이 기준선으로 다시 잡는다.
@@ -552,6 +554,8 @@ begin
         from semis_logi_private.ksync_files f where f.map_id = m.id and f.k_sha256 is not null), '[]'::jsonb);
     end if;
   end loop;
+  -- 상태 줄은 목록을 다 만든 뒤에 고친다 — 그 줄을 잡은 채 문서함을 훑으면 그동안 문서함 트리거가 요청 표시를 켜지 못한다(건너뜀)
+  update semis_logi_private.ksync_state set net = jsonb_build_object('ok', true, 'at', now(), 'msg', '') where id = 1;
   return jsonb_build_object('ok', true, 'allow', true, 'now', now(), 'daily_at', st.daily_at,
     'requested', st.requested_at is not null, 'requested_at', st.requested_at, 'mass_limit', st.mass_limit, 'flags', st.flags, 'excludes', st.excludes, 'maps', maps)
     || case when docs is not null then jsonb_build_object('lists', lists, 'paused_base', pbase) else '{}'::jsonb end;
@@ -628,7 +632,7 @@ end $$;
 create or replace function semis_logi_private.ksync_run(p_agent bigint, p_ip text, p jsonb) returns jsonb
 language plpgsql volatile security definer set search_path = '' as $$
 declare v_run bigint; v_res text; v_det jsonb := '[]'::jsonb; x jsonb; m semis_logi_private.ksync_maps; i int := 0;
-  num text := '^[0-9]{1,9}$';
+  num text := '^[0-9]{1,9}$'; v_seen timestamptz;
 begin
   if p ->> 'phase' = 'start' then
     update semis_logi_private.ksync_runs set result = 'fail', ended_at = now(), msg = '중단됨'
@@ -641,9 +645,15 @@ begin
     delete from semis_logi_private.ksync_run_sers s
      where not exists (select 1 from semis_logi_private.ksync_runs r where r.id = s.run_id and r.result is null and r.started_at > now() - interval '12 hours');
     perform semis_logi_private.ksync_run_snap(v_run);
-    update semis_logi_private.ksync_state set requested_at = null where id = 1;
     delete from semis_logi_private.ksync_runs where started_at < now() - interval '400 days';
     delete from semis_logi_private.ksync_uploads where at < now() - interval '1 day';
+    -- 요청 표시는 계획이 본 문서함(hello full 시각 seen) 전에 켜진 것만 끈다 — 그 뒤 사람이 고친 것은 이 회차 계획에 없으므로 남겨 다음 깨우기에 맞춘다.
+    -- seen 이 없으면(옛 에이전트) 그대로 끈다. 상태 줄은 맨 끝에 잡는다(잡은 동안 문서함 트리거는 요청을 켜지 못하고 건너뜀)
+    begin
+      v_seen := (p ->> 'seen')::timestamptz;
+    exception when others then v_seen := null;
+    end;
+    update semis_logi_private.ksync_state set requested_at = null where id = 1 and (v_seen is null or requested_at <= v_seen);
     return jsonb_build_object('ok', true, 'run', v_run);
   end if;
   v_run := semis_logi_private.ksync_run_of(p_agent, p);
@@ -1538,12 +1548,19 @@ create or replace function semis_logi_private.ksync_req_on_docs() returns trigge
 language plpgsql volatile security definer set search_path = '' as $$
 declare v_old jsonb;
 begin
-  if coalesce(new.updated_by, '') like '%/ksync' then return null; end if;
-  if tg_op = 'UPDATE' then v_old := old.value; end if;
+  if new.key is distinct from 'docs' or coalesce(new.updated_by, '') like '%/ksync' then return null; end if;
+  if tg_op = 'UPDATE' then
+    if old.value is not distinct from new.value then return null; end if;     -- 내용이 같은 저장
+    v_old := old.value;
+  end if;
+  if not exists (select 1 from semis_logi_private.ksync_maps m where m.state = 'active' and m.dir <> 'k2h') then return null; end if;
   if exists (select 1 from semis_logi_private.ksync_maps m
               where m.state = 'active' and m.dir <> 'k2h'
                 and semis_logi_private.ksync_docs_of(v_old, m.mod, m.grp) is distinct from semis_logi_private.ksync_docs_of(new.value, m.mod, m.grp)) then
-    update semis_logi_private.ksync_state set requested_at = now() where id = 1 and requested_at is null;
+    -- 문서함 저장은 기다리지 않는다 — 상태 줄을 다른 동기화 트랜잭션이 잡고 있으면 건너뛴다(그쪽은 줄을 맨 끝에 잡아 곧 끝남).
+    -- 시각은 늘 새로(회차 시작은 계획이 본 문서함 시각 전에 켜진 요청만 끈다 — 그 뒤 고친 것이 남는다)
+    perform 1 from semis_logi_private.ksync_state where id = 1 for update skip locked;
+    if found then update semis_logi_private.ksync_state set requested_at = clock_timestamp() where id = 1; end if;
   end if;
   return null;
 exception when others then

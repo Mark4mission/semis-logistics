@@ -253,34 +253,43 @@ export function plan(input) {
     }
   });
 
-  /* K 에만 있는 파일 — 같은 H 문서가 있으면 '연결만'(전송 없이 기준선만). linkAll 이면 옛 판도 후보: 옛 판은 기준선 줄이 없는 판 묶음에서
-     회차마다 하나만(같은 판 묶음의 여러 옛 판에 K 파일 여럿을 이으면 다음 실행이 하나 빼고 'H 에서 지움'으로 본다) */
+  /* K 에만 있는 파일 — 같은 H 문서가 있으면 '연결만'(전송 없이 기준선만). 모든 K 파일을 현재 판과 먼저 잇고(1차), 남은 것만 옛 판(linkAll — 2차):
+     한 번에 돌면 옛 판의 K 사본이 파일 순서에 따라 현재 판의 K 사본보다 먼저 그 판 묶음을 차지한다(현재 판 사본이 새 문서로 중복 · 다음 실행이 옛 사본을 덮음).
+     옛 판은 기준선 줄이 없는 판 묶음에서 회차마다 하나만(같은 판 묶음의 옛 판 여럿에 이으면 다음 실행이 하나 빼고 'H 에서 지움'으로 본다),
+     그 판 묶음의 현재 판에 보이는 첨부가 하나뿐이거나 같은 이름 첨부가 있을 때만(아니면 다음 실행이 그 줄을 현재 판과 짝짓지 못해 'H 에서 지움'이 되고
+     현재 판 첨부를 모두 새로 받는다) */
   const rSerAll = new Set(rows.map(r => r.ser).filter(s => s != null)), linkedSer = new Set();
   const kShaN = new Map();
   untrackedK.forEach(k => { if (k.sha) kShaN.set(k.sha, (kShaN.get(k.sha) || 0) + 1); });
-  const linkOf = (k) => {
+  const pairable = (o) => { const c = hList.filter(i => i.ser === o.ser); return c.length === 1 || c.some(i => nfc(i.name) === nfc(o.name)); };
+  const linkIn = (k, cands) => {
     const nm = baseOf(k.rel), same = (i) => nfc(i.name) === nm && Number(i.size) === k.size;
-    if (!linkAll) return hList.find(i => !usedH.has(i) && same(i));
-    const cur = hList.filter(i => !usedH.has(i)), olds = hOlds.filter(o => !rSerAll.has(o.ser) && !linkedSer.has(o.ser)), all = cur.concat(olds);
-    const bySha = (f) => { const c = k.sha ? all.filter(i => i.sha === k.sha && f(i)) : []; return c.length === 1 ? c[0] : null; };
+    if (!linkAll) return cands.find(same);
     // H 첨부의 해시는 해시를 채운 문서에만 있다(sha) — 없으면 이름 + 크기만
-    return (kShaN.get(k.sha) === 1 && bySha(() => true)) || cur.find(same) || olds.find(same) || bySha(i => nfc(i.name) === nm);
+    const bySha = (f) => { const c = k.sha ? cands.filter(i => i.sha === k.sha && f(i)) : []; return c.length === 1 ? c[0] : null; };
+    return (kShaN.get(k.sha) === 1 && bySha(() => true)) || cands.find(same) || bySha(i => nfc(i.name) === nm);
   };
+  const linkK = (k, it) => {
+    usedH.add(it); counts.link++;
+    // 옛 판에 이으면 그 판 묶음의 현재 판은 이번에 받지 않는다 — 다음 실행이 'H 가 더 새로움'으로 맞춘다(받으면 K 에 '이름 (2)' 가 생김)
+    if (it.old) hList.forEach(i => { if (i.ser === it.ser) usedH.add(i); });
+    if (linkAll) linkedSer.add(it.ser);
+    line(k.rel, "link", it.old ? "옛 판과 같은 파일" : "같은 파일"); add({ op: "link", rel: k.rel, k, it });
+  };
+  const rest = [];
   untrackedK.forEach(k => {
     if (usedK.has(k)) return;
     // 기준일 전 파일 — 건수만(줄을 남기면 수백 줄이 실행 기록의 오류 줄을 밀어낸다). 올리지 않을 뿐 — linkAll 이면 먼저 이어 본다
     const old = since && k.mtime < since && !(k.sha && allSha.has(k.sha));
     if (old && !linkAll) { counts.old++; return; }
-    const it = !linkAll || k.sha ? linkOf(k) : null;      // 기준선 표시(mark set)는 K 해시가 있어야 받는다
-    if (it) {
-      usedH.add(it); counts.link++;
-      // 옛 판에 이으면 그 판 묶음의 현재 판은 이번에 받지 않는다 — 다음 실행이 'H 가 더 새로움'으로 맞춘다(받으면 K 에 '이름 (2)' 가 생김)
-      if (it.old) hList.forEach(i => { if (i.ser === it.ser) usedH.add(i); });
-      if (linkAll) linkedSer.add(it.ser);
-      line(k.rel, "link", it.old ? "옛 판과 같은 파일" : "같은 파일"); add({ op: "link", rel: k.rel, k, it }); return;
-    }
-    if (old) { counts.old++; return; }
-    if (canK2H) putA(k, k.rel, "new", null); else out.dir++;
+    const it = !linkAll || k.sha ? linkIn(k, hList.filter(i => !usedH.has(i))) : null;      // 기준선 표시(mark set)는 K 해시가 있어야 받는다
+    if (it) linkK(k, it); else rest.push([k, old]);
+  });
+  rest.forEach(([k, old]) => {
+    const it = linkAll && k.sha ? linkIn(k, hOlds.filter(o => !rSerAll.has(o.ser) && !linkedSer.has(o.ser) && pairable(o))) : null;
+    if (it) linkK(k, it);
+    else if (old) counts.old++;
+    else if (canK2H) putA(k, k.rel, "new", null); else out.dir++;
   });
   /* H 에만 있는 문서 */
   hList.forEach(it => {

@@ -1176,7 +1176,12 @@ const OD = [
   { id: "h-old", mod: "audit", grp: "olds", ser: "숨김", title: "숨김", date: "2026-01-01", files: [{ name: "숨 v1.pdf", size: 3, url: PUB + "docs/o6o6o6o6o6o6_h1.pdf" }] },
   { id: "e-cur", mod: "audit", grp: "olds", ser: "빈", title: "빈", date: "2026-11-01", files: [] },
   { id: "e-old", mod: "audit", grp: "olds", ser: "빈", title: "빈", date: "2026-01-01", files: [{ name: "빈 v1.pdf", size: 3, url: PUB + "docs/o7o7o7o7o7o7_e1.pdf" }] },
-  { id: "x-old", mod: "partners", grp: "olds", ser: "보고", title: "남의 화면", date: "2025-01-01", files: [{ name: "보고 v0.pdf", size: 1, url: PUB + "docs/o8o8o8o8o8o8_x.pdf" }] }];
+  { id: "x-old", mod: "partners", grp: "olds", ser: "보고", title: "남의 화면", date: "2025-01-01", files: [{ name: "보고 v0.pdf", size: 1, url: PUB + "docs/o8o8o8o8o8o8_x.pdf" }] },
+  // 현재 판 첨부 하나 → 옛 판 후보 · 현재 판 첨부 둘이지만 같은 이름 → 후보
+  { id: "g-cur", mod: "audit", grp: "olds", ser: "계획", title: "계획", date: "2026-11-01", files: [{ name: "계획.pdf", size: 6, url: PUB + "docs/o9o9o9o9o9o9_g2.pdf" }] },
+  { id: "g-old", mod: "audit", grp: "olds", ser: "계획", title: "계획", date: "2026-02-01", files: [{ name: "계획 초안.pdf", size: 5, url: PUB + "docs/oaoaoaoaoaoa_g1.pdf" }] },
+  { id: "f-cur", mod: "audit", grp: "olds", ser: "양식", title: "양식", date: "2026-11-01", files: [{ name: "양식.hwp", size: 8, url: PUB + "docs/obobobobobob_f2.hwp" }, { name: "첨부.pdf", size: 2, url: PUB + "docs/ococococococ_fa.pdf" }] },
+  { id: "f-old", mod: "audit", grp: "olds", ser: "양식", title: "양식", date: "2026-02-01", files: [{ name: "양식.hwp", size: 7, url: PUB + "docs/odododododod_f1.hwp" }] }];
 await db.query("update public.semis_logi_store set value = value || $1::jsonb where key = 'docs'", [JSON.stringify(OD)]);
 r = await call("hello", { full: true });
 let LO = r.lists.find(l => l.map === ML);
@@ -1184,17 +1189,18 @@ eq([r.flags, LO.olds], [{ link_all: false }, []], "꺼짐 → 옛 판을 주지 
 await db.exec(`update semis_logi_private.ksync_state set flags = flags || '{"link_all": true}'`);
 r = await call("hello", { full: true });
 LO = r.lists.find(l => l.map === ML);
-eq(LO.olds.map(o => [o.ser, o.doc, o.name, o.size, o.url === PUB + "docs/o2o2o2o2o2o2_v2.pdf", o.date]), [["보고", "o-v2", "보고 v2.pdf", 7, true, "2026-06-01"]],
-  "켜짐 → 옛 판만(현재 판 · 현재 판과 같은 주소의 첨부 · SSI 판 · 숨은 판 묶음 · 현재 판에 첨부가 없는 판 묶음 · 다른 화면 빼고)");
-eq([LO.h.filter(x => x.hidden).map(x => x.ser), LO.h.filter(x => !x.hidden).map(x => x.doc)], [["숨김"], ["o-cur", "o-cur"]], "현재 판 목록은 그대로");
+eq(LO.olds.map(o => [o.ser, o.doc, o.name, o.size, o.date]).sort((a, b) => a[1] < b[1] ? -1 : 1), [["양식", "f-old", "양식.hwp", 7, "2026-02-01"], ["계획", "g-old", "계획 초안.pdf", 5, "2026-02-01"]],
+  "켜짐 → 옛 판만: 현재 판 첨부가 하나뿐(계획)이거나 같은 이름 첨부가 있는(양식) 판 묶음 — 현재 판 첨부가 둘인데 같은 이름이 없는 판 묶음(보고 v2) · 현재 판과 같은 주소 · SSI 판 · 숨은 판 묶음 · 현재 판에 첨부가 없는 판 묶음 · 다른 화면은 빼고");
+ok(LO.olds.every(o => o.url && !o.url.includes("docs-ssi")), "옛 판 주소에 SSI 없음");
+eq([LO.h.filter(x => x.hidden).map(x => x.ser), LO.h.filter(x => !x.hidden).map(x => x.doc).sort()], [["숨김"], ["f-cur", "f-cur", "g-cur", "o-cur", "o-cur"]], "현재 판 목록은 그대로");
 await db.query("update semis_logi_private.ksync_maps set ssi = true where id = $1", [ML]);
 r = await call("hello", { full: true });
-eq(r.lists.find(l => l.map === ML).olds.map(o => o.doc).sort(), ["h-old", "o-v1s", "o-v2"], "SSI 연결 → SSI 옛 판 · 그 판 묶음도 후보");
+eq(r.lists.find(l => l.map === ML).olds.map(o => o.doc).sort(), ["f-old", "g-old", "h-old"], "SSI 연결 → 숨지 않은 판 묶음(숨김)의 옛 판도 후보 · 보고의 SSI 옛 판은 현재 판 첨부 둘 · 같은 이름 없음이라 아님");
 await db.query("update semis_logi_private.ksync_maps set ssi = false where id = $1", [ML]);
 const RLK = (await call("run", { phase: "start", trigger: "manual" })).run;
-r = await call("mark", { run: RLK, map: ML, items: [{ op: "set", rel_path: "보고 v2.pdf", k_size: 7, k_mtime: "2025-01-01T00:00:00Z", k_sha256: H64("0d"), doc_id: "o-v2", h_url: PUB + "docs/o2o2o2o2o2o2_v2.pdf" }] });
+r = await call("mark", { run: RLK, map: ML, items: [{ op: "set", rel_path: "계획 초안.pdf", k_size: 5, k_mtime: "2025-01-01T00:00:00Z", k_sha256: H64("0d"), doc_id: "g-old", h_url: PUB + "docs/oaoaoaoaoaoa_g1.pdf" }] });
 eq([r.ok, r.bad], [true, 0], "옛 판에 연결만(mark set) — 서버가 받음");
-eq(await one("select jsonb_build_array(ser, doc_id, h_name, h_size) from semis_logi_private.ksync_files where map_id = $1", [ML]), ["보고", "o-v2", "보고 v2.pdf", 7], "기준선 = 그 판의 판 묶음 · 이름 · 크기");
+eq(await one("select jsonb_build_array(ser, doc_id, h_name, h_size) from semis_logi_private.ksync_files where map_id = $1", [ML]), ["계획", "g-old", "계획 초안.pdf", 5], "기준선 = 그 판의 판 묶음 · 이름 · 크기");
 await call("run", { phase: "end", run: RLK, result: "ok" });
 await as("a1", "admin");
 
@@ -1268,7 +1274,30 @@ await human(tdoc("t6", "trig"));
 const at6 = await reqAt();
 ok(!!at6, "H → K 만 연결도 깨움");
 await human(tdoc("t7", "trig"));
-eq(String(await reqAt()), String(at6), "이미 요청 중이면 시각을 바꾸지 않음");
+const at7 = await reqAt();
+ok(new Date(at7) > new Date(at6), "요청 중이어도 새로 고치면 시각을 새로(회차 시작이 그 뒤 고친 것을 지우지 않게)");
+await as("u1", "hq");
+await db.query("update public.semis_logi_store set value = value, updated_by = 'cli1', base_at = updated_at where key = 'docs'");
+eq(String(await reqAt()), String(at7), "내용이 같은 저장은 깨우지 않음");
+const trgSrc = await one("select prosrc from pg_proc where proname = 'ksync_req_on_docs'");
+ok(/for update skip locked/.test(trgSrc) && /old\.value is not distinct from new\.value then return null/.test(trgSrc) && /if not exists \(select 1 from semis_logi_private\.ksync_maps m where m\.state = 'active' and m\.dir <> 'k2h'\) then return null/.test(trgSrc),
+  "문서함 저장은 상태 줄을 기다리지 않음(skip locked) · 같은 내용 · H → K 받는 활성 연결이 없으면 훑지 않고 끝");
+eq(await one("select position('update semis_logi_private.ksync_state set net' in prosrc) > position('end loop' in prosrc) from pg_proc where proname = 'ksync_hello'"), true,
+  "hello 는 문서함 목록을 다 만든 뒤에 상태 줄을 고친다(그동안 트리거가 건너뛰지 않게)");
+// 리뷰 반영 ④ — 회차 시작은 계획이 본 문서함 시각(seen = hello full 의 now) 전에 켜진 요청만 끈다
+await as(null);
+const atReq = new Date(await reqAt());
+await call("run", { phase: "start", trigger: "manual", seen: new Date(atReq.getTime() - 1000).toISOString() });
+eq(String(await reqAt()), String(at7), "hello full 뒤에 고친 것 → 회차 시작이 요청을 남김(다음 깨우기에 맞춤)");
+await call("run", { phase: "start", trigger: "manual", seen: new Date(atReq.getTime() + 1000).toISOString() });
+eq(await reqAt(), null, "hello full 전에 켜진 요청 → 회차 시작이 끔");
+await human(tdoc("t7b", "trig"));
+await as(null);
+await call("run", { phase: "start", trigger: "manual", seen: "아님" });
+eq(await reqAt(), null, "seen 이 없거나 틀리면(옛 에이전트) 그대로 끔");
+const hs2 = await call("hello", { full: true });
+ok(typeof hs2.now === "string" && !isNaN(Date.parse(hs2.now)), "hello full 이 시각(now)을 줌 — 에이전트가 회차 시작에 seen 으로");
+await call("run", { phase: "end", run: (await call("run", { phase: "start", trigger: "manual" })).run, result: "ok" });
 await db.exec("create or replace function semis_logi_private.ksync_docs_of(p jsonb, p_mod text, p_grp text) returns jsonb language plpgsql as $$ begin raise exception 'boom'; end $$");
 await clearReq(); await human(tdoc("t8", "trig"));
 eq([(await docs()).some(d => d.id === "t8"), await reqAt()], [true, null], "트리거 오류는 문서함 저장을 막지 않음");
