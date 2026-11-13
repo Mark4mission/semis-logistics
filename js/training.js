@@ -717,7 +717,13 @@
   /* ── 화면 상태 ── */
   let tab = "people", q = "", roleF = "", rgF = "", onlyAct = false, onlySelf = false, year = "", sType = "all", pState = "active", pView = "list";
   let pid = "", sid = "";                       // 개인 화면 · 교육 기록 화면
-  const TABS = [["people", "인원"], ["sessions", "교육 기록"], ["catalog", "직무 · 과정"], ["pledges", "SSI 서약"]];
+  const TABS = [["people", "인원"], ["sessions", "교육 기록"], ["catalog", "직무 · 과정"], ["pledges", "SSI 서약"], ["docs", "교육 자료"]];
+  /* 교육 자료 문서함 — K드라이브 '교육 · 훈련' 하위 폴더와 하나씩 연결된다(분류 id 를 바꾸면 연결 · 문서가 떨어짐) */
+  if (window.SemisDocs) SemisDocs.define(MOD, [
+    { id: "regular", label: "정기 보안교육" }, { id: "dissem", label: "전파교육" }, { id: "qual", label: "자격교육 교재" },
+    { id: "tsa", label: "TSA 교육" }, { id: "misc", label: "기타" }
+  ], { tab: "docs" });
+  if (typeof window !== "undefined") (window.SemisDeep = window.SemisDeep || {})[MOD] = (sub) => { if (TABS.some(x => x[0] === sub)) { tab = sub; q = ""; } };
   let plScope = "team", plState = "valid";
   const routeNow = () => (typeof location !== "undefined" ? location.hash.replace(/^#\//, "") : "") || "dashboard";
   const segHTML = (name, items, cur) => `<div class="seg" role="group" aria-label="${esc(name)}">${items.map(([v, lb]) =>
@@ -1802,6 +1808,7 @@
 
   /* ── 렌더 ── */
   function bodyHTML(canW) {
+    if (tab === "docs") return `<section class="card">${window.SemisDocs ? SemisDocs.groupsHTML(MOD) : ui.empty("문서함을 불러오지 못했습니다.")}</section>`;
     return tab === "sessions" ? sessionsHTML(canW) : tab === "catalog" ? catalogHTML(canW) : tab === "pledges" ? pledgesHTML(canW) : peopleHTML(canW);
   }
   /* 이수 현황 칸 · 자격 카드 누르기 → 그 묶음의 다음 과정으로 이수 등록 */
@@ -1815,6 +1822,7 @@
   }
   function wire(box) {
     const canW = SeMIS.canEdit();
+    if (window.SemisDocs && tab === "docs") SemisDocs.wire(box, paint);
     const qi = $("#tr-q", box);
     if (qi) qi.oninput = () => {
       const v = ui.searchValue(qi.value);
@@ -1903,7 +1911,7 @@
     const xls = tab === "people" ? rare("tr-xls", "down", "만료 예정 명단 내려받기(Excel)") : "";
     const act = (!canW ? "" : tab === "sessions" ? b("tr-sadd", "plus", "교육 기록", true)
       : tab === "catalog" ? b("tr-courses", "sliders", "과정 관리", true)
-      : tab === "pledges" ? "" : b("tr-radd", "plus", "이수 등록", true) + rare("tr-padd", "user", "인원 등록") + rare("tr-edu", "link", "이수 등록 페이지")) + xls;
+      : tab === "pledges" || tab === "docs" ? "" : b("tr-radd", "plus", "이수 등록", true) + rare("tr-padd", "user", "인원 등록") + rare("tr-edu", "link", "이수 등록 페이지")) + xls;
     root.innerHTML = ui.head({ title: TITLE, meta: "인천화물팀 · 협력사 기준", actions: act })
       + `<div class="eq-tabs" role="tablist" aria-label="보안교육 화면">${TABS.map(([id, lb]) =>
         `<button type="button" role="tab" class="eq-tab" data-ttab="${id}" aria-selected="${tab === id}">${esc(lb)}</button>`).join("")}</div>`

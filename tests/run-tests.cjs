@@ -5735,7 +5735,7 @@ function makeServer(opts = {}) {
       eq(q(e, "#view").getAttribute("data-hub"), "hub-aud");
       ok(q(e, "#view .page-head [data-print-btn]"), "인쇄");
       ok(q(e, "#tr-pbody .empty-state"), "인원 없음");
-      eq(qa(e, "[data-ttab]").map(b => b.textContent).join(","), "인원,교육 기록,직무 · 과정,SSI 서약");
+      eq(qa(e, "[data-ttab]").map(b => b.textContent).join(","), "인원,교육 기록,직무 · 과정,SSI 서약,교육 자료");
       q(e, "#tr-padd").click();
       ok(qa(e, "#tp-roles .tr-rgrp").length >= 3, "직무를 근거별로 묶음");
       setv("#tp-name", "갑일");
@@ -11196,6 +11196,43 @@ function makeServer(opts = {}) {
       ok(qa(e, ".dk-grp h4").some(h => /시설 보안 · 출입통제/.test(h.textContent)), "검색장비 문서함에 새 분류");
       eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
     });
+    t("DS13 문서함 분류: 보안교육 · 자격 관리 '교육 자료' 탭 · 계약 · 협약 '공문 · 행정 문서' — K 하위 폴더와 하나씩 연결할 id 고정", () => {
+      const e = makeEnv(); loginAs(e, "hq");
+      const SD = e.w.SemisDocs;
+      const ids = (m) => SD.groupsOf(m).map(g => g.id).join();
+      const labels = (m) => SD.groupsOf(m).map(g => g.label).join("|");
+      /* K드라이브 연결 · 문서는 분류 id 로 묶인다 — 바꾸면 연결과 문서가 떨어진다 */
+      eq(ids("training"), "regular,dissem,qual,tsa,misc", "교육 자료 분류 id · 순서");
+      eq(labels("training"), "정기 보안교육|전파교육|자격교육 교재|TSA 교육|기타");
+      eq(ids("contracts"), "letter,contract,billing,intro,ref,misc", "공문 · 행정 분류 id · 순서");
+      eq(labels("contracts"), "공문|계약 · 협약|청구 · 정산|지점 소개 · 발표|참고자료|기타");
+      /* 접수 카운터 · 아르고 서가 목록(K 연결 창과 같은 규칙 — 메뉴 이름 › 분류) */
+      const cat = e.w.SemisDesk.catalog().shelves.map(s => s.mod + "|" + s.grp + "|" + s.label);
+      ["training|regular|보안교육 · 자격 관리 › 정기 보안교육", "training|tsa|보안교육 · 자격 관리 › TSA 교육",
+        "contracts|letter|계약 · 협약 › 공문", "contracts|intro|계약 · 협약 › 지점 소개 · 발표"].forEach(x => ok(cat.indexOf(x) >= 0, "서가 목록 " + x));
+      e.S.data.docs = [{ id: "tr1", mod: "training", grp: "regular", title: "정기교육 출석부", date: "2026-10-01", ser: "", files: [] },
+        { id: "ct1", mod: "contracts", grp: "letter", title: "협조 요청 공문", date: "2026-11-01", ser: "", files: [] }];
+      e.w.SemisTraining.setState({ tab: "people" });
+      go(e, "training");
+      eq(qa(e, "[data-ttab]").map(b => b.textContent).join(","), "인원,교육 기록,직무 · 과정,SSI 서약,교육 자료");
+      q(e, '[data-ttab="docs"]').click();
+      ok(qa(e, "#tr-body .dk-grp h4").some(h => /정기 보안교육/.test(h.textContent)) && q(e, '#tr-body [data-dk="tr1"]'), "교육 자료 탭 문서함");
+      ok(q(e, "#tr-body [data-dk-add]") && !q(e, "#tr-radd"), "문서 추가 · 머리말 이수 등록 없음");
+      q(e, '#tr-body [data-dk-edit="tr1"]').click();
+      eq(qa(e, "#dk-grp option").map(o => o.value).join(), "regular,dissem,qual,tsa,misc", "등록 창 묶음");
+      q(e, "#modal-box [data-act=cancel]").click();
+      go(e, "contracts");
+      ok(/공문 · 행정 문서/.test(q(e, '[data-dk-card="contracts"] .card-title').textContent) && q(e, '[data-dk-card="contracts"] [data-dk="ct1"]'), "계약 · 협약 화면 문서함");
+      ok(q(e, "#kt-card"), "계약 목록 그대로");
+      /* 통합 검색 결과 → 교육 자료 탭 + 같은 검색어 */
+      e.w.SemisTraining.setState({ tab: "people" });
+      const hit = e.w.SemisSearch.search("출석부").find(x => x.group === "관련 문서" && x.route === "training");
+      ok(hit, "통합 검색 관련 문서");
+      hit.pick("출석부"); go(e, "training");
+      eq(q(e, '[data-ttab="docs"]').getAttribute("aria-selected"), "true", "검색 결과 → 교육 자료 탭");
+      eq(SD.getQuery("training"), "출석부");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
   }
 
   /* ══════════ [PV] v1.56 첨부 미리보기 — 엑셀(서식) · 워드 · 한글 · 파워포인트 · CSV · 글 ══════════ */
@@ -12203,6 +12240,10 @@ function makeServer(opts = {}) {
       ok(tg.length > 5 && tg.every(v => { const [m, g] = v.split("|"); return e.w.SemisDocs.groupsOf(m).some(x => x.id === g); }), "화면 › 분류 = SemisDocs.define");
       ok(tg.indexOf("audit|checklist") >= 0, "수검 대응 › 국토부 항공안전 점검");
       ok(["audit|gov", "audit|foreign", "audit|aeo", "scr-equip|facility"].every(v => tg.indexOf(v) >= 0), "새 분류도 연결 대상");
+      ok(["training|regular", "training|dissem", "training|qual", "training|tsa", "contracts|letter", "contracts|contract", "contracts|billing", "contracts|intro", "contracts|ref"]
+        .every(v => tg.indexOf(v) >= 0), "교육 자료 · 공문 · 행정 분류도 연결 대상");
+      eq(q(e, '#ks-tg option[value="training|dissem"]').textContent, "보안교육 · 자격 관리 › 전파교육", "연결 창 표시 이름");
+      eq(q(e, '#ks-tg option[value="contracts|letter"]').textContent, "계약 · 협약 › 공문");
       clickOk(e); await tick(5);
       ok(!ks.calls.some(c => c.name === "map_save"), "폴더 안 고르면 저장 안 함");
       q(e, "#ks-kp").value = "안전보안/점검표"; q(e, "#ks-tg").value = "audit|checklist"; q(e, "#ks-dir").value = "k2h"; q(e, "#ks-ssi").checked = true;
