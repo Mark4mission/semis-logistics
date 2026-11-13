@@ -261,7 +261,8 @@ export function plan(input) {
   const rSerAll = new Set(rows.map(r => r.ser).filter(s => s != null)), linkedSer = new Set();
   const kShaN = new Map();
   untrackedK.forEach(k => { if (k.sha) kShaN.set(k.sha, (kShaN.get(k.sha) || 0) + 1); });
-  const pairable = (o) => { const c = hList.filter(i => i.ser === o.ser); return c.length === 1 || c.some(i => nfc(i.name) === nfc(o.name)); };
+  // 이름은 다음 실행의 짝짓기(판 묶음 안 h_name)와 같은 비교 — 글자 그대로(NFC · NFD 가 다르면 그 실행도 짝을 못 짓는다)
+  const pairable = (o) => { const c = hList.filter(i => i.ser === o.ser); return c.length === 1 || c.some(i => i.name === o.name); };
   const linkIn = (k, cands) => {
     const nm = baseOf(k.rel), same = (i) => nfc(i.name) === nm && Number(i.size) === k.size;
     if (!linkAll) return cands.find(same);
@@ -286,7 +287,9 @@ export function plan(input) {
     if (it) linkK(k, it); else rest.push([k, old]);
   });
   rest.forEach(([k, old]) => {
-    const it = linkAll && k.sha ? linkIn(k, hOlds.filter(o => !rSerAll.has(o.ser) && !linkedSer.has(o.ser) && pairable(o))) : null;
+    // 현재 판 첨부를 이번에 다른 줄이 이미 가져간 판 묶음도 아님(다른 판 묶음의 기준선 줄이 주소로 짝지어짐 — 문서함에서 판 묶음을 옮김 등):
+    // 다음 실행에 그 판 묶음 줄이 둘이 되어 하나가 'H 에서 지움'이 된다
+    const it = linkAll && k.sha ? linkIn(k, hOlds.filter(o => !rSerAll.has(o.ser) && !linkedSer.has(o.ser) && !hList.some(i => i.ser === o.ser && usedH.has(i)) && pairable(o))) : null;
     if (it) linkK(k, it);
     else if (old) counts.old++;
     else if (canK2H) putA(k, k.rel, "new", null); else out.dir++;

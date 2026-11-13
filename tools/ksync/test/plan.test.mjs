@@ -383,6 +383,18 @@ eq([conflictName("d/a.xlsx", "2026-11-04", 2), excluded("a (충돌 2026-11-04 2)
   const kAB = [{ rel: "A/규정_v1.hwp", size: 5, mtime: T, sha: H("a") }, { rel: "B/규정_v2.hwp", size: 6, mtime: T, sha: H("b") }];
   const pOff = P({ kList: kAB, hList: cur1, hOlds: old1 }), pOn = PL({ kList: kAB, hList: cur1, hOlds: old1 });
   eq([ops(pOn).sort(), pOn.actions.filter(a => a.op === "link").map(a => a.it.url)], [ops(pOff).sort(), ["ur2"]], "② 옛 판 사본이 먼저 와도 현재 판 사본이 현재 판과 연결 — 깃발을 끈 것과 같은 계획");
+  // 재리뷰 ① — 다른 판 묶음(T)의 기준선 줄이 S 의 현재 판을 주소로 가져가면(문서함에서 판 묶음을 옮김 → relink) S 의 옛 판은 후보가 아님
+  const RT = [row(71, "a.pdf", { k_size: 4, ser: "T", h_url: "uS", h_name: "a.pdf", doc_id: "dS" })];
+  p = PL({ baseline: RT, kList: [kOf(RT[0]), { rel: "b.pdf", size: 3, mtime: T, sha: H("8") }], hList: [{ doc: "dS", ser: "S", name: "a.pdf", url: "uS", size: 4 }],
+    hOlds: [{ doc: "dSo", ser: "S", name: "b.pdf", url: "uSo", size: 3, date: "2025-01-01" }] });
+  eq([ops(p).filter(x => /^(relink|link|put)/.test(x)), p.actions.filter(a => a.op === "link").length], [["relink:ok:a.pdf", "put:new:b.pdf"], 0],
+    "재리뷰 ① 현재 판을 다른 판 묶음 줄이 가져간 판 묶음의 옛 판에는 잇지 않음(다음 실행의 'H 에서 지움' 방지)");
+  // 재리뷰 ③ — 같은 이름 비교는 다음 실행의 짝짓기처럼 글자 그대로: 현재 판 첨부 이름이 NFD 면 NFC 옛 판 이름과 다른 이름
+  const cNfd = [{ doc: "dc", ser: "S", name: "보고.pdf".normalize("NFD"), url: "u3", size: 9 }, { doc: "dc", ser: "S", name: "부록.pdf", url: "ua", size: 2 }];
+  p = PL({ kList: [k4], hList: cNfd, hOlds: [oldv] });
+  eq(ops(p).filter(x => x.startsWith("link")), [], "재리뷰 ③ 현재 판 이름이 NFD · 옛 판 이름이 NFC → 같은 이름으로 보지 않음(다음 실행도 짝을 못 지음)");
+  p = PL({ kList: [k4], hList: c2n, hOlds: [oldv] });
+  eq(ops(p).filter(x => x.startsWith("link")), ["link::보고.pdf"], "재리뷰 ③ 글자 그대로 같은 이름은 그대로 연결만");
 }
 
 /* v1.68 지정 제외 · 보고 — 제외 경로는 '모름'(kErr { r: "excluded" }): 그 아래 기준선 줄은 K 에서 지운 것이 아니라 삭제 대기 · 받기 · 올리기 모두 없음

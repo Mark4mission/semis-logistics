@@ -1278,17 +1278,25 @@ const at7 = await reqAt();
 ok(new Date(at7) > new Date(at6), "요청 중이어도 새로 고치면 시각을 새로(회차 시작이 그 뒤 고친 것을 지우지 않게)");
 await as("u1", "hq");
 await db.query("update public.semis_logi_store set value = value, updated_by = 'cli1', base_at = updated_at where key = 'docs'");
-eq(String(await reqAt()), String(at7), "내용이 같은 저장은 깨우지 않음");
+eq(new Date(await reqAt()).getTime(), new Date(at7).getTime(), "내용이 같은 저장은 깨우지 않음");
 const trgSrc = await one("select prosrc from pg_proc where proname = 'ksync_req_on_docs'");
-ok(/for update skip locked/.test(trgSrc) && /old\.value is not distinct from new\.value then return null/.test(trgSrc) && /if not exists \(select 1 from semis_logi_private\.ksync_maps m where m\.state = 'active' and m\.dir <> 'k2h'\) then return null/.test(trgSrc),
-  "문서함 저장은 상태 줄을 기다리지 않음(skip locked) · 같은 내용 · H → K 받는 활성 연결이 없으면 훑지 않고 끝");
+ok(/set_config\('lock_timeout', '300ms', true\)/.test(trgSrc) && !/skip locked/.test(trgSrc) && /exception when others then\s+return null/.test(trgSrc)
+  && /old\.value is not distinct from new\.value then return null/.test(trgSrc) && /if not exists \(select 1 from semis_logi_private\.ksync_maps m where m\.state = 'active' and m\.dir <> 'k2h'\) then return null/.test(trgSrc),
+  "문서함 저장은 상태 줄을 0.3초까지만 기다림(넘으면 예외 처리로 요청만 건너뜀 · 건너뛰기 skip locked 아님) · 같은 내용 · H → K 받는 활성 연결이 없으면 훑지 않고 끝");
+await as("u1", "hq");
+await db.exec("begin");
+await db.query("update public.semis_logi_store set value = value || $1::jsonb, updated_by = 'cli1', base_at = updated_at where key = 'docs'", [JSON.stringify([tdoc("t7c", "trig")])]);
+const ltIn = await one("select current_setting('lock_timeout')");
+await db.exec("commit");
+eq([ltIn, new Date(await reqAt()).getTime() > new Date(at7).getTime()], ["0", true], "잠금 대기 한도는 트리거 안에서만 — 저장한 트랜잭션의 나머지에는 원래 값(0) · 요청은 켜짐");
+const at7c = await reqAt();
 eq(await one("select position('update semis_logi_private.ksync_state set net' in prosrc) > position('end loop' in prosrc) from pg_proc where proname = 'ksync_hello'"), true,
   "hello 는 문서함 목록을 다 만든 뒤에 상태 줄을 고친다(그동안 트리거가 건너뛰지 않게)");
 // 리뷰 반영 ④ — 회차 시작은 계획이 본 문서함 시각(seen = hello full 의 now) 전에 켜진 요청만 끈다
 await as(null);
 const atReq = new Date(await reqAt());
 await call("run", { phase: "start", trigger: "manual", seen: new Date(atReq.getTime() - 1000).toISOString() });
-eq(String(await reqAt()), String(at7), "hello full 뒤에 고친 것 → 회차 시작이 요청을 남김(다음 깨우기에 맞춤)");
+eq(new Date(await reqAt()).getTime(), new Date(at7c).getTime(), "hello full 뒤에 고친 것 → 회차 시작이 요청을 남김(다음 깨우기에 맞춤)");
 await call("run", { phase: "start", trigger: "manual", seen: new Date(atReq.getTime() + 1000).toISOString() });
 eq(await reqAt(), null, "hello full 전에 켜진 요청 → 회차 시작이 끔");
 await human(tdoc("t7b", "trig"));

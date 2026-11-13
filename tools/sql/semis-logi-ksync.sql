@@ -1546,7 +1546,7 @@ language sql immutable set search_path = '' as $$
 $$;
 create or replace function semis_logi_private.ksync_req_on_docs() returns trigger
 language plpgsql volatile security definer set search_path = '' as $$
-declare v_old jsonb;
+declare v_old jsonb; v_lt text;
 begin
   if new.key is distinct from 'docs' or coalesce(new.updated_by, '') like '%/ksync' then return null; end if;
   if tg_op = 'UPDATE' then
@@ -1557,10 +1557,13 @@ begin
   if exists (select 1 from semis_logi_private.ksync_maps m
               where m.state = 'active' and m.dir <> 'k2h'
                 and semis_logi_private.ksync_docs_of(v_old, m.mod, m.grp) is distinct from semis_logi_private.ksync_docs_of(new.value, m.mod, m.grp)) then
-    -- 문서함 저장은 기다리지 않는다 — 상태 줄을 다른 동기화 트랜잭션이 잡고 있으면 건너뛴다(그쪽은 줄을 맨 끝에 잡아 곧 끝남).
+    -- 문서함 저장은 오래 기다리지 않는다 — 상태 줄을 다른 동기화 트랜잭션이 잡고 있으면 0.3초까지만 기다리고(그쪽은 줄을 맨 끝에 잡아 곧 끝남),
+    -- 넘으면 아래 예외 처리로 요청만 건너뛰고 저장은 그대로. 잠금 대기 한도는 이 갱신에만(그 저장의 나머지에는 원래 값).
     -- 시각은 늘 새로(회차 시작은 계획이 본 문서함 시각 전에 켜진 요청만 끈다 — 그 뒤 고친 것이 남는다)
-    perform 1 from semis_logi_private.ksync_state where id = 1 for update skip locked;
-    if found then update semis_logi_private.ksync_state set requested_at = clock_timestamp() where id = 1; end if;
+    v_lt := current_setting('lock_timeout');
+    perform set_config('lock_timeout', '300ms', true);
+    update semis_logi_private.ksync_state set requested_at = clock_timestamp() where id = 1;
+    perform set_config('lock_timeout', v_lt, true);
   end if;
   return null;
 exception when others then
