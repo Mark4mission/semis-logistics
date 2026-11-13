@@ -370,6 +370,33 @@ eq([conflictName("d/a.xlsx", "2026-11-04", 2), excluded("a (충돌 2026-11-04 2)
   eq([ops(p), p.actions[0].backup, p.n], [["get::보고 v2.pdf"], "보고.pdf", 1], "⑥ 양쪽: 현재 판을 받고 옛 K 파일은 이전판으로(backup)");
 }
 
+/* v1.68 지정 제외 · 보고 — 제외 경로는 '모름'(kErr { r: "excluded" }): 그 아래 기준선 줄은 K 에서 지운 것이 아니라 삭제 대기 · 받기 · 올리기 모두 없음
+   (이 한 건이 제외 설계의 핵심 — 그냥 빼면 자동 삭제가 H 문서를 지운다). counts.out = 범위 밖 이유별, counts.mismatch = 삭제 대기 + 보류된 전송 */
+{
+  const BX = [row(51, "개인/명단.xlsx"), row(52, "개인/하위/사진.pdf"), row(53, "공개.pdf")];
+  const hx = BX.map(r => hOf(r));
+  p = P({ baseline: BX, kList: [kOf(BX[2])], hList: hx });
+  eq(ops(p).filter(x => x.startsWith("state:del")).length, 2, "제외가 없으면 사라진 줄은 삭제 대기");
+  p = P({ baseline: BX, kList: [kOf(BX[2])], hList: hx, kErr: [{ f: "개인", r: "excluded", dir: true }] });
+  eq([ops(p), p.counts.del, p.counts.out.excl, p.counts.mismatch, p.counts.total], [[], 0, 1, 0, 0], "제외 경로 아래 기준선 줄 → 삭제 대기 아님 · 아무 동작 없음 · 오류 · 건너뜀으로도 세지 않음");
+  const BC = [row(54, "Private/a.xlsx"), row(55, "b.pdf")];
+  p = P({ baseline: BC, kList: [kOf(BC[1])], hList: [hOf(BC[0], { url: "new" }), hOf(BC[1])], kErr: [{ f: "private", r: "excluded", dir: true }, { f: "PRIVATE", r: "excluded", dir: true }] });
+  eq([ops(p), p.counts.h2k, p.counts.out.excl], [[], 0, 1], "대소문자만 다른 제외 경로도 같은 폴더(맥 SMB) — H 가 고친 판도 받지 않음 · 한 번만 셈");
+  p = P({ kList: [], hList: [{ doc: "h1", ser: "h1", name: "Private", url: "uh", size: 1 }], kErr: [{ f: "private", r: "excluded", dir: true }] });
+  eq(ops(p), ["get::Private (2)"], "H 에만 있는 문서는 제외 경로 이름을 차지하지 않음(덮지 않음)");
+  p = P({ map: Object.assign({}, MAP, { dir: "k2h" }), kList: [{ rel: "a.html", size: 1, mtime: T, sha: H("1") }, { rel: "big.zip", size: MAX_SIZE + 1, mtime: T, sha: null }],
+    hList: [{ doc: "h1", ser: "h1", name: "h.pdf", url: "uh", size: 3 }, { ser: "hs", hidden: true }] });
+  eq(p.counts.out, { type: 1, type_block: 0, too_large: 1, ssi: 1, old: 0, excl: 0, dir: 1, name: 0 }, "범위 밖 이유별: 올리지 않는 형식 · 50MB · SSI 판 묶음 · 한 방향(K → H 만 연결의 H 문서)");
+  p = P({ hList: [{ doc: "h2", ser: "h2", name: "x.exe", url: "ux", size: 1 }, { doc: "h3", ser: "h3", name: "a.tmp", url: "ut", size: 1 }] });
+  eq([p.counts.out.type_block, p.counts.out.name], [1, 1], "K 로 쓰지 않는 형식 · 쓸 수 없는 이름");
+  p = P({ map: Object.assign({}, MAP, { dir: "h2k" }), kList: [{ rel: "k.pdf", size: 1, mtime: T, sha: H("2") }] });
+  eq(p.counts.out.dir, 1, "한 방향(H → K 만 연결의 K 파일)");
+  p = P({ map: Object.assign({}, MAP, { hold: { run: 1 } }), kList: [{ rel: "n.pdf", size: 3, mtime: T, sha: H("3") }], hList: [{ doc: "h1", ser: "h1", name: "h.pdf", url: "uh", size: 4 }] });
+  eq([p.held, p.counts.mismatch], [true, 2], "보류된 연결 → 못 보낸 전송이 불일치");
+  p = P({ baseline: B, kList: [kOf(B[1])], hList: B.map(r => hOf(r)) });
+  eq([p.counts.del, p.counts.mismatch], [1, 1], "삭제 대기는 불일치");
+}
+
 /* 도우미 — 경로 · 설정 · 시각 */
 ["a/b.pdf", "가/나 다.xlsx"].forEach(x => ok(relOk(x), "경로 " + x));
 ["/etc/x", "../x", "a/../b", "a//b", "a\\b", "C:x", "", "a/"].forEach(x => ok(!relOk(x), "경로 거절 " + x));
@@ -457,6 +484,14 @@ eq([fs.readdirSync(partDir).sort(), ip.list.map(x => x.rel)], [[".ksync-ba987654
   ok((await indexDir(sinceDir, new Map())).list.every(x => x.sha), "기준일 없음 → 모두 잼(지금과 같음)");
   const sn = await indexDir(sinceDir, new Map(), { since: SN, sizes: new Set(), names: new Set(["old.pdf|4"]) });
   eq(["old.pdf", "oldsz.pdf"].map(n => (sn.list.find(x => x.rel === n) || {}).sha), [hx("OLD1"), null], "link_all: 기준일 전 파일 중 H 링크 후보(소문자 이름|크기)와 같은 것만 잼");
+  // 지정 제외 — 색인 · 폴더 목록 모두 걷지 않음(대소문자 무시) · 오류도 아님
+  const xd = path.join(TMP, "excl");
+  fs.mkdirSync(path.join(xd, "Private", "sub"), { recursive: true }); fs.mkdirSync(path.join(xd, "open"), { recursive: true });
+  fs.writeFileSync(path.join(xd, "Private", "a.txt"), "A"); fs.writeFileSync(path.join(xd, "Private", "sub", "b.txt"), "B"); fs.writeFileSync(path.join(xd, "open", "c.txt"), "C"); fs.writeFileSync(path.join(xd, "d.txt"), "D");
+  const ix = await indexDir(xd, new Map(), { skip: new Set(["private"]) });
+  eq([ix.list.map(x => x.rel).sort(), ix.errors], [["d.txt", "open/c.txt"], []], "지정 제외 폴더는 색인하지 않음 · 오류도 아님");
+  eq([(await folderTree(xd, 3, 3000, new Set(["private"]))).map(x => x.path).sort(), (await folderTree(xd)).map(x => x.path).sort()], [["open"], ["Private", "Private/sub", "open"]],
+    "폴더 목록도 전체 제외 아래는 알리지 않음");
 }
 
 /* 받은 파일 놓기(place) — A2 추적하지 않는 K 항목은 옮기지 않음 · A4 충돌 사본 이름은 받은 뒤 · A6 '(충돌 날짜 2)' · A7 색인 뒤 바뀐 파일은 건드리지 않음 */
@@ -821,14 +856,15 @@ dg = agentDeps({ netCheck: async () => (++n445 < 3 ? { ok: false, msg: "x" } : {
 rr = await runAgent(dg, { once: true });
 eq([rr.status, dg.notes.length, dg.sleeps, dg.calls], ["ok", 0, [5000, 5000], ["hello", "hello", "run:start", "folders", "run:end"]], "A15 로그인 직후 445 두 번 실패 → 알림 없이 이어서 동기화");
 eq(readSt().lastOkDay, "2026-11-04", "A12 창 시작 뒤에 시작한 실행 → 오늘 끝냄");
-fs.writeFileSync(ST, JSON.stringify({ lastOkDay: "2026-11-04", lastSeen: T - 26 * 60e3, logDay: "2026-11-04", foldersDay: "2026-11-04" }));
+// 깨우는 간격 10분 — 오늘 끝냈어도 9분(DONE_GUARD)이 지나면 서버를 본다(H 에서 올린 문서의 동기화 요청을 10분 안에)
+fs.writeFileSync(ST, JSON.stringify({ lastOkDay: "2026-11-04", lastSeen: T - 10 * 60e3, logDay: "2026-11-04", foldersDay: "2026-11-04" }));
 dg = agentDeps();
 rr = await runAgent(dg, {});
-eq([rr.status, dg.calls], ["idle", ["hello"]], "A11 오늘 끝냈어도 25분 지나면 서버를 봄(지금 동기화 요청 확인)");
-fs.writeFileSync(ST, JSON.stringify({ lastOkDay: "2026-11-04", lastSeen: T - 20 * 60e3, logDay: "2026-11-04" }));
+eq([rr.status, dg.calls], ["idle", ["hello"]], "A11 오늘 끝냈어도 9분 지나면 서버를 봄(지금 동기화 요청 확인 — 10분 간격 깨우기)");
+fs.writeFileSync(ST, JSON.stringify({ lastOkDay: "2026-11-04", lastSeen: T - 8 * 60e3, logDay: "2026-11-04" }));
 dg = agentDeps();
 rr = await runAgent(dg, {});
-eq([rr.status, dg.calls], ["done-today", []], "A11 25분 안이면 서버도 부르지 않음");
+eq([rr.status, dg.calls], ["done-today", []], "A11 9분 안이면 서버도 부르지 않음");
 /* 5분 안에 다시 깨어남(네트워크 변경 · 로그인 · 30분 깨우기가 잇달아) — 창 밖이면 445 · 서버 없이 끝, 그날 매일 실행이 남은 창 안이면 막지 않음 */
 const K0830 = Date.parse("2026-11-03T23:30:00Z");
 fs.writeFileSync(ST, JSON.stringify({ lastSeen: K0830 - 2 * 60e3 }));
@@ -990,7 +1026,7 @@ const fakeSrv = (o) => {
     if (x instanceof Response) return x;
     if (x) return new Response(JSON.stringify(x), { status: x.ok ? 200 : 409 });
     let r = { ok: true };
-    if (b.act === "hello") r = { ok: true, allow: true, daily_at: "08:30", requested: false, mass_limit: LIM, maps: o.maps, lists: o.lists, paused_base: o.paused_base, flags: o.flags };
+    if (b.act === "hello") r = { ok: true, allow: true, daily_at: "08:30", requested: false, mass_limit: LIM, maps: o.maps, lists: o.lists, paused_base: o.paused_base, flags: o.flags, excludes: o.excludes };
     else if (tag === "run:start") r = { ok: true, run: 21 };
     else if (tag === "put:begin") { nUp++; r = { ok: true, path: "docs/z" + nUp, url: "https://store.example/pub/z" + nUp, upload: "https://store.example/up/z" + nUp, type: "application/x-test" }; }
     else if (b.act === "apply") r = { ok: true, docs: Object.fromEntries(b.paths.map(p => [p, "ks-" + p])) };
@@ -1184,6 +1220,27 @@ for (const [err, status, errors] of [["state", "ok", 0], ["bad", "partial", 1]])
     ["ok", [["보고.pdf", "do24", "uo24", true]], 0], "link_all → 기준일 전 K 파일을 해시해 옛 판과 연결만(올리기 없음)");
 }
 
+/* v1.68 지정 제외 · 보고 — hello 의 전체 제외(공유 뿌리 기준) 중 이 연결 폴더 아래 것 + 연결마다 제외는 걷지 않고 '모름'으로 넘김:
+   그 아래 새 파일은 올리지 않고 기준선 줄은 삭제 대기가 되지 않음 · 끝 보고에 연결마다 보고(rep) · 폴더 목록은 전체 제외 아래를 알리지 않음 */
+{
+  fs.rmSync(ST, { force: true });
+  const d25 = mkK("m25", { "공개.pdf": "PUB" });
+  fs.mkdirSync(path.join(d25, "Private"), { recursive: true }); fs.writeFileSync(path.join(d25, "Private", "new.pdf"), "NEW");
+  fs.mkdirSync(path.join(d25, "보관"), { recursive: true }); fs.writeFileSync(path.join(d25, "보관", "x.pdf"), "X");
+  const L25 = (o) => Object.assign({ excludes: ["m25/private", "다른/폴더"], maps: [mapOf(25, "m25", { excludes: ["보관"] })],
+    lists: [{ map: 25, base: [bRow(96, "보관/gone.pdf", "G", "ug")], h: [hIt("d96", "gone.pdf", "ug", { ser: "s96" })] }] }, o || {});
+  sv = fakeSrv(L25());
+  rf = await runFake(sv);
+  const e25 = rf.end.maps.find(x => x.id === 25);
+  eq([rf.status, sv.bodies.filter(b => b.act === "put" && b.phase === "begin").map(b => b.rel_path), sv.items().filter(x => x.op === "state").length, e25.rep && e25.rep.out.excl, e25.rep && e25.rep.mismatch],
+    ["ok", ["공개.pdf"], 0, 2, 0], "제외 폴더 아래 새 파일은 올리지 않음 · 기준선 줄은 삭제 대기 아님 · 보고 excl 2 · 불일치 0");
+  const fl = sv.bodies.find(b => b.act === "folders");
+  ok(fl && !fl.list.some(x => /private/i.test(x.path)) && fl.list.some(x => x.path === "m25/보관"), "폴더 목록: 전체 제외 아래는 빼고 연결마다 제외는 그대로 알림");
+  sv = fakeSrv(L25({ reply: (b, tag) => (tag === "put:begin" ? { ok: false, error: "bad" } : null) }));
+  rf = await runFake(sv);
+  eq(rf.end.maps.find(x => x.id === 25).rep.mismatch, 1, "실행 중 못 한 전송(오류)도 불일치");
+}
+
 /* 설치 · 제거(install.sh · uninstall.sh) — HOME 은 임시 폴더, 키체인(security) · launchctl 은 가짜 명령 */
 {
   const IH = path.join(TMP, "home"), BIN = path.join(TMP, "bin"), LC = path.join(TMP, "launchctl.log");
@@ -1198,12 +1255,12 @@ for (const [err, status, errors] of [["state", "ok", 0], ["bad", "partial", 1]])
   const cal = () => { const m = /<key>StartCalendarInterval<\/key>\s*<dict><key>Hour<\/key><integer>(\d+)<\/integer><key>Minute<\/key><integer>(\d+)<\/integer><\/dict>/.exec(plist()); return m ? [Number(m[1]), Number(m[2])] : null; };
   let ri = sh("install.sh", "https://edge.example/functions/v1/semis-logi-ksync\nsmb://nas.example/share\nn\n");
   eq([ri.status, cal()], [0, [8, 30]], "설치: 매일 실행 시작 시각(기본 08:30)에도 깨움 " + ri.stderr);
-  ok(/<key>RunAtLoad<\/key><true\/>/.test(plist()) && /<key>StartInterval<\/key><integer>1800<\/integer>/.test(plist()) && /<key>WatchPaths<\/key>\s*<array><string>\/Library\/Preferences\/SystemConfiguration<\/string><\/array>/.test(plist()),
-    "설치: 로그인 때 · 30분마다 · 네트워크가 바뀔 때는 그대로");
+  ok(/<key>RunAtLoad<\/key><true\/>/.test(plist()) && /<key>StartInterval<\/key><integer>600<\/integer>/.test(plist()) && /<key>WatchPaths<\/key>\s*<array><string>\/Library\/Preferences\/SystemConfiguration<\/string><\/array>/.test(plist()),
+    "설치: 로그인 때 · 10분마다(H → K 준실시간) · 네트워크가 바뀔 때");
   if (fs.existsSync("/usr/bin/plutil")) {
     const pj = spawnSync("/usr/bin/plutil", ["-convert", "json", "-o", "-", PL], { encoding: "utf8" });
     const j = JSON.parse(pj.stdout || "{}");
-    eq([pj.status, j.StartCalendarInterval, j.StartInterval, j.RunAtLoad, j.WatchPaths], [0, { Hour: 8, Minute: 30 }, 1800, true, ["/Library/Preferences/SystemConfiguration"]], "설치: plist 형식(plutil)");
+    eq([pj.status, j.StartCalendarInterval, j.StartInterval, j.RunAtLoad, j.WatchPaths], [0, { Hour: 8, Minute: 30 }, 600, true, ["/Library/Preferences/SystemConfiguration"]], "설치: plist 형식(plutil)");
   }
   eq([fs.readdirSync(path.join(APPD, "agent")).sort(), JSON.parse(fs.readFileSync(CFG, "utf8")).smbUrl, (fs.statSync(CFG).mode & 0o777).toString(8), /bootstrap gui\/\d+ /.test(fs.readFileSync(LC, "utf8"))],
     [["ksync.mjs", "lib.mjs", "package.json", "plan.mjs"], "smb://nas.example/share", "600", true], "설치: 에이전트 사본 · 설정(600) · LaunchAgent 등록");

@@ -69,7 +69,7 @@ await db.exec("grant usage on schema semis_logi_private to anon, service_role");
 eq(await one("select has_function_privilege('service_role', 'public.semis_logi_ksync_agent(text, text, text, jsonb)', 'EXECUTE')"), true, "입구 service_role");
 eq(await one("select has_function_privilege('anon', 'public.semis_logi_ksync_agent(text, text, text, jsonb)', 'EXECUTE')"), false, "입구 anon 차단");
 eq(await one("select has_function_privilege('authenticated', 'public.semis_logi_ksync_agent(text, text, text, jsonb)', 'EXECUTE')"), false, "입구 authenticated 차단");
-const ADMIN = ["semis_logi_ksync_status()", "semis_logi_ksync_runs(jsonb)", "semis_logi_ksync_events(jsonb)", "semis_logi_ksync_folders()",
+const ADMIN = ["semis_logi_ksync_status()", "semis_logi_ksync_runs(jsonb)", "semis_logi_ksync_events(jsonb)", "semis_logi_ksync_folders()", "semis_logi_ksync_report()",
   "semis_logi_ksync_map_save(jsonb)", "semis_logi_ksync_map_delete(bigint)", "semis_logi_ksync_map_start(bigint)", "semis_logi_ksync_pending()",
   "semis_logi_ksync_resolve(jsonb)", "semis_logi_ksync_hold(jsonb)", "semis_logi_ksync_request()", "semis_logi_ksync_settings(jsonb)",
   "semis_logi_ksync_ip_approve(text)", "semis_logi_ksync_agent_new(text)", "semis_logi_ksync_agent_revoke(bigint)"];
@@ -1206,6 +1206,78 @@ eq([await sinceOf(MS), await sinceOf(MN), await one("select count(*)::int from s
 eq([await one("select has_function_privilege('service_role', 'public.semis_logi_ksync_agent(text, text, text, jsonb)', 'EXECUTE')"),
   await one("select has_function_privilege('anon', 'public.semis_logi_ksync_agent(text, text, text, jsonb)', 'EXECUTE')"),
   await one("select has_function_privilege('anon', 'public.semis_logi_ksync_map_save(jsonb)', 'EXECUTE')")], [true, false, true], "다시 실행해도 권한 그대로");
+
+// 21. v1.68 보고 · 지정 제외 · H → K 준실시간(트리거)
+await as("a1", "admin");
+eq((await rpc("semis_logi_ksync_status")).state.excludes, [], "지정 제외 기본값 — 비어 있음(그 전과 같음)");
+for (const bad of [["../x"], ["a/_H드라이브_휴지통"], Array.from({ length: 21 }, (_, i) => "p" + i), "80 개인정보", [1]]) {
+  eq((await rpc("semis_logi_ksync_settings", { excludes: bad })).error, "excludes", "틀린 제외 목록 거절 " + JSON.stringify(bad).slice(0, 24));
+}
+eq((await rpc("semis_logi_ksync_settings", { excludes: ["링크"] })).error, "excluded", "이미 이은 연결 폴더를 덮는 전체 제외는 거절");
+eq((await rpc("semis_logi_ksync_settings", { excludes: [" 80 개인정보 ", "99 보관", "99 보관", "링크/옛판/개인"] })).ok, true, "전체 제외 저장");
+eq((await rpc("semis_logi_ksync_status")).state.excludes, ["80 개인정보", "99 보관", "링크/옛판/개인"], "앞뒤 공백 정리 · 같은 것은 하나 · 연결 폴더 안 경로는 허용");
+eq([(await save({ k_path: "80 개인정보/명단", mod: "audit", grp: "excl-a" })).error, (await save({ k_path: "99 보관", mod: "audit", grp: "excl-a" })).error], ["excluded", "excluded"],
+  "전체 제외 아래 · 그 폴더 자체는 연결 거절");
+const MX = (await save({ k_path: "보고/가", mod: "audit", grp: "excl-a", excludes: ["사본", "사본"] })).id;
+eq(await one("select excludes from semis_logi_private.ksync_maps where id = $1", [MX]), ["사본"], "연결마다 제외 저장");
+eq((await save({ id: MX, excludes: ["../밖"] })).error, "excludes", "연결마다 제외도 경로 검사");
+await call("preview", { map: MX, counts: { total: 1 } });
+eq([(await save({ id: MX, dir: "both" })).ok, await one("select preview is not null from semis_logi_private.ksync_maps where id = $1", [MX])], [true, true], "키 없는 편집 → 제외 · 건수 그대로");
+eq([(await save({ id: MX, excludes: ["사본", "임시"] })).ok, await one("select preview from semis_logi_private.ksync_maps where id = $1", [MX])], [true, null], "미리보기 중 뺄 경로를 바꾸면 옛 건수를 버림");
+r = await call("hello", { full: true });
+eq([r.excludes, r.maps.find(m => m.id === MX).excludes], [["80 개인정보", "99 보관", "링크/옛판/개인"], ["사본", "임시"]], "hello 가 전체 · 연결마다 제외를 실어 보냄");
+// 끝 보고의 연결마다 보고(rep) → 마지막 것만 · 아는 이유 · 숫자만 · 활성 연결만
+const RR = (await call("run", { phase: "start", trigger: "manual" })).run;
+await call("run", { phase: "end", run: RR, result: "ok", maps: [{ id: ML, done: true, n_files: 1, rep: { out: { old: 3, dir: 2, type_block: 1, name: 1, bogus: 9, excl: "x" }, mismatch: 4 } },
+  { id: MX, rep: { out: { old: 9 }, mismatch: 9 } }] });
+const rp = await one("select report from semis_logi_private.ksync_maps where id = $1", [ML]);
+eq([rp.out.old, rp.out.dir, rp.out.type_block, rp.out.name, rp.out.bogus, rp.out.excl, rp.mismatch, rp.run === RR], [3, 2, 1, 1, undefined, undefined, 4, true], "보고 저장(모르는 이유 · 숫자 아닌 값은 버림)");
+eq(await one("select report from semis_logi_private.ksync_maps where id = $1", [MX]), null, "미리보기 연결은 보고를 두지 않음");
+eq((await rpc("semis_logi_ksync_status")).maps.find(m => m.id === ML).report.mismatch, 4, "상태 연결 목록에 보고");
+await call("folders", { list: [{ path: "01 보안", n: 2 }, { path: "01 보안/계획", n: 5 }, { path: "02 교육", n: 0 }, { path: "02 교육/2025", n: 3 }, { path: "80 개인정보", n: 7 },
+  { path: "링크", n: 1 }, { path: "링크/옛판", n: 4 }, { path: "링크/옛판/개인", n: 2 }, { path: "링크/새", n: 6 }, { path: "보고", n: 0 }, { path: "보고/가", n: 1 }] });
+const rep = await rpc("semis_logi_ksync_report");
+eq(rep.folders.map(f => [f.path, f.part, f.n]), [["01 보안", false, 7], ["02 교육", false, 3], ["링크", true, 1], ["링크/새", false, 6]],
+  "연결 안 된 폴더: 아래도 모두 연결 밖인 맨 위 폴더(아래 파일 수) · 아래에 연결이 있는 폴더의 바로 아래 파일 · 연결 · 전체 제외 아래는 뺌");
+eq([rep.sum.mismatch, rep.sum.old, rep.sum.h_out, rep.sum.excl, rep.out.dir], [4, 3, 4, 5, 2], "합계: 불일치 · 기준일 전 · K 로 안 간 H 문서(K → H 만 연결의 H 문서 + 형식 + 이름) · 지정 제외 수");
+await as("h1", "hq");
+ok(await raises(() => rpc("semis_logi_ksync_report"), "42501"), "보고는 시스템관리자만");
+// 트리거 — 사람이 H → K 를 받는 활성 연결의 화면 · 분류 문서를 고치면 요청 표시. 동기화(…/ksync) · 다른 분류 · K → H 만 · 멈춘 연결은 아님
+const MT = await one("insert into semis_logi_private.ksync_maps(k_path, mod, grp, dir, state) values ('트리거', 'audit', 'trig', 'both', 'active') returning id");
+const reqAt = () => one("select requested_at from semis_logi_private.ksync_state");
+const clearReq = () => db.exec("update semis_logi_private.ksync_state set requested_at = null");
+const human = async (doc) => {
+  await as("u1", "hq");
+  await db.query("update public.semis_logi_store set value = value || $1::jsonb, updated_by = 'cli1', base_at = updated_at where key = 'docs'", [JSON.stringify([doc])]);
+};
+const tdoc = (id, grp) => ({ id, mod: "audit", grp, title: id, date: "2026-11-13", files: [{ name: id + ".pdf", size: 1, url: PUB + "docs/tttttttttttt_" + id + ".pdf" }] });
+await clearReq(); await human(tdoc("t1", "trig"));
+ok(!!(await reqAt()), "사람이 양쪽 연결 분류를 고침 → 요청 표시");
+await clearReq(); await as(null);
+await db.query("select semis_logi_private.ksync_docs_save((select value from public.semis_logi_store where key = 'docs') || $1::jsonb)", [JSON.stringify([tdoc("t2", "trig")])]);
+eq([await reqAt(), await one("select updated_by from public.semis_logi_store where key = 'docs'")], [null, "anon/ksync"], "동기화가 고친 것(…/ksync)에는 깨우지 않음(되돌이 없음)");
+await human(tdoc("t3", "nomap"));
+eq(await reqAt(), null, "연결 없는 분류는 아님");
+await human(tdoc("t4", "olds"));
+eq(await reqAt(), null, "K → H 만 연결의 분류는 아님(K 로 보내지 않음)");
+await db.query("update semis_logi_private.ksync_maps set state = 'paused' where id = $1", [MT]);
+await human(tdoc("t5", "trig"));
+eq(await reqAt(), null, "멈춘 연결은 아님");
+await db.query("update semis_logi_private.ksync_maps set state = 'active', dir = 'h2k' where id = $1", [MT]);
+await human(tdoc("t6", "trig"));
+const at6 = await reqAt();
+ok(!!at6, "H → K 만 연결도 깨움");
+await human(tdoc("t7", "trig"));
+eq(String(await reqAt()), String(at6), "이미 요청 중이면 시각을 바꾸지 않음");
+await db.exec("create or replace function semis_logi_private.ksync_docs_of(p jsonb, p_mod text, p_grp text) returns jsonb language plpgsql as $$ begin raise exception 'boom'; end $$");
+await clearReq(); await human(tdoc("t8", "trig"));
+eq([(await docs()).some(d => d.id === "t8"), await reqAt()], [true, null], "트리거 오류는 문서함 저장을 막지 않음");
+await as("a1", "admin");
+await db.exec(SQL);
+eq([(await rpc("semis_logi_ksync_status")).state.excludes.length, await one("select excludes from semis_logi_private.ksync_maps where id = $1", [MX])], [3, ["사본", "임시"]], "다시 실행해도 제외 그대로");
+await clearReq(); await human(tdoc("t9", "trig"));
+ok(!!(await reqAt()), "다시 실행하면 트리거 · 함수 되살아남");
+await as("a1", "admin");
 
 console.log(`ksync SQL: ${pass} 통과 / ${fail} 실패`);
 process.exit(fail ? 1 : 0);

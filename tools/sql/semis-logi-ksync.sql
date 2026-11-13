@@ -11,7 +11,8 @@
    - 문서함 반영은 공용 행 docs 를 for update 로 잠근 뒤 고친다. updated_at 은 트리거가 찍는다(되돌리지 않는다) —
      열린 화면의 다음 저장은 409 → 병합으로 이어진다. 관리자 세션에서 고칠 때는 잠근 행의 updated_at 을 base_at 으로 넘긴다.
    - 적용: 마이그레이션 semis_logi_security_30_ksync · v1.64 기준일 · 막는 형식 semis_logi_security_32_ksync_since ·
-     v1.68 링크 정확도 semis_logi_security_34_ksync_links(이 파일 전체). 이 파일이 원본(다시 실행해도 같은 결과).
+     v1.68 링크 정확도 semis_logi_security_34_ksync_links · 보고 · 지정 제외 · H → K 준실시간 semis_logi_security_35_ksync_report(이 파일 전체).
+     이 파일이 원본(다시 실행해도 같은 결과).
      검증: node tools/sql/semis-logi-ksync.test.mjs tools/sql/semis-logi-ksync.sql (PGlite + pgcrypto)
    ═══════════════════════════════════════════════════════ */
 
@@ -119,6 +120,11 @@ create table if not exists semis_logi_private.ksync_state (
 insert into semis_logi_private.ksync_state(id) values (1) on conflict (id) do nothing;
 -- 새 동작의 깃발(SQL 로만 바꿈 — 끄면 그 전 동작). link_all = H 옛 판까지 · 기준일 전 K 파일도 '연결만' 후보로
 alter table semis_logi_private.ksync_state add column if not exists flags jsonb not null default '{"link_all": false}'::jsonb;
+-- 지정 제외 — 전체(공유 뿌리 기준 경로, 20개 이하) · 연결마다(연결 폴더 안 경로, 20개 이하). 에이전트는 그 아래를 걷지 않고 '모름'으로 넘긴다
+-- (그냥 빼면 그 아래 기준선 줄이 '지워진 것'으로 보인다 — 모름이라 삭제 · 덮어쓰기 · 올리기 모두 없음). 전체 제외는 연결 안 된 폴더 보고에서도 뺀다
+alter table semis_logi_private.ksync_state add column if not exists excludes jsonb not null default '[]'::jsonb;
+alter table semis_logi_private.ksync_maps add column if not exists excludes jsonb not null default '[]'::jsonb;
+alter table semis_logi_private.ksync_maps add column if not exists report jsonb;     -- 마지막 실행의 보고 { out: {이유: 건수}, mismatch, run, at }
 create table if not exists semis_logi_private.ksync_uploads (    -- 올리기 시작(put begin) → 확인(verify — 저장소에서 다시 잼) → 등록(apply — 문서함 한 번에)
   path     text primary key,
   agent_id bigint not null,
@@ -239,6 +245,26 @@ begin
   end loop;
   return s;
 end $$;
+/* 지정 제외 목록 — 경로 배열(20개 이하) · 각각 ksync_rel · 대소문자만 다른 것은 하나로. 틀리면 null */
+create or replace function semis_logi_private.ksync_excl(p jsonb) returns jsonb
+language plpgsql immutable set search_path = '' as $$
+declare x jsonb; v text; o jsonb := '[]'::jsonb;
+begin
+  if jsonb_typeof(p) is distinct from 'array' or jsonb_array_length(p) > 20 then return null; end if;
+  for x in select value from jsonb_array_elements(p) loop
+    if jsonb_typeof(x) <> 'string' then return null; end if;
+    v := semis_logi_private.ksync_rel(btrim(x #>> '{}'));
+    if v is null or v ~ '(^|/)(_H드라이브_휴지통|_H드라이브_이전판)(/|$)' then return null; end if;
+    if not exists (select 1 from jsonb_array_elements_text(o) e where lower(e) = lower(v)) then o := o || to_jsonb(v); end if;
+  end loop;
+  return o;
+end $$;
+/* 경로가 목록의 어느 경로와 같거나 그 아래인지(맥 SMB 처럼 대소문자 무시) */
+create or replace function semis_logi_private.ksync_under(p_path text, p_list jsonb) returns boolean
+language sql immutable set search_path = '' as $$
+  select exists (select 1 from jsonb_array_elements_text(case when jsonb_typeof(p_list) = 'array' then p_list else '[]'::jsonb end) e
+                  where lower(p_path) = lower(e) or starts_with(lower(p_path), lower(e) || '/'))
+$$;
 create or replace function semis_logi_private.ksync_base(p text) returns text
 language sql immutable set search_path = '' as $$ select regexp_replace(coalesce(p, ''), '^.*/', '') $$;
 create or replace function semis_logi_private.ksync_stem(p text) returns text
@@ -511,7 +537,7 @@ begin
   for m in select * from semis_logi_private.ksync_maps order by id loop
     -- updated_at = 이 설정을 고친 시각 — 미리보기 건수를 보낼 때 되돌려 받아, 그 사이 관리자가 고쳤으면 옛 설정으로 센 건수를 버린다
     maps := maps || jsonb_build_array(jsonb_build_object('id', m.id, 'k_path', m.k_path, 'mod', m.mod, 'grp', m.grp, 'dir', m.dir, 'ssi', m.ssi,
-      'state', m.state, 'hold', m.hold, 'updated_at', m.updated_at, 'since', m.since));
+      'state', m.state, 'hold', m.hold, 'updated_at', m.updated_at, 'since', m.since, 'excludes', m.excludes));
     if docs is not null and m.state <> 'paused' then
       -- olds = 옛 판(링크 후보) — flags.link_all 이 꺼져 있으면 빈 배열(에이전트는 그 전과 같게 동작)
       lists := lists || jsonb_build_array(jsonb_build_object('map', m.id,
@@ -527,7 +553,7 @@ begin
     end if;
   end loop;
   return jsonb_build_object('ok', true, 'allow', true, 'now', now(), 'daily_at', st.daily_at,
-    'requested', st.requested_at is not null, 'requested_at', st.requested_at, 'mass_limit', st.mass_limit, 'flags', st.flags, 'maps', maps)
+    'requested', st.requested_at is not null, 'requested_at', st.requested_at, 'mass_limit', st.mass_limit, 'flags', st.flags, 'excludes', st.excludes, 'maps', maps)
     || case when docs is not null then jsonb_build_object('lists', lists, 'paused_base', pbase) else '{}'::jsonb end;
 end $$;
 /* 읽기만 할 때(잠그지 않음) */
@@ -647,6 +673,16 @@ begin
     for x in select value from jsonb_array_elements(p -> 'maps') limit 100 loop
       m := semis_logi_private.ksync_map_of(jsonb_build_object('map', x ->> 'id'));
       continue when m.id is null;
+      -- 보고(범위 밖 이유별 건수 · 불일치) — 그 연결을 계획한 마지막 실행 것만, 아는 이유만 숫자로
+      if jsonb_typeof(x -> 'rep') = 'object' and m.state = 'active' then
+        update semis_logi_private.ksync_maps set report = jsonb_build_object(
+            'out', coalesce((select jsonb_object_agg(k, (x -> 'rep' -> 'out' ->> k)::int)
+                               from unnest(array['type', 'type_block', 'too_large', 'ssi', 'old', 'excl', 'dir', 'name']) k
+                              where coalesce(x -> 'rep' -> 'out' ->> k, '') ~ num), '{}'::jsonb),
+            'mismatch', case when coalesce(x -> 'rep' ->> 'mismatch', '') ~ num then (x -> 'rep' ->> 'mismatch')::int else 0 end,
+            'run', v_run, 'at', now())
+         where id = m.id;
+      end if;
       if coalesce((x ->> 'held')::boolean, false) then
         -- 승인한 보류인데 에이전트가 센 건수에서 승인한 건수를 뺀 몫이 대량 변경이면 새 대량 변경 — 승인을 버리고 새 보류로(ksync_count 와 같은 규칙).
         -- 그 안이면 승인 전 보류를 보고 멈춘 실행이 끝난 사이에 승인한 것 — 승인을 그대로 둔다
@@ -1057,12 +1093,13 @@ begin
    order by r.started_at desc limit 1;
   return jsonb_build_object('ok', true, 'now', now(),
     'state', jsonb_build_object('daily_at', st.daily_at, 'requested_at', st.requested_at, 'net', st.net, 'ip_allow', st.ip_allow,
-      'ip_seen', st.ip_seen, 'mass_limit', st.mass_limit),
+      'ip_seen', st.ip_seen, 'mass_limit', st.mass_limit, 'excludes', st.excludes, 'flags', st.flags),
     'agents', coalesce((select jsonb_agg(jsonb_build_object('id', a.id, 'name', a.name, 'created_at', a.created_at, 'created_by', a.created_by,
         'revoked_at', a.revoked_at, 'last_seen_at', a.last_seen_at, 'last_ip', a.last_ip, 'version', a.version, 'host', a.host_label) order by a.id desc)
       from semis_logi_private.ksync_agents a), '[]'::jsonb),
     'maps', coalesce((select jsonb_agg(jsonb_build_object('id', m.id, 'k_path', m.k_path, 'mod', m.mod, 'grp', m.grp, 'dir', m.dir, 'ssi', m.ssi,
         'state', m.state, 'preview', m.preview, 'hold', m.hold, 'n_files', m.n_files, 'last_run_at', m.last_run_at, 'since', m.since,
+        'excludes', m.excludes, 'report', m.report,
         'n_sync', (select count(*) from semis_logi_private.ksync_files f where f.map_id = m.id),
         'n_wait', (select count(*) from semis_logi_private.ksync_files f where f.map_id = m.id and f.state <> 'ok')) order by m.id)
       from semis_logi_private.ksync_maps m), '[]'::jsonb),
@@ -1107,10 +1144,51 @@ begin
     from (select path, min(depth) depth, max(n_files) n, max(seen_at) at from semis_logi_private.ksync_folders group by path) f), '[]'::jsonb));
 end $$;
 
+/* 보고 — 연결 안 된 폴더(에이전트가 하루 한 번 알려 준 3단계 나무 기준) · 활성 연결의 마지막 실행이 센 범위 밖 이유별 건수 · 불일치 · 지정 제외 수.
+   연결 안 된 폴더 = 어느 연결 · 전체 제외에도 들지 않은 폴더 중 ① 아래도 모두 연결 밖인 맨 위 폴더(n = 그 아래 3단계까지 파일 수) ·
+   ② 아래에 연결이 있는 폴더 바로 아래 파일(part — n = 그 폴더 바로 아래 파일 수, 있을 때만). K 로 안 간 H 문서 = K → H 만 연결의 H 문서 ·
+   K 로 쓰지 않는 형식 · 쓸 수 없는 이름 */
+create or replace function public.semis_logi_ksync_report() returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+declare st semis_logi_private.ksync_state; v_f jsonb;
+begin
+  perform semis_logi_private.ksync_admin();
+  select * into st from semis_logi_private.ksync_state where id = 1;
+  with f as (
+    select path, max(n_files) n from semis_logi_private.ksync_folders group by path
+  ), c as (
+    select f.*,
+           exists (select 1 from semis_logi_private.ksync_maps m where lower(f.path) = lower(m.k_path) or starts_with(lower(f.path), lower(m.k_path) || '/'))
+             or semis_logi_private.ksync_under(f.path, st.excludes) as cov,
+           exists (select 1 from semis_logi_private.ksync_maps m where starts_with(lower(m.k_path), lower(f.path) || '/'))
+             or exists (select 1 from jsonb_array_elements_text(st.excludes) e where starts_with(lower(e), lower(f.path) || '/')) as part
+      from f
+  )
+  select coalesce(jsonb_agg(jsonb_build_object('path', c.path, 'part', c.part,
+           'n', case when c.part then c.n else (select coalesce(sum(d.n), 0)::int from c d where d.path = c.path or starts_with(d.path, c.path || '/')) end) order by c.path), '[]'::jsonb)
+    into v_f
+    from c
+   where not c.cov
+     and ((c.part and c.n > 0)
+          or (not c.part and (position('/' in c.path) = 0
+                              or exists (select 1 from c p where p.path = regexp_replace(c.path, '/[^/]*$', '') and p.part))));
+  return jsonb_build_object('ok', true, 'folders', v_f, 'at', (select max(seen_at) from semis_logi_private.ksync_folders),
+    'out', coalesce((select jsonb_object_agg(q.k, q.s) from (select e.k, sum(e.v::int)::int s from semis_logi_private.ksync_maps m, jsonb_each_text(coalesce(m.report -> 'out', '{}'::jsonb)) e(k, v)
+                      where m.state = 'active' and e.v ~ '^[0-9]{1,9}$' group by e.k) q), '{}'::jsonb),
+    'sum', jsonb_build_object(
+      'mismatch', coalesce((select sum((m.report ->> 'mismatch')::int) from semis_logi_private.ksync_maps m where m.state = 'active' and coalesce(m.report ->> 'mismatch', '') ~ '^[0-9]{1,9}$'), 0),
+      'old', coalesce((select sum((m.report -> 'out' ->> 'old')::int) from semis_logi_private.ksync_maps m where m.state = 'active' and coalesce(m.report -> 'out' ->> 'old', '') ~ '^[0-9]{1,9}$'), 0),
+      'h_out', coalesce((select sum(case when m.dir = 'k2h' and coalesce(m.report -> 'out' ->> 'dir', '') ~ '^[0-9]{1,9}$' then (m.report -> 'out' ->> 'dir')::int else 0 end
+                                    + case when coalesce(m.report -> 'out' ->> 'type_block', '') ~ '^[0-9]{1,9}$' then (m.report -> 'out' ->> 'type_block')::int else 0 end
+                                    + case when coalesce(m.report -> 'out' ->> 'name', '') ~ '^[0-9]{1,9}$' then (m.report -> 'out' ->> 'name')::int else 0 end)
+                           from semis_logi_private.ksync_maps m where m.state = 'active'), 0),
+      'excl', jsonb_array_length(st.excludes) + coalesce((select sum(jsonb_array_length(m.excludes)) from semis_logi_private.ksync_maps m), 0)::int));
+end $$;
+
 create or replace function public.semis_logi_ksync_map_save(p jsonb) returns jsonb
 language plpgsql volatile security definer set search_path = '' as $$
 declare me text := semis_logi_private.ksync_admin(); m semis_logi_private.ksync_maps; v_k text; v_mod text; v_grp text; v_dir text; v_id bigint;
-  v_redo boolean; v_since date;
+  v_redo boolean; v_since date; v_ex jsonb;
 begin
   if jsonb_typeof(p) is distinct from 'object' then return jsonb_build_object('ok', false, 'error', 'bad'); end if;
   if coalesce(p ->> 'id', '') ~ '^[0-9]{1,15}$' then
@@ -1127,6 +1205,16 @@ begin
   if v_k is null or v_k ~ '(^|/)(_H드라이브_휴지통|_H드라이브_이전판)(/|$)' then return jsonb_build_object('ok', false, 'error', 'k_path'); end if;
   if coalesce(v_mod, '') !~ '^[a-z][a-z0-9-]{1,39}$' or coalesce(v_grp, '') !~ '^[A-Za-z0-9_-]{1,40}$' then return jsonb_build_object('ok', false, 'error', 'target'); end if;
   if v_dir not in ('both', 'k2h', 'h2k') then return jsonb_build_object('ok', false, 'error', 'dir'); end if;
+  -- 전체 지정 제외 아래 폴더는 잇지 않는다(그 아래는 동기화 · 보고 모두 하지 않기로 한 곳)
+  if semis_logi_private.ksync_under(v_k, (select s.excludes from semis_logi_private.ksync_state s where s.id = 1)) then
+    return jsonb_build_object('ok', false, 'error', 'excluded');
+  end if;
+  -- 이 연결에서 뺄 경로(연결 폴더 안). 키가 없으면 그대로
+  v_ex := coalesce(m.excludes, '[]'::jsonb);
+  if p ? 'excludes' then
+    v_ex := semis_logi_private.ksync_excl(p -> 'excludes');
+    if v_ex is null then return jsonb_build_object('ok', false, 'error', 'excludes'); end if;
+  end if;
   -- 기준일: 'YYYY-MM-DD'(있는 날) 또는 빈 값 · null(없앰). 키가 없으면 그대로(방향 · SSI 만 고치는 편집이 기준일을 지우지 않게)
   v_since := m.since;
   if p ? 'since' then
@@ -1158,15 +1246,15 @@ begin
     return jsonb_build_object('ok', false, 'error', 'target_dup');
   end if;
   if m.id is null then
-    insert into semis_logi_private.ksync_maps(k_path, mod, grp, dir, ssi, since, state, created_by, updated_by)
-    values (v_k, v_mod, v_grp, v_dir, coalesce((p ->> 'ssi')::boolean, false), v_since, 'preview', me, me) returning id into v_id;
+    insert into semis_logi_private.ksync_maps(k_path, mod, grp, dir, ssi, since, excludes, state, created_by, updated_by)
+    values (v_k, v_mod, v_grp, v_dir, coalesce((p ->> 'ssi')::boolean, false), v_since, v_ex, 'preview', me, me) returning id into v_id;
     update semis_logi_private.ksync_state set requested_at = now() where id = 1;     -- 미리보기 건수를 받으려고
   else
-    -- 미리보기 중에 폴더 · 대상 · 방향 · SSI · 기준일을 바꾸면 옛 건수로 [시작]하지 않게 건수를 지우고 다시 받는다
-    v_redo := m.state = 'preview' and (v_k, v_mod, v_grp, v_dir, coalesce((p ->> 'ssi')::boolean, m.ssi), v_since)
-                                      is distinct from (m.k_path, m.mod, m.grp, m.dir, m.ssi, m.since);
+    -- 미리보기 중에 폴더 · 대상 · 방향 · SSI · 기준일 · 뺄 경로를 바꾸면 옛 건수로 [시작]하지 않게 건수를 지우고 다시 받는다
+    v_redo := m.state = 'preview' and (v_k, v_mod, v_grp, v_dir, coalesce((p ->> 'ssi')::boolean, m.ssi), v_since, v_ex)
+                                      is distinct from (m.k_path, m.mod, m.grp, m.dir, m.ssi, m.since, m.excludes);
     update semis_logi_private.ksync_maps set k_path = v_k, mod = v_mod, grp = v_grp, dir = v_dir,
-      ssi = coalesce((p ->> 'ssi')::boolean, ssi), since = v_since, preview = case when v_redo then null else preview end,
+      ssi = coalesce((p ->> 'ssi')::boolean, ssi), since = v_since, excludes = v_ex, preview = case when v_redo then null else preview end,
       updated_at = now(), updated_by = me where id = m.id;
     if v_redo then update semis_logi_private.ksync_state set requested_at = now() where id = 1; end if;
     v_id := m.id;
@@ -1369,9 +1457,18 @@ end $$;
 
 create or replace function public.semis_logi_ksync_settings(p jsonb) returns jsonb
 language plpgsql volatile security definer set search_path = '' as $$
-declare me text := semis_logi_private.ksync_admin(); v_allow jsonb := '[]'::jsonb; x text; c text; f int; r numeric;
+declare me text := semis_logi_private.ksync_admin(); v_allow jsonb := '[]'::jsonb; x text; c text; f int; r numeric; v_ex jsonb;
 begin
   if jsonb_typeof(p) is distinct from 'object' then return jsonb_build_object('ok', false, 'error', 'bad'); end if;
+  -- 전체 지정 제외 — 이미 이은 연결 폴더를 덮는 경로는 받지 않는다(그 연결을 먼저 지우거나 연결마다 제외로)
+  if p ? 'excludes' then
+    v_ex := semis_logi_private.ksync_excl(p -> 'excludes');
+    if v_ex is null then return jsonb_build_object('ok', false, 'error', 'excludes'); end if;
+    if exists (select 1 from semis_logi_private.ksync_maps m where semis_logi_private.ksync_under(m.k_path, v_ex)) then
+      return jsonb_build_object('ok', false, 'error', 'excluded');
+    end if;
+    update semis_logi_private.ksync_state set excludes = v_ex where id = 1;
+  end if;
   if p ? 'daily_at' then
     if coalesce(p ->> 'daily_at', '') !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' then return jsonb_build_object('ok', false, 'error', 'daily_at'); end if;
     update semis_logi_private.ksync_state set daily_at = p ->> 'daily_at' where id = 1;
@@ -1427,17 +1524,46 @@ begin
   return jsonb_build_object('ok', true);
 end $$;
 
+/* ─── H → K 준실시간 — 문서함에서 사람이 고치면 '지금 동기화 요청'을 켠다 ───
+   H → K 를 받는 활성 연결(양쪽 · H → K 만)의 화면 · 분류 문서가 바뀐 때만. 동기화 · 관리 동작이 고친 것(updated_by 가 '…/ksync')은 보지 않는다 —
+   자기 변경에 다시 깨어나지 않게(관리 동작은 필요하면 스스로 요청을 켠다). 에이전트가 10분마다 깨어 요청을 보고 맞춘다.
+   어떤 오류도 문서함 저장을 막지 않는다. 운영 중인 변경 알림 트리거(notify_change)와 따로 둔다 */
+create or replace function semis_logi_private.ksync_docs_of(p jsonb, p_mod text, p_grp text) returns jsonb
+language sql immutable set search_path = '' as $$
+  select coalesce(jsonb_agg(x.value order by x.idx), '[]'::jsonb)
+    from jsonb_array_elements(case when jsonb_typeof(p) = 'array' then p else '[]'::jsonb end) with ordinality x(value, idx)
+   where jsonb_typeof(x.value) = 'object' and x.value ->> 'mod' = p_mod and coalesce(x.value ->> 'grp', '') = p_grp
+$$;
+create or replace function semis_logi_private.ksync_req_on_docs() returns trigger
+language plpgsql volatile security definer set search_path = '' as $$
+declare v_old jsonb;
+begin
+  if coalesce(new.updated_by, '') like '%/ksync' then return null; end if;
+  if tg_op = 'UPDATE' then v_old := old.value; end if;
+  if exists (select 1 from semis_logi_private.ksync_maps m
+              where m.state = 'active' and m.dir <> 'k2h'
+                and semis_logi_private.ksync_docs_of(v_old, m.mod, m.grp) is distinct from semis_logi_private.ksync_docs_of(new.value, m.mod, m.grp)) then
+    update semis_logi_private.ksync_state set requested_at = now() where id = 1 and requested_at is null;
+  end if;
+  return null;
+exception when others then
+  return null;
+end $$;
+drop trigger if exists semis_logi_store_ksync_req on public.semis_logi_store;
+create trigger semis_logi_store_ksync_req after insert or update on public.semis_logi_store
+  for each row when (new.key = 'docs') execute function semis_logi_private.ksync_req_on_docs();
+
 /* ─── 실행 권한 ─── */
 revoke all on function public.semis_logi_ksync_agent(text, text, text, jsonb) from public, anon, authenticated;
 grant execute on function public.semis_logi_ksync_agent(text, text, text, jsonb) to service_role;
 revoke all on function public.semis_logi_ksync_status(), public.semis_logi_ksync_runs(jsonb), public.semis_logi_ksync_events(jsonb),
-  public.semis_logi_ksync_folders(), public.semis_logi_ksync_map_save(jsonb), public.semis_logi_ksync_map_delete(bigint),
+  public.semis_logi_ksync_folders(), public.semis_logi_ksync_report(), public.semis_logi_ksync_map_save(jsonb), public.semis_logi_ksync_map_delete(bigint),
   public.semis_logi_ksync_map_start(bigint), public.semis_logi_ksync_pending(), public.semis_logi_ksync_resolve(jsonb),
   public.semis_logi_ksync_hold(jsonb), public.semis_logi_ksync_request(), public.semis_logi_ksync_settings(jsonb),
   public.semis_logi_ksync_ip_approve(text), public.semis_logi_ksync_agent_new(text), public.semis_logi_ksync_agent_revoke(bigint)
   from public, authenticated;
 grant execute on function public.semis_logi_ksync_status(), public.semis_logi_ksync_runs(jsonb), public.semis_logi_ksync_events(jsonb),
-  public.semis_logi_ksync_folders(), public.semis_logi_ksync_map_save(jsonb), public.semis_logi_ksync_map_delete(bigint),
+  public.semis_logi_ksync_folders(), public.semis_logi_ksync_report(), public.semis_logi_ksync_map_save(jsonb), public.semis_logi_ksync_map_delete(bigint),
   public.semis_logi_ksync_map_start(bigint), public.semis_logi_ksync_pending(), public.semis_logi_ksync_resolve(jsonb),
   public.semis_logi_ksync_hold(jsonb), public.semis_logi_ksync_request(), public.semis_logi_ksync_settings(jsonb),
   public.semis_logi_ksync_ip_approve(text), public.semis_logi_ksync_agent_new(text), public.semis_logi_ksync_agent_revoke(bigint)

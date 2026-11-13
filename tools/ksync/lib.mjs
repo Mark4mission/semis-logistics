@@ -116,6 +116,7 @@ export async function indexDir(root, baseByRel, opts = {}) {
       const name = nfc(d.name);
       if (d.isSymbolicLink()) continue;
       const a = path.join(abs, d.name), r = join(rel, name);
+      if (opts.skip && opts.skip.has(r.toLowerCase())) continue;     // 지정 제외 — 걷지 않는다(계획에는 '모름'으로 넘김)
       if (opts.cleanBefore && d.isFile() && PART_RE.test(d.name)) {
         try { if ((await fsp.lstat(a)).mtimeMs < opts.cleanBefore) await fsp.unlink(a); } catch (e) { /* 다음 색인 때 */ }
         continue;
@@ -139,15 +140,18 @@ export async function indexDir(root, baseByRel, opts = {}) {
   return { list, errors, capped };
 }
 
-/* 폴더 목록(3단계 · 이름과 바로 아래 파일 수만) */
-export async function folderTree(root, depth = 3, cap = 3000) {
+/* 폴더 목록(3단계 · 이름과 바로 아래 파일 수만). skip = 전체 지정 제외(소문자 경로) — 걷지도 알리지도 않는다 */
+export async function folderTree(root, depth = 3, cap = 3000, skip) {
   const out = [];
   async function walk(abs, rel, d) {
     if (d > depth || out.length >= cap) return;
     let ents;
     try { ents = await fsp.readdir(abs, { withFileTypes: true }); } catch (e) { return; }
     if (rel) out.push({ path: rel, n: ents.filter(x => x.isFile() && !excluded(nfc(x.name), false)).length });
-    for (const x of ents) if (x.isDirectory() && !x.isSymbolicLink() && !excluded(nfc(x.name), true)) await walk(path.join(abs, x.name), join(rel, nfc(x.name)), d + 1);
+    for (const x of ents) {
+      const r = join(rel, nfc(x.name));
+      if (x.isDirectory() && !x.isSymbolicLink() && !excluded(nfc(x.name), true) && !(skip && skip.has(r.toLowerCase()))) await walk(path.join(abs, x.name), r, d + 1);
+    }
   }
   await walk(root, "", 0);
   return out.slice(0, cap);

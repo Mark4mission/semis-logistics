@@ -12140,6 +12140,7 @@ function makeServer(opts = {}) {
         return { ok: true, events: k.events.filter(e => !b.p || !b.p.kind || e.kind === b.p.kind), counts: { bad_key: 2, scope: 1 } };
       });
       h("folders", () => ({ ok: true, folders: k.folders }));
+      h("report", () => Object.assign({ ok: true, folders: [], sum: {}, out: {} }, k.report || {}));
       ["request", "map_start", "map_delete", "resolve", "hold", "settings", "ip_approve", "agent_revoke"].forEach(n => h(n, () => ({ ok: true })));
       h("map_save", (b) => {
         if (b.p && b.p.k_path === "dup") return { ok: false, error: "k_dup" };
@@ -12177,7 +12178,7 @@ function makeServer(opts = {}) {
       eq(qa(e, "#tab-body .ks-card").map(c => c.dataset.ksCard).join(","), "maps,pend,runs,sec", "카드 4");
       const head = q(e, "#view .page-head");
       eq(qa(e, "#view .page-head .btn-primary").map(b => b.textContent.trim()).join(), "지금 동기화 요청", "주 단추 하나");
-      eq(qa(e, "#view .page-head .ph-rare").map(b => b.textContent.trim()).join(), "에이전트 키 발급,에이전트 키 폐기,매일 실행 시각,대량 변경 한도", "드문 기능은 ⋯");
+      eq(qa(e, "#view .page-head .ph-rare").map(b => b.textContent.trim()).join(), "에이전트 키 발급,에이전트 키 폐기,매일 실행 시각,대량 변경 한도,지정 제외", "드문 기능은 ⋯");
       const kids = Array.from(head.children).filter(x => x.matches("button"));
       ok(kids[kids.length - 1].hasAttribute("data-print-btn"), "인쇄는 맨 끝");
       ["status", "pending", "runs", "events", "folders"].forEach(n => ok(ks.calls.some(c => c.name === n), "불러오기 " + n));
@@ -12436,7 +12437,7 @@ function makeServer(opts = {}) {
       eq(q(e, "#view .tab.active").dataset.tab, "ksync", "K드라이브 탭 그대로");
       ok(q(e, "#tab-body .ks-strip"), "다시 불러와 그림");
       const btns = Array.from(q(e, "#view .page-head").children).filter(x => x.matches("button"));
-      eq(btns.filter(b => b.classList.contains("ks-hb")).length, 5, "머리말 단추 한 벌");
+      eq(btns.filter(b => b.classList.contains("ks-hb")).length, 6, "머리말 단추 한 벌");
       ok(btns[btns.length - 1].hasAttribute("data-print-btn"), "인쇄는 맨 끝");
       q(e, '.tab[data-tab="data"]').click(); e.S.renderView();
       eq(q(e, "#view .tab.active").dataset.tab, "data", "다른 탭도 그대로");
@@ -12683,7 +12684,7 @@ function makeServer(opts = {}) {
       q(e, "#ks-daily").click();
       ok(/매일 실행 시작 시각\(30분 안에 시작\)/.test(q(e, '#modal-box label[for="ks-dt"]').textContent), "시각은 30분 창의 시작 시각");
       const wake = (q(e, "#modal-box p.ks-note") || {}).textContent || "";
-      ok(/깨어나는 것은 설치 때 시각/.test(wake) && /install\.sh 를 다시 실행/.test(wake) && /30분마다 깨어나 대개 창 안에 시작/.test(wake), "시각을 바꾸면 Mac 에서 install.sh 다시 실행(정각 깨우기는 설치 때 시각) " + wake);
+      ok(/깨어나는 것은 설치 때 시각/.test(wake) && /install\.sh 를 다시 실행/.test(wake) && /10분마다 깨어나 창 안에 시작/.test(wake), "시각을 바꾸면 Mac 에서 install.sh 다시 실행(정각 깨우기는 설치 때 시각) " + wake);
       e.w.SeMIS.closeModal();
       ks.maps = [{ id: 1, k_path: "점검표", mod: "audit", grp: "checklist", dir: "both", state: "active", n_files: 3 }];
       ks.files = [{ id: 6, map: 1, rel_path: "b.pdf", state: "del_h", note: "" }];
@@ -12765,6 +12766,42 @@ function makeServer(opts = {}) {
       ok(/H:drive 쪽이 더 새로움 — 이 연결은 한 방향/.test(sk) && /K드라이브 쪽이 더 새로움 — 이 연결은 한 방향/.test(sk), "확인 필요: 방향별 이유 " + sk);
       q(e, '[data-ks-run="3"]').click();
       ok(/H:drive 쪽이 더 새로움/.test(q(e, "#modal-box").textContent), "실행 기록 상세도 같은 말");
+      e.w.SeMIS.closeModal();
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS24 v1.68 보고 · 지정 제외: 보고 칸 4개(연결 안 된 폴더 · 기준일 전 · K 로 안 간 H 문서 · 지정 제외)는 0 이면 숨음 · 연결 안 된 폴더 → [연결 추가](경로 채움) · 연결 줄 불일치 · ⋯ › 지정 제외 · 연결마다 뺄 폴더", async () => {
+      const { sv, ks, e } = await setup();
+      await openTab(e);
+      ok(ks.calls.some(c => c.name === "report") && !q(e, "#tab-body .ks-rep"), "보고를 불러오고 모두 0 이면 줄이 없음");
+      ks.report = { folders: [{ path: "02 교육", n: 3, part: false }, { path: "링크", n: 1, part: true }], sum: { old: 7, h_out: 0, excl: 2, mismatch: 4 } };
+      ks.maps = [{ id: 1, k_path: "점검표", mod: "audit", grp: "checklist", dir: "both", state: "active", n_files: 3, excludes: ["임시"], report: { out: { old: 7 }, mismatch: 4 } },
+        { id: 2, k_path: "미리", mod: "audit", grp: "plan", dir: "both", state: "preview", n_files: 0, report: { mismatch: 9 } }];
+      await openTab(e);
+      eq(qa(e, "#tab-body .ks-rep .stat-label").map(x => x.textContent).join(","), "연결 안 된 폴더,기준일 전이라 안 올림,지정 제외", "0 인 칸(K 로 안 간 H 문서)은 숨음");
+      eq(qa(e, "#tab-body .ks-strip .stat").length, 5, "상태 띠는 그대로 5칸");
+      const mc = q(e, '[data-ks-card="maps"]').textContent;
+      ok(/불일치 4 · 제외 1곳/.test(mc) && /불일치 4/.test(q(e, '[data-ks-card="maps"] .ks-mis').textContent) && !/불일치 9/.test(mc), "연결 줄 · 카드 머리에 불일치(활성 연결만) · 제외 수 " + mc);
+      q(e, "#ks-unlinked").click();
+      eq(qa(e, "#modal-box [data-ks-link]").length, 1, "아래에 연결이 있는 폴더(바로 아래 파일만)는 [연결 추가] 없음");
+      q(e, '#modal-box [data-ks-link="0"]').click();
+      eq(q(e, "#ks-kp-in").value, "02 교육", "[연결 추가] → 연결 추가 창에 경로를 채워 엶");
+      q(e, "#ks-tg").value = "audit|plan"; q(e, "#ks-ex").value = "임시\n  \n사본 "; clickOk(e); await tick(30);
+      eq(JSON.stringify(ks.calls.filter(c => c.name === "map_save").pop().b.p), '{"dir":"both","ssi":false,"excludes":["임시","사본"],"k_path":"02 교육","mod":"audit","grp":"plan"}', "뺄 폴더는 줄마다(빈 줄 · 앞뒤 공백 정리)");
+      q(e, '[data-ks-map="1"]').click(); sheetPick(e, "방향 · SSI 바꾸기");
+      eq(q(e, "#ks-ex").value, "임시", "고치기 창에 지금 뺄 폴더");
+      clickOk(e); await tick(30);
+      ok(!("excludes" in ks.calls.filter(c => c.name === "map_save").pop().b.p), "안 고치면 보내지 않음");
+      q(e, '[data-ks-map="1"]').click(); sheetPick(e, "방향 · SSI 바꾸기");
+      q(e, "#ks-ex").value = ""; clickOk(e); await tick(30);
+      eq(JSON.stringify(ks.calls.filter(c => c.name === "map_save").pop().b.p.excludes), "[]", "비우면 빈 목록을 보냄(제외 풀기)");
+      q(e, "#ks-excl").click();
+      ok(/80 개인정보/.test(q(e, "#ks-exg").getAttribute("placeholder")) && /99 보관/.test(q(e, "#ks-exg").getAttribute("placeholder")), "지정 제외 창: 예시(80 개인정보 · 99 보관)");
+      q(e, "#ks-exg").value = "80 개인정보\n99 보관\n"; clickOk(e); await tick(30);
+      eq(JSON.stringify(ks.calls.filter(c => c.name === "settings").pop().b.p), '{"excludes":["80 개인정보","99 보관"]}', "지정 제외 저장");
+      sv.rpc.semis_logi_ksync_settings = () => ({ ok: false, error: "excluded" });
+      q(e, "#ks-excl").click(); q(e, "#ks-exg").value = "점검표"; clickOk(e); await tick(30);
+      ok(/지정 제외 아래 폴더입니다/.test(q(e, "#toast-wrap").textContent), "이미 이은 연결을 덮는 제외 → 쉬운 말");
       e.w.SeMIS.closeModal();
       eq(e.errors.length, 0, e.errors.join(" | "));
       e.Sync.stop(); e.w.close();

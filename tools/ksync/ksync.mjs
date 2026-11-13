@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /* H:drive K드라이브 동기화 에이전트(Mac · launchd) — 나가는 HTTPS 만, 들어오는 포트 없음. 서버가 보낼 수 있는 것은 '지금 동기화 요청' 표시 하나.
-   순서: 잠금 → (오늘 끝냈고 25분 안에 서버를 봤으면 끝) → 사내망 확인(SMB TCP 445) → hello → 마운트 → 색인 · 계획(plan.mjs) · 실행 → 끝 보고.
+   순서: 잠금 → (오늘 끝냈고 9분 안에 서버를 봤으면 끝) → 사내망 확인(SMB TCP 445) → hello → 마운트 → 색인 · 계획(plan.mjs) · 실행 → 끝 보고.
    매일 동기화는 시작 시각부터 30분 창 안에서만. 그때 K드라이브에 닿지 않으면 5분 간격으로 3번까지 해 보고, 그래도 안 되면 그날은 건너뛴다.
    K 의 파일은 지우거나 덮지 않는다 — 덮을 옛 파일은 이전판 폴더로, 삭제 확정은 휴지통 폴더로 옮기기만 하고 휴지통도 비우지 않는다.
    명령: --once(지금 한 번) · --dry-run(계획만 출력) · --status. 설정 ~/Library/Application Support/hdrive-ksync/config.json(600), 키는 키체인(hdrive-ksync). */
@@ -13,6 +13,8 @@ import * as L from "./lib.mjs";
 
 export const VERSION = "1.68.0";
 const MIN = 60e3;
+/* 오늘 매일 실행을 끝낸 뒤 서버를 다시 보지 않는 시간 — 깨우는 간격(10분)보다 조금 짧게. 길면 H 에서 올린 문서의 동기화 요청을 그만큼 늦게 본다 */
+const DONE_GUARD = 9 * MIN;
 const TRIES = 3, RETRY = 5 * MIN;      // 매일 실행이 K드라이브에 닿지 않을 때 — 5분 간격 3번, 그래도 안 되면 다음 날
 /* 실행 전체를 멈추는 오류 — 망 · 서버(게이트웨이 포함: 처리했는지 모름) · 키 · IP · 분당 상한(한 번 쉬고도) */
 const fatalCode = (c) => c === "network" || c === "server" || c === "auth" || c === "ip" || c === "rate";
@@ -43,7 +45,7 @@ async function agent(deps, args) {
   const due = win.in && st.lastOkDay !== win.day && st.skipDay !== win.day;
   const seen = now - Number(st.lastSeen || 0);
   if (!args.once && !args.dryRun && !args.status) {
-    if (st.lastOkDay === today && seen < 25 * MIN) return { status: "done-today" };     // 30분 간격 실행이 조금 일찍 깨어나도 그 회차는 서버를 본다
+    if (st.lastOkDay === today && seen < DONE_GUARD) return { status: "done-today" };     // 10분 간격 실행이 조금 일찍 깨어나도 그 회차는 서버를 본다
     if (!due && seen < 5 * MIN) return { status: "recent" };
   }
   const key = await deps.key();
@@ -96,7 +98,7 @@ async function agent(deps, args) {
     await save();
     return { status: "offline" };
   }
-  st.lastSeen = deps.now();      // 다시 시도로 기다렸으면 시작한 때가 아니라 서버를 본 때(다음 깨우기의 5분 · 25분 판단이 이 값을 본다)
+  st.lastSeen = deps.now();      // 다시 시도로 기다렸으면 시작한 때가 아니라 서버를 본 때(다음 깨우기의 5분 · 9분 판단이 이 값을 본다)
   if (hello.daily_at) st.dailyAt = hello.daily_at;
   if (args.status) {
     deps.out({ version: VERSION, net: true, allow: hello.allow, requested: !!hello.requested, dailyAt: hello.daily_at, lastOk: st.lastOk || null, maps: (hello.maps || []).length });
@@ -126,8 +128,9 @@ async function agent(deps, args) {
       const since = L.sinceMs(m.since);
       if (isNaN(since)) { deps.out({ map: m.id, k_path: m.k_path, error: "since" }); continue; }
       const li = lists.get(m.id);
-      const idx = await L.indexDir(root, new Map(li.base.map(b => [b.rel_path, b])), { since, sizes: bs.sizes, names: lk.names });
-      const p = plan({ map: m.state === "preview" ? Object.assign({}, m, { hold: { ok: true } }) : m, baseline: li.base, kList: idx.list, kErr: idx.errors, kCapped: idx.capped, hList: li.h, limit: full.mass_limit, today,
+      const ex = exclOf(m, full.excludes);
+      const idx = await L.indexDir(root, new Map(li.base.map(b => [b.rel_path, b])), { since, sizes: bs.sizes, names: lk.names, skip: lowSet(ex) });
+      const p = plan({ map: m.state === "preview" ? Object.assign({}, m, { hold: { ok: true } }) : m, baseline: li.base, kList: idx.list, kErr: idx.errors.concat(exErr(ex)), kCapped: idx.capped, hList: li.h, limit: full.mass_limit, today,
         since, allSha: bs.shas, linkAll: lk.all, hOlds: li.olds });
       deps.out({ map: m.id, k_path: m.k_path, state: m.state, held: p.held, fatal: p.fatal || undefined, errors: idx.errors.map(e => (e.f + " " + e.r).trim()), counts: p.counts,
         actions: p.planned.map(a => [a.op, a.rel || "", a.mode || a.state || ""].join(" ").trim()) });
@@ -150,15 +153,15 @@ async function agent(deps, args) {
       maps = (full.maps || []).filter(m => m.state !== "paused" && lists.has(m.id));
     }
     if (st.foldersDay !== today) {
-      try { await srv.call("folders", { list: await L.folderTree(mount) }); st.foldersDay = today; } catch (e) { log("warn", "폴더 목록 보고 실패: " + e.code); }
+      try { await srv.call("folders", { list: await L.folderTree(mount, 3, 3000, lowSet(full.excludes)) }); st.foldersDay = today; } catch (e) { log("warn", "폴더 목록 보고 실패: " + e.code); }
     }
     const bs = baseSets(lists, full.paused_base), lk = linkSet(full, lists);
     for (const m of maps) {
-      const r = await syncMap({ deps, srv, run, mount, today, limit: full.mass_limit, unsent, olds, bs, lk }, m, lists.get(m.id));
+      const r = await syncMap({ deps, srv, run, mount, today, limit: full.mass_limit, unsent, olds, bs, lk, excludes: full.excludes }, m, lists.get(m.id));
       ["k2h", "h2k", "conflicts", "skipped", "errors"].forEach(k => { tot[k] += r[k] || 0; });
       r.detail.forEach(d => detail.push(d));
       // done = 그 연결을 끝까지 맞춤 — 서버는 이때만 승인한 보류를 지운다(전송량 상한 등으로 중간에 멈추면 아님)
-      mapRes.push({ id: m.id, held: !!r.held, n: r.n || 0, base: r.base || 0, done: !r.held && !r.preview && !r.fatal && !r.quota && !r.stop, n_files: r.n_files });
+      mapRes.push({ id: m.id, held: !!r.held, n: r.n || 0, base: r.base || 0, done: !r.held && !r.preview && !r.fatal && !r.quota && !r.stop, n_files: r.n_files, rep: r.rep });
       if (r.quota) { msg = "하루 전송량 상한"; break; }
     }
   } catch (e) {
@@ -196,6 +199,17 @@ async function mapRoot(mount, m) {
 function baseSets(lists, paused) {
   const all = [...lists.values()].flatMap(l => l.base || []).concat(paused || []);
   return { sizes: new Set(all.map(b => Number(b.k_size))), shas: new Set(all.map(b => b.k_sha256).filter(Boolean)) };
+}
+
+/* 지정 제외 — 그 연결 폴더 안의 경로(전체 제외 중 이 폴더 아래 것 + 연결마다 제외). 걷지 않고 계획에는 '모름'(excluded)으로 넘긴다:
+   그냥 빼면 그 아래 기준선 줄이 '지워진 것'으로 보여 삭제 대기가 된다. 대소문자는 맥 SMB 처럼 가리지 않는다 */
+const lowSet = (list) => new Set((list || []).map(x => nfc(x).toLowerCase()));
+const exErr = (list) => list.map(f => ({ f, r: "excluded", dir: true }));
+function exclOf(m, global) {
+  const kp = nfc(m.k_path), lkp = kp.toLowerCase() + "/", out = new Map();
+  for (const e of global || []) { const s = nfc(e); if (s.toLowerCase().startsWith(lkp)) out.set(s.slice(lkp.length).toLowerCase(), s.slice(lkp.length)); }
+  for (const e of m.excludes || []) { const s = nfc(e); out.set(s.toLowerCase(), s); }
+  return [...out.values()].filter(L.relOk);
 }
 
 /* 서버 깃발 link_all — 켜져 있으면 모든 활성 연결의 H 링크 후보(현재 판 + 옛 판)의 '소문자 이름|크기'.
@@ -238,11 +252,12 @@ async function syncMap(ctx, m, li) {
   const since = L.sinceMs(m.since);
   if (isNaN(since)) { res.errors++; res.fatal = true; line(m.k_path, "error", "since"); log("error", "기준일 형식이 틀려 건너뜀: " + m.k_path); return res; }
   const byRel = new Map(li.base.map(b => [b.rel_path, b]));
-  const idx = await L.indexDir(root, byRel, { cleanBefore: deps.now() - 864e5, since, sizes: ctx.bs.sizes, names: ctx.lk.names });
+  const ex = exclOf(m, ctx.excludes);
+  const idx = await L.indexDir(root, byRel, { cleanBefore: deps.now() - 864e5, since, sizes: ctx.bs.sizes, names: ctx.lk.names, skip: lowSet(ex) });
   idx.errors.forEach(e => { res.errors++; line(e.f, "error", e.r); });
   if (idx.capped) { res.errors++; line(m.k_path, "error", "too_many"); }
   const preview = m.state === "preview";
-  const p = plan({ map: preview ? Object.assign({}, m, { hold: { ok: true } }) : m, baseline: li.base, kList: idx.list, kErr: idx.errors, kCapped: idx.capped, hList: li.h, limit: ctx.limit, today,
+  const p = plan({ map: preview ? Object.assign({}, m, { hold: { ok: true } }) : m, baseline: li.base, kList: idx.list, kErr: idx.errors.concat(exErr(ex)), kCapped: idx.capped, hList: li.h, limit: ctx.limit, today,
     since, allSha: ctx.bs.shas, linkAll: ctx.lk.all, hOlds: li.olds });
   if (p.fatal) { res.fatal = true; log("error", "연결 폴더를 다 읽지 못해 건너뜀(" + p.fatal + "): " + m.k_path); return res; }
   res.n_files = idx.list.length - (p.counts.old || 0);
@@ -258,6 +273,8 @@ async function syncMap(ctx, m, li) {
     res.preview = true; return res;
   }
   res.n = p.n; res.base = p.base;
+  // 보고 — 범위 밖 이유별 건수 · 불일치(계획의 삭제 대기 · 보류 + 아래 실행에서 못 한 전송). 끝 보고에 실어 서버가 연결마다 마지막 것만 둔다
+  res.rep = { out: p.counts.out, mismatch: p.counts.mismatch };
   if (p.held) { res.held = true; line(m.k_path, "held", p.n + "건"); log("warn", `대량 변경 보류: ${m.k_path} ${p.n}건 / ${p.base}건 — 대시보드에서 승인`); return res; }
   p.detail.forEach(d => { if (d.a !== "k2h" && d.a !== "h2k") res.detail.push(d); });
   const absOf = (rel) => { const k = idx.list.find(x => x.rel === rel); return k ? k.abs : L.safeAbs(root, rel); };
@@ -385,6 +402,7 @@ async function syncMap(ctx, m, li) {
   } catch (e) { keepSets(); throw e; }
   if (marks.length) keepSets();
   res.skipped = p.counts.skip + skipped;
+  res.rep.mismatch += Math.max(0, p.counts.k2h + p.counts.h2k - res.k2h - res.h2k);     // 오류 · 바뀜 · 멈춤 · 서버 보류로 못 한 전송
   return res;
 }
 

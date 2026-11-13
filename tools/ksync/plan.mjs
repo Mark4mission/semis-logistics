@@ -3,6 +3,7 @@
    - baseline = 마지막으로 맞춘 상태(ksync_files 줄), kList = K 색인 [{ rel, size, mtime(ms), sha }], hList = H 쪽 현재 판 [{ doc, ser, name, url, size, at, date, title }]
      + SSI 아닌 연결에서 현재 판이 민감보안정보라 보이지 않는 판 묶음 [{ ser, hidden: true }] — H 에 있으나 내용은 모름(H 삭제로 보지 않음)
    - kErr = 색인 오류 [{ f, r, dir }] — 읽지 못한 파일 · 폴더(그 아래 전부)는 '모름'이라 건너뛴다(K 삭제 · H 로 덮어쓰기로 보지 않음).
+     지정 제외 경로도 { f, r: "excluded", dir: true } 로 온다(색인이 걷지 않은 곳 — 같은 '모름', counts.out.excl).
      연결 폴더 자체를 못 읽었거나 kCapped(색인 상한)이면 그 연결은 통째로 건너뛴다(fatal)
    - 삭제는 전파하지 않는다(삭제 대기). 양쪽이 바뀌면 수정 시각이 늦은 쪽이 현재 판, 다른 쪽은 남긴다(H 이전 판 / K '이름 (충돌 날짜)').
    - 변경 · 삭제 대기 수 n 은 서버(ksync_count)와 같은 규칙: 새 판 올리기(판 묶음이 H 에 남은 기준선 줄의 새 문서 포함) · 맞춘 판 묶음 덮어쓰기 · 새 삭제 대기
@@ -72,18 +73,30 @@ export function plan(input) {
   const rowRel = new Set(rows.map(r => r.rel_path));
   const actions = [], detail = [];
   const since = Number(input.since) || 0, allSha = input.allSha || new Set();
-  const counts = { k2h: 0, h2k: 0, link: 0, del: 0, conflict: 0, skip: 0, old: 0, dup: 0, total: 0 };
+  /* out = 범위 밖 이유별 건수(보고 — 형식 · 크기 · 민감보안정보 판 묶음 · 기준일 전 · 지정 제외 경로 · 한 방향 · 쓸 수 없는 이름),
+     mismatch = 범위 안인데 이번에 못 맞춘 것(삭제 대기 · 보류된 전송 — 실행 중 못 한 전송은 에이전트가 더함) */
+  const counts = { k2h: 0, h2k: 0, link: 0, del: 0, conflict: 0, skip: 0, old: 0, dup: 0, total: 0,
+    out: { type: 0, type_block: 0, too_large: 0, ssi: 0, old: 0, excl: 0, dir: 0, name: 0 }, mismatch: 0 };
+  const out = counts.out;
+  const skipN = (why) => { counts.skip++; if (why in out) out[why]++; };
   let n = 0;
   const line = (f, a, r) => detail.push({ m: map.id, f: String(f || "").slice(0, 200), a, r: r || "" });
   const add = (a) => { actions.push(a); return a; };
   const base = rows.filter(r => r.k_sha256 && r.h_url).length;
 
-  /* 색인 오류 — 빠진 파일을 K 에서 지운 것으로 보면 삭제 대기 · H 로 덮어쓰기가 된다 */
+  /* 색인 오류 — 빠진 파일을 K 에서 지운 것으로 보면 삭제 대기 · H 로 덮어쓰기가 된다.
+     지정 제외({ r: "excluded" })도 같은 '모름'이다(걷지 않았을 뿐 지운 것이 아님) — 관리자가 적은 대소문자가 실제 폴더와 달라도(맥 SMB 는 가리지 않음) 맞춘다 */
   const kErr = (input.kErr || []).filter(e => e && e.f != null);
   const errDirs = kErr.filter(e => e.dir).map(e => nfc(e.f)), errFiles = new Set(kErr.filter(e => !e.dir).map(e => nfc(e.f)));
+  const exDirs = [...new Set(kErr.filter(e => e.r === "excluded").map(e => nfc(e.f).toLowerCase()))];
+  out.excl = exDirs.length;
   const fatal = input.kCapped ? "too_many" : errDirs.some(d => d === "" || d === ".") ? "read" : "";
   if (fatal) return { actions: [], planned: [], held: false, n: 0, base, counts, detail, fatal };
-  const unknown = (rel) => errFiles.has(rel) || errDirs.some(d => rel === d || rel.startsWith(d + "/"));
+  const unknown = (rel) => {
+    if (errFiles.has(rel) || errDirs.some(d => rel === d || rel.startsWith(d + "/"))) return true;
+    const l = nfc(rel).toLowerCase();
+    return exDirs.some(d => l === d || l.startsWith(d + "/"));
+  };
 
   /* H 현재 판 ↔ 기준선 — 먼저 같은 주소(문서함에서 판 묶음만 바꿔도 같은 파일), 다음 판 묶음(ser) 안에서 파일 이름,
      남은 것이 하나씩이면 이름이 달라도 같은 문서의 새 판 */
@@ -133,7 +146,7 @@ export function plan(input) {
   const getOk = (it) => (K_BLOCK.test(it.name) ? "type_block" : excluded(safeName(it.name), false) ? "name" : "");
   const relinked = new Set();     // 기준선을 고친 줄은 서버에서 상태가 'ok' 로 바뀐다 — 건너뜀 표시를 다시 보낸다
   const skipRow = (r, why, f) => {
-    counts.skip++; line(f || r.rel_path, "skip", why);
+    skipN(why); line(f || r.rel_path, "skip", why);
     if (relinked.has(r.id) || r.state !== "skip" || r.note !== why) add({ op: "state", row: r.id, state: "skip", note: why, rel: r.rel_path });
     if (why === "type_block") add({ op: "event", kind: "type_block", f: f || r.rel_path });
   };
@@ -142,7 +155,7 @@ export function plan(input) {
   const asVersion = (mode, r) => mode === "version" || (mode === "new" && !!r && r.state !== "restore" && (hSer.has(r.ser) || hidSer.has(r.ser)));
   const putA = (k, rel, mode, r, extra) => {
     const why = putOk(k, rel);
-    if (why) { if (r && mode !== "old") skipRow(r, why, rel); else { counts.skip++; line(rel, "skip", why); } return null; }
+    if (why) { if (r && mode !== "old") skipRow(r, why, rel); else { skipN(why); line(rel, "skip", why); } return null; }
     if (asVersion(mode, r)) n++;
     if (mode !== "old") counts.k2h++;
     line(rel, "k2h", mode === "version" ? "새 판" : mode === "old" ? "이전 판" : "새 문서");
@@ -150,7 +163,7 @@ export function plan(input) {
   };
   const getA = (it, rel, r, extra) => {
     const why = getOk(it);
-    if (why) { if (r) skipRow(r, why, it.name); else { counts.skip++; line(it.name, "skip", why); if (why === "type_block") add({ op: "event", kind: "type_block", f: it.name }); } return null; }
+    if (why) { if (r) skipRow(r, why, it.name); else { skipN(why); line(it.name, "skip", why); if (why === "type_block") add({ op: "event", kind: "type_block", f: it.name }); } return null; }
     const over = overSer.has(it.ser);
     if (over) n++;
     counts.h2k++;
@@ -267,20 +280,23 @@ export function plan(input) {
       line(k.rel, "link", it.old ? "옛 판과 같은 파일" : "같은 파일"); add({ op: "link", rel: k.rel, k, it }); return;
     }
     if (old) { counts.old++; return; }
-    if (canK2H) putA(k, k.rel, "new", null);
+    if (canK2H) putA(k, k.rel, "new", null); else out.dir++;
   });
   /* H 에만 있는 문서 */
   hList.forEach(it => {
-    if (usedH.has(it) || !canH2K) return;
+    if (usedH.has(it)) return;
+    if (!canH2K) { out.dir++; return; }
     const why = getOk(it);
-    if (why) { counts.skip++; line(it.name, "skip", why); if (why === "type_block") add({ op: "event", kind: "type_block", f: it.name }); return; }
+    if (why) { skipN(why); line(it.name, "skip", why); if (why === "type_block") add({ op: "event", kind: "type_block", f: it.name }); return; }
     const rel = freePath(safeName(it.name));
-    if (!rel) { counts.skip++; line(it.name, "skip", "name"); return; }
+    if (!rel) { skipN("name"); line(it.name, "skip", "name"); return; }
     getA(it, rel, null);
   });
   tail.forEach(a => actions.push(a));
 
   const held = holdHit(n, base, input.limit, map.hold);
   counts.total = counts.k2h + counts.h2k + counts.link + counts.del + counts.conflict + counts.skip;
+  out.old = counts.old; out.ssi = hidSer.size;
+  counts.mismatch = counts.del + (held ? counts.k2h + counts.h2k : 0);
   return { actions: held ? [] : actions, planned: actions, held, n, base, counts, detail, fatal: "" };
 }

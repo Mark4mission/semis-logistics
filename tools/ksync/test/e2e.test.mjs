@@ -1268,6 +1268,35 @@ eq([r.status, fs.readFileSync(path.join(LKD, "계획 2차.hwp"), "utf8"), fs.exi
 await db.exec(`update semis_logi_private.ksync_state set flags = flags || '{"link_all": false}'`);
 await admin("select public.semis_logi_ksync_map_delete($1)", [MLK]);
 
+/* 19-13. v1.68 H → K 준실시간 — 사람이 양쪽 연결 분류에 문서를 올리면 트리거가 요청 표시를 켜고, 오늘 매일 실행을 끝낸 에이전트도
+   10분 깨우기(9분 지나 서버를 봄)에 그 요청으로 받아 온다. 끝 보고의 연결마다 보고(범위 밖 · 불일치)는 서버에 남는다 */
+await one("update semis_logi_private.ksync_state set requested_at = null");
+D = await docs();
+D.push({ id: "rt1", mod: "audit", grp: "checklist", title: "올림", date: "2026-11-13", files: [{ name: "바로.pdf", size: 3, url: PUB + "docs/rtrtrtrtrtrt_now.pdf" }] });
+putObj("docs/rtrtrtrtrtrt_now.pdf", "NOW");
+await db.query("update public.semis_logi_store set value = $1::jsonb, updated_by = 'browser1' where key = 'docs'", [JSON.stringify(D)]);
+ok(!!(await one("select requested_at from semis_logi_private.ksync_state")), "사람이 올림 → 트리거가 요청 표시");
+{ const s0 = JSON.parse(fs.readFileSync(STATE, "utf8")); s0.lastOkDay = TODAY; s0.lastSeen = NOW; fs.writeFileSync(STATE, JSON.stringify(s0)); }
+r = await runAgent(Object.assign(deps(), { now: () => NOW + 8 * 60e3 }), {});
+eq([r.status, has("바로.pdf")], ["done-today", false], "오늘 끝낸 뒤 9분 안 깨우기는 서버를 보지 않음");
+r = await runAgent(Object.assign(deps(), { now: () => NOW + 10 * 60e3 }), {});
+const rpM = await one("select report from semis_logi_private.ksync_maps where id = $1", [M]);
+eq([r.status, has("바로.pdf") && read("바로.pdf"), await one("select requested_at from semis_logi_private.ksync_state"), rpM && rpM.run === r.run, rpM && typeof rpM.mismatch],
+  ["ok", "NOW", null, true, "number"], "10분 깨우기에 요청을 보고 H 새 문서를 K 로 받음 · 요청 표시 꺼짐 · 연결마다 보고 저장");
+
+/* 19-14. v1.68 지정 제외 — 연결마다 뺄 폴더(대소문자 다르게 적어도)는 걷지 않고 '모름': 그 아래 기준선 줄은 삭제 대기가 되지 않고 H 문서도 그대로 */
+const subRow = (await rowsOf(M)).find(x => x.rel_path.includes("/") && x.state === "ok");
+const subTop = subRow.rel_path.split("/")[0];
+await admin("select public.semis_logi_ksync_map_save($1::jsonb)", [JSON.stringify({ id: M, excludes: [subTop.toUpperCase()] })]);
+const nDocsX = (await docs()).length;
+r = await once();
+const rowX = await rowById(subRow.id);
+eq([r.status, rowX && rowX.state, (await docs()).length, (await one("select report from semis_logi_private.ksync_maps where id = $1", [M])).out.excl],
+  ["ok", "ok", nDocsX, 1], "제외 폴더 아래 기준선 줄 그대로(삭제 대기 아님) · H 문서 그대로 · 보고 excl 1");
+await admin("select public.semis_logi_ksync_map_save($1::jsonb)", [JSON.stringify({ id: M, excludes: [] })]);
+r = await once();
+eq([r.status, (await rowById(subRow.id)).state], ["ok", "ok"], "제외를 풀면 평소대로");
+
 /* 20. 동시 실행 막기 · 로컬 상태 · 전체 확인 */
 fs.writeFileSync(path.join(APP, "ksync.lock"), JSON.stringify({ pid: process.pid, at: Date.now() }));
 eq((await once()).status, "locked", "다른 실행 중이면 양보");
