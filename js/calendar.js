@@ -526,7 +526,7 @@
 
   /* ── 점검 일정 연동(일정 데이터에 저장 안 함 — 완료 체크는 원본 모듈의 mark 로) ── */
   /* 자체 보안점검(국토부 수검대비)은 선택 실행이라 기한·기록을 일정에 넣지 않는다 */
-  const INSP_SRC = [["inspection", () => window.SemisSeclog]];
+  const INSP_SRC = [["inspection", () => window.SemisSeclog], ["learn", () => window.SemisLearn]];
   let inspCache = {}, inspIdx = {};
   function modCan(module) {
     const mn = SeMIS.menuForModule && SeMIS.menuForModule(module);
