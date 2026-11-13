@@ -21,6 +21,11 @@
   const FILE_MAX = 50 * 1024 * 1024;
   const SOON = 60;
   const KINDS = ["보안", "안전"];
+  /* 공문 · 행정 문서함 — K드라이브 '공문 · 행정' 하위 폴더와 하나씩 연결된다(분류 id 를 바꾸면 연결 · 문서가 떨어짐) */
+  if (window.SemisDocs) SemisDocs.define(MOD, [
+    { id: "letter", label: "공문" }, { id: "contract", label: "계약 · 협약" }, { id: "billing", label: "청구 · 정산" },
+    { id: "intro", label: "지점 소개 · 발표" }, { id: "ref", label: "참고자료" }, { id: "misc", label: "기타" }
+  ]);
 
   /* 상태: 진행(자동 연장 포함) · 임박(60일) · 만료 · 기간 미상 */
   function state(c, t) {
@@ -165,9 +170,11 @@
         { label: "만료", value: t.exp, tone: t.exp ? "bad" : "ok" },
         { label: "계약서 없음", value: t.nofile, tone: t.nofile ? "warn" : "ok" }
       ])
-      + `<section class="card" id="kt-card">${listHTML()}</section>`;
+      + `<section class="card" id="kt-card">${listHTML()}</section>`
+      + (window.SemisDocs ? SemisDocs.card(MOD, { title: "공문 · 행정 문서" }) : "");
     const ad = $("#kt-add", root); if (ad) ad.onclick = () => form("");
     wire(root);
+    if (window.SemisDocs) SemisDocs.wire(root, () => SeMIS.renderView());
   }
 
   SeMIS.registerModule(MOD, { title: TITLE, navBadge() { const t = stats(); return t.soon + t.exp || ""; }, render });
