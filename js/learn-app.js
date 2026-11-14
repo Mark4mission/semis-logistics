@@ -1,7 +1,7 @@
 /* 교육 이수 화면(learn.html#코드) — 로그인 없는 공개 화면. ① 교육 안내 · 이름 확인 ② 교육 내용(끝까지 읽기 · 동영상 끝까지) ③ 서명 · 제출.
    보안: 코드 확인(semis_logi_learn_info) 뒤 작업증명 표(semis_logi_challenge → semis_logi_learn_ticket, 3시간)로만 이름 찾기 · 시작 · 제출.
    이름 찾기는 띄어쓰기를 뺀 이름이 같은 사람만 돌려준다. 최소 학습 시간은 서버가 처음 시작 시각부터 다시 잰다.
-   자료 파일은 Edge semis-logi-learn(op media)이 시작 기록을 확인한 뒤 서명 URL. 작성 중 내용은 이 탭(sessionStorage)에만 */
+   자료 파일은 Edge semis-logi-learn(op media)이 시작 기록을 확인한 뒤 서명 URL. 작성 중 내용 · 진행 정도는 이 기기(localStorage, 6시간)에만 — 화면을 닫았다 다시 열면 이어서 */
 "use strict";
 
 (function () {
@@ -68,19 +68,29 @@
   function warm() { if (!st.ticket && !st.ticketBusy) ensureTicket().catch(() => { /* 찾기 때 다시 */ }); }
 
   /* ── 작성 중 내용(이 탭) ── */
+  /* 이어 하기 — 이름 · 진행 정도(끝까지 읽었는지 · 동영상 어디까지 봤는지)를 이 기기에 6시간 둔다.
+     첨부를 열다가 화면을 닫아도 같은 주소로 다시 들어오면 그 자리부터(서버 기록은 같은 사람 · 같은 교육이면 이어진다) */
+  const DRAFT_MS = 6 * 3600 * 1000;
+  const store = () => { try { return window.localStorage; } catch (e) { return null; } };
   function saveDraft() {
-    try { sessionStorage.setItem(DRAFT + st.code, JSON.stringify({ q: st.q, pick: st.pick, manual: st.manual, sid: st.sid })); } catch (e) { /* 저장소 없음 */ }
+    try {
+      const vids = {}; Object.keys(st.vids || {}).forEach(i => { const v = st.vids[i]; vids[i] = { max: Math.floor(v.max || 0), done: !!v.done }; });
+      store().setItem(DRAFT + st.code, JSON.stringify({ q: st.q, pick: st.pick, manual: st.manual, sid: st.sid, ts: Date.now(),
+        on: st.view === "p2" || st.view === "p3" ? 1 : 0, seen: !!st.seen, vids }));
+    } catch (e) { /* 저장소 없음 */ }
   }
   function loadDraft() {
     let d = null;
-    try { d = JSON.parse(sessionStorage.getItem(DRAFT + st.code) || "null"); } catch (e) { d = null; }
+    try { d = JSON.parse(store().getItem(DRAFT + st.code) || "null"); } catch (e) { d = null; }
     if (!d || typeof d !== "object") return;
+    if (d.ts && Date.now() - Number(d.ts) > DRAFT_MS) { dropDraft(); return; }
     st.q = norm(d.q).slice(0, 20);
     if (d.pick && typeof d.pick === "object" && /^[A-Za-z0-9_-]{1,40}$/.test(String(d.pick.pid || ""))) st.pick = d.pick;
     if (d.manual && typeof d.manual === "object") st.manual = { name: norm(d.manual.name).slice(0, 20), org: norm(d.manual.org).slice(0, 30), orgx: norm(d.manual.orgx).slice(0, 30), part: norm(d.manual.part).slice(0, 30), emp: norm(d.manual.emp).slice(0, 12) };
     if (/^[A-Za-z0-9-]{8,64}$/.test(String(d.sid || ""))) st.sid = d.sid;
+    if (d.on) st.resume = { seen: !!d.seen, vids: d.vids && typeof d.vids === "object" ? d.vids : {} };
   }
-  function dropDraft() { try { sessionStorage.removeItem(DRAFT + st.code); } catch (e) { /* 저장소 없음 */ } }
+  function dropDraft() { try { store().removeItem(DRAFT + st.code); } catch (e) { /* 저장소 없음 */ } }
 
   /* ── 공통 그리기 ── */
   const app = () => $("#ln-app");
@@ -247,6 +257,11 @@
       st.minSec = Number(d.minSec) || 0; st.elapsed0 = Number(d.elapsed) || 0; st.t0 = now();
       st.seen = false; st.vids = {}; st.media = {}; st.mediaErr = "";
       st.items.forEach(it => { if (it.type === "video") st.vids[it.i] = { max: 0, done: false }; });
+      if (st.resume) {   // 닫았다 다시 연 경우 — 본 데까지 되살린다
+        st.seen = !!st.resume.seen;
+        Object.keys(st.vids).forEach(i => { const o = st.resume.vids[i]; if (o) { st.vids[i].max = Math.max(0, Number(o.max) || 0); st.vids[i].done = !!o.done; } });
+        st.resume = null;
+      }
       /* 집체 교육(읽을 내용 · 자료가 없음) — 교육 내용 쪽 없이 바로 서명 */
       st.noBody = !st.body.trim() && !st.items.length;
       st.view = st.noBody ? "p3" : "p2";
@@ -350,11 +365,17 @@
     if (!e || st.seen) return;
     const r = e.getBoundingClientRect();
     const h = window.innerHeight || document.documentElement.clientHeight || 0;
-    if (h && r.top <= h + 4) { st.seen = true; foot(); }
+    if (h && r.top <= h + 4) { st.seen = true; saveDraft(); foot(); }
   }
   function wireVideo(v) {
     const i = v.dataset.mi, s = st.vids[i] || (st.vids[i] = { max: 0, done: false });
-    v.addEventListener("timeupdate", () => { if (!v.seeking && v.currentTime > s.max && v.currentTime - s.max < 2.5) s.max = v.currentTime; });
+    let saved = Math.floor(s.max || 0);
+    v.addEventListener("timeupdate", () => {
+      if (!v.seeking && v.currentTime > s.max && v.currentTime - s.max < 2.5) s.max = v.currentTime;
+      if (s.max - saved >= 5) { saved = Math.floor(s.max); saveDraft(); }
+    });
+    /* 이어 보기 — 전에 본 데서 시작 */
+    v.addEventListener("loadedmetadata", () => { if (!s.done && s.max > 3 && v.currentTime < 1) { try { v.currentTime = Math.max(0, s.max - 2); } catch (e) { /* 없음 */ } } });
     v.addEventListener("seeking", () => { if (!s.done && v.currentTime > s.max + 1) v.currentTime = s.max; });
     /* 빠르게 보기는 1.2배까지만 */
     const spd = $(`[data-spd="${i}"]`);
@@ -366,7 +387,7 @@
     v.addEventListener("ended", () => {
       const dur = Number(v.duration) || 0;
       if (s.done || (dur && s.max < dur - 3)) return;
-      s.done = true;
+      s.done = true; saveDraft();
       const lb = $(`[data-vst="${i}"]`);
       if (lb) { lb.textContent = "시청 완료"; lb.classList.add("ok"); }
       foot();
@@ -376,7 +397,7 @@
     $$("video[data-mi]").forEach(wireVideo);
     const end = $("#ln-end");
     if (end && typeof window.IntersectionObserver === "function") {
-      io = new IntersectionObserver((es) => { if (es.some(x => x.isIntersecting)) { st.seen = true; foot(); } });
+      io = new IntersectionObserver((es) => { if (es.some(x => x.isIntersecting)) { st.seen = true; saveDraft(); foot(); } });
       io.observe(end);
     }
     window.addEventListener("scroll", checkEnd, { passive: true });
@@ -496,13 +517,14 @@
       <p>${esc(d.name || "")}님의 교육 이수${d.again ? "가 확인됩니다" : "가 접수되었습니다"}.</p>
       <p class="mono">${esc(d.at || "")}</p>
       ${!d.again && st.sign ? `<div class="ln-cert" id="ln-cert" hidden><img id="ln-cert-img" alt="교육 이수증">
-        <button type="button" class="ln-btn pri wide" id="ln-save">이수증 사진 저장</button>
-        <p class="ln-msg info" id="ln-save-msg">그림을 길게 눌러 저장할 수도 있습니다.</p></div>` : ""}
+        ${isTouch() ? `<p class="ln-hold">이수증을 <b>길게 눌러</b> '이미지 저장'을 고르세요.</p>` : `<button type="button" class="ln-btn pri wide" id="ln-save">이수증 그림 내려받기</button>`}
+        <p class="ln-msg info" id="ln-save-msg" hidden></p></div>` : ""}
     </section>`;
   }
   /* ── 교육 이수증(서명 포함) 카드 그림 — 사진첩에 저장 ── */
   const LG_A = [[0.846, 0.151], [0.613, 0.151], [0.109, 0.551], [0.372, 0.551], [0.372, 0.389], [0.65, 0.389]];
   const LG_B = [[0.861, 0.418], [0.673, 0.418], [0.673, 0.632], [0.395, 0.632], [0.126, 0.879], [0.524, 0.879]];
+  const isTouch = () => (navigator.maxTouchPoints || 0) > 0 || "ontouchstart" in window;
   function drawLogo(x, ox, oy, h) {   // 회사 로고(글자 + 표지) — 높이 h
     const k = h / 30;
     x.save(); x.translate(ox, oy); x.scale(k, k);
@@ -568,29 +590,22 @@
       } catch (e) { res(""); }
     });
   }
-  /* 사진첩 저장 — 휴대폰은 공유 창(이미지 저장)으로만. 안 되는 브라우저(앱 안 브라우저 등)는 길게 눌러 저장을 안내한다
-     (파일 내려받기는 휴대폰에서 '지원되지 않는 파일 형식'으로 실패해 PC 에서만 쓴다) */
+  /* 이수증 저장 — 휴대폰은 그림을 길게 눌러 저장(공유 창은 사진첩이 안 보여 헷갈린다는 의견 — Mark 11-14), PC 는 내려받기 */
   async function saveCert() {
     const msg = $("#ln-save-msg"), say = (t) => { if (msg) { msg.textContent = t; msg.hidden = !t; } };
     const HOLD = "그림을 길게 눌러 '이미지 저장'을 고르세요.";
+    if (isTouch()) { say(HOLD); return; }
     const name = "edu-cert-" + (String((st.done && st.done.at) || "").slice(0, 10).replace(/-/g, "") || "0") + ".jpg";
-    const touch = (navigator.maxTouchPoints || 0) > 0 || "ontouchstart" in window;
     try {
       const bin = atob(String(st.cert).split(",")[1] || ""), u8 = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
       const blob = new Blob([u8], { type: "image/jpeg" });   // CSP: data: 주소는 fetch 하지 않는다
-      const file = typeof File === "function" ? new File([blob], name, { type: "image/jpeg" }) : null;
-      if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
-        try { await navigator.share({ files: [file] }); say("공유 창에서 '이미지 저장'을 고르면 사진첩에 들어갑니다."); return; }
-        catch (e) { if (e && e.name === "AbortError") return; say(HOLD); return; }
-      }
-      if (touch) { say(HOLD); return; }
       const u = URL.createObjectURL(blob), a = document.createElement("a");
       a.href = u; a.download = name; a.rel = "noopener";
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => { try { URL.revokeObjectURL(u); } catch (e) { /* 없음 */ } }, 4000);
       say("저장했습니다.");
-    } catch (e) { say(HOLD); }
+    } catch (e) { say("그림을 마우스 오른쪽 단추로 눌러 저장하세요."); }
   }
   async function wireDone() {
     const box = $("#ln-cert");
@@ -638,6 +653,8 @@
       loadDraft();
       st.view = "p1";
       render();
+      if (st.resume && canNext1()) { await start(); return; }   // 하던 교육 이어서
+      st.resume = null;
       warm();
     } catch (e) { fail("network"); }
   }

@@ -276,7 +276,7 @@ const SeMIS = (() => {
       m("selfcheck", "자체 보안점검", "🧾", "selfcheck", "mgr", "bd-audit", { tab: "자체 보안점검" }),
       b("bd-edu", "보안교육", "hub-aud"),
       m("training", "보안교육 · 자격 관리", "🎓", "training", "mgr", "bd-edu", { tab: "이수 · 자격" }),
-      m("dissem", "보안 전파교육", "📣", "dissem", "mgr", "bd-edu", { tab: "전파교육" }),
+      m("dissem", "전파교육", "📣", "dissem", "mgr", "bd-edu", { tab: "전파교육" }),
       m("learn", "교육 전파 · 서명", "✍️", "learn", "mgr", "hub-aud"),
 
       h("hub-ops", "비상 · 연락", "users"),
