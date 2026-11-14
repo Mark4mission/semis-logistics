@@ -149,8 +149,10 @@ async function get(hash: string, ip: string, b: Record<string, unknown>): Promis
   return out({ ok: true, url: await downloadSign(path), sha256: await sha256hex(u8), size: u8.length, name: d.name, expires: SIGN_SECS });
 }
 
-/* 해시 채우기 — SQL(hash_todo)이 연결 범위 안 · 해시 없는 H 첨부의 저장소 경로를 주고, 여기서 읽어 잰 sha256 을 SQL(hash_set)이 그 첨부에 적는다.
-   읽기 전용(저장소 파일을 바꾸거나 지우지 않음). 50MB 를 넘으면 그 자리에서 끊고(too_large), 못 읽은 것은 SQL 이 하루 건너뛴다 */
+/* 해시 채우기 — SQL(hash_todo)이 연결 범위 안 · 해시 없는 H 첨부의 저장소 경로를 주고, 여기서 읽어 잰 sha256 을 SQL(hash_set)이 모았다가 적는다.
+   읽기 전용(저장소 파일을 바꾸거나 지우지 않음). 길이 머리가 50MB 를 넘으면 읽지 않고, 머리가 없어도 50MB 를 넘는 순간 끊는다(too_large).
+   저장소 일시 오류(429 · 5xx · 연결 실패)는 busy(SQL 이 한 시간 뒤 다시), 그 밖 못 읽음은 read(하루). 한 번에 100MB 를 넘게 읽지 않는다 —
+   길이 머리로 넘을 것이 보이면 읽지 않고 later(SQL 이 '시도함'만 지워 다음 호출이 다시 받음) */
 async function hashFill(hash: string, ip: string, b: Record<string, unknown>): Promise<Response> {
   const t = await rpc("hash_todo", hash, ip, { run: b.run });
   if (!t.ok) return fail(String(t.error || "bad"));
@@ -159,17 +161,20 @@ async function hashFill(hash: string, ip: string, b: Record<string, unknown>): P
   const res: Record<string, unknown>[] = [];
   let read = 0;
   for (const it of items) {
-    if (read >= HASH_BYTES) break;     // 남은 것은 다음 호출이 다시 받는다(적지 않았으므로)
+    if (read >= HASH_BYTES) { res.push({ url: it.url, later: true }); continue; }
     const path = String(it.path || "");
     if (!/^[A-Za-z0-9._/-]{3,300}$/.test(path) || /(^|\/)\.\.?(\/|$)/.test(path)) { res.push({ url: it.url, err: "path" }); continue; }
     try {
       const r = await fetch(STORAGE + "/object/" + BUCKET + "/" + encPath(path), { headers: svc() });
-      if (!r.ok) { await r.body?.cancel().catch(() => {}); res.push({ url: it.url, err: "read" }); continue; }
+      if (!r.ok) { await r.body?.cancel().catch(() => {}); res.push({ url: it.url, err: r.status === 429 || r.status >= 500 ? "busy" : "read" }); continue; }
+      const len = Number(r.headers.get("content-length") || "");
+      if (len > MAX_SIZE) { await r.body?.cancel().catch(() => {}); res.push({ url: it.url, err: "too_large" }); continue; }
+      if (len > 0 && read > 0 && read + len > HASH_BYTES) { await r.body?.cancel().catch(() => {}); res.push({ url: it.url, later: true }); continue; }
       const u8 = await readCapped(r.body, MAX_SIZE);
       if (!u8) { res.push({ url: it.url, err: "too_large" }); continue; }
       read += u8.length;
       res.push({ url: it.url, sha: await sha256hex(u8) });
-    } catch (_e) { res.push({ url: it.url, err: "read" }); }
+    } catch (_e) { res.push({ url: it.url, err: "busy" }); }
   }
   const s = await rpc("hash_set", hash, ip, { run: b.run, items: res, last: b.last === true });
   if (!s.ok) return fail(String(s.error || "bad"));

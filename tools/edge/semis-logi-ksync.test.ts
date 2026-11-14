@@ -37,6 +37,7 @@ type Call = { url: string; headers: Record<string, string>; body: Record<string,
 const calls: Call[] = [];
 const objects = new Map<string, Uint8Array>();
 const streams = new Map<string, () => ReadableStream<Uint8Array>>();     // 저장소 파일을 조각으로 흘려 줌(얼마나 읽었는지 셈)
+const replies = new Map<string, () => Response>();                         // 저장소 응답을 통째로(상태 · 헤더) 바꿔 줌
 const deleted: string[] = [];
 const realFetch = globalThis.fetch;
 globalThis.fetch = (async (input: Request | URL | string, init?: RequestInit) => {
@@ -56,6 +57,7 @@ globalThis.fetch = (async (input: Request | URL | string, init?: RequestInit) =>
   m = /\/storage\/v1\/object\/sign\/semis-logi-files\/(.+)$/.exec(url);
   if (m) return new Response(JSON.stringify({ signedURL: "/object/sign/semis-logi-files/" + m[1] + "?token=dn" }), { status: 200 });
   m = /\/storage\/v1\/object\/semis-logi-files\/(.+)$/.exec(url);
+  if (m && replies.has(decodeURIComponent(m[1]))) return replies.get(decodeURIComponent(m[1]))!();
   if (m && streams.has(decodeURIComponent(m[1]))) return new Response(streams.get(decodeURIComponent(m[1]))!(), { status: 200 });
   if (m) { const o = objects.get(decodeURIComponent(m[1])); return o ? new Response(o as BodyInit, { status: 200 }) : new Response("no", { status: 404 }); }
   if (url.endsWith("/storage/v1/object/semis-logi-files") && init?.method === "DELETE") { (body.prefixes as string[]).forEach((p) => { deleted.push(p); objects.delete(p); }); return new Response("[]", { status: 200 }); }
@@ -267,7 +269,14 @@ Deno.test("해시 채우기(hash): 관리자 요청이 있을 때만 · SQL 이 
   let r = await post({ act: "hash", run });
   assertEquals([r.status, r.d.error], [409, "state"], "요청 전에는 거절");
   await db.query("update public.semis_logi_store set value = value || $1::jsonb where key = 'docs'", [JSON.stringify([
-    { id: "d4", mod: "audit", grp: "checklist", title: "큰", date: "2026-10-01", files: [{ name: "big.zip", size: 10, url: PUB + "docs/dddddddddddd_big.zip" }] }])]);
+    { id: "d4", mod: "audit", grp: "checklist", title: "큰", date: "2026-10-01", files: [{ name: "big.zip", size: 10, url: PUB + "docs/dddddddddddd_big.zip" }] },
+    { id: "d5", mod: "audit", grp: "checklist", title: "바쁨", date: "2026-10-01", files: [{ name: "e.pdf", size: 1, url: PUB + "docs/eeeeeeeeeeee_e.pdf" }] },
+    { id: "d6", mod: "audit", grp: "checklist", title: "길이", date: "2026-10-01", files: [{ name: "f.zip", size: 1, url: PUB + "docs/ffffffffffff_f.zip" }] }])]);
+  // 저장소 일시 오류(503) · 길이 머리(Content-Length)가 50MB 를 넘는 파일(읽지 않고 끊어야 함)
+  replies.set("docs/eeeeeeeeeeee_e.pdf", () => new Response("busy", { status: 503 }));
+  let pulledF = 0;
+  replies.set("docs/ffffffffffff_f.zip", () => new Response(new ReadableStream<Uint8Array>({ pull(c) { pulledF++; c.enqueue(new Uint8Array(64 * 1024)); } }, { highWaterMark: 0 }),
+    { status: 200, headers: { "content-length": String(60 * 1024 * 1024) } }));
   const CH = 64 * 1024, N = 900;
   let pulled = 0;
   objects.set("docs/dddddddddddd_big.zip", new Uint8Array(0));
@@ -276,6 +285,7 @@ Deno.test("해시 채우기(hash): 관리자 요청이 있을 때만 · SQL 이 
   calls.length = 0;
   r = await post({ act: "hash", run, items: [{ url: PUB + "docs/aaaaaaaaaaaa_a.pdf", sha: "f".repeat(64) }], path: "docs/x", sha256: "0".repeat(64) });
   streams.delete("docs/dddddddddddd_big.zip");
+  replies.clear();
   assertEquals([r.status, r.d], [200, { ok: true, n: 1, left: 0 }], JSON.stringify(r.d));
   const docs = await one("select value from public.semis_logi_store where key = 'docs'") as Record<string, unknown>[];
   const fileOf = (id: string) => (docs.find((d) => d.id === id)!.files as Record<string, unknown>[])[0];
@@ -283,10 +293,17 @@ Deno.test("해시 채우기(hash): 관리자 요청이 있을 때만 · SQL 이 
     "저장소에서 읽어 잰 값(에이전트가 보낸 값 아님) · 다른 화면 문서는 범위 밖 · 못 읽음 · 큰 파일은 적지 않음");
   const sent = calls.find((c) => c.body.p_act === "hash_set")!.body.p as Record<string, unknown>;
   assertEquals([Object.keys(sent).sort(), (sent.items as Record<string, unknown>[]).map((x) => [String(x.url).replace(PUB, ""), x.err || "sha"]).sort()],
-    [["items", "last", "run"], [["docs/aaaaaaaaaaaa_a.pdf", "sha"], ["docs/cccccccccccc_c.bat", "read"], ["docs/dddddddddddd_big.zip", "too_large"]]], "SQL 로는 재거나 못 읽은 결과만");
+    [["items", "last", "run"], [["docs/aaaaaaaaaaaa_a.pdf", "sha"], ["docs/cccccccccccc_c.bat", "read"], ["docs/dddddddddddd_big.zip", "too_large"],
+      ["docs/eeeeeeeeeeee_e.pdf", "busy"], ["docs/ffffffffffff_f.zip", "too_large"]]], "SQL 로는 재거나 못 읽은 결과만 · 저장소 일시 오류(503)는 busy");
   assertEquals(pulled < N, true, "50MB 를 넘은 곳에서 그만 읽음: " + pulled + " 조각");
-  assertEquals([await one("select count(*)::int from semis_logi_private.ksync_hash_skip"), await one("select hash_req is null from semis_logi_private.ksync_state")], [2, true],
-    "못 읽은 것 · 큰 파일은 하루 건너뜀 · 남은 것이 없으면 요청 지움");
+  assertEquals(pulledF, 0, "길이 머리가 50MB 를 넘으면 읽기 전에 끊음");
+  assertEquals([await one("select string_agg(why, ',' order by why) from semis_logi_private.ksync_hash_skip"), await one("select hash_req is null from semis_logi_private.ksync_state")],
+    ["busy,read,too_large,too_large", false], "못 읽은 것 · 큰 파일은 하루 · 일시 오류는 한 시간 건너뜀 — 일시 오류가 남았으니 요청은 남김(한 시간 뒤 다시 읽음)");
+  await db.exec("update semis_logi_private.ksync_hash_skip set at = now() - interval '2 hours' where why = 'busy'");
+  objects.set("docs/eeeeeeeeeeee_e.pdf", new TextEncoder().encode("e!"));
+  calls.length = 0;
+  r = await post({ act: "hash", run });
+  assertEquals([r.d, await one("select hash_req is null from semis_logi_private.ksync_state")], [{ ok: true, n: 1, left: 0 }, true], "한 시간 뒤 다시 읽어 채움 · 남은 것 없음 → 요청 지움");
   assertEquals(calls.filter((c) => c.body.p_act === "hash_todo" || c.body.p_act === "hash_set").map((c) => c.body.p_act), ["hash_todo", "hash_set"], "SQL 호출 둘(분당 셈 둘)");
   r = await post({ act: "hash_set", run, items: [{ url: PUB + "docs/aaaaaaaaaaaa_a.pdf", sha: "e".repeat(64) }] });
   assertEquals([r.status, r.d.error], [400, "bad"], "적는 동작(hash_set)은 Edge 밖에서 못 부름");
