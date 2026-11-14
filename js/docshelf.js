@@ -1,6 +1,6 @@
 /* 증빙 문서 서가 — 화면마다 붙는 '관련 문서' 묶음. 같은 문서의 여러 판(ser)은 최신 판만 보이고 이전 판은 접는다.
    원본은 비공개 버킷(docs/ · 민감보안정보는 docs-ssi/ — hq 이상 열람). 문서 · 판 이름은 공용 DB 에만.
-   SeMIS.data.docs = [{ id, mod, grp, title, date, ser, org, note, ssi, mids[], files[{name,size,url}], src, at, by }]
+   SeMIS.data.docs = [{ id, mod, grp, title, date, ser, org, note, ssi, mids[], files[{name,size,url,sha?}], src, at, by }] — sha = 내용 지문(K드라이브 동기화 링크용)
    사용: define(mod, [{ id, label, short?, aka? }], { tab?, pick? }) → card(mod, { q? }) / groupsHTML(mod) → wire(box)
    aka = 화면에 보이지 않는 분류 별칭(옛 이름 등) — 통합 검색과 화면 문서 검색이 함께 찾는다
    문서가 BOARD_MIN 건 이상인 화면은 게시판형(분류 탭 · 검색 · 표 · 쪽), 적으면 묶음형. opts.q 를 주면 화면의 검색칸이 거르고 자체 검색칸은 없다 */
@@ -306,6 +306,16 @@
     if (SeMIS.renderView) SeMIS.renderView();
   }
 
+  /* 첨부 내용 지문(SHA-256, 64자 hex) — K드라이브 동기화가 같은 내용의 K 파일을 이름이 달라도 이을 때 쓴다(서버 sha 와 같은 값).
+     브라우저 안에서만 잰다(파일은 밖으로 나가지 않음). 못 재면(Web Crypto 없음 등) 빈 값 — 올리기는 그대로 */
+  async function sha256Of(file) {
+    try {
+      const sub = window.crypto && window.crypto.subtle;
+      if (!sub || !file || typeof file.arrayBuffer !== "function") return "";
+      const h = new Uint8Array(await sub.digest("SHA-256", await file.arrayBuffer()));
+      return Array.from(h, b => b.toString(16).padStart(2, "0")).join("");
+    } catch (e) { return ""; }
+  }
   async function uploadInto(files, fileList, ssi, done) {
     const arr = Array.from(fileList || []);
     if (!arr.length) return;
@@ -315,7 +325,10 @@
       toast("업로드 중: " + file.name);
       try {
         const up = await SemisSync.uploadFile(file, ssi ? "docs-ssi" : "docs");
-        files.push({ name: up.name || file.name, size: up.size || file.size || 0, url: up.url });
+        const f = { name: up.name || file.name, size: up.size || file.size || 0, url: up.url };
+        const sha = await sha256Of(file);
+        if (sha) f.sha = sha;
+        files.push(f);
       } catch (e) { toast("올리지 못했습니다: " + file.name, true); }
     }
     if (done) done();
@@ -409,5 +422,5 @@
   else (window.__semisSearchQ = window.__semisSearchQ || []).push(searchProvider);
 
   window.SemisDocs = { define, groupsOf, labelOf, shortOf, list, series, latest, forMid, midsOf, evid, shelf, groupsHTML, card, refresh, count, wire, form, daysAgo,
-    setQuery, getQuery: (mod) => stOf(mod).q, isBoard, BOARD_MIN, hits: (d, q) => hits(d, termsOf(q)), pickTo };
+    setQuery, getQuery: (mod) => stOf(mod).q, isBoard, BOARD_MIN, hits: (d, q) => hits(d, termsOf(q)), pickTo, uploadInto };
 })();
