@@ -1,6 +1,6 @@
 /* 교육 전파 · 서명 — 교육 자료를 올려 임직원 · 협력업체가 PC · 휴대폰(learn.html#코드)으로 이수하고 서명한다. 진행률 · 교육 실시 결과 기록부(A4 · 엑셀).
    SeMIS.data.learn = { courses[{ id, code, state(draft|open|closed), title, kind, overview, host, place, start, end, body, minSec, ssi,
-     items[{ id, type(doc|image|video), name, size, url, dur }], targets{ groups[], add[], except[] }, excuse{ pid: 사유 }, dissem, createdAt/By, updatedAt/By }] }
+     items[{ id, type(doc|image|video), name, size, url, dur, shots[](동영상 장면 그림 주소) }], targets{ groups[], add[], except[] }, excuse{ pid: 사유 }, dissem, createdAt/By, updatedAt/By }] }
    명단은 인원 관리(js/roster.js — SeMIS.data.roster). 그룹 = 에어제타 직원은 파트, 그 밖은 소속. 대상 판정은 서버(semis_logi_private.learn_is_target)와 같다.
    이수 기록 · 서명 그림은 비공개 표 — RPC semis_logi_learn_stats(manager) · _signs(manager) · _admin(hq) */
 "use strict";
@@ -363,7 +363,7 @@
       <div class="ln-link"><div class="ln-qr">${Q ? Q.svg(url, { ecc: "M", size: 200, margin: 2 }) : ""}</div>
         <div class="ln-link-r"><code class="ln-url mono" id="ln-url">${esc(url)}</code>
           <div class="ln-acts"><button type="button" class="btn btn-ghost btn-sm" id="ln-copy">${icon("copy", 15)}<span>주소 복사</span></button>
-            <a class="btn btn-ghost btn-sm" href="${esc(url)}" target="_blank" rel="noopener">${icon("external", 15)}<span>새 창</span></a>
+            <a class="btn btn-ghost btn-sm" href="${esc(url)}" target="_blank" rel="noopener">${icon("external", 15)}<span>이 기기에서 교육 받기</span></a>
             <button type="button" class="btn btn-ghost btn-sm" id="ln-qrp">${icon("print", 15)}<span>QR 안내문 인쇄</span></button></div>
           <p class="ln-dim">${esc(span(c.start, c.end))} · 대상 ${targetCount(c)}명</p></div></div>
       <div class="modal-actions"><button type="button" class="btn btn-ghost" data-act="cancel">닫기</button>
@@ -437,7 +437,8 @@
   const autoMin = (e) => {
     const vid = arrOf(e.items).filter(i => i.type === "video").reduce((n, i) => n + (Number(i.dur) || 0), 0);
     const rd = md() ? md().readSec(e.body || "") : 30;
-    return Math.min(3600, Math.ceil((rd + vid) / 10) * 10);
+    // 동영상은 1.2배속 시청을 허용하므로 길이의 80% 만 센다(서버는 최소 시간의 90% 를 확인)
+    return Math.min(3600, Math.ceil((rd + vid * 0.8) / 10) * 10);
   };
   function tgtSummary(e) {
     const n = active().filter(p => isTarget(e, p)).length;
@@ -575,6 +576,53 @@
       } catch (e) { fin(0); }
     });
   }
+  /* 동영상 주요 장면 — 길이를 n 등분한 가운데 장면을 JPEG(data URL)로. 실패하면 받은 만큼만 */
+  function frames(src, n, cross) {
+    return new Promise((res) => {
+      const out = []; let done = false, k = 0, ts = [];
+      let v = null;
+      const fin = () => { if (done) return; done = true; try { v.removeAttribute("src"); v.load(); } catch (e) { /* 없음 */ } res(out); };
+      try {
+        v = document.createElement("video");
+        if (cross) v.crossOrigin = "anonymous";
+        v.muted = true; v.playsInline = true; v.preload = "auto";
+        const next = () => { if (k >= ts.length) return fin(); try { v.currentTime = ts[k]; } catch (e) { fin(); } };
+        v.onloadedmetadata = () => {
+          const d = isFinite(v.duration) ? v.duration : 0;
+          if (!d || !v.videoWidth) return fin();
+          ts = Array.from({ length: n }, (_, i) => d * (i + 0.5) / n); next();
+        };
+        v.onseeked = () => {
+          try {
+            const W = 480, H = Math.max(1, Math.round(W * v.videoHeight / v.videoWidth));
+            const c = document.createElement("canvas"); c.width = W; c.height = H;
+            c.getContext("2d").drawImage(v, 0, 0, W, H);
+            out.push(c.toDataURL("image/jpeg", 0.72));
+          } catch (e) { return fin(); }
+          k++; next();
+        };
+        v.onerror = fin;
+        setTimeout(fin, 20000);
+        v.src = src;
+      } catch (e) { fin(); }
+    });
+  }
+  const dataFile = (d, name) => { const m = /^data:([^;]+);base64,(.*)$/.exec(d); return m ? new File([b64u8(m[2])], name, { type: m[1] }) : null; };
+  /* 올릴 때 장면 4장을 저장소에 같이 둔다(기록부 '교육 내용' 칸) */
+  async function videoShots(file) {
+    let u = "";
+    try {
+      u = URL.createObjectURL(file);
+      const fs = await frames(u, 4, false), out = [];
+      for (let i = 0; i < fs.length; i++) {
+        const f = dataFile(fs[i], "shot" + (i + 1) + ".jpg");
+        if (!f) continue;
+        const up = await SemisSync.uploadFile(f, "learn");
+        if (up && up.url) out.push(up.url);
+      }
+      return out;
+    } catch (e) { return []; } finally { try { URL.revokeObjectURL(u); } catch (e) { /* 없음 */ } }
+  }
   async function addFiles(root, files) {
     if (!files.length) return;
     if (!window.SemisSync || !SemisSync.uploadFile) { toast("오프라인에서는 올릴 수 없습니다.", true); return; }
@@ -586,7 +634,7 @@
       try {
         const up = await SemisSync.uploadFile(f, "learn");
         const it = { id: uid("li"), type, name: up.name, size: up.size, url: up.url };
-        if (type === "video") it.dur = await videoDur(f);
+        if (type === "video") { it.dur = await videoDur(f); const sh = await videoShots(f); if (sh.length) it.shots = sh; }
         if (type === "doc" && window.SemisDocRead) {
           try { const x = await SemisDocRead.extract(f); if (x && x.mode === "text" && x.text) memo[up.url] = x.text; } catch (e) { /* 요약 때 다시 */ }
         }
@@ -652,7 +700,7 @@
     const now = new Date().toISOString();
     const out = { id: e.id || uid("lc"), code: e.code || newCode(), state: e.state || "draft", title: e.title, kind: KINDS.indexOf(e.kind) >= 0 ? e.kind : "기타",
       overview: e.overview, host: e.host, place: e.place, start: e.start, end: e.end, body: e.body, minSec: e.minSec, ssi: !!e.ssi,
-      items: e.items.map(i => Object.assign({ id: i.id, type: i.type, name: i.name, size: i.size, url: i.url }, i.dur ? { dur: i.dur } : {})),
+      items: e.items.map(i => Object.assign({ id: i.id, type: i.type, name: i.name, size: i.size, url: i.url }, i.dur ? { dur: i.dur } : {}, arrOf(i.shots).length ? { shots: arrOf(i.shots).slice(0, 4) } : {})),
       targets: { groups: e.targets.groups.slice(), add: e.targets.add.slice(), except: e.targets.except.slice() },
       excuse: isObj(e.excuse) ? e.excuse : {}, dissem: e.dissem || "",
       createdAt: e.createdAt || now, createdBy: e.createdBy || who(), updatedAt: now, updatedBy: who() };
@@ -665,6 +713,11 @@
   }
 
   /* ═════════ 교육 실시 결과 기록부 — A4 · 엑셀(종이 양식과 같은 칸) ═════════ */
+  /* 회사 로고(순찰일지 인쇄와 같은 그림) — 인쇄물 아래쪽에 작게 */
+  const LG_A = [[0.846, 0.151], [0.613, 0.151], [0.109, 0.551], [0.372, 0.551], [0.372, 0.389], [0.65, 0.389]];
+  const LG_B = [[0.861, 0.418], [0.673, 0.418], [0.673, 0.632], [0.395, 0.632], [0.126, 0.879], [0.524, 0.879]];
+  const lgPts = (a) => a.map(([x, y]) => (x * 30).toFixed(1) + "," + (y * 30).toFixed(1)).join(" ");
+  const LOGO_SVG = `<svg viewBox="0 0 156 30" aria-label="AIRZETA" role="img"><text x="1" y="24.5" textLength="118" lengthAdjust="spacingAndGlyphs" font-family="'Arial Black','Helvetica Neue',Arial,sans-serif" font-weight="900" font-style="italic" font-size="25" fill="#111">AIRZETA</text><g transform="translate(123 -1)"><polygon points="${lgPts(LG_A)}" fill="#5a5a5a"/><polygon points="${lgPts(LG_B)}" fill="#111"/></g></svg>`;
   const yy = (iso) => (isISO(iso) ? "'" + iso.slice(2, 4) + ". " + Number(iso.slice(5, 7)) + ". " + Number(iso.slice(8, 10)) : "");
   const md2 = (iso) => (isISO(iso) ? Number(iso.slice(5, 7)) + ". " + Number(iso.slice(8, 10)) : "");
   const period = (c) => (c.start && c.end && c.start !== c.end ? yy(c.start) + " ~ " + (c.start.slice(0, 4) === c.end.slice(0, 4) ? md2(c.end) : yy(c.end)) : yy(c.start || c.end));
@@ -680,7 +733,7 @@
     });
   }
   const signOf = (m, signs) => (m.st === "ok" && m.row && signs[m.row.rid] ? signs[m.row.rid] : "");
-  const P1 = 22, PN = 52;   // 쪽당 대상자 수(첫 쪽 · 다음 쪽) — 두 사람씩 한 줄
+  const P1 = 18, PN = 50;   // 쪽당 대상자 수(첫 쪽 · 다음 쪽) — 두 사람씩 한 줄
   function chunks(mem) { const out = [mem.slice(0, P1)]; for (let i = P1; i < mem.length; i += PN) out.push(mem.slice(i, i + PN)); return out; }
   const PRINT_CSS = `* { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   @page { size: A4 portrait; margin: 12mm 12mm; }
@@ -694,8 +747,14 @@
   .gap td { border: 0; height: 2.5mm; padding: 0; }
   .ow { border-width: 1.6px; }
   .tl { text-align: left; }
-  .bd { height: 92mm; vertical-align: top; text-align: left; padding: 2.5mm 3mm; overflow: hidden; font-size: 9.5pt; line-height: 1.5; }
-  .bd .in { max-height: 87mm; overflow: hidden; }
+  .bd { height: 84mm; vertical-align: top; text-align: left; padding: 2.5mm 3mm; overflow: hidden; font-size: 9.5pt; line-height: 1.5; }
+  .bd .in { height: 78mm; overflow: hidden; display: flex; flex-direction: column; gap: 1.5mm; }
+  .bd .tx { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+  .bd .mr { flex: none; display: flex; gap: 1.5mm; justify-content: center; align-items: center; }
+  .bd .mr span { flex: 1 1 0; min-width: 0; display: block; text-align: center; }
+  .bd .mr img { display: inline-block; max-width: 100%; object-fit: contain; border: .3px solid #999; vertical-align: top; }
+  .bd .mr.vd img { width: 100%; height: auto; max-height: 30mm; }
+  .lgf { position: fixed; right: 0; bottom: 0; width: 26mm; height: 5mm; } .lgf svg { display: block; width: 100%; height: 100%; }
   .bd h3 { font-size: 10pt; margin: 2mm 0 1mm; } .bd h3:first-child { margin-top: 0; } .bd h4 { font-size: 9.5pt; margin: 1.5mm 0 .5mm; }
   .bd p { margin: .8mm 0; } .bd ul, .bd ol { margin: .5mm 0 1mm 5mm; padding: 0; } .bd li { margin: .3mm 0; }
   .sg { height: 9mm; padding: .5mm; } .sg img { max-height: 8mm; max-width: 100%; display: block; margin: 0 auto; }
@@ -710,10 +769,20 @@
     }
     return h;
   }
-  function recordHTML(c, signs) {
+  /* 교육 내용 칸 — 요약 글 + 사진(칸에 맞춤) + 동영상 주요 장면(나란히) */
+  function contentHTML(c, media) {
+    const txt = String(c.body || c.overview || "").trim();
+    const body = txt ? (md() ? md().html(txt) : esc(txt)) : "";
+    const m = media || {}, imgs = arrOf(m.images).slice(0, 4), vids = arrOf(m.videos).filter(v => v && v.length).slice(0, 2);
+    const ih = (txt ? 28 : 70) - (imgs.length ? vids.length * (txt ? 8 : 26) : 0);
+    return `<div class="in">${body ? `<div class="tx">${body}</div>` : ""}
+      ${imgs.length ? `<div class="mr">${imgs.map(u => `<span><img src="${esc(u)}" alt="" style="max-height:${Math.max(18, ih)}mm"></span>`).join("")}</div>` : ""}
+      ${vids.map(v => `<div class="mr vd">${v.slice(0, 4).map(u => `<span><img src="${esc(u)}" alt=""></span>`).join("")}</div>`).join("")}</div>`;
+  }
+  function recordHTML(c, signs, media) {
     const sh = sheetData(c);
     const cols = `<colgroup><col style="width:13%"><col style="width:17%"><col style="width:11%"><col style="width:11%"><col style="width:11%"><col style="width:12%"><col style="width:10%"><col style="width:15%"></colgroup>`;
-    const body = md() ? md().html(c.body || c.overview || "") : esc(c.body || "");
+    const body = contentHTML(c, media);
     const pages = sh.map(s => chunks(s.mem).map((part, pi, all) => {
       const n = Math.max(1, Math.ceil(part.length / 2));
       if (pi > 0) return `<section class="pg"><p class="cont">교육 실시 결과 기록부 — ${esc(s.part !== "-" ? s.part : s.team)} · ${esc(c.title)} (${pi + 1}/${all.length})</p><table>${cols}
@@ -729,27 +798,48 @@
         <tr><th>교육미실시</th><td>${s.miss.n}</td><td>${s.miss.m}</td><td>${s.miss.f}</td><td colspan="3">${esc(s.miss.n ? s.why : "")}</td></tr>
         <tr><th rowspan="2">교육 진행</th><th>교육 주관</th><th colspan="3">교육 장소</th><th colspan="3">교육 일시</th></tr>
         <tr><td>${esc(c.host || "")}</td><td colspan="3">${esc(c.place || "")}</td><td colspan="3">${esc(period(c))}</td></tr>
-        <tr><th>교육 내용</th><td colspan="7" class="bd"><div class="in">${body}</div></td></tr>
+        <tr><th>교육 내용</th><td colspan="7" class="bd">${body}</td></tr>
         <tr><th rowspan="${n + 1}">교육 대상자</th><th>대상자명</th><th colspan="2">서명</th><th colspan="2">대상자명</th><th colspan="2">서명</th></tr>${memRowsHTML(part, signs)}
       </table></section>`;
     }).join("")).join("");
-    return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>교육 실시 결과 기록부 — ${esc(c.title)}</title><style>${PRINT_CSS}</style></head><body>${pages || "<p>대상이 없습니다.</p>"}</body></html>`;
+    return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>교육 실시 결과 기록부 — ${esc(c.title)}</title><style>${PRINT_CSS}</style></head><body><div class="lgf">${LOGO_SVG}</div>${pages || "<p>대상이 없습니다.</p>"}</body></html>`;
   }
   async function getSigns(c) {
     if (c.state === "draft") return {};
     try { await loadStats(); return await loadSigns(c.id, true); } catch (e) { toast("서명을 불러오지 못했습니다. 서명 없이 만듭니다.", true); return {}; }
   }
+  /* 기록부에 넣을 사진 · 동영상 장면 — 서명 주소로 바꿔서. 장면이 저장돼 있지 않은 옛 동영상은 그 자리에서 뽑는다 */
+  async function recordMedia(c) {
+    const FA = window.SemisFileAuth, sign = async (u) => { try { return FA && FA.resolve ? (await FA.resolve(u)) || u : u; } catch (e) { return u; } };
+    const out = { images: [], videos: [] };
+    for (const it of arrOf(c.items)) {
+      try {
+        if (it.type === "image" && out.images.length < 4) out.images.push(await sign(it.url));
+        else if (it.type === "video" && out.videos.length < 2) {
+          let sh = [];
+          if (arrOf(it.shots).length) for (const u of it.shots) sh.push(await sign(u));
+          else sh = await frames(await sign(it.url), 4, true);
+          if (sh.length) out.videos.push(sh);
+        }
+      } catch (e) { /* 그 자료만 빼고 */ }
+    }
+    return out;
+  }
   async function printRecord(c) {
     const signs = await getSigns(c);
+    let media = null;
+    if (arrOf(c.items).some(i => i.type === "image" || i.type === "video")) { toast("기록부를 만드는 중…"); try { media = await recordMedia(c); } catch (e) { media = null; } }
     try {
-      const html = recordHTML(c, signs);
+      const html = recordHTML(c, signs, media);
       const fr = document.createElement("iframe");
       fr.style.cssText = "position:fixed;right:0;bottom:0;width:2px;height:2px;border:0;visibility:hidden";
       document.body.appendChild(fr);
       const doc = fr.contentWindow.document;
       doc.open(); doc.write(html); doc.close();
       const fire = () => { try { fr.contentWindow.focus(); fr.contentWindow.print(); } catch (e) { /* 무시 */ } };
-      if (doc.readyState === "complete") setTimeout(fire, 300); else fr.onload = () => setTimeout(fire, 300);
+      const imgs = Array.from(doc.images || []).filter(i => !i.complete);
+      const ready = Promise.all(imgs.map(i => new Promise(r => { i.onload = i.onerror = r; })));
+      Promise.race([ready, new Promise(r => setTimeout(r, 8000))]).then(() => setTimeout(fire, 300));
       setTimeout(() => { try { fr.remove(); } catch (e) { /* 무시 */ } }, 60000);
     } catch (e) { toast("인쇄 대화상자를 열 수 없습니다.", true); }
   }
@@ -758,10 +848,11 @@
     const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${esc(c.title)}</title><style>@page { size: A4 portrait; margin: 18mm; }
       body { font-family: "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; text-align: center; color: #0e1a1f; } h1 { font-size: 22pt; margin: 18mm 0 4mm; } .k { color: #b45309; font-weight: 700; font-size: 13pt; }
       .p { font-size: 13pt; color: #333; margin: 2mm 0 10mm; } .qr svg { width: 92mm; height: 92mm; } .u { font-family: monospace; font-size: 11pt; margin-top: 6mm; word-break: break-all; }
-      ol { text-align: left; display: inline-block; font-size: 13pt; line-height: 1.9; margin-top: 10mm; }</style></head><body>
+      ol { text-align: left; display: inline-block; font-size: 13pt; line-height: 1.9; margin-top: 10mm; }
+      .lgf { position: fixed; left: 50%; bottom: 0; width: 34mm; height: 6.5mm; margin-left: -17mm; } .lgf svg { display: block; width: 100%; height: 100%; }</style></head><body>
       <div class="k">${esc((c.kind || "") + " 교육")}</div><h1>${esc(c.title)}</h1><p class="p">교육 기간 ${esc(span(c.start, c.end))}</p>
       <div class="qr">${Q ? Q.svg(url, { ecc: "M", size: 340, margin: 2 }) : ""}</div><div class="u">${esc(url)}</div>
-      <ol><li>휴대폰 카메라로 QR 을 비춥니다.</li><li>이름을 넣고 사번을 확인합니다.</li><li>교육 내용을 끝까지 보고 서명합니다.</li></ol></body></html>`;
+      <ol><li>휴대폰 카메라로 QR 을 비춥니다.</li><li>이름을 넣고 사번을 확인합니다.</li><li>교육 내용을 끝까지 보고 서명합니다.</li></ol><div class="lgf">${LOGO_SVG}</div></body></html>`;
     const fr = document.createElement("iframe");
     fr.style.cssText = "position:fixed;right:0;bottom:0;width:2px;height:2px;border:0;visibility:hidden";
     document.body.appendChild(fr);
@@ -966,7 +1057,7 @@
 
   window.SemisLearn = {
     TITLE, SELF, KINDS, groupOf, groups, isTarget, prog, statusOf, loadStats, loadSigns, calItems, todayData, todaySub, mountToday, dashPane, wireDash, remote,
-    recordHTML, recordBook, bookParts, xlsxBytes, sheetData, learnUrl, newCode, autoMin, period,
+    recordHTML, contentHTML, recordMedia, frames, LOGO_SVG, recordBook, bookParts, xlsxBytes, sheetData, learnUrl, newCode, autoMin, period,
     open(id) { go("detail", id); }, openEdit, go,
     setToday(t) { fixedToday = isISO(t) ? t : ""; },
     setState(o) { o = o || {}; if (o.view) view = o.view; if (o.sel !== undefined) sel = o.sel; if (o.filt) filt = o.filt; if (o.q !== undefined) q = o.q; if (o.dfilt) dfilt = o.dfilt; if (o.dtab) dtab = o.dtab; if (o.dgrp !== undefined) dgrp = o.dgrp; if (o.reset) { view = "list"; sel = ""; filt = "live"; q = ""; dq = ""; dfilt = "all"; dgrp = ""; dtab = "mem"; edit = null; } },

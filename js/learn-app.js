@@ -36,7 +36,7 @@
     ticket: "", ticketExp: 0, ticketBusy: null,
     q: "", list: null, findMsg: "", pick: null, manual: null,
     rid: "", body: "", items: [], minSec: 0, elapsed0: 0, t0: 0, person: null,
-    media: {}, mediaErr: "", seen: false, vids: {}, sid: "", ink: 0, msg: "", done: null
+    media: {}, mediaErr: "", seen: false, vids: {}, sid: "", ink: 0, msg: "", done: null, sign: "", cert: ""
   };
   let now = () => Date.now();
 
@@ -259,6 +259,7 @@
   }
 
   /* ── ② 교육 내용 ── */
+  const FAST = 1.2;
   const need = () => Math.ceil(st.minSec * 0.9);
   const elapsed = () => st.elapsed0 + Math.max(0, (now() - st.t0) / 1000);
   const left = () => Math.max(0, Math.ceil(need() - elapsed()));
@@ -296,8 +297,8 @@
     if (it.type === "image") return `<figure class="img"><img data-mi="${it.i}" alt="${nm}"></figure>`;
     if (it.type === "video") {
       const v = st.vids[it.i] || {};
-      return `<figure><video data-mi="${it.i}" controls playsinline preload="metadata" controlsList="nodownload noplaybackrate" disablepictureinpicture></video>
-        <figcaption><span>${nm}</span><span class="ln-vst${v.done ? " ok" : ""}" data-vst="${it.i}">${v.done ? "시청 완료" : "끝까지 시청해 주세요"}</span></figcaption></figure>`;
+      return `<figure class="vid"><video data-mi="${it.i}" controls playsinline preload="metadata" controlsList="nodownload noplaybackrate" disablepictureinpicture aria-label="교육 동영상"></video>
+        <figcaption><button type="button" class="ln-spd" data-spd="${it.i}" aria-pressed="false">1.2배 빠르게</button><span class="ln-vst${v.done ? " ok" : ""}" data-vst="${it.i}">${v.done ? "시청 완료" : "끝까지 시청해 주세요"}</span></figcaption></figure>`;
     }
     return `<div class="ln-file"><span>원문</span><span>${nm}</span><a data-mi="${it.i}" target="_blank" rel="noopener" hidden>열기</a></div>`;
   }
@@ -309,7 +310,7 @@
       <p class="ln-msg" id="ln-media-err"${st.mediaErr ? "" : " hidden"}>${esc(st.mediaErr)}</p>
       <div class="ln-end" id="ln-end"></div>
     </section>
-    <div class="ln-foot"><div class="ln-foot-in"><div class="ln-foot-t" id="ln-foot-t"></div>
+    <div class="ln-foot" id="ln-foot"><div class="ln-foot-in"><div class="ln-foot-t" id="ln-foot-t"></div>
       <button type="button" class="ln-btn pri" id="ln-next2" hidden>다음</button></div></div>`;
   }
   function paintMedia() {
@@ -323,19 +324,20 @@
     if (me) { me.textContent = st.mediaErr; me.hidden = !st.mediaErr; }
   }
   function foot() {
-    const t = $("#ln-foot-t"), nx = $("#ln-next2");
+    const t = $("#ln-foot-t"), nx = $("#ln-next2"), box = $("#ln-foot");
     if (!t || !nx) return;
+    /* 동영상 교육은 시청이 끝나면 '다음'만 보인다(시간 막대 없음). 글 · 사진 교육은 남은 일 + 시간 막대 */
+    const hasVid = Object.keys(st.vids).length > 0, vl = vidsLeft(), l = left();
     const todo = [];
-    if (!st.seen) todo.push("끝까지 읽어 주세요");
-    const vl = vidsLeft();
-    if (vl) todo.push("동영상 " + vl + "개를 끝까지 봐 주세요");
-    const l = left();
-    if (!todo.length && l) todo.push(l + "초 뒤에 다음으로 넘어갈 수 있습니다");
+    if (!hasVid && !st.seen) todo.push("끝까지 읽어 주세요");
+    if (hasVid && !vl && !st.seen) todo.push("아래 끝까지 내려 주세요");
+    if (!todo.length && !vl && l) todo.push(l + "초 뒤에 다음으로 넘어갈 수 있습니다");
     const pct = need() ? Math.min(100, Math.round(elapsed() / need() * 100)) : 100;
-    t.innerHTML = complete() ? "<b>교육 내용을 모두 확인했습니다.</b>" : esc(todo.join(" · ")) + '<div class="ln-bar" aria-hidden="true"><i></i></div>';
+    t.innerHTML = complete() ? "<b>교육 내용을 모두 확인했습니다.</b>" : esc(todo.join(" · ")) + (hasVid ? "" : '<div class="ln-bar" aria-hidden="true"><i></i></div>');
     const bi = t.querySelector(".ln-bar i");   // CSP: 인라인 style 속성 대신 CSSOM
     if (bi) bi.style.width = pct + "%";
     nx.hidden = !complete();
+    if (box) box.hidden = hasVid && !complete() && !todo.length;
   }
   let ticker = null, io = null;
   function checkEnd() {
@@ -349,7 +351,13 @@
     const i = v.dataset.mi, s = st.vids[i] || (st.vids[i] = { max: 0, done: false });
     v.addEventListener("timeupdate", () => { if (!v.seeking && v.currentTime > s.max && v.currentTime - s.max < 2.5) s.max = v.currentTime; });
     v.addEventListener("seeking", () => { if (!s.done && v.currentTime > s.max + 1) v.currentTime = s.max; });
-    v.addEventListener("ratechange", () => { if (!s.done && v.playbackRate > 1) v.playbackRate = 1; });
+    /* 빠르게 보기는 1.2배까지만 */
+    const spd = $(`[data-spd="${i}"]`);
+    const paintSpd = () => { if (spd) { const on = v.playbackRate > 1.01; spd.setAttribute("aria-pressed", on ? "true" : "false"); spd.textContent = on ? "1.2배 보는 중" : "1.2배 빠르게"; } };
+    v.addEventListener("ratechange", () => { if (!s.done && v.playbackRate > FAST + 0.01) v.playbackRate = FAST; paintSpd(); });
+    if (spd) spd.onclick = () => { try { v.playbackRate = v.playbackRate > 1.01 ? 1 : FAST; } catch (e) { /* 없음 */ } paintSpd(); };
+    /* 화면을 내려도 크기가 바뀌지 않게 — 영상 비율을 받아 자리를 고정(CSP: CSSOM) */
+    v.addEventListener("loadedmetadata", () => { if (v.videoWidth && v.videoHeight) v.style.aspectRatio = v.videoWidth + " / " + v.videoHeight; });
     v.addEventListener("ended", () => {
       const dur = Number(v.duration) || 0;
       if (s.done || (dur && s.max < dur - 3)) return;
@@ -379,12 +387,13 @@
   let pad = null;
   function p3HTML() {
     const p = st.person || {};
-    return stepsHTML(3) + heroHTML(false) + `<section class="ln-card">
+    /* 서명란이 화면 가운데 바로 보이게 — 위쪽은 이름 한 줄만 */
+    return stepsHTML(3) + `<section class="ln-card ln-sign">
       <h2>서명</h2>
-      <p class="ln-agree">위 교육 내용을 확인하였으며, 업무에서 지키겠습니다.</p>
-      <dl class="ln-who"><dt>이름</dt><dd><b>${esc(p.name || "")}</b></dd><dt>소속</dt><dd>${esc([p.org, p.part].filter(Boolean).join(" · ") || "-")}</dd>${p.emp ? `<dt>사번</dt><dd class="mono">${esc(p.emp)}</dd>` : ""}</dl>
+      <p class="ln-who1"><b>${esc(p.name || "")}</b><span>${esc([p.org, p.part].filter(Boolean).join(" · "))}</span>${p.emp ? `<span class="mono">${esc(p.emp)}</span>` : ""}</p>
       <div class="ln-pad${st.ink ? " inked" : ""}" id="ln-pad"><canvas id="ln-canvas" aria-label="서명란"></canvas><span class="ln-pad-ph">여기에 서명해 주세요</span></div>
       <div class="ln-pad-acts"><button type="button" class="ln-link" id="ln-back">교육 내용 다시 보기</button><button type="button" class="ln-link" id="ln-clear">지우기</button></div>
+      <p class="ln-agree">교육 내용을 확인하였으며, 업무에서 지키겠습니다.</p>
       <p class="ln-msg" id="ln-msg"${st.msg ? "" : " hidden"}>${esc(st.msg)}</p>
       <button type="button" class="ln-btn pri wide" id="ln-submit" ${st.ink >= 8 ? "" : "disabled"}>제출</button>
     </section>`;
@@ -450,6 +459,7 @@
       busy(false);
       if (d && d.ok) {
         st.done = { at: d.at, name: d.name || (st.person && st.person.name) };
+        st.sign = sign; st.cert = "";
         st.view = "done"; dropDraft(); render();
         try { window.scrollTo(0, 0); } catch (e) { /* 없음 */ }
         return;
@@ -475,7 +485,106 @@
       <h1>${d.again ? "이미 이수하셨습니다." : "수고하셨습니다."}</h1>
       <p>${esc(d.name || "")}님의 교육 이수${d.again ? "가 확인됩니다" : "가 접수되었습니다"}.</p>
       <p class="mono">${esc(d.at || "")}</p>
+      ${!d.again && st.sign ? `<div class="ln-cert" id="ln-cert" hidden><img id="ln-cert-img" alt="교육 이수증">
+        <button type="button" class="ln-btn pri wide" id="ln-save">이수증 사진 저장</button>
+        <p class="ln-msg info" id="ln-save-msg" hidden></p></div>` : ""}
     </section>`;
+  }
+  /* ── 교육 이수증(서명 포함) 카드 그림 — 사진첩에 저장 ── */
+  const LG_A = [[0.846, 0.151], [0.613, 0.151], [0.109, 0.551], [0.372, 0.551], [0.372, 0.389], [0.65, 0.389]];
+  const LG_B = [[0.861, 0.418], [0.673, 0.418], [0.673, 0.632], [0.395, 0.632], [0.126, 0.879], [0.524, 0.879]];
+  function drawLogo(x, ox, oy, h) {   // 회사 로고(글자 + 표지) — 높이 h
+    const k = h / 30;
+    x.save(); x.translate(ox, oy); x.scale(k, k);
+    x.fillStyle = "#111"; x.textBaseline = "alphabetic"; x.textAlign = "left";
+    x.font = "italic 900 25px 'Arial Black','Helvetica Neue',Arial,sans-serif";
+    const w = x.measureText("AIRZETA").width || 118;
+    x.save(); x.translate(1, 24.5); x.scale(118 / w, 1); x.fillText("AIRZETA", 0, 0); x.restore();
+    const poly = (a, c) => { x.beginPath(); a.forEach(([px, py], i) => { const X = 123 + px * 30, Y = -1 + py * 30; if (i) x.lineTo(X, Y); else x.moveTo(X, Y); }); x.closePath(); x.fillStyle = c; x.fill(); };
+    poly(LG_A, "#5a5a5a"); poly(LG_B, "#111");
+    x.restore();
+  }
+  function wrapText(x, text, maxW, maxLines) {
+    const out = []; let line = "";
+    Array.from(String(text || "")).forEach(ch => {
+      if (x.measureText(line + ch).width > maxW && line) { out.push(line); line = ch === " " ? "" : ch; } else line += ch;
+    });
+    if (line) out.push(line);
+    if (out.length > maxLines) { out.length = maxLines; out[maxLines - 1] = out[maxLines - 1].slice(0, -1) + "…"; }
+    return out;
+  }
+  function certCanvas(signImg) {
+    const W = 720, H = 900, c = document.createElement("canvas");
+    c.width = W; c.height = H;
+    const x = c.getContext ? c.getContext("2d") : null;
+    if (!x) return null;
+    const f = st.info || {}, p = st.person || {}, d = st.done || {};
+    const F = "-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif";
+    x.fillStyle = "#ffffff"; x.fillRect(0, 0, W, H);
+    x.fillStyle = "#0f766e"; x.fillRect(0, 0, W, 14);
+    x.strokeStyle = "#d9dee0"; x.lineWidth = 2; x.strokeRect(1, 1, W - 2, H - 2);
+    x.textAlign = "left"; x.textBaseline = "alphabetic";
+    x.fillStyle = "#0f766e"; x.font = "700 26px " + F; x.fillText("교육 이수증", 56, 92);
+    x.fillStyle = "#6b7780"; x.font = "500 22px " + F; x.textAlign = "right"; x.fillText((f.kind ? f.kind + " 교육" : "교육"), W - 56, 92); x.textAlign = "left";
+    x.fillStyle = "#0e1a1f"; x.font = "700 40px " + F;
+    let y = 170;
+    wrapText(x, f.title || "교육", W - 112, 3).forEach(l => { x.fillText(l, 56, y); y += 54; });
+    y += 14; x.strokeStyle = "#e3e7e9"; x.lineWidth = 2; x.beginPath(); x.moveTo(56, y); x.lineTo(W - 56, y); x.stroke(); y += 52;
+    const row = (k, v) => { if (!v) return; x.fillStyle = "#6b7780"; x.font = "500 24px " + F; x.fillText(k, 56, y); x.fillStyle = "#0e1a1f"; x.font = "600 28px " + F; x.fillText(wrapText(x, v, W - 112 - 150, 1)[0] || "", 206, y); y += 50; };
+    row("이름", d.name || p.name || "");
+    row("소속", [p.org, p.part].filter(Boolean).join(" · "));
+    row("사번", p.emp || "");
+    row("이수 일시", d.at || "");
+    const by = Math.max(y + 8, 520), bh = H - 130 - by;
+    x.fillStyle = "#f6f8f8"; x.fillRect(56, by, W - 112, bh);
+    x.strokeStyle = "#d9dee0"; x.lineWidth = 2; x.strokeRect(56, by, W - 112, bh);
+    x.fillStyle = "#6b7780"; x.font = "500 20px " + F; x.fillText("서명", 72, by + 34);
+    if (signImg && signImg.width) {
+      const k = Math.min((W - 160) / signImg.width, (bh - 50) / signImg.height);
+      const sw = signImg.width * k, sh = signImg.height * k;
+      x.drawImage(signImg, (W - sw) / 2, by + 40 + (bh - 50 - sh) / 2, sw, sh);
+    }
+    drawLogo(x, 56, H - 84, 34);
+    x.fillStyle = "#6b7780"; x.font = "500 20px " + F; x.textAlign = "right"; x.fillText("H:drive 교육 전파 · 서명", W - 56, H - 58);
+    return c;
+  }
+  function makeCert() {
+    return new Promise((res) => {
+      try {
+        const im = new Image();
+        im.onload = () => { try { const c = certCanvas(im); res(c ? c.toDataURL("image/png") : ""); } catch (e) { res(""); } };
+        im.onerror = () => res("");
+        im.src = st.sign;
+      } catch (e) { res(""); }
+    });
+  }
+  async function saveCert() {
+    const msg = $("#ln-save-msg"), say = (t) => { if (msg) { msg.textContent = t; msg.hidden = !t; } };
+    const name = "교육이수증_" + String((st.done && st.done.at) || "").slice(0, 10).replace(/-/g, "") + ".png";
+    try {
+      const bin = atob(String(st.cert).split(",")[1] || ""), u8 = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      const blob = new Blob([u8], { type: "image/png" });   // CSP: data: 주소는 fetch 하지 않는다
+      const file = typeof File === "function" ? new File([blob], name, { type: "image/png" }) : null;
+      if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+        try { await navigator.share({ files: [file] }); say("공유 창에서 '이미지 저장'을 고르면 사진첩에 들어갑니다."); return; }
+        catch (e) { if (e && e.name === "AbortError") return; }
+      }
+      const u = URL.createObjectURL(blob), a = document.createElement("a");
+      a.href = u; a.download = name; a.rel = "noopener";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => { try { URL.revokeObjectURL(u); } catch (e) { /* 없음 */ } }, 4000);
+      say("저장했습니다. 안 보이면 그림을 길게 눌러 저장하세요.");
+    } catch (e) { say("그림을 길게 눌러 '사진 앱에 저장'을 고르세요."); }
+  }
+  async function wireDone() {
+    const box = $("#ln-cert");
+    if (!box) return;
+    if (!st.cert) st.cert = await makeCert();
+    const img = $("#ln-cert-img");
+    if (!st.cert || !img) return;
+    img.src = st.cert; box.hidden = false;
+    const b = $("#ln-save"); if (b) b.onclick = saveCert;
   }
 
   function render() {
@@ -487,13 +596,11 @@
     else if (st.view === "p1") { a.innerHTML = p1HTML(); wireP1(); }
     else if (st.view === "p2") { a.innerHTML = p2HTML(); wireP2(); }
     else if (st.view === "p3") { st.msg = ""; a.innerHTML = p3HTML(); wireP3(); }
-    else if (st.view === "done") a.innerHTML = doneHTML();
+    else if (st.view === "done") { a.innerHTML = doneHTML(); wireDone(); }
     document.title = (st.info && st.info.title ? st.info.title + " — " : "") + "교육 이수 — H:drive";
   }
 
   async function boot() {
-    const pb = $("#ln-print");
-    if (pb) pb.onclick = () => { try { window.print(); } catch (e) { /* 없음 */ } };
     st.code = String(location.hash || "").replace(/^#\/?/, "").trim().toLowerCase();
     if (!/^[a-z2-9]{12}$/.test(st.code)) { fail("invalid"); return; }
     try {
@@ -507,7 +614,7 @@
     } catch (e) { fail("network"); }
   }
 
-  const api = { st, boot, render, find, start, submit, exportSign, foot, complete, left,
+  const api = { st, boot, render, find, start, submit, exportSign, foot, complete, left, makeCert, certCanvas, saveCert,
     _clock(fn) { now = fn; }, _seen() { st.seen = true; foot(); } };
   window.SemisLearnApp = api;
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => api.boot());
