@@ -11196,7 +11196,7 @@ function makeServer(opts = {}) {
       ok(qa(e, ".dk-grp h4").some(h => /시설 보안 · 출입통제/.test(h.textContent)), "검색장비 문서함에 새 분류");
       eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
     });
-    await ta("DS14 v1.71 문서함 첨부 올리기: 브라우저에서 SHA-256 을 재어 첨부에 sha(서버가 재는 값과 같음 — K드라이브 동기화 링크용) · 못 재면 칸 없이 올리기는 그대로", async () => {
+    await ta("DS14 v1.72 문서함 첨부 올리기: 브라우저에서 SHA-256 을 재어 첨부에 sha(서버가 재는 값과 같음 — K드라이브 동기화 링크용) · 못 재면 칸 없이 올리기는 그대로", async () => {
       const e = makeEnv(); loginAs(e, "hq");
       const SD = e.w.SemisDocs, up = e.w.SemisSync.uploadFile;
       e.w.SemisSync.uploadFile = async (file, prefix) => ({ name: file.name, size: file.size, url: "https://x.supabase.co/storage/v1/object/public/semis-logi-files/" + prefix + "/r_" + file.name });
@@ -12500,7 +12500,7 @@ function makeServer(opts = {}) {
       eq(q(e, "#view .tab.active").dataset.tab, "ksync", "K드라이브 탭 그대로");
       ok(q(e, "#tab-body .ks-strip"), "다시 불러와 그림");
       const btns = Array.from(q(e, "#view .page-head").children).filter(x => x.matches("button"));
-      eq(btns.filter(b => b.classList.contains("ks-hb")).length, 7, "머리말 단추 한 벌(v1.71 해시 채우기 더함)");
+      eq(btns.filter(b => b.classList.contains("ks-hb")).length, 7, "머리말 단추 한 벌(v1.72 해시 채우기 더함)");
       ok(btns[btns.length - 1].hasAttribute("data-print-btn"), "인쇄는 맨 끝");
       q(e, '.tab[data-tab="data"]').click(); e.S.renderView();
       eq(q(e, "#view .tab.active").dataset.tab, "data", "다른 탭도 그대로");
@@ -12869,7 +12869,7 @@ function makeServer(opts = {}) {
       eq(e.errors.length, 0, e.errors.join(" | "));
       e.Sync.stop(); e.w.close();
     });
-    await ta("KS25 v1.71 양쪽 전환: ⋯ › 양쪽으로 바꾸기 미리보기 → 줄에 건수 · [양쪽 미리보기] 창(건수 표 · 올릴 바이트 · 남은 저장소보다 크면 경고) → [양쪽으로 바꾸기](건수 없음 · dup > 0 · 이틀 넘음이면 잠금 + 안내) · [다시 세기] · 그만", async () => {
+    await ta("KS25 v1.72 양쪽 전환: ⋯ › 양쪽으로 바꾸기 미리보기 → 줄에 건수 · [양쪽 미리보기] 창(건수 표 · 올릴 바이트 · 남은 저장소보다 크면 경고) → [양쪽으로 바꾸기](건수 없음 · dup > 0 · 이틀 넘음이면 잠금 + 안내) · [다시 세기] · 그만", async () => {
       const { sv, ks, e } = await setup();
       ks.maps = [{ id: 31, k_path: "업무/전환", mod: "audit", grp: "checklist", dir: "k2h", ssi: false, state: "active", n_files: 5 },
         { id: 32, k_path: "업무/양쪽", mod: "audit", grp: "plan", dir: "both", ssi: false, state: "active", n_files: 2 }];
@@ -12922,7 +12922,7 @@ function makeServer(opts = {}) {
       eq(e.errors.length, 0, e.errors.join(" | "));
       e.Sync.stop(); e.w.close();
     });
-    await ta("KS26 v1.71 해시 채우기: ⋯ › 해시 채우기 = 진행(전체 · 해시 있음 · 남음 · 못 읽음) · [해시 채우기 시작](남은 것이 없거나 이미 요청이면 잠금) · 요청한 동안 보고 줄에 진행 칸 · 양쪽 미리보기 창에 남은 해시 안내", async () => {
+    await ta("KS26 v1.72 해시 채우기: ⋯ › 해시 채우기 = 진행(전체 · 해시 있음 · 남음 · 못 읽음) · [해시 채우기 시작](남은 것이 없거나 이미 요청이면 잠금) · 요청한 동안 보고 줄에 진행 칸 · 양쪽 미리보기 창에 남은 해시 안내", async () => {
       const { ks, e } = await setup();
       await openTab(e);
       ok(ks.calls.some(c => c.name === "hash_todo") && !q(e, "#tab-body .ks-rep"), "진행을 불러오고 요청 전에는 보고 칸 없음");

@@ -663,7 +663,7 @@ eq([await pvOf(), await reqOf()], [null, true], "D1: 분류 바꿈");
 await db.exec("update semis_logi_private.ksync_state set requested_at = null");
 await rpc("semis_logi_ksync_map_save", { id: M3, dir: "k2h" });
 eq(await reqOf(), false, "D1: 실행 중 연결은 해당 없음");
-// 돌던 연결을 양쪽으로 되돌리는 것은 미리보기(recon)가 있어야 한다(v1.71) — 이 시험은 방향만 잠시 바꾼 것이라 표에서 바로 되돌린다
+// 돌던 연결을 양쪽으로 되돌리는 것은 미리보기(recon)가 있어야 한다(v1.72) — 이 시험은 방향만 잠시 바꾼 것이라 표에서 바로 되돌린다
 await db.query("update semis_logi_private.ksync_maps set dir = 'both' where id = $1", [M3]);
 
 // #9 — 미리보기 건수는 hello 가 준 설정 시각(updated_at)과 같을 때만 받음 · 건수가 없으면 [시작] 거절
@@ -1316,7 +1316,7 @@ ok(!!(await reqAt()), "다시 실행하면 트리거 · 함수 되살아남");
 await as("a1", "admin");
 
 {
-// v1.71 '양쪽' 안전 전환 — 미리보기 요청(dir_next) · 건수(recon — 에이전트, 설정 시각 대조) · 바꾸기 관문(recon · dup 0 · 이틀 · 설정 그대로 · 승인 전 보류 없음) ·
+// v1.72 '양쪽' 안전 전환 — 미리보기 요청(dir_next) · 건수(recon — 에이전트, 설정 시각 대조) · 바꾸기 관문(recon · dup 0 · 이틀 · 설정 그대로 · 승인 전 보류 없음) ·
 //      첫 회차 승인 · 설정을 고치면 recon 지움(D1) · 되돌리기(k2h)는 그대로
 const mapRow = (id) => one("select to_jsonb(m) - 'created_at' - 'created_by' from semis_logi_private.ksync_maps m where id = $1", [id]);
 const save36 = (p) => rpc("semis_logi_ksync_map_save", p);
@@ -1402,7 +1402,7 @@ mb2 = await mapRow(MB);
 eq([mb2.dir_next, mb2.recon, mb2.dir], [null, null, "k2h"], "미리보기 그만 → dir_next · recon 지움(방향 그대로)");
 await save36({ id: MB, excludes: [] });
 
-// v1.71 H 첨부 해시 — h_items · h_olds 가 첨부의 sha 를 줌(없거나 틀리면 null) · 등록(put_apply)이 확인한 sha 를 첨부에 적음 ·
+// v1.72 H 첨부 해시 — h_items · h_olds 가 첨부의 sha 를 줌(없거나 틀리면 null) · 등록(put_apply)이 확인한 sha 를 첨부에 적음 ·
 //      해시 채우기: 관리자 요청 → 에이전트(Edge hash)가 범위 안 · 해시 없는 첨부를 받아 재고 적음(범위 · 건너뜀 · 한도 · 끝나면 요청 지움)
 const HX = (c) => H64(c);
 const D36 = [

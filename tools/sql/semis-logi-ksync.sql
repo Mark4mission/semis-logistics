@@ -12,7 +12,7 @@
      열린 화면의 다음 저장은 409 → 병합으로 이어진다. 관리자 세션에서 고칠 때는 잠근 행의 updated_at 을 base_at 으로 넘긴다.
    - 적용: 마이그레이션 semis_logi_security_30_ksync · v1.64 기준일 · 막는 형식 semis_logi_security_32_ksync_since ·
      v1.68 링크 정확도 semis_logi_security_34_ksync_links · 보고 · 지정 제외 · H → K 준실시간 semis_logi_security_35_ksync_report ·
-     v1.71 '양쪽' 안전 전환 · H 첨부 해시 semis_logi_security_36_ksync_both(이 파일 전체).
+     v1.72 '양쪽' 안전 전환 · H 첨부 해시 semis_logi_security_36_ksync_both(이 파일 전체).
      이 파일이 원본(다시 실행해도 같은 결과).
      검증: node tools/sql/semis-logi-ksync.test.mjs tools/sql/semis-logi-ksync.sql (PGlite + pgcrypto)
    ═══════════════════════════════════════════════════════ */

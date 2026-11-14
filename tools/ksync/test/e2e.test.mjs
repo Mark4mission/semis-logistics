@@ -885,7 +885,7 @@ await admin("select public.semis_logi_ksync_resolve($1::jsonb)", [JSON.stringify
 r = await once();
 const e4 = await rowById(e4Row.id);
 eq([r.status, has("e4.pdf") && read("e4.pdf"), e4?.state, e4?.h_url], ["ok", "E4-H", "ok", PUB + "docs/e4e4e4e4e4e5_e4.pdf"], "K→H 만 · [복원] → 지금 판(H 새 판)을 K 로 받음 · 정상으로");
-await db.query("update semis_logi_private.ksync_maps set dir = 'both' where id = $1", [M]);     // 양쪽으로 되돌리기는 미리보기(recon)가 있어야 함(v1.71) — 방향만 잠시 바꾼 시험이라 표에서 바로
+await db.query("update semis_logi_private.ksync_maps set dir = 'both' where id = $1", [M]);     // 양쪽으로 되돌리기는 미리보기(recon)가 있어야 함(v1.72) — 방향만 잠시 바꾼 시험이라 표에서 바로
 
 /* 19-3. H 에서 지운 뒤(삭제 대기) K 에서 고침 → H 로 다시 올림(대기 풀림) · 삭제 확정 뒤 K 에서 고침 → 휴지통으로 옮기지 않고 H 로 올려 충돌로 */
 const delH = async (rel, body) => {
@@ -923,7 +923,7 @@ eq([r.status, has("f3.pdf") && read("f3.pdf"), kFiles("_H드라이브_휴지통"
 r = await once();
 eq([r.status, (await lastRun()).detail.filter(d => d.f === "f3.pdf").length, has("f3.pdf") && read("f3.pdf")], ["ok", 0, "F3-K"], "#1 H→K 만 · 다음 실행: 할 일 없음(삭제 대기를 되풀이하지 않음)");
 fs.rmSync(K("f3.pdf"));
-await db.query("update semis_logi_private.ksync_maps set dir = 'both' where id = $1", [M]);     // 양쪽으로 되돌리기는 미리보기(recon)가 있어야 함(v1.71) — 방향만 잠시 바꾼 시험이라 표에서 바로
+await db.query("update semis_logi_private.ksync_maps set dir = 'both' where id = $1", [M]);     // 양쪽으로 되돌리기는 미리보기(recon)가 있어야 함(v1.72) — 방향만 잠시 바꾼 시험이라 표에서 바로
 
 /* 19-4. 첨부 둘 중 하나를 H 가 뺀 판 — K 가 뺀 첨부를 고치거나 [복원]해도, 첨부 하나뿐인 지금 판의 남은 첨부(다른 줄이 맞춤)를 바꾸지 않고 뒤에 더함 */
 const twoAtt = async (id, a, b) => {
@@ -1312,7 +1312,7 @@ eq([r.status, has("사이.pdf"), !!(await one("select requested_at from semis_lo
 r = await once();
 eq([r.status, has("사이.pdf") && read("사이.pdf"), await one("select requested_at from semis_logi_private.ksync_state")], ["ok", "MID", null], "다음 회차가 받고 요청 표시를 끔");
 
-/* 19-16. v1.71 '양쪽' 안전 전환 — K → H 만이던 연결: 미리보기 없이 바꾸기 거절 → [양쪽으로 바꾸기 미리보기] → Mac 이 같은 색인으로 센 recon
+/* 19-16. v1.72 '양쪽' 안전 전환 — K → H 만이던 연결: 미리보기 없이 바꾸기 거절 → [양쪽으로 바꾸기 미리보기] → Mac 이 같은 색인으로 센 recon
    (링크 깃발이 꺼져 기준일 전 K 파일을 잇지 못하면 'K 이름 (2)' 가 될 1 → 거절) → 깃발을 켜고 다시 세면 0 → 바꾸기(첫 회차 승인) →
    전환 회차가 대량 변경 한도(2)를 넘는 변경 3(H 새 판 덮어쓰기)에도 보류 없이 끝남 · '이름 (2)' 없음 → 되돌리기(k2h) */
 const CVD = path.join(MOUNT, "업무", "전환"), SNC = Date.parse("2025-08-01T00:00:00+09:00");
@@ -1369,7 +1369,7 @@ eq([(await mapSave({ id: MCV, dir: "k2h" })).ok, await one("select dir from semi
 await db.query("update semis_logi_private.ksync_state set mass_limit = $1::jsonb", [JSON.stringify(ml0)]);
 await admin("select public.semis_logi_ksync_map_delete($1)", [MCV]);
 
-/* 19-17. v1.71 해시 채우기 → 해시 링크 — 관리자 요청 → 다음 회차 끝에 에이전트가 Edge hash 를 부르고(값을 보내지 않음) Edge 가 저장소에서 읽어 잰 sha 를 첨부에 적음 →
+/* 19-17. v1.72 해시 채우기 → 해시 링크 — 관리자 요청 → 다음 회차 끝에 에이전트가 Edge hash 를 부르고(값을 보내지 않음) Edge 가 저장소에서 읽어 잰 sha 를 첨부에 적음 →
    다음 회차부터 이름이 다른 같은 내용 K 파일이 그 H 문서와 연결만(새 문서 · '이름 (2)' 없음) */
 const HXD = path.join(MOUNT, "업무", "해시");
 fs.mkdirSync(HXD, { recursive: true });

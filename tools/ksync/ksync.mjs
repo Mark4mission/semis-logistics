@@ -12,7 +12,7 @@ import { pathToFileURL } from "node:url";
 import { plan, reconOf, MAX_SIZE, K_BLOCK, nfc } from "./plan.mjs";
 import * as L from "./lib.mjs";
 
-export const VERSION = "1.71.0";
+export const VERSION = "1.72.0";
 const MIN = 60e3;
 /* 오늘 매일 실행을 끝낸 뒤 서버를 다시 보지 않는 시간 — 깨우는 간격(10분)보다 조금 짧게. 길면 H 에서 올린 문서의 동기화 요청을 그만큼 늦게 본다 */
 const DONE_GUARD = 9 * MIN;
