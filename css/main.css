@@ -6975,6 +6975,8 @@ button.chip-title:focus-visible, button.calm-body:focus-visible { outline: 2px s
 .ks-strip { margin-bottom: 14px; }
 .ks-strip .stat-row { margin-bottom: 0; }
 .ks-strip.is-stale .stat-row { box-shadow: inset 0 0 0 2px var(--accent); border-radius: var(--radius-xs); }
+.ks-rep { margin-bottom: 14px; }
+.ks-rep .stat-row { margin-bottom: 4px; }
 .ks-warn { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0 0; padding: 8px 12px; border-left: 3px solid var(--accent); background: var(--accent-soft); color: var(--text); font-size: max(var(--fs-min), .9rem); }
 .ks-warn .ico { flex: none; margin-top: 2px; color: var(--accent-dark); }
 .ks-path { overflow-wrap: anywhere; }

@@ -69,7 +69,7 @@ await db.exec("grant usage on schema semis_logi_private to anon, service_role");
 eq(await one("select has_function_privilege('service_role', 'public.semis_logi_ksync_agent(text, text, text, jsonb)', 'EXECUTE')"), true, "입구 service_role");
 eq(await one("select has_function_privilege('anon', 'public.semis_logi_ksync_agent(text, text, text, jsonb)', 'EXECUTE')"), false, "입구 anon 차단");
 eq(await one("select has_function_privilege('authenticated', 'public.semis_logi_ksync_agent(text, text, text, jsonb)', 'EXECUTE')"), false, "입구 authenticated 차단");
-const ADMIN = ["semis_logi_ksync_status()", "semis_logi_ksync_runs(jsonb)", "semis_logi_ksync_events(jsonb)", "semis_logi_ksync_folders()",
+const ADMIN = ["semis_logi_ksync_status()", "semis_logi_ksync_runs(jsonb)", "semis_logi_ksync_events(jsonb)", "semis_logi_ksync_folders()", "semis_logi_ksync_report()",
   "semis_logi_ksync_map_save(jsonb)", "semis_logi_ksync_map_delete(bigint)", "semis_logi_ksync_map_start(bigint)", "semis_logi_ksync_pending()",
   "semis_logi_ksync_resolve(jsonb)", "semis_logi_ksync_hold(jsonb)", "semis_logi_ksync_request()", "semis_logi_ksync_settings(jsonb)",
   "semis_logi_ksync_ip_approve(text)", "semis_logi_ksync_agent_new(text)", "semis_logi_ksync_agent_revoke(bigint)"];
@@ -1163,12 +1163,158 @@ eq((await begin("old-nosince.pdf", { run: RS, map: M3, mtime: "2020-01-01T00:00:
 for (const n of ["a.pfx", "b.P12", "c.pem", "d.kdbx", "e.lnk", "f.URL", "g.html", "h.mjs"]) eq(await one("select semis_logi_private.ksync_h_blocked($1)", [n]), true, "H 로 올리지 않음 " + n);
 for (const n of ["a.key", "b.pdf", "c.pemx", "d.urls", "e.xlsx"]) eq(await one("select semis_logi_private.ksync_h_blocked($1)", [n]), false, "H 로 올림 " + n);
 eq((await bS("cert.pfx", { mtime: "2026-01-01T00:00:00Z", sha256: H64("9f8b") })).error, "type", "put_begin: 인증서 → type");
-// 파일 전체를 다시 실행(마이그레이션 semis_logi_security_32_ksync_since) — 기준일 · 기준선 · 권한 그대로
+// 20. v1.68 링크 정확도 — 깃발 flags.link_all(기본 꺼짐). 켜면 hello full 의 olds = H 옛 판(현재 판 · 현재 판과 같은 주소 · SSI(SSI 아닌 연결) ·
+//     숨은 판 묶음 · 현재 판에 보이는 첨부가 없는 판 묶음 · 다른 화면 빼고). 옛 판에 '연결만'(mark set)하면 기준선은 그 판의 판 묶음 · 이름 · 크기
+await as(null);
+eq(await one("select flags from semis_logi_private.ksync_state"), { link_all: false }, "깃발 기본값 — link_all 꺼짐");
+const ML = await one("insert into semis_logi_private.ksync_maps(k_path, mod, grp, dir, state) values ('링크/옛판', 'audit', 'olds', 'k2h', 'active') returning id");
+const OD = [
+  { id: "o-cur", mod: "audit", grp: "olds", ser: "보고", title: "보고", date: "2026-11-01", files: [{ name: "보고 v3.pdf", size: 9, url: PUB + "docs/o1o1o1o1o1o1_v3.pdf" }, { name: "부록.pdf", size: 2, url: PUB + "docs/o4o4o4o4o4o4_ap.pdf" }] },
+  { id: "o-v2", mod: "audit", grp: "olds", ser: "보고", title: "보고", date: "2026-06-01", files: [{ name: "보고 v2.pdf", size: 7, url: PUB + "docs/o2o2o2o2o2o2_v2.pdf" }, { name: "부록.pdf", size: 2, url: PUB + "docs/o4o4o4o4o4o4_ap.pdf" }] },
+  { id: "o-v1s", mod: "audit", grp: "olds", ser: "보고", title: "보고", date: "2026-01-01", ssi: true, files: [{ name: "보고 v1.pdf", size: 5, url: PUB + "docs-ssi/o3o3o3o3o3o3_v1.pdf" }] },
+  { id: "h-cur", mod: "audit", grp: "olds", ser: "숨김", title: "숨김", date: "2026-11-01", ssi: true, files: [{ name: "숨 v2.pdf", size: 4, url: PUB + "docs-ssi/o5o5o5o5o5o5_h2.pdf" }] },
+  { id: "h-old", mod: "audit", grp: "olds", ser: "숨김", title: "숨김", date: "2026-01-01", files: [{ name: "숨 v1.pdf", size: 3, url: PUB + "docs/o6o6o6o6o6o6_h1.pdf" }] },
+  { id: "e-cur", mod: "audit", grp: "olds", ser: "빈", title: "빈", date: "2026-11-01", files: [] },
+  { id: "e-old", mod: "audit", grp: "olds", ser: "빈", title: "빈", date: "2026-01-01", files: [{ name: "빈 v1.pdf", size: 3, url: PUB + "docs/o7o7o7o7o7o7_e1.pdf" }] },
+  { id: "x-old", mod: "partners", grp: "olds", ser: "보고", title: "남의 화면", date: "2025-01-01", files: [{ name: "보고 v0.pdf", size: 1, url: PUB + "docs/o8o8o8o8o8o8_x.pdf" }] },
+  // 현재 판 첨부 하나 → 옛 판 후보 · 현재 판 첨부 둘이지만 같은 이름 → 후보
+  { id: "g-cur", mod: "audit", grp: "olds", ser: "계획", title: "계획", date: "2026-11-01", files: [{ name: "계획.pdf", size: 6, url: PUB + "docs/o9o9o9o9o9o9_g2.pdf" }] },
+  { id: "g-old", mod: "audit", grp: "olds", ser: "계획", title: "계획", date: "2026-02-01", files: [{ name: "계획 초안.pdf", size: 5, url: PUB + "docs/oaoaoaoaoaoa_g1.pdf" }] },
+  { id: "f-cur", mod: "audit", grp: "olds", ser: "양식", title: "양식", date: "2026-11-01", files: [{ name: "양식.hwp", size: 8, url: PUB + "docs/obobobobobob_f2.hwp" }, { name: "첨부.pdf", size: 2, url: PUB + "docs/ococococococ_fa.pdf" }] },
+  { id: "f-old", mod: "audit", grp: "olds", ser: "양식", title: "양식", date: "2026-02-01", files: [{ name: "양식.hwp", size: 7, url: PUB + "docs/odododododod_f1.hwp" }] }];
+await db.query("update public.semis_logi_store set value = value || $1::jsonb where key = 'docs'", [JSON.stringify(OD)]);
+r = await call("hello", { full: true });
+let LO = r.lists.find(l => l.map === ML);
+eq([r.flags, LO.olds], [{ link_all: false }, []], "꺼짐 → 옛 판을 주지 않음(에이전트는 그 전과 같게) · hello 에 깃발");
+await db.exec(`update semis_logi_private.ksync_state set flags = flags || '{"link_all": true}'`);
+r = await call("hello", { full: true });
+LO = r.lists.find(l => l.map === ML);
+eq(LO.olds.map(o => [o.ser, o.doc, o.name, o.size, o.date]).sort((a, b) => a[1] < b[1] ? -1 : 1), [["양식", "f-old", "양식.hwp", 7, "2026-02-01"], ["계획", "g-old", "계획 초안.pdf", 5, "2026-02-01"]],
+  "켜짐 → 옛 판만: 현재 판 첨부가 하나뿐(계획)이거나 같은 이름 첨부가 있는(양식) 판 묶음 — 현재 판 첨부가 둘인데 같은 이름이 없는 판 묶음(보고 v2) · 현재 판과 같은 주소 · SSI 판 · 숨은 판 묶음 · 현재 판에 첨부가 없는 판 묶음 · 다른 화면은 빼고");
+ok(LO.olds.every(o => o.url && !o.url.includes("docs-ssi")), "옛 판 주소에 SSI 없음");
+eq([LO.h.filter(x => x.hidden).map(x => x.ser), LO.h.filter(x => !x.hidden).map(x => x.doc).sort()], [["숨김"], ["f-cur", "f-cur", "g-cur", "o-cur", "o-cur"]], "현재 판 목록은 그대로");
+await db.query("update semis_logi_private.ksync_maps set ssi = true where id = $1", [ML]);
+r = await call("hello", { full: true });
+eq(r.lists.find(l => l.map === ML).olds.map(o => o.doc).sort(), ["f-old", "g-old", "h-old"], "SSI 연결 → 숨지 않은 판 묶음(숨김)의 옛 판도 후보 · 보고의 SSI 옛 판은 현재 판 첨부 둘 · 같은 이름 없음이라 아님");
+await db.query("update semis_logi_private.ksync_maps set ssi = false where id = $1", [ML]);
+const RLK = (await call("run", { phase: "start", trigger: "manual" })).run;
+r = await call("mark", { run: RLK, map: ML, items: [{ op: "set", rel_path: "계획 초안.pdf", k_size: 5, k_mtime: "2025-01-01T00:00:00Z", k_sha256: H64("0d"), doc_id: "g-old", h_url: PUB + "docs/oaoaoaoaoaoa_g1.pdf" }] });
+eq([r.ok, r.bad], [true, 0], "옛 판에 연결만(mark set) — 서버가 받음");
+eq(await one("select jsonb_build_array(ser, doc_id, h_name, h_size) from semis_logi_private.ksync_files where map_id = $1", [ML]), ["계획", "g-old", "계획 초안.pdf", 5], "기준선 = 그 판의 판 묶음 · 이름 · 크기");
+await call("run", { phase: "end", run: RLK, result: "ok" });
+await as("a1", "admin");
+
+// 파일 전체를 다시 실행(마이그레이션 semis_logi_security_32_ksync_since · 34_ksync_links) — 기준일 · 기준선 · 깃발 · 권한 그대로
 await db.exec(SQL);
+eq(await one("select flags from semis_logi_private.ksync_state"), { link_all: true }, "다시 실행해도 깃발 그대로");
+await db.exec(`update semis_logi_private.ksync_state set flags = flags || '{"link_all": false}'`);
 eq([await sinceOf(MS), await sinceOf(MN), await one("select count(*)::int from semis_logi_private.ksync_files where map_id = $1", [MN])], ["2025-09-01", "2025-08-01", 1], "다시 실행해도 기준일 · 기준선 그대로");
 eq([await one("select has_function_privilege('service_role', 'public.semis_logi_ksync_agent(text, text, text, jsonb)', 'EXECUTE')"),
   await one("select has_function_privilege('anon', 'public.semis_logi_ksync_agent(text, text, text, jsonb)', 'EXECUTE')"),
   await one("select has_function_privilege('anon', 'public.semis_logi_ksync_map_save(jsonb)', 'EXECUTE')")], [true, false, true], "다시 실행해도 권한 그대로");
+
+// 21. v1.68 보고 · 지정 제외 · H → K 준실시간(트리거)
+await as("a1", "admin");
+eq((await rpc("semis_logi_ksync_status")).state.excludes, [], "지정 제외 기본값 — 비어 있음(그 전과 같음)");
+for (const bad of [["../x"], ["a/_H드라이브_휴지통"], Array.from({ length: 21 }, (_, i) => "p" + i), "80 개인정보", [1]]) {
+  eq((await rpc("semis_logi_ksync_settings", { excludes: bad })).error, "excludes", "틀린 제외 목록 거절 " + JSON.stringify(bad).slice(0, 24));
+}
+eq((await rpc("semis_logi_ksync_settings", { excludes: ["링크"] })).error, "excluded", "이미 이은 연결 폴더를 덮는 전체 제외는 거절");
+eq((await rpc("semis_logi_ksync_settings", { excludes: [" 80 개인정보 ", "99 보관", "99 보관", "링크/옛판/개인"] })).ok, true, "전체 제외 저장");
+eq((await rpc("semis_logi_ksync_status")).state.excludes, ["80 개인정보", "99 보관", "링크/옛판/개인"], "앞뒤 공백 정리 · 같은 것은 하나 · 연결 폴더 안 경로는 허용");
+eq([(await save({ k_path: "80 개인정보/명단", mod: "audit", grp: "excl-a" })).error, (await save({ k_path: "99 보관", mod: "audit", grp: "excl-a" })).error], ["excluded", "excluded"],
+  "전체 제외 아래 · 그 폴더 자체는 연결 거절");
+const MX = (await save({ k_path: "보고/가", mod: "audit", grp: "excl-a", excludes: ["사본", "사본"] })).id;
+eq(await one("select excludes from semis_logi_private.ksync_maps where id = $1", [MX]), ["사본"], "연결마다 제외 저장");
+eq((await save({ id: MX, excludes: ["../밖"] })).error, "excludes", "연결마다 제외도 경로 검사");
+await call("preview", { map: MX, counts: { total: 1 } });
+eq([(await save({ id: MX, dir: "both" })).ok, await one("select preview is not null from semis_logi_private.ksync_maps where id = $1", [MX])], [true, true], "키 없는 편집 → 제외 · 건수 그대로");
+eq([(await save({ id: MX, excludes: ["사본", "임시"] })).ok, await one("select preview from semis_logi_private.ksync_maps where id = $1", [MX])], [true, null], "미리보기 중 뺄 경로를 바꾸면 옛 건수를 버림");
+r = await call("hello", { full: true });
+eq([r.excludes, r.maps.find(m => m.id === MX).excludes], [["80 개인정보", "99 보관", "링크/옛판/개인"], ["사본", "임시"]], "hello 가 전체 · 연결마다 제외를 실어 보냄");
+// 끝 보고의 연결마다 보고(rep) → 마지막 것만 · 아는 이유 · 숫자만 · 활성 연결만
+const RR = (await call("run", { phase: "start", trigger: "manual" })).run;
+await call("run", { phase: "end", run: RR, result: "ok", maps: [{ id: ML, done: true, n_files: 1, rep: { out: { old: 3, dir: 2, type_block: 1, name: 1, bogus: 9, excl: "x" }, mismatch: 4 } },
+  { id: MX, rep: { out: { old: 9 }, mismatch: 9 } }] });
+const rp = await one("select report from semis_logi_private.ksync_maps where id = $1", [ML]);
+eq([rp.out.old, rp.out.dir, rp.out.type_block, rp.out.name, rp.out.bogus, rp.out.excl, rp.mismatch, rp.run === RR], [3, 2, 1, 1, undefined, undefined, 4, true], "보고 저장(모르는 이유 · 숫자 아닌 값은 버림)");
+eq(await one("select report from semis_logi_private.ksync_maps where id = $1", [MX]), null, "미리보기 연결은 보고를 두지 않음");
+eq((await rpc("semis_logi_ksync_status")).maps.find(m => m.id === ML).report.mismatch, 4, "상태 연결 목록에 보고");
+await call("folders", { list: [{ path: "01 보안", n: 2 }, { path: "01 보안/계획", n: 5 }, { path: "02 교육", n: 0 }, { path: "02 교육/2025", n: 3 }, { path: "80 개인정보", n: 7 },
+  { path: "링크", n: 1 }, { path: "링크/옛판", n: 4 }, { path: "링크/옛판/개인", n: 2 }, { path: "링크/새", n: 6 }, { path: "보고", n: 0 }, { path: "보고/가", n: 1 }] });
+const rep = await rpc("semis_logi_ksync_report");
+eq(rep.folders.map(f => [f.path, f.part, f.n]), [["01 보안", false, 7], ["02 교육", false, 3], ["링크", true, 1], ["링크/새", false, 6]],
+  "연결 안 된 폴더: 아래도 모두 연결 밖인 맨 위 폴더(아래 파일 수) · 아래에 연결이 있는 폴더의 바로 아래 파일 · 연결 · 전체 제외 아래는 뺌");
+eq([rep.sum.mismatch, rep.sum.old, rep.sum.h_out, rep.sum.excl, rep.out.dir], [4, 3, 4, 5, 2], "합계: 불일치 · 기준일 전 · K 로 안 간 H 문서(K → H 만 연결의 H 문서 + 형식 + 이름) · 지정 제외 수");
+await as("h1", "hq");
+ok(await raises(() => rpc("semis_logi_ksync_report"), "42501"), "보고는 시스템관리자만");
+// 트리거 — 사람이 H → K 를 받는 활성 연결의 화면 · 분류 문서를 고치면 요청 표시. 동기화(…/ksync) · 다른 분류 · K → H 만 · 멈춘 연결은 아님
+const MT = await one("insert into semis_logi_private.ksync_maps(k_path, mod, grp, dir, state) values ('트리거', 'audit', 'trig', 'both', 'active') returning id");
+const reqAt = () => one("select requested_at from semis_logi_private.ksync_state");
+const clearReq = () => db.exec("update semis_logi_private.ksync_state set requested_at = null");
+const human = async (doc) => {
+  await as("u1", "hq");
+  await db.query("update public.semis_logi_store set value = value || $1::jsonb, updated_by = 'cli1', base_at = updated_at where key = 'docs'", [JSON.stringify([doc])]);
+};
+const tdoc = (id, grp) => ({ id, mod: "audit", grp, title: id, date: "2026-11-13", files: [{ name: id + ".pdf", size: 1, url: PUB + "docs/tttttttttttt_" + id + ".pdf" }] });
+await clearReq(); await human(tdoc("t1", "trig"));
+ok(!!(await reqAt()), "사람이 양쪽 연결 분류를 고침 → 요청 표시");
+await clearReq(); await as(null);
+await db.query("select semis_logi_private.ksync_docs_save((select value from public.semis_logi_store where key = 'docs') || $1::jsonb)", [JSON.stringify([tdoc("t2", "trig")])]);
+eq([await reqAt(), await one("select updated_by from public.semis_logi_store where key = 'docs'")], [null, "anon/ksync"], "동기화가 고친 것(…/ksync)에는 깨우지 않음(되돌이 없음)");
+await human(tdoc("t3", "nomap"));
+eq(await reqAt(), null, "연결 없는 분류는 아님");
+await human(tdoc("t4", "olds"));
+eq(await reqAt(), null, "K → H 만 연결의 분류는 아님(K 로 보내지 않음)");
+await db.query("update semis_logi_private.ksync_maps set state = 'paused' where id = $1", [MT]);
+await human(tdoc("t5", "trig"));
+eq(await reqAt(), null, "멈춘 연결은 아님");
+await db.query("update semis_logi_private.ksync_maps set state = 'active', dir = 'h2k' where id = $1", [MT]);
+await human(tdoc("t6", "trig"));
+const at6 = await reqAt();
+ok(!!at6, "H → K 만 연결도 깨움");
+await human(tdoc("t7", "trig"));
+const at7 = await reqAt();
+ok(new Date(at7) > new Date(at6), "요청 중이어도 새로 고치면 시각을 새로(회차 시작이 그 뒤 고친 것을 지우지 않게)");
+await as("u1", "hq");
+await db.query("update public.semis_logi_store set value = value, updated_by = 'cli1', base_at = updated_at where key = 'docs'");
+eq(new Date(await reqAt()).getTime(), new Date(at7).getTime(), "내용이 같은 저장은 깨우지 않음");
+const trgSrc = await one("select prosrc from pg_proc where proname = 'ksync_req_on_docs'");
+ok(/set_config\('lock_timeout', '300ms', true\)/.test(trgSrc) && !/skip locked/.test(trgSrc) && /exception when others then\s+return null/.test(trgSrc)
+  && /old\.value is not distinct from new\.value then return null/.test(trgSrc) && /if not exists \(select 1 from semis_logi_private\.ksync_maps m where m\.state = 'active' and m\.dir <> 'k2h'\) then return null/.test(trgSrc),
+  "문서함 저장은 상태 줄을 0.3초까지만 기다림(넘으면 예외 처리로 요청만 건너뜀 · 건너뛰기 skip locked 아님) · 같은 내용 · H → K 받는 활성 연결이 없으면 훑지 않고 끝");
+await as("u1", "hq");
+await db.exec("begin");
+await db.query("update public.semis_logi_store set value = value || $1::jsonb, updated_by = 'cli1', base_at = updated_at where key = 'docs'", [JSON.stringify([tdoc("t7c", "trig")])]);
+const ltIn = await one("select current_setting('lock_timeout')");
+await db.exec("commit");
+eq([ltIn, new Date(await reqAt()).getTime() > new Date(at7).getTime()], ["0", true], "잠금 대기 한도는 트리거 안에서만 — 저장한 트랜잭션의 나머지에는 원래 값(0) · 요청은 켜짐");
+const at7c = await reqAt();
+eq(await one("select position('update semis_logi_private.ksync_state set net' in prosrc) > position('end loop' in prosrc) from pg_proc where proname = 'ksync_hello'"), true,
+  "hello 는 문서함 목록을 다 만든 뒤에 상태 줄을 고친다(그동안 트리거가 건너뛰지 않게)");
+// 리뷰 반영 ④ — 회차 시작은 계획이 본 문서함 시각(seen = hello full 의 now) 전에 켜진 요청만 끈다
+await as(null);
+const atReq = new Date(await reqAt());
+await call("run", { phase: "start", trigger: "manual", seen: new Date(atReq.getTime() - 1000).toISOString() });
+eq(new Date(await reqAt()).getTime(), new Date(at7c).getTime(), "hello full 뒤에 고친 것 → 회차 시작이 요청을 남김(다음 깨우기에 맞춤)");
+await call("run", { phase: "start", trigger: "manual", seen: new Date(atReq.getTime() + 1000).toISOString() });
+eq(await reqAt(), null, "hello full 전에 켜진 요청 → 회차 시작이 끔");
+await human(tdoc("t7b", "trig"));
+await as(null);
+await call("run", { phase: "start", trigger: "manual", seen: "아님" });
+eq(await reqAt(), null, "seen 이 없거나 틀리면(옛 에이전트) 그대로 끔");
+const hs2 = await call("hello", { full: true });
+ok(typeof hs2.now === "string" && !isNaN(Date.parse(hs2.now)), "hello full 이 시각(now)을 줌 — 에이전트가 회차 시작에 seen 으로");
+await call("run", { phase: "end", run: (await call("run", { phase: "start", trigger: "manual" })).run, result: "ok" });
+await db.exec("create or replace function semis_logi_private.ksync_docs_of(p jsonb, p_mod text, p_grp text) returns jsonb language plpgsql as $$ begin raise exception 'boom'; end $$");
+await clearReq(); await human(tdoc("t8", "trig"));
+eq([(await docs()).some(d => d.id === "t8"), await reqAt()], [true, null], "트리거 오류는 문서함 저장을 막지 않음");
+await as("a1", "admin");
+await db.exec(SQL);
+eq([(await rpc("semis_logi_ksync_status")).state.excludes.length, await one("select excludes from semis_logi_private.ksync_maps where id = $1", [MX])], [3, ["사본", "임시"]], "다시 실행해도 제외 그대로");
+await clearReq(); await human(tdoc("t9", "trig"));
+ok(!!(await reqAt()), "다시 실행하면 트리거 · 함수 되살아남");
+await as("a1", "admin");
 
 console.log(`ksync SQL: ${pass} 통과 / ${fail} 실패`);
 process.exit(fail ? 1 : 0);

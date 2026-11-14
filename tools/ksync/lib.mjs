@@ -100,7 +100,8 @@ export const sha256Buf = (b) => crypto.createHash("sha256").update(b).digest("he
    읽지 못한 곳은 errors(폴더는 dir: true — 계획이 그 아래를 '모름'으로 건너뜀), 상한에 닿으면 capped(계획이 그 연결을 건너뜀).
    opts.cleanBefore 가 있으면 그보다 오래된 내려받기 임시 파일(중단된 실행이 남긴 .ksync-*.part)을 지운다.
    opts.since(기준일 ms) · opts.sizes(모든 연결 기준선의 크기) — 기준선에 없고 기준일 전이며 크기가 어느 기준선과도 다르면 올리지 않을 파일이라 해시하지 않는다
-   (크기가 같으면 이름 바꿈 · 연결 사이 이동 후보라 잰다) */
+   (크기가 같으면 이름 바꿈 · 연결 사이 이동 후보라 잰다). opts.names(소문자 이름 + "|" + 크기 — H 링크 후보)에 있으면 이어질 수 있어 잰다
+   (기준선 표시는 K 해시가 있어야 받는다 — 백로그 전체가 아니라 이어질 것만 재므로 SMB 에서 오래 걸리지 않음) */
 const PART_RE = /^\.ksync-[0-9a-f]{12}\.part$/;
 export async function indexDir(root, baseByRel, opts = {}) {
   const max = opts.maxFiles || 20000;
@@ -115,6 +116,7 @@ export async function indexDir(root, baseByRel, opts = {}) {
       const name = nfc(d.name);
       if (d.isSymbolicLink()) continue;
       const a = path.join(abs, d.name), r = join(rel, name);
+      if (opts.skip && opts.skip.has(r.toLowerCase())) continue;     // 지정 제외 — 걷지 않는다(계획에는 '모름'으로 넘김)
       if (opts.cleanBefore && d.isFile() && PART_RE.test(d.name)) {
         try { if ((await fsp.lstat(a)).mtimeMs < opts.cleanBefore) await fsp.unlink(a); } catch (e) { /* 다음 색인 때 */ }
         continue;
@@ -126,7 +128,7 @@ export async function indexDir(root, baseByRel, opts = {}) {
       try { st = await fsp.lstat(a); } catch (e) { errors.push({ f: r, r: e.code || "stat" }); continue; }
       const mtime = Math.floor(st.mtimeMs), b = baseByRel && baseByRel.get(r);
       let sha = null;
-      const old = !b && opts.since && mtime < opts.since && !(opts.sizes && opts.sizes.has(st.size));
+      const old = !b && opts.since && mtime < opts.since && !(opts.sizes && opts.sizes.has(st.size)) && !(opts.names && opts.names.has(name.toLowerCase() + "|" + st.size));
       if (st.size <= MAX_SIZE && !old) {
         if (b && b.k_sha256 && Number(b.k_size) === st.size && Date.parse(b.k_mtime) === mtime) sha = b.k_sha256;
         else { try { sha = await sha256File(a); } catch (e) { errors.push({ f: r, r: e.code || "read" }); continue; } }
@@ -138,15 +140,18 @@ export async function indexDir(root, baseByRel, opts = {}) {
   return { list, errors, capped };
 }
 
-/* 폴더 목록(3단계 · 이름과 바로 아래 파일 수만) */
-export async function folderTree(root, depth = 3, cap = 3000) {
+/* 폴더 목록(3단계 · 이름과 바로 아래 파일 수만). skip = 전체 지정 제외(소문자 경로) — 걷지도 알리지도 않는다 */
+export async function folderTree(root, depth = 3, cap = 3000, skip) {
   const out = [];
   async function walk(abs, rel, d) {
     if (d > depth || out.length >= cap) return;
     let ents;
     try { ents = await fsp.readdir(abs, { withFileTypes: true }); } catch (e) { return; }
     if (rel) out.push({ path: rel, n: ents.filter(x => x.isFile() && !excluded(nfc(x.name), false)).length });
-    for (const x of ents) if (x.isDirectory() && !x.isSymbolicLink() && !excluded(nfc(x.name), true)) await walk(path.join(abs, x.name), join(rel, nfc(x.name)), d + 1);
+    for (const x of ents) {
+      const r = join(rel, nfc(x.name));
+      if (x.isDirectory() && !x.isSymbolicLink() && !excluded(nfc(x.name), true) && !(skip && skip.has(r.toLowerCase()))) await walk(path.join(abs, x.name), r, d + 1);
+    }
   }
   await walk(root, "", 0);
   return out.slice(0, cap);

@@ -317,6 +317,113 @@ eq([conflictName("d/a.xlsx", "2026-11-04", 2), excluded("a (충돌 2026-11-04 2)
   eq([ops(p), p.counts.old], [["put:new:old.pdf"], 0], "⑪ 기준일 없음 → 옛 파일도 지금처럼 올림");
 }
 
+/* v1.68 링크 정확도(서버 flags.link_all → linkAll) — 기준선에 없는 K 파일의 짝을 H 옛 판에서도 찾고, 기준일 전 파일도 먼저 이어 본다
+   (기준일은 '올리지 않음'일 뿐). 같은 내용 파일이 여럿이면 이름이 같은 후보로 이름 바꿈을 고른다. 깃발을 끄면 그 전 그대로 */
+{
+  const SINCE = Date.parse("2025-08-01T00:00:00+09:00"), OLD = SINCE - 864e5;
+  const PL = (o) => P(Object.assign({ linkAll: true }, o));
+  const cur = { doc: "dc", ser: "S", name: "보고 v2.pdf", url: "uc", size: 9, title: "t" };
+  const oldv = { doc: "do", ser: "S", name: "보고.pdf", url: "uo", size: 4, date: "2025-01-01" };
+  const k4 = { rel: "보고.pdf", size: 4, mtime: T, sha: H("1") };
+  p = PL({ kList: [k4], hList: [cur], hOlds: [oldv] });
+  eq([ops(p), p.actions[0] && [p.actions[0].it.doc, p.actions[0].it.url], p.counts.link, p.counts.k2h, p.counts.h2k, p.detail.map(d => d.r)],
+    [["link::보고.pdf"], ["do", "uo"], 1, 0, 0, ["옛 판과 같은 파일"]], "① 옛 판과 이름 · 크기가 같음 → 연결만(올리지 않음) · 그 판 묶음의 현재 판은 이번에 받지 않음(K '이름 (2)' 없음)");
+  p = P({ kList: [k4], hList: [cur], hOlds: [oldv] });
+  eq(ops(p), ["put:new:보고.pdf", "get::보고 v2.pdf"], "① 깃발을 끄면 그 전 그대로(옛 판은 보지 않음 — 새 문서로 올리고 현재 판을 받음)");
+  const hSame = [{ doc: "h1", ser: "h1", name: "same.pdf", url: "uh", size: 4 }];
+  p = PL({ since: SINCE, kList: [{ rel: "same.pdf", size: 4, mtime: OLD, sha: H("4") }], hList: hSame });
+  eq([ops(p), p.counts.link, p.counts.old], [["link::same.pdf"], 1, 0], "② 기준일 전 K 파일도 H 짝(현재 판)과 연결만 — 기준일은 '올리지 않음'이지 '잇지 않음'이 아님");
+  p = PL({ since: SINCE, kList: [Object.assign({}, k4, { mtime: OLD })], hList: [cur], hOlds: [oldv] });
+  eq([ops(p), p.counts.old], [["link::보고.pdf"], 0], "② 기준일 전 K 파일 ↔ 옛 판도 연결만");
+  p = PL({ since: SINCE, kList: [{ rel: "same.pdf", size: 4, mtime: OLD, sha: null }], hList: hSame });
+  eq([ops(p), p.counts.old], [["get::same (2).pdf"], 1], "② 해시하지 않은 옛 파일은 잇지 않음(기준선 표시는 K 해시가 있어야 받음) — 그 전처럼 건수만");
+  p = PL({ since: SINCE, kList: [{ rel: "x.pdf", size: 3, mtime: OLD, sha: H("3") }], hList: [cur], hOlds: [oldv] });
+  eq([ops(p), p.counts.old, p.detail.filter(d => d.f === "x.pdf").length], [["get::보고 v2.pdf"], 1, 0], "③ 기준일 전 · 짝 없음 → 올리지 않고 건수만(기록 줄 없음)");
+  p = PL({ kList: [k4], hList: [{ ser: "S", hidden: true }], hOlds: [oldv] });
+  eq(ops(p), ["put:new:보고.pdf"], "④ 숨은 SSI 판 묶음의 옛 판은 후보가 아님");
+  const old2 = { doc: "do2", ser: "S", name: "보고 초안.pdf", url: "uo2", size: 3, date: "2024-12-01" };
+  p = PL({ kList: [k4, { rel: "보고 초안.pdf", size: 3, mtime: T, sha: H("2") }], hList: [cur], hOlds: [oldv, old2] });
+  eq(ops(p), ["link::보고.pdf", "put:new:보고 초안.pdf"], "옛 판은 판 묶음마다 회차에 하나만(둘 다 이으면 다음 실행이 하나 빼고 'H 에서 지움'으로 봄)");
+  const RL = [row(41, "보고.pdf", { k_size: 4, k_sha256: H("1"), doc_id: "do", ser: "S", h_url: "uo", h_name: "보고.pdf", h_size: 4 })];
+  p = PL({ baseline: RL, kList: [kOf(RL[0]), { rel: "사본/보고.pdf", size: 4, mtime: T, sha: H("9") }], hList: [cur], hOlds: [oldv] });
+  eq(ops(p).filter(x => x.startsWith("link")), [], "기준선 줄이 있는 판 묶음의 옛 판은 후보가 아님");
+  // 해시가 실린 H 첨부(해시를 채운 문서)는 해시가 양쪽에 하나뿐이면 이름이 달라도 · 여럿이면 이름도 같을 때만
+  p = PL({ kList: [{ rel: "이름 다름.pdf", size: 4, mtime: T, sha: H("5") }], hList: [Object.assign({}, cur, { sha: H("5") })] });
+  eq(ops(p), ["link::이름 다름.pdf"], "해시가 양쪽에 하나뿐 → 이름이 달라도 연결만");
+  p = PL({ kList: [{ rel: "이름 다름.pdf", size: 4, mtime: T, sha: H("5") }, { rel: "또 다름.pdf", size: 4, mtime: T, sha: H("5") }], hList: [Object.assign({}, cur, { sha: H("5") })] });
+  eq(ops(p).filter(x => x.startsWith("link")), [], "같은 해시 K 파일이 둘 → 해시만으로 잇지 않음");
+  p = PL({ kList: [{ rel: "보고 v2.pdf", size: 4, mtime: T, sha: H("5") }, { rel: "또 다름.pdf", size: 4, mtime: T, sha: H("5") }], hList: [Object.assign({}, cur, { sha: H("5") })] });
+  eq(ops(p).filter(x => x.startsWith("link")), ["link::보고 v2.pdf"], "같은 해시가 여럿이면 해시 + 이름이 같은 후보만");
+  // ⑤ 같은 내용 파일 둘(같은 안내 문서가 여러 폴더에) — 이름 바꿈을 마음대로 고르지 않음
+  const BR = [row(1, "a/안내.pdf", { k_sha256: H("7"), k_size: 5 })];
+  const twin = [{ rel: "b/안내.pdf", size: 5, mtime: T, sha: H("7") }, { rel: "c/다른 이름.pdf", size: 5, mtime: T, sha: H("7") }];
+  p = P({ baseline: BR, kList: twin, hList: BR.map(r => hOf(r)) });
+  eq([ops(p).filter(x => x.startsWith("rename")), p.counts.dup], [[], 1], "⑤ 같은 해시 후보 둘 → 이름 바꿈 안 함 · counts.dup(깃발과 관계없는 보고)");
+  p = PL({ baseline: BR, kList: twin, hList: BR.map(r => hOf(r)) });
+  eq([ops(p).filter(x => x.startsWith("rename")), p.counts.dup], [["rename::b/안내.pdf"], 0], "⑤ linkAll — 이름이 같은 후보를 고름");
+  p = PL({ baseline: BR, kList: twin.concat([{ rel: "d/안내.pdf", size: 5, mtime: T, sha: H("7") }]), hList: BR.map(r => hOf(r)) });
+  eq([ops(p).filter(x => x.startsWith("rename")), p.counts.dup], [[], 1], "⑤ 이름도 같은 후보가 둘 → 고르지 않고 dup");
+  // ⑥ 옛 판에 이은 줄의 다음 실행 — 현재 판이 그 판 묶음의 새 판으로 보인다
+  p = P({ map: Object.assign({}, MAP, { dir: "k2h" }), baseline: RL, kList: [kOf(RL[0])], hList: [cur] });
+  eq([ops(p), p.detail.map(d => d.a + ":" + d.r), p.counts.k2h], [["state:skip:보고.pdf"], ["skip:dir"], 0], "⑥ K → H 만: H 쪽이 더 새로움(dir)으로 건너뜀 — 중복 올리기 없음");
+  p = P({ baseline: RL, kList: [kOf(RL[0])], hList: [cur] });
+  eq([ops(p), p.actions[0].backup, p.n], [["get::보고 v2.pdf"], "보고.pdf", 1], "⑥ 양쪽: 현재 판을 받고 옛 K 파일은 이전판으로(backup)");
+  // 리뷰 반영 ① — 현재 판 첨부가 여럿이고 옛 판 이름이 그 중에 없으면 옛 판에 잇지 않는다(다음 실행이 짝을 못 지어 'H 에서 지움' + 현재 판 첨부를 모두 받음)
+  const c2 = [{ doc: "dc", ser: "S", name: "보고 v3.pdf", url: "u3", size: 9 }, { doc: "dc", ser: "S", name: "부록.pdf", url: "ua", size: 2 }];
+  p = PL({ kList: [{ rel: "보고 v2.pdf", size: 7, mtime: T, sha: H("6") }], hList: c2, hOlds: [{ doc: "dv2", ser: "S", name: "보고 v2.pdf", url: "u2", size: 7, date: "2026-06-01" }] });
+  eq(ops(p).filter(x => x.startsWith("link")), [], "① 현재 판 첨부 둘 · 같은 이름 없음 → 옛 판에 잇지 않음(새 문서로 올림)");
+  const c2n = [{ doc: "dc", ser: "S", name: "보고.pdf", url: "u3", size: 9 }, { doc: "dc", ser: "S", name: "부록.pdf", url: "ua", size: 2 }];
+  p = PL({ kList: [k4], hList: c2n, hOlds: [oldv] });
+  eq(ops(p), ["link::보고.pdf"], "① 현재 판 첨부 둘 · 같은 이름 있음 → 옛 판에 연결만");
+  const RN = [row(42, "보고.pdf", { k_size: 4, k_sha256: H("1"), doc_id: "do", ser: "S", h_url: "uo", h_name: "보고.pdf", h_size: 4 })];
+  p = P({ baseline: RN, kList: [kOf(RN[0])], hList: c2n });
+  eq(ops(p).sort(), ["get::부록.pdf", "get::보고.pdf"].sort(), "① 다음 실행: 같은 이름 현재 판과 짝(H 가 더 새로움 — 받기) · 'H 에서 지움' 없음");
+  // 리뷰 반영 ② — 파일 순서와 관계없이 현재 판과 먼저 잇는다(옛 판의 K 사본이 먼저 와도 현재 판의 K 사본이 현재 판과 연결)
+  const cur1 = [{ doc: "dr2", ser: "R", name: "규정_v2.hwp", url: "ur2", size: 6 }], old1 = [{ doc: "dr1", ser: "R", name: "규정_v1.hwp", url: "ur1", size: 5, date: "2025-01-01" }];
+  const kAB = [{ rel: "A/규정_v1.hwp", size: 5, mtime: T, sha: H("a") }, { rel: "B/규정_v2.hwp", size: 6, mtime: T, sha: H("b") }];
+  const pOff = P({ kList: kAB, hList: cur1, hOlds: old1 }), pOn = PL({ kList: kAB, hList: cur1, hOlds: old1 });
+  eq([ops(pOn).sort(), pOn.actions.filter(a => a.op === "link").map(a => a.it.url)], [ops(pOff).sort(), ["ur2"]], "② 옛 판 사본이 먼저 와도 현재 판 사본이 현재 판과 연결 — 깃발을 끈 것과 같은 계획");
+  // 재리뷰 ① — 다른 판 묶음(T)의 기준선 줄이 S 의 현재 판을 주소로 가져가면(문서함에서 판 묶음을 옮김 → relink) S 의 옛 판은 후보가 아님
+  const RT = [row(71, "a.pdf", { k_size: 4, ser: "T", h_url: "uS", h_name: "a.pdf", doc_id: "dS" })];
+  p = PL({ baseline: RT, kList: [kOf(RT[0]), { rel: "b.pdf", size: 3, mtime: T, sha: H("8") }], hList: [{ doc: "dS", ser: "S", name: "a.pdf", url: "uS", size: 4 }],
+    hOlds: [{ doc: "dSo", ser: "S", name: "b.pdf", url: "uSo", size: 3, date: "2025-01-01" }] });
+  eq([ops(p).filter(x => /^(relink|link|put)/.test(x)), p.actions.filter(a => a.op === "link").length], [["relink:ok:a.pdf", "put:new:b.pdf"], 0],
+    "재리뷰 ① 현재 판을 다른 판 묶음 줄이 가져간 판 묶음의 옛 판에는 잇지 않음(다음 실행의 'H 에서 지움' 방지)");
+  // 재리뷰 ③ — 같은 이름 비교는 다음 실행의 짝짓기처럼 글자 그대로: 현재 판 첨부 이름이 NFD 면 NFC 옛 판 이름과 다른 이름
+  const cNfd = [{ doc: "dc", ser: "S", name: "보고.pdf".normalize("NFD"), url: "u3", size: 9 }, { doc: "dc", ser: "S", name: "부록.pdf", url: "ua", size: 2 }];
+  p = PL({ kList: [k4], hList: cNfd, hOlds: [oldv] });
+  eq(ops(p).filter(x => x.startsWith("link")), [], "재리뷰 ③ 현재 판 이름이 NFD · 옛 판 이름이 NFC → 같은 이름으로 보지 않음(다음 실행도 짝을 못 지음)");
+  p = PL({ kList: [k4], hList: c2n, hOlds: [oldv] });
+  eq(ops(p).filter(x => x.startsWith("link")), ["link::보고.pdf"], "재리뷰 ③ 글자 그대로 같은 이름은 그대로 연결만");
+}
+
+/* v1.68 지정 제외 · 보고 — 제외 경로는 '모름'(kErr { r: "excluded" }): 그 아래 기준선 줄은 K 에서 지운 것이 아니라 삭제 대기 · 받기 · 올리기 모두 없음
+   (이 한 건이 제외 설계의 핵심 — 그냥 빼면 자동 삭제가 H 문서를 지운다). counts.out = 범위 밖 이유별, counts.mismatch = 삭제 대기 + 보류된 전송 */
+{
+  const BX = [row(51, "개인/명단.xlsx"), row(52, "개인/하위/사진.pdf"), row(53, "공개.pdf")];
+  const hx = BX.map(r => hOf(r));
+  p = P({ baseline: BX, kList: [kOf(BX[2])], hList: hx });
+  eq(ops(p).filter(x => x.startsWith("state:del")).length, 2, "제외가 없으면 사라진 줄은 삭제 대기");
+  p = P({ baseline: BX, kList: [kOf(BX[2])], hList: hx, kErr: [{ f: "개인", r: "excluded", dir: true }] });
+  eq([ops(p), p.counts.del, p.counts.out.excl, p.counts.mismatch, p.counts.total], [[], 0, 1, 0, 0], "제외 경로 아래 기준선 줄 → 삭제 대기 아님 · 아무 동작 없음 · 오류 · 건너뜀으로도 세지 않음");
+  const BC = [row(54, "Private/a.xlsx"), row(55, "b.pdf")];
+  p = P({ baseline: BC, kList: [kOf(BC[1])], hList: [hOf(BC[0], { url: "new" }), hOf(BC[1])], kErr: [{ f: "private", r: "excluded", dir: true }, { f: "PRIVATE", r: "excluded", dir: true }] });
+  eq([ops(p), p.counts.h2k, p.counts.out.excl], [[], 0, 1], "대소문자만 다른 제외 경로도 같은 폴더(맥 SMB) — H 가 고친 판도 받지 않음 · 한 번만 셈");
+  p = P({ kList: [], hList: [{ doc: "h1", ser: "h1", name: "Private", url: "uh", size: 1 }], kErr: [{ f: "private", r: "excluded", dir: true }] });
+  eq(ops(p), ["get::Private (2)"], "H 에만 있는 문서는 제외 경로 이름을 차지하지 않음(덮지 않음)");
+  p = P({ map: Object.assign({}, MAP, { dir: "k2h" }), kList: [{ rel: "a.html", size: 1, mtime: T, sha: H("1") }, { rel: "big.zip", size: MAX_SIZE + 1, mtime: T, sha: null }],
+    hList: [{ doc: "h1", ser: "h1", name: "h.pdf", url: "uh", size: 3 }, { ser: "hs", hidden: true }] });
+  eq(p.counts.out, { type: 1, type_block: 0, too_large: 1, ssi: 1, old: 0, excl: 0, dir: 1, name: 0 }, "범위 밖 이유별: 올리지 않는 형식 · 50MB · SSI 판 묶음 · 한 방향(K → H 만 연결의 H 문서)");
+  p = P({ hList: [{ doc: "h2", ser: "h2", name: "x.exe", url: "ux", size: 1 }, { doc: "h3", ser: "h3", name: "a.tmp", url: "ut", size: 1 }] });
+  eq([p.counts.out.type_block, p.counts.out.name], [1, 1], "K 로 쓰지 않는 형식 · 쓸 수 없는 이름");
+  p = P({ map: Object.assign({}, MAP, { dir: "h2k" }), kList: [{ rel: "k.pdf", size: 1, mtime: T, sha: H("2") }] });
+  eq(p.counts.out.dir, 1, "한 방향(H → K 만 연결의 K 파일)");
+  p = P({ map: Object.assign({}, MAP, { hold: { run: 1 } }), kList: [{ rel: "n.pdf", size: 3, mtime: T, sha: H("3") }], hList: [{ doc: "h1", ser: "h1", name: "h.pdf", url: "uh", size: 4 }] });
+  eq([p.held, p.counts.mismatch], [true, 2], "보류된 연결 → 못 보낸 전송이 불일치");
+  p = P({ baseline: B, kList: [kOf(B[1])], hList: B.map(r => hOf(r)) });
+  eq([p.counts.del, p.counts.mismatch], [1, 1], "삭제 대기는 불일치");
+}
+
 /* 도우미 — 경로 · 설정 · 시각 */
 ["a/b.pdf", "가/나 다.xlsx"].forEach(x => ok(relOk(x), "경로 " + x));
 ["/etc/x", "../x", "a/../b", "a//b", "a\\b", "C:x", "", "a/"].forEach(x => ok(!relOk(x), "경로 거절 " + x));
@@ -402,6 +509,16 @@ eq([fs.readdirSync(partDir).sort(), ip.list.map(x => x.rel)], [[".ksync-ba987654
     "기준일 색인: 옛 파일은 해시 안 함 · 크기가 어느 연결 기준선과 같으면 잼 · 기준일 0시부터는 잼 · 기준선 파일은 날짜와 관계없이");
   eq(sx.list.length, 4, "옛 파일도 색인에는 남음(이름 차지 — 받는 파일이 덮지 않음)");
   ok((await indexDir(sinceDir, new Map())).list.every(x => x.sha), "기준일 없음 → 모두 잼(지금과 같음)");
+  const sn = await indexDir(sinceDir, new Map(), { since: SN, sizes: new Set(), names: new Set(["old.pdf|4"]) });
+  eq(["old.pdf", "oldsz.pdf"].map(n => (sn.list.find(x => x.rel === n) || {}).sha), [hx("OLD1"), null], "link_all: 기준일 전 파일 중 H 링크 후보(소문자 이름|크기)와 같은 것만 잼");
+  // 지정 제외 — 색인 · 폴더 목록 모두 걷지 않음(대소문자 무시) · 오류도 아님
+  const xd = path.join(TMP, "excl");
+  fs.mkdirSync(path.join(xd, "Private", "sub"), { recursive: true }); fs.mkdirSync(path.join(xd, "open"), { recursive: true });
+  fs.writeFileSync(path.join(xd, "Private", "a.txt"), "A"); fs.writeFileSync(path.join(xd, "Private", "sub", "b.txt"), "B"); fs.writeFileSync(path.join(xd, "open", "c.txt"), "C"); fs.writeFileSync(path.join(xd, "d.txt"), "D");
+  const ix = await indexDir(xd, new Map(), { skip: new Set(["private"]) });
+  eq([ix.list.map(x => x.rel).sort(), ix.errors], [["d.txt", "open/c.txt"], []], "지정 제외 폴더는 색인하지 않음 · 오류도 아님");
+  eq([(await folderTree(xd, 3, 3000, new Set(["private"]))).map(x => x.path).sort(), (await folderTree(xd)).map(x => x.path).sort()], [["open"], ["Private", "Private/sub", "open"]],
+    "폴더 목록도 전체 제외 아래는 알리지 않음");
 }
 
 /* 받은 파일 놓기(place) — A2 추적하지 않는 K 항목은 옮기지 않음 · A4 충돌 사본 이름은 받은 뒤 · A6 '(충돌 날짜 2)' · A7 색인 뒤 바뀐 파일은 건드리지 않음 */
@@ -766,14 +883,15 @@ dg = agentDeps({ netCheck: async () => (++n445 < 3 ? { ok: false, msg: "x" } : {
 rr = await runAgent(dg, { once: true });
 eq([rr.status, dg.notes.length, dg.sleeps, dg.calls], ["ok", 0, [5000, 5000], ["hello", "hello", "run:start", "folders", "run:end"]], "A15 로그인 직후 445 두 번 실패 → 알림 없이 이어서 동기화");
 eq(readSt().lastOkDay, "2026-11-04", "A12 창 시작 뒤에 시작한 실행 → 오늘 끝냄");
-fs.writeFileSync(ST, JSON.stringify({ lastOkDay: "2026-11-04", lastSeen: T - 26 * 60e3, logDay: "2026-11-04", foldersDay: "2026-11-04" }));
+// 깨우는 간격 10분 — 오늘 끝냈어도 9분(DONE_GUARD)이 지나면 서버를 본다(H 에서 올린 문서의 동기화 요청을 10분 안에)
+fs.writeFileSync(ST, JSON.stringify({ lastOkDay: "2026-11-04", lastSeen: T - 10 * 60e3, logDay: "2026-11-04", foldersDay: "2026-11-04" }));
 dg = agentDeps();
 rr = await runAgent(dg, {});
-eq([rr.status, dg.calls], ["idle", ["hello"]], "A11 오늘 끝냈어도 25분 지나면 서버를 봄(지금 동기화 요청 확인)");
-fs.writeFileSync(ST, JSON.stringify({ lastOkDay: "2026-11-04", lastSeen: T - 20 * 60e3, logDay: "2026-11-04" }));
+eq([rr.status, dg.calls], ["idle", ["hello"]], "A11 오늘 끝냈어도 9분 지나면 서버를 봄(지금 동기화 요청 확인 — 10분 간격 깨우기)");
+fs.writeFileSync(ST, JSON.stringify({ lastOkDay: "2026-11-04", lastSeen: T - 8 * 60e3, logDay: "2026-11-04" }));
 dg = agentDeps();
 rr = await runAgent(dg, {});
-eq([rr.status, dg.calls], ["done-today", []], "A11 25분 안이면 서버도 부르지 않음");
+eq([rr.status, dg.calls], ["done-today", []], "A11 9분 안이면 서버도 부르지 않음");
 /* 5분 안에 다시 깨어남(네트워크 변경 · 로그인 · 30분 깨우기가 잇달아) — 창 밖이면 445 · 서버 없이 끝, 그날 매일 실행이 남은 창 안이면 막지 않음 */
 const K0830 = Date.parse("2026-11-03T23:30:00Z");
 fs.writeFileSync(ST, JSON.stringify({ lastSeen: K0830 - 2 * 60e3 }));
@@ -935,7 +1053,7 @@ const fakeSrv = (o) => {
     if (x instanceof Response) return x;
     if (x) return new Response(JSON.stringify(x), { status: x.ok ? 200 : 409 });
     let r = { ok: true };
-    if (b.act === "hello") r = { ok: true, allow: true, daily_at: "08:30", requested: false, mass_limit: LIM, maps: o.maps, lists: o.lists, paused_base: o.paused_base };
+    if (b.act === "hello") r = { ok: true, allow: true, daily_at: "08:30", requested: false, mass_limit: LIM, maps: o.maps, lists: o.lists, paused_base: o.paused_base, flags: o.flags, excludes: o.excludes };
     else if (tag === "run:start") r = { ok: true, run: 21 };
     else if (tag === "put:begin") { nUp++; r = { ok: true, path: "docs/z" + nUp, url: "https://store.example/pub/z" + nUp, upload: "https://store.example/up/z" + nUp, type: "application/x-test" }; }
     else if (b.act === "apply") r = { ok: true, docs: Object.fromEntries(b.paths.map(p => [p, "ks-" + p])) };
@@ -1109,6 +1227,47 @@ for (const [err, status, errors] of [["state", "ok", 0], ["bad", "partial", 1]])
     ["ok", ["22:moved.pdf:new"], 1], "멈춘 연결 폴더에서 옮긴 옛 파일 → 올림(그 밖의 옛 파일은 그대로 뺌)");
 }
 
+/* v1.68 링크 — 에이전트는 hello 의 flags.link_all 을 따른다: 켜지면 옛 판(lists[].olds)을 계획에 넘기고 기준일 전 파일 중 링크 후보만 해시해 연결만,
+   깃발이 없거나(옛 서버) 꺼지면 그 전 그대로(옛 판 무시 · 기준일 전 파일은 해시도 연결도 안 함) */
+{
+  fs.rmSync(ST, { force: true });
+  const SN = Date.parse("2025-08-01T00:00:00+09:00");
+  const d24 = mkK("m24");
+  fs.writeFileSync(path.join(d24, "보고.pdf"), "OLDV"); fs.utimesSync(path.join(d24, "보고.pdf"), (SN - 864e5) / 1000, (SN - 864e5) / 1000);
+  const L24 = (flags) => ({ flags, maps: [mapOf(24, "m24", { since: "2025-08-01", dir: "k2h" })],
+    lists: [{ map: 24, base: [], h: [hIt("dc24", "보고 v2.pdf", "uc24", { ser: "S24", size: 9 })], olds: [{ ser: "S24", doc: "do24", name: "보고.pdf", size: 4, url: "uo24", date: "2025-01-01" }] }] });
+  for (const f of [undefined, { link_all: false }]) {
+    sv = fakeSrv(L24(f));
+    rf = await runFake(sv);
+    eq([rf.status, sv.items().filter(x => x.op === "set").length, sv.bodies.filter(b => b.act === "put").length], ["ok", 0, 0], "깃발 " + JSON.stringify(f) + " → 옛 판 무시 · 기준일 전 파일은 그대로 뺌");
+  }
+  sv = fakeSrv(L24({ link_all: true }));
+  rf = await runFake(sv);
+  eq([rf.status, sv.items().filter(x => x.op === "set").map(x => [x.rel_path, x.doc_id, x.h_url, x.k_sha256 === sha("OLDV")]), sv.bodies.filter(b => b.act === "put").length],
+    ["ok", [["보고.pdf", "do24", "uo24", true]], 0], "link_all → 기준일 전 K 파일을 해시해 옛 판과 연결만(올리기 없음)");
+}
+
+/* v1.68 지정 제외 · 보고 — hello 의 전체 제외(공유 뿌리 기준) 중 이 연결 폴더 아래 것 + 연결마다 제외는 걷지 않고 '모름'으로 넘김:
+   그 아래 새 파일은 올리지 않고 기준선 줄은 삭제 대기가 되지 않음 · 끝 보고에 연결마다 보고(rep) · 폴더 목록은 전체 제외 아래를 알리지 않음 */
+{
+  fs.rmSync(ST, { force: true });
+  const d25 = mkK("m25", { "공개.pdf": "PUB" });
+  fs.mkdirSync(path.join(d25, "Private"), { recursive: true }); fs.writeFileSync(path.join(d25, "Private", "new.pdf"), "NEW");
+  fs.mkdirSync(path.join(d25, "보관"), { recursive: true }); fs.writeFileSync(path.join(d25, "보관", "x.pdf"), "X");
+  const L25 = (o) => Object.assign({ excludes: ["m25/private", "다른/폴더"], maps: [mapOf(25, "m25", { excludes: ["보관"] })],
+    lists: [{ map: 25, base: [bRow(96, "보관/gone.pdf", "G", "ug")], h: [hIt("d96", "gone.pdf", "ug", { ser: "s96" })] }] }, o || {});
+  sv = fakeSrv(L25());
+  rf = await runFake(sv);
+  const e25 = rf.end.maps.find(x => x.id === 25);
+  eq([rf.status, sv.bodies.filter(b => b.act === "put" && b.phase === "begin").map(b => b.rel_path), sv.items().filter(x => x.op === "state").length, e25.rep && e25.rep.out.excl, e25.rep && e25.rep.mismatch],
+    ["ok", ["공개.pdf"], 0, 2, 0], "제외 폴더 아래 새 파일은 올리지 않음 · 기준선 줄은 삭제 대기 아님 · 보고 excl 2 · 불일치 0");
+  const fl = sv.bodies.find(b => b.act === "folders");
+  ok(fl && !fl.list.some(x => /private/i.test(x.path)) && fl.list.some(x => x.path === "m25/보관"), "폴더 목록: 전체 제외 아래는 빼고 연결마다 제외는 그대로 알림");
+  sv = fakeSrv(L25({ reply: (b, tag) => (tag === "put:begin" ? { ok: false, error: "bad" } : null) }));
+  rf = await runFake(sv);
+  eq(rf.end.maps.find(x => x.id === 25).rep.mismatch, 1, "실행 중 못 한 전송(오류)도 불일치");
+}
+
 /* 설치 · 제거(install.sh · uninstall.sh) — HOME 은 임시 폴더, 키체인(security) · launchctl 은 가짜 명령 */
 {
   const IH = path.join(TMP, "home"), BIN = path.join(TMP, "bin"), LC = path.join(TMP, "launchctl.log");
@@ -1123,12 +1282,12 @@ for (const [err, status, errors] of [["state", "ok", 0], ["bad", "partial", 1]])
   const cal = () => { const m = /<key>StartCalendarInterval<\/key>\s*<dict><key>Hour<\/key><integer>(\d+)<\/integer><key>Minute<\/key><integer>(\d+)<\/integer><\/dict>/.exec(plist()); return m ? [Number(m[1]), Number(m[2])] : null; };
   let ri = sh("install.sh", "https://edge.example/functions/v1/semis-logi-ksync\nsmb://nas.example/share\nn\n");
   eq([ri.status, cal()], [0, [8, 30]], "설치: 매일 실행 시작 시각(기본 08:30)에도 깨움 " + ri.stderr);
-  ok(/<key>RunAtLoad<\/key><true\/>/.test(plist()) && /<key>StartInterval<\/key><integer>1800<\/integer>/.test(plist()) && /<key>WatchPaths<\/key>\s*<array><string>\/Library\/Preferences\/SystemConfiguration<\/string><\/array>/.test(plist()),
-    "설치: 로그인 때 · 30분마다 · 네트워크가 바뀔 때는 그대로");
+  ok(/<key>RunAtLoad<\/key><true\/>/.test(plist()) && /<key>StartInterval<\/key><integer>600<\/integer>/.test(plist()) && /<key>WatchPaths<\/key>\s*<array><string>\/Library\/Preferences\/SystemConfiguration<\/string><\/array>/.test(plist()),
+    "설치: 로그인 때 · 10분마다(H → K 준실시간) · 네트워크가 바뀔 때");
   if (fs.existsSync("/usr/bin/plutil")) {
     const pj = spawnSync("/usr/bin/plutil", ["-convert", "json", "-o", "-", PL], { encoding: "utf8" });
     const j = JSON.parse(pj.stdout || "{}");
-    eq([pj.status, j.StartCalendarInterval, j.StartInterval, j.RunAtLoad, j.WatchPaths], [0, { Hour: 8, Minute: 30 }, 1800, true, ["/Library/Preferences/SystemConfiguration"]], "설치: plist 형식(plutil)");
+    eq([pj.status, j.StartCalendarInterval, j.StartInterval, j.RunAtLoad, j.WatchPaths], [0, { Hour: 8, Minute: 30 }, 600, true, ["/Library/Preferences/SystemConfiguration"]], "설치: plist 형식(plutil)");
   }
   eq([fs.readdirSync(path.join(APPD, "agent")).sort(), JSON.parse(fs.readFileSync(CFG, "utf8")).smbUrl, (fs.statSync(CFG).mode & 0o777).toString(8), /bootstrap gui\/\d+ /.test(fs.readFileSync(LC, "utf8"))],
     [["ksync.mjs", "lib.mjs", "package.json", "plan.mjs"], "smb://nas.example/share", "600", true], "설치: 에이전트 사본 · 설정(600) · LaunchAgent 등록");

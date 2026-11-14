@@ -1238,6 +1238,80 @@ eq([await fnPost(Object.assign({ mtime: new Date(SN - 30 * 864e5).toISOString() 
 await fnPost({ act: "run", phase: "end", run: RSN, result: "ok" });
 await admin("select public.semis_logi_ksync_map_delete($1)", [MSD]);
 
+/* 19-12. v1.68 링크 정확도(flags.link_all) — H 옛 판과 이름 · 크기가 같은 기준일 전 K 파일: 첫 회차에 연결만(새 문서 · K '이름 (2)' 없음),
+   다음 회차에 'H 가 더 새로움'으로 현재 판을 받고 옛 K 파일은 이전판으로(양쪽 연결) */
+const LKD = path.join(MOUNT, "업무", "옛판");
+fs.mkdirSync(LKD, { recursive: true });
+fs.writeFileSync(path.join(LKD, "계획.hwp"), "PLAN-V1"); fs.utimesSync(path.join(LKD, "계획.hwp"), (SN - 864e5) / 1000, (SN - 864e5) / 1000);
+D = await docs();
+D.push({ id: "lk2", mod: "audit", grp: "olds", ser: "계획", title: "계획", date: "2026-10-01", files: [{ name: "계획 2차.hwp", size: 7, url: PUB + "docs/lklklklklk22_p2.hwp" }] },
+  { id: "lk1", mod: "audit", grp: "olds", ser: "계획", title: "계획", date: "2025-03-01", files: [{ name: "계획.hwp", size: 7, url: PUB + "docs/lklklklklk11_p1.hwp" }] });
+await setDocs(D);
+putObj("docs/lklklklklk22_p2.hwp", "PLAN-V2"); putObj("docs/lklklklklk11_p1.hwp", "PLAN-V1");
+const MLK = (await admin("select public.semis_logi_ksync_map_save($1::jsonb)", [JSON.stringify({ k_path: "업무/옛판", mod: "audit", grp: "olds", since: "2025-08-01" })])).id;
+r = await once();
+eq(await one("select preview - 'at' from semis_logi_private.ksync_maps where id = $1", [MLK]), { del: 0, h2k: 1, k2h: 0, old: 1, link: 0, skip: 0, total: 1, conflict: 0 },
+  "깃발 꺼짐(기본): 그 전 그대로 — 기준일 전 K 파일은 뺌 · H 현재 판은 받을 것으로 셈");
+await db.exec(`update semis_logi_private.ksync_state set flags = flags || '{"link_all": true}'`);
+await admin("select public.semis_logi_ksync_request()");
+r = await once();
+eq([r.status, await one("select preview - 'at' from semis_logi_private.ksync_maps where id = $1", [MLK])], ["ok", { del: 0, h2k: 0, k2h: 0, old: 0, link: 1, skip: 0, total: 1, conflict: 0 }],
+  "link_all 미리보기: 기준일 전 K 파일이 옛 판과 연결만 1 · 올리기 · 받기 0");
+await admin("select public.semis_logi_ksync_map_start($1)", [MLK]);
+const nD = (await docs()).length;
+r = await once();
+eq([r.status, (await rowsOf(MLK)).map(x => [x.rel_path, x.doc_id, x.h_name]), (await docs()).length, fs.readdirSync(LKD).sort()],
+  ["ok", [["계획.hwp", "lk1", "계획.hwp"]], nD, ["계획.hwp"]], "첫 회차: 옛 판과 연결만 — 새 문서 · K '이름 (2)' 없음");
+r = await once();
+eq([r.status, fs.readFileSync(path.join(LKD, "계획 2차.hwp"), "utf8"), fs.existsSync(path.join(LKD, "계획.hwp")), fs.readdirSync(path.join(LKD, "_H드라이브_이전판")).length,
+  (await rowsOf(MLK)).map(x => [x.rel_path, x.doc_id])], ["ok", "PLAN-V2", false, 1, [["계획 2차.hwp", "lk2"]]], "다음 회차: H 가 더 새로움 → 현재 판을 받고 옛 K 파일은 이전판으로");
+await db.exec(`update semis_logi_private.ksync_state set flags = flags || '{"link_all": false}'`);
+await admin("select public.semis_logi_ksync_map_delete($1)", [MLK]);
+
+/* 19-13. v1.68 H → K 준실시간 — 사람이 양쪽 연결 분류에 문서를 올리면 트리거가 요청 표시를 켜고, 오늘 매일 실행을 끝낸 에이전트도
+   10분 깨우기(9분 지나 서버를 봄)에 그 요청으로 받아 온다. 끝 보고의 연결마다 보고(범위 밖 · 불일치)는 서버에 남는다 */
+await one("update semis_logi_private.ksync_state set requested_at = null");
+D = await docs();
+D.push({ id: "rt1", mod: "audit", grp: "checklist", title: "올림", date: "2026-11-13", files: [{ name: "바로.pdf", size: 3, url: PUB + "docs/rtrtrtrtrtrt_now.pdf" }] });
+putObj("docs/rtrtrtrtrtrt_now.pdf", "NOW");
+await db.query("update public.semis_logi_store set value = $1::jsonb, updated_by = 'browser1' where key = 'docs'", [JSON.stringify(D)]);
+ok(!!(await one("select requested_at from semis_logi_private.ksync_state")), "사람이 올림 → 트리거가 요청 표시");
+{ const s0 = JSON.parse(fs.readFileSync(STATE, "utf8")); s0.lastOkDay = TODAY; s0.lastSeen = NOW; fs.writeFileSync(STATE, JSON.stringify(s0)); }
+r = await runAgent(Object.assign(deps(), { now: () => NOW + 8 * 60e3 }), {});
+eq([r.status, has("바로.pdf")], ["done-today", false], "오늘 끝낸 뒤 9분 안 깨우기는 서버를 보지 않음");
+r = await runAgent(Object.assign(deps(), { now: () => NOW + 10 * 60e3 }), {});
+const rpM = await one("select report from semis_logi_private.ksync_maps where id = $1", [M]);
+eq([r.status, has("바로.pdf") && read("바로.pdf"), await one("select requested_at from semis_logi_private.ksync_state"), rpM && rpM.run === r.run, rpM && typeof rpM.mismatch],
+  ["ok", "NOW", null, true, "number"], "10분 깨우기에 요청을 보고 H 새 문서를 K 로 받음 · 요청 표시 꺼짐 · 연결마다 보고 저장");
+
+/* 19-14. v1.68 지정 제외 — 연결마다 뺄 폴더(대소문자 다르게 적어도)는 걷지 않고 '모름': 그 아래 기준선 줄은 삭제 대기가 되지 않고 H 문서도 그대로 */
+const subRow = (await rowsOf(M)).find(x => x.rel_path.includes("/") && x.state === "ok");
+const subTop = subRow.rel_path.split("/")[0];
+await admin("select public.semis_logi_ksync_map_save($1::jsonb)", [JSON.stringify({ id: M, excludes: [subTop.toUpperCase()] })]);
+const nDocsX = (await docs()).length;
+r = await once();
+const rowX = await rowById(subRow.id);
+eq([r.status, rowX && rowX.state, (await docs()).length, (await one("select report from semis_logi_private.ksync_maps where id = $1", [M])).out.excl],
+  ["ok", "ok", nDocsX, 1], "제외 폴더 아래 기준선 줄 그대로(삭제 대기 아님) · H 문서 그대로 · 보고 excl 1");
+await admin("select public.semis_logi_ksync_map_save($1::jsonb)", [JSON.stringify({ id: M, excludes: [] })]);
+r = await once();
+eq([r.status, (await rowById(subRow.id)).state], ["ok", "ok"], "제외를 풀면 평소대로");
+
+/* 19-15. 리뷰 반영 ④ — hello full(계획에 쓸 문서함) 뒤 · 회차 시작 전에 사람이 올린 문서: 회차 시작이 요청 표시를 끄지 않아 다음 깨우기에 받는다
+   (끄면 그 문서는 이 회차 계획에도 없고 요청도 사라져 다음 날 매일 실행까지 늦는다) */
+putObj("docs/rtrtrtrtrt22_mid.pdf", "MID");
+hook.onRpc = async (act, p) => {
+  if (act !== "run" || p.phase !== "start") return;
+  hook.onRpc = null;
+  const d2 = await docs();
+  d2.push({ id: "rt2", mod: "audit", grp: "checklist", title: "사이", date: "2026-11-13", files: [{ name: "사이.pdf", size: 3, url: PUB + "docs/rtrtrtrtrt22_mid.pdf" }] });
+  await db.query("update public.semis_logi_store set value = $1::jsonb, updated_by = 'browser2' where key = 'docs'", [JSON.stringify(d2)]);
+};
+r = await once();
+eq([r.status, has("사이.pdf"), !!(await one("select requested_at from semis_logi_private.ksync_state"))], ["ok", false, true], "회차 시작 직전에 올린 문서 → 이번 회차엔 없고 요청 표시는 남음");
+r = await once();
+eq([r.status, has("사이.pdf") && read("사이.pdf"), await one("select requested_at from semis_logi_private.ksync_state")], ["ok", "MID", null], "다음 회차가 받고 요청 표시를 끔");
+
 /* 20. 동시 실행 막기 · 로컬 상태 · 전체 확인 */
 fs.writeFileSync(path.join(APP, "ksync.lock"), JSON.stringify({ pid: process.pid, at: Date.now() }));
 eq((await once()).status, "locked", "다른 실행 중이면 양보");
