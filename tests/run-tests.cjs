@@ -11259,6 +11259,22 @@ function makeServer(opts = {}) {
       eq(e.errors.length, 0, e.errors.join(" | "));
       e.w.close();
     });
+    await ta("DS17 v1.72 문서 수정 창 3-way: 연 때 값을 창과 같은 규칙으로 정리해 두므로 손대지 않은 칸은 '이 창이 바꾼 칸'이 아님 — (a) 공백 두 칸 제목 (b) ssi 칸 없음 (c) 날짜 형식 다름", async () => {
+      const e = makeEnv(); loginAs(e, "hq");
+      const SD = e.w.SemisDocs;
+      const remote = (fn) => { const a = JSON.parse(JSON.stringify(e.S.data.docs)); fn(a[0]); e.S.data.docs = a; };
+      const edit = (doc, fn) => { e.S.data.docs = [doc]; SD.form(doc.id); remote(fn); q(e, "#dk-note").value = "내 비고"; clickOk(e); return e.S.data.docs[0]; };
+      let r = edit({ id: "dn1", mod: "audit", grp: "checklist", title: "공백  두 칸", date: "2026-11-01", ser: "", files: [] }, (x) => { x.title = "남이 바꾼 제목"; });
+      eq(JSON.stringify([r.title, r.note]), JSON.stringify(["남이 바꾼 제목", "내 비고"]), "(a) 공백 두 칸 제목을 손대지 않았으면 남이 바꾼 제목 그대로");
+      r = edit({ id: "dn2", mod: "audit", grp: "checklist", title: "둘", date: "2026-11-01", ser: "", files: [] }, (x) => { x.ssi = true; });
+      eq(JSON.stringify([r.ssi, r.note]), JSON.stringify([true, "내 비고"]), "(b) ssi 칸이 없던 문서 — 남이 켠 민감보안정보 표시 그대로");
+      r = edit({ id: "dn3", mod: "audit", grp: "checklist", title: "셋", date: "2026.11", ser: "", files: [] }, () => {});
+      eq(JSON.stringify([r.date, r.note]), JSON.stringify(["2026.11", "내 비고"]), "(c) 날짜 형식이 다른 문서도 날짜를 손대지 않으면 지우지 않음");
+      SD.form("dn3"); q(e, "#dk-date").value = "2026-11-05"; clickOk(e);
+      eq(e.S.data.docs[0].date, "2026-11-05", "날짜를 고치면 그 값");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.w.close();
+    });
     await ta("DS14 v1.72 문서함 첨부 올리기: 브라우저에서 SHA-256 을 재어 첨부에 sha(서버가 재는 값과 같음 — K드라이브 동기화 링크용) · 못 재면 칸 없이 올리기는 그대로", async () => {
       const e = makeEnv(); loginAs(e, "hq");
       const SD = e.w.SemisDocs, up = e.w.SemisSync.uploadFile;

@@ -345,12 +345,17 @@
     return Object.assign(out, { files });
   }
 
+  /* 수정 창이 받는 칸 — 창 값과 연 때 값을 같은 규칙으로 정리한다(공백 · 날짜 형식 · 체크리스트 번호 · SSI 표시).
+     연 때 값을 원본 그대로 두면 손대지 않은 칸도 3-way 병합에서 '이 창이 바꾼 칸'이 되어 남이 바꾼 값을 되돌린다 */
+  const formRec = (o) => ({ mod: o.mod, grp: o.grp, title: norm(o.title), date: isISO(o.date) ? o.date : "", ser: norm(o.ser), org: norm(o.org), note: norm(o.note),
+    ssi: !!o.ssi, mids: String(Array.isArray(o.mids) ? o.mids.join(",") : o.mids || "").split(/[,\s]+/).map(x => x.trim()).filter(x => /^\d+(\.\d+)*$/.test(x)) });
   function form(id, preset) {
     if (!SeMIS.canEdit()) return;
     const d = id ? all().find(x => x && x.id === id) : null;
     if (id && !d) return;
     const v = Object.assign({ mod: "", grp: "", title: "", date: new Date().toISOString().slice(0, 10), ser: "", org: "", note: "", ssi: false, files: [] }, preset || {}, d || {});
-    const base0 = d ? JSON.parse(JSON.stringify(d)) : null;     // 창을 연 때 값 — 저장할 때 이 창이 바꾼 것만 지금 문서에 얹는다(3-way)
+    // 창을 연 때 값(깊은 복사 + 창과 같은 규칙으로 정리) — 저장할 때 이 창이 바꾼 것만 지금 문서에 얹는다(3-way)
+    const base0 = d ? Object.assign(JSON.parse(JSON.stringify(d)), formRec(d)) : null;
     const files = (v.files || []).map(f => Object.assign({}, f));
     const gs = groupsOf(v.mod);
     const sers = Array.from(new Set(list(v.mod).filter(x => x.ser).map(x => x.ser)));
@@ -400,11 +405,9 @@
       });
     };
     $("#modal-box [data-act=ok]").onclick = () => {
-      const title = norm($("#dk-title").value);
-      if (!title) { toast("문서 이름을 입력하세요.", true); $("#dk-title").focus(); return; }
-      const rec = { mod: v.mod, grp: $("#dk-grp").value, title, date: $("#dk-date").value || "", ser: norm($("#dk-ser").value),
-        org: norm($("#dk-org").value), note: norm($("#dk-note").value), ssi: !!$("#dk-ssi").checked, files: files.slice(), at: new Date().toISOString(), by: me(),
-        mids: String($("#dk-mids").value || "").split(/[,\s]+/).map(x => x.trim()).filter(x => /^\d+(\.\d+)*$/.test(x)) };
+      const rec = Object.assign(formRec({ mod: v.mod, grp: $("#dk-grp").value, title: $("#dk-title").value, date: $("#dk-date").value, ser: $("#dk-ser").value,
+        org: $("#dk-org").value, note: $("#dk-note").value, ssi: $("#dk-ssi").checked, mids: $("#dk-mids").value }), { files: files.slice(), at: new Date().toISOString(), by: me() });
+      if (!rec.title) { toast("문서 이름을 입력하세요.", true); $("#dk-title").focus(); return; }
       if (!Array.isArray(D().docs)) D().docs = [];
       const done = () => { SeMIS.save(); closeModal(); toast("저장했습니다."); repaint(); };
       if (!d) { D().docs.push(Object.assign({ id: uid() }, rec)); done(); return; }
