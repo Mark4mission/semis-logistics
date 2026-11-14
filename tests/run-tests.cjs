@@ -13213,6 +13213,7 @@ function makeServer(opts = {}) {
       q(e, '[data-lnx="link"]').click();
       ok(/learn\.html#abcdefgh2345$/.test(q(e, "#ln-url").textContent), q(e, "#ln-url").textContent);
       ok(q(e, ".ln-qr svg"), "QR");
+      ok(/이 기기에서 교육 받기/.test(q(e, "#modal-box .ln-acts a").textContent), "'새 창' 대신 뜻이 보이는 이름(v1.69)");
       ok(/준비 중/.test(q(e, "#modal-box").textContent));
       q(e, "#ln-open").click();
       eq(e.S.data.learn.courses[0].state, "open");
@@ -13243,6 +13244,14 @@ function makeServer(opts = {}) {
       const d2 = new JSDOM(L.recordHTML(COURSE({ id: "lcx", targets: { groups: ["수출파트"], add: [], except: [] } }), {})).window.document;
       eq(d2.querySelectorAll("section.pg").length, 2, "32명 → 두 쪽");
       ok(/\(2\/2\)/.test(d2.querySelectorAll("section.pg")[1].textContent), "이어지는 쪽 표시");
+      eq(d2.querySelectorAll("section.pg")[0].querySelectorAll("td.sg").length, 18, "첫 쪽 18명(v1.69 — 로고 자리)");
+      // v1.69 — 교육 내용 칸: 사진 맞춤 · 동영상 장면 나란히 · 아래 로고
+      ok(doc.querySelector(".lgf svg[aria-label=AIRZETA]") && doc.body.firstElementChild.className === "lgf", "회사 로고(쪽 나눔을 깨지 않게 맨 앞)");
+      const d3 = new JSDOM(L.recordHTML(COURSE({ body: "", overview: "개요만" }), {}, { images: ["data:image/png;base64,AAAA"], videos: [["data:image/jpeg;base64,B1", "data:image/jpeg;base64,B2", "data:image/jpeg;base64,B3", "data:image/jpeg;base64,B4"]] })).window.document;
+      const bd = d3.querySelector("td.bd");
+      ok(/개요만/.test(bd.querySelector(".tx").textContent) && bd.querySelectorAll(".mr:not(.vd) img").length === 1 && bd.querySelectorAll(".mr.vd img").length === 4, "개요 + 사진 1 + 장면 4");
+      ok(!new JSDOM(L.recordHTML(COURSE({ body: "", overview: "" }), {}, { images: ["data:image/png;base64,AAAA"] })).window.document.querySelector("td.bd .tx"), "글이 없으면 글 칸 없음");
+      eq(L.autoMin({ body: "", items: [{ type: "video", dur: 100 }] }) - L.autoMin({ body: "", items: [] }), 80, "동영상은 길이의 80%(1.2배 시청)");
       e.w.close();
     });
 
@@ -13380,7 +13389,7 @@ function makeServer(opts = {}) {
       e.w.close();
     });
 
-    t("LN15 learn.html: CSP(스크립트 self · 연결/그림/영상은 공용 DB만) · 스크립트 순서 · 캐시 스탬프 · 검색 제외 · 리퍼러 없음 · 인쇄 단추", () => {
+    t("LN15 learn.html: CSP(스크립트 self · 연결/그림/영상은 공용 DB만) · 스크립트 순서 · 캐시 스탬프 · 검색 제외 · 리퍼러 없음 · 인쇄 단추 없음(v1.69)", () => {
       const csp = /Content-Security-Policy" content="([^"]+)"/.exec(LHTML)[1];
       ok(/script-src 'self';/.test(csp) && csp.indexOf("unsafe") < 0);
       ok(/connect-src https:\/\/mzyuzrxkdcpzxojenwat\.supabase\.co;/.test(csp) && /media-src https:\/\/mzyuzrxkdcpzxojenwat\.supabase\.co;/.test(csp));
@@ -13389,7 +13398,7 @@ function makeServer(opts = {}) {
       eq(scr.map(m => m[1]).join(","), "js/learn-md.js,js/pow.js,js/learn-app.js");
       const ver = /const VERSION = "(\d+\.\d+\.\d+)"/.exec(read("js/app.js"))[1];
       ok(Array.from(LHTML.matchAll(/\?v=([\d.]+)/g)).every(m => m[1] === ver), "스탬프 = VERSION");
-      ok(/name="robots" content="noindex"/.test(LHTML) && /name="referrer" content="no-referrer"/.test(LHTML) && /id="ln-print"/.test(LHTML));
+      ok(/name="robots" content="noindex"/.test(LHTML) && /name="referrer" content="no-referrer"/.test(LHTML) && !/id="ln-print"/.test(LHTML));
       ok(/learn\.html/.test(read("tools/bump-version.cjs")), "릴리스 도구");
       ok(!/<script>/.test(LHTML) && !/onclick=/.test(LHTML), "인라인 스크립트 없음");
     });
@@ -13475,12 +13484,13 @@ function makeServer(opts = {}) {
       await tick(350);
       ok($l(x, "video[data-mi]").getAttribute("src").indexOf("/object/sign/") > 0 && $l(x, "img[data-mi]").getAttribute("src"), "자료 서명 주소");
       ok($l(x, "#ln-next2").hidden, "동영상 전에는 다음 없음");
-      ok(/동영상 1개/.test($l(x, "#ln-foot-t").textContent), $l(x, "#ln-foot-t").textContent);
+      ok($l(x, "#ln-foot").hidden && !$l(x, ".ln-bar") && !/동영상/.test($l(x, "#ln-foot-t").textContent), "동영상 교육은 아래 막대 · 안내 없음(v1.69)");
+      ok($l(x, ".ln-spd") && !/\.mp4|\.mov/.test($l(x, ".ln-media figure.vid").textContent), "1.2배 단추 · 파일 이름 없음");
       lfire(x, $l(x, "video[data-mi]"), "ended");
       ok(!$l(x, "#ln-next2").hidden, "다 보면 다음");
       $l(x, "#ln-next2").click();
       eq(x.A.st.view, "p3");
-      ok(/900001/.test($l(x, ".ln-who").textContent) && $l(x, "#ln-submit").disabled, "서명 전 제출 막힘");
+      ok(/900001/.test($l(x, ".ln-who1").textContent) && !$l(x, ".ln-hero") && $l(x, "#ln-submit").disabled, "서명 전 제출 막힘 · 서명 쪽은 이름 한 줄만");
       const cv = $l(x, "#ln-canvas");
       ptr(x, cv, "pointerdown", 10, 10); for (let i = 0; i < 10; i++) ptr(x, cv, "pointermove", 12 + i, 12 + i); ptr(x, cv, "pointerup", 30, 30);
       ok(!$l(x, "#ln-submit").disabled, "서명 뒤 제출");
@@ -13544,7 +13554,7 @@ function makeServer(opts = {}) {
       ok(/교육 기간이 끝났습니다/.test($l(z2, ".ln-err").textContent) && /2026\.11\.01/.test($l(z2, ".ln-err").textContent) && /지난 교육/.test($l(z2, ".ln-err").textContent)); z2.w.close();
     });
 
-    await ta("LN20 학습 화면: 동영상 앞으로 건너뛰기 막기 · 빠르게 재생 막기", async () => {
+    await ta("LN20 학습 화면: 동영상 앞으로 건너뛰기 막기 · 빠르게 보기는 1.2배까지", async () => {
       const x = makeLearn();
       await tick(60);
       $l(x, "#ln-name").value = "가나다"; $l(x, "#ln-find").click(); await tick(100);
@@ -13556,7 +13566,9 @@ function makeServer(opts = {}) {
       eq(v.currentTime, 5, "본 곳까지만");
       Object.defineProperty(v, "playbackRate", { value: 2, writable: true, configurable: true });
       lfire(x, v, "ratechange");
-      eq(v.playbackRate, 1, "1배속");
+      eq(v.playbackRate, 1.2, "1.2배까지만");
+      $l(x, ".ln-spd").click(); eq(v.playbackRate, 1, "단추 = 1배로"); $l(x, ".ln-spd").click(); eq(v.playbackRate, 1.2, "단추 = 1.2배");
+      eq($l(x, ".ln-spd").getAttribute("aria-pressed"), "true");
       Object.defineProperty(v, "duration", { value: 40, configurable: true });
       lfire(x, v, "ended");
       ok($l(x, "#ln-next2").hidden, "건너뛰어 끝나면 시청 완료 아님");

@@ -85,3 +85,6 @@
 }
 .ie-ln .sd-ph { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .ie-ln .sd-ph .spacer { flex: 1; }
+
+.ln-ros .ln-duty { font-size: .86rem; color: var(--text-2); max-width: 22em; }
+.ln-ros td a[data-tel] { color: inherit; text-decoration: none; }

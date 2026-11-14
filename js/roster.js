@@ -1,5 +1,5 @@
 /* 인원 관리 — 임직원(인원 현황 엑셀) · 협력업체 통합 명단. 교육 전파 · 서명 등 다른 화면이 이 명단을 읽는다.
-   SeMIS.data.roster = { team, people[{ id, name, org(에어제타 | 업체), part(에어제타만), emp, gender(M|F|), title, left, note }], orgs[](협력업체 소속 목록) }
+   SeMIS.data.roster = { team, people[{ id, name, org(에어제타 | 업체), part(에어제타만), emp, gender(M|F|), title, left, note, duty(담당 업무), office(구내전화), mobile(휴대전화) }], orgs[](협력업체 소속 목록) }
    — 명단 · 사번은 공용 DB 에만(권한표 2/3 — manager 보기 · hq 고치기). 그룹 = 에어제타는 파트, 그 밖은 소속 */
 "use strict";
 
@@ -36,17 +36,18 @@
   const GENDER = { M: "남", F: "여" };
   function rosterRows() {
     const qq = nkey(rq);
-    return people().filter(p => (!rgrp || groupOf(p) === rgrp) && (!rnog || (!p.gender && !p.left)) && (!qq || [p.name, p.org, p.part, p.emp, p.title].map(nkey).join(" ").indexOf(qq) >= 0))
+    return people().filter(p => (!rgrp || groupOf(p) === rgrp) && (!rnog || (!p.gender && !p.left)) && (!qq || [p.name, p.org, p.part, p.emp, p.title, p.duty, p.office, p.mobile].map(nkey).join(" ").indexOf(qq) >= 0))
       .sort((a, b) => (!!a.left - !!b.left) || ((b.org === SELF) - (a.org === SELF)) || groupOf(a).localeCompare(groupOf(b), "ko") || String(a.name).localeCompare(String(b.name), "ko"));
   }
   function rosterBody() {
     const rs = rosterRows(), w = canW();
     if (!rs.length) return ui.empty(people().length ? "조건에 맞는 사람이 없습니다." : "명단이 비어 있습니다. 인원 현황 엑셀을 반영하세요.");
     let last = "";
-    return `<div class="table-wrap"><table class="tbl ln-ros tbl-keep"><thead><tr><th>이름</th><th>파트 · 소속</th><th>사번</th><th>직급</th><th>성별</th><th>비고</th></tr></thead><tbody>
-      ${rs.map(p => { const g = p.left ? "퇴직 · 전출" : groupOf(p), head = g !== last ? `<tr class="ln-gh"><th colspan="6">${esc(g)}</th></tr>` : ""; last = g;
+    return `<div class="table-wrap"><table class="tbl ln-ros tbl-keep"><thead><tr><th>이름</th><th>파트 · 소속</th><th>사번</th><th>직급</th><th>성별</th><th>담당 업무</th><th>구내</th><th>휴대전화</th><th>비고</th></tr></thead><tbody>
+      ${rs.map(p => { const g = p.left ? "퇴직 · 전출" : groupOf(p), head = g !== last ? `<tr class="ln-gh"><th colspan="9">${esc(g)}</th></tr>` : ""; last = g;
         return head + `<tr${w ? ` class="is-click" data-lp="${esc(p.id)}"` : ""}><td data-role="title"><b>${esc(p.name)}</b></td><td>${esc(orgLabel(p))}</td><td class="mono">${esc(p.emp || "-")}</td><td>${esc(p.title || "")}</td>
           <td>${w && !p.left ? `<select class="ln-gsel" data-gp="${esc(p.id)}" aria-label="${esc(p.name)} 성별"><option value=""${p.gender ? "" : " selected"}>-</option><option value="M"${p.gender === "M" ? " selected" : ""}>남</option><option value="F"${p.gender === "F" ? " selected" : ""}>여</option></select>` : esc(GENDER[p.gender] || "-")}</td>
+          <td class="ln-duty">${esc(p.duty || "")}</td><td class="mono">${esc(p.office || "")}</td><td class="mono">${p.mobile ? `<a href="tel:${esc(String(p.mobile).replace(/[^0-9+]/g, ""))}" data-tel>${esc(p.mobile)}</a>` : ""}</td>
           <td class="ln-dim">${esc(p.left ? dot(p.left) + " " : "")}${esc(p.note || "")}</td></tr>`; }).join("")}
     </tbody></table></div>`;
   }
@@ -76,7 +77,7 @@
     wireRoster(root);
   }
   function wireRoster(root) {
-    $$("[data-lp]", root).forEach(tr => tr.onclick = (ev) => { if (ev.target.closest("select")) return; personForm(tr.dataset.lp); });
+    $$("[data-lp]", root).forEach(tr => tr.onclick = (ev) => { if (ev.target.closest("select, a")) return; personForm(tr.dataset.lp); });
     $$("[data-gp]", root).forEach(s => { s.onclick = (ev) => ev.stopPropagation(); s.onchange = () => {
       const p = people().find(x => x.id === s.dataset.gp);
       if (!p || !canW()) return;
@@ -87,7 +88,7 @@
   function personForm(id) {
     if (!canW()) return;
     const p = id ? people().find(x => x.id === id) : null;
-    const x = p || { name: "", org: SELF, part: "", emp: "", gender: "", title: "", left: "", note: "" };
+    const x = Object.assign({ name: "", org: SELF, part: "", emp: "", gender: "", title: "", left: "", note: "", duty: "", office: "", mobile: "" }, p || {});
     const orgs = Array.from(new Set([SELF].concat(groups().filter(g => !g.self).map(g => g.g))));
     const parts = groups().filter(g => g.self).map(g => g.g);
     openModal(`<h3>${p ? "명단 고치기" : "사람 추가"}</h3>
@@ -99,6 +100,9 @@
         <div class="form-row"><label for="lp-title">직급</label><input id="lp-title" maxlength="20" value="${esc(x.title)}"></div>
         <div class="form-row"><label for="lp-g">성별</label><select id="lp-g"><option value="">-</option><option value="M"${x.gender === "M" ? " selected" : ""}>남</option><option value="F"${x.gender === "F" ? " selected" : ""}>여</option></select></div>
         <div class="form-row"><label for="lp-left">퇴직 · 전출일</label><input type="date" id="lp-left" value="${esc(x.left)}"></div>
+        <div class="form-row"><label for="lp-duty">담당 업무</label><input id="lp-duty" maxlength="80" value="${esc(x.duty)}"></div>
+        <div class="form-row"><label for="lp-office">구내전화</label><input id="lp-office" maxlength="30" inputmode="tel" value="${esc(x.office)}"></div>
+        <div class="form-row"><label for="lp-mobile">휴대전화</label><input id="lp-mobile" maxlength="20" inputmode="tel" value="${esc(x.mobile)}"></div>
         <div class="form-row"><label for="lp-note">비고</label><input id="lp-note" maxlength="40" value="${esc(x.note)}"></div>
       </div>
       <div class="modal-actions">${p ? `<button type="button" class="btn btn-danger" id="lp-del" style="margin-right:auto">지우기</button>` : ""}<button type="button" class="btn btn-ghost" data-act="cancel">취소</button><button type="button" class="btn btn-primary" data-act="ok">저장</button></div>`, { wide: true });
@@ -110,7 +114,8 @@
     $("#modal-box [data-act=ok]").onclick = () => {
       const v = (k) => norm($("#" + k).value);
       const rec = { name: v("lp-name").slice(0, 20), org: v("lp-org").slice(0, 30) || SELF, part: v("lp-part").slice(0, 30), emp: v("lp-emp").replace(/\s+/g, "").slice(0, 12),
-        gender: $("#lp-g").value, title: v("lp-title").slice(0, 20), left: isISO($("#lp-left").value) ? $("#lp-left").value : "", note: v("lp-note").slice(0, 40) };
+        gender: $("#lp-g").value, title: v("lp-title").slice(0, 20), left: isISO($("#lp-left").value) ? $("#lp-left").value : "", note: v("lp-note").slice(0, 40),
+        duty: v("lp-duty").slice(0, 80), office: v("lp-office").slice(0, 30), mobile: v("lp-mobile").slice(0, 20) };
       if (nkey(rec.name).length < 2) { toast("이름을 적으세요.", true); return; }
       if (rec.org !== SELF) rec.part = "";
       if (rec.emp && people().some(y => y !== p && y.org === SELF && rec.org === SELF && empKey(y.emp) === empKey(rec.emp))) { toast("같은 사번이 이미 있습니다.", true); return; }
