@@ -11196,6 +11196,100 @@ function makeServer(opts = {}) {
       ok(qa(e, ".dk-grp h4").some(h => /시설 보안 · 출입통제/.test(h.textContent)), "검색장비 문서함에 새 분류");
       eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
     });
+    await ta("DS15 v1.72 문서 수정 창: 연 사이에 문서함 배열이 통째로 바뀌어도(원격 저장 · 해시 채우기) 저장 · 삭제는 id 로 지금 문서를 찾아 적용 · 그 사이 붙은 첨부 sha 는 지킴", async () => {
+      const e = makeEnv(); loginAs(e, "hq");
+      const SD = e.w.SemisDocs;
+      const PU = "https://x.supabase.co/storage/v1/object/public/semis-logi-files/docs/";
+      e.S.data.docs = [{ id: "dx1", mod: "audit", grp: "checklist", title: "옛 이름", date: "2026-11-01", ser: "", files: [{ name: "a.pdf", size: 1, url: PU + "a_a.pdf" }] },
+        { id: "dx2", mod: "audit", grp: "checklist", title: "다른 문서", date: "2026-11-01", ser: "", files: [] }];
+      const swap = () => { e.S.data.docs = JSON.parse(JSON.stringify(e.S.data.docs)); e.S.data.docs[0].files[0].sha = "a".repeat(64); };     // 원격 반영 = 새 배열 · 새 객체
+      SD.form("dx1"); swap();
+      q(e, "#dk-title").value = "새 이름"; clickOk(e);
+      const d1 = e.S.data.docs.find(d => d.id === "dx1");
+      eq(JSON.stringify([e.S.data.docs.length, d1.title, d1.files[0].sha]), JSON.stringify([2, "새 이름", "a".repeat(64)]), "저장이 지금 배열의 그 문서에 적용 · 그 사이 붙은 sha 유지");
+      SD.form("dx2"); swap();
+      q(e, "#modal-box [data-act=del]").click(); clickOk(e);
+      eq(JSON.stringify(e.S.data.docs.map(d => d.id)), '["dx1"]', "삭제도 id 로 — 지금 배열에서 빠짐");
+      // 3-way: 창을 연 사이 다른 사람이 제목을 바꾸고 K 삭제 확정이 첨부를 뺌 — 이 창은 비고만 고치고 첨부 하나를 더함 → 남의 변경은 그대로, 내 변경만
+      e.S.data.docs = [{ id: "dx3", mod: "audit", grp: "checklist", title: "처음", date: "2026-11-01", ser: "", note: "", files: [{ name: "a.pdf", size: 1, url: PU + "a_a.pdf" }, { name: "b.pdf", size: 1, url: PU + "b_b.pdf" }] }];
+      SD.form("dx3");
+      e.S.data.docs = [{ id: "dx3", mod: "audit", grp: "checklist", title: "남이 바꾼 제목", date: "2026-11-01", ser: "", note: "", files: [{ name: "b.pdf", size: 1, url: PU + "b_b.pdf", sha: "b".repeat(64) }] }];
+      const up0 = e.w.SemisSync.uploadFile;
+      e.w.SemisSync.uploadFile = async (file, prefix) => ({ name: file.name, size: 1, url: PU + "c_" + file.name });
+      const fin = q(e, "#dk-file");
+      Object.defineProperty(fin, "files", { value: [new e.w.File(["c"], "c.pdf")], configurable: true });
+      fin.dispatchEvent(new e.w.Event("change")); await tick(30);
+      e.w.SemisSync.uploadFile = up0;
+      q(e, "#dk-note").value = "내 비고"; clickOk(e);
+      const d3 = e.S.data.docs[0];
+      eq(JSON.stringify([d3.title, d3.note, d3.files.map(f => f.name), d3.files[0].sha]), JSON.stringify(["남이 바꾼 제목", "내 비고", ["b.pdf", "c.pdf"], "b".repeat(64)]),
+        "바뀐 칸 · 더한 첨부만 적용 — 남이 바꾼 제목 · K 삭제로 빠진 첨부 a.pdf 는 되돌리지 않음");
+      // 창을 연 사이 다른 곳에서 지운 문서 — 바로 넣지 않고 묻는다(기본 = 넣지 않음)
+      SD.form("dx3"); e.S.data.docs = [];
+      q(e, "#dk-title").value = "되살림"; clickOk(e);
+      ok(/그 사이 다른 곳에서 지운 문서입니다/.test(q(e, "#modal-box").textContent) && e.S.data.docs.length === 0, "지운 문서 → 다시 넣을지 묻고 아직 넣지 않음");
+      q(e, "#modal-box [data-act=cancel]").click();
+      eq(e.S.data.docs.length, 0, "취소(기본) → 넣지 않음");
+      e.S.data.docs = [{ id: "dx4", mod: "audit", grp: "checklist", title: "넷", date: "2026-11-01", ser: "", files: [] }];
+      SD.form("dx4"); e.S.data.docs = [];
+      q(e, "#dk-title").value = "넷 고침"; clickOk(e); clickOk(e);
+      eq(JSON.stringify(e.S.data.docs.map(d => [d.id, d.title])), '[["dx4","넷 고침"]]', "묻는 창에서 넣기 → 같은 id 로 다시");
+      e.S.data.docs = [{ id: "dx5", mod: "audit", grp: "checklist", title: "다섯", date: "2026-11-01", ser: "", files: [] }];
+      SD.form("dx5"); e.S.data.docs = [];
+      q(e, "#modal-box [data-act=del]").click();
+      ok(/이미 지워진 문서입니다/.test(q(e, "#toast-wrap").textContent) && e.S.data.docs.length === 0, "이미 지워진 문서의 삭제 → 알림만");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.w.close();
+    });
+    await ta("DS16 v1.72 문서함 첨부 올리기: 올리기가 끝나면 sha 를 기다리지 않고 바로 첨부에 넣음(그 사이 [저장]해도 첨부가 빠지지 않음) · sha 는 재는 대로 그 첨부에", async () => {
+      const e = makeEnv(); loginAs(e, "hq");
+      const SD = e.w.SemisDocs, up = e.w.SemisSync.uploadFile, cr = e.w.crypto;
+      e.w.SemisSync.uploadFile = async (file, prefix) => ({ name: file.name, size: file.size, url: "https://x.supabase.co/storage/v1/object/public/semis-logi-files/" + prefix + "/r_" + file.name });
+      let fin;
+      Object.defineProperty(e.w, "crypto", { value: { subtle: { digest: () => new Promise(r => { fin = () => r(new Uint8Array(32).fill(171).buffer); }) } }, configurable: true });
+      const files = [];
+      const run = SD.uploadInto(files, [new e.w.File(["내용"], "느림.pdf")], false);
+      await Promise.race([run, tick(60)]);     // sha 를 재는 동안(digest 가 아직 안 끝남)
+      const before = JSON.stringify(files.map(f => [f.name, f.sha || ""]));
+      if (fin) fin();
+      await run; await tick(5);
+      Object.defineProperty(e.w, "crypto", { value: cr, configurable: true });
+      e.w.SemisSync.uploadFile = up;
+      eq(JSON.stringify([before, files.map(f => f.sha)]), JSON.stringify([JSON.stringify([["느림.pdf", ""]]), ["ab".repeat(32)]]), "첨부는 sha 를 재기 전에 들어가고, sha 는 뒤에 그 첨부에");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.w.close();
+    });
+    await ta("DS17 v1.72 문서 수정 창 3-way: 연 때 값을 창과 같은 규칙으로 정리해 두므로 손대지 않은 칸은 '이 창이 바꾼 칸'이 아님 — (a) 공백 두 칸 제목 (b) ssi 칸 없음 (c) 날짜 형식 다름", async () => {
+      const e = makeEnv(); loginAs(e, "hq");
+      const SD = e.w.SemisDocs;
+      const remote = (fn) => { const a = JSON.parse(JSON.stringify(e.S.data.docs)); fn(a[0]); e.S.data.docs = a; };
+      const edit = (doc, fn) => { e.S.data.docs = [doc]; SD.form(doc.id); remote(fn); q(e, "#dk-note").value = "내 비고"; clickOk(e); return e.S.data.docs[0]; };
+      let r = edit({ id: "dn1", mod: "audit", grp: "checklist", title: "공백  두 칸", date: "2026-11-01", ser: "", files: [] }, (x) => { x.title = "남이 바꾼 제목"; });
+      eq(JSON.stringify([r.title, r.note]), JSON.stringify(["남이 바꾼 제목", "내 비고"]), "(a) 공백 두 칸 제목을 손대지 않았으면 남이 바꾼 제목 그대로");
+      r = edit({ id: "dn2", mod: "audit", grp: "checklist", title: "둘", date: "2026-11-01", ser: "", files: [] }, (x) => { x.ssi = true; });
+      eq(JSON.stringify([r.ssi, r.note]), JSON.stringify([true, "내 비고"]), "(b) ssi 칸이 없던 문서 — 남이 켠 민감보안정보 표시 그대로");
+      r = edit({ id: "dn3", mod: "audit", grp: "checklist", title: "셋", date: "2026.11", ser: "", files: [] }, () => {});
+      eq(JSON.stringify([r.date, r.note]), JSON.stringify(["2026.11", "내 비고"]), "(c) 날짜 형식이 다른 문서도 날짜를 손대지 않으면 지우지 않음");
+      SD.form("dn3"); q(e, "#dk-date").value = "2026-11-05"; clickOk(e);
+      eq(e.S.data.docs[0].date, "2026-11-05", "날짜를 고치면 그 값");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.w.close();
+    });
+    await ta("DS14 v1.72 문서함 첨부 올리기: 브라우저에서 SHA-256 을 재어 첨부에 sha(서버가 재는 값과 같음 — K드라이브 동기화 링크용) · 못 재면 칸 없이 올리기는 그대로", async () => {
+      const e = makeEnv(); loginAs(e, "hq");
+      const SD = e.w.SemisDocs, up = e.w.SemisSync.uploadFile;
+      e.w.SemisSync.uploadFile = async (file, prefix) => ({ name: file.name, size: file.size, url: "https://x.supabase.co/storage/v1/object/public/semis-logi-files/" + prefix + "/r_" + file.name });
+      const files = [];
+      let done = 0;
+      await SD.uploadInto(files, [new e.w.File(["보안 점검표 내용"], "점검표.pdf"), { name: "옛.pdf", size: 3 }], false, () => { done++; });
+      await tick(20);     // sha 는 첨부를 넣은 뒤 재는 대로 채운다(DS16)
+      e.w.SemisSync.uploadFile = up;
+      const want = require("crypto").createHash("sha256").update(Buffer.from("보안 점검표 내용")).digest("hex");
+      eq(JSON.stringify([files.map(f => [f.name, f.sha || ""]), "sha" in files[1], done]), JSON.stringify([[["점검표.pdf", want], ["옛.pdf", ""]], false, 1]), "sha = 파일 내용의 SHA-256 · 못 재는 것은 칸 없음");
+      ok(files[0].url.includes("/docs/r_점검표.pdf"), "올리기는 그대로(docs 폴더)");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.w.close();
+    });
     t("DS13 문서함 분류: 보안교육 · 자격 관리 '교육 자료' 탭 · 계약 · 협약 '공문 · 행정 문서' — K 하위 폴더와 하나씩 연결할 id 고정", () => {
       const e = makeEnv(); loginAs(e, "hq");
       const SD = e.w.SemisDocs;
@@ -12164,7 +12258,7 @@ function makeServer(opts = {}) {
   /* ══════════ [KS] v1.62 K드라이브 동기화(시스템 설정 탭 · 레일 배지 · 에이전트 계획 · 서버 규칙 대조) ══════════ */
   {
     const ksFake = (sv) => {
-      const k = sv.ks = { calls: [], alert: false, stale: false, evNew: 0, agents: [], maps: [], holds: [], files: [], last: [], runs: [], events: [], folders: [{ path: "안전보안", depth: 1, n: 2 }, { path: "안전보안/점검표", depth: 2, n: 12 }],
+      const k = sv.ks = { calls: [], alert: false, stale: false, evNew: 0, agents: [], maps: [], holds: [], files: [], last: [], runs: [], events: [], hash: { total: 0, done: 0, todo: 0, skip: 0, req: null }, folders: [{ path: "안전보안", depth: 1, n: 2 }, { path: "안전보안/점검표", depth: 2, n: 12 }],
         state: { daily_at: "08:30", requested_at: null, net: { ok: false, at: "2026-11-04T00:10:00Z", msg: "K드라이브 응답 없음" }, ip_allow: [], ip_seen: [{ ip: "198.51.100.5", at: "2026-11-04T00:00:00Z", agent: 1 }], mass_limit: { files: 200, ratio: 0.3 } } };
       const deny = { __status: 403, body: { code: "42501", message: "semis_ksync_admin" } };
       const h = (name, fn) => { sv.rpc["semis_logi_ksync_" + name] = (b, o) => { k.calls.push({ name, b }); return sv.rankOf(o) >= 4 ? fn(b || {}) : deny; }; };
@@ -12178,10 +12272,18 @@ function makeServer(opts = {}) {
       });
       h("folders", () => ({ ok: true, folders: k.folders }));
       h("report", () => Object.assign({ ok: true, folders: [], sum: {}, out: {} }, k.report || {}));
+      h("hash_todo", (b) => { if (b.p && b.p.start && k.hash.todo) k.hash.req = "2026-11-14T01:00:00Z"; return Object.assign({ ok: true }, k.hash); });
       ["request", "map_start", "map_delete", "resolve", "hold", "settings", "ip_approve", "agent_revoke"].forEach(n => h(n, () => ({ ok: true })));
       h("map_save", (b) => {
         if (b.p && b.p.k_path === "dup") return { ok: false, error: "k_dup" };
         const m = b.p && b.p.id != null && !b.p.pause ? k.maps.find(x => x.id === b.p.id) : null;
+        if (m && "dir_next" in b.p) { m.dir_next = b.p.dir_next || null; m.recon = null; return { ok: true, id: m.id }; }
+        // 서버 규칙: 돌던 연결을 양쪽으로 — 미리보기(recon)가 있고 dup 0 일 때만
+        if (m && m.state === "active" && m.dir !== "both" && b.p.dir === "both") {
+          if (!m.recon) return { ok: false, error: "recon" };
+          if (m.recon.dup) return { ok: false, error: "dup" };
+          m.dir_next = null; m.recon = null;
+        }
         if (m) {     // 서버 규칙: 미리보기 연결의 방향 · SSI 가 바뀌면 옛 건수를 버리고 다시 센다
           if (m.state === "preview" && (b.p.dir !== m.dir || !!b.p.ssi !== !!m.ssi)) m.preview = null;
           m.dir = b.p.dir; m.ssi = !!b.p.ssi;
@@ -12215,7 +12317,7 @@ function makeServer(opts = {}) {
       eq(qa(e, "#tab-body .ks-card").map(c => c.dataset.ksCard).join(","), "maps,pend,runs,sec", "카드 4");
       const head = q(e, "#view .page-head");
       eq(qa(e, "#view .page-head .btn-primary").map(b => b.textContent.trim()).join(), "지금 동기화 요청", "주 단추 하나");
-      eq(qa(e, "#view .page-head .ph-rare").map(b => b.textContent.trim()).join(), "에이전트 키 발급,에이전트 키 폐기,매일 실행 시각,대량 변경 한도,지정 제외", "드문 기능은 ⋯");
+      eq(qa(e, "#view .page-head .ph-rare").map(b => b.textContent.trim()).join(), "에이전트 키 발급,에이전트 키 폐기,매일 실행 시각,대량 변경 한도,지정 제외,해시 채우기", "드문 기능은 ⋯");
       const kids = Array.from(head.children).filter(x => x.matches("button"));
       ok(kids[kids.length - 1].hasAttribute("data-print-btn"), "인쇄는 맨 끝");
       ["status", "pending", "runs", "events", "folders"].forEach(n => ok(ks.calls.some(c => c.name === n), "불러오기 " + n));
@@ -12478,7 +12580,7 @@ function makeServer(opts = {}) {
       eq(q(e, "#view .tab.active").dataset.tab, "ksync", "K드라이브 탭 그대로");
       ok(q(e, "#tab-body .ks-strip"), "다시 불러와 그림");
       const btns = Array.from(q(e, "#view .page-head").children).filter(x => x.matches("button"));
-      eq(btns.filter(b => b.classList.contains("ks-hb")).length, 6, "머리말 단추 한 벌");
+      eq(btns.filter(b => b.classList.contains("ks-hb")).length, 7, "머리말 단추 한 벌(v1.72 해시 채우기 더함)");
       ok(btns[btns.length - 1].hasAttribute("data-print-btn"), "인쇄는 맨 끝");
       q(e, '.tab[data-tab="data"]').click(); e.S.renderView();
       eq(q(e, "#view .tab.active").dataset.tab, "data", "다른 탭도 그대로");
@@ -12843,6 +12945,120 @@ function makeServer(opts = {}) {
       sv.rpc.semis_logi_ksync_settings = () => ({ ok: false, error: "excluded" });
       q(e, "#ks-excl").click(); q(e, "#ks-exg").value = "점검표"; clickOk(e); await tick(30);
       ok(/지정 제외 아래 폴더입니다/.test(q(e, "#toast-wrap").textContent), "이미 이은 연결을 덮는 제외 → 쉬운 말");
+      e.w.SeMIS.closeModal();
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS25 v1.72 양쪽 전환: ⋯ › 양쪽으로 바꾸기 미리보기 → 줄에 건수 · [양쪽 미리보기] 창(건수 표 · 올릴 바이트 · 남은 저장소보다 크면 경고) → [양쪽으로 바꾸기](건수 없음 · dup > 0 · 이틀 넘음이면 잠금 + 안내) · [다시 세기] · 그만", async () => {
+      const { sv, ks, e } = await setup();
+      ks.maps = [{ id: 31, k_path: "업무/전환", mod: "audit", grp: "checklist", dir: "k2h", ssi: false, state: "active", n_files: 5 },
+        { id: 32, k_path: "업무/양쪽", mod: "audit", grp: "plan", dir: "both", ssi: false, state: "active", n_files: 2 }];
+      await openTab(e);
+      q(e, '[data-ks-map="32"]').click();
+      ok(!qa(e, "#asheet .asheet-item").some(x => /양쪽/.test(x.textContent)), "이미 양쪽인 연결은 메뉴 없음");
+      e.w.SeMIS.closeSheet ? e.w.SeMIS.closeSheet() : null;
+      q(e, '[data-ks-map="31"]').click(); sheetPick(e, "양쪽으로 바꾸기 미리보기"); await tick(30);
+      eq(JSON.stringify(ks.calls.filter(c => c.name === "map_save").pop().b.p), '{"id":31,"dir_next":"both"}', "미리보기 요청 = dir_next 만(방향은 그대로)");
+      ok(/양쪽 미리보기 건수를 기다리는 중/.test(q(e, '[data-ks-card="maps"]').textContent) && q(e, '[data-ks-recon="31"]'), "줄: 기다리는 중 · [양쪽 미리보기]");
+      q(e, '[data-ks-recon="31"]').click();
+      ok(q(e, "#modal-box [data-act=ok]").disabled && /건수를 기다리는 중/.test(q(e, "#modal-box").textContent), "건수가 오기 전에는 바꾸기 잠금");
+      e.w.SeMIS.closeModal();
+      const now = new Date().toISOString();
+      ks.maps[0].recon = { k2h: 2, h2k: 3, h2k_new: 2, dup: 1, link: 1, link_old: 1, del: 0, conflict: 0, skip: 0, total: 6, n: 1, bytes: 5 * 1048576, at: now };
+      e.w.SemisSync.listFiles = async () => [{ size: 1024 * 1048576 - 1048576 }];     // 남은 저장소 1MB
+      await openTab(e);
+      ok(/양쪽 미리보기 내려올 새 파일 2 · '이름 \(2\)' 1 · 올릴 2/.test(q(e, '[data-ks-card="maps"]').textContent), "줄에 건수");
+      q(e, '[data-ks-recon="31"]').click(); await tick(20);
+      const mb = q(e, "#modal-box").textContent;
+      ok(q(e, "#modal-box [data-act=ok]").disabled && /H 쪽 옛 판 · 잘못 묶인 판 묶음을 먼저 정리하세요/.test(mb), "dup > 0 → 잠금 + 안내");
+      ok(/내려올새파일2개/.test(mb.replace(/\s+/g, "")) && /5\.0 MB/.test(mb) && /옛 판으로 연결/.test(mb), "건수 표: 내려올 새 파일 · '이름 (2)' · 옛 판 연결 · 올릴 바이트 " + mb);
+      ok(/올릴 양 5\.0 MB이 남은 저장소 1\.0 MB보다 큽니다/.test(q(e, "#ks-rc-store").textContent) && q(e, "#ks-rc-store").classList.contains("ks-warn"), "올릴 바이트 > 남은 저장소 → 경고");
+      e.w.SeMIS.closeModal();
+      ks.maps[0].recon.dup = 0;
+      e.w.SemisSync.listFiles = async () => { throw new Error("list"); };
+      await openTab(e);
+      q(e, '[data-ks-recon="31"]').click(); await tick(20);
+      ok(!q(e, "#modal-box [data-act=ok]").disabled && /남은 저장소를 확인하지 못했습니다/.test(q(e, "#ks-rc-store").textContent), "dup 0 → 바꾸기 열림 · 저장소를 못 재면 그 안내");
+      clickOk(e); await tick(30);
+      eq(JSON.stringify(ks.calls.filter(c => c.name === "map_save").pop().b.p), '{"id":31,"dir":"both"}', "[양쪽으로 바꾸기] = 방향만 both");
+      ok(/첫 회차 2건 승인/.test(q(e, "#toast-wrap").textContent), "바꾼 뒤 알림 = 승인 건수(변경 n 1 + 옛 판 연결 1 — 전체 6 아님) " + q(e, "#toast-wrap").textContent);
+      eq(JSON.stringify([ks.maps[0].dir, ks.maps[0].dir_next]), '["both",null]', "바뀜");
+      ks.maps[0] = Object.assign(ks.maps[0], { dir: "k2h", dir_next: "both", recon: { k2h: 0, h2k: 1, h2k_new: 1, dup: 0, link: 0, link_old: 0, del: 0, conflict: 0, skip: 0, total: 1, n: 0, bytes: 0, at: new Date(Date.now() - 3 * 864e5).toISOString() } });
+      await openTab(e);
+      q(e, '[data-ks-recon="31"]').click(); await tick(20);
+      ok(q(e, "#modal-box [data-act=ok]").disabled && /이틀 넘게 지났습니다/.test(q(e, "#modal-box").textContent), "이틀 넘은 미리보기 → 잠금 + 다시 세기 안내");
+      q(e, "#modal-box [data-act=redo]").click(); await tick(30);
+      eq(JSON.stringify(ks.calls.filter(c => c.name === "map_save").pop().b.p), '{"id":31,"dir_next":"both"}', "[다시 세기]");
+      ks.maps[0].dir_next = "both";
+      await openTab(e);
+      q(e, '[data-ks-map="31"]').click(); sheetPick(e, "양쪽 미리보기 그만"); await tick(30);
+      eq(JSON.stringify(ks.calls.filter(c => c.name === "map_save").pop().b.p), '{"id":31,"dir_next":null}', "그만 = dir_next 비움");
+      q(e, '[data-ks-map="31"]').click(); sheetPick(e, "방향 · SSI 바꾸기");
+      q(e, "#ks-dir").value = "both"; clickOk(e); await tick(30);
+      ok(/먼저 ⋯ › 양쪽으로 바꾸기 미리보기로 건수를 받으세요/.test(q(e, "#toast-wrap").textContent), "고치기 창에서 바로 양쪽 → 서버 거절(recon)을 쉬운 말로");
+      sv.rpc.semis_logi_ksync_map_save = () => ({ ok: false, error: "dup" });
+      q(e, '[data-ks-map="31"]').click(); sheetPick(e, "방향 · SSI 바꾸기"); clickOk(e); await tick(30);
+      ok(/'이름 \(2\)' 로 내려올 파일이 있어/.test(q(e, "#toast-wrap").textContent), "dup 거절 문구");
+      e.w.SeMIS.closeModal();
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS27 v1.72 리뷰 반영: 돌던 한 방향 연결의 고치기 창은 다른 한 방향을 고를 수 없음(양쪽만 — 미리보기 관문) · 미리보기 창에 'K 파일을 H 판으로 바꿈' · 충돌 · 보류 중 안내 · 양쪽 미리보기 연결의 '이름 (2)' 는 [시작] 잠금", async () => {
+      const { sv, ks, e } = await setup();
+      ks.maps = [{ id: 41, k_path: "업무/한쪽", mod: "audit", grp: "checklist", dir: "k2h", ssi: false, state: "active", n_files: 5 },
+        { id: 42, k_path: "업무/양쪽", mod: "audit", grp: "plan", dir: "both", ssi: false, state: "active", n_files: 2 },
+        { id: 43, k_path: "업무/미리", mod: "audit", grp: "misc", dir: "both", ssi: false, state: "preview", n_files: 0, preview: { k2h: 1, h2k: 2, link: 0, skip: 0, total: 3, name2: 1 } },
+        { id: 44, k_path: "업무/미리둘", mod: "audit", grp: "gov", dir: "k2h", ssi: false, state: "preview", n_files: 0, preview: { k2h: 1, h2k: 0, link: 0, skip: 0, total: 1, name2: 0 } }];
+      await openTab(e);
+      const dirs = () => qa(e, "#ks-dir option").map(o => o.value + (o.disabled ? "-" : ""));
+      q(e, '[data-ks-map="41"]').click(); sheetPick(e, "방향 · SSI 바꾸기");
+      eq(dirs().join(), "both,k2h,h2k-", "돌던 K → H 만: H → K 만은 고를 수 없음(양쪽은 미리보기 관문)");
+      e.w.SeMIS.closeModal();
+      q(e, '[data-ks-map="42"]').click(); sheetPick(e, "방향 · SSI 바꾸기");
+      eq(dirs().join(), "both,k2h,h2k", "양쪽 연결은 어느 쪽으로든 줄일 수 있음");
+      e.w.SeMIS.closeModal();
+      ok(q(e, '[data-ks-start="43"]').disabled && /'이름 \(2\)' 1/.test(q(e, '[data-ks-card="maps"]').textContent), "양쪽 미리보기 연결 · '이름 (2)' 1 → [시작] 잠금 + 줄에 표시");
+      ok(!q(e, '[data-ks-start="44"]').disabled, "K → H 만 미리보기는 그대로 시작 가능");
+      ks.maps[0] = Object.assign(ks.maps[0], { dir_next: "both", recon: { k2h: 0, h2k: 5, h2k_new: 2, dup: 0, link: 0, link_old: 0, del: 0, conflict: 1, skip: 0, total: 6, n: 4, bytes: 0, held: true, at: new Date().toISOString() } });
+      await openTab(e);
+      q(e, '[data-ks-recon="41"]').click(); await tick(20);
+      const t = q(e, "#modal-box").textContent.replace(/\s+/g, "");
+      ok(/K파일을H:drive판으로바꿈3개/.test(t) && /충돌1개/.test(t), "건수 표: K 파일을 H 판으로 바꿈(h2k − 새 파일) · 충돌 " + t);
+      ok(q(e, "#modal-box [data-act=ok]").disabled && /대량 변경 보류 중에 센 건수/.test(q(e, "#modal-box").textContent), "보류 중에 센 미리보기 → 잠금 + 안내");
+      e.w.SeMIS.closeModal();
+      sv.rpc.semis_logi_ksync_map_save = () => ({ ok: false, error: "oneway" });
+      q(e, '[data-ks-map="41"]').click(); sheetPick(e, "방향 · SSI 바꾸기"); clickOk(e); await tick(30);
+      ok(/한 방향끼리 바로 바꿀 수 없습니다/.test(q(e, "#toast-wrap").textContent), "oneway 거절 문구");
+      sv.rpc.semis_logi_ksync_map_start = () => ({ ok: false, error: "dup" });
+      e.w.SeMIS.closeModal();
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS26 v1.72 해시 채우기: ⋯ › 해시 채우기 = 진행(전체 · 해시 있음 · 남음 · 못 읽음) · [해시 채우기 시작](남은 것이 없거나 이미 요청이면 잠금) · 요청한 동안 보고 줄에 진행 칸 · 양쪽 미리보기 창에 남은 해시 안내", async () => {
+      const { ks, e } = await setup();
+      await openTab(e);
+      ok(ks.calls.some(c => c.name === "hash_todo") && !q(e, "#tab-body .ks-rep"), "진행을 불러오고 요청 전에는 보고 칸 없음");
+      ks.hash = { total: 40, done: 28, todo: 10, skip: 2, req: null };
+      q(e, "#ks-hash").click(); await tick(30);
+      eq(qa(e, "#modal-box .stat-label").map(x => x.textContent).join(","), "전체 첨부,해시 있음,남음,못 읽음", "진행 칸");
+      ok(/40개/.test(q(e, "#modal-box").textContent) && !q(e, "#modal-box [data-act=ok]").disabled, "남은 것이 있으면 시작 가능");
+      clickOk(e); await tick(30);
+      eq(ks.calls.filter(c => c.name === "hash_todo" && c.b.p && c.b.p.start === true).length, 1, "시작 = start 한 번(나머지는 진행만 읽음)");
+      ok(/Mac 이 다음 확인/.test(q(e, "#toast-wrap").textContent), "안내");
+      eq(qa(e, "#tab-body .ks-rep .stat-label").map(x => x.textContent).join(","), "해시 채우기", "요청한 동안 보고 줄에 진행 칸");
+      ok(/남음 10개/.test(q(e, "#tab-body .ks-rep").textContent), "남은 수");
+      q(e, "#ks-hash").click(); await tick(30);
+      ok(q(e, "#modal-box [data-act=ok]").disabled && /요청함/.test(q(e, "#modal-box").textContent), "이미 요청 → 잠금");
+      e.w.SeMIS.closeModal();
+      ks.maps = [{ id: 33, k_path: "업무/전환", mod: "audit", grp: "checklist", dir: "k2h", ssi: false, state: "active", n_files: 1, dir_next: "both",
+        recon: { k2h: 0, h2k: 0, h2k_new: 0, dup: 0, link: 0, link_old: 0, del: 0, conflict: 0, skip: 0, total: 0, n: 0, bytes: 0, at: new Date().toISOString() } }];
+      await openTab(e);
+      q(e, '[data-ks-recon="33"]').click(); await tick(20);
+      ok(/해시가 없는 H 첨부 10개/.test(q(e, "#modal-box").textContent), "양쪽 미리보기 창에 남은 해시 안내");
+      e.w.SeMIS.closeModal();
+      ks.hash = { total: 40, done: 40, todo: 0, skip: 0, req: null };
+      q(e, "#ks-hash").click(); await tick(30);
+      ok(q(e, "#modal-box [data-act=ok]").disabled, "남은 것이 없으면 잠금");
       e.w.SeMIS.closeModal();
       eq(e.errors.length, 0, e.errors.join(" | "));
       e.Sync.stop(); e.w.close();

@@ -4,7 +4,8 @@
    - 인증: 헤더 x-ksync-key(32바이트 무작위 hex) → 여기서 sha256 → public.semis_logi_ksync_agent(서비스 권한만)가
      키 · 허용 IP · 횟수 · 연결 범위를 확인하고 기록한다. 키 원문은 DB 로 보내지 않는다.
    - 접속 IP 규칙은 SQL client_ip() 와 같다: cf-connecting-ip 우선, 없으면 x-forwarded-for 마지막 항목.
-   - act: hello · net · folders · preview · run · mark = SQL 에 그대로 /
+   - act: hello · net · folders · preview · recon · run · mark = SQL 에 그대로 /
+     hash(해시 채우기 — SQL 이 고른 H 첨부를 저장소에서 읽어 sha256 을 재고 SQL 이 적는다. 에이전트는 값 · 경로를 보내지 않음) /
      put(phase begin = 이름 부분만 여기서 정하고 폴더 · 경로는 SQL 이 정함 → 업로드 서명 URL,
          verify = 저장소에서 다시 읽어 잰 크기 · sha256 을 SQL 이 시작 때 값과 대조 — 다르면 파일을 지움.
                   서명 업로드 URL 은 크기를 막지 않으므로 시작 때 크기를 넘는 순간 읽기를 끊고 불일치로 본다) /
@@ -25,7 +26,8 @@ const PUBLIC_PREFIX = "https://mzyuzrxkdcpzxojenwat.supabase.co/storage/v1/objec
 const MAX_BODY = 2 * 1024 * 1024;
 const MAX_SIZE = 50 * 1024 * 1024;
 const SIGN_SECS = 600;
-const ACTS = ["hello", "net", "folders", "preview", "run", "mark", "put", "apply", "get"];
+const HASH_MAX = 20, HASH_BYTES = 100 * 1024 * 1024;     // 해시 채우기 한 번에 — 20개 · 합계 100MB 까지(넘으면 남은 것은 다음 호출)
+const ACTS = ["hello", "net", "folders", "preview", "recon", "run", "mark", "put", "apply", "get", "hash"];
 const STATUS: Record<string, number> = {
   auth: 401, ip: 403, origin: 403, scope: 403, rate: 429, quota: 429, type: 415, too_large: 413,
   hash: 409, held: 409, state: 409, run: 409, old: 409, bad: 400, method: 405, server: 500
@@ -147,6 +149,38 @@ async function get(hash: string, ip: string, b: Record<string, unknown>): Promis
   return out({ ok: true, url: await downloadSign(path), sha256: await sha256hex(u8), size: u8.length, name: d.name, expires: SIGN_SECS });
 }
 
+/* 해시 채우기 — SQL(hash_todo)이 연결 범위 안 · 해시 없는 H 첨부의 저장소 경로를 주고, 여기서 읽어 잰 sha256 을 SQL(hash_set)이 모았다가 적는다.
+   읽기 전용(저장소 파일을 바꾸거나 지우지 않음). 길이 머리가 50MB 를 넘으면 읽지 않고, 머리가 없어도 50MB 를 넘는 순간 끊는다(too_large).
+   저장소 일시 오류(429 · 5xx · 연결 실패)는 busy(SQL 이 한 시간 뒤 다시), 그 밖 못 읽음은 read(하루). 한 번에 100MB 를 넘게 읽지 않는다 —
+   길이 머리로 넘을 것이 보이면 읽지 않고 later(SQL 이 '시도함'만 지워 다음 호출이 다시 받음) */
+async function hashFill(hash: string, ip: string, b: Record<string, unknown>): Promise<Response> {
+  const t = await rpc("hash_todo", hash, ip, { run: b.run });
+  if (!t.ok) return fail(String(t.error || "bad"));
+  const items = Array.isArray(t.items) ? (t.items as Record<string, unknown>[]).slice(0, HASH_MAX) : [];
+  if (!items.length) return out({ ok: true, n: 0, left: Number(t.left) || 0 });
+  const res: Record<string, unknown>[] = [];
+  let read = 0;
+  for (const it of items) {
+    if (read >= HASH_BYTES) { res.push({ url: it.url, later: true }); continue; }
+    const path = String(it.path || "");
+    if (!/^[A-Za-z0-9._/-]{3,300}$/.test(path) || /(^|\/)\.\.?(\/|$)/.test(path)) { res.push({ url: it.url, err: "path" }); continue; }
+    try {
+      const r = await fetch(STORAGE + "/object/" + BUCKET + "/" + encPath(path), { headers: svc() });
+      if (!r.ok) { await r.body?.cancel().catch(() => {}); res.push({ url: it.url, err: r.status === 429 || r.status >= 500 ? "busy" : "read" }); continue; }
+      const len = Number(r.headers.get("content-length") || "");
+      if (len > MAX_SIZE) { await r.body?.cancel().catch(() => {}); res.push({ url: it.url, err: "too_large" }); continue; }
+      if (len > 0 && read > 0 && read + len > HASH_BYTES) { await r.body?.cancel().catch(() => {}); res.push({ url: it.url, later: true }); continue; }
+      const u8 = await readCapped(r.body, MAX_SIZE);
+      if (!u8) { res.push({ url: it.url, err: "too_large" }); continue; }
+      read += u8.length;
+      res.push({ url: it.url, sha: await sha256hex(u8) });
+    } catch (_e) { res.push({ url: it.url, err: "busy" }); }
+  }
+  const s = await rpc("hash_set", hash, ip, { run: b.run, items: res, last: b.last === true });
+  if (!s.ok) return fail(String(s.error || "bad"));
+  return out({ ok: true, n: s.n, left: s.left });
+}
+
 /* 흐름을 읽으며 바이트를 세고 상한을 넘으면 그 자리에서 끊는다(null) */
 async function readCapped(body: ReadableStream<Uint8Array> | null, max: number): Promise<Uint8Array | null> {
   if (!body) return new Uint8Array(0);
@@ -193,6 +227,7 @@ export async function handle(req: Request): Promise<Response> {
     if (act === "put") return await put(hash, ip, b);
     if (act === "apply") return await apply(hash, ip, b);
     if (act === "get") return await get(hash, ip, b);
+    if (act === "hash") return await hashFill(hash, ip, b);
     const p = { ...b };
     delete p.act;
     const d = await rpc(act, hash, ip, p);

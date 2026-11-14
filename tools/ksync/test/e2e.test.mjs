@@ -885,7 +885,7 @@ await admin("select public.semis_logi_ksync_resolve($1::jsonb)", [JSON.stringify
 r = await once();
 const e4 = await rowById(e4Row.id);
 eq([r.status, has("e4.pdf") && read("e4.pdf"), e4?.state, e4?.h_url], ["ok", "E4-H", "ok", PUB + "docs/e4e4e4e4e4e5_e4.pdf"], "K→H 만 · [복원] → 지금 판(H 새 판)을 K 로 받음 · 정상으로");
-await admin("select public.semis_logi_ksync_map_save($1::jsonb)", [JSON.stringify({ id: M, dir: "both" })]);
+await db.query("update semis_logi_private.ksync_maps set dir = 'both' where id = $1", [M]);     // 양쪽으로 되돌리기는 미리보기(recon)가 있어야 함(v1.72) — 방향만 잠시 바꾼 시험이라 표에서 바로
 
 /* 19-3. H 에서 지운 뒤(삭제 대기) K 에서 고침 → H 로 다시 올림(대기 풀림) · 삭제 확정 뒤 K 에서 고침 → 휴지통으로 옮기지 않고 H 로 올려 충돌로 */
 const delH = async (rel, body) => {
@@ -923,7 +923,7 @@ eq([r.status, has("f3.pdf") && read("f3.pdf"), kFiles("_H드라이브_휴지통"
 r = await once();
 eq([r.status, (await lastRun()).detail.filter(d => d.f === "f3.pdf").length, has("f3.pdf") && read("f3.pdf")], ["ok", 0, "F3-K"], "#1 H→K 만 · 다음 실행: 할 일 없음(삭제 대기를 되풀이하지 않음)");
 fs.rmSync(K("f3.pdf"));
-await admin("select public.semis_logi_ksync_map_save($1::jsonb)", [JSON.stringify({ id: M, dir: "both" })]);
+await db.query("update semis_logi_private.ksync_maps set dir = 'both' where id = $1", [M]);     // 양쪽으로 되돌리기는 미리보기(recon)가 있어야 함(v1.72) — 방향만 잠시 바꾼 시험이라 표에서 바로
 
 /* 19-4. 첨부 둘 중 하나를 H 가 뺀 판 — K 가 뺀 첨부를 고치거나 [복원]해도, 첨부 하나뿐인 지금 판의 남은 첨부(다른 줄이 맞춤)를 바꾸지 않고 뒤에 더함 */
 const twoAtt = async (id, a, b) => {
@@ -1204,7 +1204,8 @@ eq([r.status, stamps.length > PACE, clk - NOW >= 60e3, maxWin <= PACE, (await ro
   ["ok", true, true, true, 85], "#6 1분에 PACE 넘게 부를 일 → 쉬어 감 · 어느 1분에도 서버가 세는 호출 " + maxWin + " ≤ " + PACE + "(모두 " + stamps.length + ")");
 
 /* 19-11. v1.64 기준일 — 옛 · 새 파일이 섞인 폴더: 미리보기에 기준일 전 파일 수 → [시작] → 새 파일만 등록. 다른 연결 기준선과 해시가 같은 옛 파일(연결 폴더끼리 옮김)은 올림 ·
-   옛 K 파일과 이름 · 크기가 같은 H 문서는 연결만 하지 않고 '이름 (2)' 로 받음 · 옛 에이전트가 옛 파일을 보내도 서버(Edge 를 지나)가 'old' 로 거절 */
+   옛 K 파일과 이름 · 크기가 같은 H 문서는 연결만 하지 않음 — 양쪽 미리보기면 그 H 문서가 '이름 (2)' 로 내려올 것이라 [시작]을 막음(v1.72 name2),
+   K → H 만으로 바꿔 시작 · 옛 에이전트가 옛 파일을 보내도 서버(Edge 를 지나)가 'old' 로 거절 */
 const SND = path.join(MOUNT, "업무", "기준일"), SN = Date.parse("2025-08-01T00:00:00+09:00");
 const shaHex = (b) => crypto.createHash("sha256").update(b).digest("hex");
 const sw = (n, s, t) => { fs.writeFileSync(path.join(SND, n), s); fs.utimesSync(path.join(SND, n), t / 1000, t / 1000); };
@@ -1220,16 +1221,21 @@ putObj("docs/snsnsnsnsnsn_old.hwp", "H-OLD!");
 const MSD = (await admin("select public.semis_logi_ksync_map_save($1::jsonb)", [JSON.stringify({ k_path: "업무/기준일", mod: "audit", grp: "since", since: "2025-08-01" })])).id;
 r = await once();
 const pvS = await one("select preview - 'at' from semis_logi_private.ksync_maps where id = $1", [MSD]);
-eq([r.status, pvS && pvS.k2h, pvS && pvS.old, pvS && pvS.h2k, pvS && pvS.link], ["ok", 3, 2, 1, 0], "기준일 미리보기: 새 2 · 옮긴 옛 파일 1 올림 · 옛 2 뺌 · 이름 · 크기가 같은 H 문서는 연결만 아님(받기)");
+eq([r.status, pvS && pvS.k2h, pvS && pvS.old, pvS && pvS.h2k, pvS && pvS.link, pvS && pvS.name2], ["ok", 3, 2, 1, 0, 1],
+  "기준일 미리보기: 새 2 · 옮긴 옛 파일 1 올림 · 옛 2 뺌 · 이름 · 크기가 같은 H 문서는 연결만 아님(받기 — K 에 '이름 (2)' 1)");
+eq([(await admin("select public.semis_logi_ksync_map_start($1)", [MSD])).error, await one("select state from semis_logi_private.ksync_maps where id = $1", [MSD]), sRead("옛 양식 (2).hwp")],
+  ["dup", "preview", null], "양쪽 미리보기 · '이름 (2)' 1 → [시작] 거절(K 에 쓰지 않음)");
+await admin("select public.semis_logi_ksync_map_save($1::jsonb)", [JSON.stringify({ id: MSD, dir: "k2h" })]);
+r = await once();
 await admin("select public.semis_logi_ksync_map_start($1)", [MSD]);
 r = await once();
 const dSN = (await docs()).filter(d => d.mod === "audit" && d.grp === "since" && d.src === "ksync").map(d => d.files[0].name).sort();
 eq([r.status, dSN, (await rowsOf(MSD)).map(x => x.rel_path).sort(), sRead("옛 보고.pdf"), sRead("옛 양식.hwp"), sRead("옛 양식 (2).hwp")],
-  ["ok", ["경계.pdf", "새 보고.pdf", "옮김.pdf"], ["경계.pdf", "새 보고.pdf", "옛 양식 (2).hwp", "옮김.pdf"], "OLD-1", "OLD-22", "H-OLD!"],
-  "[시작] 뒤 새 파일만 등록(기준일 0시 파일 포함 · 옮긴 옛 파일은 올림) · 옛 K 파일은 그대로(덮지 않음) · H 문서는 '이름 (2)'");
+  ["ok", ["경계.pdf", "새 보고.pdf", "옮김.pdf"], ["경계.pdf", "새 보고.pdf", "옮김.pdf"], "OLD-1", "OLD-22", null],
+  "K → H 만으로 [시작] 뒤 새 파일만 등록(기준일 0시 파일 포함 · 옮긴 옛 파일은 올림) · 옛 K 파일은 그대로(덮지 않음) · H 문서는 K 로 안 감");
 eq(await one("select n_files from semis_logi_private.ksync_maps where id = $1", [MSD]), 3, "파일 수는 기준일 전 파일을 빼고");
 r = await once();
-eq([r.status, (await rowsOf(MSD)).length, (await docs()).filter(d => d.grp === "since").length], ["ok", 4, 4], "다시 실행해도 그대로(옛 파일은 계속 빠짐)");
+eq([r.status, (await rowsOf(MSD)).length, (await docs()).filter(d => d.grp === "since").length], ["ok", 3, 4], "다시 실행해도 그대로(옛 파일은 계속 빠짐)");
 const fnPost = async (b) => { const x = await realFetch(BASE + FN, { method: "POST", headers: { "content-type": "application/json", "x-ksync-key": KEY }, body: JSON.stringify(b) }); return [x.status, (await x.json()).error || "ok"]; };
 const RSN = (await (await realFetch(BASE + FN, { method: "POST", headers: { "content-type": "application/json", "x-ksync-key": KEY }, body: JSON.stringify({ act: "run", phase: "start", trigger: "manual" }) })).json()).run;
 const sndPut = { act: "put", phase: "begin", run: RSN, map: MSD, rel_path: "옛 보고.pdf", size: 5, sha256: shaHex("OLD-1"), mode: "new" };
@@ -1250,12 +1256,12 @@ await setDocs(D);
 putObj("docs/lklklklklk22_p2.hwp", "PLAN-V2"); putObj("docs/lklklklklk11_p1.hwp", "PLAN-V1");
 const MLK = (await admin("select public.semis_logi_ksync_map_save($1::jsonb)", [JSON.stringify({ k_path: "업무/옛판", mod: "audit", grp: "olds", since: "2025-08-01" })])).id;
 r = await once();
-eq(await one("select preview - 'at' from semis_logi_private.ksync_maps where id = $1", [MLK]), { del: 0, h2k: 1, k2h: 0, old: 1, link: 0, skip: 0, total: 1, conflict: 0 },
+eq(await one("select preview - 'at' from semis_logi_private.ksync_maps where id = $1", [MLK]), { del: 0, h2k: 1, k2h: 0, old: 1, link: 0, skip: 0, name2: 0, total: 1, conflict: 0 },
   "깃발 꺼짐(기본): 그 전 그대로 — 기준일 전 K 파일은 뺌 · H 현재 판은 받을 것으로 셈");
 await db.exec(`update semis_logi_private.ksync_state set flags = flags || '{"link_all": true}'`);
 await admin("select public.semis_logi_ksync_request()");
 r = await once();
-eq([r.status, await one("select preview - 'at' from semis_logi_private.ksync_maps where id = $1", [MLK])], ["ok", { del: 0, h2k: 0, k2h: 0, old: 0, link: 1, skip: 0, total: 1, conflict: 0 }],
+eq([r.status, await one("select preview - 'at' from semis_logi_private.ksync_maps where id = $1", [MLK])], ["ok", { del: 0, h2k: 0, k2h: 0, old: 0, link: 1, skip: 0, name2: 0, total: 1, conflict: 0 }],
   "link_all 미리보기: 기준일 전 K 파일이 옛 판과 연결만 1 · 올리기 · 받기 0");
 await admin("select public.semis_logi_ksync_map_start($1)", [MLK]);
 const nD = (await docs()).length;
@@ -1311,6 +1317,96 @@ r = await once();
 eq([r.status, has("사이.pdf"), !!(await one("select requested_at from semis_logi_private.ksync_state"))], ["ok", false, true], "회차 시작 직전에 올린 문서 → 이번 회차엔 없고 요청 표시는 남음");
 r = await once();
 eq([r.status, has("사이.pdf") && read("사이.pdf"), await one("select requested_at from semis_logi_private.ksync_state")], ["ok", "MID", null], "다음 회차가 받고 요청 표시를 끔");
+
+/* 19-16. v1.72 '양쪽' 안전 전환 — K → H 만이던 연결: 미리보기 없이 바꾸기 거절 → [양쪽으로 바꾸기 미리보기] → Mac 이 같은 색인으로 센 recon
+   (링크 깃발이 꺼져 기준일 전 K 파일을 잇지 못하면 'K 이름 (2)' 가 될 1 → 거절) → 깃발을 켜고 다시 세면 0 → 바꾸기(첫 회차 승인) →
+   전환 회차가 대량 변경 한도(2)를 넘는 변경 3(H 새 판 덮어쓰기)에도 보류 없이 끝남 · '이름 (2)' 없음 → 되돌리기(k2h) */
+const CVD = path.join(MOUNT, "업무", "전환"), SNC = Date.parse("2025-08-01T00:00:00+09:00");
+const cw = (n, s, t) => { fs.writeFileSync(path.join(CVD, n), s); fs.utimesSync(path.join(CVD, n), t / 1000, t / 1000); };
+const cRead = (n) => { try { return fs.readFileSync(path.join(CVD, n), "utf8"); } catch (e) { return null; } };
+const mapSave = (p) => admin("select public.semis_logi_ksync_map_save($1::jsonb)", [JSON.stringify(p)]);
+const reconOfMap = (id) => one("select recon from semis_logi_private.ksync_maps where id = $1", [id]);
+fs.mkdirSync(CVD, { recursive: true });
+["c1", "c2", "c3"].forEach(n => cw(n + ".pdf", n.toUpperCase() + "-K", SNC + 864e5));
+cw("옛.hwp", "OLD-HWP", SNC - 864e5);
+D = await docs();
+D.push({ id: "cvold", mod: "audit", grp: "conv", title: "옛", date: "2025-07-01", files: [{ name: "옛.hwp", size: 7, url: PUB + "docs/cvcvcvcvcvc1_old.hwp" }] },
+  { id: "cvnew", mod: "audit", grp: "conv", title: "새 H", date: "2026-11-01", files: [{ name: "새 H.pdf", size: 4, url: PUB + "docs/cvcvcvcvcvc2_new.pdf" }] });
+await setDocs(D);
+putObj("docs/cvcvcvcvcvc1_old.hwp", "OLD-HWP"); putObj("docs/cvcvcvcvcvc2_new.pdf", "NEWH");
+const MCV = (await mapSave({ k_path: "업무/전환", mod: "audit", grp: "conv", dir: "k2h", since: "2025-08-01" })).id;
+r = await once();
+await admin("select public.semis_logi_ksync_map_start($1)", [MCV]);
+r = await once();
+const cvRows = await rowsOf(MCV);
+eq([r.status, cvRows.map(x => x.rel_path), cRead("새 H.pdf"), fs.readdirSync(CVD).filter(n => / \(2\)/.test(n))], ["ok", ["c1.pdf", "c2.pdf", "c3.pdf"], null, []], "K → H 만: 새 K 파일 3개 등록 · H 문서는 K 로 안 감");
+D = await docs();
+cvRows.forEach((x, i) => { const u = "docs/cvh" + i + "hhhhhhhh_" + x.rel_path; putObj(u, "H-" + x.rel_path); D.unshift({ id: "cvh" + i, mod: "audit", grp: "conv", ser: x.ser, title: "t", date: "2026-11-10", files: [{ name: x.h_name, size: ("H-" + x.rel_path).length, url: PUB + u }], at: "2026-11-10T00:00:00.000Z" }); });
+await setDocs(D);
+const ml0 = await one("select mass_limit from semis_logi_private.ksync_state");
+await db.exec(`update semis_logi_private.ksync_state set mass_limit = '{"files": 2, "ratio": 0.3, "min": 2}'::jsonb`);
+r = await once();
+eq([r.status, cRead("c1.pdf"), await holdOf(MCV)], ["ok", "C1-K", null], "K → H 만인 동안 H 새 판은 K 로 안 감(방향 밖)");
+eq((await mapSave({ id: MCV, dir: "both" })).error, "recon", "미리보기 없이 양쪽으로 → 거절");
+await mapSave({ id: MCV, dir_next: "both" });
+r = await once();
+let rcv = await reconOfMap(MCV);
+eq([r.status, rcv && rcv.h2k_new, rcv && rcv.dup, rcv && rcv.n, rcv && rcv.h2k, cRead("옛 (2).hwp"), cRead("새 H.pdf"), cRead("c1.pdf")], ["ok", 2, 1, 3, 5, null, null, "C1-K"],
+  "미리보기: 내려올 새 파일 2 · '이름 (2)' 1(기준일 전 K 파일을 잇지 못함) · 변경 3(한도 2 넘음) · K 에는 쓰지 않음");
+eq((await mapSave({ id: MCV, dir: "both" })).error, "dup", "'이름 (2)' 가 될 것 1 → 바꾸지 않음");
+await db.exec(`update semis_logi_private.ksync_state set flags = flags || '{"link_all": true}'`);
+await mapSave({ id: MCV, dir_next: "both" });     // 다시 세기
+r = await once();
+rcv = await reconOfMap(MCV);
+eq([r.status, rcv && rcv.h2k_new, rcv && rcv.dup, rcv && rcv.link, (await rowsOf(MCV)).map(x => x.rel_path)], ["ok", 1, 0, 1, ["c1.pdf", "c2.pdf", "c3.pdf", "옛.hwp"]],
+  "링크 깃발 켜고 다시 세기: dup 0 · 기준일 전 K 파일은 평소 회차에서 연결만");
+const mh0 = await events("mass_hold");
+eq((await mapSave({ id: MCV, dir: "both" })).ok, true, "양쪽으로 바꾸기");
+const hcv = await holdOf(MCV);
+eq([hcv && hcv.ok, hcv && hcv.first, hcv && hcv.n, await one("select dir_next is null and recon is null from semis_logi_private.ksync_maps where id = $1", [MCV])], [true, true, rcv.n + rcv.link_old, true],
+  "첫 회차 승인 = 미리보기 변경 수 + 옛 판 연결(서버가 세는 기준) · 미리보기 지움");
+r = await once();
+eq([r.status, cRead("새 H.pdf"), ["c1.pdf", "c2.pdf", "c3.pdf"].map(cRead), cRead("옛.hwp"), fs.readdirSync(CVD).filter(n => / \(2\)/.test(n)), await holdOf(MCV), await events("mass_hold") - mh0],
+  ["ok", "NEWH", ["H-c1.pdf", "H-c2.pdf", "H-c3.pdf"], "OLD-HWP", [], null, 0], "전환 회차: 변경 3 > 한도 2 인데 보류 없이 끝남 · H 새 판 · 새 문서를 받음 · '이름 (2)' 없음 · 승인을 씀");
+ok(fs.readdirSync(path.join(CVD, "_H드라이브_이전판")).length === 3, "덮은 K 옛 파일은 이전판 폴더로");
+r = await once();
+eq([r.status, (await lastRun()).detail.filter(d => d.m === MCV).length], ["ok", 0], "다음 회차: 할 일 없음(양쪽이 같음)");
+eq([(await mapSave({ id: MCV, dir: "k2h" })).ok, await one("select dir from semis_logi_private.ksync_maps where id = $1", [MCV])], [true, "k2h"], "되돌리기(k2h)는 미리보기 없이 바로");
+await db.query("update semis_logi_private.ksync_state set mass_limit = $1::jsonb", [JSON.stringify(ml0)]);
+await admin("select public.semis_logi_ksync_map_delete($1)", [MCV]);
+
+/* 19-17. v1.72 해시 채우기 → 해시 링크 — 관리자 요청 → 다음 회차 끝에 에이전트가 Edge hash 를 부르고(값을 보내지 않음) Edge 가 저장소에서 읽어 잰 sha 를 첨부에 적음 →
+   다음 회차부터 이름이 다른 같은 내용 K 파일이 그 H 문서와 연결만(새 문서 · '이름 (2)' 없음) */
+const HXD = path.join(MOUNT, "업무", "해시");
+fs.mkdirSync(HXD, { recursive: true });
+fs.writeFileSync(path.join(HXD, "이름 다름.pdf"), "SAME-CONTENT-77");
+D = await docs();
+D.push({ id: "hxo", mod: "audit", grp: "hashlink", title: "원본", date: "2026-10-01", files: [{ name: "원본.pdf", size: 15, url: PUB + "docs/hxhxhxhxhxh1_src.pdf" }] });
+await setDocs(D);
+putObj("docs/hxhxhxhxhxh1_src.pdf", "SAME-CONTENT-77");
+const MHX = (await mapSave({ k_path: "업무/해시", mod: "audit", grp: "hashlink", dir: "k2h" })).id;
+r = await once();
+const pvX = () => one("select preview - 'at' from semis_logi_private.ksync_maps where id = $1", [MHX]);
+eq([r.status, (await pvX()).k2h, (await pvX()).link], ["ok", 1, 0], "해시 없음: 이름이 다른 같은 내용 K 파일은 새 문서로 셈");
+const hq0 = await admin("select public.semis_logi_ksync_hash_todo('{}'::jsonb)");
+ok(hq0.todo > 0 && !hq0.req, "해시 없는 H 첨부 " + hq0.todo);
+await admin("select public.semis_logi_ksync_hash_todo($1::jsonb)", [JSON.stringify({ start: true })]);
+const nRpc = rpcLog.length, nHttp = httpLog.length;
+r = await once();
+const hxf = (await docs()).find(d => d.id === "hxo").files[0];
+const hq1 = await admin("select public.semis_logi_ksync_hash_todo('{}'::jsonb)");
+eq([r.status, hxf.sha, hq1.todo, hq1.req], ["ok", shaHex("SAME-CONTENT-77"), 0, null], "해시 채우기: Edge 가 저장소에서 읽어 잰 sha · 남은 것 없음 → 요청 지움");
+ok(rpcLog.slice(nRpc).some(x => x.act === "hash_todo") && rpcLog.slice(nRpc).filter(x => x.act === "hash_set").every(x => (x.p.items || []).every(i => i.sha || i.err)), "에이전트 → Edge hash → SQL hash_todo · hash_set");
+eq(httpLog.slice(nHttp).filter(x => x.p === "fn" && x.status !== 200).length, 0, "해시 채우기 회차에 거절된 에이전트 요청 없음");
+r = await once();
+eq([r.status, (await pvX()).k2h, (await pvX()).link], ["ok", 0, 1], "해시가 생긴 다음 회차: 이름이 달라도 같은 내용 H 문서와 연결만으로 셈");
+await admin("select public.semis_logi_ksync_map_start($1)", [MHX]);
+const nDX = (await docs()).length;
+r = await once();
+eq([r.status, (await rowsOf(MHX)).map(x => [x.rel_path, x.doc_id]), (await docs()).length, fs.readdirSync(HXD).sort()], ["ok", [["이름 다름.pdf", "hxo"]], nDX, ["이름 다름.pdf"]],
+  "시작: 연결만(새 문서 · K 사본 없음)");
+await db.exec(`update semis_logi_private.ksync_state set flags = flags || '{"link_all": false}'`);
+await admin("select public.semis_logi_ksync_map_delete($1)", [MHX]);
 
 /* 20. 동시 실행 막기 · 로컬 상태 · 전체 확인 */
 fs.writeFileSync(path.join(APP, "ksync.lock"), JSON.stringify({ pid: process.pid, at: Date.now() }));

@@ -279,7 +279,7 @@ export async function download(fetchFn, url, dirAbs, expectSha, expectSize) {
 export const kBlocked = (name) => K_BLOCK.test(String(name || ""));
 
 /* 서버 — 짧은 오류 코드만 온다. 게이트웨이 오류(JSON 아님 · 5xx)는 'server' — 서버가 처리했는지 모르므로 부른 쪽이 실행을 멈춘다.
-   분당 상한: 서버는 Edge 안의 SQL 호출을 분마다 센다(확인 verify 는 두 번, 나머지는 한 번). 1분 동안 PACE 까지만 보내고(상한의 80%),
+   분당 상한: 서버는 Edge 안의 SQL 호출을 분마다 센다(확인 verify · 해시 채우기 hash 는 두 번, 나머지는 한 번). 1분 동안 PACE 까지만 보내고(상한의 80%),
    그래도 rate 가 오면 1분 쉬고 한 번만 다시 — 정상 동기화가 보안 기록(rate)을 쌓지 않게 */
 export const PACE = 240;
 export function makeClient(fetchFn, server, key, sleep, now = Date.now) {
@@ -293,7 +293,7 @@ export function makeClient(fetchFn, server, key, sleep, now = Date.now) {
     win.push([now(), w]);
   }
   async function call(act, body) {
-    const w = act === "put" && body && body.phase === "verify" ? 2 : 1;
+    const w = (act === "put" && body && body.phase === "verify") || act === "hash" ? 2 : 1;
     for (let i = 0; ; i++) {
       await pace(w);
       let r;

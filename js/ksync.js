@@ -17,7 +17,7 @@
     mark: "서버가 맞춘 기록 일부를 받지 않음", state: "연결을 멈추거나 지워서 이 연결은 중단", run: "서버에서 이 실행이 이미 끝나 중단",
     apply: "문서함에 등록하지 못함(그 사이 H:drive 에 새 판 등) — 다음 실행에서 다시 맞춤",
     old: "기준일 전에 고친 파일이라 서버가 받지 않음", since: "기준일 형식이 틀려 이 연결은 건너뜀", excluded: "지정 제외" };
-  const st = { s: null, p: null, runs: null, ev: null, folders: null, rep: null, evKind: "", err: "", busy: false, alert: false, at: 0, box: null };
+  const st = { s: null, p: null, runs: null, ev: null, folders: null, rep: null, hash: null, evKind: "", err: "", busy: false, alert: false, at: 0, box: null };
 
   const pad = (n) => String(n).padStart(2, "0");
   const fmt = (t) => { const d = new Date(t); return !t || isNaN(d) ? "-" : (d.getMonth() + 1) + "-" + pad(d.getDate()) + " " + pad(d.getHours()) + ":" + pad(d.getMinutes()); };
@@ -40,7 +40,13 @@
   const ERR = { k_path: "K 폴더 경로를 확인하세요(연결 폴더 안 상대 경로).", target: "화면 · 분류를 고르세요.", k_dup: "이미 연결했거나 겹치는 K 폴더입니다.", target_dup: "그 화면 · 분류는 이미 다른 폴더와 연결되어 있습니다.",
     locked: "바꿀 수 없습니다 — 맞춘 파일이 있으면 폴더 · 화면을, 시작한 연결은 기준일을 비우거나 더 이른 날로 바꿀 수 없습니다. 연결을 지우고 새로 만드세요.", since: "기준일 형식을 확인하세요(YYYY-MM-DD).", ip: "IP 형식을 확인하세요(너무 넓은 범위는 넣을 수 없음).", daily_at: "시각 형식(HH:MM)", mass_limit: "한도 값을 확인하세요.", gone: "이미 처리되었습니다.", state: "지금 상태에서는 할 수 없습니다.", bad: "입력을 확인하세요.",
     preview: "미리보기 건수가 온 뒤에 시작할 수 있습니다.", excludes: "뺄 경로를 확인하세요(한 줄에 하나 · 20개까지 · 상대 경로).",
-    excluded: "지정 제외 아래 폴더입니다 — 전체 제외에서 빼거나, 이미 이은 연결을 덮는 경로는 연결마다 제외로 넣으세요." };
+    excluded: "지정 제외 아래 폴더입니다 — 전체 제외에서 빼거나, 이미 이은 연결을 덮는 경로는 연결마다 제외로 넣으세요.",
+    recon: "양쪽으로 바꾸려면 먼저 ⋯ › 양쪽으로 바꾸기 미리보기로 건수를 받으세요(이틀 안 · 방향 말고는 그대로).",
+    dup: "K 에 '이름 (2)' 로 내려올 파일이 있어 바꾸거나 시작할 수 없습니다 — H 쪽 옛 판 · 잘못 묶인 판 묶음을 먼저 정리하세요.",
+    oneway: "돌고 있는 연결은 한 방향끼리 바로 바꿀 수 없습니다 — 양쪽으로 바꾸기 미리보기를 거쳐 양쪽으로 바꾼 뒤 줄이세요.",
+    hold: "대량 변경 보류를 먼저 승인하거나 거절하세요.", dir: "방향을 확인하세요." };
+  const STORE_LIMIT = 1024 * 1024 * 1024;     // 저장소 관리 탭(modules.js)과 같은 무료 플랜 파일 한도 — Pro 로 바꾸면 함께 고칠 것
+  const bytes = (n) => { n = Number(n) || 0; return n < 1048576 ? (n / 1024).toFixed(1) + " KB" : n < STORE_LIMIT ? (n / 1048576).toFixed(1) + " MB" : (n / STORE_LIMIT).toFixed(2) + " GB"; };
   const fail = (d) => toast(ERR[(d && d.error) || ""] || "처리하지 못했습니다.", true);
   const isDom = () => typeof navigator !== "undefined" && /jsdom/i.test(navigator.userAgent || "");
   /* #tab-body 는 설정 탭이 모두 함께 쓰는 칸 — 늦게 온 결과가 다른 탭 위에 그려지지 않게 */
@@ -56,10 +62,12 @@
       const look = !quiet && st.secTab === "ev" && !st.evKind && on();
       const jobs = [rpc("semis_logi_ksync_status"), rpc("semis_logi_ksync_pending"), rpc("semis_logi_ksync_runs", { p: { limit: 30 } }),
         rpc("semis_logi_ksync_events", { p: { kind: st.evKind || null, limit: 100, seen: look } }),
-        rpc("semis_logi_ksync_report").catch(() => null)];     // 보고는 없어도 나머지는 그린다
+        rpc("semis_logi_ksync_report").catch(() => null),     // 보고 · 해시 채우기 진행은 없어도 나머지는 그린다
+        rpc("semis_logi_ksync_hash_todo", { p: {} }).catch(() => null)];
       if (full || !st.folders) jobs.push(rpc("semis_logi_ksync_folders"));
       const r = await Promise.all(jobs);
-      st.s = r[0]; st.p = r[1]; st.runs = r[2].runs || []; st.ev = r[3]; st.rep = r[4] && r[4].ok ? r[4] : null; if (r[5]) st.folders = r[5].folders || [];
+      st.s = r[0]; st.p = r[1]; st.runs = r[2].runs || []; st.ev = r[3]; st.rep = r[4] && r[4].ok ? r[4] : null; st.hash = r[5] && r[5].ok ? r[5] : null;
+      if (r[6]) st.folders = r[6].folders || [];
       st.err = "";
       st.evNew = !look && !!(st.s && st.s.counts && st.s.counts.ev_new);
       if (full && st.evNew && on()) { st.secTab = "ev"; st.evKind = ""; await seen(); }     // 새 보안 이벤트는 열 때 그 칸을 전체로 펴서 보여 준다
@@ -115,6 +123,7 @@
     mk("btn-ghost ph-rare", "ks-daily", "clock", "매일 실행 시각").onclick = dailyForm;
     mk("btn-ghost ph-rare", "ks-limit", "alert", "대량 변경 한도").onclick = limitForm;
     mk("btn-ghost ph-rare", "ks-excl", "x", "지정 제외").onclick = exclForm;
+    mk("btn-ghost ph-rare", "ks-hash", "shield", "해시 채우기").onclick = hashForm;
   }
   function paint() {
     const box = st.box;
@@ -142,14 +151,15 @@
   /* 보고(범위 밖) — 연결 안 된 폴더 · 기준일 전이라 안 올림 · K 로 안 간 H 문서 · 지정 제외. 0 인 칸은 숨기고, 모두 0 이면 줄도 없다.
      불일치(범위 안인데 못 맞춘 것)는 연결마다 '폴더 연결' 줄에 */
   function repHTML() {
-    const r = st.rep;
-    if (!r) return "";
+    const r = st.rep || {}, h = st.hash;
     const fl = r.folders || [], sum = r.sum || {};
     const tiles = [
       fl.length && { label: "연결 안 된 폴더", value: fl.length + "곳", sub: "파일 " + fl.reduce((a, f) => a + (Number(f.n) || 0), 0) + "개(3단계까지)", tone: "warn" },
       sum.old && { label: "기준일 전이라 안 올림", value: sum.old + "개", sub: "연결의 기준일 전에 고친 K 파일", tone: "muted" },
       sum.h_out && { label: "K 로 안 간 H 문서", value: sum.h_out + "개", sub: "K → H 만 연결 · K 에 쓰지 않는 형식 · 이름", tone: "muted" },
-      sum.excl && { label: "지정 제외", value: sum.excl + "곳", sub: "동기화하지 않는 폴더(⋯ › 지정 제외 · 연결마다)", tone: "muted" }].filter(Boolean);
+      sum.excl && { label: "지정 제외", value: sum.excl + "곳", sub: "동기화하지 않는 폴더(⋯ › 지정 제외 · 연결마다)", tone: "muted" },
+      // 해시 채우기 진행 — 요청한 동안만(끝나면 서버가 요청을 지워 칸이 사라짐)
+      h && h.req && h.todo && { label: "해시 채우기", value: "남음 " + h.todo + "개", sub: "해시 있음 " + h.done + " / " + h.total + " · Mac 이 동기화할 때 채움", tone: "muted" }].filter(Boolean);
     if (!tiles.length) return "";
     return `<div class="ks-rep">${ui.stats(tiles)}${fl.length ? `<button type="button" class="link-btn" id="ks-unlinked">연결 안 된 폴더 보기</button>` : ""}</div>`;
   }
@@ -199,15 +209,21 @@
     return "이틀 넘게 성공한 동기화가 없습니다.";
   }
 
+  /* H → K 를 받는 미리보기 연결(양쪽 · H → K 만)에서 K 에 '이름 (2)' 로 내려올 것 — 0 이 아니면 [시작]을 잠근다(서버도 'dup' 으로 거절) */
+  const name2 = (m) => (m.state === "preview" && m.dir !== "k2h" && m.preview ? Number(m.preview.name2) || 0 : 0);
   function mapsHTML() {
     const maps = st.s.maps || [];
     const rows = maps.map(m => {
       const ms = MSTATE[m.state] || MSTATE.paused, pv = m.preview;
+      // 양쪽 전환 미리보기 중(⋯ › 양쪽으로 바꾸기 미리보기) — 건수 표 · [양쪽으로 바꾸기]는 이 단추의 창에서
+      const rv = m.state === "active" && m.dir_next && m.dir_next !== m.dir, rc = rv ? m.recon : null;
       const act = m.state === "preview"
-        ? `<button type="button" class="btn btn-ghost btn-sm" data-ks-start="${m.id}"${pv ? "" : " disabled"}>시작</button>`
-        : m.state === "paused" ? `<button type="button" class="btn btn-ghost btn-sm" data-ks-start="${m.id}">다시 시작</button>` : "";
-      const sub0 = m.state === "preview" ? (pv ? `미리보기 K→H ${pv.k2h} · H→K ${pv.h2k}${pv.link ? " · 연결만 " + pv.link : ""}${pv.skip ? " · 건너뜀 " + pv.skip : ""}` : "미리보기 건수를 기다리는 중")
-        : m.hold && !m.hold.ok ? "대량 변경 보류" : "";
+        ? `<button type="button" class="btn btn-ghost btn-sm" data-ks-start="${m.id}"${pv && !name2(m) ? "" : " disabled"}>시작</button>`
+        : m.state === "paused" ? `<button type="button" class="btn btn-ghost btn-sm" data-ks-start="${m.id}">다시 시작</button>`
+        : rv ? `<button type="button" class="btn btn-ghost btn-sm" data-ks-recon="${m.id}">양쪽 미리보기</button>` : "";
+      const sub0 = m.state === "preview" ? (pv ? `미리보기 K→H ${pv.k2h} · H→K ${pv.h2k}${pv.link ? " · 연결만 " + pv.link : ""}${pv.skip ? " · 건너뜀 " + pv.skip : ""}${name2(m) ? " · '이름 (2)' " + name2(m) : ""}` : "미리보기 건수를 기다리는 중")
+        : m.hold && !m.hold.ok ? "대량 변경 보류"
+        : rv ? (rc ? `양쪽 미리보기 내려올 새 파일 ${rc.h2k_new} · '이름 (2)' ${rc.dup} · 올릴 ${rc.k2h}` : "양쪽 미리보기 건수를 기다리는 중") : "";
       const sn = m.since ? "기준일 " + m.since + (m.state === "preview" && pv && pv.old != null ? " · 기준일 전 " + pv.old + "개 뺌" : "") : "";
       // 불일치 = 범위 안인데 마지막 실행에서 못 맞춘 것(삭제 대기 · 보류 · 오류) — 목표는 모든 활성 연결이 0
       const mis = m.state === "active" && m.report && Number(m.report.mismatch) ? "불일치 " + m.report.mismatch : "";
@@ -338,6 +354,7 @@
         () => act("semis_logi_ksync_map_start", { p_id: Number(b.dataset.ksStart) }, "시작했습니다 — Mac 이 다음에 확인할 때 맞춥니다."));
     });
     $$("[data-ks-map]", box).forEach(b => b.onclick = () => mapMenu(Number(b.dataset.ksMap), b));
+    $$("[data-ks-recon]", box).forEach(b => b.onclick = () => { const m = mapOf(Number(b.dataset.ksRecon)); if (m) reconForm(m); });
     $$("[data-ks-hold]", box).forEach(b => b.onclick = () => {
       const ap = b.dataset.ksHold === "approve";
       confirmModal(ap ? "보류된 변경을 승인할까요? 다음 확인 때 그대로 맞춥니다." : "거절하면 이 연결을 멈춥니다. 바뀐 내용을 확인한 뒤 다시 시작하세요.",
@@ -372,6 +389,10 @@
     const m = mapOf(id);
     if (!m) return;
     const items = [{ label: "방향 · SSI 바꾸기", icon: icon("edit"), run: () => mapForm(m) }];
+    // 돌던 한 방향 연결을 양쪽으로 — 먼저 미리보기(Mac 이 그 방향으로 세어 봄, K 에 쓰지 않음) → 건수를 보고 [양쪽으로 바꾸기]
+    if (m.state === "active" && m.dir !== "both") items.push(m.dir_next
+      ? { label: "양쪽 미리보기 그만", icon: icon("x"), run: () => act("semis_logi_ksync_map_save", { p: { id, dir_next: null } }, "양쪽 미리보기를 그만뒀습니다.") }
+      : { label: "양쪽으로 바꾸기 미리보기", icon: icon("refresh"), run: () => act("semis_logi_ksync_map_save", { p: { id, dir_next: "both" } }, "미리보기를 요청했습니다 — Mac 이 다음 확인(10분 안) 때 셉니다.") });
     if (m.state === "active") items.push({ label: "멈춤", icon: icon("x"), run: () => act("semis_logi_ksync_map_save", { p: { id, pause: true } }, "멈췄습니다.") });
     items.push({ label: "연결 지우기", icon: icon("trash"), danger: true, run: () => confirmModal(`'${m.k_path}' 연결을 지울까요? 동기화 기준선만 지우고 H:drive 문서 · K 파일은 그대로 둡니다.`,
       () => act("semis_logi_ksync_map_delete", { p_id: id }, "연결을 지웠습니다.")) });
@@ -396,6 +417,8 @@
     const fl = st.folders || [];
     const opts = ts.map(t => `<optgroup label="${esc(t.label)}">${t.groups.map(g => `<option value="${esc(t.mod + "|" + g.id)}"${used.has(t.mod + "|" + g.id) ? " disabled" : ""}${m && m.mod === t.mod && m.grp === g.id ? " selected" : ""}>${esc(t.label + " › " + g.label)}</option>`).join("")}</optgroup>`).join("");
     const started = edit && m.state !== "preview";
+    // 돌던 한 방향 연결은 다른 한 방향으로 바로 바꾸지 못한다(서버 oneway) — 양쪽(미리보기 관문)이나 지금 방향만
+    const lockDir = (k) => started && m.dir !== "both" && k !== m.dir && k !== "both";
     openModal(`<h3>${edit ? "연결 바꾸기" : "폴더 연결 추가"}</h3>
       <div class="form-row"><label for="ks-kp">K 폴더 ${ui.tip("공유 안의 업무 폴더입니다. 목록은 Mac 에이전트가 하루 한 번 알려 준 폴더 이름(3단계까지)입니다. 더 깊은 폴더는 아래 칸에 경로를 직접 적으세요.", "K 폴더 설명")}</label>
         ${fl.length && !edit ? `<select id="ks-kp"><option value="">고르세요</option>${fl.map(f => `<option value="${esc(f.path)}">${esc("  ".repeat(Math.max(0, f.depth - 1)) + f.path.split("/").pop())} (${esc(String(f.n))})</option>`).join("")}</select>
@@ -405,7 +428,7 @@
       <div class="form-row"><label for="ks-since">기준일 ${ui.tip("이 날(한국 시각 0시)보다 전에 고친 K 파일은 맞춘 적이 없으면 올리지 않습니다(건수만 셈). 비우면 모두 올립니다. 시작한 뒤에는 더 늦은 날로만 바꿀 수 있습니다.", "기준일 설명")}</label>
         <input id="ks-since" type="date" value="${esc((m && m.since) || "")}"${started && m.since ? ` min="${esc(m.since)}"` : ""}></div>
       <div class="form-grid">
-        <div class="form-row"><label for="ks-dir">방향</label><select id="ks-dir">${Object.keys(DIR).map(k => `<option value="${k}"${(m ? m.dir : "both") === k ? " selected" : ""}>${esc(DIR[k])}</option>`).join("")}</select></div>
+        <div class="form-row"><label for="ks-dir">방향</label><select id="ks-dir">${Object.keys(DIR).map(k => `<option value="${k}"${(m ? m.dir : "both") === k ? " selected" : ""}${lockDir(k) ? " disabled" : ""}>${esc(DIR[k])}</option>`).join("")}</select></div>
         <div class="form-row"><label class="au-opt ks-ssi"><input type="checkbox" id="ks-ssi"${m && m.ssi ? " checked" : ""}> 민감보안정보(SSI) 폴더 ${ui.tip("K 에서 온 문서를 민감보안정보로 등록하고(안전보안파트 이상 열람), H:drive 의 SSI 문서도 이 폴더로 보냅니다. SSI 가 아닌 연결은 SSI 문서를 보내지 않습니다.", "SSI 설명")}</label></div>
       </div>
       <div class="form-row"><label for="ks-ex">이 연결에서 뺄 폴더 ${ui.tip("연결 폴더 안의 경로를 한 줄에 하나씩(20개까지). 그 아래는 동기화하지 않고 '모름'으로 둡니다 — 이미 맞춘 H:drive 문서는 지우지 않고 그대로 남습니다.", "뺄 폴더 설명")}</label>
@@ -511,6 +534,65 @@
       <div class="modal-actions"><button type="button" class="btn btn-ghost" data-act="cancel">취소</button><button type="button" class="btn btn-primary" data-act="ok">저장</button></div>`);
     $("#modal-box [data-act=cancel]").onclick = closeModal;
     $("#modal-box [data-act=ok]").onclick = async () => { const d = await act("semis_logi_ksync_settings", { p: { excludes: lines($("#ks-exg").value) } }, "저장했습니다."); if (d) closeModal(); };
+  }
+  /* 남은 저장소(무료 플랜 한도 - 버킷 파일 합계, 저장소 관리 탭과 같은 셈) — 못 재면 null */
+  async function storeLeft() {
+    try { const fs = await SemisSync.listFiles(); return STORE_LIMIT - fs.reduce((a, f) => a + (Number(f.size) || 0), 0); } catch (e) { return null; }
+  }
+  /* 첫 회차 승인 건수(서버 map_save 와 같은 셈) — 양쪽으로 바꿔서 더 생기는 변경(n_add, 옛 미리보기는 n) + 옛 판 연결 */
+  const apprN = (rc) => (rc.n_add != null ? Number(rc.n_add) || 0 : Number(rc.n) || 0) + (Number(rc.link_old) || 0);
+  /* 양쪽으로 바꾸기 — Mac 이 지금 방향 그대로 '양쪽이면' 계획을 세어 본 건수(recon). 'K 이름 (2)' 가 될 것이 있거나 이틀 넘게 지났으면 바꾸지 못한다(서버도 막음).
+     올릴 바이트가 남은 저장소보다 크면 경고만(Pro 전에는 미룬다 — HANDOFF §7) */
+  function reconForm(m) {
+    const rc = m.recon, dup = rc ? Number(rc.dup) || 0 : 0, held = !!(rc && rc.held);
+    const old = !!rc && Date.now() - new Date(rc.at).getTime() > 2 * 864e5;
+    const h = st.hash;
+    const rows = rc ? [["내려올 새 파일", rc.h2k_new + "개", "H:drive 에만 있는 문서 — 연결 폴더 맨 위로"],
+      ["K 파일을 H:drive 판으로 바꿈", Math.max(0, (Number(rc.h2k) || 0) - (Number(rc.h2k_new) || 0)) + "개", "H 쪽이 더 새로움 — 옛 K 파일은 이전판 폴더로"],
+      ["K 에 '이름 (2)' 로 내려올 파일", dup + "개", "같은 이름 K 파일이 이미 있음 — 0 이어야 바꿀 수 있음"],
+      ["옛 판으로 연결", rc.link_old + "개", "H 옛 판과 같은 K 파일 — 다음 회차에 현재 판을 받음"], ["올릴 파일", rc.k2h + "개 · " + bytes(rc.bytes), "K → H:drive"],
+      ["충돌", (Number(rc.conflict) || 0) + "개", "양쪽에서 고침 — 늦게 고친 쪽이 현재 판, 다른 쪽은 남김"],
+      ["삭제 대기", rc.del + "개", "자동으로 지우지 않음 — 지금처럼 '확인 필요'"], ["전체", rc.total + "건", "첫 회차 승인은 이 가운데 변경 " + apprN(rc) + "건까지"]] : [];
+    openModal(`<h3>양쪽으로 바꾸기 미리보기</h3>
+      <p class="ks-note"><b class="ks-path">${esc(m.k_path)}</b> · 지금 ${esc(DIR[m.dir] || m.dir)}${rc ? " · 셈 " + esc(fmt(rc.at)) + "(K 에 쓰지 않고 세기만 함)" : ""}</p>
+      ${rc ? `<div class="table-wrap"><table class="tbl ks-tbl ks-recon"><tbody>${rows.map(([a, b, c]) => `<tr><th scope="row">${esc(a)}</th><td class="mono">${esc(b)}</td><td class="cell-sub">${esc(c)}</td></tr>`).join("")}</tbody></table></div>
+        <p class="ks-note" id="ks-rc-store">남은 저장소를 확인하는 중…</p>` : `<p class="ks-none">건수를 기다리는 중입니다 — Mac 이 다음 확인(10분 안) 때 셉니다.</p>`}
+      ${dup ? `<p class="ks-warn" role="status">${icon("alert", 16)}<span>H 쪽 옛 판 · 잘못 묶인 판 묶음을 먼저 정리하세요 — 지금 바꾸면 K 에 '이름 (2)' 파일 ${dup}개가 생깁니다.</span></p>` : ""}
+      ${old ? `<p class="ks-warn" role="status">${icon("alert", 16)}<span>미리보기가 이틀 넘게 지났습니다 — [다시 세기]로 새로 세세요.</span></p>` : ""}
+      ${held ? `<p class="ks-warn" role="status">${icon("alert", 16)}<span>대량 변경 보류 중에 센 건수입니다 — 보류를 승인하거나 거절한 뒤 [다시 세기]로 새로 세세요.</span></p>` : ""}
+      ${h && h.todo ? `<p class="ks-note">해시가 없는 H 첨부 ${esc(String(h.todo))}개 — 같은 내용 파일 잇기가 덜 정확합니다(⋯ › 해시 채우기를 먼저).</p>` : ""}
+      <div class="modal-actions"><button type="button" class="btn btn-ghost" data-act="cancel">닫기</button><button type="button" class="btn btn-ghost" data-act="redo">다시 세기</button>
+        <button type="button" class="btn btn-primary" data-act="ok"${rc && !dup && !old && !held ? "" : " disabled"}>양쪽으로 바꾸기</button></div>`);
+    $("#modal-box [data-act=cancel]").onclick = closeModal;
+    $("#modal-box [data-act=redo]").onclick = async () => { const d = await act("semis_logi_ksync_map_save", { p: { id: m.id, dir_next: "both" } }, "다시 세도록 요청했습니다 — Mac 이 다음 확인(10분 안) 때 셉니다."); if (d) closeModal(); };
+    $("#modal-box [data-act=ok]").onclick = async () => {
+      const d = await act("semis_logi_ksync_map_save", { p: { id: m.id, dir: "both" } }, "양쪽으로 바꿨습니다 — Mac 이 다음 확인 때 맞춥니다(첫 회차 " + (rc ? apprN(rc) : 0) + "건 승인).");
+      if (d) closeModal();
+    };
+    if (!rc) return;
+    storeLeft().then(left => {
+      const el = $("#ks-rc-store");     // 그 사이 창을 닫았으면 없음
+      if (!el) return;
+      if (left == null) { el.textContent = "남은 저장소를 확인하지 못했습니다 — 시스템 설정 › 저장소 관리에서 확인하세요."; return; }
+      if (Number(rc.bytes) > left) { el.className = "ks-warn"; el.setAttribute("role", "status"); el.innerHTML = `${icon("alert", 16)}<span>올릴 양 ${esc(bytes(rc.bytes))}이 남은 저장소 ${esc(bytes(Math.max(0, left)))}보다 큽니다 — Pro 로 바꾼 뒤에 바꾸세요.</span>`; }
+      else el.textContent = "남은 저장소 " + bytes(left) + " — 올릴 양 " + bytes(rc.bytes) + "보다 넉넉합니다.";
+    });
+  }
+  /* 해시 채우기 — 연결한 화면 · 분류의 H 첨부에 sha256 을 적어 같은 내용 K 파일을 이름이 달라도 잇는다. 요청만 하고, 채우기는 Mac 이 동기화할 때
+     서버(Edge)가 저장소에서 읽어 잰다(화면 · Mac 이 값을 보내지 않음). 파일은 바꾸지 않고 문서함 첨부 정보에 sha 칸만 더한다 */
+  async function hashForm() {
+    let h;
+    try { h = await rpc("semis_logi_ksync_hash_todo", { p: {} }); } catch (e) { toast(errText(e), true); return; }
+    if (!h || !h.ok) { fail(h); return; }
+    st.hash = h;
+    openModal(`<h3>해시 채우기</h3>
+      <p class="ks-note">연결한 화면 · 분류의 H:drive 첨부에 내용 지문(SHA-256)을 적어, 같은 내용의 K 파일을 이름이 달라도 정확히 잇게 합니다. 파일은 바꾸지 않고 첨부 정보에 지문만 더합니다 — Mac 이 동기화할 때 서버가 저장소에서 읽어 잽니다. '양쪽'으로 바꾸기 전에 한 번 하세요.</p>
+      ${ui.stats([{ label: "전체 첨부", value: h.total + "개", tone: "muted" }, { label: "해시 있음", value: h.done + "개", tone: "ok" },
+        { label: "남음", value: h.todo + "개", tone: h.todo ? "warn" : "muted" }, { label: "못 읽음", value: h.skip + "개", sub: "하루 뒤 다시", tone: "muted" }])}
+      ${h.req ? `<p class="ks-note">요청함(${esc(fmt(h.req))}) — Mac 이 다음 확인 때부터 채웁니다.</p>` : ""}
+      <div class="modal-actions"><button type="button" class="btn btn-ghost" data-act="cancel">닫기</button><button type="button" class="btn btn-primary" data-act="ok"${h.todo && !h.req ? "" : " disabled"}>해시 채우기 시작</button></div>`);
+    $("#modal-box [data-act=cancel]").onclick = closeModal;
+    $("#modal-box [data-act=ok]").onclick = async () => { const d = await act("semis_logi_ksync_hash_todo", { p: { start: true } }, "요청했습니다 — Mac 이 다음 확인(10분 안) 때부터 채웁니다."); if (d) closeModal(); };
   }
   function runDetail(id) {
     const r = (st.runs || []).find(x => x.id === id);

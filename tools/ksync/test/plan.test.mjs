@@ -5,7 +5,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { plan, excluded, safeName, conflictName, limitHit, holdHit, CONFLICT_RE, K_BLOCK, H_BLOCK, MAX_SIZE, PREV, TRASH } from "../plan.mjs";
+import { plan, reconOf, excluded, safeName, conflictName, limitHit, holdHit, CONFLICT_RE, K_BLOCK, H_BLOCK, MAX_SIZE, PREV, TRASH } from "../plan.mjs";
 import fsp from "node:fs/promises";
 import * as LIB from "../lib.mjs";
 import { relOk, safeAbs, parseSmb, checkConfig, kstDay, kstMin, hhmm, indexDir, moveAside, moveNew, folderTree, place, conflictPath, netRetry, mountUrl, lock, agentPid, makeClient, PACE, dailyWin, winText } from "../lib.mjs";
@@ -718,6 +718,12 @@ for (let i = 0; i < PACE / 2; i++) await mc.call("put", { phase: "verify", path:
 const slp1 = slp.slice();
 await mc.call("put", { phase: "begin" });
 eq([slp1, slp], [[], [60000]], "확인(verify)은 서버 호출 둘(put_peek · put_verify)로 셈");
+mc = makeClient(okRes, "https://edge.example/f", "k", async (ms) => { slp.push(ms); }, () => T);
+slp.length = 0;
+for (let i = 0; i < PACE / 2; i++) await mc.call("hash", { run: 1 });
+const slp2 = slp.slice();
+await mc.call("mark", {});
+eq([slp2, slp], [[], [60000]], "해시 채우기(hash)도 서버 호출 둘(hash_todo · hash_set)로 셈");
 let ck = T;
 mc = makeClient(async () => { ck += 100; return RS('{"ok":true}', 200); }, "https://edge.example/f", "k", async (ms) => { slp.push(ms); ck += ms; }, () => ck);
 slp.length = 0;
@@ -1053,7 +1059,7 @@ const fakeSrv = (o) => {
     if (x instanceof Response) return x;
     if (x) return new Response(JSON.stringify(x), { status: x.ok ? 200 : 409 });
     let r = { ok: true };
-    if (b.act === "hello") r = { ok: true, allow: true, daily_at: "08:30", requested: false, mass_limit: LIM, maps: o.maps, lists: o.lists, paused_base: o.paused_base, flags: o.flags, excludes: o.excludes };
+    if (b.act === "hello") r = { ok: true, allow: true, daily_at: "08:30", requested: false, mass_limit: LIM, maps: o.maps, lists: o.lists, paused_base: o.paused_base, flags: o.flags, excludes: o.excludes, hash: o.hash };
     else if (tag === "run:start") r = { ok: true, run: 21 };
     else if (tag === "put:begin") { nUp++; r = { ok: true, path: "docs/z" + nUp, url: "https://store.example/pub/z" + nUp, upload: "https://store.example/up/z" + nUp, type: "application/x-test" }; }
     else if (b.act === "apply") r = { ok: true, docs: Object.fromEntries(b.paths.map(p => [p, "ks-" + p])) };
@@ -1266,6 +1272,188 @@ for (const [err, status, errors] of [["state", "ok", 0], ["bad", "partial", 1]])
   sv = fakeSrv(L25({ reply: (b, tag) => (tag === "put:begin" ? { ok: false, error: "bad" } : null) }));
   rf = await runFake(sv);
   eq(rf.end.maps.find(x => x.id === 25).rep.mismatch, 1, "실행 중 못 한 전송(오류)도 불일치");
+}
+
+/* v1.72 '양쪽' 전환 미리보기(reconOf) — 같은 입력으로 방향만 바꾼 계획을 센다. K → H 만 연결에 기준일 전 K 파일과 이름 · 크기가 같은 H 문서:
+   링크 깃발이 꺼져 있으면(잇지 못함) 양쪽 계획에서 그 H 문서가 K 에 '이름 (2)' 로 내려옴(dup — 전환을 막는다), 깃발을 켜면 연결만(dup 0) */
+{
+  const SN = Date.parse("2025-08-01T00:00:00+09:00"), OLD = SN - 864e5;
+  const K2H = Object.assign({}, MAP, { dir: "k2h" });
+  const inp = (o) => Object.assign({ map: K2H, baseline: [], kList: [{ rel: "계획.hwp", size: 7, mtime: OLD, sha: H("p") }], hList: [{ doc: "dp", ser: "sp", name: "계획.hwp", url: "up", size: 7, sha: null }],
+    limit: LIM, today: "2026-11-04", since: SN }, o || {});
+  const both = (i) => plan(Object.assign({}, i, { map: Object.assign({}, i.map, { dir: "both", hold: { ok: true } }) }));
+  let pk = plan(inp());
+  eq([ops(pk), pk.counts.old, pk.counts.out.dir], [[], 1, 1], "한 방향(K → H 만): 기준일 전 K 파일은 뺌 · H 문서는 방향 밖");
+  let qb = both(inp());
+  let rc = reconOf(qb);
+  eq([rc.h2k_new, rc.dup, rc.link, rc.link_old, ops(qb)], [1, 1, 0, 0, ["get::계획 (2).hwp"]], "링크 깃발 꺼짐 → 양쪽이면 H 문서가 '계획 (2).hwp' 로 내려옴(dup 1)");
+  qb = both(inp({ linkAll: true }));
+  rc = reconOf(qb);
+  eq([rc.h2k_new, rc.dup, rc.link, ops(qb)], [0, 0, 1, ["link::계획.hwp"]], "링크 깃발 켬 → 연결만(dup 0)");
+  // 옛 판으로 연결 — 현재 판은 이번에 받지 않는다(다음 회차가 'H 가 더 새로움'으로)
+  rc = reconOf(both(inp({ linkAll: true, hList: [{ doc: "dc", ser: "S", name: "계획 2차.hwp", url: "uc", size: 9 }], hOlds: [{ ser: "S", doc: "do", name: "계획.hwp", size: 7, url: "uo", date: "2025-01-01" }] })));
+  eq([rc.link_old, rc.link, rc.h2k_new, rc.dup], [1, 1, 0, 0], "옛 판으로 연결 1 · 현재 판은 이번에 안 받음");
+  // 서버가 해시 없는 첨부를 sha: null 로 줘도 해시 규칙(이름이 달라도 잇기)에 걸리지 않음 — 이름 · 크기가 다르면 새 문서
+  pk = plan({ map: MAP, baseline: [], kList: [{ rel: "다른 이름.hwp", size: 7, mtime: T, sha: H("p") }], hList: [{ doc: "dp", ser: "sp", name: "계획.hwp", url: "up", size: 7, sha: null }], limit: LIM, today: "2026-11-04", linkAll: true });
+  eq(ops(pk), ["put:new:다른 이름.hwp", "get::계획.hwp"], "H 해시 없음(null) → 해시로 잇지 않음");
+  // 올릴 바이트 = 올리기(put) 크기 합계 · 충돌 사본 받기 · 기준선 줄 받기는 '새 파일'이 아님
+  const BC = [row(1, "c.pdf"), row(2, "g.pdf")];
+  qb = both({ map: K2H, baseline: BC, kList: [kOf(BC[0], { sha: H("z"), size: 2, mtime: T + 1000 }), kOf(BC[1]), { rel: "n1.pdf", size: 3, mtime: T, sha: H("n") }, { rel: "n2.pdf", size: 5, mtime: T, sha: H("m") }],
+    hList: [hOf(BC[0], { url: "new", at: new Date(T - 1000).toISOString() }), hOf(BC[1], { url: "g2" })], limit: LIM, today: "2026-11-04" });
+  rc = reconOf(qb);
+  eq([rc.k2h, rc.bytes, rc.h2k, rc.h2k_new, rc.dup, rc.conflict, rc.n, rc.total], [3, 10, 2, 0, 0, 1, qb.n, qb.counts.total],
+    "올릴 3건(새 판 2바이트 + 새 파일 3 · 5) = 10바이트 · 충돌 사본 · 덮어쓰기 받기는 새 파일 아님 · 변경 수 n = 계획의 n");
+  eq(qb.n, 3, "변경 수 = 새 판 · 충돌 사본(맞춘 판 묶음) · 덮어쓰기 받기");
+}
+
+/* v1.72 에이전트 — dir_next 가 있는 활성 연결 중 한 곳만(건수가 없거나 가장 오래된 곳) 같은 색인으로 방향만 바꿔 계획을 한 번 더 돌려 recon 을 보냄.
+   센 설정 시각(updated_at)을 붙이고, K 에는 아무것도 쓰지 않으며(그 연결은 평소 방향대로), 서버가 받지 않아도 회차는 그대로 */
+{
+  const SN = Date.parse("2025-08-01T00:00:00+09:00");
+  const kt = (d, n, s, t) => { fs.writeFileSync(path.join(d, n), s); fs.utimesSync(path.join(d, n), t / 1000, t / 1000); };
+  const U26 = "2026-11-04T00:00:00.5+00:00";
+  const L26 = (o) => {
+    const d26 = mkK("m26"), d27 = mkK("m27");
+    mkK("m28");
+    kt(d26, "계획.hwp", "PLAN-1", SN - 864e5); kt(d27, "x.pdf", "X27", SN + 864e5);
+    return Object.assign({ maps: [mapOf(26, "m26", { dir: "k2h", dir_next: "both", since: "2025-08-01", updated_at: U26 }), mapOf(27, "m27", { dir: "k2h", dir_next: "both", recon_at: "2026-11-03T00:00:00Z" }),
+      mapOf(28, "m28", { dir: "both", dir_next: "both" })],
+      lists: [{ map: 26, base: [], h: [hIt("d26", "계획.hwp", "u26", { size: 6 })] }, { map: 27, base: [], h: [] }, { map: 28, base: [], h: [] }] }, o || {});
+  };
+  fs.rmSync(ST, { force: true });
+  sv = fakeSrv(L26());
+  rf = await runFake(sv);
+  let rcs = sv.bodies.filter(b => b.act === "recon");
+  eq([rf.status, rcs.map(b => b.map), rcs[0] && rcs[0].updated_at, rcs[0] && [rcs[0].counts.h2k_new, rcs[0].counts.dup, rcs[0].counts.k2h]], ["ok", [26], U26, [1, 1, 0]],
+    "건수가 없는 연결 한 곳만 · 센 설정 시각 · '이름 (2)' 가 될 1");
+  eq([fs.readdirSync(path.join(FS, "m26")).sort(), sv.bodies.filter(b => b.act === "get").length], [["계획.hwp"], 0], "미리보기는 K 에 쓰지 않음(그 연결은 K → H 만 그대로)");
+  fs.rmSync(ST, { force: true });
+  sv = fakeSrv(L26({ maps: L26().maps.map(m => m.id === 26 ? Object.assign({}, m, { recon_at: "2026-11-04T00:00:00Z" }) : m) }));
+  rf = await runFake(sv);
+  eq(sv.bodies.filter(b => b.act === "recon").map(b => b.map), [27], "모두 건수가 있으면 가장 오래된 곳");
+  fs.rmSync(ST, { force: true });
+  sv = fakeSrv(L26({ flags: { link_all: true } }));
+  rf = await runFake(sv);
+  rcs = sv.bodies.filter(b => b.act === "recon");
+  eq(rcs[0] && [rcs[0].map, rcs[0].counts.dup, rcs[0].counts.link], [26, 0, 1], "링크 깃발을 켜면 같은 연결의 dup 0(기준일 전 K 파일과 연결만)");
+  fs.rmSync(ST, { force: true });
+  sv = fakeSrv(L26({ reply: (b) => (b.act === "recon" ? { ok: false, error: "bad" } : null) }));
+  rf = await runFake(sv);
+  eq([rf.status, kRead("m27", "x.pdf"), rf.end && rf.end.maps.map(x => [x.id, x.done])], ["ok", "X27", [[26, true], [27, true], [28, true]]], "서버가 미리보기를 받지 않아도(옛 Edge 등) 회차는 그대로");
+  fs.rmSync(ST, { force: true });
+  const outs = [];
+  sv = fakeSrv(L26());
+  await runAgent(agentDeps({ mountRoot: async () => FS, fetch: sv.fetch, out: (o) => outs.push(o) }), { dryRun: true });
+  const o26 = outs.find(o => o.map === 26);
+  eq([o26 && o26.recon && o26.recon.counts.dup, o26 && o26.recon && o26.recon.actions, outs.find(o => o.map === 28).recon, sv.bodies.filter(b => b.act === "recon").length],
+    [1, ["get 계획 (2).hwp"], undefined, 0], "--dry-run: 양쪽 미리보기 중인 연결은 그 방향 계획의 파일 이름까지(서버에는 보내지 않음)");
+}
+
+/* v1.72 리뷰 반영 — dup 은 '이름 (2)' 가 생기는 모든 경우: (a) 기존 줄의 H 새 판 이름이 다른 K 파일과 겹쳐 '이름 (2)' 로 받음 ·
+   (b) 옛 판에 이은 줄의 현재 판 이름이 다른 K 파일과 겹침(다음 회차에 '이름 (2)' 로 받음) */
+{
+  const BD = [row(1, "a.pdf"), row(2, "b.pdf")];
+  let qd = plan({ map: MAP, baseline: BD, kList: BD.map(r => kOf(r)), hList: [hOf(BD[0], { url: "new", name: "b.pdf" }), hOf(BD[1])], limit: LIM, today: "2026-11-04" });
+  eq([ops(qd), reconOf(qd).dup], [["get::b (2).pdf"], 1], "(a) H 새 판 이름 b.pdf 가 다른 K 파일과 겹침 → 'b (2).pdf' 로 받음 = dup 1");
+  qd = plan({ map: MAP, baseline: BD, kList: BD.map(r => kOf(r)), hList: [hOf(BD[0], { url: "new", name: "c.pdf" }), hOf(BD[1])], limit: LIM, today: "2026-11-04" });
+  eq([ops(qd), reconOf(qd).dup], [["get::c.pdf"], 0], "겹치지 않는 새 이름은 dup 아님");
+  qd = plan({ map: MAP, baseline: BD, kList: BD.map(r => kOf(r)), hList: [hOf(BD[0], { url: "new" }), hOf(BD[1])], limit: LIM, today: "2026-11-04" });
+  eq([ops(qd), reconOf(qd).dup], [["get::a.pdf"], 0], "이름 그대로 새 판은 dup 아님");
+  const BO = [row(3, "보고.pdf")];
+  const hb = { linkAll: true, baseline: BO, kList: [kOf(BO[0]), { rel: "계획.hwp", size: 7, mtime: T, sha: H("p") }],
+    hList: [hOf(BO[0]), { doc: "dc", ser: "S", name: "보고.pdf", url: "uc", size: 9 }], hOlds: [{ ser: "S", doc: "do", name: "계획.hwp", size: 7, url: "uo", date: "2025-01-01" }] };
+  qd = P(hb);
+  eq([ops(qd), reconOf(qd).link_old, reconOf(qd).dup], [["link::계획.hwp"], 1, 1], "(b) 옛 판에 이은 줄의 현재 판 이름 '보고.pdf' 가 다른 K 파일과 겹침 → dup 1");
+  qd = P(Object.assign({}, hb, { hList: [hOf(BO[0]), { doc: "dc", ser: "S", name: "계획 2차.hwp", url: "uc", size: 9 }] }));
+  eq([reconOf(qd).link_old, reconOf(qd).dup], [1, 0], "현재 판 이름이 겹치지 않으면 dup 아님");
+}
+
+/* v1.72 재리뷰 — 옛 판 연결이 예상한 현재 판 이름(다음 회차에 받을 자리)을 잡아 두어, 뒤의 H 전용 문서 · 다른 옛 판 연결이 그 자리를 빈 곳으로 보지 않게 */
+{
+  const L1 = { linkAll: true, kList: [{ rel: "계획.hwp", size: 7, mtime: T, sha: H("p") }],
+    hList: [{ doc: "dc", ser: "S", name: "계획 최종.hwp", url: "uc", size: 9 }, { doc: "dt", ser: "T", name: "계획 최종.hwp", url: "ut", size: 3 }],
+    hOlds: [{ ser: "S", doc: "do", name: "계획.hwp", size: 7, url: "uo", date: "2025-01-01" }] };
+  let qr = P(L1);
+  eq([ops(qr), reconOf(qr).dup], [["link::계획.hwp", "get::계획 최종 (2).hwp"], 1], "(i) 옛 판 연결의 현재 판 이름과 같은 H 전용 문서 → 그 문서가 '(2)'(dup 1)");
+  const L2 = { linkAll: true, kList: [{ rel: "a.hwp", size: 1, mtime: T, sha: H("a") }, { rel: "b.hwp", size: 2, mtime: T, sha: H("b") }],
+    hList: [{ doc: "c1", ser: "S1", name: "최종.hwp", url: "u1", size: 9 }, { doc: "c2", ser: "S2", name: "최종.hwp", url: "u2", size: 8 }],
+    hOlds: [{ ser: "S1", doc: "o1", name: "a.hwp", size: 1, url: "v1", date: "2025-01-01" }, { ser: "S2", doc: "o2", name: "b.hwp", size: 2, url: "v2", date: "2025-01-01" }] };
+  qr = P(L2);
+  eq([ops(qr), reconOf(qr).dup], [["link::a.hwp", "link::b.hwp"], 1], "(ii) 한 폴더의 두 옛 판 연결이 같은 현재 판 이름 '최종.hwp' → 둘째가 다음 회차에 '(2)'(dup 1)");
+}
+
+/* v1.72 재리뷰 — recon 의 n_add = 양쪽 계획 변경 수 − 지금 방향 계획 변경 수(지금 방향으로 이 회차가 이미 맞출 변경은 승인에서 뺌) */
+{
+  fs.rmSync(ST, { force: true });
+  const d35 = mkK("m35");
+  fs.writeFileSync(path.join(d35, "a.pdf"), "new-a"); fs.writeFileSync(path.join(d35, "b.pdf"), "old-b");
+  sv = fakeSrv({ maps: [mapOf(35, "m35", { dir: "k2h", dir_next: "both" })],
+    lists: [{ map: 35, base: [bRow(71, "a.pdf", "old-a", "ua"), bRow(72, "b.pdf", "old-b", "ub")],
+      h: [{ doc: "d71", ser: "s71", name: "a.pdf", url: "ua", size: 3, at: AT }, { doc: "d72b", ser: "s72", name: "b.pdf", url: "ub2", size: 3, at: new Date(T).toISOString() }] }] });
+  rf = await runFake(sv);
+  const rc35 = sv.bodies.find(b => b.act === "recon");
+  eq(rc35 && [rc35.counts.n, rc35.counts.n_add], [2, 1], "양쪽 변경 2(K 새 판 + H 새 판 덮어쓰기) − 지금 방향 변경 1(K 새 판 — 이 회차가 맞춤) = n_add 1");
+}
+
+/* v1.72 리뷰 반영 — 에이전트: 평소 계획이 보류(held)면 recon 에 held 를 실음 · 고른 연결이 계획에 실패하면 같은 회차의 다음 후보 ·
+   끝 보고에 연결마다 hello 의 설정 시각 · 미리보기 건수에 '이름 (2)'(name2) */
+{
+  const kt = (d, n, s, t) => { fs.writeFileSync(path.join(d, n), s); fs.utimesSync(path.join(d, n), t / 1000, t / 1000); };
+  const U30 = "2026-11-04T00:00:00.7+00:00";
+  fs.rmSync(ST, { force: true });
+  mkK("m30", { "a.pdf": "A" });
+  sv = fakeSrv({ maps: [mapOf(30, "m30", { dir: "k2h", dir_next: "both", hold: { run: 9, n: 300 }, updated_at: U30 })], lists: [{ map: 30, base: [], h: [] }] });
+  rf = await runFake(sv);
+  const rc30 = sv.bodies.find(b => b.act === "recon");
+  eq([rf.status, rc30 && rc30.held, rf.end && rf.end.maps.map(x => [x.id, x.held, x.updated_at])], ["held", true, [[30, true, U30]]], "평소 계획이 보류 → recon 에 held · 끝 보고에 설정 시각");
+  fs.rmSync(ST, { force: true });
+  mkK("m32"); fs.rmSync(path.join(FS, "m31"), { recursive: true, force: true });
+  sv = fakeSrv({ maps: [mapOf(31, "m31", { dir: "k2h", dir_next: "both" }), mapOf(32, "m32", { dir: "k2h", dir_next: "both", recon_at: "2026-11-03T00:00:00Z" })],
+    lists: [{ map: 31, base: [], h: [] }, { map: 32, base: [], h: [] }] });
+  rf = await runFake(sv);
+  eq(sv.bodies.filter(b => b.act === "recon").map(b => [b.map, b.held]), [[32, false]], "먼저 고른 연결(31)이 계획에 실패(폴더 없음) → 같은 회차의 다음 후보(32)");
+  fs.rmSync(ST, { force: true });
+  const SN = Date.parse("2025-08-01T00:00:00+09:00");
+  const d33 = mkK("m33");
+  kt(d33, "계획.hwp", "PLAN-1", SN - 864e5);
+  sv = fakeSrv({ maps: [mapOf(33, "m33", { state: "preview", dir: "both", since: "2025-08-01" })], lists: [{ map: 33, base: [], h: [hIt("d33", "계획.hwp", "u33", { size: 6 })] }] });
+  rf = await runFake(sv);
+  const pv33 = sv.bodies.find(b => b.act === "preview");
+  eq(pv33 && [pv33.counts.name2, pv33.counts.h2k], [1, 1], "양쪽 미리보기 연결의 건수에 '이름 (2)' 가 될 것(name2) — 서버가 [시작]을 막음");
+}
+
+/* v1.72 해시 채우기 — hello 의 hash(관리자가 요청)가 켜져 있으면 연결을 다 맞춘 뒤 hash 를 부른다(값을 보내지 않음): 남은 것(left)이 0 이면 그만,
+   회차마다 50번까지(마지막 호출에 last — 서버가 다음 깨우기를 요청), 실패해도 회차는 그대로, 전송량 상한으로 멈춘 회차는 부르지 않음 */
+{
+  const L29 = (o) => { mkK("m29"); return Object.assign({ maps: [mapOf(29, "m29")], lists: [{ map: 29, base: [], h: [] }], hash: true }, o || {}); };
+  fs.rmSync(ST, { force: true });
+  let left = 3;
+  sv = fakeSrv(L29({ reply: (b) => (b.act === "hash" ? { ok: true, n: 20, left: --left } : null) }));
+  rf = await runFake(sv);
+  let hs = sv.bodies.filter(b => b.act === "hash");
+  eq([rf.status, hs.length, hs.map(b => b.run), hs.some(b => b.last), Object.keys(hs[0]).sort()], ["ok", 3, [21, 21, 21], false, ["act", "last", "run"]], "남은 것이 0 이 될 때까지 · 회차와 함께 · 값 · 경로는 보내지 않음");
+  ok(sv.seq.indexOf("hash") > sv.seq.lastIndexOf("folders") && sv.seq.indexOf("hash") < sv.seq.indexOf("run:end"), "연결을 다 맞춘 뒤 · 끝 보고 전");
+  fs.rmSync(ST, { force: true });
+  sv = fakeSrv(L29({ reply: (b) => (b.act === "hash" ? { ok: true, n: 20, left: 99 } : null) }));
+  rf = await runFake(sv);
+  hs = sv.bodies.filter(b => b.act === "hash");
+  eq([hs.length, hs.filter(b => b.last).length, hs[hs.length - 1].last], [50, 1, true], "회차마다 50번까지 · 마지막 호출에 last");
+  for (const [o, why] of [[{ hash: false }, "요청 없음"], [{ hash: undefined }, "옛 서버(칸 없음)"]]) {
+    fs.rmSync(ST, { force: true });
+    sv = fakeSrv(L29(o));
+    rf = await runFake(sv);
+    eq(sv.bodies.filter(b => b.act === "hash").length, 0, why + " → 부르지 않음");
+  }
+  fs.rmSync(ST, { force: true });
+  sv = fakeSrv(L29({ reply: (b) => (b.act === "hash" ? { ok: false, error: "bad" } : null) }));
+  rf = await runFake(sv);
+  eq([rf.status, sv.bodies.filter(b => b.act === "hash").length, rf.end && rf.end.result], ["ok", 1, "ok"], "해시 채우기 실패(옛 Edge 등) → 한 번에 그만 · 회차는 그대로");
+  fs.rmSync(ST, { force: true });
+  const d29 = mkK("m29", { "a.pdf": "A" });
+  sv = fakeSrv(Object.assign(L29(), { reply: (b, tag) => (tag === "put:begin" ? { ok: false, error: "quota" } : null) }));
+  fs.writeFileSync(path.join(d29, "a.pdf"), "A");
+  rf = await runFake(sv);
+  eq([rf.end && rf.end.msg, sv.bodies.filter(b => b.act === "hash").length], ["하루 전송량 상한", 0], "하루 전송량 상한으로 멈춘 회차는 해시 채우기를 부르지 않음");
 }
 
 /* 설치 · 제거(install.sh · uninstall.sh) — HOME 은 임시 폴더, 키체인(security) · launchctl 은 가짜 명령 */
