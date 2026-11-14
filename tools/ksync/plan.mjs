@@ -193,11 +193,18 @@ export function plan(input) {
     const rel = k ? k.rel : r.rel_path;
     const kCh = !!k && (k.size !== r.k_size || (!!k.sha && k.sha !== r.k_sha256) || (!k.sha && k.size > maxSize));
     const hCh = !!it && it.url !== r.h_url;
+    /* H 가 이름을 바꾼 새 판의 K 자리 — 그 이름을 다른 K 파일이 쓰면 '이름 (2)' 로(tdup — 양쪽 전환 미리보기의 dup 으로 셈) */
+    let tdup = false;
     const hTarget = () => {
+      tdup = false;
       if (it.name === r.h_name) return rel;
       const t = join(dirOf(rel), safeName(it.name));
-      return low(t) === low(rel) ? t : freePath(t) || rel;     // 대소문자만 바뀐 이름은 그 파일 자리 그대로
+      if (low(t) === low(rel)) return t;     // 대소문자만 바뀐 이름은 그 파일 자리 그대로
+      const f = freePath(t);
+      tdup = !!f && f !== t;
+      return f || rel;
     };
+    const dupX = (x) => (tdup ? Object.assign({ dup: true }, x || {}) : x);
     /* 삭제 확정 뒤 K 에서 고쳤으면 휴지통으로 옮기지 않는다 — H 로 다시 올리고 충돌로 남겨 관리자가 보게 한다(고친 것이 삭제 대기보다 우선).
        H→K 만인 연결은 K 수정을 H 로 보낼 수 없다 — 휴지통에 넣으면 K 수정이 업무 폴더에서 사라지므로 K 파일은 그대로 두고 기준선만 지운다
        (충돌로 남기면 다음 실행이 다시 'H 에서 지움'으로 돌려 확정 · 거절을 되풀이). 옮기기 직전에 색인 값과 다시 대 본다 */
@@ -232,11 +239,11 @@ export function plan(input) {
     if (!k && !it) { tail.push({ op: "drop", row: r.id }); line(r.rel_path, "drop", "양쪽 모두 없음"); return; }
     /* K 에서 지웠는데 H 가 고침 — 고친 것이 우선이라 삭제 대기로 두지 않는다(서버도 [삭제 확정]을 'H 에 새 판'으로 거절하므로 대기 ↔ 충돌을 되풀이).
        K→H 만인 연결은 H 판을 K 로 쓰지 않으므로 건너뜀(dir) */
-    if (!k) { if (!hCh) pend(r, "del_k"); else if (canH2K) getA(it, hTarget(), r); else skipRow(r, "dir"); return; }
+    if (!k) { if (!hCh) pend(r, "del_k"); else if (canH2K) { const t = hTarget(); getA(it, t, r, dupX()); } else skipRow(r, "dir"); return; }
     if (!it) { if (kCh && canK2H) putA(k, rel, "new", r); else pend(r, "del_h"); return; }
     if (!kCh && !hCh) { if (r.state === "del_k" || r.state === "del_h") add({ op: "state", row: r.id, state: "ok", note: "", rel }); return; }
     if (kCh && !hCh) { if (canK2H) putA(k, rel, "version", r); else skipRow(r, "dir", rel); return; }
-    if (!kCh && hCh) { if (canH2K) getA(it, hTarget(), r, { backup: rel, k }); else skipRow(r, "dir", rel); return; }
+    if (!kCh && hCh) { if (canH2K) { const t = hTarget(); getA(it, t, r, dupX({ backup: rel, k })); } else skipRow(r, "dir", rel); return; }
     /* 양쪽 다 바뀜 */
     counts.conflict++;
     const kWins = map.dir === "k2h" ? true : map.dir === "h2k" ? false : k.mtime >= hTime(it);
@@ -250,7 +257,8 @@ export function plan(input) {
       if (why) { skipRow(r, why, it.name); return; }
       const cf = conflictName(rel, today, 1);
       add({ op: "kconf", row: r.id, rel, to: cf, k });
-      if (getA(it, hTarget(), r, { state: "conflict" }) && canK2H) putA(Object.assign({}, k, { rel: cf }), cf, "old", r);
+      const t = hTarget();
+      if (getA(it, t, r, dupX({ state: "conflict" })) && canK2H) putA(Object.assign({}, k, { rel: cf }), cf, "old", r);
     }
   });
 
@@ -276,7 +284,11 @@ export function plan(input) {
     // 옛 판에 이으면 그 판 묶음의 현재 판은 이번에 받지 않는다 — 다음 실행이 'H 가 더 새로움'으로 맞춘다(받으면 K 에 '이름 (2)' 가 생김)
     if (it.old) hList.forEach(i => { if (i.ser === it.ser) usedH.add(i); });
     if (linkAll) linkedSer.add(it.ser);
-    line(k.rel, "link", it.old ? "옛 판과 같은 파일" : "같은 파일"); add({ op: "link", rel: k.rel, k, it });
+    // 옛 판에 이으면 다음 회차가 현재 판을 그 K 파일 자리에 받는다 — 현재 판 이름(첨부 하나)을 다른 K 파일이 쓰면 그때 '이름 (2)'(dup 으로 미리 셈)
+    const cur = it.old ? hList.filter(i => i.ser === it.ser) : [];
+    const ct = cur.length === 1 && cur[0].name !== it.name ? join(dirOf(k.rel), safeName(cur[0].name)) : "";
+    const dup = !!ct && low(ct) !== low(k.rel) && taken.has(low(ct));
+    line(k.rel, "link", it.old ? "옛 판과 같은 파일" : "같은 파일"); add(Object.assign({ op: "link", rel: k.rel, k, it }, dup ? { dup: true } : {}));
   };
   const rest = [];
   untrackedK.forEach(k => {
@@ -303,7 +315,7 @@ export function plan(input) {
     if (why) { skipN(why); line(it.name, "skip", why); if (why === "type_block") add({ op: "event", kind: "type_block", f: it.name }); return; }
     const rel = freePath(safeName(it.name));
     if (!rel) { skipN("name"); line(it.name, "skip", "name"); return; }
-    getA(it, rel, null);
+    getA(it, rel, null, rel !== safeName(it.name) ? { dup: true } : null);
   });
   tail.forEach(a => actions.push(a));
 
@@ -315,12 +327,13 @@ export function plan(input) {
 }
 
 /* '양쪽' 전환 미리보기(recon) — 같은 입력으로 바꿀 방향의 plan() 을 돈 결과를 센다(K 에 쓰지 않음). 서버(ksync_recon_set)가 받는 칸:
-   h2k_new = 내려올 새 파일(H 에만 있는 문서), dup = 그중 K 에 같은 이름이 있어 '이름 (2)' 로 내려올 것(0 이 아니면 전환을 막는다 —
-   H 옛 판 · 잘못 묶인 판 묶음이나 잇지 못한 기준일 전 K 파일), link_old = 옛 판으로 연결, bytes = 올릴 파일 크기 합계(저장소 증가 상한) */
+   h2k_new = 내려올 새 파일(H 에만 있는 문서), dup = K 에 '이름 (2)' 가 생길 것 — H 에만 있는 문서 · 이름을 바꾼 H 새 판의 이름을 다른 K 파일이 씀,
+   옛 판에 이은 줄의 현재 판 이름을 다른 K 파일이 씀(다음 회차). 0 이 아니면 전환을 막는다(H 옛 판 · 잘못 묶인 판 묶음이나 잇지 못한 기준일 전 K 파일).
+   link_old = 옛 판으로 연결, bytes = 올릴 파일 크기 합계(저장소 증가 상한) */
 export function reconOf(p) {
   const acts = p.planned || [], c = p.counts || {};
   const fresh = acts.filter(a => a.op === "get" && !a.row && !a.copy);
-  return { k2h: c.k2h || 0, h2k: c.h2k || 0, h2k_new: fresh.length, dup: fresh.filter(a => a.rel !== safeName(a.it.name)).length,
+  return { k2h: c.k2h || 0, h2k: c.h2k || 0, h2k_new: fresh.length, dup: acts.filter(a => a.dup).length,
     link: c.link || 0, link_old: acts.filter(a => a.op === "link" && a.it && a.it.old).length, del: c.del || 0, conflict: c.conflict || 0,
     skip: c.skip || 0, total: c.total || 0, n: p.n || 0, bytes: acts.filter(a => a.op === "put").reduce((s, a) => s + (Number(a.k && a.k.size) || 0), 0) };
 }
