@@ -288,6 +288,7 @@ export function plan(input) {
     const cur = it.old ? hList.filter(i => i.ser === it.ser) : [];
     const ct = cur.length === 1 && cur[0].name !== it.name ? join(dirOf(k.rel), safeName(cur[0].name)) : "";
     const dup = !!ct && low(ct) !== low(k.rel) && taken.has(low(ct));
+    if (ct && !dup) taken.add(low(ct));     // 그 자리를 잡아 둔다 — 뒤의 H 전용 문서 · 다른 옛 판 연결이 빈 곳으로 보지 않게
     line(k.rel, "link", it.old ? "옛 판과 같은 파일" : "같은 파일"); add(Object.assign({ op: "link", rel: k.rel, k, it }, dup ? { dup: true } : {}));
   };
   const rest = [];

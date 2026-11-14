@@ -1368,6 +1368,33 @@ for (const [err, status, errors] of [["state", "ok", 0], ["bad", "partial", 1]])
   eq([reconOf(qd).link_old, reconOf(qd).dup], [1, 0], "현재 판 이름이 겹치지 않으면 dup 아님");
 }
 
+/* v1.72 재리뷰 — 옛 판 연결이 예상한 현재 판 이름(다음 회차에 받을 자리)을 잡아 두어, 뒤의 H 전용 문서 · 다른 옛 판 연결이 그 자리를 빈 곳으로 보지 않게 */
+{
+  const L1 = { linkAll: true, kList: [{ rel: "계획.hwp", size: 7, mtime: T, sha: H("p") }],
+    hList: [{ doc: "dc", ser: "S", name: "계획 최종.hwp", url: "uc", size: 9 }, { doc: "dt", ser: "T", name: "계획 최종.hwp", url: "ut", size: 3 }],
+    hOlds: [{ ser: "S", doc: "do", name: "계획.hwp", size: 7, url: "uo", date: "2025-01-01" }] };
+  let qr = P(L1);
+  eq([ops(qr), reconOf(qr).dup], [["link::계획.hwp", "get::계획 최종 (2).hwp"], 1], "(i) 옛 판 연결의 현재 판 이름과 같은 H 전용 문서 → 그 문서가 '(2)'(dup 1)");
+  const L2 = { linkAll: true, kList: [{ rel: "a.hwp", size: 1, mtime: T, sha: H("a") }, { rel: "b.hwp", size: 2, mtime: T, sha: H("b") }],
+    hList: [{ doc: "c1", ser: "S1", name: "최종.hwp", url: "u1", size: 9 }, { doc: "c2", ser: "S2", name: "최종.hwp", url: "u2", size: 8 }],
+    hOlds: [{ ser: "S1", doc: "o1", name: "a.hwp", size: 1, url: "v1", date: "2025-01-01" }, { ser: "S2", doc: "o2", name: "b.hwp", size: 2, url: "v2", date: "2025-01-01" }] };
+  qr = P(L2);
+  eq([ops(qr), reconOf(qr).dup], [["link::a.hwp", "link::b.hwp"], 1], "(ii) 한 폴더의 두 옛 판 연결이 같은 현재 판 이름 '최종.hwp' → 둘째가 다음 회차에 '(2)'(dup 1)");
+}
+
+/* v1.72 재리뷰 — recon 의 n_add = 양쪽 계획 변경 수 − 지금 방향 계획 변경 수(지금 방향으로 이 회차가 이미 맞출 변경은 승인에서 뺌) */
+{
+  fs.rmSync(ST, { force: true });
+  const d35 = mkK("m35");
+  fs.writeFileSync(path.join(d35, "a.pdf"), "new-a"); fs.writeFileSync(path.join(d35, "b.pdf"), "old-b");
+  sv = fakeSrv({ maps: [mapOf(35, "m35", { dir: "k2h", dir_next: "both" })],
+    lists: [{ map: 35, base: [bRow(71, "a.pdf", "old-a", "ua"), bRow(72, "b.pdf", "old-b", "ub")],
+      h: [{ doc: "d71", ser: "s71", name: "a.pdf", url: "ua", size: 3, at: AT }, { doc: "d72b", ser: "s72", name: "b.pdf", url: "ub2", size: 3, at: new Date(T).toISOString() }] }] });
+  rf = await runFake(sv);
+  const rc35 = sv.bodies.find(b => b.act === "recon");
+  eq(rc35 && [rc35.counts.n, rc35.counts.n_add], [2, 1], "양쪽 변경 2(K 새 판 + H 새 판 덮어쓰기) − 지금 방향 변경 1(K 새 판 — 이 회차가 맞춤) = n_add 1");
+}
+
 /* v1.72 리뷰 반영 — 에이전트: 평소 계획이 보류(held)면 recon 에 held 를 실음 · 고른 연결이 계획에 실패하면 같은 회차의 다음 후보 ·
    끝 보고에 연결마다 hello 의 설정 시각 · 미리보기 건수에 '이름 (2)'(name2) */
 {

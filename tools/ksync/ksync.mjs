@@ -245,6 +245,8 @@ async function sendRecon(srv, log, maps, order, got) {
   if (id == null) return;
   const m = maps.find(x => x.id === id), g = got.get(id);
   const rc = reconOf(plan(reconInput(g.input, m)));
+  // n_add = 양쪽으로 바꿔서 더 생기는 변경 — 지금 방향 계획의 변경(이 회차가 맞춤)은 뺀다. 서버는 첫 회차 승인을 n_add + 옛 판 연결로
+  rc.n_add = Math.max(0, rc.n - g.n);
   try { await srv.call("recon", { map: id, counts: rc, updated_at: m.updated_at, held: g.held }); log("info", `양쪽 미리보기: ${m.k_path} 내려올 새 파일 ${rc.h2k_new} · '이름 (2)' ${rc.dup} · 올릴 ${rc.k2h}${g.held ? " · 보류 중" : ""}`); }
   catch (e) { if (fatalCode(e.code)) throw e; log("warn", "양쪽 미리보기 건수를 보내지 못함(" + e.code + "): " + m.k_path); }
 }
@@ -305,7 +307,7 @@ async function syncMap(ctx, m, li) {
   res.n_files = idx.list.length - (p.counts.old || 0);
   // 양쪽 전환 미리보기 후보는 이 계획의 입력을 남겨 둔다(회차 끝에 한 곳만 센다 — sendRecon). 실행 전 상태로 세므로 이 회차에 올리는 K 파일도 들어 있어
   // 실제보다 크게 보일 수 있다(안전한 쪽)
-  if (ctx.reconQ.includes(m.id) && reconWanted(m)) ctx.reconIn.set(m.id, { input, held: !!p.held });
+  if (ctx.reconQ.includes(m.id) && reconWanted(m)) ctx.reconIn.set(m.id, { input, held: !!p.held, n: p.n || 0 });
   // 센 설정의 시각(hello 의 updated_at)을 함께 보낸다 — 그 사이 관리자가 설정을 고쳤으면 서버가 옛 설정으로 센 건수를 버린다
   if (preview) {
     // 그 사이 관리자가 [시작] · 멈춤 · 지우기를 눌렀으면(state) 이 건수만 버린다 — 실행 전체를 멈추면 뒤의 연결을 맞추지 못한다
