@@ -326,9 +326,8 @@
       try {
         const up = await SemisSync.uploadFile(file, ssi ? "docs-ssi" : "docs");
         const f = { name: up.name || file.name, size: up.size || file.size || 0, url: up.url };
-        const sha = await sha256Of(file);
-        if (sha) f.sha = sha;
-        files.push(f);
+        files.push(f);     // 먼저 넣는다 — sha 를 재는 동안 [저장]해도 첨부가 빠지지 않게(sha 는 재는 대로 이 객체에)
+        sha256Of(file).then(sha => { if (sha) f.sha = sha; });
       } catch (e) { toast("올리지 못했습니다: " + file.name, true); }
     }
     if (done) done();
@@ -378,8 +377,9 @@
     $("#dk-file").onchange = () => { const fl = Array.from($("#dk-file").files || []); $("#dk-file").value = ""; uploadInto(files, fl, $("#dk-ssi").checked, paint); };
     $("#modal-box [data-act=cancel]").onclick = closeModal;
     const del = $("#modal-box [data-act=del]");
+    /* 창을 연 사이 원격 반영 · 해시 채우기로 문서함 배열이 통째로 바뀔 수 있다 — 저장 · 삭제는 id 로 지금 문서를 찾는다(옛 객체에 적으면 소리 없이 사라짐) */
     if (del) del.onclick = () => confirmModal("이 문서를 목록에서 삭제할까요? (원본 파일은 저장소에 남습니다)", () => {
-      D().docs = all().filter(x => x !== d);
+      D().docs = all().filter(x => !(x && x.id === d.id));
       SeMIS.save(); toast("삭제했습니다."); repaint();
     });
     $("#modal-box [data-act=ok]").onclick = () => {
@@ -389,7 +389,14 @@
         org: norm($("#dk-org").value), note: norm($("#dk-note").value), ssi: !!$("#dk-ssi").checked, files: files.slice(), at: new Date().toISOString(), by: me(),
         mids: String($("#dk-mids").value || "").split(/[,\s]+/).map(x => x.trim()).filter(x => /^\d+(\.\d+)*$/.test(x)) };
       if (!Array.isArray(D().docs)) D().docs = [];
-      if (d) Object.assign(d, rec); else D().docs.push(Object.assign({ id: uid() }, rec));
+      const cur = d ? all().find(x => x && x.id === d.id) : null;
+      if (cur) {
+        // 창을 연 사이 붙은 첨부 sha(해시 채우기)는 같은 주소면 지킨다
+        const shaOf = new Map((cur.files || []).filter(f => f && f.sha).map(f => [f.url, f.sha]));
+        rec.files = rec.files.map(f => (f.sha || !shaOf.has(f.url) ? f : Object.assign({}, f, { sha: shaOf.get(f.url) })));
+        Object.assign(cur, rec);
+      } else if (d) D().docs.push(Object.assign({}, d, rec));     // 그 사이 다른 곳에서 지운 문서 — 고친 내용을 잃지 않게 같은 id 로 다시
+      else D().docs.push(Object.assign({ id: uid() }, rec));
       SeMIS.save(); closeModal(); toast("저장했습니다."); repaint();
     };
   }

@@ -11196,6 +11196,44 @@ function makeServer(opts = {}) {
       ok(qa(e, ".dk-grp h4").some(h => /시설 보안 · 출입통제/.test(h.textContent)), "검색장비 문서함에 새 분류");
       eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
     });
+    await ta("DS15 v1.72 문서 수정 창: 연 사이에 문서함 배열이 통째로 바뀌어도(원격 저장 · 해시 채우기) 저장 · 삭제는 id 로 지금 문서를 찾아 적용 · 그 사이 붙은 첨부 sha 는 지킴", async () => {
+      const e = makeEnv(); loginAs(e, "hq");
+      const SD = e.w.SemisDocs;
+      const PU = "https://x.supabase.co/storage/v1/object/public/semis-logi-files/docs/";
+      e.S.data.docs = [{ id: "dx1", mod: "audit", grp: "checklist", title: "옛 이름", date: "2026-11-01", ser: "", files: [{ name: "a.pdf", size: 1, url: PU + "a_a.pdf" }] },
+        { id: "dx2", mod: "audit", grp: "checklist", title: "다른 문서", date: "2026-11-01", ser: "", files: [] }];
+      const swap = () => { e.S.data.docs = JSON.parse(JSON.stringify(e.S.data.docs)); e.S.data.docs[0].files[0].sha = "a".repeat(64); };     // 원격 반영 = 새 배열 · 새 객체
+      SD.form("dx1"); swap();
+      q(e, "#dk-title").value = "새 이름"; clickOk(e);
+      const d1 = e.S.data.docs.find(d => d.id === "dx1");
+      eq(JSON.stringify([e.S.data.docs.length, d1.title, d1.files[0].sha]), JSON.stringify([2, "새 이름", "a".repeat(64)]), "저장이 지금 배열의 그 문서에 적용 · 그 사이 붙은 sha 유지");
+      SD.form("dx2"); swap();
+      q(e, "#modal-box [data-act=del]").click(); clickOk(e);
+      eq(JSON.stringify(e.S.data.docs.map(d => d.id)), '["dx1"]', "삭제도 id 로 — 지금 배열에서 빠짐");
+      SD.form("dx1"); e.S.data.docs = [];
+      q(e, "#dk-title").value = "되살림"; clickOk(e);
+      eq(JSON.stringify(e.S.data.docs.map(d => [d.id, d.title])), '[["dx1","되살림"]]', "그 사이 다른 곳에서 지운 문서를 저장하면 같은 id 로 다시 넣음(고친 내용을 잃지 않게)");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.w.close();
+    });
+    await ta("DS16 v1.72 문서함 첨부 올리기: 올리기가 끝나면 sha 를 기다리지 않고 바로 첨부에 넣음(그 사이 [저장]해도 첨부가 빠지지 않음) · sha 는 재는 대로 그 첨부에", async () => {
+      const e = makeEnv(); loginAs(e, "hq");
+      const SD = e.w.SemisDocs, up = e.w.SemisSync.uploadFile, cr = e.w.crypto;
+      e.w.SemisSync.uploadFile = async (file, prefix) => ({ name: file.name, size: file.size, url: "https://x.supabase.co/storage/v1/object/public/semis-logi-files/" + prefix + "/r_" + file.name });
+      let fin;
+      Object.defineProperty(e.w, "crypto", { value: { subtle: { digest: () => new Promise(r => { fin = () => r(new Uint8Array(32).fill(171).buffer); }) } }, configurable: true });
+      const files = [];
+      const run = SD.uploadInto(files, [new e.w.File(["내용"], "느림.pdf")], false);
+      await Promise.race([run, tick(60)]);     // sha 를 재는 동안(digest 가 아직 안 끝남)
+      const before = JSON.stringify(files.map(f => [f.name, f.sha || ""]));
+      if (fin) fin();
+      await run; await tick(5);
+      Object.defineProperty(e.w, "crypto", { value: cr, configurable: true });
+      e.w.SemisSync.uploadFile = up;
+      eq(JSON.stringify([before, files.map(f => f.sha)]), JSON.stringify([JSON.stringify([["느림.pdf", ""]]), ["ab".repeat(32)]]), "첨부는 sha 를 재기 전에 들어가고, sha 는 뒤에 그 첨부에");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.w.close();
+    });
     await ta("DS14 v1.72 문서함 첨부 올리기: 브라우저에서 SHA-256 을 재어 첨부에 sha(서버가 재는 값과 같음 — K드라이브 동기화 링크용) · 못 재면 칸 없이 올리기는 그대로", async () => {
       const e = makeEnv(); loginAs(e, "hq");
       const SD = e.w.SemisDocs, up = e.w.SemisSync.uploadFile;
@@ -11203,6 +11241,7 @@ function makeServer(opts = {}) {
       const files = [];
       let done = 0;
       await SD.uploadInto(files, [new e.w.File(["보안 점검표 내용"], "점검표.pdf"), { name: "옛.pdf", size: 3 }], false, () => { done++; });
+      await tick(20);     // sha 는 첨부를 넣은 뒤 재는 대로 채운다(DS16)
       e.w.SemisSync.uploadFile = up;
       const want = require("crypto").createHash("sha256").update(Buffer.from("보안 점검표 내용")).digest("hex");
       eq(JSON.stringify([files.map(f => [f.name, f.sha || ""]), "sha" in files[1], done]), JSON.stringify([[["점검표.pdf", want], ["옛.pdf", ""]], false, 1]), "sha = 파일 내용의 SHA-256 · 못 재는 것은 칸 없음");
@@ -12918,6 +12957,37 @@ function makeServer(opts = {}) {
       sv.rpc.semis_logi_ksync_map_save = () => ({ ok: false, error: "dup" });
       q(e, '[data-ks-map="31"]').click(); sheetPick(e, "방향 · SSI 바꾸기"); clickOk(e); await tick(30);
       ok(/'이름 \(2\)' 로 내려올 파일이 있어/.test(q(e, "#toast-wrap").textContent), "dup 거절 문구");
+      e.w.SeMIS.closeModal();
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS27 v1.72 리뷰 반영: 돌던 한 방향 연결의 고치기 창은 다른 한 방향을 고를 수 없음(양쪽만 — 미리보기 관문) · 미리보기 창에 'K 파일을 H 판으로 바꿈' · 충돌 · 보류 중 안내 · 양쪽 미리보기 연결의 '이름 (2)' 는 [시작] 잠금", async () => {
+      const { sv, ks, e } = await setup();
+      ks.maps = [{ id: 41, k_path: "업무/한쪽", mod: "audit", grp: "checklist", dir: "k2h", ssi: false, state: "active", n_files: 5 },
+        { id: 42, k_path: "업무/양쪽", mod: "audit", grp: "plan", dir: "both", ssi: false, state: "active", n_files: 2 },
+        { id: 43, k_path: "업무/미리", mod: "audit", grp: "misc", dir: "both", ssi: false, state: "preview", n_files: 0, preview: { k2h: 1, h2k: 2, link: 0, skip: 0, total: 3, name2: 1 } },
+        { id: 44, k_path: "업무/미리둘", mod: "audit", grp: "gov", dir: "k2h", ssi: false, state: "preview", n_files: 0, preview: { k2h: 1, h2k: 0, link: 0, skip: 0, total: 1, name2: 0 } }];
+      await openTab(e);
+      const dirs = () => qa(e, "#ks-dir option").map(o => o.value + (o.disabled ? "-" : ""));
+      q(e, '[data-ks-map="41"]').click(); sheetPick(e, "방향 · SSI 바꾸기");
+      eq(dirs().join(), "both,k2h,h2k-", "돌던 K → H 만: H → K 만은 고를 수 없음(양쪽은 미리보기 관문)");
+      e.w.SeMIS.closeModal();
+      q(e, '[data-ks-map="42"]').click(); sheetPick(e, "방향 · SSI 바꾸기");
+      eq(dirs().join(), "both,k2h,h2k", "양쪽 연결은 어느 쪽으로든 줄일 수 있음");
+      e.w.SeMIS.closeModal();
+      ok(q(e, '[data-ks-start="43"]').disabled && /'이름 \(2\)' 1/.test(q(e, '[data-ks-card="maps"]').textContent), "양쪽 미리보기 연결 · '이름 (2)' 1 → [시작] 잠금 + 줄에 표시");
+      ok(!q(e, '[data-ks-start="44"]').disabled, "K → H 만 미리보기는 그대로 시작 가능");
+      ks.maps[0] = Object.assign(ks.maps[0], { dir_next: "both", recon: { k2h: 0, h2k: 5, h2k_new: 2, dup: 0, link: 0, link_old: 0, del: 0, conflict: 1, skip: 0, total: 6, n: 4, bytes: 0, held: true, at: new Date().toISOString() } });
+      await openTab(e);
+      q(e, '[data-ks-recon="41"]').click(); await tick(20);
+      const t = q(e, "#modal-box").textContent.replace(/\s+/g, "");
+      ok(/K파일을H:drive판으로바꿈3개/.test(t) && /충돌1개/.test(t), "건수 표: K 파일을 H 판으로 바꿈(h2k − 새 파일) · 충돌 " + t);
+      ok(q(e, "#modal-box [data-act=ok]").disabled && /대량 변경 보류 중에 센 건수/.test(q(e, "#modal-box").textContent), "보류 중에 센 미리보기 → 잠금 + 안내");
+      e.w.SeMIS.closeModal();
+      sv.rpc.semis_logi_ksync_map_save = () => ({ ok: false, error: "oneway" });
+      q(e, '[data-ks-map="41"]').click(); sheetPick(e, "방향 · SSI 바꾸기"); clickOk(e); await tick(30);
+      ok(/한 방향끼리 바로 바꿀 수 없습니다/.test(q(e, "#toast-wrap").textContent), "oneway 거절 문구");
+      sv.rpc.semis_logi_ksync_map_start = () => ({ ok: false, error: "dup" });
       e.w.SeMIS.closeModal();
       eq(e.errors.length, 0, e.errors.join(" | "));
       e.Sync.stop(); e.w.close();

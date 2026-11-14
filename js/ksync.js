@@ -42,7 +42,8 @@
     preview: "미리보기 건수가 온 뒤에 시작할 수 있습니다.", excludes: "뺄 경로를 확인하세요(한 줄에 하나 · 20개까지 · 상대 경로).",
     excluded: "지정 제외 아래 폴더입니다 — 전체 제외에서 빼거나, 이미 이은 연결을 덮는 경로는 연결마다 제외로 넣으세요.",
     recon: "양쪽으로 바꾸려면 먼저 ⋯ › 양쪽으로 바꾸기 미리보기로 건수를 받으세요(이틀 안 · 방향 말고는 그대로).",
-    dup: "K 에 '이름 (2)' 로 내려올 파일이 있어 바꿀 수 없습니다 — H 쪽 옛 판 · 잘못 묶인 판 묶음을 먼저 정리하세요.",
+    dup: "K 에 '이름 (2)' 로 내려올 파일이 있어 바꾸거나 시작할 수 없습니다 — H 쪽 옛 판 · 잘못 묶인 판 묶음을 먼저 정리하세요.",
+    oneway: "돌고 있는 연결은 한 방향끼리 바로 바꿀 수 없습니다 — 양쪽으로 바꾸기 미리보기를 거쳐 양쪽으로 바꾼 뒤 줄이세요.",
     hold: "대량 변경 보류를 먼저 승인하거나 거절하세요.", dir: "방향을 확인하세요." };
   const STORE_LIMIT = 1024 * 1024 * 1024;     // 저장소 관리 탭(modules.js)과 같은 무료 플랜 파일 한도 — Pro 로 바꾸면 함께 고칠 것
   const bytes = (n) => { n = Number(n) || 0; return n < 1048576 ? (n / 1024).toFixed(1) + " KB" : n < STORE_LIMIT ? (n / 1048576).toFixed(1) + " MB" : (n / STORE_LIMIT).toFixed(2) + " GB"; };
@@ -208,6 +209,8 @@
     return "이틀 넘게 성공한 동기화가 없습니다.";
   }
 
+  /* H → K 를 받는 미리보기 연결(양쪽 · H → K 만)에서 K 에 '이름 (2)' 로 내려올 것 — 0 이 아니면 [시작]을 잠근다(서버도 'dup' 으로 거절) */
+  const name2 = (m) => (m.state === "preview" && m.dir !== "k2h" && m.preview ? Number(m.preview.name2) || 0 : 0);
   function mapsHTML() {
     const maps = st.s.maps || [];
     const rows = maps.map(m => {
@@ -215,10 +218,10 @@
       // 양쪽 전환 미리보기 중(⋯ › 양쪽으로 바꾸기 미리보기) — 건수 표 · [양쪽으로 바꾸기]는 이 단추의 창에서
       const rv = m.state === "active" && m.dir_next && m.dir_next !== m.dir, rc = rv ? m.recon : null;
       const act = m.state === "preview"
-        ? `<button type="button" class="btn btn-ghost btn-sm" data-ks-start="${m.id}"${pv ? "" : " disabled"}>시작</button>`
+        ? `<button type="button" class="btn btn-ghost btn-sm" data-ks-start="${m.id}"${pv && !name2(m) ? "" : " disabled"}>시작</button>`
         : m.state === "paused" ? `<button type="button" class="btn btn-ghost btn-sm" data-ks-start="${m.id}">다시 시작</button>`
         : rv ? `<button type="button" class="btn btn-ghost btn-sm" data-ks-recon="${m.id}">양쪽 미리보기</button>` : "";
-      const sub0 = m.state === "preview" ? (pv ? `미리보기 K→H ${pv.k2h} · H→K ${pv.h2k}${pv.link ? " · 연결만 " + pv.link : ""}${pv.skip ? " · 건너뜀 " + pv.skip : ""}` : "미리보기 건수를 기다리는 중")
+      const sub0 = m.state === "preview" ? (pv ? `미리보기 K→H ${pv.k2h} · H→K ${pv.h2k}${pv.link ? " · 연결만 " + pv.link : ""}${pv.skip ? " · 건너뜀 " + pv.skip : ""}${name2(m) ? " · '이름 (2)' " + name2(m) : ""}` : "미리보기 건수를 기다리는 중")
         : m.hold && !m.hold.ok ? "대량 변경 보류"
         : rv ? (rc ? `양쪽 미리보기 내려올 새 파일 ${rc.h2k_new} · '이름 (2)' ${rc.dup} · 올릴 ${rc.k2h}` : "양쪽 미리보기 건수를 기다리는 중") : "";
       const sn = m.since ? "기준일 " + m.since + (m.state === "preview" && pv && pv.old != null ? " · 기준일 전 " + pv.old + "개 뺌" : "") : "";
@@ -414,6 +417,8 @@
     const fl = st.folders || [];
     const opts = ts.map(t => `<optgroup label="${esc(t.label)}">${t.groups.map(g => `<option value="${esc(t.mod + "|" + g.id)}"${used.has(t.mod + "|" + g.id) ? " disabled" : ""}${m && m.mod === t.mod && m.grp === g.id ? " selected" : ""}>${esc(t.label + " › " + g.label)}</option>`).join("")}</optgroup>`).join("");
     const started = edit && m.state !== "preview";
+    // 돌던 한 방향 연결은 다른 한 방향으로 바로 바꾸지 못한다(서버 oneway) — 양쪽(미리보기 관문)이나 지금 방향만
+    const lockDir = (k) => started && m.dir !== "both" && k !== m.dir && k !== "both";
     openModal(`<h3>${edit ? "연결 바꾸기" : "폴더 연결 추가"}</h3>
       <div class="form-row"><label for="ks-kp">K 폴더 ${ui.tip("공유 안의 업무 폴더입니다. 목록은 Mac 에이전트가 하루 한 번 알려 준 폴더 이름(3단계까지)입니다. 더 깊은 폴더는 아래 칸에 경로를 직접 적으세요.", "K 폴더 설명")}</label>
         ${fl.length && !edit ? `<select id="ks-kp"><option value="">고르세요</option>${fl.map(f => `<option value="${esc(f.path)}">${esc("  ".repeat(Math.max(0, f.depth - 1)) + f.path.split("/").pop())} (${esc(String(f.n))})</option>`).join("")}</select>
@@ -423,7 +428,7 @@
       <div class="form-row"><label for="ks-since">기준일 ${ui.tip("이 날(한국 시각 0시)보다 전에 고친 K 파일은 맞춘 적이 없으면 올리지 않습니다(건수만 셈). 비우면 모두 올립니다. 시작한 뒤에는 더 늦은 날로만 바꿀 수 있습니다.", "기준일 설명")}</label>
         <input id="ks-since" type="date" value="${esc((m && m.since) || "")}"${started && m.since ? ` min="${esc(m.since)}"` : ""}></div>
       <div class="form-grid">
-        <div class="form-row"><label for="ks-dir">방향</label><select id="ks-dir">${Object.keys(DIR).map(k => `<option value="${k}"${(m ? m.dir : "both") === k ? " selected" : ""}>${esc(DIR[k])}</option>`).join("")}</select></div>
+        <div class="form-row"><label for="ks-dir">방향</label><select id="ks-dir">${Object.keys(DIR).map(k => `<option value="${k}"${(m ? m.dir : "both") === k ? " selected" : ""}${lockDir(k) ? " disabled" : ""}>${esc(DIR[k])}</option>`).join("")}</select></div>
         <div class="form-row"><label class="au-opt ks-ssi"><input type="checkbox" id="ks-ssi"${m && m.ssi ? " checked" : ""}> 민감보안정보(SSI) 폴더 ${ui.tip("K 에서 온 문서를 민감보안정보로 등록하고(안전보안파트 이상 열람), H:drive 의 SSI 문서도 이 폴더로 보냅니다. SSI 가 아닌 연결은 SSI 문서를 보내지 않습니다.", "SSI 설명")}</label></div>
       </div>
       <div class="form-row"><label for="ks-ex">이 연결에서 뺄 폴더 ${ui.tip("연결 폴더 안의 경로를 한 줄에 하나씩(20개까지). 그 아래는 동기화하지 않고 '모름'으로 둡니다 — 이미 맞춘 H:drive 문서는 지우지 않고 그대로 남습니다.", "뺄 폴더 설명")}</label>
@@ -537,21 +542,25 @@
   /* 양쪽으로 바꾸기 — Mac 이 지금 방향 그대로 '양쪽이면' 계획을 세어 본 건수(recon). 'K 이름 (2)' 가 될 것이 있거나 이틀 넘게 지났으면 바꾸지 못한다(서버도 막음).
      올릴 바이트가 남은 저장소보다 크면 경고만(Pro 전에는 미룬다 — HANDOFF §7) */
   function reconForm(m) {
-    const rc = m.recon, dup = rc ? Number(rc.dup) || 0 : 0;
+    const rc = m.recon, dup = rc ? Number(rc.dup) || 0 : 0, held = !!(rc && rc.held);
     const old = !!rc && Date.now() - new Date(rc.at).getTime() > 2 * 864e5;
     const h = st.hash;
-    const rows = rc ? [["내려올 새 파일", rc.h2k_new + "개", "H:drive 에만 있는 문서 — 연결 폴더 맨 위로"], ["K 에 '이름 (2)' 로 내려올 파일", dup + "개", "같은 이름 K 파일이 이미 있음 — 0 이어야 바꿀 수 있음"],
+    const rows = rc ? [["내려올 새 파일", rc.h2k_new + "개", "H:drive 에만 있는 문서 — 연결 폴더 맨 위로"],
+      ["K 파일을 H:drive 판으로 바꿈", Math.max(0, (Number(rc.h2k) || 0) - (Number(rc.h2k_new) || 0)) + "개", "H 쪽이 더 새로움 — 옛 K 파일은 이전판 폴더로"],
+      ["K 에 '이름 (2)' 로 내려올 파일", dup + "개", "같은 이름 K 파일이 이미 있음 — 0 이어야 바꿀 수 있음"],
       ["옛 판으로 연결", rc.link_old + "개", "H 옛 판과 같은 K 파일 — 다음 회차에 현재 판을 받음"], ["올릴 파일", rc.k2h + "개 · " + bytes(rc.bytes), "K → H:drive"],
-      ["삭제 대기", rc.del + "개", "자동으로 지우지 않음 — 지금처럼 '확인 필요'"], ["전체", rc.total + "건", "첫 회차 승인 건수"]] : [];
+      ["충돌", (Number(rc.conflict) || 0) + "개", "양쪽에서 고침 — 늦게 고친 쪽이 현재 판, 다른 쪽은 남김"],
+      ["삭제 대기", rc.del + "개", "자동으로 지우지 않음 — 지금처럼 '확인 필요'"], ["전체", rc.total + "건", "첫 회차 승인은 이 가운데 변경 " + ((Number(rc.n) || 0) + (Number(rc.link_old) || 0)) + "건까지"]] : [];
     openModal(`<h3>양쪽으로 바꾸기 미리보기</h3>
       <p class="ks-note"><b class="ks-path">${esc(m.k_path)}</b> · 지금 ${esc(DIR[m.dir] || m.dir)}${rc ? " · 셈 " + esc(fmt(rc.at)) + "(K 에 쓰지 않고 세기만 함)" : ""}</p>
       ${rc ? `<div class="table-wrap"><table class="tbl ks-tbl ks-recon"><tbody>${rows.map(([a, b, c]) => `<tr><th scope="row">${esc(a)}</th><td class="mono">${esc(b)}</td><td class="cell-sub">${esc(c)}</td></tr>`).join("")}</tbody></table></div>
         <p class="ks-note" id="ks-rc-store">남은 저장소를 확인하는 중…</p>` : `<p class="ks-none">건수를 기다리는 중입니다 — Mac 이 다음 확인(10분 안) 때 셉니다.</p>`}
       ${dup ? `<p class="ks-warn" role="status">${icon("alert", 16)}<span>H 쪽 옛 판 · 잘못 묶인 판 묶음을 먼저 정리하세요 — 지금 바꾸면 K 에 '이름 (2)' 파일 ${dup}개가 생깁니다.</span></p>` : ""}
       ${old ? `<p class="ks-warn" role="status">${icon("alert", 16)}<span>미리보기가 이틀 넘게 지났습니다 — [다시 세기]로 새로 세세요.</span></p>` : ""}
+      ${held ? `<p class="ks-warn" role="status">${icon("alert", 16)}<span>대량 변경 보류 중에 센 건수입니다 — 보류를 승인하거나 거절한 뒤 [다시 세기]로 새로 세세요.</span></p>` : ""}
       ${h && h.todo ? `<p class="ks-note">해시가 없는 H 첨부 ${esc(String(h.todo))}개 — 같은 내용 파일 잇기가 덜 정확합니다(⋯ › 해시 채우기를 먼저).</p>` : ""}
       <div class="modal-actions"><button type="button" class="btn btn-ghost" data-act="cancel">닫기</button><button type="button" class="btn btn-ghost" data-act="redo">다시 세기</button>
-        <button type="button" class="btn btn-primary" data-act="ok"${rc && !dup && !old ? "" : " disabled"}>양쪽으로 바꾸기</button></div>`);
+        <button type="button" class="btn btn-primary" data-act="ok"${rc && !dup && !old && !held ? "" : " disabled"}>양쪽으로 바꾸기</button></div>`);
     $("#modal-box [data-act=cancel]").onclick = closeModal;
     $("#modal-box [data-act=redo]").onclick = async () => { const d = await act("semis_logi_ksync_map_save", { p: { id: m.id, dir_next: "both" } }, "다시 세도록 요청했습니다 — Mac 이 다음 확인(10분 안) 때 셉니다."); if (d) closeModal(); };
     $("#modal-box [data-act=ok]").onclick = async () => {
