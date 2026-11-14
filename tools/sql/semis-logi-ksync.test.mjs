@@ -1414,13 +1414,14 @@ const D36 = [
   { id: "hx6", mod: "audit", grp: "both1", ser: "hy", title: "y", date: "2026-02-01", files: [{ name: "y.pdf", size: 1, url: U("hxaaaaaaaaa1_a.pdf") }, { name: "z.pdf", size: 1, url: "https://evil.example/z.pdf" }] },
   { id: "hx7", mod: "audit", grp: "both1", ser: "he", title: "e", date: "2026-02-01", files: [] }];
 const setD36 = (list) => db.query("update public.semis_logi_store set value = $1::jsonb, base_at = updated_at where key = 'docs'", [JSON.stringify(list)]);
-await setD36(D36.filter(d => d.id !== "hx6"));     // hx6 은 옛 판 주소를 다른 판 묶음의 현재 판으로 씀 — 그 주소는 옛 판 후보가 아님
+// hx6 은 옛 판 주소를 다른 판 묶음의 현재 판으로 씀 — 그 주소는 옛 판 후보가 아님. 옛 판 hx1 첨부에는 이 확인 동안만 sha
+await setD36(D36.filter(d => d.id !== "hx6").map(d => (d.id === "hx1" ? Object.assign({}, d, { files: [Object.assign({}, d.files[0], { sha: HX("e") })] }) : d)));
 await as(null);
 hb = await call("hello", { full: true });
 const lb = hb.lists.find(l => l.map === MB);
 eq(lb.h.filter(x => x.ser === "hx").map(x => [x.name, x.sha]), [["a.pdf", HX("b")], ["c.pdf", null]], "h_items: 첨부 sha(64자 hex)만 · 틀린 값은 null");
 await db.exec(`update semis_logi_private.ksync_state set flags = flags || '{"link_all": true}'`);
-eq((await call("hello", { full: true })).lists.find(l => l.map === MB).olds.map(o => [o.name, o.sha]), [["a.pdf", null]], "h_olds 도 sha 칸(없으면 null)");
+eq((await call("hello", { full: true })).lists.find(l => l.map === MB).olds.map(o => [o.name, o.sha]), [["a.pdf", HX("e")]], "h_olds 도 첨부 sha 를 실음");
 await db.exec(`update semis_logi_private.ksync_state set flags = flags || '{"link_all": false}'`);
 await as("a1", "admin");
 await setD36(D36);
