@@ -333,11 +333,24 @@
     if (done) done();
   }
 
+  /* 문서 3-way 병합 — 창을 연 때 값(base) · 창 값(mine) · 지금 문서(cur). 칸은 SemisSync.merge3(이 창이 바꾼 칸만 · 남이 바꾼 칸은 그대로),
+     첨부는 주소로 — 이 창이 더한 것만 더하고 뺀 것만 뺀다(그 사이 K 삭제 확정이 뺀 첨부를 되살리지 않고, 붙은 sha 는 지금 객체 그대로) */
+  function mergeDoc(base, mine, cur) {
+    const strip = (o) => { const x = Object.assign({}, o); delete x.files; return x; };
+    const out = window.SemisSync && SemisSync.merge3 ? SemisSync.merge3(strip(base), strip(mine), strip(cur)) : strip(mine);
+    const urls = (a) => new Set((a || []).filter(f => f && f.url).map(f => f.url));
+    const bU = urls(base.files), mU = urls(mine.files);
+    const files = (cur.files || []).filter(f => !(f && f.url && bU.has(f.url) && !mU.has(f.url)));
+    (mine.files || []).forEach(f => { if (f && f.url && !bU.has(f.url) && !files.some(x => x && x.url === f.url)) files.push(f); });
+    return Object.assign(out, { files });
+  }
+
   function form(id, preset) {
     if (!SeMIS.canEdit()) return;
     const d = id ? all().find(x => x && x.id === id) : null;
     if (id && !d) return;
     const v = Object.assign({ mod: "", grp: "", title: "", date: new Date().toISOString().slice(0, 10), ser: "", org: "", note: "", ssi: false, files: [] }, preset || {}, d || {});
+    const base0 = d ? JSON.parse(JSON.stringify(d)) : null;     // 창을 연 때 값 — 저장할 때 이 창이 바꾼 것만 지금 문서에 얹는다(3-way)
     const files = (v.files || []).map(f => Object.assign({}, f));
     const gs = groupsOf(v.mod);
     const sers = Array.from(new Set(list(v.mod).filter(x => x.ser).map(x => x.ser)));
@@ -378,10 +391,14 @@
     $("#modal-box [data-act=cancel]").onclick = closeModal;
     const del = $("#modal-box [data-act=del]");
     /* 창을 연 사이 원격 반영 · 해시 채우기로 문서함 배열이 통째로 바뀔 수 있다 — 저장 · 삭제는 id 로 지금 문서를 찾는다(옛 객체에 적으면 소리 없이 사라짐) */
-    if (del) del.onclick = () => confirmModal("이 문서를 목록에서 삭제할까요? (원본 파일은 저장소에 남습니다)", () => {
+    const curOf = () => (d ? all().find(x => x && x.id === d.id) : null);
+    if (del) del.onclick = () => {
+      if (!curOf()) { closeModal(); toast("이미 지워진 문서입니다."); repaint(); return; }
+      confirmModal("이 문서를 목록에서 삭제할까요? (원본 파일은 저장소에 남습니다)", () => {
       D().docs = all().filter(x => !(x && x.id === d.id));
       SeMIS.save(); toast("삭제했습니다."); repaint();
-    });
+      });
+    };
     $("#modal-box [data-act=ok]").onclick = () => {
       const title = norm($("#dk-title").value);
       if (!title) { toast("문서 이름을 입력하세요.", true); $("#dk-title").focus(); return; }
@@ -389,15 +406,16 @@
         org: norm($("#dk-org").value), note: norm($("#dk-note").value), ssi: !!$("#dk-ssi").checked, files: files.slice(), at: new Date().toISOString(), by: me(),
         mids: String($("#dk-mids").value || "").split(/[,\s]+/).map(x => x.trim()).filter(x => /^\d+(\.\d+)*$/.test(x)) };
       if (!Array.isArray(D().docs)) D().docs = [];
-      const cur = d ? all().find(x => x && x.id === d.id) : null;
-      if (cur) {
-        // 창을 연 사이 붙은 첨부 sha(해시 채우기)는 같은 주소면 지킨다
-        const shaOf = new Map((cur.files || []).filter(f => f && f.sha).map(f => [f.url, f.sha]));
-        rec.files = rec.files.map(f => (f.sha || !shaOf.has(f.url) ? f : Object.assign({}, f, { sha: shaOf.get(f.url) })));
-        Object.assign(cur, rec);
-      } else if (d) D().docs.push(Object.assign({}, d, rec));     // 그 사이 다른 곳에서 지운 문서 — 고친 내용을 잃지 않게 같은 id 로 다시
-      else D().docs.push(Object.assign({ id: uid() }, rec));
-      SeMIS.save(); closeModal(); toast("저장했습니다."); repaint();
+      const done = () => { SeMIS.save(); closeModal(); toast("저장했습니다."); repaint(); };
+      if (!d) { D().docs.push(Object.assign({ id: uid() }, rec)); done(); return; }
+      const cur = curOf(), mine = Object.assign({}, base0, rec);
+      if (!cur) {
+        // 그 사이 다른 곳에서 지운 문서(K 삭제 확정 · 다른 사람) — 묻고, 기본은 넣지 않는다
+        confirmModal("그 사이 다른 곳에서 지운 문서입니다 — 고친 내용으로 다시 넣을까요?", () => { D().docs.push(mine); done(); });
+        return;
+      }
+      Object.assign(cur, mergeDoc(base0, mine, cur));
+      done();
     };
   }
 

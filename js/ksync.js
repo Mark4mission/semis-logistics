@@ -539,6 +539,8 @@
   async function storeLeft() {
     try { const fs = await SemisSync.listFiles(); return STORE_LIMIT - fs.reduce((a, f) => a + (Number(f.size) || 0), 0); } catch (e) { return null; }
   }
+  /* 첫 회차 승인 건수(서버 map_save 와 같은 셈) — 양쪽으로 바꿔서 더 생기는 변경(n_add, 옛 미리보기는 n) + 옛 판 연결 */
+  const apprN = (rc) => (rc.n_add != null ? Number(rc.n_add) || 0 : Number(rc.n) || 0) + (Number(rc.link_old) || 0);
   /* 양쪽으로 바꾸기 — Mac 이 지금 방향 그대로 '양쪽이면' 계획을 세어 본 건수(recon). 'K 이름 (2)' 가 될 것이 있거나 이틀 넘게 지났으면 바꾸지 못한다(서버도 막음).
      올릴 바이트가 남은 저장소보다 크면 경고만(Pro 전에는 미룬다 — HANDOFF §7) */
   function reconForm(m) {
@@ -550,7 +552,7 @@
       ["K 에 '이름 (2)' 로 내려올 파일", dup + "개", "같은 이름 K 파일이 이미 있음 — 0 이어야 바꿀 수 있음"],
       ["옛 판으로 연결", rc.link_old + "개", "H 옛 판과 같은 K 파일 — 다음 회차에 현재 판을 받음"], ["올릴 파일", rc.k2h + "개 · " + bytes(rc.bytes), "K → H:drive"],
       ["충돌", (Number(rc.conflict) || 0) + "개", "양쪽에서 고침 — 늦게 고친 쪽이 현재 판, 다른 쪽은 남김"],
-      ["삭제 대기", rc.del + "개", "자동으로 지우지 않음 — 지금처럼 '확인 필요'"], ["전체", rc.total + "건", "첫 회차 승인은 이 가운데 변경 " + ((Number(rc.n) || 0) + (Number(rc.link_old) || 0)) + "건까지"]] : [];
+      ["삭제 대기", rc.del + "개", "자동으로 지우지 않음 — 지금처럼 '확인 필요'"], ["전체", rc.total + "건", "첫 회차 승인은 이 가운데 변경 " + apprN(rc) + "건까지"]] : [];
     openModal(`<h3>양쪽으로 바꾸기 미리보기</h3>
       <p class="ks-note"><b class="ks-path">${esc(m.k_path)}</b> · 지금 ${esc(DIR[m.dir] || m.dir)}${rc ? " · 셈 " + esc(fmt(rc.at)) + "(K 에 쓰지 않고 세기만 함)" : ""}</p>
       ${rc ? `<div class="table-wrap"><table class="tbl ks-tbl ks-recon"><tbody>${rows.map(([a, b, c]) => `<tr><th scope="row">${esc(a)}</th><td class="mono">${esc(b)}</td><td class="cell-sub">${esc(c)}</td></tr>`).join("")}</tbody></table></div>
@@ -564,7 +566,7 @@
     $("#modal-box [data-act=cancel]").onclick = closeModal;
     $("#modal-box [data-act=redo]").onclick = async () => { const d = await act("semis_logi_ksync_map_save", { p: { id: m.id, dir_next: "both" } }, "다시 세도록 요청했습니다 — Mac 이 다음 확인(10분 안) 때 셉니다."); if (d) closeModal(); };
     $("#modal-box [data-act=ok]").onclick = async () => {
-      const d = await act("semis_logi_ksync_map_save", { p: { id: m.id, dir: "both" } }, "양쪽으로 바꿨습니다 — Mac 이 다음 확인 때 맞춥니다(첫 회차 " + (rc ? rc.total : 0) + "건 승인).");
+      const d = await act("semis_logi_ksync_map_save", { p: { id: m.id, dir: "both" } }, "양쪽으로 바꿨습니다 — Mac 이 다음 확인 때 맞춥니다(첫 회차 " + (rc ? apprN(rc) : 0) + "건 승인).");
       if (d) closeModal();
     };
     if (!rc) return;

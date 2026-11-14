@@ -11210,9 +11210,34 @@ function makeServer(opts = {}) {
       SD.form("dx2"); swap();
       q(e, "#modal-box [data-act=del]").click(); clickOk(e);
       eq(JSON.stringify(e.S.data.docs.map(d => d.id)), '["dx1"]', "삭제도 id 로 — 지금 배열에서 빠짐");
-      SD.form("dx1"); e.S.data.docs = [];
+      // 3-way: 창을 연 사이 다른 사람이 제목을 바꾸고 K 삭제 확정이 첨부를 뺌 — 이 창은 비고만 고치고 첨부 하나를 더함 → 남의 변경은 그대로, 내 변경만
+      e.S.data.docs = [{ id: "dx3", mod: "audit", grp: "checklist", title: "처음", date: "2026-11-01", ser: "", note: "", files: [{ name: "a.pdf", size: 1, url: PU + "a_a.pdf" }, { name: "b.pdf", size: 1, url: PU + "b_b.pdf" }] }];
+      SD.form("dx3");
+      e.S.data.docs = [{ id: "dx3", mod: "audit", grp: "checklist", title: "남이 바꾼 제목", date: "2026-11-01", ser: "", note: "", files: [{ name: "b.pdf", size: 1, url: PU + "b_b.pdf", sha: "b".repeat(64) }] }];
+      const up0 = e.w.SemisSync.uploadFile;
+      e.w.SemisSync.uploadFile = async (file, prefix) => ({ name: file.name, size: 1, url: PU + "c_" + file.name });
+      const fin = q(e, "#dk-file");
+      Object.defineProperty(fin, "files", { value: [new e.w.File(["c"], "c.pdf")], configurable: true });
+      fin.dispatchEvent(new e.w.Event("change")); await tick(30);
+      e.w.SemisSync.uploadFile = up0;
+      q(e, "#dk-note").value = "내 비고"; clickOk(e);
+      const d3 = e.S.data.docs[0];
+      eq(JSON.stringify([d3.title, d3.note, d3.files.map(f => f.name), d3.files[0].sha]), JSON.stringify(["남이 바꾼 제목", "내 비고", ["b.pdf", "c.pdf"], "b".repeat(64)]),
+        "바뀐 칸 · 더한 첨부만 적용 — 남이 바꾼 제목 · K 삭제로 빠진 첨부 a.pdf 는 되돌리지 않음");
+      // 창을 연 사이 다른 곳에서 지운 문서 — 바로 넣지 않고 묻는다(기본 = 넣지 않음)
+      SD.form("dx3"); e.S.data.docs = [];
       q(e, "#dk-title").value = "되살림"; clickOk(e);
-      eq(JSON.stringify(e.S.data.docs.map(d => [d.id, d.title])), '[["dx1","되살림"]]', "그 사이 다른 곳에서 지운 문서를 저장하면 같은 id 로 다시 넣음(고친 내용을 잃지 않게)");
+      ok(/그 사이 다른 곳에서 지운 문서입니다/.test(q(e, "#modal-box").textContent) && e.S.data.docs.length === 0, "지운 문서 → 다시 넣을지 묻고 아직 넣지 않음");
+      q(e, "#modal-box [data-act=cancel]").click();
+      eq(e.S.data.docs.length, 0, "취소(기본) → 넣지 않음");
+      e.S.data.docs = [{ id: "dx4", mod: "audit", grp: "checklist", title: "넷", date: "2026-11-01", ser: "", files: [] }];
+      SD.form("dx4"); e.S.data.docs = [];
+      q(e, "#dk-title").value = "넷 고침"; clickOk(e); clickOk(e);
+      eq(JSON.stringify(e.S.data.docs.map(d => [d.id, d.title])), '[["dx4","넷 고침"]]', "묻는 창에서 넣기 → 같은 id 로 다시");
+      e.S.data.docs = [{ id: "dx5", mod: "audit", grp: "checklist", title: "다섯", date: "2026-11-01", ser: "", files: [] }];
+      SD.form("dx5"); e.S.data.docs = [];
+      q(e, "#modal-box [data-act=del]").click();
+      ok(/이미 지워진 문서입니다/.test(q(e, "#toast-wrap").textContent) && e.S.data.docs.length === 0, "이미 지워진 문서의 삭제 → 알림만");
       eq(e.errors.length, 0, e.errors.join(" | "));
       e.w.close();
     });
@@ -12940,6 +12965,7 @@ function makeServer(opts = {}) {
       ok(!q(e, "#modal-box [data-act=ok]").disabled && /남은 저장소를 확인하지 못했습니다/.test(q(e, "#ks-rc-store").textContent), "dup 0 → 바꾸기 열림 · 저장소를 못 재면 그 안내");
       clickOk(e); await tick(30);
       eq(JSON.stringify(ks.calls.filter(c => c.name === "map_save").pop().b.p), '{"id":31,"dir":"both"}', "[양쪽으로 바꾸기] = 방향만 both");
+      ok(/첫 회차 2건 승인/.test(q(e, "#toast-wrap").textContent), "바꾼 뒤 알림 = 승인 건수(변경 n 1 + 옛 판 연결 1 — 전체 6 아님) " + q(e, "#toast-wrap").textContent);
       eq(JSON.stringify([ks.maps[0].dir, ks.maps[0].dir_next]), '["both",null]', "바뀜");
       ks.maps[0] = Object.assign(ks.maps[0], { dir: "k2h", dir_next: "both", recon: { k2h: 0, h2k: 1, h2k_new: 1, dup: 0, link: 0, link_old: 0, del: 0, conflict: 0, skip: 0, total: 1, n: 0, bytes: 0, at: new Date(Date.now() - 3 * 864e5).toISOString() } });
       await openTab(e);
