@@ -148,7 +148,7 @@ input, select { font-family: inherit; color: var(--text); }
 .ln-done p { margin-top: 8px; color: var(--text-2); }
 .ln-done .mono { color: var(--text); }
 .ln-cert { margin-top: 20px; }
-.ln-cert img { display: block; width: 100%; max-width: 260px; height: auto; margin: 0 auto 14px; border-radius: 10px; box-shadow: 0 2px 14px rgba(0,0,0,.12); -webkit-touch-callout: default; }
+.ln-cert img { display: block; width: 100%; max-width: 300px; height: auto; margin: 0 auto 14px; border-radius: 10px; box-shadow: 0 2px 14px rgba(0,0,0,.12); -webkit-touch-callout: default; }
 .ln-err { text-align: center; padding: 40px 22px; }
 .ln-err h1 { font-size: 1.25rem; margin-bottom: 8px; }
 .ln-err p { color: var(--text-2); }
@@ -180,3 +180,5 @@ input, select { font-family: inherit; color: var(--text); }
 .ln-body .md-flow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 10px 0; }
 .ln-body .md-flow span { background: var(--primary-soft); color: var(--primary-dark); border-radius: 10px; padding: 7px 11px; font-weight: 600; font-size: .92rem; }
 .ln-body .md-flow i { font-style: normal; color: var(--text-3); }
+.ln-hold { margin-top: 2px; font-size: .95rem; color: var(--text-2); }
+.ln-hold b { color: var(--primary-dark); }
