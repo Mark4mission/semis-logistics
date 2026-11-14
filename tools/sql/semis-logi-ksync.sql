@@ -140,6 +140,8 @@ create table if not exists semis_logi_private.ksync_hash_skip (
   at   timestamptz not null default now(),
   why  text not null default ''
 );
+-- n = 결과 없이 끝나거나(try) 일시 오류(busy)로 이어 시도한 횟수 — 두 번째부터는 하루 건너뜀(fail)으로 올려 같은 주소를 되풀이하지 않고 요청이 결국 꺼지게
+alter table semis_logi_private.ksync_hash_skip add column if not exists n int not null default 0;
 create table if not exists semis_logi_private.ksync_hash_val (
   url  text primary key,
   sha  text not null,
@@ -739,6 +741,8 @@ begin
   foreach k in array array['k2h', 'h2k', 'h2k_new', 'dup', 'link', 'link_old', 'del', 'conflict', 'skip', 'total', 'n'] loop
     o := o || jsonb_build_object(k, case when coalesce(c ->> k, '') ~ '^[0-9]{1,9}$' then (c ->> k)::int else 0 end);
   end loop;
+  -- n_add = 양쪽으로 바꿔서 더 생기는 변경 수(양쪽 계획 n − 지금 방향 계획 n, v1.72 에이전트부터) — 첫 회차 승인의 바탕
+  if c ? 'n_add' then o := o || jsonb_build_object('n_add', case when coalesce(c ->> 'n_add', '') ~ '^[0-9]{1,9}$' then (c ->> 'n_add')::int else 0 end); end if;
   -- held = 그 회차의 평소 계획이 대량 변경으로 보류됨(승인 전 · 거절한 변경이 건수에 들어 있다) — 이 건수로는 바꾸지 않는다(map_save 'hold')
   o := o || jsonb_build_object('bytes', case when coalesce(c ->> 'bytes', '') ~ '^[0-9]{1,15}$' then (c ->> 'bytes')::bigint else 0 end,
     'held', coalesce(p ->> 'held', '') = 'true', 'at', now());
@@ -1199,6 +1203,8 @@ declare v_run bigint := semis_logi_private.ksync_run_of(p_agent, p); v_items jso
 begin
   if v_run is null then return jsonb_build_object('ok', false, 'error', 'run'); end if;
   if (select s.hash_req from semis_logi_private.ksync_state s where s.id = 1) is null then return jsonb_build_object('ok', false, 'error', 'state'); end if;
+  -- 두 번 내줘도 결과가 없던 주소(시도함이 한 시간 넘게 남음)는 하루 건너뜀으로 — 같은 주소를 한 시간마다 되풀이하지 않게
+  update semis_logi_private.ksync_hash_skip set why = 'fail', at = now() where why = 'try' and n >= 2 and at <= now() - interval '1 hour';
   with c as (
     select h.url, least(h.size, 50 * 1024 * 1024) as size, semis_logi_private.ksync_url_path(h.url) as path
       from semis_logi_private.ksync_hash_scope(semis_logi_private.ksync_docs_lock_free()) h
@@ -1218,9 +1224,10 @@ begin
     return jsonb_build_object('ok', true, 'items', '[]'::jsonb, 'left', 0);
   end if;
   if not semis_logi_private.ksync_quota(p_agent, v_sum, p_ip) then return jsonb_build_object('ok', false, 'error', 'quota'); end if;
-  insert into semis_logi_private.ksync_hash_skip(url, at, why)
-  select x ->> 'url', now(), 'try' from jsonb_array_elements(v_items) x
-  on conflict (url) do update set at = excluded.at, why = excluded.why;
+  insert into semis_logi_private.ksync_hash_skip(url, at, why, n)
+  select x ->> 'url', now(), 'try', 1 from jsonb_array_elements(v_items) x
+  on conflict (url) do update set at = excluded.at, why = excluded.why,
+    n = case when semis_logi_private.ksync_hash_skip.why in ('try', 'busy') then semis_logi_private.ksync_hash_skip.n + 1 else 1 end;
   return jsonb_build_object('ok', true, 'items', v_items);
 end $$;
 
@@ -1233,6 +1240,8 @@ declare v_run bigint := semis_logi_private.ksync_run_of(p_agent, p); x jsonb; n 
 begin
   if v_run is null then return jsonb_build_object('ok', false, 'error', 'run'); end if;
   if jsonb_typeof(p -> 'items') is distinct from 'array' then return jsonb_build_object('ok', false, 'error', 'bad'); end if;
+  -- 요청이 꺼졌으면(관리자가 끔 — §9 되돌리기) 진행 중이던 호출의 값을 모으지도 적지도 않는다
+  if (select s.hash_req from semis_logi_private.ksync_state s where s.id = 1) is null then return jsonb_build_object('ok', false, 'error', 'state'); end if;
   for x in select value from jsonb_array_elements(p -> 'items') limit 20 loop
     continue when jsonb_typeof(x) <> 'object' or semis_logi_private.ksync_url_path(x ->> 'url') is null;
     if coalesce(x ->> 'sha', '') ~ '^[0-9a-f]{64}$' then
@@ -1243,8 +1252,10 @@ begin
     elsif coalesce(x ->> 'later', '') = 'true' then
       delete from semis_logi_private.ksync_hash_skip where url = x ->> 'url' and why = 'try';
     else
+      -- 일시 오류(busy)도 두 번째 시도부터는 하루 건너뜀(fail) — 저장소가 계속 같은 오류면 요청이 영영 꺼지지 않는 것을 막는다
       insert into semis_logi_private.ksync_hash_skip(url, at, why) values (x ->> 'url', now(), semis_logi_private.ksync_txt(x ->> 'err', 20))
-      on conflict (url) do update set at = excluded.at, why = excluded.why;
+      on conflict (url) do update set at = excluded.at,
+        why = case when excluded.why = 'busy' and semis_logi_private.ksync_hash_skip.n >= 2 then 'fail' else excluded.why end;
     end if;
   end loop;
   delete from semis_logi_private.ksync_hash_skip where at < now() - interval '30 days';
@@ -1501,17 +1512,18 @@ begin
     -- '양쪽' 미리보기(recon)도 같다 — 설정을 고치면 지우고(dir_next 가 있으면 다시 셈), 옛 설정으로 센 건수로 바꾸지 않게
     v_redo := m.state = 'preview' and v_chg;
     -- 바꾸는 순간 첫 회차 승인을 심는다([시작]과 같은 기계): 한 방향일 때 보내지 않던 몫이 한꺼번에 오므로 대량 변경 한도에 걸리기 쉽다.
-    -- 승인 건수 = 서버가 실제로 세는 것과 같은 기준 = 미리보기 변경 수(n — 새 판 · 덮어쓰기 · 새 삭제 대기) + 옛 판 연결(link_old — 다음 회차에
-    -- 현재 판으로 덮어씀), 승인한 보류가 남아 있으면 그 건수를 더함. 전체 건수(total)로 하면 받기 · 연결만까지 셈해 승인이 너무 넓다.
+    -- 승인 건수 = 서버가 실제로 세는 것과 같은 기준 = 양쪽으로 바꿔서 더 생기는 변경(n_add — 양쪽 계획 변경 수 − 지금 방향 계획 변경 수: 지금 방향
+    -- 변경은 미리보기 회차가 이미 맞춤) + 옛 판 연결(link_old — 다음 회차에 현재 판으로 덮어씀). n_add 가 없는 옛 미리보기는 n + link_old.
+    -- 남은 승인한 보류의 건수는 더하지 않는다(미리보기 건수에 이미 들어 있음 — 두 번 셈). 전체 건수(total)로 하면 받기 · 연결만까지 셈해 너무 넓다.
     -- 그 건수 + 한도를 넘으면 다시 보류(ksync_count). 방향을 다르게 바꾸면(양쪽에서 되돌림 등) 아직 쓰지 않은 첫 회차 승인은 지운다(옛 방향으로 센 승인)
     update semis_logi_private.ksync_maps set k_path = v_k, mod = v_mod, grp = v_grp, dir = v_dir,
       ssi = coalesce((p ->> 'ssi')::boolean, ssi), since = v_since, excludes = v_ex, preview = case when v_redo then null else preview end,
       recon = case when v_chg then null else recon end,
       dir_next = case when v_switch or v_dir = dir_next then null else dir_next end,
       hold = case when v_switch then jsonb_build_object('ok', true, 'at', now(), 'first', true,
-                     'n', (case when coalesce(m.recon ->> 'n', '') ~ '^[0-9]{1,9}$' then (m.recon ->> 'n')::int else 0 end)
-                          + (case when coalesce(m.recon ->> 'link_old', '') ~ '^[0-9]{1,9}$' then (m.recon ->> 'link_old')::int else 0 end)
-                          + case when coalesce((m.hold ->> 'ok')::boolean, false) and coalesce(m.hold ->> 'n', '') ~ '^[0-9]{1,9}$' then (m.hold ->> 'n')::int else 0 end)
+                     'n', (case when coalesce(m.recon ->> 'n_add', '') ~ '^[0-9]{1,9}$' then (m.recon ->> 'n_add')::int
+                                when coalesce(m.recon ->> 'n', '') ~ '^[0-9]{1,9}$' then (m.recon ->> 'n')::int else 0 end)
+                          + (case when coalesce(m.recon ->> 'link_old', '') ~ '^[0-9]{1,9}$' then (m.recon ->> 'link_old')::int else 0 end))
                   when v_dir <> m.dir and coalesce((m.hold ->> 'ok')::boolean, false) and coalesce((m.hold ->> 'first')::boolean, false) then null
                   else hold end,
       updated_at = now(), updated_by = me where id = m.id;
