@@ -127,15 +127,23 @@ alter table semis_logi_private.ksync_state add column if not exists excludes jso
 alter table semis_logi_private.ksync_maps add column if not exists excludes jsonb not null default '[]'::jsonb;
 alter table semis_logi_private.ksync_maps add column if not exists report jsonb;     -- 마지막 실행의 보고 { out: {이유: 건수}, mismatch, run, at }
 -- '양쪽' 전환 미리보기 — dir_next = 바꿔 볼 방향(양쪽만), recon = 에이전트가 그 방향으로 계획을 한 번 더 돌려 센 건수
--- { k2h, h2k, h2k_new(내려올 새 파일), dup('이름 (2)' 로 내려올 것), link, link_old(옛 판으로 연결), del, conflict, skip, total, n, bytes(올릴 바이트), at }
+-- { k2h, h2k, h2k_new(내려올 새 파일), dup('이름 (2)' 로 내려올 것), link, link_old(옛 판으로 연결), del, conflict, skip, total, n, bytes(올릴 바이트),
+--   held(그 회차 평소 계획이 대량 변경으로 보류됨 — 이 건수로는 바꾸지 않음), at }
 alter table semis_logi_private.ksync_maps add column if not exists dir_next text check (dir_next = 'both');
 alter table semis_logi_private.ksync_maps add column if not exists recon jsonb;
--- H 첨부 해시 채우기 요청(관리자) — 에이전트가 회차마다 Edge hash 로 채우고, 남은 것이 없으면 지운다. 읽지 못한 주소는 하루 건너뜀
+-- H 첨부 해시 채우기 요청(관리자) — 에이전트가 회차마다 Edge hash 로 채우고, 남은 것이 없으면 지운다.
+-- ksync_hash_skip = 기다릴 주소: 'try'(내주고 결과가 아직 없음) · 'busy'(저장소 일시 오류)는 한 시간, 그 밖(읽지 못함 · 50MB 초과)은 하루.
+-- ksync_hash_val = 잰 값(아직 문서함에 안 적음) — 회차의 마지막 호출이거나 남은 것이 없을 때 한 번에 적는다(열린 화면의 문서함을 호출마다 바꾸지 않게)
 alter table semis_logi_private.ksync_state add column if not exists hash_req timestamptz;
 create table if not exists semis_logi_private.ksync_hash_skip (
   url  text primary key,
   at   timestamptz not null default now(),
   why  text not null default ''
+);
+create table if not exists semis_logi_private.ksync_hash_val (
+  url  text primary key,
+  sha  text not null,
+  at   timestamptz not null default now()
 );
 create table if not exists semis_logi_private.ksync_uploads (    -- 올리기 시작(put begin) → 확인(verify — 저장소에서 다시 잼) → 등록(apply — 문서함 한 번에)
   path     text primary key,
@@ -171,7 +179,7 @@ create table if not exists semis_logi_private.ksync_run_sers (   -- 계획이 �
 do $$
 declare t text;
 begin
-  foreach t in array array['ksync_agents', 'ksync_maps', 'ksync_files', 'ksync_runs', 'ksync_folders', 'ksync_events', 'ksync_state', 'ksync_uploads', 'ksync_fails', 'ksync_run_sers', 'ksync_hash_skip'] loop
+  foreach t in array array['ksync_agents', 'ksync_maps', 'ksync_files', 'ksync_runs', 'ksync_folders', 'ksync_events', 'ksync_state', 'ksync_uploads', 'ksync_fails', 'ksync_run_sers', 'ksync_hash_skip', 'ksync_hash_val'] loop
     execute format('alter table semis_logi_private.%I enable row level security', t);
     execute format('revoke all on semis_logi_private.%I from public, anon, authenticated', t);
   end loop;
@@ -417,6 +425,47 @@ language sql stable set search_path = '' as $$
    where coalesce(d.value ->> 'id', '') <> '' and jsonb_typeof(f.value) = 'object' and semis_logi_private.ksync_seen(d.value, f.value ->> 'url')
    group by f.value ->> 'url'
 $$;
+/* 지금 내주지 않을 주소 — 잰 값이 아직 적히지 않았거나, 기다리는 중(시도함 · 일시 오류 한 시간, 그 밖 하루) */
+create or replace function semis_logi_private.ksync_hash_wait(p_url text) returns boolean
+language sql stable set search_path = '' as $$
+  select exists (select 1 from semis_logi_private.ksync_hash_val v where v.url = p_url)
+      or exists (select 1 from semis_logi_private.ksync_hash_skip k where k.url = p_url
+                  and k.at > now() - case when k.why in ('try', 'busy') then interval '1 hour' else interval '1 day' end)
+$$;
+/* 일시적으로 기다리는 주소(시도함 · 일시 오류)가 남았는지 — 있으면 남은 것이 없어도 해시 채우기 요청을 지우지 않는다(한 시간 뒤 다시 읽음) */
+create or replace function semis_logi_private.ksync_hash_busy(p_docs jsonb) returns boolean
+language sql stable set search_path = '' as $$
+  select exists (select 1 from semis_logi_private.ksync_hash_scope(p_docs) h join semis_logi_private.ksync_hash_skip k on k.url = h.url
+                  where h.todo and k.why in ('try', 'busy') and k.at > now() - interval '1 hour')
+$$;
+/* 모아 둔 잰 값을 문서함에 한 번에 적는다 — 그 주소의 첨부 중 해시가 없고 연결이 볼 수 있는 것에 sha 칸만 더함(범위를 다시 본다).
+   문서함 저장은 한 번(이력 · 변경 알림 한 번, updated_by …/ksync — 준실시간 트리거가 깨지 않음). 적은 값 · 이제 범위 밖인 값은 지운다 */
+create or replace function semis_logi_private.ksync_hash_flush() returns int
+language plpgsql volatile security definer set search_path = '' as $$
+declare v_set jsonb; docs jsonb; n int := 0;
+begin
+  select coalesce(jsonb_object_agg(v.url, v.sha), '{}'::jsonb) into v_set from semis_logi_private.ksync_hash_val v;
+  if v_set = '{}'::jsonb then return 0; end if;
+  docs := semis_logi_private.ksync_docs_lock();
+  select count(*) into n
+    from jsonb_array_elements(docs) d,
+         jsonb_array_elements(case when jsonb_typeof(d.value) = 'object' and jsonb_typeof(d.value -> 'files') = 'array' then d.value -> 'files' else '[]'::jsonb end) f
+   where jsonb_typeof(f.value) = 'object' and v_set ? (f.value ->> 'url') and semis_logi_private.ksync_sha(f.value) is null
+     and coalesce(d.value ->> 'id', '') <> '' and semis_logi_private.ksync_seen(d.value, f.value ->> 'url');
+  if n > 0 then
+    -- 첨부가 빈 문서는 그대로(jsonb_agg 가 null 이면 원래 첨부)
+    docs := (select jsonb_agg(case when jsonb_typeof(d.value) = 'object' and jsonb_typeof(d.value -> 'files') = 'array' and coalesce(d.value ->> 'id', '') <> ''
+               then jsonb_set(d.value, '{files}', coalesce((select jsonb_agg(case when jsonb_typeof(f.value) = 'object' and v_set ? (f.value ->> 'url')
+                                                                                     and semis_logi_private.ksync_sha(f.value) is null and semis_logi_private.ksync_seen(d.value, f.value ->> 'url')
+                                                                                   then f.value || jsonb_build_object('sha', v_set ->> (f.value ->> 'url')) else f.value end order by f.i)
+                                                               from jsonb_array_elements(d.value -> 'files') with ordinality f(value, i)), d.value -> 'files'))
+               else d.value end order by d.idx)
+               from jsonb_array_elements(docs) with ordinality d(value, idx));
+    perform semis_logi_private.ksync_docs_save(docs);
+  end if;
+  delete from semis_logi_private.ksync_hash_val where url in (select jsonb_object_keys(v_set));
+  return n;
+end $$;
 
 /* ─── 에이전트 확인 — 키 · IP · 횟수 ─── */
 create or replace function semis_logi_private.ksync_auth(p_hash text, p_ip text, p_act text) returns jsonb
@@ -663,6 +712,8 @@ begin
   end loop;
   -- 기준일 전이라 뺀 수(v1.64 에이전트부터 보냄 — 없으면 적지 않음)
   if c ? 'old' then o := o || jsonb_build_object('old', case when coalesce(c ->> 'old', '') ~ '^[0-9]{1,9}$' then (c ->> 'old')::int else 0 end); end if;
+  -- K 에 '이름 (2)' 로 내려올 것(v1.72 에이전트부터 — reconOf 의 dup). 양쪽 · H → K 만 연결은 0 이어야 [시작](map_start 'dup')
+  if c ? 'name2' then o := o || jsonb_build_object('name2', case when coalesce(c ->> 'name2', '') ~ '^[0-9]{1,9}$' then (c ->> 'name2')::int else 0 end); end if;
   update semis_logi_private.ksync_maps set preview = o || jsonb_build_object('at', now()) where id = m.id;
   return jsonb_build_object('ok', true);
 end $$;
@@ -688,7 +739,9 @@ begin
   foreach k in array array['k2h', 'h2k', 'h2k_new', 'dup', 'link', 'link_old', 'del', 'conflict', 'skip', 'total', 'n'] loop
     o := o || jsonb_build_object(k, case when coalesce(c ->> k, '') ~ '^[0-9]{1,9}$' then (c ->> k)::int else 0 end);
   end loop;
-  o := o || jsonb_build_object('bytes', case when coalesce(c ->> 'bytes', '') ~ '^[0-9]{1,15}$' then (c ->> 'bytes')::bigint else 0 end, 'at', now());
+  -- held = 그 회차의 평소 계획이 대량 변경으로 보류됨(승인 전 · 거절한 변경이 건수에 들어 있다) — 이 건수로는 바꾸지 않는다(map_save 'hold')
+  o := o || jsonb_build_object('bytes', case when coalesce(c ->> 'bytes', '') ~ '^[0-9]{1,15}$' then (c ->> 'bytes')::bigint else 0 end,
+    'held', coalesce(p ->> 'held', '') = 'true', 'at', now());
   update semis_logi_private.ksync_maps set recon = o where id = m.id;
   if exists (select 1 from semis_logi_private.ksync_maps x where x.id <> m.id and x.state = 'active' and x.dir_next is not null and x.dir_next <> x.dir and x.recon is null) then
     update semis_logi_private.ksync_state set requested_at = now() where id = 1;
@@ -699,7 +752,7 @@ end $$;
 create or replace function semis_logi_private.ksync_run(p_agent bigint, p_ip text, p jsonb) returns jsonb
 language plpgsql volatile security definer set search_path = '' as $$
 declare v_run bigint; v_res text; v_det jsonb := '[]'::jsonb; x jsonb; m semis_logi_private.ksync_maps; i int := 0;
-  num text := '^[0-9]{1,9}$'; v_seen timestamptz;
+  num text := '^[0-9]{1,9}$'; v_seen timestamptz; v_xat timestamptz; v_same boolean;
 begin
   if p ->> 'phase' = 'start' then
     update semis_logi_private.ksync_runs set result = 'fail', ended_at = now(), msg = '중단됨'
@@ -760,7 +813,16 @@ begin
             'run', v_run, 'at', now())
          where id = m.id;
       end if;
+      -- hello 때 받은 설정 시각(updated_at)을 보낸 에이전트(1.72~)는 그 값이 지금과 같을 때만 보류 · 승인을 다룬다 — 그 사이 [양쪽으로 바꾸기] 등으로
+      -- 설정이 바뀌었으면 이 회차는 옛 설정으로 맞춘 것이라, 새로 심은 첫 회차 승인을 쓰거나(지우거나) 바꾸지 않는다. 보내지 않으면(옛 에이전트) 그 전처럼
+      v_xat := null;
+      begin
+        v_xat := (x ->> 'updated_at')::timestamptz;
+      exception when others then v_xat := null;
+      end;
+      v_same := not (x ? 'updated_at') or v_xat is not distinct from m.updated_at;
       if coalesce((x ->> 'held')::boolean, false) then
+        continue when not v_same;
         -- 승인한 보류인데 에이전트가 센 건수에서 승인한 건수를 뺀 몫이 대량 변경이면 새 대량 변경 — 승인을 버리고 새 보류로(ksync_count 와 같은 규칙).
         -- 그 안이면 승인 전 보류를 보고 멈춘 실행이 끝난 사이에 승인한 것 — 승인을 그대로 둔다
         if coalesce((m.hold ->> 'ok')::boolean, false) then
@@ -786,7 +848,7 @@ begin
       elsif m.state = 'active' then
         -- 승인한 보류만, 그 연결을 끝까지 맞췄을 때 지운다(승인 전 보류는 에이전트가 지울 수 없음)
         update semis_logi_private.ksync_maps
-           set hold = case when coalesce((hold ->> 'ok')::boolean, false) and coalesce((x ->> 'done')::boolean, false) then null else hold end,
+           set hold = case when v_same and coalesce((hold ->> 'ok')::boolean, false) and coalesce((x ->> 'done')::boolean, false) then null else hold end,
                last_run_at = case when coalesce((x ->> 'done')::boolean, false) then now() else last_run_at end,
                n_files = case when coalesce(x ->> 'n_files', '') ~ num then (x ->> 'n_files')::int else n_files end
          where id = m.id;
@@ -1128,7 +1190,9 @@ begin
 end $$;
 
 /* 해시 채우기(관리자가 요청한 동안 · 회차 안에서만) — Edge hash 가 부른다. 해시가 없는 H 첨부를 20개까지(합계 100MB 를 넘기 전까지 — 첫 것은 늘)
-   저장소 경로와 함께 준다. 하루 안에 읽지 못한 주소는 빼고, 그 크기를 하루 전송량에 센다. 남은 것이 없으면 요청을 지운다 */
+   저장소 경로와 함께 준다. 기다리는 주소(ksync_hash_wait)는 빼고, 그 크기를 하루 전송량에 센다. 내준 주소에는 '시도함'을 적는다 —
+   Edge 가 결과 없이 멈춰도(작업자 메모리 · 시간) 다음 호출 · 회차가 같은 주소를 되풀이하지 않게(결과가 오면 지우거나 바꿈, 한 시간 뒤 다시).
+   남은 것이 없으면 모아 둔 값을 적고, 일시적으로 기다리는 주소도 없으면 요청을 지운다 */
 create or replace function semis_logi_private.ksync_hash_todo(p_agent bigint, p_ip text, p jsonb) returns jsonb
 language plpgsql volatile security definer set search_path = '' as $$
 declare v_run bigint := semis_logi_private.ksync_run_of(p_agent, p); v_items jsonb; v_sum bigint;
@@ -1138,7 +1202,7 @@ begin
   with c as (
     select h.url, least(h.size, 50 * 1024 * 1024) as size, semis_logi_private.ksync_url_path(h.url) as path
       from semis_logi_private.ksync_hash_scope(semis_logi_private.ksync_docs_lock_free()) h
-     where h.todo and not exists (select 1 from semis_logi_private.ksync_hash_skip k where k.url = h.url and k.at > now() - interval '1 day')
+     where h.todo and not semis_logi_private.ksync_hash_wait(h.url)
      order by h.url limit 20
   ), w as (
     select c.*, sum(c.size) over (order by c.url) - c.size as before from c
@@ -1147,58 +1211,51 @@ begin
     into v_items, v_sum
     from w where w.before < 100 * 1024 * 1024;
   if jsonb_array_length(v_items) = 0 then
-    update semis_logi_private.ksync_state set hash_req = null where id = 1;
+    perform semis_logi_private.ksync_hash_flush();
+    if not semis_logi_private.ksync_hash_busy(semis_logi_private.ksync_docs_lock_free()) then
+      update semis_logi_private.ksync_state set hash_req = null where id = 1;
+    end if;
     return jsonb_build_object('ok', true, 'items', '[]'::jsonb, 'left', 0);
   end if;
   if not semis_logi_private.ksync_quota(p_agent, v_sum, p_ip) then return jsonb_build_object('ok', false, 'error', 'quota'); end if;
+  insert into semis_logi_private.ksync_hash_skip(url, at, why)
+  select x ->> 'url', now(), 'try' from jsonb_array_elements(v_items) x
+  on conflict (url) do update set at = excluded.at, why = excluded.why;
   return jsonb_build_object('ok', true, 'items', v_items);
 end $$;
 
-/* 해시 채우기 결과 — Edge 가 저장소에서 읽어 잰 sha256 을 그 주소의 첨부 중 해시가 없는 것에 적는다(연결이 볼 수 있는 첨부만 — 범위를 다시 본다).
-   첨부 객체에 sha 칸만 더하고 다른 칸 · 문서는 건드리지 않는다. 문서함은 한 번만 고친다(이력 · 변경 알림 한 번, updated_by …/ksync — 준실시간 트리거가 깨지 않음).
-   읽지 못한 주소는 하루 건너뛴다. 회차의 마지막 호출에 남은 것이 있으면 다음 깨우기를 요청하고(회차마다 호출 수가 정해져 있음), 없으면 해시 채우기 요청을 지운다 */
+/* 해시 채우기 결과 — Edge 가 저장소에서 읽어 잰 sha256 은 잰 값 표에 모으고(문서함은 아직 안 고침), 못 읽은 주소는 기다림에 둔다
+   ('busy' = 저장소 일시 오류 한 시간 · 그 밖 하루, 'later' = 이번에 안 읽음 — 시도함만 지움). 회차의 마지막 호출(last)이거나 남은 것이 없으면
+   모은 값을 한 번에 적는다(문서함 저장은 회차에 한 번). 마지막 호출에 남았으면 다음 깨우기를 요청하고, 남은 것도 일시적으로 기다리는 것도 없으면 요청을 지운다 */
 create or replace function semis_logi_private.ksync_hash_set(p_agent bigint, p_ip text, p jsonb) returns jsonb
 language plpgsql volatile security definer set search_path = '' as $$
-declare v_run bigint := semis_logi_private.ksync_run_of(p_agent, p); v_set jsonb := '{}'::jsonb; x jsonb; docs jsonb; n int := 0; v_left int;
+declare v_run bigint := semis_logi_private.ksync_run_of(p_agent, p); x jsonb; n int := 0; v_left int; v_last boolean := coalesce(p ->> 'last', '') = 'true';
 begin
   if v_run is null then return jsonb_build_object('ok', false, 'error', 'run'); end if;
   if jsonb_typeof(p -> 'items') is distinct from 'array' then return jsonb_build_object('ok', false, 'error', 'bad'); end if;
   for x in select value from jsonb_array_elements(p -> 'items') limit 20 loop
     continue when jsonb_typeof(x) <> 'object' or semis_logi_private.ksync_url_path(x ->> 'url') is null;
     if coalesce(x ->> 'sha', '') ~ '^[0-9a-f]{64}$' then
-      v_set := v_set || jsonb_build_object(x ->> 'url', x ->> 'sha');
+      insert into semis_logi_private.ksync_hash_val(url, sha) values (x ->> 'url', x ->> 'sha')
+      on conflict (url) do update set sha = excluded.sha, at = now();
+      delete from semis_logi_private.ksync_hash_skip where url = x ->> 'url';
+      n := n + 1;
+    elsif coalesce(x ->> 'later', '') = 'true' then
+      delete from semis_logi_private.ksync_hash_skip where url = x ->> 'url' and why = 'try';
     else
       insert into semis_logi_private.ksync_hash_skip(url, at, why) values (x ->> 'url', now(), semis_logi_private.ksync_txt(x ->> 'err', 20))
       on conflict (url) do update set at = excluded.at, why = excluded.why;
     end if;
   end loop;
   delete from semis_logi_private.ksync_hash_skip where at < now() - interval '30 days';
-  if v_set <> '{}'::jsonb then
-    docs := semis_logi_private.ksync_docs_lock();
-    select count(*) into n
-      from jsonb_array_elements(docs) d,
-           jsonb_array_elements(case when jsonb_typeof(d.value) = 'object' and jsonb_typeof(d.value -> 'files') = 'array' then d.value -> 'files' else '[]'::jsonb end) f
-     where jsonb_typeof(f.value) = 'object' and v_set ? (f.value ->> 'url') and semis_logi_private.ksync_sha(f.value) is null
-       and coalesce(d.value ->> 'id', '') <> '' and semis_logi_private.ksync_seen(d.value, f.value ->> 'url');
-    if n > 0 then
-      -- 첨부가 빈 문서는 그대로(jsonb_agg 가 null 이면 원래 첨부)
-      docs := (select jsonb_agg(case when jsonb_typeof(d.value) = 'object' and jsonb_typeof(d.value -> 'files') = 'array' and coalesce(d.value ->> 'id', '') <> ''
-                 then jsonb_set(d.value, '{files}', coalesce((select jsonb_agg(case when jsonb_typeof(f.value) = 'object' and v_set ? (f.value ->> 'url')
-                                                                                       and semis_logi_private.ksync_sha(f.value) is null and semis_logi_private.ksync_seen(d.value, f.value ->> 'url')
-                                                                                     then f.value || jsonb_build_object('sha', v_set ->> (f.value ->> 'url')) else f.value end order by f.i)
-                                                                 from jsonb_array_elements(d.value -> 'files') with ordinality f(value, i)), d.value -> 'files'))
-                 else d.value end order by d.idx)
-                 from jsonb_array_elements(docs) with ordinality d(value, idx));
-      perform semis_logi_private.ksync_docs_save(docs);
-    end if;
-  end if;
+  delete from semis_logi_private.ksync_hash_val where at < now() - interval '30 days';
   select count(*) into v_left
-    from semis_logi_private.ksync_hash_scope(coalesce(docs, semis_logi_private.ksync_docs_lock_free())) h
-   where h.todo and not exists (select 1 from semis_logi_private.ksync_hash_skip k where k.url = h.url and k.at > now() - interval '1 day');
-  -- last = 에이전트가 이 회차에 부르는 마지막 호출 — 남았으면 다음 깨우기를 요청한다(남은 것이 없으면 요청을 지움)
+    from semis_logi_private.ksync_hash_scope(semis_logi_private.ksync_docs_lock_free()) h
+   where h.todo and not semis_logi_private.ksync_hash_wait(h.url);
+  if v_last or v_left = 0 then perform semis_logi_private.ksync_hash_flush(); end if;
   update semis_logi_private.ksync_state
-     set hash_req = case when v_left = 0 then null else hash_req end,
-         requested_at = case when v_left > 0 and hash_req is not null and coalesce(p ->> 'last', '') = 'true' then now() else requested_at end
+     set hash_req = case when v_left = 0 and not semis_logi_private.ksync_hash_busy(semis_logi_private.ksync_docs_lock_free()) then null else hash_req end,
+         requested_at = case when v_left > 0 and hash_req is not null and v_last then now() else requested_at end
    where id = 1;
   return jsonb_build_object('ok', true, 'n', n, 'left', v_left);
 end $$;
@@ -1345,7 +1402,7 @@ end $$;
 create or replace function public.semis_logi_ksync_map_save(p jsonb) returns jsonb
 language plpgsql volatile security definer set search_path = '' as $$
 declare me text := semis_logi_private.ksync_admin(); m semis_logi_private.ksync_maps; v_k text; v_mod text; v_grp text; v_dir text; v_id bigint;
-  v_redo boolean; v_since date; v_ex jsonb; v_chg boolean; v_switch boolean;
+  v_redo boolean; v_since date; v_ex jsonb; v_chg boolean; v_switch boolean; v_add boolean;
 begin
   if jsonb_typeof(p) is distinct from 'object' then return jsonb_build_object('ok', false, 'error', 'bad'); end if;
   if coalesce(p ->> 'id', '') ~ '^[0-9]{1,15}$' then
@@ -1353,7 +1410,8 @@ begin
     if m.id is null then return jsonb_build_object('ok', false, 'error', 'gone'); end if;
   end if;
   if m.id is not null and coalesce((p ->> 'pause')::boolean, false) then
-    update semis_logi_private.ksync_maps set state = 'paused', updated_at = now(), updated_by = me where id = m.id;
+    -- 멈추면 양쪽 미리보기 건수는 버린다(다시 시작하면 새로 셈 — 멈춘 사이의 변경 · 거절한 보류를 옛 건수로 덮지 않게)
+    update semis_logi_private.ksync_maps set state = 'paused', recon = null, updated_at = now(), updated_by = me where id = m.id;
     return jsonb_build_object('ok', true, 'id', m.id);
   end if;
   -- '양쪽' 전환 미리보기 요청(다시 요청하면 다시 셈) · 그만(빈 값) — 돌고 있고 아직 양쪽이 아닌 연결만. 연결 설정은 바꾸지 않는다(K 에 쓰는 것도 없음)
@@ -1414,12 +1472,18 @@ begin
   if exists (select 1 from semis_logi_private.ksync_maps x where x.id is distinct from m.id and x.mod = v_mod and x.grp = v_grp) then
     return jsonb_build_object('ok', false, 'error', 'target_dup');
   end if;
-  -- 돌던 연결을 '양쪽'으로 바꿀 때는 그 방향으로 센 미리보기(recon)가 있어야 한다: 이틀 안에 셌고 · 'K 이름 (2)' 로 내려올 것(dup)이 0 이고 ·
-  -- 방향 말고는 센 때 설정 그대로. 승인 전 대량 변경 보류가 있으면 바꾸지 않는다(첫 회차 승인으로 덮으면 그 보류를 승인한 것이 된다)
-  v_switch := m.id is not null and m.state <> 'preview' and m.dir <> 'both' and v_dir = 'both';
+  -- 돌던(미리보기 아닌) 한 방향 연결에 방향을 더하는 바꾸기는 모두 관문을 거친다 — 보내지 않던 쪽이 한꺼번에 온다(H 에만 있는 문서가 K 에
+  -- '이름 (2)' 로 · H 새 판이 K 를 덮음 · K 백로그가 H 로). 한 방향끼리(K → H 만 ↔ H → K 만)는 바로 바꾸지 않는다(oneway — 양쪽으로 바꾼 뒤 줄임).
+  -- 양쪽으로 바꿀 때는 그 방향으로 센 미리보기(recon)가 있어야 한다: 이틀 안에 셌고 · 보류 없는 계획으로 셌고(held 아님) · 'K 이름 (2)' 로
+  -- 내려올 것(dup)이 0 이고 · 방향 말고는 센 때 설정 그대로. 승인 전 대량 변경 보류가 있으면 바꾸지 않는다(첫 회차 승인으로 덮으면 그 보류를 승인한 것이 된다)
+  v_add := m.id is not null and m.state <> 'preview' and m.dir <> 'both' and v_dir <> m.dir;
+  if v_add and v_dir <> 'both' then return jsonb_build_object('ok', false, 'error', 'oneway'); end if;
+  v_switch := v_add;
   if v_switch then
     if m.state <> 'active' then return jsonb_build_object('ok', false, 'error', 'state'); end if;
-    if m.hold is not null and not coalesce((m.hold ->> 'ok')::boolean, false) then return jsonb_build_object('ok', false, 'error', 'hold'); end if;
+    if (m.hold is not null and not coalesce((m.hold ->> 'ok')::boolean, false)) or coalesce((m.recon ->> 'held')::boolean, false) then
+      return jsonb_build_object('ok', false, 'error', 'hold');
+    end if;
     if m.recon is null or m.dir_next is distinct from 'both' or coalesce(m.recon ->> 'at', '') = ''
        or (m.recon ->> 'at')::timestamptz < now() - interval '2 days'
        or (v_k, v_mod, v_grp, coalesce((p ->> 'ssi')::boolean, m.ssi), v_since, v_ex) is distinct from (m.k_path, m.mod, m.grp, m.ssi, m.since, m.excludes) then
@@ -1436,15 +1500,19 @@ begin
     -- 미리보기 중에 폴더 · 대상 · 방향 · SSI · 기준일 · 뺄 경로를 바꾸면 옛 건수로 [시작]하지 않게 건수를 지우고 다시 받는다.
     -- '양쪽' 미리보기(recon)도 같다 — 설정을 고치면 지우고(dir_next 가 있으면 다시 셈), 옛 설정으로 센 건수로 바꾸지 않게
     v_redo := m.state = 'preview' and v_chg;
-    -- 바꾸는 순간 첫 회차 승인을 심는다([시작]과 같은 방식 — 승인 건수 = 미리보기 전체 건수, 승인한 보류가 남아 있으면 그 건수를 더함):
-    -- 한 방향일 때 보내지 않던 몫이 한꺼번에 오므로 대량 변경 한도에 걸리기 쉽다. 그 건수 + 한도를 넘으면 다시 보류(ksync_count)
+    -- 바꾸는 순간 첫 회차 승인을 심는다([시작]과 같은 기계): 한 방향일 때 보내지 않던 몫이 한꺼번에 오므로 대량 변경 한도에 걸리기 쉽다.
+    -- 승인 건수 = 서버가 실제로 세는 것과 같은 기준 = 미리보기 변경 수(n — 새 판 · 덮어쓰기 · 새 삭제 대기) + 옛 판 연결(link_old — 다음 회차에
+    -- 현재 판으로 덮어씀), 승인한 보류가 남아 있으면 그 건수를 더함. 전체 건수(total)로 하면 받기 · 연결만까지 셈해 승인이 너무 넓다.
+    -- 그 건수 + 한도를 넘으면 다시 보류(ksync_count). 방향을 다르게 바꾸면(양쪽에서 되돌림 등) 아직 쓰지 않은 첫 회차 승인은 지운다(옛 방향으로 센 승인)
     update semis_logi_private.ksync_maps set k_path = v_k, mod = v_mod, grp = v_grp, dir = v_dir,
       ssi = coalesce((p ->> 'ssi')::boolean, ssi), since = v_since, excludes = v_ex, preview = case when v_redo then null else preview end,
       recon = case when v_chg then null else recon end,
       dir_next = case when v_switch or v_dir = dir_next then null else dir_next end,
       hold = case when v_switch then jsonb_build_object('ok', true, 'at', now(), 'first', true,
-                     'n', (m.recon ->> 'total')::int
+                     'n', (case when coalesce(m.recon ->> 'n', '') ~ '^[0-9]{1,9}$' then (m.recon ->> 'n')::int else 0 end)
+                          + (case when coalesce(m.recon ->> 'link_old', '') ~ '^[0-9]{1,9}$' then (m.recon ->> 'link_old')::int else 0 end)
                           + case when coalesce((m.hold ->> 'ok')::boolean, false) and coalesce(m.hold ->> 'n', '') ~ '^[0-9]{1,9}$' then (m.hold ->> 'n')::int else 0 end)
+                  when v_dir <> m.dir and coalesce((m.hold ->> 'ok')::boolean, false) and coalesce((m.hold ->> 'first')::boolean, false) then null
                   else hold end,
       updated_at = now(), updated_by = me where id = m.id;
     if v_redo or v_switch or (v_chg and m.dir_next is not null and v_dir <> m.dir_next) then
@@ -1469,9 +1537,15 @@ language plpgsql volatile security definer set search_path = '' as $$
 declare me text := semis_logi_private.ksync_admin();
 begin
   -- 미리보기를 보고 시작 = 첫 실행 승인(처음 맞추는 건수는 대량 변경 한도를 넘기 쉽다). 승인 건수 n = 미리보기 전체 건수 —
-  -- 이 승인은 그 건수 + 한도까지만 덮는다(ksync_count). 건수가 아직 없으면(설정을 고친 뒤 · 다른 창의 옛 화면) 시작하지 않는다
+  -- 이 승인은 그 건수 + 한도까지만 덮는다(ksync_count). 건수가 아직 없으면(설정을 고친 뒤 · 다른 창의 옛 화면) 시작하지 않는다.
+  -- H → K 를 받는 미리보기 연결(양쪽 · H → K 만)은 K 에 '이름 (2)' 로 내려올 것(name2)이 0 이어야 한다(돌던 연결의 양쪽 전환과 같은 관문)
+  if exists (select 1 from semis_logi_private.ksync_maps x where x.id = p_id and x.state = 'preview' and x.dir <> 'k2h'
+              and coalesce(x.preview ->> 'name2', '') ~ '^[0-9]{1,9}$' and (x.preview ->> 'name2')::int > 0) then
+    return jsonb_build_object('ok', false, 'error', 'dup');
+  end if;
+  -- 멈췄던 연결을 다시 시작하면 양쪽 미리보기 건수는 버린다(새로 셈)
   update semis_logi_private.ksync_maps
-     set state = 'active',
+     set state = 'active', recon = null,
          hold = case when state = 'preview' then jsonb_build_object('ok', true, 'at', now(), 'first', true,
                        'n', case when coalesce(preview ->> 'total', '') ~ '^[0-9]{1,9}$' then (preview ->> 'total')::int else 0 end) else hold end,
          updated_at = now(), updated_by = me
@@ -1620,7 +1694,7 @@ begin
        and (coalesce(p ->> 'map', '') = '' or id::text = p ->> 'map');
   else
     -- 거절 = 그 연결을 멈춤(바뀐 것을 확인한 뒤 '시작'으로 다시)
-    update semis_logi_private.ksync_maps set hold = null, state = 'paused', updated_at = now(), updated_by = me
+    update semis_logi_private.ksync_maps set hold = null, state = 'paused', recon = null, updated_at = now(), updated_by = me
      where hold ->> 'run' = p ->> 'run_id' and not coalesce((hold ->> 'ok')::boolean, false)
        and (coalesce(p ->> 'map', '') = '' or id::text = p ->> 'map');
   end if;
@@ -1642,18 +1716,21 @@ end $$;
    에이전트가 다음 회차부터 Edge hash 로 채운다(저장소에서 읽어 잼 — 에이전트 · 화면이 값을 보내지 않음). 문서함 첨부에 sha 칸만 더한다 */
 create or replace function public.semis_logi_ksync_hash_todo(p jsonb) returns jsonb
 language plpgsql volatile security definer set search_path = '' as $$
-declare me text := semis_logi_private.ksync_admin(); v_total int; v_todo int; v_skip int; v_req timestamptz;
+declare me text := semis_logi_private.ksync_admin(); v_total int; v_todo int; v_skip int; v_pend int; v_req timestamptz;
 begin
+  -- 진행: 해시 있음(done — 잰 값을 아직 안 적은 것 pend 도 셈) · 남음(todo) · 기다림(skip — 못 읽음 · 일시 오류 · 시도 중)
   select count(*)::int,
-         (count(*) filter (where h.todo and not exists (select 1 from semis_logi_private.ksync_hash_skip k where k.url = h.url and k.at > now() - interval '1 day')))::int,
-         (count(*) filter (where h.todo and exists (select 1 from semis_logi_private.ksync_hash_skip k where k.url = h.url and k.at > now() - interval '1 day')))::int
-    into v_total, v_todo, v_skip
+         (count(*) filter (where h.todo and not semis_logi_private.ksync_hash_wait(h.url)))::int,
+         (count(*) filter (where h.todo and semis_logi_private.ksync_hash_wait(h.url)
+                             and not exists (select 1 from semis_logi_private.ksync_hash_val v where v.url = h.url)))::int,
+         (count(*) filter (where h.todo and exists (select 1 from semis_logi_private.ksync_hash_val v where v.url = h.url)))::int
+    into v_total, v_todo, v_skip, v_pend
     from semis_logi_private.ksync_hash_scope(semis_logi_private.ksync_docs_lock_free()) h;
-  if jsonb_typeof(p) = 'object' and coalesce(p ->> 'start', '') = 'true' and v_todo > 0 then
+  if jsonb_typeof(p) = 'object' and coalesce(p ->> 'start', '') = 'true' and v_todo + v_pend > 0 then
     update semis_logi_private.ksync_state set hash_req = now(), requested_at = now() where id = 1;
   end if;
   select s.hash_req into v_req from semis_logi_private.ksync_state s where s.id = 1;
-  return jsonb_build_object('ok', true, 'total', v_total, 'done', v_total - v_todo - v_skip, 'todo', v_todo, 'skip', v_skip, 'req', v_req, 'by', me);
+  return jsonb_build_object('ok', true, 'total', v_total, 'done', v_total - v_todo - v_skip, 'todo', v_todo, 'skip', v_skip, 'pend', v_pend, 'req', v_req, 'by', me);
 end $$;
 
 /* CIDR 정리 — 너무 넓은 범위(IPv4 /16 · IPv6 /32 보다 넓음)는 거절 */

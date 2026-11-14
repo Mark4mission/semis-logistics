@@ -80,7 +80,7 @@ for (const f of ADMIN) {
 const priv = await rows("select p.oid::regprocedure::text sig from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'semis_logi_private' and p.proname like 'ksync\\_%'");
 ok(priv.length >= 25, "비공개 함수 " + priv.length);
 for (const r of priv) eq(await one("select has_function_privilege('anon', $1, 'EXECUTE')", [r.sig]), false, r.sig + " anon 차단");
-for (const t of ["ksync_agents", "ksync_maps", "ksync_files", "ksync_runs", "ksync_folders", "ksync_events", "ksync_state", "ksync_uploads", "ksync_fails", "ksync_run_sers", "ksync_hash_skip"]) {
+for (const t of ["ksync_agents", "ksync_maps", "ksync_files", "ksync_runs", "ksync_folders", "ksync_events", "ksync_state", "ksync_uploads", "ksync_fails", "ksync_run_sers", "ksync_hash_skip", "ksync_hash_val"]) {
   eq(await one("select has_table_privilege('anon', $1, 'SELECT')", ["semis_logi_private." + t]), false, t + " 읽기 차단");
   eq(await one("select relrowsecurity from pg_class where oid = $1::regclass", ["semis_logi_private." + t]), true, t + " RLS");
 }
@@ -1347,7 +1347,7 @@ eq((await mapRow(MB)).recon, null, "버리면 recon 없음");
 await clearReq();
 eq((await call("recon", { map: MB, counts: RC, updated_at: hm.updated_at })).ok, true, "건수 저장");
 let rcb = (await mapRow(MB)).recon;
-eq([Object.keys(rcb).sort(), rcb.bytes, rcb.dup, !!rcb.at], [["at", "bytes", "conflict", "del", "dup", "h2k", "h2k_new", "k2h", "link", "link_old", "n", "skip", "total"], 123456789012, 1, true],
+eq([Object.keys(rcb).sort(), rcb.bytes, rcb.dup, !!rcb.at], [["at", "bytes", "conflict", "del", "dup", "h2k", "h2k_new", "held", "k2h", "link", "link_old", "n", "skip", "total"], 123456789012, 1, true],
   "아는 칸만 숫자로(바이트는 큰 수 그대로)");
 eq([(await call("recon", { map: MB2, counts: RC, updated_at: hm.updated_at })).error, (await call("recon", { map: MBP, counts: RC })).error], ["state", "state"], "dir_next 없는 연결 · 미리보기 연결 → state");
 eq(await reqAt(), null, "기다리는 다른 연결이 없으면 다음 깨우기를 요청하지 않음");
@@ -1373,8 +1373,8 @@ await db.query("update semis_logi_private.ksync_maps set hold = '{\"ok\": true, 
 await clearReq();
 eq((await save36({ id: MB, dir: "both" })).ok, true, "미리보기 · dup 0 · 이틀 안 · 설정 그대로 → 양쪽으로");
 mb2 = await mapRow(MB);
-eq([mb2.dir, mb2.dir_next, mb2.recon, mb2.hold.ok, mb2.hold.first, mb2.hold.n, !!(await reqAt())], ["both", null, null, true, true, 11 + 5, true],
-  "바꾸며 첫 회차 승인(n = 미리보기 전체 + 남은 승인) · dir_next · recon 지움 · 요청 표시");
+eq([mb2.dir, mb2.dir_next, mb2.recon, mb2.hold.ok, mb2.hold.first, mb2.hold.n, !!(await reqAt())], ["both", null, null, true, true, 2 + 1 + 5, true],
+  "바꾸며 첫 회차 승인(n = 미리보기 변경 수 + 옛 판 연결 + 남은 승인 — 서버가 세는 것과 같은 기준, 전체 건수 11 아님) · dir_next · recon 지움 · 요청 표시");
 // 첫 회차 승인은 [시작]과 같은 기계 — 승인 건수 + 한도 안의 변경은 서버도 보류하지 않음
 await as(null);
 const RB36 = (await call("run", { phase: "start", trigger: "manual" })).run;
@@ -1453,24 +1453,33 @@ const day0 = Number(await one("select day_bytes from semis_logi_private.ksync_ag
 let td = await call("hash_todo", { run: RHX });
 eq(td.items.map(x => [x.url, x.path, x.size]), [[U("hxaaaaaaaaa1_a.pdf"), "docs/hxaaaaaaaaa1_a.pdf", 3], [U("hxccccccccc1_c.pdf"), "docs/hxccccccccc1_c.pdf", 2]], "해시 없는 첨부 주소 · 저장소 경로 · 크기");
 eq(Number(await one("select day_bytes from semis_logi_private.ksync_agents where id = $1", [AG])) - day0, 5, "읽을 크기를 하루 전송량에 셈");
+const A1U = U("hxaaaaaaaaa1_a.pdf"), C1U = U("hxccccccccc1_c.pdf");
+const whyOf = (u) => one("select why from semis_logi_private.ksync_hash_skip where url = $1", [u]);
+const nVal = () => one("select count(*)::int from semis_logi_private.ksync_hash_val");
+const hashReq = () => one("select hash_req is not null from semis_logi_private.ksync_state");
+eq([await whyOf(A1U), await whyOf(C1U)], ["try", "try"], "내준 주소에 '시도함' 표시");
+const td2 = await call("hash_todo", { run: RHX });
+eq([td2.items.length, td2.left, await hashReq()], [0, 0, true], "시도 중(한 시간)인 주소는 결과 없이 다시 와도 내주지 않음(Edge 가 통째로 실패해도 같은 20개를 되풀이하지 않음) · 그동안 요청 유지");
 const nSave0 = await one("select count(*)::int from public.test_hist where key = 'docs'");
 await clearReq();
-let hs = await call("hash_set", { run: RHX, items: [{ url: U("hxaaaaaaaaa1_a.pdf"), sha: HX("1") }, { url: U("hxooooooooo1_o.pdf"), sha: HX("9") }, { url: "https://evil.example/z.pdf", sha: HX("8") }, "x"] });
+let hs = await call("hash_set", { run: RHX, items: [{ url: A1U, sha: HX("1") }, { url: U("hxooooooooo1_o.pdf"), sha: HX("9") }, { url: "https://evil.example/z.pdf", sha: HX("8") }, "x", { url: C1U, later: true }] });
+eq([hs.ok, hs.n, hs.left, await whyOf(A1U), await whyOf(C1U)], [true, 2, 1, undefined, undefined], "잰 값 2(저장소 주소만) · 안 읽은 것(later)은 시도 표시를 지워 다시 남은 것으로");
 let dz = await docs();
-eq([hs.ok, hs.n, hs.left], [true, 2, 1], "적은 첨부 2(같은 주소를 쓴 두 문서) · 남음 1");
+eq([dz.find(d => d.id === "hx1").files[0].sha, await one("select count(*)::int from public.test_hist where key = 'docs'") - nSave0, await nVal(), await reqAt()], [undefined, 0, 2, null],
+  "마지막 호출이 아니고 남은 것도 있으면 문서함에 아직 안 적음(비공개 표에만) · 다음 깨우기 요청 없음");
+hs = await call("hash_set", { run: RHX, items: [{ url: C1U, err: "read" }], last: true });
+dz = await docs();
+eq([hs.n, hs.left, await whyOf(C1U), await hashReq()], [0, 0, "read", false], "읽지 못한 주소(영구) → 하루 건너뜀 · 남은 것 없음 → 요청 지움");
 eq([fx(dz.find(d => d.id === "hx1").files[0]), dz.find(d => d.id === "hx6").files.map(fx), Object.keys(dz.find(d => d.id === "hx6").files[1]).sort()],
-  [["a.pdf", 3, U("hxaaaaaaaaa1_a.pdf"), HX("1")], [["y.pdf", 1, U("hxaaaaaaaaa1_a.pdf"), HX("1")], ["z.pdf", 1, "https://evil.example/z.pdf", undefined]], ["name", "size", "url"]],
-  "sha 칸만 더함(다른 칸 · 밖 주소 그대로)");
+  [["a.pdf", 3, A1U, HX("1")], [["y.pdf", 1, A1U, HX("1")], ["z.pdf", 1, "https://evil.example/z.pdf", undefined]], ["name", "size", "url"]],
+  "그때 모아 둔 값을 한 번에 적음 — sha 칸만 더함(다른 칸 · 밖 주소 그대로)");
 eq([dz.find(d => d.id === "hx5").files[0].sha, dz.find(d => d.id === "hx2").files[0].sha, dz.find(d => d.id === "hx7").files], [undefined, HX("b"), []], "다른 화면 문서 · 이미 있는 sha 는 그대로 · 빈 첨부 문서 그대로");
-eq([await one("select count(*)::int from public.test_hist where key = 'docs'") - nSave0, /\/ksync$/.test(await one("select updated_by from public.semis_logi_store where key = 'docs'")), await reqAt()],
-  [1, true, null], "문서함 저장 한 번 · …/ksync(준실시간 트리거가 깨지 않음) · 마지막 호출이 아니면 다음 깨우기 요청 없음");
+eq([await one("select count(*)::int from public.test_hist where key = 'docs'") - nSave0, /\/ksync$/.test(await one("select updated_by from public.semis_logi_store where key = 'docs'")), await nVal()],
+  [1, true, 0], "문서함 저장은 회차에 한 번 · …/ksync(준실시간 트리거가 깨지 않음) · 비공개 표 비움");
 eq((await call("hash_set", { run: RHX, items: "x" })).error, "bad", "목록 형식");
-hs = await call("hash_set", { run: RHX, items: [{ url: U("hxccccccccc1_c.pdf"), err: "read" }], last: true });
-eq([hs.n, hs.left, await one("select why from semis_logi_private.ksync_hash_skip where url = $1", [U("hxccccccccc1_c.pdf")]), await one("select hash_req is null from semis_logi_private.ksync_state")],
-  [0, 0, "read", true], "읽지 못한 주소 → 하루 건너뜀 · 남은 것 없음 → 해시 채우기 요청 지움");
 await as("a1", "admin");
 ht = await rpc("semis_logi_ksync_hash_todo", {});
-eq([ht.done, ht.todo, ht.skip, ht.req], [3, 0, 1, null], "진행: 해시 있음 3 · 남음 0 · 못 읽음 1");
+eq([ht.done, ht.todo, ht.skip, ht.pend, ht.req], [3, 0, 1, 0, null], "진행: 해시 있음 3 · 남음 0 · 못 읽음 1 · 적을 것 0");
 await clearReq();
 ht = await rpc("semis_logi_ksync_hash_todo", { start: true });
 eq([ht.req, await reqAt()], [null, null], "남은 것이 없으면 요청하지 않음");
@@ -1478,12 +1487,17 @@ await db.query("update semis_logi_private.ksync_hash_skip set at = now() - inter
 ht = await rpc("semis_logi_ksync_hash_todo", { start: true });
 eq([ht.todo, ht.skip, !!ht.req], [1, 0, true], "하루가 지나면 다시 남은 것으로");
 await as(null);
+// 저장소 일시 오류(429 · 5xx — busy)는 한 시간만 건너뛰고 그동안 요청을 지우지 않는다(영구 오류만 남으면 지움)
+hs = await call("hash_set", { run: RHX, items: [{ url: C1U, err: "busy" }] });
+eq([hs.left, await whyOf(C1U), await hashReq()], [0, "busy", true], "일시 오류 → 한 시간 건너뜀 · 요청은 남김");
+await db.query("update semis_logi_private.ksync_hash_skip set at = now() - interval '2 hours' where why = 'busy'");
+eq((await call("hash_todo", { run: RHX })).items.map(x => x.url), [C1U], "한 시간이 지나면 다시 읽음");
 await clearReq();
-hs = await call("hash_set", { run: RHX, items: [], last: true });
-eq([hs.n, hs.left, !!(await reqAt())], [0, 1, true], "마지막 호출(last)에 남았으면 다음 깨우기 요청");
+hs = await call("hash_set", { run: RHX, items: [{ url: C1U, later: true }], last: true });
+eq([hs.left, !!(await reqAt())], [1, true], "마지막 호출(last)에 남았으면 다음 깨우기 요청");
 await clearReq();
-hs = await call("hash_set", { run: RHX, items: [{ url: U("hxccccccccc1_c.pdf"), sha: "zz" }] });
-eq([hs.left, await one("select why from semis_logi_private.ksync_hash_skip where url = $1", [U("hxccccccccc1_c.pdf")])], [0, ""], "틀린 sha 는 적지 않고 건너뜀");
+hs = await call("hash_set", { run: RHX, items: [{ url: C1U, sha: "zz" }] });
+eq([hs.left, await whyOf(C1U)], [0, ""], "틀린 sha 는 적지 않고 건너뜀");
 // 한 번에 20개 · 합계 100MB 를 넘기 전까지(첫 것은 늘) — 크기는 50MB 로 자름
 await db.query("update semis_logi_private.ksync_hash_skip set at = now() - interval '2 days'");
 await db.query("update public.semis_logi_store set value = value || $1::jsonb, base_at = updated_at where key = 'docs'", [JSON.stringify([
@@ -1500,6 +1514,107 @@ eq(td.items.length, 20, "한 번에 20개까지");
 await call("run", { phase: "end", run: RHX, result: "ok" });
 await as("a1", "admin");
 
+}
+
+// v1.72 리뷰 반영 — 활성 연결의 방향 바꾸기 관문(한 방향끼리 거절 · H → K 만 → 양쪽도 미리보기) · 보류한 계획으로 센 미리보기 거절 ·
+//   멈춤 · 거절 · 다시 시작 때 recon 지움 · 회차 끝은 hello 설정 시각이 같을 때만 승인을 쓰거나 지움 · 양쪽에서 되돌리면 안 쓴 첫 회차 승인 지움 ·
+//   미리보기 연결 [시작]의 '이름 (2)' 관문 · 해시 되돌리기 SQL(문서)
+{
+const mapR = (id) => one("select to_jsonb(m) - 'created_at' - 'created_by' from semis_logi_private.ksync_maps m where id = $1", [id]);
+const sv = (p) => rpc("semis_logi_ksync_map_save", p);
+const RC0 = { k2h: 1, h2k: 4, h2k_new: 2, dup: 0, link: 2, link_old: 1, del: 0, conflict: 0, skip: 0, total: 9, n: 2, bytes: 10 };
+const recon = async (id, o) => { const at = (await mapR(id)).updated_at; await as(null); const r = await call("recon", Object.assign({ map: id, counts: RC0, updated_at: at }, o || {})); await as("a1", "admin"); return r; };
+await as("a1", "admin");
+const MR = (await sv({ k_path: "리뷰/하나", mod: "audit", grp: "rv1", dir: "k2h" })).id;
+const MR2 = (await sv({ k_path: "리뷰/둘", mod: "audit", grp: "rv2", dir: "h2k" })).id;
+await as(null);
+for (const id of [MR, MR2]) await call("preview", { map: id, counts: { total: 0 } });
+await as("a1", "admin");
+for (const id of [MR, MR2]) await rpc("semis_logi_ksync_map_start", id, "::bigint");
+await db.query("update semis_logi_private.ksync_maps set hold = null where id in ($1, $2)", [MR, MR2]);
+// A1 — 활성 연결에서 방향을 새로 더하는 바꾸기는 모두 관문
+eq([(await sv({ id: MR, dir: "h2k" })).error, (await sv({ id: MR2, dir: "k2h" })).error, (await mapR(MR)).dir, (await mapR(MR2)).dir], ["oneway", "oneway", "k2h", "h2k"],
+  "돌던 한 방향 연결끼리(K → H 만 ↔ H → K 만) 바로 바꾸기 → 거절(보내지 않던 쪽이 한꺼번에 — '이름 (2)' · H 판이 K 를 덮음)");
+eq((await sv({ id: MR2, dir: "both" })).error, "recon", "H → K 만 → 양쪽도 미리보기 관문");
+await sv({ id: MR2, dir_next: "both" });
+eq((await mapR(MR2)).dir_next, "both", "H → K 만 연결도 양쪽 미리보기 요청");
+// A2 — 보류한 계획으로 센 건수(held)로는 바꾸지 않음 · 멈춤 · 거절 · 다시 시작 때 recon 지움
+await sv({ id: MR, dir_next: "both" });
+await recon(MR, { held: true });
+eq((await mapR(MR)).recon.held, true, "보류한 계획으로 센 미리보기는 held 로 적음");
+eq((await sv({ id: MR, dir: "both" })).error, "hold", "held 미리보기 → 바꾸지 않음(대량 변경을 첫 회차 승인이 통과시키지 않게)");
+await recon(MR);
+eq((await mapR(MR)).recon.held, false, "보류 없는 계획으로 다시 세면 held 아님");
+await sv({ id: MR, pause: true });
+eq([(await mapR(MR)).recon, (await mapR(MR)).dir_next], [null, "both"], "멈추면 recon 지움(미리보기 요청은 남김 — 다시 시작하면 새로 셈)");
+await db.query("update semis_logi_private.ksync_maps set recon = $2::jsonb where id = $1", [MR, JSON.stringify(Object.assign({ at: new Date().toISOString(), held: false }, RC0))]);
+await rpc("semis_logi_ksync_map_start", MR, "::bigint");
+eq((await mapR(MR)).recon, null, "다시 시작하면 recon 지움");
+await recon(MR);
+await db.query("update semis_logi_private.ksync_maps set hold = '{\"run\": 77, \"n\": 450}'::jsonb where id = $1", [MR]);
+eq((await rpc("semis_logi_ksync_hold", { act: "reject", run_id: "77", map: String(MR) })).ok, true, "보류 거절");
+eq([(await mapR(MR)).state, (await mapR(MR)).recon], ["paused", null], "거절(멈춤)하면 recon 지움 — 거절한 450건이 다시 시작 → 전환으로 승인되지 않게");
+await rpc("semis_logi_ksync_map_start", MR, "::bigint");
+eq((await sv({ id: MR, dir: "both" })).error, "recon", "다시 시작한 뒤에는 새로 센 미리보기가 있어야 바꿈");
+// A4 · A3 — 바꾸기 → 첫 회차 승인 n = recon.n + recon.link_old · 바꾸기 전 설정으로 hello 를 받은 회차가 끝나도 그 승인을 쓰지 않음
+await recon(MR);
+await as(null);
+const RA3 = (await call("run", { phase: "start", trigger: "manual" })).run;
+await as("a1", "admin");
+const atOld = (await mapR(MR)).updated_at;
+eq((await sv({ id: MR, dir: "both" })).ok, true, "양쪽으로 바꾸기");
+let h3 = (await mapR(MR)).hold;
+eq([h3.ok, h3.first, h3.n], [true, true, 2 + 1], "첫 회차 승인 n = 미리보기 변경 수 2 + 옛 판 연결 1(전체 9 아님)");
+await as(null);
+await call("run", { phase: "end", run: RA3, result: "ok", maps: [{ id: MR, done: true, updated_at: atOld }] });
+eq((await mapR(MR)).hold, h3, "바꾸기 전 설정으로 hello 를 받은 회차의 끝(done) → 승인을 지우지 않음");
+const RA3b = (await call("run", { phase: "start", trigger: "manual" })).run;
+await call("run", { phase: "end", run: RA3b, result: "held", maps: [{ id: MR, held: true, n: 999, base: 1, updated_at: atOld }] });
+eq((await mapR(MR)).hold, h3, "옛 설정 회차의 보류 보고도 새 승인을 바꾸지 않음");
+const RA3c = (await call("run", { phase: "start", trigger: "manual" })).run;
+await call("run", { phase: "end", run: RA3c, result: "ok", maps: [{ id: MR, done: true, updated_at: (await mapR(MR)).updated_at }] });
+eq((await mapR(MR)).hold, null, "지금 설정으로 끝까지 맞춘 회차가 승인을 씀");
+// A6 — 양쪽에서 되돌릴 때 아직 쓰지 않은 첫 회차 승인은 지움(승인 전 보류는 그대로)
+await as("a1", "admin");
+await db.query("update semis_logi_private.ksync_maps set hold = '{\"ok\": true, \"first\": true, \"n\": 3}'::jsonb where id = $1", [MR]);
+eq([(await sv({ id: MR, dir: "k2h" })).ok, (await mapR(MR)).hold], [true, null], "양쪽 → K → H 만: 안 쓴 첫 회차 승인 지움");
+await db.query("update semis_logi_private.ksync_maps set dir = 'both', hold = '{\"run\": 5, \"n\": 30}'::jsonb where id = $1", [MR]);
+await sv({ id: MR, dir: "h2k" });
+eq((await mapR(MR)).hold, { n: 30, run: 5 }, "승인 전 보류는 되돌려도 그대로");
+// 옛 에이전트(설정 시각을 보내지 않음)는 그 전처럼 done 이 승인을 지움
+await db.query("update semis_logi_private.ksync_maps set dir = 'both', hold = '{\"ok\": true, \"n\": 3}'::jsonb where id = $1", [MR]);
+await as(null);
+const RA3d = (await call("run", { phase: "start", trigger: "manual" })).run;
+await call("run", { phase: "end", run: RA3d, result: "ok", maps: [{ id: MR, done: true }] });
+eq((await mapR(MR)).hold, null, "설정 시각 없는 끝 보고(옛 에이전트) → 그 전처럼");
+// A9 — 미리보기 연결의 [시작]: 양쪽 · H → K 만이면 '이름 (2)'(name2) 가 0 이어야
+await as("a1", "admin");
+const MP2 = (await sv({ k_path: "리뷰/미리양쪽", mod: "audit", grp: "rv3", dir: "both" })).id;
+const MP3 = (await sv({ k_path: "리뷰/미리한쪽", mod: "audit", grp: "rv4", dir: "k2h" })).id;
+await as(null);
+await call("preview", { map: MP2, counts: { total: 3, h2k: 2, name2: 1 } });
+await call("preview", { map: MP3, counts: { total: 3, k2h: 3, name2: 1 } });
+eq((await mapR(MP2)).preview.name2, 1, "미리보기 건수에 '이름 (2)'(name2)");
+await as("a1", "admin");
+eq([(await rpc("semis_logi_ksync_map_start", MP2, "::bigint")).error, (await mapR(MP2)).state], ["dup", "preview"], "양쪽 미리보기 연결 · '이름 (2)' 1 → [시작] 거절");
+eq((await rpc("semis_logi_ksync_map_start", MP3, "::bigint")).ok, true, "K → H 만은 그대로 시작(K 에 쓰지 않음)");
+await as(null);
+await call("preview", { map: MP2, counts: { total: 3, h2k: 2, name2: 0 } });
+await as("a1", "admin");
+eq((await rpc("semis_logi_ksync_map_start", MP2, "::bigint")).ok, true, "'이름 (2)' 0 이면 시작");
+// B13 — 문서(KSYNC §9)의 해시 되돌리기 SQL 을 그대로 실행: 객체 아닌 첨부 · 빈 첨부 배열 · 객체 아닌 문서에도 멈추지 않고 sha 만 지움
+const KS = fs.readFileSync(new URL("../../docs/KSYNC.md", import.meta.url), "utf8");
+const rbSql = (/적은 해시 지우기[\s\S]*?`(update public\.semis_logi_store set value = [^`]+)`/.exec(KS) || [])[1];
+ok(!!rbSql, "KSYNC §9 에 해시 되돌리기 SQL");
+await db.query("update public.semis_logi_store set value = $1::jsonb, base_at = updated_at where key = 'docs'", [JSON.stringify([
+  { id: "rb1", mod: "audit", grp: "rv1", files: [{ name: "a.pdf", url: U("rbrbrbrbrbr1_a.pdf"), sha: H64("1") }, "옛 문자열 첨부"] },
+  { id: "rb2", mod: "audit", grp: "rv1", files: [] }, "옛 문자열 문서", { id: "rb3", mod: "audit", grp: "rv1" }])]);
+await db.exec(rbSql);
+eq(await one("select value = $1::jsonb from public.semis_logi_store where key = 'docs'", [JSON.stringify([{ id: "rb1", mod: "audit", grp: "rv1", files: [{ name: "a.pdf", url: U("rbrbrbrbrbr1_a.pdf") }, "옛 문자열 첨부"] },
+  { id: "rb2", mod: "audit", grp: "rv1", files: [] }, "옛 문자열 문서", { id: "rb3", mod: "audit", grp: "rv1" }])]), true, "되돌리기 SQL: sha 만 지우고 나머지 그대로(빈 배열 · 객체 아닌 것 포함)");
+await db.query("update public.semis_logi_store set value = '[]'::jsonb, base_at = updated_at where key = 'docs'");
+await db.exec(rbSql);
+eq(await docs(), [], "빈 문서함도 그대로(NULL 이 되지 않음)");
 }
 
 console.log(`ksync SQL: ${pass} 통과 / ${fail} 실패`);
