@@ -257,11 +257,12 @@
           ${ui.pane("lnd", "grp", dtab, grpBody(g))}
         </section>
         <section class="card ln-info"><h2 class="card-title"><span class="ct-t">교육 내용</span>${c.ssi ? ` ${ui.chip("민감보안정보", "red")}` : ""}</h2>
-          <dl class="ln-dl"><dt>교육 주관</dt><dd>${esc(c.host || "-")}</dd><dt>장소</dt><dd>${esc(c.place || "-")}</dd><dt>최소 학습 시간</dt><dd>${mmss(c.minSec || 0)}</dd>
+          <dl class="ln-dl"><dt>교육 주관</dt><dd>${esc(c.host || "-")}</dd><dt>장소</dt><dd>${esc(c.place || "-")}</dd>${c.offline ? "<dt>방식</dt><dd>집체 교육 · 서명만</dd>" : `<dt>최소 학습 시간</dt><dd>${mmss(c.minSec || 0)}</dd>`}
             ${dv ? `<dt>보안 전파교육</dt><dd>${esc(dot(dv.date) + " " + (dv.title || ""))}</dd>` : ""}</dl>
           ${c.overview ? `<p class="ln-ov">${esc(c.overview)}</p>` : ""}
-          <div class="ln-sum">${md() ? md().html(c.body || "") : esc(c.body || "")}</div>
-          ${arrOf(c.items).length ? `<ul class="ln-items">${arrOf(c.items).map(itemLine).join("")}</ul>` : ""}
+          <div class="ln-sum">${md() ? md().html(RC(c).body || "") : esc(RC(c).body || "")}</div>
+          ${arrOf(RC(c).items).length ? `<ul class="ln-items">${arrOf(RC(c).items).map(itemLine).join("")}</ul>` : ""}
+          ${arrOf(c.photos).length ? `<p class="ln-dim">교육 장면 사진 ${arrOf(c.photos).length}장(기록부에 들어갑니다)</p>` : ""}
         </section>`;
     $("#ln-back", root).onclick = () => go("list");
     $("#ln-print", root).onclick = () => printRecord(c);
@@ -374,7 +375,7 @@
     const op = $("#ln-open");
     if (op) op.onclick = () => {
       if (!isISO(c.start) || !isISO(c.end)) { toast("교육 기간을 먼저 정하세요.", true); return; }
-      if (!String(c.body || "").trim() && !arrOf(c.items).length) { toast("교육 내용을 먼저 넣으세요.", true); return; }
+      if (!c.offline && !String(c.body || "").trim() && !arrOf(c.items).length) { toast("교육 내용을 먼저 넣으세요.", true); return; }
       c.state = "open"; c.updatedAt = new Date().toISOString(); c.updatedBy = who();
       SeMIS.save(); toast("교육을 열었습니다."); linkModal(c); SeMIS.renderView();
     };
@@ -419,10 +420,13 @@
   }
 
   /* ═════════ 만들기 · 고치기 ═════════ */
+  /* 집체 교육(offline) — 학습 화면에는 내용을 보내지 않고(body · items 비움 → 이름 확인 뒤 바로 서명),
+     기록부에 넣을 내용은 recBody · recItems 에 둔다. 화면 · 기록부는 RC(c) 로 읽는다 */
+  const RC = (c) => (c && c.offline ? Object.assign({}, c, { body: c.recBody || "", items: arrOf(c.recItems) }) : c);
   function blank() {
     const t = todayISO();
     return { id: "", code: "", state: "draft", title: "", kind: "보안", overview: "", host: "안전보안파트", place: "온라인(H:drive)", start: t, end: addDays(t, 7),
-      body: "", minSec: 0, ssi: false, items: [], targets: { groups: [], add: [], except: [] }, excuse: {}, dissem: "" };
+      body: "", minSec: 0, ssi: false, offline: false, items: [], photos: [], targets: { groups: [], add: [], except: [] }, excuse: {}, dissem: "" };
   }
   function openEdit(id) {
     if (!canW()) return;
@@ -430,7 +434,10 @@
     edit = JSON.parse(JSON.stringify(c || blank()));
     edit.targets = isObj(edit.targets) ? edit.targets : { groups: [], add: [], except: [] };
     ["groups", "add", "except"].forEach(k => { edit.targets[k] = arrOf(edit.targets[k]).slice(); });
+    if (edit.offline) { edit.body = edit.recBody || ""; edit.items = arrOf(edit.recItems); }
+    delete edit.recBody; delete edit.recItems;
     edit.items = arrOf(edit.items).slice();
+    edit.photos = arrOf(edit.photos).slice();
     edit._auto = !c || !c.minSec;
     go("edit", id || "");
   }
@@ -457,6 +464,25 @@
     return `<li><span class="ln-it-k">${tp}</span><span class="ln-it-n">${esc(it.name)}</span><span class="ln-dim mono">${kb(it.size)}${it.dur ? " · " + mmss(it.dur) : ""}</span>
       <span class="ln-it-a">${i ? `<button type="button" class="mt-btn" data-iu="${i}" title="위로" aria-label="${esc(it.name)} 위로">${icon("chevup", 15)}</button>` : ""}<button type="button" class="mt-btn" data-ix="${i}" title="빼기" aria-label="${esc(it.name)} 빼기">${icon("x", 15)}</button></span></li>`;
   }
+  const photoRow = (it, i) => `<li><span class="ln-it-k">사진</span><span class="ln-it-n">${esc(it.name)}</span><span class="ln-dim mono">${kb(it.size)}</span>
+      <span class="ln-it-a"><button type="button" class="mt-btn" data-px="${i}" title="빼기" aria-label="${esc(it.name)} 빼기">${icon("x", 15)}</button></span></li>`;
+  function paintPhotos(root) {
+    const ul = $("#le-photos", root); if (!ul) return;
+    ul.innerHTML = edit.photos.map(photoRow).join("");
+    $$("[data-px]", ul).forEach(b => b.onclick = () => { edit.photos.splice(Number(b.dataset.px), 1); paintPhotos(root); });
+  }
+  async function addPhotos(root, files) {
+    if (!files.length) return;
+    if (!window.SemisSync || !SemisSync.uploadFile) { toast("오프라인에서는 올릴 수 없습니다.", true); return; }
+    for (const f of files) {
+      if (edit.photos.length >= 4) { toast("사진은 4장까지 넣습니다.", true); break; }
+      if (typeOf(f) !== "image") { toast(f.name + " — 사진 파일만 넣습니다.", true); continue; }
+      if (f.size > FILE_MAX) { toast(f.name + " — 50MB 를 넘습니다.", true); continue; }
+      toast(f.name + " 올리는 중…");
+      try { const up = await SemisSync.uploadFile(f, "learn"); edit.photos.push({ id: uid("lp"), name: up.name, size: up.size, url: up.url }); paintPhotos(root); }
+      catch (e) { toast(f.name + " — 올리지 못했습니다.", true); }
+    }
+  }
   function editView(root) {
     const e = edit;
     if (!e) { view = "list"; listView(root); return; }
@@ -469,21 +495,27 @@
         <div class="ln-grid">
           <div class="form-row ln-span2"><label for="le-title">교육명</label><input id="le-title" maxlength="80" value="${esc(e.title)}" placeholder="예: 11월 협력업체 합동안전보건협의체 결과"></div>
           <div class="form-row"><label>구분</label><div class="seg" role="group" aria-label="구분">${KINDS.map(k => `<button type="button" class="seg-btn" data-lek="${k}" aria-pressed="${e.kind === k}">${k}</button>`).join("")}</div></div>
+          <div class="form-row"><label>방식 ${ui.tip ? ui.tip("집체 교육은 교육장에서 QR 로 이름 확인 뒤 바로 서명만 받습니다. 교육 내용 · 사진은 끝난 뒤에 넣어 기록부로 인쇄합니다.") : ""}</label><div class="seg" role="group" aria-label="방식"><button type="button" class="seg-btn" data-lem="0" aria-pressed="${!e.offline}">온라인 학습</button><button type="button" class="seg-btn" data-lem="1" aria-pressed="${!!e.offline}">집체 교육(서명만)</button></div></div>
           <div class="form-row"><label for="le-start">교육 기간</label><div class="ln-dates"><input type="date" id="le-start" value="${esc(e.start)}"><span>~</span><input type="date" id="le-end" value="${esc(e.end)}" aria-label="마감일"></div></div>
           <div class="form-row"><label for="le-host">교육 주관</label><input id="le-host" maxlength="60" value="${esc(e.host)}"></div>
           <div class="form-row"><label for="le-place">장소</label><input id="le-place" maxlength="60" value="${esc(e.place)}"></div>
           <div class="form-row ln-span2"><label for="le-ov">개요 ${ui.tip ? ui.tip("학습 첫 화면에 제목과 함께 보이는 2~3줄 안내입니다.") : ""}</label><textarea id="le-ov" rows="3" maxlength="600">${esc(e.overview)}</textarea></div>
           <label class="ln-ck ln-span2"><input type="checkbox" id="le-ssi" ${e.ssi ? "checked" : ""}> 민감보안정보(SSI) — AI 요약을 쓰지 않고 직접 작성</label>
         </div></section>
-      <section class="card ln-form"><h2 class="card-title"><span class="ct-t">교육 자료 · 요약</span></h2>
+      <section class="card ln-form"><h2 class="card-title"><span class="ct-t">${e.offline ? "교육 내용(기록부용)" : "교육 자료 · 요약"}</span></h2>
+        ${e.offline ? `<p class="ln-dim ln-note">집체 교육 — 아래 내용은 학습 화면에 나오지 않고 기록부 '교육 내용' 칸에만 들어갑니다. 교육이 끝난 뒤에 고쳐도 됩니다.</p>` : ""}
         <label class="ln-drop" id="le-drop"><input type="file" id="le-file" multiple hidden accept=".pdf,.hwp,.hwpx,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,image/*,video/mp4,video/webm,video/quicktime">
-          ${icon("clip", 22)}<span><b>파일을 끌어다 놓거나 눌러서 고르기</b><small>문서 · 사진 · 동영상(50MB 이하) — 문서는 아래 요약으로 보여 줍니다</small></span></label>
+          ${icon("clip", 22)}<span><b>파일을 끌어다 놓거나 눌러서 고르기</b><small>${e.offline ? "공문 · 보고서 · 규정 등 문서를 올리면 AI 가 기록부에 들어갈 분량으로 정리합니다" : "문서 · 사진 · 동영상(50MB 이하) — 문서는 아래 요약으로 보여 줍니다"}</small></span></label>
         <ul class="ln-items" id="le-items">${e.items.map(itemRow).join("")}</ul>
         <div class="ln-sumbar"><b>교육 내용(한 쪽 요약)</b><span class="spacer"></span>
-          ${e.ssi ? "" : `<button type="button" class="btn btn-ghost btn-sm" id="le-ai" ${e.items.some(i => i.type !== "video") ? "" : "disabled"}>${icon("star", 15)}<span>AI 요약 만들기</span></button>`}</div>
+          ${e.ssi ? "" : `<button type="button" class="btn btn-ghost btn-sm" id="le-ai">${icon("star", 15)}<span>AI 요약 만들기</span></button>`}</div>
+        <p class="ln-dim ln-note">문서(PDF · HWPX · DOCX · PPTX · XLSX) · 사진을 올리고 [AI 요약 만들기]를 누르면 기록부 한 칸 분량으로 정리해 왼쪽에 넣고, 오른쪽에 미리 보여 줍니다. 표는 <span class="mono">| 칸 | 칸 |</span>, 흐름은 <span class="mono">[접수] -&gt; [보고]</span> 로 적습니다.</p>
         <div class="ln-ed"><textarea id="le-body" rows="14" maxlength="20000" placeholder="## 소제목&#10;- 실무자가 지킬 것&#10;**강조**">${esc(e.body)}</textarea>
           <div class="ln-sum ln-prev" id="le-prev" aria-label="미리보기">${md() ? md().html(e.body) : ""}</div></div>
-        <div class="form-row ln-min"><label for="le-min">최소 학습 시간</label><div class="ln-dates"><input type="number" id="le-min" min="0" max="3600" step="10" value="${e._auto ? am : Number(e.minSec) || 0}"><span>초</span>
+        <div class="ln-sumbar"><b>교육 장면 사진</b><small class="ln-dim">기록부에만 들어갑니다(4장까지) — 교육이 끝난 뒤 추가</small><span class="spacer"></span>
+          <button type="button" class="btn btn-ghost btn-sm" id="le-photo-btn">${icon("plus", 15)}<span>사진 추가</span></button><input type="file" id="le-photo" multiple hidden accept="image/*"></div>
+        <ul class="ln-items" id="le-photos">${e.photos.map(photoRow).join("")}</ul>
+        <div class="form-row ln-min"${e.offline ? " hidden" : ""}><label for="le-min">최소 학습 시간</label><div class="ln-dates"><input type="number" id="le-min" min="0" max="3600" step="10" value="${e._auto ? am : Number(e.minSec) || 0}"><span>초</span>
           <button type="button" class="link-btn" id="le-auto">자동(${mmss(am)})</button></div></div>
       </section>
       <section class="card ln-form"><h2 class="card-title"><span class="ct-t">대상</span><span class="dc-meta" id="le-tsum">${tgtSummary(e)}</span></h2>
@@ -516,6 +548,15 @@
     mn.oninput = () => { e._auto = false; };
     $("#le-auto", root).onclick = () => { e._auto = true; mn.value = autoMin(e); };
     $("#le-ssi", root).onchange = () => { pullForm(root); SeMIS.renderView(); };
+    $$("[data-lem]", root).forEach(b => b.onclick = () => {
+      pullForm(root); e.offline = b.dataset.lem === "1";
+      if (e.offline && (!e.place || e.place === "온라인(H:drive)")) e.place = "";
+      if (!e.offline && !e.place) e.place = "온라인(H:drive)";
+      SeMIS.renderView();
+    });
+    const pb = $("#le-photo-btn", root); if (pb) pb.onclick = () => { const x = $("#le-photo", root); if (x) x.click(); };
+    const ph = $("#le-photo", root); if (ph) ph.onchange = () => { const fs = Array.from(ph.files || []); ph.value = ""; addPhotos(root, fs); };
+    paintPhotos(root);
     $$("[data-tg]", root).forEach(cb => cb.onchange = () => {
       const g = cb.dataset.tg, gs = e.targets.groups;
       if (cb.checked) { if (gs.indexOf(g) < 0) gs.push(g); } else e.targets.groups = gs.filter(x => x !== g);
@@ -554,7 +595,6 @@
   }
   function paintItems(root) {
     $("#le-items", root).innerHTML = edit.items.map(itemRow).join("");
-    const ai = $("#le-ai", root); if (ai) ai.disabled = !edit.items.some(i => i.type !== "video");
     const mn = $("#le-min", root); if (edit._auto && mn) mn.value = autoMin(edit);
     const au = $("#le-auto", root); if (au) au.textContent = "자동(" + mmss(autoMin(edit)) + ")";
     wireItems(root);
@@ -664,7 +704,7 @@
     const e = edit;
     if (e.ssi) return;
     const docs = e.items.filter(i => i.type !== "video").slice(0, 4);
-    if (!docs.length) return;
+    if (!docs.length) { toast("요약할 문서나 사진을 먼저 올리세요(동영상은 요약하지 않습니다).", true); return; }
     const go2 = async () => {
       const btn = $("#le-ai", root); if (btn) btn.disabled = true;
       toast("자료를 읽고 요약하는 중… (30초 안팎)");
@@ -696,14 +736,16 @@
     const e = edit;
     if (!e.title) { toast("교육명을 적으세요.", true); $("#le-title", root).focus(); return; }
     if (!isISO(e.start) || !isISO(e.end) || e.start > e.end) { toast("교육 기간을 확인하세요.", true); $("#le-start", root).focus(); return; }
-    if (!String(e.body || "").trim() && !e.items.length) { toast("교육 내용(요약)이나 자료를 넣으세요.", true); return; }
+    if (!e.offline && !String(e.body || "").trim() && !e.items.length) { toast("교육 내용(요약)이나 자료를 넣으세요.", true); return; }
     const now = new Date().toISOString();
     const out = { id: e.id || uid("lc"), code: e.code || newCode(), state: e.state || "draft", title: e.title, kind: KINDS.indexOf(e.kind) >= 0 ? e.kind : "기타",
       overview: e.overview, host: e.host, place: e.place, start: e.start, end: e.end, body: e.body, minSec: e.minSec, ssi: !!e.ssi,
       items: e.items.map(i => Object.assign({ id: i.id, type: i.type, name: i.name, size: i.size, url: i.url }, i.dur ? { dur: i.dur } : {}, arrOf(i.shots).length ? { shots: arrOf(i.shots).slice(0, 4) } : {})),
+      photos: arrOf(e.photos).slice(0, 4).map(i => ({ id: i.id, name: i.name, size: i.size, url: i.url })),
       targets: { groups: e.targets.groups.slice(), add: e.targets.add.slice(), except: e.targets.except.slice() },
       excuse: isObj(e.excuse) ? e.excuse : {}, dissem: e.dissem || "",
       createdAt: e.createdAt || now, createdBy: e.createdBy || who(), updatedAt: now, updatedBy: who() };
+    if (e.offline) { out.offline = true; out.recBody = out.body; out.recItems = out.items; out.body = ""; out.items = []; out.minSec = 0; }
     const i = courses().findIndex(x => x.id === out.id);
     if (i >= 0) L().courses.splice(L().courses.indexOf(courses()[i]), 1, out); else L().courses.push(out);
     SeMIS.save();
@@ -750,6 +792,8 @@
   .bd { height: 84mm; vertical-align: top; text-align: left; padding: 2.5mm 3mm; overflow: hidden; font-size: 9.5pt; line-height: 1.5; }
   .bd .in { height: 78mm; overflow: hidden; display: flex; flex-direction: column; gap: 1.5mm; }
   .bd .tx { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+  .bd table { width: 100%; margin: 1.5mm 0; font-size: 9pt; } .bd table th, .bd table td { height: auto; padding: .8mm 1.5mm; text-align: left; border: .4px solid #555; } .bd table th { background: #f1f1f1; }
+  .bd .md-flow { display: flex; flex-wrap: wrap; gap: 1mm 1.5mm; align-items: center; margin: 1.5mm 0; } .bd .md-flow span { border: .4px solid #555; border-radius: 1.5mm; padding: .6mm 2mm; } .bd .md-flow i { font-style: normal; }
   .bd .mr { flex: none; display: flex; gap: 1.5mm; justify-content: center; align-items: center; }
   .bd .mr span { flex: 1 1 0; min-width: 0; display: block; text-align: center; }
   .bd .mr img { display: inline-block; max-width: 100%; object-fit: contain; border: .3px solid #999; vertical-align: top; }
@@ -770,7 +814,8 @@
     return h;
   }
   /* 교육 내용 칸 — 요약 글 + 사진(칸에 맞춤) + 동영상 주요 장면(나란히) */
-  function contentHTML(c, media) {
+  function contentHTML(c0, media) {
+    const c = RC(c0);
     const txt = String(c.body || c.overview || "").trim();
     const body = txt ? (md() ? md().html(txt) : esc(txt)) : "";
     const m = media || {}, imgs = arrOf(m.images).slice(0, 4), vids = arrOf(m.videos).filter(v => v && v.length).slice(0, 2);
@@ -812,7 +857,8 @@
   async function recordMedia(c) {
     const FA = window.SemisFileAuth, sign = async (u) => { try { return FA && FA.resolve ? (await FA.resolve(u)) || u : u; } catch (e) { return u; } };
     const out = { images: [], videos: [] };
-    for (const it of arrOf(c.items)) {
+    for (const ph of arrOf(c.photos)) { if (out.images.length < 4) { try { out.images.push(await sign(ph.url)); } catch (e) { /* 그 사진만 빼고 */ } } }
+    for (const it of arrOf(RC(c).items)) {
       try {
         if (it.type === "image" && out.images.length < 4) out.images.push(await sign(it.url));
         else if (it.type === "video" && out.videos.length < 2) {
@@ -828,7 +874,7 @@
   async function printRecord(c) {
     const signs = await getSigns(c);
     let media = null;
-    if (arrOf(c.items).some(i => i.type === "image" || i.type === "video")) { toast("기록부를 만드는 중…"); try { media = await recordMedia(c); } catch (e) { media = null; } }
+    if (arrOf(c.photos).length || arrOf(RC(c).items).some(i => i.type === "image" || i.type === "video")) { toast("기록부를 만드는 중…"); try { media = await recordMedia(c); } catch (e) { media = null; } }
     try {
       const html = recordHTML(c, signs, media);
       const fr = document.createElement("iframe");
@@ -887,7 +933,7 @@
       put("C15", c.host || "", 3); put("D15", c.place || "", 3); box(15, 4, 15, 5, 3); mg("D15", "F15"); put("G15", period(c), 3); box(15, 7, 15, 8, 3); mg("G15", "I15");
       heights[15] = 27;
       put("B16", "교육 내용", 2); box(17, 1, 36, 1, 2); mg("B16", "B36");
-      put("C16", md() ? md().plain(c.body || c.overview || "") : String(c.body || ""), 5); box(16, 2, 36, 8, 5); mg("C16", "I36");
+      put("C16", md() ? md().plain(RC(c).body || c.overview || "") : String(RC(c).body || ""), 5); box(16, 2, 36, 8, 5); mg("C16", "I36");
       for (let r = 16; r <= 36; r++) heights[r] = 17.25;
       const n = Math.max(1, Math.ceil(s.mem.length / 2)), r0 = 37, rn = r0 + n;
       put("B37", "교육 대상자", 2); box(38, 1, rn, 1, 2); mg("B37", "B" + rn);
@@ -1057,7 +1103,7 @@
 
   window.SemisLearn = {
     TITLE, SELF, KINDS, groupOf, groups, isTarget, prog, statusOf, loadStats, loadSigns, calItems, todayData, todaySub, mountToday, dashPane, wireDash, remote,
-    recordHTML, contentHTML, recordMedia, frames, LOGO_SVG, recordBook, bookParts, xlsxBytes, sheetData, learnUrl, newCode, autoMin, period,
+    RC, recordHTML, contentHTML, recordMedia, frames, LOGO_SVG, recordBook, bookParts, xlsxBytes, sheetData, learnUrl, newCode, autoMin, period,
     open(id) { go("detail", id); }, openEdit, go,
     setToday(t) { fixedToday = isISO(t) ? t : ""; },
     setState(o) { o = o || {}; if (o.view) view = o.view; if (o.sel !== undefined) sel = o.sel; if (o.filt) filt = o.filt; if (o.q !== undefined) q = o.q; if (o.dfilt) dfilt = o.dfilt; if (o.dtab) dtab = o.dtab; if (o.dgrp !== undefined) dgrp = o.dgrp; if (o.reset) { view = "list"; sel = ""; filt = "live"; q = ""; dq = ""; dfilt = "all"; dgrp = ""; dtab = "mem"; edit = null; } },

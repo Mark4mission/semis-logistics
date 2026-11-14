@@ -109,9 +109,10 @@ input, select { font-family: inherit; color: var(--text); }
 .ln-body:empty + .ln-media { margin-top: 0; }
 .ln-media figure { border-radius: 12px; overflow: hidden; background: var(--surface-2); }
 .ln-media figure.vid { margin: 0 -18px; border-radius: 0; background: #000; }
-.ln-media img { display: block; width: 100%; height: auto; max-height: 72vh; max-height: 72svh; object-fit: contain; }
-/* 동영상 — 비율을 미리 잡아(기본 16:9, 불러오면 실제 비율) 화면을 내려도 크기가 변하지 않는다. 높이는 '작은 화면 높이'(svh) 기준 */
-.ln-media video { display: block; width: 100%; aspect-ratio: 16 / 9; height: auto; max-height: 70vh; max-height: 70svh; object-fit: contain; background: #000; }
+.ln-media img { display: block; width: 100%; height: auto; max-height: 72vh; max-height: calc(var(--vhpx, 100vh) * .72); object-fit: contain; }
+/* 동영상 — 비율을 미리 잡아(기본 16:9, 불러오면 실제 비율) 화면을 내려도 크기가 변하지 않는다.
+   높이 한도는 화면 단위(vh · svh — 주소창이 접히면 달라짐) 대신 처음 잰 px(--vhpx, learn-app.js setVh) */
+.ln-media video { display: block; width: 100%; aspect-ratio: 16 / 9; height: auto; max-height: 70vh; max-height: calc(var(--vhpx, 100vh) * .7); object-fit: contain; background: #000; }
 .ln-media figcaption { background: var(--surface); padding: 8px 18px 0; font-size: .84rem; color: var(--text-3); display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 44px; }
 .ln-media figcaption .ok { color: var(--success); font-weight: 600; }
 .ln-spd { height: 34px; padding: 0 12px; border-radius: 17px; border: 0; background: var(--surface-2); color: var(--text-2); font-size: .84rem; font-weight: 600; }
@@ -159,7 +160,9 @@ input, select { font-family: inherit; color: var(--text); }
 @media screen and (orientation: landscape) and (max-height: 520px) {
   .ln-top { position: static; }
   .ln-main { padding-top: 8px; }
-  .ln-media video { max-height: calc(100vh - 16px); max-height: calc(100svh - 16px); }
+  .ln-media video { max-height: calc(100vh - 16px); max-height: calc(var(--vhpx, 100vh) - 12px); }
+  .ln-media figure.vid { margin: 0; }
+  .ln-media figure.vid video { width: auto; max-width: 100%; margin: 0 auto; }
   .ln-pad canvas { height: clamp(150px, 52svh, 240px); }
 }
 @media screen and (min-width: 700px) {
@@ -169,3 +172,11 @@ input, select { font-family: inherit; color: var(--text); }
   .ln-media figcaption { padding: 8px 12px; }
 }
 @media print { .ln-top, .ln-foot, .ln-steps, .ln-busy, .ln-btn, .ln-link, .ln-pad-acts, video { display: none !important; } }
+
+/* 요약 글의 표 · 흐름 */
+.ln-body table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: .92rem; }
+.ln-body th, .ln-body td { border: 1px solid var(--border); padding: 7px 9px; text-align: left; vertical-align: top; }
+.ln-body th { background: var(--surface-2); font-weight: 600; }
+.ln-body .md-flow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 10px 0; }
+.ln-body .md-flow span { background: var(--primary-soft); color: var(--primary-dark); border-radius: 10px; padding: 7px 11px; font-weight: 600; font-size: .92rem; }
+.ln-body .md-flow i { font-style: normal; color: var(--text-3); }

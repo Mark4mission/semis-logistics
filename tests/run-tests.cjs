@@ -13506,6 +13506,75 @@ function makeServer(opts = {}) {
       eq(x.errors.length, 0, x.errors.join("|")); x.w.close();
     });
 
+    await ta("LN21 학습 화면(v1.70): 집체 교육(내용 없음)은 이름 확인 뒤 바로 서명 · 2단계 · 동영상 교육은 시간 기다림 없이 다음 · 모자라면 조용히 다시 제출 · 이수증 저장은 공유만(휴대폰)", async () => {
+      // ① 집체 — 내용 · 자료 없음
+      const x = makeLearn({ items: [], start: () => ({ ok: true, rid: "lr" + "1".repeat(18), minSec: 0, elapsed: 0, body: "", items: [], person: { name: "가나다", org: "에어제타", part: "안전보안파트", emp: "900001" } }) });
+      await tick(60);
+      $l(x, "#ln-name").value = "가나다"; $l(x, "#ln-find").click(); await tick(100);
+      $l(x, "#ln-next1").click(); await tick(150);
+      eq(x.A.st.view, "p3", "바로 서명");
+      eq($$l(x, ".ln-step").length, 2, "두 단계");
+      ok(!$l(x, "#ln-back") && $l(x, "#ln-canvas"), "교육 내용 다시 보기 없음");
+      eq(x.srv.calls.filter(c => /functions\/v1\/semis-logi-learn/.test(c.url)).length, 0, "자료 주소를 받지 않음");
+      x.w.close();
+      // ② 동영상 교육 — 최소 시간이 남아도 시청이 끝나면 다음, 제출이 too_fast 면 기다렸다가 한 번 더
+      const y = makeLearn({ start: () => ({ ok: true, rid: "lr" + "1".repeat(18), minSec: 600, elapsed: 0, body: "", items: [{ i: 0, type: "video", name: "v.mp4", dur: 40 }], person: { name: "가나다", org: "에어제타", part: "안전보안파트", emp: "900001" } }),
+        submit: (b, n) => (n === 1 ? { ok: false, error: "too_fast", wait: 0 } : { ok: true, at: "2026-11-14 10:00", name: "가나다" }) });
+      await tick(60);
+      $l(y, "#ln-name").value = "가나다"; $l(y, "#ln-find").click(); await tick(100);
+      $l(y, "#ln-next1").click(); await tick(200);
+      y.A.st.seen = true;
+      const v = $l(y, "video[data-mi]");
+      Object.defineProperty(v, "duration", { value: 40, configurable: true });
+      Object.defineProperty(v, "currentTime", { value: 0, writable: true, configurable: true });
+      for (let k = 1; k <= 40; k++) { v.currentTime = k; lfire(y, v, "timeupdate"); }
+      lfire(y, v, "ended"); await tick(30);
+      ok(y.A.left() > 100 && y.A.complete() && !$l(y, "#ln-next2").hidden, "시간이 남아도 다음");
+      ok(!/초 뒤/.test($l(y, "#ln-foot-t").textContent), "기다림 안내 없음");
+      $l(y, "#ln-next2").click(); await tick(60);
+      y.A.st.ink = 20; y.A.submit(); await tick(1500);
+      eq(y.srv.submits.length, 2, "조용히 한 번 더");
+      eq(y.A.st.view, "done");
+      // ③ 이수증 저장 — 휴대폰(터치)에서 공유가 안 되면 내려받지 않고 길게 누르기 안내
+      y.A.st.cert = "data:image/jpeg;base64,AAAA";
+      y.w.document.querySelector("#ln-app").insertAdjacentHTML("beforeend", '<p id="ln-save-msg"></p>');
+      Object.defineProperty(y.w.navigator, "maxTouchPoints", { value: 5, configurable: true });
+      let clicked = 0; const oc = y.w.HTMLAnchorElement.prototype.click; y.w.HTMLAnchorElement.prototype.click = function () { clicked++; };
+      await y.A.saveCert();
+      eq(clicked, 0, "휴대폰에서는 파일 내려받기 안 함");
+      ok(/길게 눌러/.test($l(y, "#ln-save-msg").textContent));
+      y.w.HTMLAnchorElement.prototype.click = oc;
+      eq(y.errors.length, 0, y.errors.join("|")); y.w.close();
+    });
+    t("LN22 관리(v1.70): 집체 교육 = 학습 화면에 내용 안 보냄(recBody · recItems) · 기록부는 그 내용 + 교육 장면 사진 · 요약 글 표 · 흐름 · AI 단추는 늘 켜짐", () => {
+      const { e, L } = lnEnv("hq", { courses: [] });
+      go(e, "learn");
+      q(e, ".page-head [data-ln-new]").click();
+      ok(!q(e, "#le-ai").disabled, "AI 요약 단추 — 자료가 없어도 눌러서 안내");
+      q(e, "#le-ai").click();
+      q(e, '[data-lem="1"]').click();
+      eq(q(e, '[data-lem="1"]').getAttribute("aria-pressed"), "true");
+      eq(q(e, "#le-place").value, "", "장소 기본값 비움");
+      q(e, "#le-title").value = "집체 시험";
+      const cb = q(e, '[data-tg="안전보안파트"]'); cb.checked = true; cb.dispatchEvent(new e.w.Event("change", { bubbles: true }));
+      q(e, "#ln-esave").click();
+      let c = e.S.data.learn.courses[0];
+      ok(c && c.offline === true && c.body === "" && c.items.length === 0 && c.minSec === 0, "내용 없이 저장");
+      // 교육 뒤 — 내용 · 사진 추가
+      L.openEdit(c.id);
+      q(e, "#le-body").value = "## 요점\n| 구분 | 기준 |\n|---|---|\n| 통로 | 1.2m |\n\n[발견] -> [신고] -> [조치]";
+      L._edit().photos.push({ id: "lp1", name: "scene.jpg", size: 1000, url: "https://x.supabase.co/storage/v1/object/public/semis-logi-files/learn/scene.jpg" });
+      q(e, "#ln-esave").click();
+      c = e.S.data.learn.courses[0];
+      ok(c.body === "" && /요점/.test(c.recBody) && c.photos.length === 1, "학습 화면용 body 는 비고 recBody 에");
+      const doc = new JSDOM(L.recordHTML(c, {}, { images: ["data:image/png;base64,AAAA"] })).window.document;
+      const bd = doc.querySelector("td.bd");
+      ok(bd.querySelector("table th") && bd.querySelectorAll("table td").length === 2 && bd.querySelectorAll(".md-flow span").length === 3 && bd.querySelector(".mr img"), "기록부: 표 · 흐름 · 사진");
+      eq(L.RC(c).body, c.recBody);
+      const M = e.w.SemisLearnMd;
+      ok(!/<script/.test(M.html("| <script>x</script> | b |")) && /&lt;script/.test(M.html("| <script>x</script> | b |")), "표 칸도 이스케이프");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
     await ta("LN19 학습 화면: 명단에 없으면 소속 · (에어제타면 파트 · 사번 필수) 직접 입력 · 이미 이수 · 최소 시간 · 잘못된 주소 · 기간 끝", async () => {
       const x = makeLearn({ find: { ok: true, list: [] }, start: (b) => b.p.org === "AAP" ? { ok: true, done: "2026-11-11 09:00", person: { name: b.p.name, org: "AAP" } } : { ok: true, rid: "lr" + "2".repeat(18), minSec: 30, elapsed: 0, body: "본문", items: [], person: { name: b.p.name, org: b.p.org, part: b.p.part, emp: b.p.emp, manual: true } },
         submit: (b, n) => n === 1 ? { ok: false, error: "too_fast", wait: 12 } : { ok: true, at: "2026-11-12 11:00", name: "새사람" } });

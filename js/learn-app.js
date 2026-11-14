@@ -91,7 +91,8 @@
     if (text) $("#ln-busy-t").textContent = text;
   }
   function stepsHTML(n) {
-    const lb = ["본인 확인", "교육 내용", "서명"];
+    const lb = st.noBody ? ["본인 확인", "서명"] : ["본인 확인", "교육 내용", "서명"];
+    if (st.noBody && n === 3) n = 2;
     return `<nav class="ln-steps" aria-label="진행 단계">${lb.map((t, i) => `${i ? '<span class="ln-step-line" aria-hidden="true"></span>' : ""}<span class="ln-step${i + 1 === n ? " on" : (i + 1 < n ? " ok" : "")}"${i + 1 === n ? ' aria-current="step"' : ""}><i>${i + 1}</i><span>${lb[i]}</span></span>`).join("")}</nav>`;
   }
   function heroHTML(full) {
@@ -246,11 +247,13 @@
       st.minSec = Number(d.minSec) || 0; st.elapsed0 = Number(d.elapsed) || 0; st.t0 = now();
       st.seen = false; st.vids = {}; st.media = {}; st.mediaErr = "";
       st.items.forEach(it => { if (it.type === "video") st.vids[it.i] = { max: 0, done: false }; });
-      st.view = "p2";
+      /* 집체 교육(읽을 내용 · 자료가 없음) — 교육 내용 쪽 없이 바로 서명 */
+      st.noBody = !st.body.trim() && !st.items.length;
+      st.view = st.noBody ? "p3" : "p2";
       saveDraft();
       render();
       try { window.scrollTo(0, 0); } catch (e) { /* 없음 */ }
-      loadMedia();
+      if (!st.noBody) loadMedia();
     } catch (e) {
       busy(false);
       st.findMsg = "연결할 수 없습니다. 인터넷 연결을 확인해 주세요.";
@@ -264,7 +267,9 @@
   const elapsed = () => st.elapsed0 + Math.max(0, (now() - st.t0) / 1000);
   const left = () => Math.max(0, Math.ceil(need() - elapsed()));
   const vidsLeft = () => Object.keys(st.vids).filter(k => !st.vids[k].done).length;
-  const complete = () => st.seen && !vidsLeft() && left() === 0;
+  /* 동영상 교육은 시청이 끝나면 바로 다음(1.2배로 보면 시간이 모자랄 수 있어 시간은 제출 때 조용히 맞춘다) */
+  const hasVid = () => Object.keys(st.vids).length > 0;
+  const complete = () => st.seen && !vidsLeft() && (hasVid() || left() === 0);
   async function loadMedia() {
     if (!st.items.some(it => it.type === "image" || it.type === "video" || it.type === "doc")) return;
     for (let i = 0; i < 2; i++) {
@@ -327,17 +332,17 @@
     const t = $("#ln-foot-t"), nx = $("#ln-next2"), box = $("#ln-foot");
     if (!t || !nx) return;
     /* 동영상 교육은 시청이 끝나면 '다음'만 보인다(시간 막대 없음). 글 · 사진 교육은 남은 일 + 시간 막대 */
-    const hasVid = Object.keys(st.vids).length > 0, vl = vidsLeft(), l = left();
+    const hv = hasVid(), vl = vidsLeft(), l = left();
     const todo = [];
-    if (!hasVid && !st.seen) todo.push("끝까지 읽어 주세요");
-    if (hasVid && !vl && !st.seen) todo.push("아래 끝까지 내려 주세요");
-    if (!todo.length && !vl && l) todo.push(l + "초 뒤에 다음으로 넘어갈 수 있습니다");
+    if (!hv && !st.seen) todo.push("끝까지 읽어 주세요");
+    if (hv && !vl && !st.seen) todo.push("아래 끝까지 내려 주세요");
+    if (!todo.length && !hv && l) todo.push(l + "초 뒤에 다음으로 넘어갈 수 있습니다");
     const pct = need() ? Math.min(100, Math.round(elapsed() / need() * 100)) : 100;
-    t.innerHTML = complete() ? "<b>교육 내용을 모두 확인했습니다.</b>" : esc(todo.join(" · ")) + (hasVid ? "" : '<div class="ln-bar" aria-hidden="true"><i></i></div>');
+    t.innerHTML = complete() ? "<b>교육 내용을 모두 확인했습니다.</b>" : esc(todo.join(" · ")) + (hv ? "" : '<div class="ln-bar" aria-hidden="true"><i></i></div>');
     const bi = t.querySelector(".ln-bar i");   // CSP: 인라인 style 속성 대신 CSSOM
     if (bi) bi.style.width = pct + "%";
     nx.hidden = !complete();
-    if (box) box.hidden = hasVid && !complete() && !todo.length;
+    if (box) box.hidden = hv && !complete() && !todo.length;
   }
   let ticker = null, io = null;
   function checkEnd() {
@@ -392,7 +397,7 @@
       <h2>서명</h2>
       <p class="ln-who1"><b>${esc(p.name || "")}</b><span>${esc([p.org, p.part].filter(Boolean).join(" · "))}</span>${p.emp ? `<span class="mono">${esc(p.emp)}</span>` : ""}</p>
       <div class="ln-pad${st.ink ? " inked" : ""}" id="ln-pad"><canvas id="ln-canvas" aria-label="서명란"></canvas><span class="ln-pad-ph">여기에 서명해 주세요</span></div>
-      <div class="ln-pad-acts"><button type="button" class="ln-link" id="ln-back">교육 내용 다시 보기</button><button type="button" class="ln-link" id="ln-clear">지우기</button></div>
+      <div class="ln-pad-acts">${st.noBody ? "<span></span>" : '<button type="button" class="ln-link" id="ln-back">교육 내용 다시 보기</button>'}<button type="button" class="ln-link" id="ln-clear">지우기</button></div>
       <p class="ln-agree">교육 내용을 확인하였으며, 업무에서 지키겠습니다.</p>
       <p class="ln-msg" id="ln-msg"${st.msg ? "" : " hidden"}>${esc(st.msg)}</p>
       <button type="button" class="ln-btn pri wide" id="ln-submit" ${st.ink >= 8 ? "" : "disabled"}>제출</button>
@@ -428,7 +433,7 @@
     cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up); cv.addEventListener("pointerleave", up);
     pad = { cv, ctx };
     $("#ln-clear").onclick = () => { if (ctx) ctx.clearRect(0, 0, cv.width, cv.height); st.ink = 0; if (box) box.classList.remove("inked"); $("#ln-submit").disabled = true; };
-    $("#ln-back").onclick = () => { st.view = "p2"; render(); };
+    const bk = $("#ln-back"); if (bk) bk.onclick = () => { st.view = "p2"; render(); };
     $("#ln-submit").onclick = submit;
   }
   /* 서명 그림 — 가로 480px PNG(투명 바탕)로 줄여 보낸다 */
@@ -455,6 +460,11 @@
         if (!(d && (d.error === "ticket" || d.error === "start") && i === 0)) break;
         await ensureTicket(true);
         if (!(await restart())) break;
+      }
+      /* 시간이 조금 모자라면(동영상을 1.2배로 본 경우) 안내 없이 기다렸다가 한 번 더 보낸다 — 최대 60초 */
+      if (d && d.error === "too_fast" && hasVid() && (Number(d.wait) || 0) <= 60) {
+        await new Promise(r => setTimeout(r, (Math.max(0, Number(d.wait) || 0) + 1) * 1000));
+        d = await rpc("semis_logi_learn_submit", { p_k: st.code, p_ticket: st.ticket, p: { rid: st.rid, sign, sid: st.sid, secs: Math.round(elapsed()) } });
       }
       busy(false);
       if (d && d.ok) {
@@ -487,7 +497,7 @@
       <p class="mono">${esc(d.at || "")}</p>
       ${!d.again && st.sign ? `<div class="ln-cert" id="ln-cert" hidden><img id="ln-cert-img" alt="교육 이수증">
         <button type="button" class="ln-btn pri wide" id="ln-save">이수증 사진 저장</button>
-        <p class="ln-msg info" id="ln-save-msg" hidden></p></div>` : ""}
+        <p class="ln-msg info" id="ln-save-msg">그림을 길게 눌러 저장할 수도 있습니다.</p></div>` : ""}
     </section>`;
   }
   /* ── 교육 이수증(서명 포함) 카드 그림 — 사진첩에 저장 ── */
@@ -552,30 +562,35 @@
     return new Promise((res) => {
       try {
         const im = new Image();
-        im.onload = () => { try { const c = certCanvas(im); res(c ? c.toDataURL("image/png") : ""); } catch (e) { res(""); } };
+        im.onload = () => { try { const c = certCanvas(im); res(c ? c.toDataURL("image/jpeg", 0.92) : ""); } catch (e) { res(""); } };
         im.onerror = () => res("");
         im.src = st.sign;
       } catch (e) { res(""); }
     });
   }
+  /* 사진첩 저장 — 휴대폰은 공유 창(이미지 저장)으로만. 안 되는 브라우저(앱 안 브라우저 등)는 길게 눌러 저장을 안내한다
+     (파일 내려받기는 휴대폰에서 '지원되지 않는 파일 형식'으로 실패해 PC 에서만 쓴다) */
   async function saveCert() {
     const msg = $("#ln-save-msg"), say = (t) => { if (msg) { msg.textContent = t; msg.hidden = !t; } };
-    const name = "교육이수증_" + String((st.done && st.done.at) || "").slice(0, 10).replace(/-/g, "") + ".png";
+    const HOLD = "그림을 길게 눌러 '이미지 저장'을 고르세요.";
+    const name = "edu-cert-" + (String((st.done && st.done.at) || "").slice(0, 10).replace(/-/g, "") || "0") + ".jpg";
+    const touch = (navigator.maxTouchPoints || 0) > 0 || "ontouchstart" in window;
     try {
       const bin = atob(String(st.cert).split(",")[1] || ""), u8 = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-      const blob = new Blob([u8], { type: "image/png" });   // CSP: data: 주소는 fetch 하지 않는다
-      const file = typeof File === "function" ? new File([blob], name, { type: "image/png" }) : null;
+      const blob = new Blob([u8], { type: "image/jpeg" });   // CSP: data: 주소는 fetch 하지 않는다
+      const file = typeof File === "function" ? new File([blob], name, { type: "image/jpeg" }) : null;
       if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
         try { await navigator.share({ files: [file] }); say("공유 창에서 '이미지 저장'을 고르면 사진첩에 들어갑니다."); return; }
-        catch (e) { if (e && e.name === "AbortError") return; }
+        catch (e) { if (e && e.name === "AbortError") return; say(HOLD); return; }
       }
+      if (touch) { say(HOLD); return; }
       const u = URL.createObjectURL(blob), a = document.createElement("a");
       a.href = u; a.download = name; a.rel = "noopener";
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => { try { URL.revokeObjectURL(u); } catch (e) { /* 없음 */ } }, 4000);
-      say("저장했습니다. 안 보이면 그림을 길게 눌러 저장하세요.");
-    } catch (e) { say("그림을 길게 눌러 '사진 앱에 저장'을 고르세요."); }
+      say("저장했습니다.");
+    } catch (e) { say(HOLD); }
   }
   async function wireDone() {
     const box = $("#ln-cert");
@@ -600,7 +615,20 @@
     document.title = (st.info && st.info.title ? st.info.title + " — " : "") + "교육 이수 — H:drive";
   }
 
+  /* 화면 높이를 px 로 한 번 재서 CSS 변수에 둔다 — 주소창이 접히고 펴질 때(폭은 그대로)는 다시 재지 않아
+     동영상 크기가 화면을 내릴 때 변하지 않는다. 폭이 바뀔 때(눕힘 · 세움)만 다시 잰다 */
+  let vw0 = 0;
+  function setVh(force) {
+    try {
+      const w = window.innerWidth || 0, h = window.innerHeight || 0;
+      if (!h || (!force && w === vw0)) return;
+      vw0 = w;
+      document.documentElement.style.setProperty("--vhpx", h + "px");
+    } catch (e) { /* 없음 */ }
+  }
   async function boot() {
+    setVh(true);
+    try { window.addEventListener("resize", () => setVh(false)); window.addEventListener("orientationchange", () => setTimeout(() => setVh(true), 350)); } catch (e) { /* 없음 */ }
     st.code = String(location.hash || "").replace(/^#\/?/, "").trim().toLowerCase();
     if (!/^[a-z2-9]{12}$/.test(st.code)) { fail("invalid"); return; }
     try {
@@ -614,7 +642,7 @@
     } catch (e) { fail("network"); }
   }
 
-  const api = { st, boot, render, find, start, submit, exportSign, foot, complete, left, makeCert, certCanvas, saveCert,
+  const api = { st, boot, render, find, start, submit, exportSign, foot, complete, left, makeCert, certCanvas, saveCert, setVh,
     _clock(fn) { now = fn; }, _seen() { st.seen = true; foot(); } };
   window.SemisLearnApp = api;
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => api.boot());

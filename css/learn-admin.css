@@ -88,3 +88,12 @@
 
 .ln-ros .ln-duty { font-size: .86rem; color: var(--text-2); max-width: 22em; }
 .ln-ros td a[data-tel] { color: inherit; text-decoration: none; }
+
+/* 요약 글의 표 · 흐름(v1.70) · 안내 줄 */
+.ln-sum table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: .9rem; }
+.ln-sum th, .ln-sum td { border: 1px solid var(--border); padding: 5px 8px; text-align: left; vertical-align: top; }
+.ln-sum th { background: var(--surface-2); font-weight: 600; }
+.ln-sum .md-flow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0; }
+.ln-sum .md-flow span { border: 1px solid var(--border-strong); border-radius: 8px; padding: 3px 9px; font-weight: 600; }
+.ln-sum .md-flow i { font-style: normal; color: var(--text-3); }
+.ln-note { font-size: .86rem; margin: 6px 0 10px; }
