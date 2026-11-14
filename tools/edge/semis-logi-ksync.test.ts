@@ -262,6 +262,39 @@ Deno.test("올리기 3단계(begin → 업로드 → verify → apply) · 해시
   assertEquals([r.status, r.d.error, await events("type_block")], [415, "type", 1], "실행 파일은 K 로 안 보냄");
 });
 
+Deno.test("해시 채우기(hash): 관리자 요청이 있을 때만 · SQL 이 고른 저장소 파일을 읽어 잰 sha256 을 SQL 이 적음(에이전트가 보낸 값 · 경로는 안 씀) · 50MB 넘으면 끊음 · 못 읽은 것은 건너뜀 · recon 은 SQL 로", async () => {
+  const run = (await post({ act: "run", phase: "start", trigger: "manual" })).d.run;
+  let r = await post({ act: "hash", run });
+  assertEquals([r.status, r.d.error], [409, "state"], "요청 전에는 거절");
+  await db.query("update public.semis_logi_store set value = value || $1::jsonb where key = 'docs'", [JSON.stringify([
+    { id: "d4", mod: "audit", grp: "checklist", title: "큰", date: "2026-10-01", files: [{ name: "big.zip", size: 10, url: PUB + "docs/dddddddddddd_big.zip" }] }])]);
+  const CH = 64 * 1024, N = 900;
+  let pulled = 0;
+  objects.set("docs/dddddddddddd_big.zip", new Uint8Array(0));
+  streams.set("docs/dddddddddddd_big.zip", () => new ReadableStream<Uint8Array>({ pull(c) { if (pulled >= N) { c.close(); return; } pulled++; c.enqueue(new Uint8Array(CH)); } }, { highWaterMark: 0 }));
+  await admin("select public.semis_logi_ksync_hash_todo($1::jsonb)", [JSON.stringify({ start: true })]);
+  calls.length = 0;
+  r = await post({ act: "hash", run, items: [{ url: PUB + "docs/aaaaaaaaaaaa_a.pdf", sha: "f".repeat(64) }], path: "docs/x", sha256: "0".repeat(64) });
+  streams.delete("docs/dddddddddddd_big.zip");
+  assertEquals([r.status, r.d], [200, { ok: true, n: 1, left: 0 }], JSON.stringify(r.d));
+  const docs = await one("select value from public.semis_logi_store where key = 'docs'") as Record<string, unknown>[];
+  const fileOf = (id: string) => (docs.find((d) => d.id === id)!.files as Record<string, unknown>[])[0];
+  assertEquals([fileOf("d1").sha, fileOf("d2").sha, fileOf("d3").sha, fileOf("d4").sha], [await sha("pdf1"), undefined, undefined, undefined],
+    "저장소에서 읽어 잰 값(에이전트가 보낸 값 아님) · 다른 화면 문서는 범위 밖 · 못 읽음 · 큰 파일은 적지 않음");
+  const sent = calls.find((c) => c.body.p_act === "hash_set")!.body.p as Record<string, unknown>;
+  assertEquals([Object.keys(sent).sort(), (sent.items as Record<string, unknown>[]).map((x) => [String(x.url).replace(PUB, ""), x.err || "sha"]).sort()],
+    [["items", "last", "run"], [["docs/aaaaaaaaaaaa_a.pdf", "sha"], ["docs/cccccccccccc_c.bat", "read"], ["docs/dddddddddddd_big.zip", "too_large"]]], "SQL 로는 재거나 못 읽은 결과만");
+  assertEquals(pulled < N, true, "50MB 를 넘은 곳에서 그만 읽음: " + pulled + " 조각");
+  assertEquals([await one("select count(*)::int from semis_logi_private.ksync_hash_skip"), await one("select hash_req is null from semis_logi_private.ksync_state")], [2, true],
+    "못 읽은 것 · 큰 파일은 하루 건너뜀 · 남은 것이 없으면 요청 지움");
+  assertEquals(calls.filter((c) => c.body.p_act === "hash_todo" || c.body.p_act === "hash_set").map((c) => c.body.p_act), ["hash_todo", "hash_set"], "SQL 호출 둘(분당 셈 둘)");
+  r = await post({ act: "hash_set", run, items: [{ url: PUB + "docs/aaaaaaaaaaaa_a.pdf", sha: "e".repeat(64) }] });
+  assertEquals([r.status, r.d.error], [400, "bad"], "적는 동작(hash_set)은 Edge 밖에서 못 부름");
+  r = await post({ act: "recon", map: 999, counts: {} });
+  assertEquals([r.status, r.d.error], [409, "state"], "recon 은 SQL 에 그대로(연결 · dir_next 확인은 SQL)");
+  await post({ act: "run", phase: "end", run, result: "ok" });
+});
+
 Deno.test("횟수: 키 실패 15분 10회 넘으면 그 IP 1시간 차단(맞는 키도) · 분당 상한", async () => {
   const BAD = "203.0.113.200";
   for (let i = 0; i < 11; i++) await post({ act: "hello" }, { key: "e".repeat(64), ip: BAD });

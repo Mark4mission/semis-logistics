@@ -1,6 +1,7 @@
 /* H:drive K드라이브 동기화 — 계획(순수 함수). 파일 · 네트워크를 건드리지 않는다.
    plan({ map, baseline, kList, kErr, kCapped, hList, limit, today, maxSize, since, allSha }) → { actions[], held, n, base, counts, detail[], fatal }
-   - baseline = 마지막으로 맞춘 상태(ksync_files 줄), kList = K 색인 [{ rel, size, mtime(ms), sha }], hList = H 쪽 현재 판 [{ doc, ser, name, url, size, at, date, title }]
+   - baseline = 마지막으로 맞춘 상태(ksync_files 줄), kList = K 색인 [{ rel, size, mtime(ms), sha }], hList = H 쪽 현재 판 [{ doc, ser, name, url, size, at, date, title, sha }]
+     (sha = 첨부에 적힌 sha256 — 동기화 · 문서함 올리기 · 해시 채우기가 적은 것만, 없으면 null)
      + SSI 아닌 연결에서 현재 판이 민감보안정보라 보이지 않는 판 묶음 [{ ser, hidden: true }] — H 에 있으나 내용은 모름(H 삭제로 보지 않음)
    - kErr = 색인 오류 [{ f, r, dir }] — 읽지 못한 파일 · 폴더(그 아래 전부)는 '모름'이라 건너뛴다(K 삭제 · H 로 덮어쓰기로 보지 않음).
      지정 제외 경로도 { f, r: "excluded", dir: true } 로 온다(색인이 걷지 않은 곳 — 같은 '모름', counts.out.excl).
@@ -311,4 +312,15 @@ export function plan(input) {
   out.old = counts.old; out.ssi = hidSer.size;
   counts.mismatch = counts.del + (held ? counts.k2h + counts.h2k : 0);
   return { actions: held ? [] : actions, planned: actions, held, n, base, counts, detail, fatal: "" };
+}
+
+/* '양쪽' 전환 미리보기(recon) — 같은 입력으로 바꿀 방향의 plan() 을 돈 결과를 센다(K 에 쓰지 않음). 서버(ksync_recon_set)가 받는 칸:
+   h2k_new = 내려올 새 파일(H 에만 있는 문서), dup = 그중 K 에 같은 이름이 있어 '이름 (2)' 로 내려올 것(0 이 아니면 전환을 막는다 —
+   H 옛 판 · 잘못 묶인 판 묶음이나 잇지 못한 기준일 전 K 파일), link_old = 옛 판으로 연결, bytes = 올릴 파일 크기 합계(저장소 증가 상한) */
+export function reconOf(p) {
+  const acts = p.planned || [], c = p.counts || {};
+  const fresh = acts.filter(a => a.op === "get" && !a.row && !a.copy);
+  return { k2h: c.k2h || 0, h2k: c.h2k || 0, h2k_new: fresh.length, dup: fresh.filter(a => a.rel !== safeName(a.it.name)).length,
+    link: c.link || 0, link_old: acts.filter(a => a.op === "link" && a.it && a.it.old).length, del: c.del || 0, conflict: c.conflict || 0,
+    skip: c.skip || 0, total: c.total || 0, n: p.n || 0, bytes: acts.filter(a => a.op === "put").reduce((s, a) => s + (Number(a.k && a.k.size) || 0), 0) };
 }

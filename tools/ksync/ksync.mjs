@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /* H:drive K드라이브 동기화 에이전트(Mac · launchd) — 나가는 HTTPS 만, 들어오는 포트 없음. 서버가 보낼 수 있는 것은 '지금 동기화 요청' 표시 하나.
-   순서: 잠금 → (오늘 끝냈고 9분 안에 서버를 봤으면 끝) → 사내망 확인(SMB TCP 445) → hello → 마운트 → 색인 · 계획(plan.mjs) · 실행 → 끝 보고.
+   순서: 잠금 → (오늘 끝냈고 9분 안에 서버를 봤으면 끝) → 사내망 확인(SMB TCP 445) → hello → 마운트 → 색인 · 계획(plan.mjs) · 실행
+   (양쪽 전환 미리보기는 한 곳만 같은 색인으로 계획을 한 번 더) → 해시 채우기(관리자가 요청한 동안) → 끝 보고.
    매일 동기화는 시작 시각부터 30분 창 안에서만. 그때 K드라이브에 닿지 않으면 5분 간격으로 3번까지 해 보고, 그래도 안 되면 그날은 건너뛴다.
    K 의 파일은 지우거나 덮지 않는다 — 덮을 옛 파일은 이전판 폴더로, 삭제 확정은 휴지통 폴더로 옮기기만 하고 휴지통도 비우지 않는다.
    명령: --once(지금 한 번) · --dry-run(계획만 출력) · --status. 설정 ~/Library/Application Support/hdrive-ksync/config.json(600), 키는 키체인(hdrive-ksync). */
@@ -8,14 +9,15 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { pathToFileURL } from "node:url";
-import { plan, MAX_SIZE, K_BLOCK, nfc } from "./plan.mjs";
+import { plan, reconOf, MAX_SIZE, K_BLOCK, nfc } from "./plan.mjs";
 import * as L from "./lib.mjs";
 
-export const VERSION = "1.68.0";
+export const VERSION = "1.71.0";
 const MIN = 60e3;
 /* 오늘 매일 실행을 끝낸 뒤 서버를 다시 보지 않는 시간 — 깨우는 간격(10분)보다 조금 짧게. 길면 H 에서 올린 문서의 동기화 요청을 그만큼 늦게 본다 */
 const DONE_GUARD = 9 * MIN;
 const TRIES = 3, RETRY = 5 * MIN;      // 매일 실행이 K드라이브에 닿지 않을 때 — 5분 간격 3번, 그래도 안 되면 다음 날
+const HASH_CALLS = 50;                 // 해시 채우기 — 회차마다 Edge hash 호출 수(한 번에 20개까지). 남으면 서버가 다음 깨우기를 요청한다
 /* 실행 전체를 멈추는 오류 — 망 · 서버(게이트웨이 포함: 처리했는지 모름) · 키 · IP · 분당 상한(한 번 쉬고도) */
 const fatalCode = (c) => c === "network" || c === "server" || c === "auth" || c === "ip" || c === "rate";
 
@@ -130,10 +132,14 @@ async function agent(deps, args) {
       const li = lists.get(m.id);
       const ex = exclOf(m, full.excludes);
       const idx = await L.indexDir(root, new Map(li.base.map(b => [b.rel_path, b])), { since, sizes: bs.sizes, names: lk.names, skip: lowSet(ex) });
-      const p = plan({ map: m.state === "preview" ? Object.assign({}, m, { hold: { ok: true } }) : m, baseline: li.base, kList: idx.list, kErr: idx.errors.concat(exErr(ex)), kCapped: idx.capped, hList: li.h, limit: full.mass_limit, today,
-        since, allSha: bs.shas, linkAll: lk.all, hOlds: li.olds });
+      const input = { map: m.state === "preview" ? Object.assign({}, m, { hold: { ok: true } }) : m, baseline: li.base, kList: idx.list, kErr: idx.errors.concat(exErr(ex)), kCapped: idx.capped, hList: li.h, limit: full.mass_limit, today,
+        since, allSha: bs.shas, linkAll: lk.all, hOlds: li.olds };
+      const p = plan(input);
+      const line = (a) => [a.op, a.rel || "", a.mode || a.state || ""].join(" ").trim();
+      // 양쪽 전환 미리보기 중인 연결은 그 방향의 계획도 — 파일 이름까지(대시보드는 건수만)
+      const q = reconWanted(m) && !p.fatal ? plan(reconInput(input, m)) : null;
       deps.out({ map: m.id, k_path: m.k_path, state: m.state, held: p.held, fatal: p.fatal || undefined, errors: idx.errors.map(e => (e.f + " " + e.r).trim()), counts: p.counts,
-        actions: p.planned.map(a => [a.op, a.rel || "", a.mode || a.state || ""].join(" ").trim()) });
+        actions: p.planned.map(line), recon: q ? { dir: m.dir_next, counts: reconOf(q), actions: q.planned.map(line) } : undefined });
     }
     await save();
     return { status: "dry-run" };
@@ -157,14 +163,16 @@ async function agent(deps, args) {
       try { await srv.call("folders", { list: await L.folderTree(mount, 3, 3000, lowSet(full.excludes)) }); st.foldersDay = today; } catch (e) { log("warn", "폴더 목록 보고 실패: " + e.code); }
     }
     const bs = baseSets(lists, full.paused_base), lk = linkSet(full, lists);
+    const reconId = pickRecon(maps);
     for (const m of maps) {
-      const r = await syncMap({ deps, srv, run, mount, today, limit: full.mass_limit, unsent, olds, bs, lk, excludes: full.excludes }, m, lists.get(m.id));
+      const r = await syncMap({ deps, srv, run, mount, today, limit: full.mass_limit, unsent, olds, bs, lk, excludes: full.excludes, reconId }, m, lists.get(m.id));
       ["k2h", "h2k", "conflicts", "skipped", "errors"].forEach(k => { tot[k] += r[k] || 0; });
       r.detail.forEach(d => detail.push(d));
       // done = 그 연결을 끝까지 맞춤 — 서버는 이때만 승인한 보류를 지운다(전송량 상한 등으로 중간에 멈추면 아님)
       mapRes.push({ id: m.id, held: !!r.held, n: r.n || 0, base: r.base || 0, done: !r.held && !r.preview && !r.fatal && !r.quota && !r.stop, n_files: r.n_files, rep: r.rep });
       if (r.quota) { msg = "하루 전송량 상한"; break; }
     }
+    if (full.hash && !msg) await fillHashes(srv, run, log);
   } catch (e) {
     result = "fail"; msg = "중단: " + (e.code || "error"); log("error", msg);
   }
@@ -223,6 +231,29 @@ function linkSet(full, lists) {
   return { all, names };
 }
 
+/* '양쪽' 전환 미리보기 — 관리자가 [양쪽으로 바꾸기 미리보기]를 누른 활성 연결(dir_next). 한 회차에 한 곳만, 건수가 없거나 가장 오래된 곳부터.
+   그 연결의 평소 계획과 같은 입력(같은 색인 — K 를 더 읽지 않음)으로 방향만 바꿔 계획을 한 번 더 돌린다. 보류는 세지 않는다(건수만 봄) */
+const reconWanted = (m) => m.state === "active" && !!m.dir_next && m.dir_next !== m.dir;
+const reconInput = (input, m) => Object.assign({}, input, { map: Object.assign({}, m, { dir: m.dir_next, hold: { ok: true } }) });
+function pickRecon(maps) {
+  const c = maps.filter(reconWanted).sort((a, b) => String(a.recon_at || "").localeCompare(String(b.recon_at || "")) || a.id - b.id);
+  return c.length ? c[0].id : null;
+}
+
+/* 해시 채우기 — Edge 가 저장소에서 H 첨부(해시 없는 것)를 읽어 sha256 을 재고 문서함 첨부에 적는다. 에이전트는 부르기만 한다(값을 보내지 않음).
+   동기화 자체가 아니라 링크 정확도를 높이는 일이라 실패해도 회차를 멈추지 않는다. 마지막 호출에 남았으면 서버가 다음 깨우기를 요청한다 */
+async function fillHashes(srv, run, log) {
+  let n = 0;
+  for (let i = 0; i < HASH_CALLS; i++) {
+    let r;
+    try { r = await srv.call("hash", { run, last: i === HASH_CALLS - 1 }); }
+    catch (e) { log("warn", "해시 채우기 멈춤: " + e.code); break; }
+    n += Number(r.n) || 0;
+    if (!(Number(r.left) > 0)) break;
+  }
+  if (n) log("info", "H 첨부 해시 " + n + "개 채움");
+}
+
 /* 지난 실행이 보내지 못한 기준선 표시(받아 놓은 파일 · 다시 이은 줄) — 계획 전에 먼저 보낸다. 안 보내면 이미 맞춘 파일을
    양쪽 다 바뀐 것으로 보아 가짜 충돌 · 중복 판이 생긴다. 멈춘 연결 것은 다시 켤 때까지 두고, 지운 연결 것은 버린다. 하나라도 보냈으면 true */
 async function replay(srv, run, full, carry, log) {
@@ -258,10 +289,17 @@ async function syncMap(ctx, m, li) {
   idx.errors.forEach(e => { res.errors++; line(e.f, "error", e.r); });
   if (idx.capped) { res.errors++; line(m.k_path, "error", "too_many"); }
   const preview = m.state === "preview";
-  const p = plan({ map: preview ? Object.assign({}, m, { hold: { ok: true } }) : m, baseline: li.base, kList: idx.list, kErr: idx.errors.concat(exErr(ex)), kCapped: idx.capped, hList: li.h, limit: ctx.limit, today,
-    since, allSha: ctx.bs.shas, linkAll: ctx.lk.all, hOlds: li.olds });
+  const input = { map: preview ? Object.assign({}, m, { hold: { ok: true } }) : m, baseline: li.base, kList: idx.list, kErr: idx.errors.concat(exErr(ex)), kCapped: idx.capped, hList: li.h, limit: ctx.limit, today,
+    since, allSha: ctx.bs.shas, linkAll: ctx.lk.all, hOlds: li.olds };
+  const p = plan(input);
   if (p.fatal) { res.fatal = true; log("error", "연결 폴더를 다 읽지 못해 건너뜀(" + p.fatal + "): " + m.k_path); return res; }
   res.n_files = idx.list.length - (p.counts.old || 0);
+  // 양쪽 전환 미리보기 — 실행 전 상태로 센다(이 회차에 올리는 K 파일도 들어 있어 실제보다 크게 보일 수 있음 — 안전한 쪽). 못 보내도 이 연결은 그대로 맞춘다
+  if (m.id === ctx.reconId && reconWanted(m)) {
+    const rc = reconOf(plan(reconInput(input, m)));
+    try { await srv.call("recon", { map: m.id, counts: rc, updated_at: m.updated_at }); log("info", `양쪽 미리보기: ${m.k_path} 내려올 새 파일 ${rc.h2k_new} · '이름 (2)' ${rc.dup} · 올릴 ${rc.k2h}`); }
+    catch (e) { if (fatalCode(e.code)) throw e; log("warn", "양쪽 미리보기 건수를 보내지 못함(" + e.code + "): " + m.k_path); }
+  }
   // 센 설정의 시각(hello 의 updated_at)을 함께 보낸다 — 그 사이 관리자가 설정을 고쳤으면 서버가 옛 설정으로 센 건수를 버린다
   if (preview) {
     // 그 사이 관리자가 [시작] · 멈춤 · 지우기를 눌렀으면(state) 이 건수만 버린다 — 실행 전체를 멈추면 뒤의 연결을 맞추지 못한다
