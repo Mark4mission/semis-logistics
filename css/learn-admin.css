@@ -97,3 +97,9 @@
 .ln-sum .md-flow span { border: 1px solid var(--border-strong); border-radius: 8px; padding: 3px 9px; font-weight: 600; }
 .ln-sum .md-flow i { font-style: normal; color: var(--text-3); }
 .ln-note { font-size: .86rem; margin: 6px 0 10px; }
+
+/* 전파교육 표 — 교육 전파 · 서명에서 온 줄(v1.71) */
+.dv-x.dv-part { color: var(--accent-dark, #a85a06); font-weight: 600; }
+.dv-auto { margin: 0 0 12px; }
+.dv-auto { display: flex; gap: 6px; align-items: flex-start; }
+.dv-auto svg { flex: none; margin-top: 2px; }

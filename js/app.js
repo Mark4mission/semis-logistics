@@ -3,7 +3,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.70.0";
+  const VERSION = "1.71.0";
   const APP_NAME = "H:drive";
   const APP_ALIAS = "ARGOS (Air-cargo Risk & Guard Operations System)";
   /* 데이터 캐시는 탭 sessionStorage 에만(탭 닫기·로그아웃 시 소멸). 화면 설정(LS_UI)만 localStorage */
@@ -276,7 +276,7 @@ const SeMIS = (() => {
       m("selfcheck", "자체 보안점검", "🧾", "selfcheck", "mgr", "bd-audit", { tab: "자체 보안점검" }),
       b("bd-edu", "보안교육", "hub-aud"),
       m("training", "보안교육 · 자격 관리", "🎓", "training", "mgr", "bd-edu", { tab: "이수 · 자격" }),
-      m("dissem", "보안 전파교육", "📣", "dissem", "mgr", "bd-edu", { tab: "전파교육" }),
+      m("dissem", "전파교육", "📣", "dissem", "mgr", "bd-edu", { tab: "전파교육" }),
       m("learn", "교육 전파 · 서명", "✍️", "learn", "mgr", "hub-aud"),
 
       h("hub-ops", "비상 · 연락", "users"),

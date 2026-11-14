@@ -13361,20 +13361,28 @@ function makeServer(opts = {}) {
       eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
     });
 
-    t("LN13 보안 전파교육 이행표 반영: 연결한 건의 파트 칸에 날짜 · '온라인 이수 n/m'", () => {
-      const { e, L } = lnEnv("hq", { courses: [COURSE({ dissem: "dv1" })] });
-      e.S.data.dissem = { events: [{ id: "dv1", date: "2026-11-09", title: "보안등급 전파", kind: "보안등급 · 경보", targets: ["ss", "exp"], res: {} }] };
-      L.setState({ view: "detail", sel: "lc1" });
-      go(e, "learn");
-      q(e, '[data-lnx="dissem"]').click();
-      const rows = qa(e, "#modal-box [data-dvs]");
-      ok(rows.length >= 2, "완료 있는 그룹");
-      const exp = rows.find(s => /수출/.test(s.closest("tr").textContent));
-      eq(exp.value, "exp", "수출파트 → 수출 칸 추정");
-      q(e, '#modal-box [data-dvi="' + exp.dataset.dvs + '"]').checked = true;
-      clickOk(e);
-      const r = e.S.data.dissem.events[0].res.exp;
-      ok(r && r.date === "2026-11-12" && /온라인 이수 1\/2/.test(r.note), JSON.stringify(r));
+    t("LN13 전파교육(v1.71): 교육 전파 · 서명 교육이 등록 없이 한 줄 · 칸 = 인원 관리 그룹 · 서명 수/대상 수 · 옛 칸(ss · imp · tra)은 지금 이름으로 · 누르면 그 교육", () => {
+      const { e, L } = lnEnv("hq", { courses: [COURSE({ kind: "위험물" })] });
+      e.S.data.dissem = { events: [{ id: "dv1", date: "2026-11-09", title: "보안등급 전파", kind: "보안등급 · 경보", targets: ["ss", "imp", "tra"], res: { ss: { date: "2026-11-10", files: [] }, imp: { date: "2026-11-10", files: [] }, tra: { date: "2026-11-11", files: [] } } }] };
+      const DV = e.w.SemisDissem;
+      go(e, "dissem");
+      const heads = qa(e, ".dv-tbl thead th").map(th => th.textContent);
+      ok(heads.indexOf("안전보안파트") >= 0 && heads.indexOf("수출파트") >= 0 && heads.indexOf("수입통과파트") >= 0, "칸 = 그룹 " + heads.join(","));
+      ok(heads.indexOf("안전보안") < 0 && heads.indexOf("일반지원") < 0 && heads.indexOf("통과") < 0, "옛 칸 이름 없음");
+      const ln = q(e, '.dv-tbl tr[data-dv="ln:lc1"]');
+      ok(ln && /교육\(위험물\)/.test(ln.textContent) && /\d+\/\d+/.test(ln.textContent), "교육 줄 자동 " + (ln && ln.textContent));
+      const ev = DV.learnEvents()[0], g = ev.learn.groups.find(x => x.g === "수출파트");
+      ok(g && g.n === 2 && g.ok === 1 && !DV.done(ev, "수출파트"), "서명 1/2 — 다 안 받았으면 미이행 " + JSON.stringify(g));
+      const old = DV.events().find(x => x.id === "dv1");
+      eq(DV.targets(old).join(","), "안전보안파트,수입통과파트", "옛 칸 → 지금 이름(수입 · 통과 한 칸)");
+      eq(DV.resN(old)["수입통과파트"].date, "2026-11-11", "늦은 날짜");
+      ok(DV.done(old, "ss") && DV.done(old, "안전보안파트"), "옛 id 로도 읽힘");
+      eq(L.KINDS.join(","), "보안,안전,위험물,기타");
+      ln.click();
+      ok(q(e, '.page-head [data-lnx="link"]'), "누르면 그 교육 상세");
+      ok(!q(e, '[data-lnx="dissem"]'), "이행표 반영 단추 없음(자동)");
+      L.openEdit("lc1");
+      ok(!q(e, "#le-dv"), "교육 수정에 '연결' 없음");
       eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
     });
 
@@ -13455,7 +13463,8 @@ function makeServer(opts = {}) {
       try { const wc = require("crypto").webcrypto; Object.defineProperty(w, "crypto", { value: wc, configurable: true }); } catch (x) { /* 없음 */ }
       const srv = learnServer(o);
       w.fetch = srv.fetch;
-      if (o.draft) w.sessionStorage.setItem("semisl:learn:abcdefgh2345", JSON.stringify(o.draft));
+      if (o.draft) w.localStorage.setItem("semisl:learn:abcdefgh2345", JSON.stringify(o.draft));
+      if (o.local) w.localStorage.setItem("semisl:learn:abcdefgh2345", JSON.stringify(o.local));
       w.eval(LAPP_JS);
       w.SemisLearnApp.exportSign = () => PNG;
       return { dom, w, srv, errors, A: w.SemisLearnApp };
@@ -13502,7 +13511,7 @@ function makeServer(opts = {}) {
       ok(sb.p.sign === PNG && /^lr1{18}$/.test(sb.p.rid) && /^[A-Za-z0-9-]{8,64}$/.test(sb.p.sid) && sb.p.secs >= 40, JSON.stringify(sb.p).slice(0, 120));
       eq(x.srv.bad.join("|"), "", "인자 = SQL");
       eq(x.srv.tickets, 1, "표 한 번");
-      eq(x.w.sessionStorage.getItem("semisl:learn:abcdefgh2345"), null, "제출 뒤 작성 중 내용 지움");
+      eq(x.w.localStorage.getItem("semisl:learn:abcdefgh2345"), null, "제출 뒤 작성 중 내용 지움");
       eq(x.errors.length, 0, x.errors.join("|")); x.w.close();
     });
 
@@ -13535,6 +13544,17 @@ function makeServer(opts = {}) {
       y.A.st.ink = 20; y.A.submit(); await tick(1500);
       eq(y.srv.submits.length, 2, "조용히 한 번 더");
       eq(y.A.st.view, "done");
+      // ②-1 화면을 닫았다 다시 열면 — 이 기기에 둔 진행으로 이름 확인 없이 교육 내용부터, 동영상은 본 데까지
+      const z = makeLearn({ local: { q: "가나다", pick: { pid: "p1", name: "가나다" }, sid: "abcd-1234-efgh", ts: Date.now(), on: 1, seen: true, vids: { 0: { max: 25, done: false } } } });
+      await tick(300);
+      eq(z.A.st.view, "p2", "이어서 교육 내용");
+      eq(z.A.st.vids[0].max, 25, "동영상 본 데까지");
+      ok(z.A.st.seen, "읽은 표시");
+      z.w.close();
+      const z2 = makeLearn({ local: { q: "가나다", pick: { pid: "p1", name: "가나다" }, ts: Date.now() - 7 * 3600 * 1000, on: 1 } });
+      await tick(200);
+      eq(z2.A.st.view, "p1", "6시간 지난 것은 버림");
+      z2.w.close();
       // ③ 이수증 저장 — 휴대폰(터치)에서 공유가 안 되면 내려받지 않고 길게 누르기 안내
       y.A.st.cert = "data:image/jpeg;base64,AAAA";
       y.w.document.querySelector("#ln-app").insertAdjacentHTML("beforeend", '<p id="ln-save-msg"></p>');

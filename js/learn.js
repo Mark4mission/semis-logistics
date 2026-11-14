@@ -11,7 +11,7 @@
   const TITLE = "교육 전파 · 서명";
   const R = () => window.SemisRoster;
   const SELF = "에어제타", TEAM = "인천화물팀";
-  const KINDS = ["보안", "안전", "기타"];
+  const KINDS = ["보안", "안전", "위험물", "기타"];
   const FILE_MAX = 50 * 1024 * 1024;
   const D = () => SeMIS.data;
   const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
@@ -237,7 +237,6 @@
         + (canW() ? `<button type="button" class="btn btn-primary" data-lnx="link">${icon("link", 17)}<span>주소 · QR</span></button>` : "")
         + (canW() ? rare("edit", "edit", "수정") : "")
         + rare("xlsx", "down", "기록부 엑셀")
-        + (canW() && dv ? rare("dissem", "check", "전파교육 이행표 반영") : "")
         + (canW() && c.state === "open" ? rare("close", "lock", "마감") : "")
         + (canW() && c.state === "closed" ? rare("reopen", "refresh", "다시 열기") : "")
         + (canW() ? rare("del", "trash", "삭제") : "")
@@ -522,10 +521,6 @@
         <div class="ln-gs">${gs.map(x => `<label class="ln-g${x.self ? "" : " v"}"><input type="checkbox" data-tg="${esc(x.g)}" ${e.targets.groups.indexOf(x.g) >= 0 ? "checked" : ""}> ${esc(x.g)} <small class="mono">${x.n}</small></label>`).join("") || `<p class="ln-dim">명단이 비어 있습니다. 비상 · 연락 › 인원 관리에서 먼저 등록하세요.</p>`}</div>
         <div class="ln-tq"><span class="ln-l" id="le-tql">개별 추가 · 제외</span>${ui.search("le-tq", "이름 · 사번으로 찾기", tq)}</div>
         <div id="le-tp">${tgtPeople(e)}</div>
-      </section>
-      <section class="card ln-form"><h2 class="card-title"><span class="ct-t">연결</span></h2>
-        <div class="form-row"><label for="le-dv">보안 전파교육 건 ${ui.tip ? ui.tip("연결하면 상세 화면 ⋯ 에서 파트별 완료 현황을 전파교육 이행표에 한 번에 체크합니다.") : ""}</label>
-          <select id="le-dv"><option value="">연결 안 함</option>${dvs.map(v => `<option value="${esc(v.id)}" ${e.dissem === v.id ? "selected" : ""}>${esc(dot(v.date) + " " + (v.title || ""))}</option>`).join("")}</select></div>
       </section>`;
     wireEdit(root);
   }
@@ -536,7 +531,7 @@
     e.body = String(v("le-body")).replace(/\s+$/, "").slice(0, 20000);
     const ssi = $("#le-ssi", root); e.ssi = !!(ssi && ssi.checked);
     const mn = Number(v("le-min")); e.minSec = isFinite(mn) ? Math.max(0, Math.min(3600, Math.round(mn))) : 0;
-    e.dissem = v("le-dv");
+
   }
   function wireEdit(root) {
     const e = edit;
@@ -851,7 +846,7 @@
   }
   async function getSigns(c) {
     if (c.state === "draft") return {};
-    try { await loadStats(); return await loadSigns(c.id, true); } catch (e) { toast("서명을 불러오지 못했습니다. 서명 없이 만듭니다.", true); return {}; }
+    try { await loadStats(true); return await loadSigns(c.id, true); } /* 늘 새로 — 방금 서명한 사람이 빠지지 않게 */ catch (e) { toast("서명을 불러오지 못했습니다. 서명 없이 만듭니다.", true); return {}; }
   }
   /* 기록부에 넣을 사진 · 동영상 장면 — 서명 주소로 바꿔서. 장면이 저장돼 있지 않은 옛 동영상은 그 자리에서 뽑는다 */
   async function recordMedia(c) {
@@ -871,6 +866,33 @@
     }
     return out;
   }
+  /* '교육 내용' 칸에 글이 다 들어가게 — 넘치면 사진을 먼저 줄이고(18mm 까지), 그래도 넘치면 글자를 줄인다(7pt 까지) */
+  function fitRecord(doc) {
+    try {
+      Array.from(doc.querySelectorAll(".bd .in")).forEach(box => {
+        const tx = box.querySelector(".tx");
+        if (!tx) return;
+        const over = () => tx.scrollHeight > tx.clientHeight + 1;
+        const imgs = Array.from(box.querySelectorAll(".mr:not(.vd) img"));
+        let h = 28;
+        while (over() && imgs.length && h > 18) { h -= 2; imgs.forEach(im => { im.style.maxHeight = h + "mm"; }); }
+        const vd = Array.from(box.querySelectorAll(".mr.vd img"));
+        let vh = 30;
+        while (over() && vd.length && vh > 16) { vh -= 2; vd.forEach(im => { im.style.maxHeight = vh + "mm"; im.style.width = "auto"; }); }
+        let fs = 10.5;
+        while (over() && fs > 7) { fs -= 0.5; tx.style.fontSize = fs + "pt"; tx.style.lineHeight = fs < 9 ? "1.35" : "1.45"; }
+      });
+    } catch (e) { /* 맞추지 못하면 그대로 인쇄 */ }
+  }
+  /* 전파교육 화면(js/dissem.js)이 읽는 교육별 · 그룹별 이행 — 준비 중 교육은 빼고 */
+  function dissemRows() {
+    return courses().filter(c => c.state !== "draft").map(c => {
+      const g = prog(c);
+      const last = (x) => x.mem.filter(m => m.st === "ok" && m.row && m.row.at).map(m => String(m.row.at).slice(0, 10)).sort().pop() || "";
+      return { id: c.id, date: c.start || "", end: c.end || "", title: c.title || "", kind: c.kind || "", offline: !!c.offline, state: c.state, loaded: g.loaded, n: g.n, ok: g.ok,
+        groups: g.groups.filter(x => x.mem.some(m => m.tgt) || x.ok).map(x => ({ g: x.g, self: !!x.self, n: x.n, ok: x.ok, last: last(x) })) };
+    });
+  }
   async function printRecord(c) {
     const signs = await getSigns(c);
     let media = null;
@@ -878,14 +900,14 @@
     try {
       const html = recordHTML(c, signs, media);
       const fr = document.createElement("iframe");
-      fr.style.cssText = "position:fixed;right:0;bottom:0;width:2px;height:2px;border:0;visibility:hidden";
+      fr.style.cssText = "position:fixed;left:-10000px;top:0;width:186mm;height:200px;border:0;visibility:hidden";   // 인쇄 폭(A4 − 여백)으로 놓아야 글 맞춤을 잴 수 있다
       document.body.appendChild(fr);
       const doc = fr.contentWindow.document;
       doc.open(); doc.write(html); doc.close();
       const fire = () => { try { fr.contentWindow.focus(); fr.contentWindow.print(); } catch (e) { /* 무시 */ } };
       const imgs = Array.from(doc.images || []).filter(i => !i.complete);
       const ready = Promise.all(imgs.map(i => new Promise(r => { i.onload = i.onerror = r; })));
-      Promise.race([ready, new Promise(r => setTimeout(r, 8000))]).then(() => setTimeout(fire, 300));
+      Promise.race([ready, new Promise(r => setTimeout(r, 8000))]).then(() => { fitRecord(doc); setTimeout(fire, 300); });
       setTimeout(() => { try { fr.remove(); } catch (e) { /* 무시 */ } }, 60000);
     } catch (e) { toast("인쇄 대화상자를 열 수 없습니다.", true); }
   }
@@ -1103,7 +1125,7 @@
 
   window.SemisLearn = {
     TITLE, SELF, KINDS, groupOf, groups, isTarget, prog, statusOf, loadStats, loadSigns, calItems, todayData, todaySub, mountToday, dashPane, wireDash, remote,
-    RC, recordHTML, contentHTML, recordMedia, frames, LOGO_SVG, recordBook, bookParts, xlsxBytes, sheetData, learnUrl, newCode, autoMin, period,
+    RC, dissemRows, fitRecord, recordHTML, contentHTML, recordMedia, frames, LOGO_SVG, recordBook, bookParts, xlsxBytes, sheetData, learnUrl, newCode, autoMin, period,
     open(id) { go("detail", id); }, openEdit, go,
     setToday(t) { fixedToday = isISO(t) ? t : ""; },
     setState(o) { o = o || {}; if (o.view) view = o.view; if (o.sel !== undefined) sel = o.sel; if (o.filt) filt = o.filt; if (o.q !== undefined) q = o.q; if (o.dfilt) dfilt = o.dfilt; if (o.dtab) dtab = o.dtab; if (o.dgrp !== undefined) dgrp = o.dgrp; if (o.reset) { view = "list"; sel = ""; filt = "live"; q = ""; dq = ""; dfilt = "all"; dgrp = ""; dtab = "mem"; edit = null; } },
