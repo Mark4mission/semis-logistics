@@ -10546,8 +10546,16 @@ function makeServer(opts = {}) {
 
     t("AR13 서버 원본(Edge): 세션 · 등급 · 사용량은 서버 RPC · 등급별 도구(클라이언트 TOOL_MIN 과 같음) · 왕복 5회 · 캐시 · 대화 저장 안 함 · CORS", () => {
       const src = read("tools/edge/semis-logi-argo.ts");
-      const i1 = src.indexOf('rpc(tok, "semis_logi_argo_begin"'), i2 = src.indexOf("fetch(AI_URL");
-      ok(i1 > 0 && i2 > i1, "사용량 확인 뒤에 AI 호출");
+      const at = (re) => Array.from(src.matchAll(re)).map(m => m.index);
+      const fnBody = (name) => { const s = src.indexOf("async function " + name + "("); return [s, s < 0 ? -1 : src.indexOf("\n}\n", s)]; };
+      const inside = (i, [s, e]) => s > 0 && i > s && i < e;
+      const serve = src.indexOf("Deno.serve("), begin = at(/rpc\(tok, "semis_logi_argo_begin"/g);
+      ok(serve > 0 && begin.length === 1 && begin[0] > serve, "사용량 확인은 요청 처리 안에서 한 번");
+      const askFn = fnBody("askAI"), kfFn = fnBody("kfolder"), fetches = at(/fetch\(AI_URL/g);
+      ok(fetches.length === 1 && inside(fetches[0], askFn), "AI 호출은 askAI 안에서만");
+      const asks = at(/(?<!function |\w)askAI\(/g), kfs = at(/(?<!function |\w)kfolder\(/g);
+      ok(asks.length === 2 && asks.some(i => i > begin[0]) && asks.some(i => inside(i, kfFn)) && asks.every(i => i > begin[0] || inside(i, kfFn)), "사용량 확인 뒤에 AI 호출(대화)");
+      ok(kfs.length === 1 && kfs[0] > begin[0], "사용량 확인 뒤에 AI 호출(kfolder)");
       ok(/\/\^\[0-9a-f\]\{64\}\$\/\.test\(tok\)/.test(src), "토큰 모양 확인");
       ok(src.includes('semis_logi_argo_meter') && src.includes("cache_control: { type: \"ephemeral\" }"), "토큰 계량 · 캐시");
       ok(/const MAX_ROUNDS = 5;/.test(src) && src.includes('payload.tool_choice = { type: "none" }'), "왕복 5회");
