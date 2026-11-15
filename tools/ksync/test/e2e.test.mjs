@@ -1449,13 +1449,7 @@ r = await once();
 hook.failRpc = null;
 eq([r.status, since(logs, kg, l => l.startsWith("warn")), JSON.parse(fs.readFileSync(STATE, "utf8")).kidxDay, JSON.stringify([await kxPaths(), await one("select kidx_last from semis_logi_private.ksync_state")])],
   ["ok", ["warn K드라이브 찾기 목록 보내기 실패: server"], undefined, kxSnap], "보내기 실패: 회차 결과 그대로 · 경고 한 줄 · 다음 회차에 다시");
-// 폴더가 없어짐(이름 바뀜) — 회차는 그대로 · 보내지 않음
-await admin("select public.semis_logi_ksync_kidx_save($1::jsonb)", [JSON.stringify({ root: "없는 폴더" })]);
-kn = rpcLog.length; kg = logs.length;
-r = await once();
-eq([r.status, kxActs(kn), since(logs, kg, l => l.startsWith("warn"))], ["ok", [], ["warn K드라이브 찾기 폴더를 읽지 못함: no_folder"]], "폴더 없음: 회차 그대로 · 보내지 않음 · 경고 한 줄");
 // 줄 상한(5만) — 뿌리 목록만 5만 1개 폴더로 바꿔 끼운다. 상한에 닿은 걷기는 보내지 않고(기존 색인 그대로) 그날은 다시 걷지 않음(나무는 몇 분 사이 줄지 않는다)
-await admin("select public.semis_logi_ksync_kidx_save($1::jsonb)", [JSON.stringify({ root: "항공보안" })]);
 const realReaddir = fsp.readdir, many = Array.from({ length: 50001 }, (_, i) => ({ name: "d" + i, isSymbolicLink: () => false, isDirectory: () => true, isFile: () => false }));
 let kxReads = 0;
 fsp.readdir = (p, o) => (p === KX ? (kxReads++, Promise.resolve(many)) : realReaddir(p, o));
@@ -1468,6 +1462,49 @@ try {
   r = await once();
   eq([r.status, kxActs(kn), kxReads], ["ok", [], 1], "상한에 닿은 날 다음 회차는 다시 걷지 않음");
 } finally { fsp.readdir = realReaddir; }
+const kxDayOff = () => { const s = JSON.parse(fs.readFileSync(STATE, "utf8")); delete s.kidxDay; fs.writeFileSync(STATE, JSON.stringify(s)); };
+const kxSt = () => JSON.parse(fs.readFileSync(STATE, "utf8"));
+// 빈 것처럼 보이는 마운트(뿌리 목록이 비어 보임) — 서버가 empty 로 거절해 색인 · first_seen 그대로 · 경고 한 줄 · 그날 다음 회차에 다시
+kxDayOff();
+fsp.readdir = (p, o) => (p === KX ? Promise.resolve([]) : realReaddir(p, o));
+kn = rpcLog.length; kg = logs.length;
+try { r = await once(); } finally { fsp.readdir = realReaddir; }
+eq([r.status, kxActs(kn), since(logs, kg, l => l.startsWith("warn")), kxSt().kidxDay, JSON.stringify([await kxPaths(), await one("select kidx_last from semis_logi_private.ksync_state")])],
+  ["ok", ["begin", "end"], ["warn K드라이브 찾기 목록 보내기 실패: empty"], undefined, kxSnap], "빈 것처럼 보이는 걷기: 서버 empty → 색인 그대로 · 경고 한 줄 · 다음 회차에 다시");
+// 긴 경로 3,000줄 — rows 는 2,000줄과 바이트(약 700KB) 둘 다로 나눠 본문이 Edge 2MB 상한에 닿지 않음. 300자 넘는 경로(서버가 거절할 줄)는 보내지 않고 기록에 셈 · end 의 n = 보낸 줄
+const KD1 = "가".repeat(100), KD2 = "다".repeat(150), KL = path.join(KX, KD1);
+const kxEnt = (name, dir) => ({ name, isSymbolicLink: () => false, isDirectory: () => dir, isFile: () => !dir });
+const kxLongs = Array.from({ length: 3000 }, (_, i) => kxEnt("나".repeat(95) + String(i).padStart(4, "0") + ".pdf", false)).concat([kxEnt(KD2, true)]);
+const kxOvers = Array.from({ length: 3 }, (_, i) => kxEnt("라".repeat(60) + i + ".pdf", false));
+const realLstat = fsp.lstat;
+fsp.readdir = (p, o) => (p === KX ? Promise.resolve([kxEnt(KD1, true)]) : p === KL ? Promise.resolve(kxLongs) : p === path.join(KL, KD2) ? Promise.resolve(kxOvers) : realReaddir(p, o));
+fsp.lstat = (p, ...a) => (String(p).startsWith(KL + path.sep) ? Promise.resolve({ size: 3, mtimeMs: KT }) : realLstat(p, ...a));
+kn = rpcLog.length; kg = logs.length;
+try { r = await once(); } finally { fsp.readdir = realReaddir; fsp.lstat = realLstat; }
+const kxRows = rpcLog.slice(kn).filter(x => x.act === "kidx" && x.p.phase === "rows"), kxSent = kxRows.flatMap(x => x.p.items);
+const kxBody = kxRows.map(x => Buffer.byteLength(JSON.stringify(Object.assign({ act: "kidx" }, x.p))));
+const kxEnd = rpcLog.slice(kn).find(x => x.act === "kidx" && x.p.phase === "end");
+ok(kxRows.length >= 3 && kxBody.every(b => b < 1e6), "rows 본문마다 1MB 미만(줄 수 · 바이트로 나눔): " + kxBody.join(","));
+eq([kxSent.length, kxSent.filter(x => x[0].length > 300).length, kxEnd && kxEnd.p.n], [3002, 0, 3002], "300자 넘는 경로 3줄은 보내지 않음 · end 의 n = 보낸 줄");
+eq([r.status, kxEnd && kxEnd.res, since(logs, kg, l => l.startsWith("warn")), kxSt().kidxDay, (await kxPaths()).length], ["ok", { ok: true, dirs: 2, files: 3000 }, [], TODAY, 3002],
+  "긴 경로 보내기 성공 · 경고 없음 · kidxDay");
+eq(since(logs, kg, l => /K드라이브 찾기 목록 보냄/.test(l)), ["info K드라이브 찾기 목록 보냄 — 파일 3000 · 폴더 2 · 경로가 너무 길거나 맞지 않아 뺀 줄 3개"], "기록에 뺀 줄 수");
+// 같은 날 색인 뿌리를 바꾸면 — 서버가 옛 목록을 비우고, 다음 회차가 새 뿌리를 다시 걸어 보냄(그날 이미 걸었어도) · 그 뒤 같은 날은 다시 걷지 않음
+const KX2 = path.join(MOUNT, "찾기 둘");
+fs.mkdirSync(KX2, { recursive: true }); fs.writeFileSync(path.join(KX2, "안내.pdf"), "G"); fs.utimesSync(path.join(KX2, "안내.pdf"), KT / 1000, KT / 1000);
+await admin("select public.semis_logi_ksync_kidx_save($1::jsonb)", [JSON.stringify({ root: "찾기 둘" })]);
+eq([await kxPaths(), await one("select kidx_last from semis_logi_private.ksync_state")], [[], null], "뿌리를 바꾸면 서버가 옛 목록 · 마지막 기록을 비움");
+kn = rpcLog.length;
+r = await once();
+eq([r.status, kxActs(kn), await kxPaths(), kxSt().kidxDay, kxSt().kidxRoot], ["ok", ["begin", "rows", "end"], ["안내.pdf"], TODAY, "찾기 둘"], "그날 이미 걸었어도 새 뿌리를 다시 걸어 보냄");
+kn = rpcLog.length;
+r = await once();
+eq([r.status, kxActs(kn)], ["ok", []], "그 뒤 같은 날은 다시 걷지 않음");
+// 폴더가 없어짐(이름 바뀜) — 회차는 그대로 · 보내지 않음
+await admin("select public.semis_logi_ksync_kidx_save($1::jsonb)", [JSON.stringify({ root: "없는 폴더" })]);
+kn = rpcLog.length; kg = logs.length;
+r = await once();
+eq([r.status, kxActs(kn), since(logs, kg, l => l.startsWith("warn"))], ["ok", [], ["warn K드라이브 찾기 폴더를 읽지 못함: no_folder"]], "폴더 없음: 회차 그대로 · 보내지 않음 · 경고 한 줄");
 if (NOROOT) fs.chmodSync(path.join(KX, "잠김"), 0o755);
 await admin("select public.semis_logi_ksync_kidx_save($1::jsonb)", [JSON.stringify({ on: false, root: "" })]);
 

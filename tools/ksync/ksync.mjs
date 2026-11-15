@@ -179,12 +179,13 @@ async function agent(deps, args) {
     }
     await sendRecon(srv, log, maps, reconQ, reconIn);
     if (full.hash && !msg) await fillHashes(srv, run, log);
-    if (kidxWanted(full) && st.kidxDay !== today && !msg) {
+    // 뿌리가 바뀌면 서버가 옛 목록을 비우므로 그날 이미 걸었어도 새 뿌리를 다시 걷는다
+    if (kidxWanted(full) && (st.kidxDay !== today || st.kidxRoot !== full.kidx.root) && !msg) {
       const k = await kidxScan(mount, full.kidx);
       if (k.error) log("warn", "K드라이브 찾기 폴더를 읽지 못함: " + k.error);
       // 상한에 닿은 걷기는 그날 다시 걸어도 같다(나무는 몇 분 사이 줄지 않음) — 수동 요청 회차마다 최대 30분씩 걷지 않게 그날은 끝. 보내기 실패만 그날 다시
-      else if (k.capped) { log("warn", `K드라이브 찾기 목록이 상한에 닿아 보내지 않음(줄 ${k.rows.length} · ${k.ms}ms) — 기존 목록 그대로`); st.kidxDay = today; }
-      else if (await sendKidx(srv, log, k)) st.kidxDay = today;
+      else if (k.capped) { log("warn", `K드라이브 찾기 목록이 상한에 닿아 보내지 않음(줄 ${k.rows.length} · ${k.ms}ms) — 기존 목록 그대로`); st.kidxDay = today; st.kidxRoot = full.kidx.root; }
+      else if (await sendKidx(srv, log, k)) { st.kidxDay = today; st.kidxRoot = full.kidx.root; }
     }
   } catch (e) {
     result = "fail"; msg = "중단: " + (e.code || "error"); log("error", msg);
@@ -224,16 +225,32 @@ async function kidxScan(mount, k) {
   try { return await L.kidxWalk(root, { excludes: k.excludes }); }
   catch (e) { return { error: e.code || e.message }; }
 }
-/* begin → rows(2,000줄씩 — 본문 2MB 안) → end. end 의 n 은 서버가 받은 줄 수와 대 보는 값이라 덩어리를 잃으면 서버가 색인을 바꾸지 않는다 */
+/* begin → rows → end. end 의 n 은 서버가 받은 줄 수와 대 보는 값이라 덩어리를 잃으면 서버가 색인을 바꾸지 않는다.
+   덩어리는 2,000줄(서버 한도)과 약 700KB 둘 다로 자른다 — 긴 한글 경로 2,000줄은 Edge 본문 상한(2MB)에 닿을 수 있다.
+   서버가 어차피 거절할 경로(300자 넘음 등)는 보내지 않고 기록에 센다 */
+const KIDX_ROWS = 2000, KIDX_BYTES = 700 * 1024;
+function kidxChunks(rows) {
+  const out = [];
+  let cur = [], bytes = 2;
+  for (const r of rows) {
+    const b = Buffer.byteLength(JSON.stringify(r)) + 1;
+    if (cur.length && (cur.length >= KIDX_ROWS || bytes + b > KIDX_BYTES)) { out.push(cur); cur = []; bytes = 2; }
+    cur.push(r); bytes += b;
+  }
+  if (cur.length) out.push(cur);
+  return out;
+}
 async function sendKidx(srv, log, res) {
+  const rows = res.rows.filter(r => L.relOk(r[0])), drop = res.rows.length - rows.length;
+  const dropTxt = drop ? "경로가 너무 길거나 맞지 않아 뺀 줄 " + drop + "개" : "";
   try {
     await srv.call("kidx", { phase: "begin" });
-    for (let i = 0; i < res.rows.length; i += 2000) await srv.call("kidx", { phase: "rows", items: res.rows.slice(i, i + 2000) });
-    const d = await srv.call("kidx", { phase: "end", n: res.rows.length, err: res.err.slice(0, 200), ms: res.ms });
-    log("info", `K드라이브 찾기 목록 보냄 — 파일 ${d.files} · 폴더 ${d.dirs}${res.err.length ? " · 못 읽은 곳 " + res.err.length : ""}`);
+    for (const items of kidxChunks(rows)) await srv.call("kidx", { phase: "rows", items });
+    const d = await srv.call("kidx", { phase: "end", n: rows.length, err: res.err.slice(0, 200), ms: res.ms });
+    log("info", `K드라이브 찾기 목록 보냄 — 파일 ${d.files} · 폴더 ${d.dirs}${res.err.length ? " · 못 읽은 곳 " + res.err.length : ""}${drop ? " · " + dropTxt : ""}`);
     return true;
   } catch (e) {
-    log("warn", "K드라이브 찾기 목록 보내기 실패: " + (e.code || e.message));
+    log("warn", "K드라이브 찾기 목록 보내기 실패: " + (e.code || e.message) + (drop ? "(" + dropTxt + ")" : ""));
     return false;
   }
 }
