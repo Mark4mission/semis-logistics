@@ -108,7 +108,8 @@
       c.writeText(wp).then(() => toast("폴더 위치를 복사했습니다."), manual);
     };
     const op = $("#modal-box [data-act=open]");
-    if (op) op.onclick = () => { closeModal(); SemisDocs.pickTo(doc.mod, q || doc.title); SeMIS.navigate(doc.mod); };
+    /* q 는 K 항목(폴더 이름까지)에 맞은 말이라 문서 자체에 없을 수 있다 — 그대로 넘기면 문서함이 그 문서를 걸러 낸다 */
+    if (op) op.onclick = () => { closeModal(); SemisDocs.pickTo(doc.mod, q && SemisDocs.hits(doc, q) ? q : doc.title); SeMIS.navigate(doc.mod); };
   }
 
   window.SemisKidx = {

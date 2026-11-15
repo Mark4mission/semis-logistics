@@ -13216,10 +13216,20 @@ function makeServer(opts = {}) {
       q(e, "#modal-box [data-act=open]").click(); await tick(5);
       ok(q(e, "#modal-overlay").classList.contains("hidden"), "창 닫힘");
       eq(e.w.location.hash, "#/audit", "그 화면으로");
-      eq(e.w.SemisDocs.getQuery("audit"), "국토부 점검", "문서함 검색어 = 넘긴 q");
+      eq(e.w.SemisDocs.getQuery("audit"), "국토부 점검", "문서함 검색어 = 넘긴 q(문서 자체에 맞음)");
+      await tick(20);
+      ok(q(e, '#view [data-dk="d1"]'), "그 화면 문서함에 문서가 보임");
       K.openSheet(f);
       q(e, "#modal-box [data-act=open]").click(); await tick(5);
       eq(e.w.SemisDocs.getQuery("audit"), "2025 국토부 항공안전 점검 결과", "q 가 없으면 문서 이름");
+      go(e, "dashboard"); await tick(5);
+      ok(e.w.SemisSearch.search("70 안전").some(x => x.group === "K드라이브" && x.title === "점검 결과 통보.pdf") && !e.w.SemisDocs.hits(e.S.data.docs[0], "70 안전"),
+        "'70 안전' 은 K 항목에는 폴더 이름으로 맞고 문서 자체에는 없음");
+      K.openSheet(f, "70 안전");
+      q(e, "#modal-box [data-act=open]").click(); await tick(20);
+      eq(e.w.location.hash, "#/audit");
+      eq(e.w.SemisDocs.getQuery("audit"), "2025 국토부 항공안전 점검 결과", "문서에 맞지 않는 q 대신 문서 이름");
+      ok(q(e, '#view [data-dk="d1"]'), "문서가 걸러져 사라지지 않음");
       K.openSheet(byTitle(K, "00 안내.pdf"));
       ok(!q(e, "#modal-box [data-act=open]"), "docId 없는 파일엔 없음");
       e.S.data.docs[0].mod = "no-such-mod";
