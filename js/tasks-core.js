@@ -20,6 +20,10 @@
   const has = (o, k) => typeof k === "string" && Object.prototype.hasOwnProperty.call(o, k);
   let fixedToday = "";
   const today = () => fixedToday || new Date(Date.now() + KST).toISOString().slice(0, 10);
+  /* 기한 묶음 · 요약 · 마친 일 묶음이 같은 주 · 같은 날을 보게 화면도 이 셋만 쓴다 */
+  const weekStart = (td) => addDays(td, -((dowOf(td) + 6) % 7));   // 주 = 월~일
+  const dayOf = (ts) => { const n = Date.parse(ts || ""); return isNaN(n) ? "" : new Date(n + KST).toISOString().slice(0, 10); };   // 저장된 ISO 시각 → 한국 날짜
+  const dayLabel = (iso, td) => (iso.slice(0, 4) === td.slice(0, 4) ? iso.slice(5) : iso) + "(" + DOW[dowOf(iso)] + ")";
 
   const list = () => (SeMIS.data && Array.isArray(SeMIS.data[KEY]) ? SeMIS.data[KEY] : []);
 
@@ -120,7 +124,7 @@
     [B + "(오늘|내일|모레|글피)" + E, (m, td) => addDays(td, ["오늘", "내일", "모레", "글피"].indexOf(m[2]))],
     /* 주 뒤에 홀로 쓴 '일'은 '일 정리' 같은 낱말이 많아 일요일로 보지 않는다('일요일'만) */
     [B + "(이번\\s?주|금주|다음\\s?주|차주)(?:\\s*(?:([월화수목금토])(?:요일)?|(일)요일))?" + E, (m, td) => {
-      const mon = addDays(td, -((dowOf(td) + 6) % 7)), next = !/^(이번|금주)/.test(m[2]), day = m[3] || m[4];
+      const mon = weekStart(td), next = !/^(이번|금주)/.test(m[2]), day = m[3] || m[4];
       if (!day) return next ? addDays(mon, 7) : "";
       return addDays(mon, (next ? 7 : 0) + (DOW.indexOf(day) + 6) % 7);
     }],
@@ -184,9 +188,7 @@
     if (days < 0) return { b: "late", label: -days + "일 지남", days };
     if (days === 0) return { b: "today", label: "오늘" + tm, days };
     if (days === 1) return { b: "tomorrow", label: "내일" + tm, days };
-    const sun = addDays(td, (7 - dowOf(td)) % 7);   // 이번 주 = 월~일
-    const label = (due.slice(0, 4) === td.slice(0, 4) ? due.slice(5) : due) + "(" + DOW[dowOf(due)] + ")" + tm;
-    return { b: due <= sun ? "week" : "later", label, days };
+    return { b: due <= addDays(weekStart(td), 6) ? "week" : "later", label: dayLabel(due, td) + tm, days };
   }
 
   /* ── 사람 · 권한 ── */
@@ -213,7 +215,7 @@
 
   window.SemisTasks = {
     KEY, CATS, CAT_ORDER, BUCKETS, list, catOf, norm, make, parse, dueInfo,
-    canUse, me, meInPart, partPeople, teamNames, personColor, today,
+    canUse, me, meInPart, partPeople, teamNames, personColor, today, weekStart, dayOf, dayLabel,
     setToday(iso) { fixedToday = isISO(iso) ? iso : ""; }
   };
 })();

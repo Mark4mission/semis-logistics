@@ -7096,7 +7096,7 @@ button.chip-title:focus-visible, button.calm-body:focus-visible { outline: 2px s
 }
 
 /* ── Task 관리(js/tasks.js) — 빠른 입력 · 담당자 칩 · 기한 묶음 줄(체크 28px). 분류 · 사람 색은 일정 12색(.ev-*) 그대로 ── */
-.tk-quick { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.tk-qbox { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
 .tk-qrow { display: flex; gap: 8px; }
 #tk-quick { flex: 1; min-width: 0; min-height: 44px; padding: 0 14px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); font-size: 1rem; }
 #tk-quick:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }

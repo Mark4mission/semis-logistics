@@ -14661,6 +14661,7 @@ function makeServer(opts = {}) {
     const pressed = () => qa(e, "#tk-qprev [data-qwho][aria-pressed=true]").map(b => b.dataset.qwho).join();
     const statOf = (lb) => qa(e, "#tk-stats .stat").find(x => x.querySelector(".stat-label").textContent === lb);
     const sv = (lb) => { const s = statOf(lb); return s ? s.querySelector(".stat-value").textContent : ""; };
+    const navB = () => { const x = q(e, '#nav-menu .nav-item[data-route="tasks"] .nav-meta'); return x ? x.textContent : ""; };
     /* 지난 · 오늘 · 날짜 없음 2(별표 하나) · 마침 1, 명단 = 안전보안파트 Thq(시험 hq 계정 이름) · 가나다 · 라마바 */
     const tkSeed = () => {
       e.S.data.roster = { team: "", orgs: [], people: [
@@ -14701,6 +14702,8 @@ function makeServer(opts = {}) {
       eq(q(e, '.tk-row[data-id="tk_late"] .tk-due').textContent, "3일 지남"); eq(q(e, '.tk-row[data-id="tk_today"] .tk-due').textContent, "오늘 15:00");
       ok(!q(e, '#tk-list [data-id="tk_done"]'), "마친 일은 할 일 탭에 없음");
       eq(q(e, '[data-ct-tab="todo"]').textContent, "할 일 4");
+      ok(qa(e, '[data-ct-tabs="tk"] [role=tab]').every(b => q(e, "#" + b.getAttribute("aria-controls"))), "탭마다 aria-controls 가 가리키는 칸이 있음");
+      ok(q(e, "#ctp-tk-done").hidden && !q(e, "#ctp-tk-todo").hidden, "고르지 않은 칸은 숨김");
       const row = q(e, '.tk-row[data-id="tk_today"]'), cb = row.querySelector("input.tk-chk"), tb = row.querySelector("button.tk-t");
       eq(cb.type, "checkbox"); eq(cb.getAttribute("aria-labelledby"), tb.id); eq(tb.type + "|" + tb.textContent, "button|오늘 점검");
       ok(!row.hasAttribute("role") && !row.hasAttribute("tabindex"), "줄 상자에 role · tabindex 없음");
@@ -14717,7 +14720,9 @@ function makeServer(opts = {}) {
       tkSeed();
       const qi = q(e, "#tk-quick"), qs = q(e, "#tk-q");
       eq(sv("오늘"), "1");
+      e.S.renderNav(); eq(navB(), "2", "패널 배지");
       q(e, '.tk-row[data-id="tk_today"] .tk-chk').click();
+      eq(navB(), "1", "체크 뒤 패널 배지도 바로");
       const x = byId("tk_today");
       eq(x.done + "|" + x.doneBy + "|" + x.upBy, "true|Thq|Thq"); ok(x.doneAt, "마친 때");
       ok(!q(e, '#tk-list [data-id="tk_today"]'), "목록에서 빠짐");
@@ -14728,6 +14733,12 @@ function makeServer(opts = {}) {
       act.click();
       eq(x.done + "|" + x.doneAt + "|" + x.doneBy, "false||", "되돌림");
       ok(q(e, '#tk-list [data-id="tk_today"]'), "다시 보임");
+      eq(navB(), "2", "되돌린 뒤 패널 배지");
+      typeQ("오늘 확인"); enter(qi); eq(navB(), "3", "추가 뒤 패널 배지");
+      const acts = qa(e, "#toast-wrap .toast-act").length, gone = q(e, '.tk-row[data-id="tk_none"] .tk-chk');
+      e.S.data.tasks = e.S.data.tasks.filter(t2 => t2.id !== "tk_none");
+      gone.click();
+      ok(!gone.checked && qa(e, "#toast-wrap .toast-act").length === acts, "그 사이 없어진 할 일 — 체크 모양을 되돌리고 알림 없음");
       ok(e.S.data.tasks.every(t2 => JSON.stringify(TK.norm(t2)) === JSON.stringify(t2)), "저장 모양 = 정규화 모양");
     });
     t("TK14 빠른 입력 · 미리보기 · 한글(같은 입력칸 · 포커스)", () => {
@@ -14759,6 +14770,8 @@ function makeServer(opts = {}) {
       typeQ("a"); eq(pressed(), "가나다", "고른 칩 사람");
       enter(qi); eq(last().who.join(), "가나다");
       typeQ("라마바 확인"); enter(qi); eq(last().who.join(), "라마바", "글 속 이름 우선");
+      typeQ("x"); q(e, '#tk-qprev [data-qwho="라마바"]').click(); eq(pressed(), "가나다,라마바");
+      typeQ(""); typeQ("y"); eq(pressed(), "가나다", "글을 다 지우면 누른 담당도 기본값으로");
       typeQ("b"); q(e, '#tk-qprev [data-qwho="라마바"]').click();
       eq(pressed(), "가나다,라마바", "누르면 바로 켜짐");
       typeQ("bc"); eq(pressed(), "가나다,라마바", "누른 것은 글을 더 써도 유지");
@@ -14793,6 +14806,7 @@ function makeServer(opts = {}) {
       ok(cb && cb.checked, "켜진 채");
       ok(!q(e, '#tk-list [data-id="tk_late"]'), "할 일은 없음");
       eq(qa(e, "#tk-list .tk-bl").map(x => x.textContent).join(), "이번 주");
+      ok(qa(e, '[data-ct-tabs="tk"] [role=tab]').every(b => q(e, "#" + b.getAttribute("aria-controls"))) && q(e, "#ctp-tk-todo").hidden, "탭을 바꿔도 두 칸");
       cb.click();
       const x = byId("tk_done"); eq(x.done + "|" + x.doneAt + "|" + x.doneBy, "false||");
       ok(!q(e, '#tk-list [data-id="tk_done"]'), "마친 일에서 빠짐");
@@ -14801,7 +14815,10 @@ function makeServer(opts = {}) {
       eq(qa(e, "#tk-list .tk-row").length, 100); eq(q(e, "#tk-list .tk-row").dataset.id, "tk_d0", "최근 순");
       const mb = q(e, "#tk-list .tk-showmore"); ok(mb && mb.textContent.trim() === "더 보기", "더 보기");
       mb.click(); eq(qa(e, "#tk-list .tk-row").length, 101); ok(!q(e, "#tk-list .tk-showmore"));
+      const nc = qa(e, "#tk-list .tk-chk")[100];
+      ok(e.w.document.activeElement === nc && nc.closest(".tk-row").dataset.id === "tk_d100", "더 보기 뒤 새로 보인 첫 줄로 포커스");
       eq(qa(e, "#tk-list .tk-bl").map(x2 => x2.textContent).join(), "오늘,이번 주,그 전");
+      eq(qa(e, "#tk-list .tk-grp").map(g => g.dataset.b).join(), "d-today,d-week,d-before", "마친 일 묶음 열쇠는 기한 묶음(today …)과 다름 — 경고 색 없음");
     });
     t("TK18 검색칸: 낱말 모두 포함 · 같은 입력칸(repaintKeep)", () => {
       tkSeed();
@@ -14820,6 +14837,10 @@ function makeServer(opts = {}) {
       eq(e.S.navBadgeOf(mn), "2");
       eq([sv("할 일"), sv("오늘"), sv("지난 일"), sv("이번 주 마친 일")].join("|"), "4|1|1|1");
       ok(statOf("지난 일").classList.contains("tone-bad"), "지난 일 경고");
+      eq([TK.weekStart("2026-11-22"), TK.weekStart("2026-11-16"), TK.dayOf("2026-11-17T15:30:00Z"), TK.dayOf(""), TK.dayLabel("2027-01-05", "2026-11-18")].join("|"),
+        "2026-11-16|2026-11-16|2026-11-18||2027-01-05(화)", "기한 묶음 · 요약 · 마친 일이 함께 쓰는 날짜 도우미");
+      e.S.data.tasks.push(TK.norm({ id: "tk_mon", t: "월 0시 반", done: true, doneAt: "2026-11-15T15:30:00Z" }), TK.norm({ id: "tk_sun", t: "일 밤", done: true, doneAt: "2026-11-15T14:30:00Z" }));
+      go(e, "tasks"); eq(sv("이번 주 마친 일"), "2", "한국 시각 월요일 0시부터 이번 주");
       e.S.data.tasks.filter(x => !x.done).forEach(x => TK.setDone(x.id, true));
       eq(e.S.navBadgeOf(mn), "", "다 마치면 숨김");
       eq(sv("지난 일"), "0"); ok(!statOf("지난 일").classList.contains("tone-bad"));

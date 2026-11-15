@@ -8,15 +8,11 @@
   const MOD = "tasks";
   const TITLE = "Task 관리";
   const PAGE = 100;   // 마친 일은 지우지 않고 쌓이므로 최근 것부터 끊어 그린다
-  const DOW = "일월화수목금토";
   const st = { tab: "todo", who: null, q: "", meet: false, doneN: PAGE, qSel: null };
   let root = null;
 
   const live = () => !!root && root.isConnected && !!$("#tk-list", root);
-  const kstDay = (iso) => { const n = Date.parse(iso || ""); return isNaN(n) ? "" : new Date(n + 9 * 3600e3).toISOString().slice(0, 10); };
-  const monday = (td) => { const d = new Date(td + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() - (d.getUTCDay() + 6) % 7); return d.toISOString().slice(0, 10); };
-  const mdDow = (iso, td) => (iso.slice(0, 4) === td.slice(0, 4) ? iso.slice(5) : iso) + "(" + DOW[new Date(iso + "T00:00:00Z").getUTCDay()] + ")";
-  const dot = (n) => `<i class="tk-dot ev-${esc(T.personColor(n))}" aria-hidden="true"></i>`;
+  const dot =(n) => `<i class="tk-dot ev-${esc(T.personColor(n))}" aria-hidden="true"></i>`;
 
   /* 담당자 칩 = 파트 명단(코드에 이름 없음) 다음에 할 일에만 적힌 이름 — 명단이 비었거나 명단 밖 담당이어도 칩으로 고를 수 있게.
      '나' 칩이 있으면 내 이름 칩은 따로 두지 않는다 */
@@ -48,9 +44,9 @@
   }
 
   function counts() {
-    const td = T.today(), mon = monday(td), c = { open: 0, today: 0, late: 0, wk: 0 };
+    const td = T.today(), mon = T.weekStart(td), c = { open: 0, today: 0, late: 0, wk: 0 };
     T.list().forEach(t => {
-      if (t.done) { if (kstDay(t.doneAt) >= mon) c.wk++; return; }
+      if (t.done) { if (T.dayOf(t.doneAt) >= mon) c.wk++; return; }
       c.open++;
       const b = T.dueInfo(t, td).b;
       if (b === "today") c.today++; else if (b === "late") c.late++;
@@ -72,9 +68,9 @@
   function rowHTML(t, td) {
     const id = esc(t.id), c = T.CATS[T.catOf(t)];
     const d = t.done ? null : T.dueInfo(t, td);
-    const dd = t.done ? kstDay(t.doneAt) : "";
+    const dd = t.done ? T.dayOf(t.doneAt) : "";
     const meta = [
-      t.done ? `<span class="tk-due tk-d-done">${esc((dd ? mdDow(dd, td) + " " : "") + "마침" + (t.doneBy ? " · " + t.doneBy : ""))}</span>`
+      t.done ? `<span class="tk-due tk-d-done">${esc((dd ? T.dayLabel(dd, td) + " " : "") + "마침" + (t.doneBy ? " · " + t.doneBy : ""))}</span>`
         : d.label ? `<span class="tk-due tk-d-${d.b}">${esc(d.label)}</span>` : "",
       t.place ? `<span class="tk-ic">${icon("pin", 14)}${esc(t.place)}</span>` : "",
       t.who.map(n => `<span class="tk-p">${dot(n)}${esc(n)}</span>`).join(""),
@@ -94,31 +90,33 @@
   function todoHTML(items, td) {
     const idx = new Map(T.list().map((t, i) => [t, i])), by = {};
     items.forEach(t => { const b = T.dueInfo(t, td).b; (by[b] = by[b] || []).push(t); });
-    /* 묶음 안 = 중요 → 날짜 → 시각 → 만든 순 */
     const order = (a, b) => (b.star - a.star) || a.due.localeCompare(b.due) || a.time.localeCompare(b.time) || idx.get(a) - idx.get(b);
     return T.BUCKETS.filter(([b]) => by[b]).map(([b, lb]) => grpHTML(b, lb, by[b].sort(order), td)).join("");
   }
+  /* 묶음 열쇠를 할 일 탭(today · late …)과 다르게 둔다 — 같으면 마친 '오늘'에 기한 경고 색이 붙는다 */
   function doneHTML(items, td) {
-    const mon = monday(td), by = {};
+    const mon = T.weekStart(td), by = {};
     const all = items.slice().sort((a, b) => String(b.doneAt).localeCompare(String(a.doneAt)));
     const shown = all.slice(0, st.doneN);
-    shown.forEach(t => { const d = kstDay(t.doneAt), g = d >= td ? "today" : d >= mon ? "week" : "before"; (by[g] = by[g] || []).push(t); });
-    return [["today", "오늘"], ["week", "이번 주"], ["before", "그 전"]].filter(([g]) => by[g]).map(([g, lb]) => grpHTML(g, lb, by[g], td)).join("") +
+    shown.forEach(t => { const d = T.dayOf(t.doneAt), g = d >= td ? "d-today" : d >= mon ? "d-week" : "d-before"; (by[g] = by[g] || []).push(t); });
+    return [["d-today", "오늘"], ["d-week", "이번 주"], ["d-before", "그 전"]].filter(([g]) => by[g]).map(([g, lb]) => grpHTML(g, lb, by[g], td)).join("") +
       (all.length > shown.length ? '<button type="button" class="btn btn-ghost tk-showmore">더 보기</button>' : "");
   }
-  /* 검색칸은 이 상자 안에 있다 — 다시 그릴 때 ui.repaintKeep 으로 검색칸만 남긴다 */
+  /* 검색칸은 이 상자 안에 있다 — 다시 그릴 때 ui.repaintKeep 으로 검색칸만 남긴다.
+     고르지 않은 탭 칸도 빈 채로 둔다 — 탭 단추의 aria-controls 가 가리킬 곳이 있어야 한다 */
   function listHTML() {
     const td = T.today(), w = curWho();
     const items = T.list().filter(t => (st.tab === "done") === t.done && byWho(t, w) && byQuery(t));
     const body = items.length ? (st.tab === "done" ? doneHTML(items, td) : todoHTML(items, td))
       : ui.empty(st.q ? "검색 결과가 없습니다." : st.tab === "done" ? "마친 일이 없습니다." : "할 일이 없습니다.");
-    return `<div class="toolbar">${ui.search("tk-q", "내용 · 장소 · 담당 검색", st.q)}</div>` + ui.pane("tk", st.tab, st.tab, body);
+    return `<div class="toolbar">${ui.search("tk-q", "내용 · 장소 · 담당 검색", st.q)}</div>` +
+      ["todo", "done"].map(id => ui.pane("tk", id, st.tab, id === st.tab ? body : "")).join("");
   }
   function paintList() {
     const box = $("#tk-list", root);
     ui.repaintKeep(box, listHTML(), $("#tk-q", box));
   }
-  /* 추가 · 체크 뒤 — 입력칸(빠른 입력 · 검색)은 그대로 두고 요약 · 탭 건수 · 목록만 */
+  /* 입력칸(빠른 입력 · 검색)을 다시 만들면 한글 조합 · 포커스가 끊기므로 추가 · 체크 뒤에도 입력칸은 두고 그린다 */
   function refresh() {
     if (!live()) return;
     $("#tk-stats", root).innerHTML = statsHTML();
@@ -127,7 +125,8 @@
     paintList();
   }
 
-  /* 빠른 입력 담당 = 글 속 이름 > 위에서 고른 담당자 칩 > 나(명단의 파트 사람일 때만) > 비움. 미리보기 칩을 누르면 다음 추가까지 누른 대로 */
+  /* 담당을 비워 두면 회의 때 '누구 몫인지'가 다시 문제가 되므로 글 속 이름이 없으면 고른 칩 · 나를 켜 둔다
+     (나는 계정 이름이 명단의 파트 사람일 때만 — meInPart) */
   function quickCtx(text) {
     const people = T.partPeople();
     const p = T.parse(text, { today: T.today(), names: people, teams: T.teamNames() });
@@ -141,7 +140,7 @@
     if (!text.trim()) return "";
     const { p, on, chips } = quickCtx(text), td = T.today();
     const b = p.due ? T.dueInfo({ due: p.due }, td).b : "";
-    return (p.due ? `<span class="tk-qc">${icon("calendar", 14)}${esc((b === "today" ? "오늘 " : b === "tomorrow" ? "내일 " : "") + mdDow(p.due, td))}</span>` : "") +
+    return (p.due ? `<span class="tk-qc">${icon("calendar", 14)}${esc((b === "today" ? "오늘 " : b === "tomorrow" ? "내일 " : "") + T.dayLabel(p.due, td))}</span>` : "") +
       (p.time ? `<span class="tk-qc">${icon("clock", 14)}${esc(p.time)}</span>` : "") +
       p.teams.map(g => `<span class="tk-qc">${icon("building", 14)}${esc(g)}</span>`).join("") +
       (chips.length ? `<span class="tk-qwho" role="group" aria-labelledby="tk-qwl"><span class="tk-qwl" id="tk-qwl">담당</span>${chips.map(n =>
@@ -160,10 +159,15 @@
   }
 
   /* add · setDone 은 다른 화면(일정관리 칩 · 회의 모드 · 고치기 창)도 쓴다 — setDone 은 이 화면이 열려 있으면 요약 · 목록도 다시 그린다 */
+  /* save() 는 서버 보내기만 줄 세우고 메뉴는 다시 그리지 않는다 — 패널 배지(오늘 + 지난 일)가 남지 않게 직접 그린다 */
+  function persist() {
+    SeMIS.save();
+    try { SeMIS.renderNav(); } catch (e) { /* 메뉴 배지만 영향 */ }
+  }
   function add(fields, src) {
     const t = T.make(fields, src || "");
     SeMIS.data[T.KEY].push(t);
-    SeMIS.save();
+    persist();
     return t;
   }
   function setDone(id, on) {
@@ -171,7 +175,7 @@
     if (!t || t.done === !!on) return false;
     const now = new Date().toISOString(), by = T.me();
     Object.assign(t, { done: !!on, doneAt: on ? now : "", doneBy: on ? by : "", upAt: now, upBy: by });
-    SeMIS.save();
+    persist();
     refresh();
     return true;
   }
@@ -197,7 +201,7 @@
       }) +
       `<div id="tk-stats">${statsHTML()}</div>
       <section class="card tk-card">
-        <div class="tk-quick">
+        <div class="tk-qbox">
           <div class="tk-qrow"><input id="tk-quick" type="text" autocomplete="off" aria-label="할 일 빠른 입력" placeholder="할 일을 적고 Enter — 예: 내일 오후 3시 보안교육 자료 제출">
             <button type="button" class="btn btn-ghost" id="tk-qadd">${icon("plus", 16)}<span>추가</span></button></div>
           <div class="tk-qprev" id="tk-qprev"></div>
@@ -209,7 +213,10 @@
 
     /* 입력칸을 다시 만들면 한글 조합이 자모로 풀린다 — 입력 중에는 미리보기 · 목록만 바꾼다 */
     const qi = $("#tk-quick", el), qp = $("#tk-qprev", el), box = $("#tk-list", el), qs = $("#tk-q", el);
-    qi.oninput = () => { qp.innerHTML = prevHTML(qi.value); };
+    qi.oninput = () => {
+      if (!qi.value.trim()) st.qSel = null;   // 글을 다 지우면 새로 쓰는 할 일 — 앞서 누른 담당을 끌고 가지 않게
+      qp.innerHTML = prevHTML(qi.value);
+    };
     qi.onkeydown = (ev) => {
       if (ev.key !== "Enter" || ev.isComposing || ev.keyCode === 229) return;
       ev.preventDefault();
@@ -246,7 +253,7 @@
       if (!cb) return;
       const id = cb.closest(".tk-row").dataset.id, on = cb.checked;
       const had = document.activeElement === cb, at = $$(".tk-chk", box).indexOf(cb);
-      if (!setDone(id, on)) return;
+      if (!setDone(id, on)) { cb.checked = !on; return; }   // 그 사이 지워졌거나 이미 바뀐 할 일 — 체크 모양만 남지 않게
       if (on) toast("마쳤습니다.", false, { label: "되돌리기", run: () => setDone(id, false) });
       else toast("다시 할 일로 옮겼습니다.");
       /* 키보드로 체크하면 줄이 빠지며 포커스가 사라진다 — 같은 자리의 다음 줄로 */
@@ -254,7 +261,15 @@
     };
     /* 줄 상자 누름은 마우스 편의 — 키보드 · 화면 읽기 프로그램은 제목 단추로 같은 창(줄 상자에는 role · tabindex 없음) */
     box.onclick = (ev) => {
-      if (ev.target.closest(".tk-showmore")) { st.doneN += PAGE; paintList(); return; }
+      if (ev.target.closest(".tk-showmore")) {
+        /* 누른 단추가 사라지므로 새로 보인 첫 줄로 — 마친 일 묶음은 최근 순 그대로라 줄 차례 = 보인 차례 */
+        const n = $$(".tk-chk", box).length;
+        st.doneN += PAGE;
+        paintList();
+        const c = $$(".tk-chk", box)[n];
+        if (c) c.focus();
+        return;
+      }
       const row = ev.target.closest(".tk-row"), hit = ev.target.closest("input, button, a");
       if (!row || (hit && !hit.classList.contains("tk-t"))) return;
       if (typeof T.edit === "function") T.edit(row.dataset.id);
@@ -267,7 +282,6 @@
 
   SeMIS.registerModule(MOD, {
     title: TITLE,
-    /* 패널 배지 = 오늘 + 지난 할 일(0 이면 숨김) */
     navBadge() { const c = counts(); return c.today + c.late || ""; },
     render
   });
