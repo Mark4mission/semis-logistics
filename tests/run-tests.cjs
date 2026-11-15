@@ -13489,6 +13489,62 @@ function makeServer(opts = {}) {
       eq(e.errors.length, 0, e.errors.join(" | "));
       e.Sync.stop(); e.w.close();
     });
+
+    await ta("KX11 문서함 다리: hq 가 점검·교육 문서함을 없는 말 '국토부' 로 거르면 빈 칸에 [K드라이브에서도 찾아보기] → 누르면 검색 패널이 '국토부' 로(묶음형 · 게시판형, 문서함 검색칸 그대로) · manager · 검색어 없음 · 결과 있음에는 단추 없음", async () => {
+      const { e } = await kxSetup("hq-pw-2222");
+      const D = e.w.SemisDocs, SS = e.w.SemisSearch, P = e.w.SemisPanel;
+      const aeo = (i) => ({ id: "a" + i, mod: "audit", grp: "aeo", title: "AEO 정기 심사 " + i, date: "2025-10-14", files: [] });
+      const many = () => Array.from({ length: D.BOARD_MIN }, (x, i) => aeo(i + 1));
+      const kb = () => q(e, "#view [data-kfind]");
+      const show = (qv) => { D.setQuery("audit", qv); e.w.SemisDeep.audit("docs"); go(e, "audit"); };
+      const noneTxt = () => { const es = q(e, "#view .empty-state"); return es ? es.textContent : ""; };
+
+      /* 묶음형 */
+      e.S.data.docs = [aeo(1)];
+      show("국토부");
+      ok(/조건에 맞는 문서가 없습니다/.test(noneTxt()), "빈 칸");
+      const b = kb();
+      ok(b && b.closest(".empty-state"), "빈 칸 안에 단추");
+      eq(b.className, "btn btn-ghost"); eq(b.getAttribute("type"), "button");
+      eq(b.textContent, "K드라이브에서도 찾아보기"); ok(!b.hasAttribute("aria-label"), "aria-label 없음");
+      b.click(); await tick(20);
+      ok(SS.isOpen(), "검색 패널 열림");
+      eq(q(e, "#hdr-search").value, "국토부", "그 화면 검색어로");
+      ok(rowOf(popGroups(e)["K드라이브"], "국토부 항공안전 점검"), "K 묶음에 그 폴더");
+      P.close("search");
+      show("AEO");
+      ok(q(e, '#view [data-dk="a1"]') && !kb(), "결과 있음: 단추 없음");
+      e.S.data.docs = [];
+      show("");
+      ok(/등록된 문서가 없습니다/.test(noneTxt()) && !kb(), "검색어 없음: 단추 없음");
+
+      /* 게시판형 — 자체 검색칸에 치면 목록만 바뀐다 */
+      e.S.data.docs = many();
+      show("");
+      const qi = q(e, "#dkb-q-audit");
+      ok(qi && !kb(), "게시판형 · 검색어 없음: 단추 없음");
+      qi.value = "국토부"; qi.dispatchEvent(new e.w.Event("input"));
+      const b2 = kb();
+      ok(b2 && b2.closest("[data-dkb-body] .empty-state"), "게시판형 빈 칸 안에 단추");
+      b2.click(); await tick(20);
+      ok(SS.isOpen(), "검색 패널 열림(게시판형)");
+      eq(q(e, "#hdr-search").value, "국토부", "그 화면 검색어로(게시판형)");
+      ok(q(e, "#dkb-q-audit") === qi && qi.value === "국토부", "문서함 검색칸 노드 · 글자 그대로");
+      P.close("search");
+      qi.value = "AEO"; qi.dispatchEvent(new e.w.Event("input"));
+      ok(q(e, '#view [data-dk="a1"]') && !kb(), "게시판형 결과 있음: 단추 없음");
+
+      /* manager — 빈 칸은 그대로, 단추만 없음 */
+      loginAs(e, "manager");
+      e.S.data.docs = [aeo(1)];
+      show("국토부");
+      ok(/조건에 맞는 문서가 없습니다/.test(noneTxt()) && !kb(), "manager 묶음형: 단추 없음");
+      e.S.data.docs = many();
+      show("국토부");
+      ok(/조건에 맞는 문서가 없습니다/.test(noneTxt()) && !kb(), "manager 게시판형: 단추 없음");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
   }
 
   /* ══════════ [US] 미주행 재보안검색 ══════════ */

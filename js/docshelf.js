@@ -184,6 +184,9 @@
     h += btn(Math.min(last, b1 + 1), "›", "다음 10쪽", b1 === last) + btn(last, "»", "끝 쪽", page === last);
     return `<nav class="bb-pager" aria-label="쪽 이동">${h}<span class="bb-pgi mono">${page} / ${last}</span></nav>`;
   }
+  /* 메뉴부터 눌러 보는 사람이 문서함에서 못 찾았을 때 같은 말로 K드라이브까지 찾게 잇는다(K 이름은 3등급만 — canUse) */
+  const kfindBtn = (mod) => (window.SemisKidx && SemisKidx.canUse() ? `<button type="button" class="btn btn-ghost" data-kfind="${esc(mod)}">K드라이브에서도 찾아보기</button>` : "");
+  const wireKfind = (scope) => $$("[data-kfind]", scope).forEach(b => b.onclick = () => SemisSearch.open(stOf(b.dataset.kfind).q));
   let printing = false;
   function boardBodyHTML(mod, canW, all) {
     const s = stOf(mod), ts = termsOf(s.q);
@@ -196,7 +199,7 @@
     const on = (r) => !!open[(r.cur.grp || "") + "|" + serOf(r.cur)] || oldHit(r, ts);
     const mob = SeMIS.isMobile();
     let body;
-    if (!rows.length) body = ui.empty(ts.length || s.cat ? "조건에 맞는 문서가 없습니다." : "등록된 문서가 없습니다.");
+    if (!rows.length) body = ui.empty(ts.length || s.cat ? "조건에 맞는 문서가 없습니다." : "등록된 문서가 없습니다.", ts.length ? kfindBtn(mod) : "");
     else if (mob) body = `<div class="dkb-mlist">${pg.map(r => miHTML(mod, r.cur, canW, ts, r.old.length, on(r), false)
       + (r.old.length && on(r) ? `<div class="dkb-molds">${r.old.map(d => miHTML(mod, d, canW, ts, 0, false, true)).join("")}</div>` : "")).join("")}</div>`;
     else body = `<div class="table-wrap"><table class="tbl bb-tbl dkb-tbl tbl-keep" data-no-stack>
@@ -240,6 +243,7 @@
       if (sz) sz.onchange = () => { s.size = Number(sz.value) || 20; s.page = 1; paint(); };
       const cl = $("[data-dkb-clear]", body);
       if (cl) cl.onclick = () => { s.q = ""; s.page = 1; if (qi) qi.value = ""; paint(); };
+      wireKfind(body);
     }
     /* 검색칸은 다시 그리지 않는다(한글 조합 보호) — 분류 탭 · 목록만 바꾼다 */
     const qi = $("#dkb-q-" + (window.CSS && CSS.escape ? CSS.escape(mod) : mod), el);
@@ -268,7 +272,7 @@
     const ts = termsOf(s.q);
     const shown = grpIds(mod, opts.only).filter(g => series(mod, g).some(x => serHit(x, ts)));
     const qbar = s.q && !s.ext ? `<div class="bb-meta dk-qbar"><span><q>${esc(s.q)}</q> 검색 · <b class="mono">${shown.reduce((n, g) => n + series(mod, g).filter(x => serHit(x, ts)).length, 0)}</b>건</span><button type="button" class="link-btn" data-dk-qclear="${esc(mod)}">검색 해제</button></div>` : "";
-    if (!shown.length) return top + qbar + ui.empty(ts.length && list(mod).length ? "조건에 맞는 문서가 없습니다." : "등록된 문서가 없습니다.");
+    if (!shown.length) { const miss = ts.length && list(mod).length; return top + qbar + ui.empty(miss ? "조건에 맞는 문서가 없습니다." : "등록된 문서가 없습니다.", miss ? kfindBtn(mod) : ""); }
     return top + qbar + `<div class="dk-grps">${shown.map(g => {
       const n = ts.length ? series(mod, g).filter(x => serHit(x, ts)).length : list(mod, g).length;
       return `<div class="dk-grp"><div class="dk-gh"><h4>${esc(labelOf(mod, g))}</h4><span class="dk-n mono">${n}</span></div>${shelf(mod, g, { canEdit: canW, emptyText: "문서 없음", ts })}</div>`;
@@ -300,6 +304,7 @@
     $$("[data-dk-edit]", box).forEach(b => b.onclick = () => form(b.dataset.dkEdit));
     $$("[data-dk-add]", box).forEach(b => b.onclick = () => { const [m, g] = b.dataset.dkAdd.split("|"); form("", { mod: m, grp: g }); });
     $$("[data-dk-qclear]", box).forEach(b => b.onclick = () => { stOf(b.dataset.dkQclear).q = ""; repaint(); });
+    wireKfind(box);
   }
   function repaint() {
     if (typeof onChange === "function") { try { onChange(); return; } catch (e) { /* 실패 시 화면 전체 다시 그리기 */ } }
