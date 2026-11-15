@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { plan, reconOf, excluded, safeName, conflictName, limitHit, holdHit, CONFLICT_RE, K_BLOCK, H_BLOCK, MAX_SIZE, PREV, TRASH } from "../plan.mjs";
 import fsp from "node:fs/promises";
 import * as LIB from "../lib.mjs";
-import { relOk, safeAbs, parseSmb, checkConfig, kstDay, kstMin, hhmm, indexDir, moveAside, moveNew, folderTree, place, conflictPath, netRetry, mountUrl, lock, agentPid, makeClient, PACE, dailyWin, winText } from "../lib.mjs";
+import { relOk, safeAbs, parseSmb, checkConfig, kstDay, kstMin, hhmm, indexDir, moveAside, moveNew, folderTree, kidxWalk, place, conflictPath, netRetry, mountUrl, lock, agentPid, makeClient, PACE, dailyWin, winText } from "../lib.mjs";
 import { runAgent } from "../ksync.mjs";
 
 let pass = 0, fail = 0;
@@ -519,6 +519,58 @@ eq([fs.readdirSync(partDir).sort(), ip.list.map(x => x.rel)], [[".ksync-ba987654
   eq([ix.list.map(x => x.rel).sort(), ix.errors], [["d.txt", "open/c.txt"], []], "지정 제외 폴더는 색인하지 않음 · 오류도 아님");
   eq([(await folderTree(xd, 3, 3000, new Set(["private"]))).map(x => x.path).sort(), (await folderTree(xd)).map(x => x.path).sort()], [["open"], ["Private", "Private/sub", "open"]],
     "폴더 목록도 전체 제외 아래는 알리지 않음");
+}
+
+/* v1.73 K드라이브 찾기 걷기(kidxWalk) — 이름 · 크기 · 날짜만(readdir · lstat) · 링크 · 이름 규칙 · 뺄 폴더 · 못 읽은 폴더 · 상한 · 동시 개수 */
+{
+  const kw = path.join(TMP, "kidx");
+  const kf = (dir, rel, s) => { fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true }); fs.writeFileSync(path.join(dir, rel), s); };
+  kf(kw, "A/b.pdf", "abc"); kf(kw, "A/C/d.hwp", "d"); kf(kw, "~$e.docx", "x"); kf(kw, ".hidden", "x"); kf(kw, "_H드라이브_휴지통/x", "x");
+  fs.symlinkSync(path.join(kw, "A"), path.join(kw, "L"));
+  const w = await kidxWalk(kw);
+  eq([w.rows.map(x => x[0]).sort(), w.err, w.capped], [["A", "A/C", "A/C/d.hwp", "A/b.pdf"], [], false], "kidxWalk 기본: 링크 · ~$ · 숨김 · 동기화 폴더 제외");
+  const b = w.rows.find(x => x[0] === "A/b.pdf");
+  eq([b, w.rows.find(x => x[0] === "A/C")], [["A/b.pdf", 0, 3, Math.floor(fs.lstatSync(path.join(kw, "A", "b.pdf")).mtimeMs)], ["A/C", 1, null, null]],
+    "kidxWalk 줄: 파일 [rel, 0, 크기, 고친 때 ms] · 폴더 [rel, 1, null, null]");
+  ok(typeof w.ms === "number" && w.ms >= 0, "kidxWalk 걸린 시간 ms");
+  const kn = path.join(TMP, "kidx-nfc");
+  kf(kn, "점검".normalize("NFD") + ".pdf", "n");
+  eq((await kidxWalk(kn)).rows.map(x => x[0]), ["점검.pdf".normalize("NFC")], "kidxWalk NFC: NFD 이름도 NFC rel");
+  eq([(await kidxWalk(kw, { excludes: ["a"] })).rows, (await kidxWalk(kw, { excludes: ["a/c"] })).rows.map(x => x[0]).sort()], [[], ["A", "A/b.pdf"]],
+    "kidxWalk 제외: 뺄 폴더(대소문자 무시) 자신과 그 아래는 내지도 걷지도 않음");
+  const wd = await kidxWalk(kw, { maxDepth: 1 });
+  eq([wd.rows.map(x => x[0]).sort(), wd.err, wd.capped], [["A", "A/C", "A/b.pdf"], ["A/C"], false], "kidxWalk 깊이 상한: 그보다 깊은 폴더는 줄만 내고 err(서버가 그 아래 옛 줄을 둠)");
+  if (NOROOT) {
+    const ku = path.join(TMP, "kidx-ro");
+    kf(ku, "A/x.pdf", "x"); kf(ku, "B/y.pdf", "y");
+    fs.chmodSync(path.join(ku, "A"), 0o000);
+    let wu;
+    try { wu = await kidxWalk(ku); } finally { fs.chmodSync(path.join(ku, "A"), 0o755); }
+    eq([wu.rows.map(x => x[0]).sort(), wu.err, wu.capped], [["A", "B", "B/y.pdf"], ["A"], false],
+      "kidxWalk 못 읽은 폴더: 그 폴더 줄은 내고 err 에 · 그 아래 없음 · 다른 폴더는 그대로");
+  }
+  let thr = "";
+  try { await kidxWalk(path.join(TMP, "kidx-none")); } catch (e) { thr = e.code; }
+  eq(thr, "ENOENT", "kidxWalk 뿌리를 못 읽으면 throw");
+  const wc = await kidxWalk(kw, { maxRows: 2 });
+  eq([wc.capped, wc.rows.length <= 2, (await kidxWalk(kw, { maxRows: 4 })).capped], [true, true, false], "kidxWalk 줄 상한에 닿으면 capped(같은 수는 아님)");
+  let tk = 0;
+  eq((await kidxWalk(kw, { maxMs: 1500, now: () => (tk += 1000) })).capped, true, "kidxWalk 시간 상한에 닿으면 capped");
+  // 동시 개수 — 폴더 읽기 · lstat 을 느리게 바꿔 한꺼번에 몇 개가 도는지 센다. 내용을 여는 호출은 없어야 한다
+  const kc = path.join(TMP, "kidx-conc");
+  for (let i = 0; i < 6; i++) { kf(kc, "f" + i + ".pdf", "f"); kf(kc, "d" + i + "/g.pdf", "g"); }
+  const real = { readdir: fsp.readdir, lstat: fsp.lstat, open: fsp.open, readFile: fsp.readFile }, realStream = fs.createReadStream;
+  let cur = 0, peak = 0, opened = 0;
+  const slow = (f) => async (...a) => { cur++; peak = Math.max(peak, cur); try { await new Promise(r => setTimeout(r, 5)); return await f(...a); } finally { cur--; } };
+  const count = () => { opened++; throw new Error("open"); };
+  const conc = async (o) => {
+    peak = 0;
+    Object.assign(fsp, { readdir: slow(real.readdir), lstat: slow(real.lstat), open: count, readFile: count }); fs.createReadStream = count;
+    try { return await kidxWalk(kc, o); } finally { Object.assign(fsp, real); fs.createReadStream = realStream; }
+  };
+  const w4 = await conc();
+  eq([w4.rows.length, w4.err, peak], [18, [], 4], "kidxWalk 동시 4개(기본 · 폴더 읽기 · lstat 모두)");
+  eq([(await conc({ conc: 2 })).rows.length, peak, opened], [18, 2, 0], "kidxWalk 동시 conc 개 · 파일 내용은 열지 않음");
 }
 
 /* 받은 파일 놓기(place) — A2 추적하지 않는 K 항목은 옮기지 않음 · A4 충돌 사본 이름은 받은 뒤 · A6 '(충돌 날짜 2)' · A7 색인 뒤 바뀐 파일은 건드리지 않음 */

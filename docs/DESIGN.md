@@ -573,7 +573,7 @@ GET 이 도는 동안 push 가 끝나더라도 서버의 옛 값이 로컬 변�
 
 | 도구 | 등급 | 내용 |
 |---|---|---|
-| `argos_find` | user | 통합 검색(`SemisSearch.search`)과 같은 범위 — 결과 `go` = 바로 가기 route |
+| `argos_find` | user | 통합 검색(`SemisSearch.search`)과 같은 범위 — 결과 `go` = 바로 가기 route. `scope`(v1.73): `"all"`(기본 — K드라이브는 넣지 않음) · `"kdrive"`(K드라이브 '항공보안' 파일 · 폴더의 이름과 위치만 · 3등급 · 최대 30건 · `go` = `k/<고정 id>` → K 위치 창, `docs/KSYNC.md` §10) |
 | `argos_status` | user | overview · schedule(반복 회차 펼침 · 점검 기한) · training_due · audit_open · seclog_missing · notices · sec_level · desk_pending — 각 모듈 API 로 계산, 권한 밖은 빠짐 |
 | `argos_records` | user(목록은 등급별) | 공지(1) · 일정 · 회의록 · 연락처 3종 · 교육 · 수검 · 서가 · 규정 · 장비 · 처리 대장 · 전파교육 · 협력사 · 기록부(2) · 계약 · 상용화주(3). 화면 메뉴 권한(`navVisible`)과 같게, 민감보안정보 서가 문서는 hq 이상만, 서명 · 그림 · 서식 원문 · 파일 주소는 빼고 이름만(`slim`) |
 | `argos_catalog` | hq | 메인 데스크 `catalog()` + 일정 색 · 담당자 · 분야별 담당 |

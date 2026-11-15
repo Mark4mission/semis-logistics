@@ -338,3 +338,28 @@ Deno.test("오류 응답은 짧은 코드만 · 서버 오류도 내부 사유 �
     assertEquals([r.status, r.d], [500, { ok: false, error: "server" }]);
   } finally { globalThis.fetch = saved; }
 });
+
+Deno.test("kidx 넘김: 꺼져 있으면 off · 켠 뒤 begin → rows → end · 한 번에 2,001줄은 bad", async () => {
+  let r = await post({ act: "kidx", phase: "begin" });
+  assertEquals([r.status, r.d], [409, { ok: false, error: "off" }], "꺼진 상태");
+  await admin("select public.semis_logi_ksync_kidx_save($1::jsonb)", [JSON.stringify({ on: true, root: "항공보안" })]);
+  r = await post({ act: "kidx", phase: "begin" });
+  assertEquals([r.status, r.d], [200, { ok: true }], "켠 뒤 begin");
+  r = await post({ act: "kidx", phase: "rows", items: [["A", 1, null, null], ["A/b.pdf", 0, 3, 1762300000000]] });
+  assertEquals(r.d, { ok: true, accepted: 2, rejected: 0 }, "rows 2줄");
+  r = await post({ act: "kidx", phase: "end", n: 2, err: [], ms: 5 });
+  assertEquals(r.d, { ok: true, files: 1, dirs: 1 }, "end n=2");
+  assertEquals(await one("select count(*)::int from semis_logi_private.kidx"), 2, "DB kidx 2줄");
+  await post({ act: "kidx", phase: "begin" });
+  r = await post({ act: "kidx", phase: "rows", items: Array.from({ length: 2001 }, (_, i) => ["f" + i + ".pdf", 0, 1, 1]) });
+  assertEquals([r.status, r.d], [400, { ok: false, error: "bad" }], "2,001줄");
+});
+
+Deno.test("kidx end: 색인에 파일이 있는데 받은 줄에 파일이 없으면 empty(409) — 에이전트가 그 코드를 받음", async () => {
+  assertEquals(await one("select count(*)::int from semis_logi_private.kidx where not is_dir"), 1, "색인에 파일 1줄");
+  await post({ act: "kidx", phase: "begin" });
+  await post({ act: "kidx", phase: "rows", items: [["A", 1, null, null]] });
+  const r = await post({ act: "kidx", phase: "end", n: 1, err: [], ms: 1 });
+  assertEquals([r.status, r.d], [409, { ok: false, error: "empty" }]);
+  assertEquals(await one("select count(*)::int from semis_logi_private.kidx"), 2, "색인 그대로");
+});

@@ -12,7 +12,8 @@
      열린 화면의 다음 저장은 409 → 병합으로 이어진다. 관리자 세션에서 고칠 때는 잠근 행의 updated_at 을 base_at 으로 넘긴다.
    - 적용: 마이그레이션 semis_logi_security_30_ksync · v1.64 기준일 · 막는 형식 semis_logi_security_32_ksync_since ·
      v1.68 링크 정확도 semis_logi_security_34_ksync_links · 보고 · 지정 제외 · H → K 준실시간 semis_logi_security_35_ksync_report ·
-     v1.72 '양쪽' 안전 전환 · H 첨부 해시 semis_logi_security_36_ksync_both(이 파일 전체).
+     v1.72 '양쪽' 안전 전환 · H 첨부 해시 semis_logi_security_36_ksync_both ·
+     v1.73 K드라이브 찾기 semis_logi_security_37_ksync_kidx(이 파일 전체).
      이 파일이 원본(다시 실행해도 같은 결과).
      검증: node tools/sql/semis-logi-ksync.test.mjs tools/sql/semis-logi-ksync.sql (PGlite + pgcrypto)
    ═══════════════════════════════════════════════════════ */
@@ -177,11 +178,39 @@ create table if not exists semis_logi_private.ksync_run_sers (   -- 계획이 �
   ser    text not null,
   primary key (run_id, map_id, ser)
 );
+-- K드라이브 찾기(kidx) — 한 폴더(root) 아래의 이름 · 크기 · 날짜만(내용 · 해시는 모으지 않음). 에이전트가 걸어 보내고 3등급 세션만 읽는다.
+-- win_root 는 사람에게 보여 줄 윈도 경로 앞부분이라 에이전트에게는 보내지 않는다
+alter table semis_logi_private.ksync_state add column if not exists kidx jsonb not null default '{"on": false, "root": "", "excludes": [], "win_root": ""}'::jsonb;
+alter table semis_logi_private.ksync_state add column if not exists kidx_last jsonb;   -- 마지막 걷기 { at, files, dirs, rejected, ms, err }
+create table if not exists semis_logi_private.kidx (     -- path = root 안 상대 경로(NFC)
+  path       text primary key,
+  is_dir     boolean not null,
+  size       bigint,
+  mtime      timestamptz,
+  first_seen timestamptz not null default now(),         -- 덧쓰기에서 그대로 — 새 폴더 알림이 '처음 보인 때'를 쓴다
+  seen_at    timestamptz not null default now()
+);
+-- 받는 중(rows 덩어리) — end 가 보낸 줄 수를 맞춰 본 뒤에만 색인으로 옮긴다(덩어리를 잃은 걷기로 색인을 지우지 않게)
+create table if not exists semis_logi_private.kidx_stage (
+  agent_id bigint not null,
+  path     text not null,
+  is_dir   boolean not null,
+  size     bigint,
+  mtime    timestamptz,
+  primary key (agent_id, path)
+);
+create table if not exists semis_logi_private.kidx_stage_meta (
+  agent_id   bigint primary key,
+  sent       int not null default 0,                     -- 받은 줄 수(거절 포함) — end 의 n 과 대 본다
+  rejected   int not null default 0,
+  started_at timestamptz not null default now()
+);
 
 do $$
 declare t text;
 begin
-  foreach t in array array['ksync_agents', 'ksync_maps', 'ksync_files', 'ksync_runs', 'ksync_folders', 'ksync_events', 'ksync_state', 'ksync_uploads', 'ksync_fails', 'ksync_run_sers', 'ksync_hash_skip', 'ksync_hash_val'] loop
+  foreach t in array array['ksync_agents', 'ksync_maps', 'ksync_files', 'ksync_runs', 'ksync_folders', 'ksync_events', 'ksync_state', 'ksync_uploads', 'ksync_fails', 'ksync_run_sers', 'ksync_hash_skip', 'ksync_hash_val',
+                           'kidx', 'kidx_stage', 'kidx_stage_meta'] loop
     execute format('alter table semis_logi_private.%I enable row level security', t);
     execute format('revoke all on semis_logi_private.%I from public, anon, authenticated', t);
   end loop;
@@ -646,7 +675,8 @@ begin
   update semis_logi_private.ksync_state set net = jsonb_build_object('ok', true, 'at', now(), 'msg', '') where id = 1;
   return jsonb_build_object('ok', true, 'allow', true, 'now', now(), 'daily_at', st.daily_at,
     'requested', st.requested_at is not null, 'requested_at', st.requested_at, 'mass_limit', st.mass_limit, 'flags', st.flags, 'excludes', st.excludes, 'maps', maps,
-    'hash', st.hash_req is not null)
+    'hash', st.hash_req is not null,
+    'kidx', jsonb_build_object('on', st.kidx -> 'on', 'root', st.kidx -> 'root', 'excludes', st.kidx -> 'excludes'))
     || case when docs is not null then jsonb_build_object('lists', lists, 'paused_base', pbase) else '{}'::jsonb end;
 end $$;
 /* 읽기만 할 때(잠그지 않음) */
@@ -1271,12 +1301,96 @@ begin
   return jsonb_build_object('ok', true, 'n', n, 'left', v_left);
 end $$;
 
+/* ─── K드라이브 찾기(kidx) — 에이전트가 root 아래를 걸어 begin → rows(덩어리) → end 로 보낸다.
+   쓸 수 있는 것은 kidx 표뿐. 틀린 줄 몇 개는 그 줄만 거절한다(색인 전체가 거절되지 않게) ─── */
+create or replace function semis_logi_private.ksync_kidx_begin(p_agent bigint, p jsonb) returns jsonb
+language plpgsql volatile security definer set search_path = '' as $$
+declare v jsonb := (select s.kidx from semis_logi_private.ksync_state s where s.id = 1);
+begin
+  if not coalesce((v ->> 'on')::boolean, false) or coalesce(v ->> 'root', '') = '' then
+    return jsonb_build_object('ok', false, 'error', 'off');
+  end if;
+  -- 끝내지 못한 지난 걷기의 받는 중 줄은 버린다(그 줄 수로 이번 end 를 맞추지 않게)
+  delete from semis_logi_private.kidx_stage where agent_id = p_agent;
+  delete from semis_logi_private.kidx_stage_meta where agent_id = p_agent;
+  insert into semis_logi_private.kidx_stage_meta(agent_id) values (p_agent);
+  return jsonb_build_object('ok', true);
+end $$;
+
+/* 줄 = [경로, 폴더 0|1, 크기 | null, 고친 때 ms | null]. 뺄 폴더 아래 · 경로가 틀린 줄 · 크기(0 이상 정수)나 날짜(숫자)가 없는 파일은 거절.
+   한 걷기에 받는 줄은 6만까지 — 에이전트 상한(5만)을 넘는 덩어리가 받는 중 표를 끝없이 키우지 않게 */
+create or replace function semis_logi_private.ksync_kidx_rows(p_agent bigint, p jsonb) returns jsonb
+language plpgsql volatile security definer set search_path = '' as $$
+declare v_ex jsonb; x jsonb; v text; v_dir boolean; n int := 0; rej int := 0;
+begin
+  if jsonb_typeof(p -> 'items') is distinct from 'array' or jsonb_array_length(p -> 'items') > 2000
+     or not exists (select 1 from semis_logi_private.kidx_stage_meta mt where mt.agent_id = p_agent
+                     and mt.sent + jsonb_array_length(p -> 'items') <= 60000) then
+    return jsonb_build_object('ok', false, 'error', 'bad');
+  end if;
+  select s.kidx -> 'excludes' into v_ex from semis_logi_private.ksync_state s where s.id = 1;
+  for x in select value from jsonb_array_elements(p -> 'items') loop
+    n := n + 1;
+    v := case when jsonb_typeof(x) = 'array' and jsonb_array_length(x) = 4 and jsonb_typeof(x -> 0) = 'string' then semis_logi_private.ksync_rel(x ->> 0) end;
+    v_dir := case when jsonb_typeof(x -> 1) = 'number' and x ->> 1 in ('0', '1') then x ->> 1 = '1' end;
+    if v is null or v_dir is null or semis_logi_private.ksync_under(v, v_ex)
+       or (not v_dir and (jsonb_typeof(x -> 2) is distinct from 'number' or x ->> 2 !~ '^[0-9]{1,15}$'
+                          or jsonb_typeof(x -> 3) is distinct from 'number' or x ->> 3 !~ '^[0-9]{1,15}(\.[0-9]+)?$')) then
+      rej := rej + 1;
+      continue;
+    end if;
+    insert into semis_logi_private.kidx_stage(agent_id, path, is_dir, size, mtime)
+    values (p_agent, v, v_dir, case when not v_dir then (x ->> 2)::bigint end,
+            case when jsonb_typeof(x -> 3) = 'number' and x ->> 3 ~ '^[0-9]{1,15}(\.[0-9]+)?$' then to_timestamp((x ->> 3)::float8 / 1000) end)
+    on conflict do nothing;
+  end loop;
+  update semis_logi_private.kidx_stage_meta set sent = sent + n, rejected = rejected + rej where agent_id = p_agent;
+  return jsonb_build_object('ok', true, 'accepted', n - rej, 'rejected', rej);
+end $$;
+
+/* 받은 줄 수(거절 포함)가 n 과 같을 때만 한 번에 덧쓴다 — 있던 줄은 크기 · 날짜 · seen_at 만, 새 줄은 지금, 이번에 안 보인 줄은 지움.
+   err = 못 읽은 폴더: 그 자체 · 그 아래는 안 보였어도 남긴다(일시 오류 한 번에 그 폴더가 검색에서 사라지지 않게).
+   색인에 파일이 있는데 받은 파일이 하나도 없으면 empty — 빈 것처럼 보이는 마운트 한 번에 first_seen 이 모두 새로 매겨지지 않게 */
+create or replace function semis_logi_private.ksync_kidx_end(p_agent bigint, p jsonb) returns jsonb
+language plpgsql volatile security definer set search_path = '' as $$
+declare mt semis_logi_private.kidx_stage_meta; v_err jsonb := '[]'::jsonb; x jsonb; v text; v_files int; v_dirs int;
+begin
+  select * into mt from semis_logi_private.kidx_stage_meta where agent_id = p_agent for update;
+  if mt.agent_id is null or mt.sent is distinct from (case when coalesce(p ->> 'n', '') ~ '^[0-9]{1,9}$' then (p ->> 'n')::int end)
+     or jsonb_typeof(p -> 'err') is distinct from 'array' or jsonb_array_length(p -> 'err') > 200 then
+    return jsonb_build_object('ok', false, 'error', 'bad');
+  end if;
+  if not exists (select 1 from semis_logi_private.kidx_stage s where s.agent_id = p_agent and not s.is_dir)
+     and exists (select 1 from semis_logi_private.kidx k where not k.is_dir) then
+    return jsonb_build_object('ok', false, 'error', 'empty');
+  end if;
+  for x in select value from jsonb_array_elements(p -> 'err') loop
+    v := case when jsonb_typeof(x) = 'string' then semis_logi_private.ksync_rel(x #>> '{}') end;
+    if v is not null then v_err := v_err || to_jsonb(v); end if;
+  end loop;
+  delete from semis_logi_private.kidx k
+   where not semis_logi_private.ksync_under(k.path, v_err)
+     and not exists (select 1 from semis_logi_private.kidx_stage s where s.agent_id = p_agent and s.path = k.path);
+  insert into semis_logi_private.kidx(path, is_dir, size, mtime)
+  select s.path, s.is_dir, s.size, s.mtime from semis_logi_private.kidx_stage s where s.agent_id = p_agent
+  on conflict (path) do update set is_dir = excluded.is_dir, size = excluded.size, mtime = excluded.mtime, seen_at = now();
+  select count(*) filter (where not k.is_dir), count(*) filter (where k.is_dir) into v_files, v_dirs from semis_logi_private.kidx k;
+  delete from semis_logi_private.kidx_stage where agent_id = p_agent;
+  delete from semis_logi_private.kidx_stage_meta where agent_id = p_agent;
+  -- 상태 줄은 맨 끝에 — 문서함 트리거가 그 줄을 오래 기다리지 않게
+  update semis_logi_private.ksync_state
+     set kidx_last = jsonb_build_object('at', now(), 'files', v_files, 'dirs', v_dirs, 'rejected', mt.rejected,
+                                        'ms', case when coalesce(p ->> 'ms', '') ~ '^[0-9]{1,9}$' then (p ->> 'ms')::int end, 'err', jsonb_array_length(v_err))
+   where id = 1;
+  return jsonb_build_object('ok', true, 'files', v_files, 'dirs', v_dirs);
+end $$;
+
 /* ─── 입구(서비스 권한만 — Edge 가 부름) ─── */
 create or replace function public.semis_logi_ksync_agent(p_act text, p_key_hash text, p_ip text, p jsonb) returns jsonb
 language plpgsql volatile security definer set search_path = '' as $$
 declare a jsonb; v_agent bigint; q jsonb := case when jsonb_typeof(p) = 'object' then p else '{}'::jsonb end;
 begin
-  if coalesce(p_act, '') not in ('hello', 'net', 'folders', 'preview', 'recon', 'run', 'put', 'put_peek', 'put_verify', 'put_apply', 'get', 'mark', 'hash_todo', 'hash_set') then
+  if coalesce(p_act, '') not in ('hello', 'net', 'folders', 'preview', 'recon', 'run', 'put', 'put_peek', 'put_verify', 'put_apply', 'get', 'mark', 'hash_todo', 'hash_set', 'kidx') then
     return jsonb_build_object('ok', false, 'error', 'bad');
   end if;
   a := semis_logi_private.ksync_auth(p_key_hash, p_ip, p_act);
@@ -1296,6 +1410,11 @@ begin
     when 'put_verify' then semis_logi_private.ksync_put_verify(v_agent, p_ip, q)
     when 'put_apply' then semis_logi_private.ksync_put_apply(v_agent, p_ip, q)
     when 'get' then semis_logi_private.ksync_get(v_agent, p_ip, q)
+    when 'kidx' then case q ->> 'phase'
+      when 'begin' then semis_logi_private.ksync_kidx_begin(v_agent, q)
+      when 'rows' then semis_logi_private.ksync_kidx_rows(v_agent, q)
+      when 'end' then semis_logi_private.ksync_kidx_end(v_agent, q)
+      else jsonb_build_object('ok', false, 'error', 'bad') end
     else semis_logi_private.ksync_mark(v_agent, p_ip, q) end;
 end $$;
 
@@ -1318,7 +1437,7 @@ begin
    order by r.started_at desc limit 1;
   return jsonb_build_object('ok', true, 'now', now(),
     'state', jsonb_build_object('daily_at', st.daily_at, 'requested_at', st.requested_at, 'net', st.net, 'ip_allow', st.ip_allow,
-      'ip_seen', st.ip_seen, 'mass_limit', st.mass_limit, 'excludes', st.excludes, 'flags', st.flags),
+      'ip_seen', st.ip_seen, 'mass_limit', st.mass_limit, 'excludes', st.excludes, 'flags', st.flags, 'kidx', st.kidx, 'kidx_last', st.kidx_last),
     'agents', coalesce((select jsonb_agg(jsonb_build_object('id', a.id, 'name', a.name, 'created_at', a.created_at, 'created_by', a.created_by,
         'revoked_at', a.revoked_at, 'last_seen_at', a.last_seen_at, 'last_ip', a.last_ip, 'version', a.version, 'host', a.host_label) order by a.id desc)
       from semis_logi_private.ksync_agents a), '[]'::jsonb),
@@ -1863,6 +1982,91 @@ drop trigger if exists semis_logi_store_ksync_req on public.semis_logi_store;
 create trigger semis_logi_store_ksync_req after insert or update on public.semis_logi_store
   for each row when (new.key = 'docs') execute function semis_logi_private.ksync_req_on_docs();
 
+/* ─── K드라이브 찾기(kidx) — 설정(시스템관리자) · 읽기(3등급 세션) ─── */
+/* 보낸 칸만 고친다 — 한 칸이라도 틀리면 아무것도 저장하지 않음. root · excludes = 공유 안 상대 경로,
+   win_root = 윈도에서 root 폴더를 여는 경로 앞부분(드라이브 'X:\' 또는 서버 '\\') — 위치 복사에만 쓴다.
+   root 가 바뀌면(대소문자 무시) 같은 저장에서 모은 줄 · 받는 중 줄 · 마지막 기록을 비운다 — 옛 뿌리의 경로가 새 경로 앞부분과 함께 보이지 않게(걷던 end 는 bad) */
+create or replace function public.semis_logi_ksync_kidx_save(p jsonb) returns jsonb
+language plpgsql volatile security definer set search_path = '' as $$
+declare v jsonb; v_old text; v_ex jsonb; w text;
+begin
+  perform semis_logi_private.ksync_admin();
+  if jsonb_typeof(p) is distinct from 'object' then return jsonb_build_object('ok', false, 'error', 'bad'); end if;
+  select s.kidx into v from semis_logi_private.ksync_state s where s.id = 1 for update;
+  v_old := coalesce(v ->> 'root', '');
+  if p ? 'on' then
+    if jsonb_typeof(p -> 'on') is distinct from 'boolean' then return jsonb_build_object('ok', false, 'error', 'bad'); end if;
+    v := v || jsonb_build_object('on', p -> 'on');
+  end if;
+  if p ? 'root' then
+    if jsonb_typeof(p -> 'root') is distinct from 'string' or (p ->> 'root' <> '' and semis_logi_private.ksync_rel(p ->> 'root') is null) then
+      return jsonb_build_object('ok', false, 'error', 'root');
+    end if;
+    v := v || jsonb_build_object('root', coalesce(semis_logi_private.ksync_rel(p ->> 'root'), ''));
+  end if;
+  if p ? 'excludes' then
+    v_ex := semis_logi_private.ksync_excl(p -> 'excludes');
+    if v_ex is null then return jsonb_build_object('ok', false, 'error', 'excl'); end if;
+    v := v || jsonb_build_object('excludes', v_ex);
+  end if;
+  if p ? 'win_root' then
+    w := p ->> 'win_root';
+    if jsonb_typeof(p -> 'win_root') is distinct from 'string'
+       or (w <> '' and (length(w) > 120 or w ~ '[[:cntrl:]]' or w !~ '^([A-Za-z]:\\|\\\\)')) then
+      return jsonb_build_object('ok', false, 'error', 'win');
+    end if;
+    v := v || jsonb_build_object('win_root', w);
+  end if;
+  if lower(coalesce(v ->> 'root', '')) <> lower(v_old) then
+    -- where true — API 세션에 safeupdate(WHERE 없는 DELETE 거절)를 켜도 막히지 않게
+    delete from semis_logi_private.kidx where true;
+    delete from semis_logi_private.kidx_stage where true;
+    delete from semis_logi_private.kidx_stage_meta where true;
+    update semis_logi_private.ksync_state set kidx = v, kidx_last = null where id = 1;
+  else
+    update semis_logi_private.ksync_state set kidx = v where id = 1;
+  end if;
+  return jsonb_build_object('ok', true);
+end $$;
+
+/* 3등급(안전보안파트) 이상 세션만 — 협력업체 · 서명 세션 · 화물팀 관리자는 이름도 보지 않는다.
+   뺄 폴더는 읽을 때도 거른다(설정을 바꾸면 다음 걷기 전에도 바로 숨게). 폴더 경로는 dirs 에 한 번만 두고 파일은 그 번호로(dirs[0] = 뿌리).
+   files = [폴더 번호, 이름, 크기, 한국 날짜, H 문서 id | null] — H 문서 = 활성 연결 기준선(맞춘 줄)의 같은 경로(맥 SMB 처럼 대소문자 무시) */
+create or replace function public.semis_logi_kidx_list() returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+declare st semis_logi_private.ksync_state; v_root text; v_ex jsonb; v_dirs jsonb; v_files jsonb;
+begin
+  if not exists (select 1 from semis_logi_private.ctx() c where c.kind = 'user' and c.rank >= 3) then
+    raise exception using errcode = '42501', message = 'semis_kidx';
+  end if;
+  select * into st from semis_logi_private.ksync_state where id = 1;
+  v_root := coalesce(st.kidx ->> 'root', '');
+  v_ex := st.kidx -> 'excludes';
+  if not coalesce((st.kidx ->> 'on')::boolean, false) or v_root = '' then
+    return jsonb_build_object('ok', true, 'on', false);
+  end if;
+  with v as (
+    select k.* from semis_logi_private.kidx k where not semis_logi_private.ksync_under(k.path, v_ex)
+  ), d as (
+    select '' as path, 0 as i
+    union all
+    select v.path, (row_number() over (order by v.path collate "C"))::int from v where v.is_dir
+  ), b as (
+    select distinct on (lower(m.k_path || '/' || f.rel_path)) lower(m.k_path || '/' || f.rel_path) as lp, f.doc_id
+      from semis_logi_private.ksync_maps m join semis_logi_private.ksync_files f on f.map_id = m.id
+     where m.state = 'active' and f.state = 'ok' and f.doc_id is not null
+     order by lower(m.k_path || '/' || f.rel_path), f.id
+  )
+  select (select jsonb_agg(d.path order by d.i) from d),
+         coalesce((select jsonb_agg(jsonb_build_array(d.i, semis_logi_private.ksync_base(v.path), v.size, semis_logi_private.ksync_date(v.mtime), b.doc_id)
+                                    order by v.path collate "C")
+                     from v join d on d.path = regexp_replace(v.path, '/?[^/]*$', '')
+                     left join b on b.lp = lower(v_root || '/' || v.path)
+                    where not v.is_dir), '[]'::jsonb)
+    into v_dirs, v_files;
+  return jsonb_build_object('ok', true, 'on', true, 'at', st.kidx_last -> 'at', 'win_root', coalesce(st.kidx ->> 'win_root', ''), 'dirs', v_dirs, 'files', v_files);
+end $$;
+
 /* ─── 실행 권한 ─── */
 revoke all on function public.semis_logi_ksync_agent(text, text, text, jsonb) from public, anon, authenticated;
 grant execute on function public.semis_logi_ksync_agent(text, text, text, jsonb) to service_role;
@@ -1871,14 +2075,14 @@ revoke all on function public.semis_logi_ksync_status(), public.semis_logi_ksync
   public.semis_logi_ksync_map_start(bigint), public.semis_logi_ksync_pending(), public.semis_logi_ksync_resolve(jsonb),
   public.semis_logi_ksync_hold(jsonb), public.semis_logi_ksync_request(), public.semis_logi_ksync_settings(jsonb),
   public.semis_logi_ksync_ip_approve(text), public.semis_logi_ksync_agent_new(text), public.semis_logi_ksync_agent_revoke(bigint),
-  public.semis_logi_ksync_hash_todo(jsonb)
+  public.semis_logi_ksync_hash_todo(jsonb), public.semis_logi_ksync_kidx_save(jsonb), public.semis_logi_kidx_list()
   from public, authenticated;
 grant execute on function public.semis_logi_ksync_status(), public.semis_logi_ksync_runs(jsonb), public.semis_logi_ksync_events(jsonb),
   public.semis_logi_ksync_folders(), public.semis_logi_ksync_report(), public.semis_logi_ksync_map_save(jsonb), public.semis_logi_ksync_map_delete(bigint),
   public.semis_logi_ksync_map_start(bigint), public.semis_logi_ksync_pending(), public.semis_logi_ksync_resolve(jsonb),
   public.semis_logi_ksync_hold(jsonb), public.semis_logi_ksync_request(), public.semis_logi_ksync_settings(jsonb),
   public.semis_logi_ksync_ip_approve(text), public.semis_logi_ksync_agent_new(text), public.semis_logi_ksync_agent_revoke(bigint),
-  public.semis_logi_ksync_hash_todo(jsonb)
+  public.semis_logi_ksync_hash_todo(jsonb), public.semis_logi_ksync_kidx_save(jsonb), public.semis_logi_kidx_list()
   to anon, service_role;
 do $$
 declare f record;

@@ -12,7 +12,7 @@ import { pathToFileURL } from "node:url";
 import { plan, reconOf, MAX_SIZE, K_BLOCK, nfc } from "./plan.mjs";
 import * as L from "./lib.mjs";
 
-export const VERSION = "1.72.0";
+export const VERSION = "1.73.0";
 const MIN = 60e3;
 /* 오늘 매일 실행을 끝낸 뒤 서버를 다시 보지 않는 시간 — 깨우는 간격(10분)보다 조금 짧게. 길면 H 에서 올린 문서의 동기화 요청을 그만큼 늦게 본다 */
 const DONE_GUARD = 9 * MIN;
@@ -141,6 +141,10 @@ async function agent(deps, args) {
       deps.out({ map: m.id, k_path: m.k_path, state: m.state, held: p.held, fatal: p.fatal || undefined, errors: idx.errors.map(e => (e.f + " " + e.r).trim()), counts: p.counts,
         actions: p.planned.map(line), recon: q ? { dir: m.dir_next, counts: reconOf(q), actions: q.planned.map(line) } : undefined });
     }
+    if (kidxWanted(full)) {
+      const k = await kidxScan(mount, full.kidx);
+      deps.out({ kidx: k.error ? { error: k.error } : { files: k.rows.filter(x => !x[1]).length, dirs: k.rows.filter(x => x[1]).length, err: k.err.length, capped: k.capped, ms: k.ms } });
+    }
     await save();
     return { status: "dry-run" };
   }
@@ -175,6 +179,14 @@ async function agent(deps, args) {
     }
     await sendRecon(srv, log, maps, reconQ, reconIn);
     if (full.hash && !msg) await fillHashes(srv, run, log);
+    // 뿌리가 바뀌면 서버가 옛 목록을 비우므로 그날 이미 걸었어도 새 뿌리를 다시 걷는다
+    if (kidxWanted(full) && (st.kidxDay !== today || st.kidxRoot !== full.kidx.root) && !msg) {
+      const k = await kidxScan(mount, full.kidx);
+      if (k.error) log("warn", "K드라이브 찾기 폴더를 읽지 못함: " + k.error);
+      // 상한에 닿은 걷기는 그날 다시 걸어도 같다(나무는 몇 분 사이 줄지 않음) — 수동 요청 회차마다 최대 30분씩 걷지 않게 그날은 끝. 보내기 실패만 그날 다시
+      else if (k.capped) { log("warn", `K드라이브 찾기 목록이 상한에 닿아 보내지 않음(줄 ${k.rows.length} · ${k.ms}ms) — 기존 목록 그대로`); st.kidxDay = today; st.kidxRoot = full.kidx.root; }
+      else if (await sendKidx(srv, log, k)) { st.kidxDay = today; st.kidxRoot = full.kidx.root; }
+    }
   } catch (e) {
     result = "fail"; msg = "중단: " + (e.code || "error"); log("error", msg);
   }
@@ -203,6 +215,44 @@ async function mapRoot(mount, m) {
     const real = await fsp.realpath(abs), realMount = await fsp.realpath(mount);
     return real.startsWith(realMount + path.sep) ? abs : "";
   } catch (e) { return ""; }
+}
+
+/* K드라이브 찾기 — 관리자가 켜고 폴더(root)를 정했을 때만. 걷기 · 보내기는 동기화 회차 결과에 영향을 주지 않는다(실패는 기록 한 줄) */
+const kidxWanted = (full) => !!(full.kidx && full.kidx.on && full.kidx.root);
+async function kidxScan(mount, k) {
+  const root = await mapRoot(mount, { k_path: k.root });
+  if (!root) return { error: "no_folder" };
+  try { return await L.kidxWalk(root, { excludes: k.excludes }); }
+  catch (e) { return { error: e.code || e.message }; }
+}
+/* begin → rows → end. end 의 n 은 서버가 받은 줄 수와 대 보는 값이라 덩어리를 잃으면 서버가 색인을 바꾸지 않는다.
+   덩어리는 2,000줄(서버 한도)과 약 700KB 둘 다로 자른다 — 긴 한글 경로 2,000줄은 Edge 본문 상한(2MB)에 닿을 수 있다.
+   서버가 어차피 거절할 경로(300자 넘음 등)는 보내지 않고 기록에 센다 */
+const KIDX_ROWS = 2000, KIDX_BYTES = 700 * 1024;
+function kidxChunks(rows) {
+  const out = [];
+  let cur = [], bytes = 2;
+  for (const r of rows) {
+    const b = Buffer.byteLength(JSON.stringify(r)) + 1;
+    if (cur.length && (cur.length >= KIDX_ROWS || bytes + b > KIDX_BYTES)) { out.push(cur); cur = []; bytes = 2; }
+    cur.push(r); bytes += b;
+  }
+  if (cur.length) out.push(cur);
+  return out;
+}
+async function sendKidx(srv, log, res) {
+  const rows = res.rows.filter(r => L.relOk(r[0])), drop = res.rows.length - rows.length;
+  const dropTxt = drop ? "경로가 너무 길거나 맞지 않아 뺀 줄 " + drop + "개" : "";
+  try {
+    await srv.call("kidx", { phase: "begin" });
+    for (const items of kidxChunks(rows)) await srv.call("kidx", { phase: "rows", items });
+    const d = await srv.call("kidx", { phase: "end", n: rows.length, err: res.err.slice(0, 200), ms: res.ms });
+    log("info", `K드라이브 찾기 목록 보냄 — 파일 ${d.files} · 폴더 ${d.dirs}${res.err.length ? " · 못 읽은 곳 " + res.err.length : ""}${drop ? " · " + dropTxt : ""}`);
+    return true;
+  } catch (e) {
+    log("warn", "K드라이브 찾기 목록 보내기 실패: " + (e.code || e.message) + (drop ? "(" + dropTxt + ")" : ""));
+    return false;
+  }
 }
 
 /* 모든 연결의 기준선 크기 · 해시 — 기준일 전 파일이라도 크기가 같으면 해시하고(옮긴 파일 후보), 해시가 같으면 새 파일로 다룬다(연결 폴더끼리 옮김).

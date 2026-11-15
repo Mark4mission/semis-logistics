@@ -4,7 +4,7 @@
    - 인증: 헤더 x-ksync-key(32바이트 무작위 hex) → 여기서 sha256 → public.semis_logi_ksync_agent(서비스 권한만)가
      키 · 허용 IP · 횟수 · 연결 범위를 확인하고 기록한다. 키 원문은 DB 로 보내지 않는다.
    - 접속 IP 규칙은 SQL client_ip() 와 같다: cf-connecting-ip 우선, 없으면 x-forwarded-for 마지막 항목.
-   - act: hello · net · folders · preview · recon · run · mark = SQL 에 그대로 /
+   - act: hello · net · folders · preview · recon · run · mark · kidx(K드라이브 찾기 목록) = SQL 에 그대로 /
      hash(해시 채우기 — SQL 이 고른 H 첨부를 저장소에서 읽어 sha256 을 재고 SQL 이 적는다. 에이전트는 값 · 경로를 보내지 않음) /
      put(phase begin = 이름 부분만 여기서 정하고 폴더 · 경로는 SQL 이 정함 → 업로드 서명 URL,
          verify = 저장소에서 다시 읽어 잰 크기 · sha256 을 SQL 이 시작 때 값과 대조 — 다르면 파일을 지움.
@@ -27,10 +27,10 @@ const MAX_BODY = 2 * 1024 * 1024;
 const MAX_SIZE = 50 * 1024 * 1024;
 const SIGN_SECS = 600;
 const HASH_MAX = 20, HASH_BYTES = 100 * 1024 * 1024;     // 해시 채우기 한 번에 — 20개 · 합계 100MB 까지(넘으면 남은 것은 다음 호출)
-const ACTS = ["hello", "net", "folders", "preview", "recon", "run", "mark", "put", "apply", "get", "hash"];
+const ACTS = ["hello", "net", "folders", "preview", "recon", "run", "mark", "put", "apply", "get", "hash", "kidx"];
 const STATUS: Record<string, number> = {
   auth: 401, ip: 403, origin: 403, scope: 403, rate: 429, quota: 429, type: 415, too_large: 413,
-  hash: 409, held: 409, state: 409, run: 409, old: 409, bad: 400, method: 405, server: 500
+  hash: 409, held: 409, state: 409, run: 409, old: 409, off: 409, empty: 409, bad: 400, method: 405, server: 500
 };
 
 type Res = { ok?: boolean; error?: string; [k: string]: unknown };

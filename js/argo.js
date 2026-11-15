@@ -164,16 +164,31 @@
     if (!/^[a-z0-9-]{2,40}$/.test(r)) return false;
     return canMod(r);
   }
-  function find(inp) {
+  const KG = "K드라이브";
+  async function find(inp) {
     const q = str(inp.query, 80);
     if (!q) return { error: "query 가 비었습니다." };
     if (!window.SemisSearch) return { error: "검색을 쓸 수 없습니다." };
+    if (inp.scope === "kdrive") return findK(q, inp);
     const lim = Math.max(1, Math.min(20, Math.round(Number(inp.limit)) || 12));
-    const hits = SemisSearch.search(q).slice(0, lim).map(it => {
+    const hits = SemisSearch.search(q).filter(it => it.group !== KG).slice(0, lim).map(it => {
       const go = it.route && goOk(it.route) ? it.route : (it.group === "접수 카운터" && goOk("desk") ? "desk" : "");
       return { group: it.group, title: cut(it.title, 120), sub: cut(it.sub, 160), go: go || undefined, link: it.url ? "외부 사이트" : undefined };
     });
     return { query: q, count: hits.length, items: hits };
+  }
+  /* K드라이브 이름 · 위치만(scope kdrive) — 위치를 묻는 질문에서만 부르므로 평소 찾기에는 K 이름이 모델로 가지 않는다 */
+  async function findK(q, inp) {
+    const K = window.SemisKidx;
+    const none = { query: q, scope: "kdrive", count: 0, items: [], note: "K드라이브 찾기를 쓸 수 없거나 꺼져 있습니다." };
+    if (!K || !K.canUse() || !(await K.ensure())) return none;
+    const r = SemisSearch.searchAll(q), isK = (it) => it.group === KG;
+    let hits = r.full.filter(isK), part = false;
+    if (!hits.length) { hits = r.kPartial; part = true; }
+    const lim = Math.max(1, Math.min(30, Math.round(Number(inp.limit)) || 12));
+    const items = hits.slice(0, lim).map(it => ({ kind: it.kind, name: cut(it.title, 120), folder: cut(it.dir ? it.dir.split("/").join(" › ") : "", 200),
+      date: it.date || undefined, in_h: !!it.docId, go: "k/" + it.id, partial: part || undefined }));
+    return { query: q, scope: "kdrive", count: items.length, items };
   }
 
   /* 기간 일정 — 반복 일정은 회차로 펼치고 보안 기록부 점검 기한도 넣는다 */
@@ -749,10 +764,15 @@
     });
   }
 
+  /* 답 속 K 단추 — 지금 화면의 K 목록에 그 id 가 있을 때만(지워졌거나 아직 안 받았거나 K 를 못 쓰는 계정이면 굵은 글자) */
+  const kItem = (id) => { const K = window.SemisKidx; return K && K.canUse() ? K.byId(id) : null; };
   function inline(t) {
     let s = esc(t);
-    s = s.replace(/\[\[([^\]|]{1,60})\|([a-z0-9/-]{1,60})\]\]/g, (x, lb, rt) => goOk(rt)
-      ? '<button type="button" class="ag-go" data-go="' + rt + '">' + lb + icon("chevron", 14) + "</button>" : "<b>" + lb + "</b>");
+    s = s.replace(/\[\[([^\]|]{1,120})\|([a-z0-9/-]{1,60})\]\]/g, (x, lb, rt) => {
+      const k = /^k\/([0-9a-z]{1,20})$/.exec(rt);
+      if (k) return kItem(k[1]) ? '<button type="button" class="ag-go" data-k="' + k[1] + '">' + lb + icon("chevron", 14) + "</button>" : "<b>" + lb + "</b>";
+      return goOk(rt) ? '<button type="button" class="ag-go" data-go="' + rt + '">' + lb + icon("chevron", 14) + "</button>" : "<b>" + lb + "</b>";
+    });
     return s.replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>").replace(/`([^`\n]+)`/g, "<code>$1</code>");
   }
   function md(src) {
@@ -834,6 +854,7 @@
   }
   function wireLog(box) {
     box.querySelectorAll("[data-go]").forEach(b => { b.onclick = () => go(b.dataset.go); });
+    box.querySelectorAll("[data-k]").forEach(b => { b.onclick = () => { const it = kItem(b.dataset.k); if (it) SemisKidx.openSheet(it); }; });   // 아르고 패널은 그대로
     box.querySelectorAll("[data-undo]").forEach(b => { b.onclick = () => undo(b.dataset.undo); });
     box.querySelectorAll("[data-cf]").forEach(b => { b.onclick = () => { const f = confirms[b.dataset.cf]; if (f) f(b.dataset.ok === "1"); }; });
     box.querySelectorAll("[data-sug]").forEach(b => { b.onclick = () => send(b.dataset.sug); });

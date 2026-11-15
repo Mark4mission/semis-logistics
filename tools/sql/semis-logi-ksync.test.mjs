@@ -72,7 +72,8 @@ eq(await one("select has_function_privilege('authenticated', 'public.semis_logi_
 const ADMIN = ["semis_logi_ksync_status()", "semis_logi_ksync_runs(jsonb)", "semis_logi_ksync_events(jsonb)", "semis_logi_ksync_folders()", "semis_logi_ksync_report()",
   "semis_logi_ksync_map_save(jsonb)", "semis_logi_ksync_map_delete(bigint)", "semis_logi_ksync_map_start(bigint)", "semis_logi_ksync_pending()",
   "semis_logi_ksync_resolve(jsonb)", "semis_logi_ksync_hold(jsonb)", "semis_logi_ksync_request()", "semis_logi_ksync_settings(jsonb)",
-  "semis_logi_ksync_ip_approve(text)", "semis_logi_ksync_agent_new(text)", "semis_logi_ksync_agent_revoke(bigint)", "semis_logi_ksync_hash_todo(jsonb)"];
+  "semis_logi_ksync_ip_approve(text)", "semis_logi_ksync_agent_new(text)", "semis_logi_ksync_agent_revoke(bigint)", "semis_logi_ksync_hash_todo(jsonb)",
+  "semis_logi_ksync_kidx_save(jsonb)"];
 for (const f of ADMIN) {
   eq(await one("select has_function_privilege('anon', $1, 'EXECUTE')", ["public." + f]), true, f + " anon");
   eq(await one("select has_function_privilege('authenticated', $1, 'EXECUTE')", ["public." + f]), false, f + " authenticated 차단");
@@ -1683,6 +1684,191 @@ const hq = await call("hash_set", { run: RN, items: [{ url: QU, sha: H64("8") }]
 eq([hq.error, await one("select count(*)::int from semis_logi_private.ksync_hash_val"), await one("select count(*)::int from public.test_hist where key = 'docs'") - nH0,
   (await docs()).find(d => d.id === "rq1").files[0].sha], ["state", 0, 0, undefined], "요청이 꺼진 뒤 온 결과 → 거절(모으지도 적지도 않음)");
 await call("run", { phase: "end", run: RN, result: "ok" });
+await as("a1", "admin");
+}
+
+// 22. K드라이브 찾기(kidx) — '항공보안' 폴더의 이름 · 크기 · 날짜 색인. 에이전트 kidx(begin → rows → end) · 설정(시스템관리자) · 읽기(3등급 세션)
+{
+const kx = (phase, p) => call("kidx", Object.assign({ phase }, p || {}));
+const walk = async (items, err, ms) => {
+  const b = await kx("begin");
+  if (!b.ok) return b;
+  const w = await kx("rows", { items });
+  if (!w.ok) return w;
+  return kx("end", { n: items.length, err: err || [], ms: ms || 1 });
+};
+const ks = (p) => rpc("semis_logi_ksync_kidx_save", p);
+const stageN = async () => [await one("select count(*)::int from semis_logi_private.kidx_stage where agent_id = $1", [AG]),
+  await one("select count(*)::int from semis_logi_private.kidx_stage_meta where agent_id = $1", [AG])];
+const kpaths = async () => (await rows("select path from semis_logi_private.kidx order by path collate \"C\"")).map(x => x.path);
+const T = 1763000000000;                                   // 2025-11-13T02:13:20Z = 한국 2025-11-13
+// KIDX-01 권한 — 새 표는 막고 RLS, 읽기 RPC 는 anon(세션 확인) · authenticated 아님, 비공개 함수는 ksync_ 이름이라 0번 anon 차단에 걸림
+for (const t of ["kidx", "kidx_stage", "kidx_stage_meta"]) {
+  eq(await one("select has_table_privilege('anon', $1, 'SELECT')", ["semis_logi_private." + t]), false, "KIDX-01 " + t + " 읽기 차단");
+  eq(await one("select relrowsecurity from pg_class where oid = $1::regclass", ["semis_logi_private." + t]), true, "KIDX-01 " + t + " RLS");
+}
+eq(await one("select has_function_privilege('anon', 'public.semis_logi_kidx_list()', 'EXECUTE')"), true, "KIDX-01 읽기 RPC anon");
+eq(await one("select has_function_privilege('authenticated', 'public.semis_logi_kidx_list()', 'EXECUTE')"), false, "KIDX-01 읽기 RPC authenticated 차단");
+eq(priv.filter(x => /^semis_logi_private\.ksync_kidx_(begin|rows|end)\(/.test(x.sig)).length, 3, "KIDX-01 비공개 kidx 함수 3개 = ksync_ 이름(0번 anon 차단 목록)");
+
+// KIDX-02 꺼진 상태(기본값) — 에이전트 begin 은 off, 읽기는 on:false
+await as(null);
+eq(await kx("begin"), { ok: false, error: "off" }, "KIDX-02 꺼진 상태 begin → off");
+eq(await stageN(), [0, 0], "KIDX-02 off 면 받는 중 기록을 만들지 않음");
+eq((await kx("nope")).error, "bad", "KIDX-02 모르는 phase → bad");
+await as("h1", "hq");
+eq(await rpc("semis_logi_kidx_list"), { ok: true, on: false }, "KIDX-02 꺼진 상태 읽기 → on:false");
+
+// KIDX-03 설정 검사 — 보낸 칸만 고침 · 틀리면 아무것도 저장하지 않음 · 시스템관리자만
+await as("a1", "admin");
+eq((await ks({ root: "../x" })).error, "root", "KIDX-03 뿌리 경로 검사");
+eq((await ks({ excludes: ["a/../b"] })).error, "excl", "KIDX-03 뺄 폴더 경로 검사");
+eq((await ks({ excludes: Array.from({ length: 21 }, (_, i) => "p" + i) })).error, "excl", "KIDX-03 뺄 폴더 20개까지");
+eq((await ks({ win_root: "C:/x" })).error, "win", "KIDX-03 윈도 경로는 'X:\\' 또는 '\\\\' 로 시작");
+eq((await ks({ win_root: "\\\\srv\\" + "a".repeat(120) })).error, "win", "KIDX-03 윈도 경로 120자까지");
+eq((await ks({ win_root: "\\\\srv\\a\u0007" })).error, "win", "KIDX-03 윈도 경로 제어 문자 거절");
+eq((await ks({ on: "yes" })).error, "bad", "KIDX-03 on 은 참/거짓만");
+eq((await ks({ win_root: "K:\\항공보안" })).ok, true, "KIDX-03 드라이브 경로 저장");
+eq((await ks({ win_root: "\\\\srv\\share\\항공보안" })).ok, true, "KIDX-03 서버 경로 저장");
+eq((await ks({ on: true })).ok, true, "KIDX-03 켜기만");
+await as(null);
+eq((await kx("begin")).error, "off", "KIDX-03 켜도 뿌리가 비면 off");
+await as("h1", "hq");
+eq((await rpc("semis_logi_kidx_list")).on, false, "KIDX-03 뿌리가 비면 읽기도 on:false");
+await as("a1", "admin");
+eq((await ks({ on: false, root: "../x" })).error, "root", "KIDX-03 한 칸이라도 틀리면 거절");
+eq((await rpc("semis_logi_ksync_status")).state.kidx.on, true, "KIDX-03 거절하면 다른 칸도 저장하지 않음");
+eq((await ks({ on: true, root: "A/항공보안", excludes: [] })).ok, true, "KIDX-03 켜기 · 뿌리 · 뺄 폴더 저장");
+let st22 = (await rpc("semis_logi_ksync_status")).state;
+eq([st22.kidx.on, st22.kidx.root, st22.kidx.excludes, st22.kidx.win_root, st22.kidx_last], [true, "A/항공보안", [], "\\\\srv\\share\\항공보안", null],
+  "KIDX-03 상태 RPC 에 설정 · 마지막 기록(아직 없음)");
+await as("h1", "hq");
+ok(await raises(() => ks({ on: false }), "42501"), "KIDX-03 hq 는 설정 불가(42501)");
+
+// KIDX-04 걷기 한 번 — 틀린 줄만 거절 · 보낸 줄 수가 맞으면 덧쓰기 · 받는 중 기록 비움
+await as(null);
+eq((await kx("begin")).ok, true, "KIDX-04 begin");
+r = await kx("rows", { items: [["01 규정", 1, null, null], ["01 규정/점검표.xlsx", 0, 1200, T], ["00 안내.pdf", 0, 10, T], ["../x", 0, 1, 1]] });
+eq([r.ok, r.accepted, r.rejected], [true, 3, 1], "KIDX-04 rows → 받음 3 · 거절 1");
+r = await kx("end", { n: 4, err: [], ms: 5 });
+eq([r.ok, r.files, r.dirs], [true, 2, 1], "KIDX-04 end → 파일 2 · 폴더 1");
+eq((await rows("select path, is_dir, size::int size, (extract(epoch from mtime) * 1000)::float8 ms from semis_logi_private.kidx order by path collate \"C\"")).map(x => [x.path, x.is_dir, x.size, x.ms]),
+  [["00 안내.pdf", false, 10, T], ["01 규정", true, null, null], ["01 규정/점검표.xlsx", false, 1200, T]], "KIDX-04 색인 줄(경로 · 폴더 · 크기 · 날짜)");
+eq(await stageN(), [0, 0], "KIDX-04 끝나면 받는 중 줄 · 기록 비움");
+await as("a1", "admin");
+const last4 = (await rpc("semis_logi_ksync_status")).state.kidx_last;
+eq([last4.files, last4.dirs, last4.rejected, last4.ms, last4.err, typeof last4.at], [2, 1, 1, 5, 0, "string"], "KIDX-04 kidx_last(거절 1 · 걸린 시간)");
+await as(null);
+eq((await kx("end", { n: 0, err: [], ms: 1 })).error, "bad", "KIDX-04 begin 없이 end → bad");
+eq((await kx("rows", { items: [["x.pdf", 0, 1, T]] })).error, "bad", "KIDX-04 begin 없이 rows → bad");
+
+// KIDX-05 덧쓰기 — 있던 줄의 first_seen 은 그대로(크기 · 날짜 · seen_at 만 고침) · 새 줄은 지금 · 안 보인 줄은 지움
+await db.exec("update semis_logi_private.kidx set first_seen = '2026-01-01', seen_at = '2026-01-01'");
+r = await walk([["01 규정", 1, null, null], ["01 규정/점검표.xlsx", 0, 1300, T + 60000], ["02 교육", 1, null, null]]);
+eq([r.ok, r.files, r.dirs], [true, 1, 2], "KIDX-05 다시 걷기");
+eq((await rows("select path, to_char(first_seen, 'YYYY-MM-DD') = '2026-01-01' kept, first_seen > now() - interval '1 hour' fresh, seen_at > now() - interval '1 hour' seen, size::int size, " +
+    "(extract(epoch from mtime) * 1000)::float8 ms from semis_logi_private.kidx order by path collate \"C\"")).map(x => [x.path, x.kept, x.fresh, x.seen, x.size, x.ms]),
+  [["01 규정", true, false, true, null, null], ["01 규정/점검표.xlsx", true, false, true, 1300, T + 60000], ["02 교육", false, true, true, null, null]],
+  "KIDX-05 옛 줄 first_seen 그대로 · 크기 · 날짜 · seen_at 고침 · 새 줄은 지금 · 빠진 00 안내.pdf 지움");
+
+// KIDX-06 개수 불일치(덩어리를 잃음) → bad · 색인 그대로. 줄 검사(파일 크기 0 이상 정수 · 날짜 숫자 · 폴더 표시 0|1 · 모양 · 경로)
+const snap = async () => JSON.stringify(await rows("select path, is_dir, size::text, mtime::text, first_seen::text, seen_at::text from semis_logi_private.kidx order by path collate \"C\""));
+const k6 = await snap(), last6 = await one("select kidx_last::text from semis_logi_private.ksync_state");
+eq((await kx("begin")).ok, true, "KIDX-06 begin");
+r = await kx("rows", { items: [["03 새.pdf", 0, 1, T], ["크기없음.pdf", 0, null, T], ["음수.pdf", 0, -1, T], ["소수.pdf", 0, 1.5, T], ["날짜글자.pdf", 0, 1, "2026-01-01"],
+  ["모름.pdf", 2, 1, T], ["짧음.pdf", 0, 1], "문자열", ["C:x", 0, 1, T]] });
+eq([r.ok, r.accepted, r.rejected], [true, 1, 8], "KIDX-06 틀린 줄만 거절(8) · 나머지 받음(1)");
+eq((await kx("rows", { items: Array.from({ length: 2001 }, (_, i) => ["f" + i, 0, 1, T]) })).error, "bad", "KIDX-06 한 덩어리 2,000 줄 넘으면 bad");
+eq(await kx("end", { n: 9 + 5, err: [], ms: 1 }), { ok: false, error: "bad" }, "KIDX-06 보낸 줄 수와 다르면 bad");
+eq([await snap(), await one("select kidx_last::text from semis_logi_private.ksync_state")], [k6, last6], "KIDX-06 색인 · 마지막 기록 그대로");
+eq(await stageN(), [1, 1], "KIDX-06 받는 중 줄 · 기록도 그대로(다음 begin 이 비움)");
+
+// KIDX-07 못 읽은 폴더(err) — 그 폴더 자체 · 그 아래 줄은 이번에 안 보여도 남김. err 는 경로 검사를 지난 것만 셈
+eq((await kx("begin")).ok, true, "KIDX-07 begin");
+eq([await stageN(), await one("select sent from semis_logi_private.kidx_stage_meta where agent_id = $1", [AG])], [[0, 1], 0], "KIDX-07 begin 이 남은 받는 중 줄을 비우고 기록을 새로");
+await kx("rows", { items: [["B", 1, null, null], ["B/x.pdf", 0, 5, T], ["C", 1, null, null], ["C/y.pdf", 0, 6, T]] });
+eq((await kx("end", { n: 4, err: [], ms: 1 })).ok, true, "KIDX-07 첫 색인(B/x.pdf · C/y.pdf)");
+r = await walk([["C", 1, null, null], ["C/z.pdf", 0, 6, T]], ["B", "../bad", 3]);
+eq([r.ok, r.files, r.dirs, await kpaths()], [true, 2, 2, ["B", "B/x.pdf", "C", "C/z.pdf"]], "KIDX-07 err 폴더 B 자체 · 그 아래 B/x.pdf 남음 · 안 보인 C/y.pdf 지움");
+eq(await one("select (kidx_last ->> 'err')::int from semis_logi_private.ksync_state"), 1, "KIDX-07 err 개수 = 경로 검사를 지난 것만");
+
+// KIDX-08 읽기 RPC — 3등급 세션만 · dirs[0] = 뿌리 · 폴더 번호 · 한국 날짜 · 활성 연결 기준선의 H 문서(대소문자 무시) · 뺄 폴더는 읽을 때도 거름
+const TB = Date.parse("2026-03-01T15:30:00Z");               // 한국 2026-03-02 00:30
+r = await walk([["00 안내.pdf", 0, 10, TB], ["01 규정", 1, null, null], ["01 규정/점검표.xlsx", 0, 1200, T], ["02 교육", 1, null, null], ["02 교육/교안.PDF", 0, 7, T],
+  ["02 교육/대기.pdf", 0, 8, T], ["02 교육/하위", 1, null, null], ["02 교육/하위/깊은.hwp", 0, 3, T]]);
+eq([r.ok, r.files, r.dirs], [true, 5, 3], "KIDX-08 색인");
+const MK1 = await one("insert into semis_logi_private.ksync_maps(k_path, mod, grp, dir, state) values ('A/항공보안/02 교육', 'audit', 'kidx1', 'k2h', 'active') returning id");
+const MK2 = await one("insert into semis_logi_private.ksync_maps(k_path, mod, grp, dir, state) values ('A/항공보안/01 규정', 'audit', 'kidx2', 'k2h', 'paused') returning id");
+await db.query("insert into semis_logi_private.ksync_files(map_id, rel_path, doc_id, state) values ($1, '교안.pdf', 'd-kx1', 'ok'), ($1, '대기.pdf', 'd-kx2', 'conflict'), ($2, '점검표.xlsx', 'd-kx3', 'ok')", [MK1, MK2]);
+for (const [id, role, kind] of [[null], ["u1", "user"], ["m1", "manager"], ["v1", "vendor"], ["s1", "user", "signer"]]) {
+  await as(id, role, kind);
+  ok(await raises(() => rpc("semis_logi_kidx_list"), "42501"), "KIDX-08 " + (kind || role || "세션 없음") + " → 42501");
+}
+await as("h1", "hq");
+r = await rpc("semis_logi_kidx_list");
+const D = "2025-11-13";
+eq([r.ok, r.on, r.win_root, typeof r.at, r.dirs], [true, true, "\\\\srv\\share\\항공보안", "string", ["", "01 규정", "02 교육", "02 교육/하위"]], "KIDX-08 hq 읽기 · dirs[0] = 뿌리 · 폴더 경로 정렬");
+eq(r.files, [[0, "00 안내.pdf", 10, "2026-03-02", null], [1, "점검표.xlsx", 1200, D, null], [2, "교안.PDF", 7, D, "d-kx1"], [2, "대기.pdf", 8, D, null], [3, "깊은.hwp", 3, D, null]],
+  "KIDX-08 files = [폴더 번호, 이름, 크기, 한국 날짜, 활성 연결 기준선(ok)의 H 문서 | null](멈춘 연결 · 기준선 아닌 줄은 null)");
+await as("a1", "admin");
+eq((await rpc("semis_logi_kidx_list")).files.length, 5, "KIDX-08 시스템관리자도 읽음");
+eq((await ks({ excludes: ["01 규정"] })).ok, true, "KIDX-08 뺄 폴더 저장");
+await as("h1", "hq");
+r = await rpc("semis_logi_kidx_list");
+eq([r.dirs, r.files.map(f => [f[0], f[1]])], [["", "02 교육", "02 교육/하위"], [[0, "00 안내.pdf"], [1, "교안.PDF"], [1, "대기.pdf"], [2, "깊은.hwp"]]],
+  "KIDX-08 뺄 폴더 아래는 다음 걷기 전에도 바로 빠짐(번호도 다시 매김)");
+await as(null);
+eq((await kx("begin")).ok, true, "KIDX-08 begin");
+r = await kx("rows", { items: [["01 규정/새.pdf", 0, 1, T], ["01 규정", 1, null, null], ["03 새", 1, null, null]] });
+eq([r.accepted, r.rejected], [1, 2], "KIDX-08 뺄 폴더 그 자체 · 아래 줄은 rows 에서 거절");
+
+// KIDX-09 hello — 에이전트가 걸을 설정(on · root · excludes)만, 윈도 경로는 보내지 않음
+r = await call("hello", {});
+eq([r.kidx, "win_root" in r.kidx], [{ on: true, root: "A/항공보안", excludes: ["01 규정"] }, false], "KIDX-09 hello 에 kidx on · root · excludes(win_root 없음)");
+
+// KIDX-10 빈 걷기 막기 — 색인에 파일 줄이 있는데 받은 줄에 파일이 하나도 없으면 empty · 아무것도 바꾸지 않음(빈 것처럼 보이는 마운트가 first_seen 을 지우지 않게)
+const k10 = await snap(), last10 = await one("select kidx_last::text from semis_logi_private.ksync_state");
+eq(await walk([["02 교육", 1, null, null], ["03 새", 1, null, null]]), { ok: false, error: "empty" }, "KIDX-10 폴더 줄만 → empty");
+eq(await walk([]), { ok: false, error: "empty" }, "KIDX-10 줄 없음 → empty");
+eq([await snap(), await one("select kidx_last::text from semis_logi_private.ksync_state")], [k10, last10], "KIDX-10 색인 · 마지막 기록 그대로");
+await db.exec("delete from semis_logi_private.kidx where not is_dir");
+r = await walk([["02 교육", 1, null, null]]);
+eq([r.ok, r.files, r.dirs], [true, 0, 1], "KIDX-10 색인에 파일 줄이 없으면 폴더만 받은 걷기도 덧씀");
+
+// KIDX-11 받는 중 줄 합계 상한 — begin 뒤 받은 줄(거절 포함)이 6만을 넘게 될 rows 는 bad · 아무것도 더하지 않음
+eq((await kx("begin")).ok, true, "KIDX-11 begin");
+await db.query("update semis_logi_private.kidx_stage_meta set sent = 59999 where agent_id = $1", [AG]);
+const sent11 = () => one("select sent from semis_logi_private.kidx_stage_meta where agent_id = $1", [AG]);
+eq(await kx("rows", { items: [["x1.pdf", 0, 1, T], ["x2.pdf", 0, 1, T]] }), { ok: false, error: "bad" }, "KIDX-11 59,999 + 2줄 → bad");
+eq([await stageN(), await sent11()], [[0, 1], 59999], "KIDX-11 받는 중 줄 · 받은 수 그대로");
+r = await kx("rows", { items: [["x1.pdf", 0, 1, T]] });
+eq([r.ok, r.accepted, await sent11()], [true, 1, 60000], "KIDX-11 6만 줄까지는 받음");
+
+// KIDX-12 뺄 폴더 정리 — 동기화 지정 제외와 같은 검사(앞뒤 공백 떼기 · 대소문자만 다른 것은 하나로)
+await as("a1", "admin");
+eq((await ks({ excludes: [" 80 개인정보 ", "80 개인정보", "Temp", "TEMP"] })).ok, true, "KIDX-12 저장");
+eq((await rpc("semis_logi_ksync_status")).state.kidx.excludes, ["80 개인정보", "Temp"], "KIDX-12 앞뒤 공백 · 대소문자만 다른 것은 하나로");
+
+// KIDX-13 색인 뿌리를 바꾸면 같은 저장에서 색인 · 받는 중 줄 · 마지막 기록을 비움(걷던 end 는 bad). 대소문자만 바꾸거나 다른 칸만 저장하면 그대로
+await as(null);
+r = await walk([["가.pdf", 0, 1, T], ["나", 1, null, null]]);
+eq([r.ok, r.files, r.dirs], [true, 1, 1], "KIDX-13 색인");
+const kxN = () => one("select count(*)::int from semis_logi_private.kidx");
+const last13 = () => one("select kidx_last is not null from semis_logi_private.ksync_state");
+await as("a1", "admin");
+eq((await ks({ on: true, root: "A/항공보안", excludes: [] })).ok, true, "KIDX-13 같은 뿌리로 저장");
+eq((await ks({ root: "a/항공보안" })).ok, true, "KIDX-13 대소문자만 바꿈");
+eq([await kxN(), await last13()], [2, true], "KIDX-13 같은 뿌리(대소문자 무시)면 색인 · 마지막 기록 그대로");
+await as(null);
+eq((await kx("begin")).ok, true, "KIDX-13 걷던 중 begin");
+await kx("rows", { items: [["가.pdf", 0, 1, T]] });
+await as("a1", "admin");
+eq((await ks({ root: "B/항공보안" })).ok, true, "KIDX-13 다른 뿌리로 저장");
+eq([await kxN(), await one("select count(*)::int from semis_logi_private.kidx_stage"), await one("select count(*)::int from semis_logi_private.kidx_stage_meta"), await last13()],
+  [0, 0, 0, false], "KIDX-13 뿌리를 바꾸면 색인 · 받는 중 줄(모든 에이전트) · 마지막 기록 비움");
+eq((await rpc("semis_logi_ksync_status")).state.kidx.root, "B/항공보안", "KIDX-13 새 뿌리 저장");
+await as(null);
+eq(await kx("end", { n: 1, err: [], ms: 1 }), { ok: false, error: "bad" }, "KIDX-13 옛 뿌리로 걷던 end → bad");
 await as("a1", "admin");
 }
 
