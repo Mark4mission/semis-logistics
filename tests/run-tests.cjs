@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/loginguard.js", "js/app.js", "js/argo-owl.js", "js/panel.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/preview.js", "js/preview-draw.js", "js/preview-cfb.js", "js/preview-xls.js", "js/preview-hwp.js", "js/docshelf.js", "js/kidx.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/board.js", "js/cares.js", "js/hazfind.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/contracts.js", "js/partners.js", "js/kcra.js", "js/seccases.js", "js/dissem.js", "js/roster.js", "js/learn-md.js", "js/learn.js", "js/scrstats.js", "js/usrescreen.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/docread.js", "js/desk.js", "js/argo.js", "js/selfcheck.js", "js/auddash.js", "js/hubhome.js", "js/ksync.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
+const FILES = ["js/loginguard.js", "js/app.js", "js/argo-owl.js", "js/panel.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/preview.js", "js/preview-draw.js", "js/preview-cfb.js", "js/preview-xls.js", "js/preview-hwp.js", "js/docshelf.js", "js/kidx.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/board.js", "js/cares.js", "js/hazfind.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/contracts.js", "js/partners.js", "js/kcra.js", "js/seccases.js", "js/dissem.js", "js/roster.js", "js/learn-md.js", "js/learn.js", "js/scrstats.js", "js/usrescreen.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/docread.js", "js/desk.js", "js/argo.js", "js/selfcheck.js", "js/auddash.js", "js/hubhome.js", "js/kfolder.js", "js/ksync.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -13235,6 +13235,144 @@ function makeServer(opts = {}) {
       eq(await e2.w.SemisSync.rpc("semis_logi_ksync_kidx_save", { p: { on: true } }).then(() => "ok", (x) => x.status), 403, "서버도 거절(42501)");
       eq(e.errors.length, 0, e.errors.join(" | "));
       e.Sync.stop(); e.w.close(); e2.Sync.stop(); e2.w.close();
+    });
+  }
+
+  /* ══════════ [KF] K드라이브 새 폴더 분류 추천(규칙 · AI — 화면 없이 계산만, 지어낸 분류 · 연결) ══════════ */
+  {
+    const KF_TG = [
+      { mod: "audit", label: "수검 대응", groups: [{ id: "gov", label: "국토부 · 지방항공청 보안점검" }, { id: "aeo", label: "AEO 인증 · 심사" }, { id: "misc", label: "기타" }] },
+      { mod: "inspection", label: "보안 기록부", groups: [{ id: "monthly", label: "월간 자체 보안점검" }, { id: "quarterly", label: "분기 자체 보안점검 · Self Audit" }, { id: "misc", label: "기타" }] }
+    ];
+    const KF_MAPS = [
+      { id: 11, k_path: "항공보안/04 수검/AEO", mod: "audit", grp: "aeo", since: "2025-08-01", state: "active" },
+      { id: 12, k_path: "항공보안/03 점검/월간", mod: "inspection", grp: "monthly", since: "2025-08-01", state: "active" }
+    ];
+    const kfCtx = (o) => Object.assign({ root: "항공보안", maps: KF_MAPS, targets: KF_TG, gone: [] }, o || {});
+    const kfEnv = () => { const e = makeEnv({ boot: false }); return { e, K: e.w.SemisKfolder }; };
+    const kfKey = (r) => r.kind + (r.mod ? " " + r.mod + "|" + r.grp : "");
+    await ta("KF01 tokens: 앞 번호 · (MM.DD) · 20NN · 끝 (SSI) 를 떼고 · , _ 공백으로 나눈 2글자 이상 소문자 낱말 · 정규식 글자에도 예외 없음", async () => {
+      const { e, K } = kfEnv();
+      eq(JSON.stringify(K.tokens("04 수검")), '["수검"]');
+      eq(JSON.stringify(K.tokens("(03.15) 현장 점검 2026")), '["현장","점검"]');
+      eq(JSON.stringify(K.tokens("위해물품·적발 (SSI)")), '["위해물품","적발"]');
+      eq(JSON.stringify(K.tokens("AEO_심사,결과 x")), '["aeo","심사","결과"]');
+      eq(JSON.stringify(K.tokens("a[b+(c)")), '["a[b+(c)"]');
+      eq(K.recommend("a[b+(c)/x(y*", kfCtx()).kind, "none", "정규식 글자가 든 경로도 계산");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.w.close();
+    });
+    await ta("KF02 ssiOf: 마디 하나라도 끝이 (SSI)(대소문자 · 앞뒤 공백 무시)", async () => {
+      const { e, K } = kfEnv();
+      eq(K.ssiOf("04 수검/지방청 점검 (SSI)/2026"), true);
+      eq(K.ssiOf("a/b (ssi)  "), true);
+      eq(K.ssiOf("a/SSI 자료"), false);
+      e.w.close();
+    });
+    await ta("KF03 이름 · 동의어: 폴더 이름 낱말이 분류 이름에 맞으면 link — 국토부 ↔ 국토교통부, 이유에 분류 이름", async () => {
+      const { e, K } = kfEnv();
+      const a = K.recommend("04 수검/지방항공청 점검", kfCtx());
+      eq(kfKey(a), "link audit|gov"); eq(a.label, "수검 대응 › 국토부 · 지방항공청 보안점검"); eq(a.by, "rule"); ok(!a.map, "빈 분류엔 연결 없음");
+      const b = K.recommend("04 수검/국토교통부 보안점검", kfCtx());
+      eq(kfKey(b), "link audit|gov");
+      ok(b.reason.indexOf("분류 '국토부 · 지방항공청 보안점검'") >= 0 && b.reason.indexOf("국토교통부") >= 0, "이유: " + b.reason);
+      eq(kfKey(K.recommend("04 수검/지방항공청의 자료", kfCtx())), "link audit|gov", "조사 뗀 꼴");
+      e.w.close();
+    });
+    await ta("KF04 이웃: 같은 업무 폴더의 다른 연결이 쓰는 화면으로 기울어짐", async () => {
+      const { e, K } = kfEnv();
+      const a = K.recommend("03 점검/분기 점검", kfCtx());
+      eq(kfKey(a), "link inspection|quarterly"); ok(/같은 업무 폴더의 다른 연결이 이 화면/.test(a.reason), a.reason);
+      eq(kfKey(K.recommend("09 공통/점검", kfCtx({ maps: [] }))), "link audit|gov", "이웃 없으면 이름 점수만(같으면 앞 화면)");
+      const nb = [{ id: 13, k_path: "항공보안/09 공통/분기", mod: "inspection", grp: "quarterly", since: "", state: "active" }];
+      eq(kfKey(K.recommend("09 공통/점검", kfCtx({ maps: nb }))), "link inspection|monthly", "같은 업무 폴더 연결의 화면");
+      const away = [{ id: 14, k_path: "다른공유/09 공통/분기", mod: "inspection", grp: "quarterly", since: "", state: "active" }];
+      eq(kfKey(K.recommend("09 공통/점검", kfCtx({ maps: away }))), "link audit|gov", "색인 뿌리 밖 연결은 이웃 아님");
+      e.w.close();
+    });
+    await ta("KF05 taken · moved: 맞는 분류를 다른 연결이 쓰면 taken(그 연결) · 그 연결의 K 폴더가 사라졌으면 moved", async () => {
+      const { e, K } = kfEnv();
+      const t = K.recommend("04 수검/AEO 2차", kfCtx());
+      eq(kfKey(t), "taken audit|aeo"); eq(JSON.stringify(t.map), JSON.stringify({ id: 11, k_path: "항공보안/04 수검/AEO" }));
+      ok(/'항공보안\/04 수검\/AEO' 폴더에 연결돼 있습니다/.test(t.reason), t.reason);
+      const m = K.recommend("04 수검/AEO 2차", kfCtx({ gone: [11] }));
+      eq(kfKey(m), "moved audit|aeo"); eq(m.map.id, 11); ok(/폴더 이름이 바뀐 것 같습니다/.test(m.reason), m.reason);
+      e.w.close();
+    });
+    await ta("KF06 기타: 이름이 맞는 분류가 없을 때만 이웃 화면의 기타 · 이웃도 없으면 none(다른 분류는 이웃 점수만으로 문턱을 넘지 못함)", async () => {
+      const { e, K } = kfEnv();
+      eq(kfKey(K.recommend("03 점검/양식", kfCtx())), "link inspection|misc");
+      const n = K.recommend("11 새업무/알수없음", kfCtx());
+      eq(kfKey(n), "none"); ok(!n.map && !n.label, "후보 없음"); eq(n.by, "rule"); ok(/^알맞은 분류가 없습니다/.test(n.reason), n.reason);
+      e.w.close();
+    });
+    await ta("KF07 기본값: 방향 언제나 k2h · 기준일 = 같은 맨 위 폴더 연결 최빈값 → 전체 최빈값 → 비움 · SSI = ssiOf", async () => {
+      const { e, K } = kfEnv();
+      const maps = KF_MAPS.concat(["정기", "수시", "외부"].map((n, i) => ({ id: 21 + i, k_path: "항공보안/05 교육/" + n, mod: "edu", grp: "g" + i, since: "2024-03-01", state: "active" })));
+      const a = K.recommend("04 수검/지방청 점검 (SSI)", kfCtx({ maps }));
+      eq(a.dir, "k2h"); eq(a.since, "2025-08-01", "같은 맨 위 폴더"); eq(a.ssi, true);
+      const b = K.recommend("11 새업무/알수없음", kfCtx({ maps }));
+      eq(b.dir, "k2h"); eq(b.since, "2024-03-01", "전체 최빈값"); eq(b.ssi, false);
+      const c = K.recommend("11 새업무/알수없음 (SSI)", kfCtx({ maps: [] }));
+      eq(c.dir, "k2h"); eq(c.since, "", "연결 없으면 비움"); eq(c.ssi, true);
+      const up = [{ id: 31, k_path: "항공보안/Ops/Daily", since: "2023-01-01" }, { id: 32, k_path: "항공보안/X/Y", since: "2022-01-01" }, { id: 33, k_path: "항공보안/X/Z", since: "2022-01-01" }];
+      eq(K.recommend("OPS/새 폴더", kfCtx({ maps: up })).since, "2023-01-01", "맨 위 폴더 비교는 대소문자 무시");
+      e.w.close();
+    });
+    await ta("KF08 applyAI: 빈 후보 키 → link('AI 추천: ') · 쓰인 키 → taken · moved · 모르는 키 · null → none", async () => {
+      const { e, K } = kfEnv();
+      const p = "11 새업무/알수없음 (SSI)", r0 = K.recommend(p, kfCtx());
+      const a = K.applyAI(p, { key: "audit|gov", reason: "점검 자료로 보임" }, kfCtx());
+      eq(kfKey(a), "link audit|gov"); eq(a.by, "ai"); eq(a.label, "수검 대응 › 국토부 · 지방항공청 보안점검");
+      ok(a.reason.indexOf("AI 추천: ") === 0 && a.reason.indexOf("점검 자료로 보임") > 0, a.reason);
+      eq([a.ssi, a.dir, a.since].join(), [r0.ssi, r0.dir, r0.since].join(), "SSI · 방향 · 기준일은 규칙과 같게");
+      const b = K.applyAI(p, { key: "inspection|monthly", reason: "월간" }, kfCtx());
+      eq(kfKey(b), "taken inspection|monthly"); eq(b.map.id, 12); eq(b.by, "ai"); ok(b.reason.indexOf("AI 추천: ") === 0);
+      eq(K.applyAI(p, { key: "inspection|monthly", reason: "월간" }, kfCtx({ gone: [12] })).kind, "moved");
+      for (const pk of [{ key: "nope|x", reason: "?" }, { key: null, reason: "없음" }, undefined]) {
+        const n = K.applyAI(p, pk, kfCtx());
+        eq(kfKey(n), "none", JSON.stringify(pk)); eq(n.by, "ai"); ok(/^알맞은 분류가 없습니다/.test(n.reason));
+      }
+      e.w.close();
+    });
+    await ta("KF09 ask: 본문 mode kfolder · 앞 10개 · x-semis-token · 결과 { 경로: { key, reason } } · cats 는 없는 aka · taken 을 키째 빼고 길이를 자름 · 실패 · 10초 넘김(가짜 타이머) → {}", async () => {
+      const { e, K } = kfEnv();
+      e.w.SemisSync.auth.token = () => "tok-kf";
+      const calls = [];
+      let reply = () => Promise.resolve({ ok: true, status: 200, json: async () => ({ ok: true, model: "m",
+        picks: [{ path: "11 새업무/p0", key: "audit|gov", reason: "점검" }, { path: "11 새업무/p1", key: null, reason: "없음" }] }) });
+      e.w.fetch = (u, o) => { calls.push({ u, o, body: JSON.parse(o.body) }); return reply(); };
+      const paths = Array.from({ length: 12 }, (_, i) => "11 새업무/p" + i);
+      const cs = K.cats(kfCtx());
+      eq(cs.map(c => c.key).join(), "audit|gov,audit|aeo,audit|misc,inspection|monthly,inspection|quarterly,inspection|misc");
+      eq(JSON.stringify(cs[1]), JSON.stringify({ key: "audit|aeo", label: "수검 대응 › AEO 인증 · 심사", taken: "04 수검/AEO" }), "쓰는 연결 = K 경로 끝 두 마디");
+      eq(JSON.stringify(cs[0]), JSON.stringify({ key: "audit|gov", label: "수검 대응 › 국토부 · 지방항공청 보안점검" }), "없는 값은 키째 뺌(null 이면 400)");
+      const long = K.cats({ root: "r", maps: [{ id: 1, k_path: "r/" + "가".repeat(150) + "/" + "나".repeat(150), mod: "audit", grp: "gov" }], targets: [{ mod: "audit", label: "수검 대응", groups: [{ id: "gov", label: "다".repeat(130), aka: "라".repeat(250) }] }], gone: [] })[0];
+      eq([long.label.length, long.aka.length, long.taken.length].join(), "120,200,200", "Edge 길이 제한");
+      const r = await K.ask(paths, cs);
+      eq(calls.length, 1); eq(calls[0].u, e.w.SemisSync.FN_ARGO); eq(calls[0].o.method, "POST");
+      eq(calls[0].o.headers["x-semis-token"], "tok-kf"); eq(calls[0].o.headers["Content-Type"], "application/json");
+      eq(calls[0].body.mode, "kfolder"); eq(calls[0].body.items.length, 10, "앞 10개만");
+      eq(JSON.stringify(calls[0].body.items[0]), '{"path":"11 새업무/p0"}'); eq(JSON.stringify(calls[0].body.cats), JSON.stringify(cs));
+      eq(JSON.stringify(r), JSON.stringify({ "11 새업무/p0": { key: "audit|gov", reason: "점검" }, "11 새업무/p1": { key: null, reason: "없음" } }));
+      reply = () => Promise.reject(new Error("net"));
+      eq(JSON.stringify(await K.ask(paths, cs)), "{}", "연결 실패");
+      reply = () => Promise.resolve({ ok: false, status: 500, json: async () => ({ ok: false, error: "busy" }) });
+      eq(JSON.stringify(await K.ask(paths, cs)), "{}", "서버 오류");
+      const st0 = e.w.setTimeout, late = [];
+      e.w.setTimeout = (fn, ms) => (ms === 10000 ? (late.push(fn), 0) : st0.call(e.w, fn, ms));
+      reply = () => new Promise(() => {});
+      const pend = K.ask(paths, cs);
+      await tick(5);
+      eq(late.length, 1, "10초 시계");
+      late[0]();
+      eq(JSON.stringify(await pend), "{}", "10초 넘김");
+      e.w.setTimeout = st0;
+      ok(calls[calls.length - 1].o.signal.aborted, "늦은 요청은 끊음");
+      e.w.SemisSync.auth.token = () => "";
+      const n0 = calls.length;
+      eq(JSON.stringify(await K.ask(paths, cs)), "{}"); eq(calls.length, n0, "세션 없으면 보내지 않음");
+      e.w.close();
     });
   }
 
