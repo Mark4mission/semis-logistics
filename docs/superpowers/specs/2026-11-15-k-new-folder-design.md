@@ -67,7 +67,7 @@
 에이전트 · Edge `semis-logi-ksync` 는 바꾸지 않는다 `(내 판단 — 계산은 모두 이미 있는 kidx 표로)`. 그래서 Mac 재설치 없음.
 
 - **열 · 표**:
-  - `ksync_state.kidx_base timestamptz` · `kidx_base_err jsonb`(경로 목록) — §4 기준선. `ksync_kidx_end` 가 §4 ⓐ · ⓑ 일 때 그 트랜잭션의 시각과 그 걷기의 `err` 로 적고, 그 밖의 덧쓰기에서는 `kidx_base_err` 아래 처음 들어오는 줄의 `first_seen` 을 `kidx_base` 로 적은 뒤 이번 `err` 에 없는 경로를 목록에서 뺀다. `semis_logi_ksync_kidx_save` 가 뿌리를 바꾸며 표를 비울 때 둘 다 비움(다음 첫 덧쓰기가 다시 적음).
+  - `ksync_state.kidx_base timestamptz` · `kidx_base_err jsonb`(경로 목록) — §4 기준선. `ksync_kidx_end` 가 §4 ⓐ · ⓑ 일 때 그 트랜잭션의 시각과 그 걷기의 `err` 로 적고, 그 밖의 덧쓰기에서는 `kidx_base_err` 아래 처음 들어오는 줄의 `first_seen` 을 `kidx_base` 로 적은 뒤, 목록을 '아직 안 읽힌 곳'으로 줄인다 — 남김 = 옛 목록 중 그 자신이나 위 폴더가 이번에도 `err` 인 것 + 이번 `err` 중 옛 목록 아래인 것(일부만 읽혀 좁아진 곳), 대소문자 무시로 하나씩(구현 리뷰 반영). `semis_logi_ksync_kidx_save` 가 뿌리를 바꾸며 표를 비울 때 둘 다 비움(다음 첫 덧쓰기가 다시 적음).
   - `semis_logi_private.kidx_ack(path text, act text check (act in ('skip','seen')), at timestamptz, by text)` · `unique (lower(path))` — 처리 기록(색인 뿌리 기준 경로). RLS 켜고 public · anon · authenticated 권한 없음(다른 ksync 표와 같게). 뿌리를 바꾸면 함께 비움. 경로가 `kidx` 에서 사라진 처리 기록은 `ksync_kidx_end` 가 지워 표가 자라지 않게 한다.
 - **계산 함수** `ksync_newdirs(p_limit int)`(내부 — 아래 두 RPC 가 씀): §4 의 종류 · 처리됨 · 묶음을 한 번에 계산해 `{ base, at, n, n_link, items[], gone[] }`.
   - `items[]` = `{ path, first_seen, cls: 'link'|'top'|'out'|'auto'|'excl', part, unit(단위 둘째 폴더 경로 — `out` 일 때), unit_skip(그 둘째 폴더가 [연결 안 함]), unit_part, more(아래 같은 단위의 처리 안 된 새 폴더 수), files(아래 모든 파일 수), bytes(아래 모든 파일 크기 합), bytes50(50MB 이하 파일만 합 — 올라갈 수 있는 최대), map: { id, k_path, mod, grp, state, dir } | null(auto · 연결 '뺄 폴더' excl 일 때 그 연결), excl: 제외 경로 | null }`. 정렬: `link` → `top` → `out` → `auto` · `excl`, 그 안에서 `first_seen` 최근 순.
