@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/loginguard.js", "js/app.js", "js/argo-owl.js", "js/panel.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/preview.js", "js/preview-draw.js", "js/preview-cfb.js", "js/preview-xls.js", "js/preview-hwp.js", "js/docshelf.js", "js/kidx.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/tasks-core.js", "js/board.js", "js/cares.js", "js/hazfind.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/contracts.js", "js/partners.js", "js/kcra.js", "js/seccases.js", "js/dissem.js", "js/roster.js", "js/learn-md.js", "js/learn.js", "js/scrstats.js", "js/usrescreen.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/docread.js", "js/desk.js", "js/argo.js", "js/selfcheck.js", "js/auddash.js", "js/hubhome.js", "js/ksync.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
+const FILES = ["js/loginguard.js", "js/app.js", "js/argo-owl.js", "js/panel.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/preview.js", "js/preview-draw.js", "js/preview-cfb.js", "js/preview-xls.js", "js/preview-hwp.js", "js/docshelf.js", "js/kidx.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/tasks-core.js", "js/tasks.js", "js/board.js", "js/cares.js", "js/hazfind.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/contracts.js", "js/partners.js", "js/kcra.js", "js/seccases.js", "js/dissem.js", "js/roster.js", "js/learn-md.js", "js/learn.js", "js/scrstats.js", "js/usrescreen.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/docread.js", "js/desk.js", "js/argo.js", "js/selfcheck.js", "js/auddash.js", "js/hubhome.js", "js/ksync.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -811,7 +811,7 @@ function makeServer(opts = {}) {
       const sec = rows.find(r => r.id === "hub-sec");
       eq(n(sec), "6/7", "화물보안 대시보드 · 보안검색 현황 · 검색장비 · 보안 처리 대장 · 상용화주 · 협력사 운영 / 출입 예정");
       const home = rows.find(r => r.id === "hub-home");
-      eq(n(home), "5/5", "대시보드 · 일정 · 회의록 · 운항 현황 · 바로가기 (메인 데스크는 v1.48 부터 지원 카드 · 패널)");
+      eq(n(home), "6/6", "대시보드 · 일정 · Task 관리 · 회의록 · 운항 현황 · 바로가기 (메인 데스크는 v1.48 부터 지원 카드 · 패널)");
       const aud = rows.find(r => r.id === "hub-aud");
       eq(n(aud), "8/8", "대시보드 + 탭 묶음 속 6 + 교육 전파 · 서명");
       const ops = rows.find(r => r.id === "hub-ops");
@@ -10759,8 +10759,9 @@ function makeServer(opts = {}) {
       const e = makeEnv();
       loginAs(e, "user");
       e.S.data.boards.push(e.S.normBoard({ id: "B004", name: "파트 내부", read: "hq", write: "hq" }));
-      e.S.data.menus.push({ id: "bbs-B004", seq: 9.5, type: "board", label: "파트 내부", board: "B004", vis: "all", parent: "hub-bbs" },
-        { id: "bbs-B099", seq: 9.6, type: "board", label: "없는 게시판", board: "B099", vis: "all", parent: "hub-bbs" });
+      const s3 = e.S.data.menus.find(m => m.id === "bbs-B003").seq;   // 시드 메뉴가 늘면 seq 가 밀리므로 B003 뒤로 잡는다
+      e.S.data.menus.push({ id: "bbs-B004", seq: s3 + .5, type: "board", label: "파트 내부", board: "B004", vis: "all", parent: "hub-bbs" },
+        { id: "bbs-B099", seq: s3 + .6, type: "board", label: "없는 게시판", board: "B099", vis: "all", parent: "hub-bbs" });
       e.S.renderNav();
       const items = () => qa(e, '#nav-menu .hub[data-hub="hub-bbs"] .nav-item').map(b => b.dataset.route).join(",");
       eq(items(), "board/B001,board/B002,board/B003", "user");
@@ -14647,6 +14648,198 @@ function makeServer(opts = {}) {
       ok(/^tk_[a-z0-9]{10}$/.test(m.id), m.id); eq([m.src, m.by, m.upBy, m.done, m.t, m.due].join("|"), "argo|Thq|Thq|false|새 일|2026-11-20");
       ok(m.at && m.at === m.upAt, "만든 때 = 고친 때");
       e.S.data.roster.people.splice(1, 1); ok(!TK.meInPart(), "계정 이름이 파트 명단에 없으면 '나' 없음");
+    });
+
+    /* ── 화면(js/tasks.js) — 같은 창을 그대로 쓴다(시험 묶음 메모리) ── */
+    const Rs = e.w.SemisRoster;
+    const byId = (id) => e.S.data.tasks.find(x => x.id === id);
+    const fire = (el, type) => el.dispatchEvent(new e.w.Event(type, { bubbles: true }));
+    const enter = (el, o) => el.dispatchEvent(new e.w.KeyboardEvent("keydown", Object.assign({ key: "Enter", bubbles: true, cancelable: true }, o || {})));
+    const typeQ = (s) => { const qi = q(e, "#tk-quick"); qi.value = s; fire(qi, "input"); return qi; };
+    const ids = (sel) => qa(e, sel).map(r => r.dataset.id).join();
+    const last = () => e.S.data.tasks[e.S.data.tasks.length - 1];
+    const pressed = () => qa(e, "#tk-qprev [data-qwho][aria-pressed=true]").map(b => b.dataset.qwho).join();
+    const statOf = (lb) => qa(e, "#tk-stats .stat").find(x => x.querySelector(".stat-label").textContent === lb);
+    const sv = (lb) => { const s = statOf(lb); return s ? s.querySelector(".stat-value").textContent : ""; };
+    /* 지난 · 오늘 · 날짜 없음 2(별표 하나) · 마침 1, 명단 = 안전보안파트 Thq(시험 hq 계정 이름) · 가나다 · 라마바 */
+    const tkSeed = () => {
+      e.S.data.roster = { team: "", orgs: [], people: [
+        { id: "p1", name: "Thq", org: Rs.SELF, part: "안전보안파트" }, { id: "p2", name: "가나다", org: Rs.SELF, part: "안전보안파트" },
+        { id: "p3", name: "라마바", org: Rs.SELF, part: "안전보안파트" }] };
+      e.S.data.tasks = [
+        { id: "tk_late", t: "지난 회신", due: "2026-11-15", who: ["가나다"] },
+        { id: "tk_today", t: "오늘 점검", due: "2026-11-18", time: "15:00", place: "2층 회의실", who: ["Thq"] },
+        { id: "tk_none", t: "날짜 없는 일", who: ["라마바"] },
+        { id: "tk_done", t: "마친 일", due: "2026-11-17", done: true, doneAt: "2026-11-17T01:00:00Z", doneBy: "가나다" },
+        { id: "tk_star", t: "중요한 일", star: true }
+      ].map(x => TK.norm(x));
+      TK.setState({ reset: true, who: "*" });
+      go(e, "tasks");
+    };
+    t("TK11 메뉴 · 모듈: 홈 허브 일정관리 다음 · 안전보안파트 · 머리말 주 단추 하나 · 약어 풀이", () => {
+      const mn = e.S.menuForModule("tasks");
+      ok(mn, "메뉴"); eq(mn.parent + "|" + mn.vis + "|" + mn.label, "hub-home|hq|Task 관리");
+      ok(e.S.hasModule("tasks") && e.S.navVisible(mn), "hq 보임");
+      e.S.renderNav();
+      eq(qa(e, '#nav-menu .hub[data-hub="hub-home"] .hub-items .nav-item').map(b => b.dataset.route).slice(0, 2).join(), "schedule,tasks");
+      e.S.data.menus = e.S.data.menus.filter(m => m.module !== "tasks"); e.S.normalizeData();
+      const m2 = e.S.menuForModule("tasks"), sch = e.S.menuForModule("schedule"), mi = e.S.menuForModule("minutes");
+      ok(m2 && m2.parent === "hub-home" && m2.seq > sch.seq && m2.seq < mi.seq, "운영 데이터에 없으면 ensureSeedMenus 가 일정관리 뒤에");
+      ok(/할 일/.test(e.S.glossOf("Task 관리")) && !e.S.glossOf("Tasks"), "약어 풀이");
+      tkSeed();
+      const pb = qa(e, "#view .page-head .btn-primary");
+      eq(pb.length, 1); eq(pb[0].id + "|" + pb[0].textContent.trim(), "tk-add|할 일 추가");
+      ok(q(e, "#view .page-head #tk-meet"), "회의 모드 단추");
+      ok(!qa(e, "#view button").some(b => /\p{Extended_Pictographic}/u.test(b.textContent)), "단추에 그림 문자 없음");
+      e.S.tidyView(); ok(q(e, "#view .page-head .term-tip"), "제목 ⓘ");
+    });
+    t("TK12 묶음 · 순서: 지난 일 · 오늘 · 날짜 없음(빈 묶음 숨김) · 별표 위 · 지난 줄 · 날짜 칩 · 줄 접근성", () => {
+      tkSeed();
+      eq(qa(e, "#tk-list .tk-bl").map(x => x.textContent).join(), "지난 일,오늘,날짜 없음");
+      eq(ids('#tk-list .tk-grp[data-b="none"] .tk-row'), "tk_star,tk_none", "별표가 위");
+      ok(q(e, '.tk-row[data-id="tk_late"]').classList.contains("tk-late") && !q(e, '.tk-row[data-id="tk_today"]').classList.contains("tk-late"));
+      eq(q(e, '.tk-row[data-id="tk_late"] .tk-due').textContent, "3일 지남"); eq(q(e, '.tk-row[data-id="tk_today"] .tk-due').textContent, "오늘 15:00");
+      ok(!q(e, '#tk-list [data-id="tk_done"]'), "마친 일은 할 일 탭에 없음");
+      eq(q(e, '[data-ct-tab="todo"]').textContent, "할 일 4");
+      const row = q(e, '.tk-row[data-id="tk_today"]'), cb = row.querySelector("input.tk-chk"), tb = row.querySelector("button.tk-t");
+      eq(cb.type, "checkbox"); eq(cb.getAttribute("aria-labelledby"), tb.id); eq(tb.type + "|" + tb.textContent, "button|오늘 점검");
+      ok(!row.hasAttribute("role") && !row.hasAttribute("tabindex"), "줄 상자에 role · tabindex 없음");
+      ok(row.textContent.includes("2층 회의실") && row.textContent.includes("Thq") && row.querySelector(".tk-dot.ev-" + TK.personColor("Thq")), "장소 · 담당 칩(사람 색 + 이름)");
+      ok(row.querySelector(".tk-cat.ev-" + TK.CATS[TK.catOf(byId("tk_today"))].color), "분류 아이콘 색");
+      const ed0 = TK.edit, got = [];
+      try {
+        TK.edit = (id) => got.push(id);
+        tb.click(); row.querySelector(".tk-due").click();
+        eq(got.join(), "tk_today,tk_today", "제목 단추 · 줄 상자 누름 = 고치기 창(있을 때)");
+      } finally { if (ed0) TK.edit = ed0; else delete TK.edit; }
+    });
+    t("TK13 체크 → 빠짐 · 되돌리기 · 입력칸은 그대로", () => {
+      tkSeed();
+      const qi = q(e, "#tk-quick"), qs = q(e, "#tk-q");
+      eq(sv("오늘"), "1");
+      q(e, '.tk-row[data-id="tk_today"] .tk-chk').click();
+      const x = byId("tk_today");
+      eq(x.done + "|" + x.doneBy + "|" + x.upBy, "true|Thq|Thq"); ok(x.doneAt, "마친 때");
+      ok(!q(e, '#tk-list [data-id="tk_today"]'), "목록에서 빠짐");
+      eq(q(e, '[data-ct-tab="todo"]').textContent + "|" + sv("오늘"), "할 일 3|0", "탭 건수 · 요약");
+      ok(q(e, "#tk-quick") === qi && q(e, "#tk-q") === qs, "입력칸 노드 그대로");
+      const act = qa(e, "#toast-wrap .toast-act").pop();
+      ok(act && act.textContent === "되돌리기", "알림 되돌리기");
+      act.click();
+      eq(x.done + "|" + x.doneAt + "|" + x.doneBy, "false||", "되돌림");
+      ok(q(e, '#tk-list [data-id="tk_today"]'), "다시 보임");
+      ok(e.S.data.tasks.every(t2 => JSON.stringify(TK.norm(t2)) === JSON.stringify(t2)), "저장 모양 = 정규화 모양");
+    });
+    t("TK14 빠른 입력 · 미리보기 · 한글(같은 입력칸 · 포커스)", () => {
+      tkSeed();
+      const qi = q(e, "#tk-quick"); qi.focus();
+      typeQ("내일 오후 3시 보안교육 자료 제출");
+      const pv = q(e, "#tk-qprev").textContent;
+      ok(pv.includes("11-19") && pv.includes("15:00"), pv);
+      eq(qa(e, "#tk-qprev [data-qwho]").map(b => b.dataset.qwho + ":" + b.getAttribute("aria-pressed")).join(), "Thq:true,가나다:false,라마바:false");
+      const n0 = e.S.data.tasks.length;
+      enter(qi, { isComposing: true }); eq(e.S.data.tasks.length, n0, "조합 중 Enter 는 무시");
+      enter(qi);
+      eq(e.S.data.tasks.length, n0 + 1);
+      const nt = last();
+      eq(JSON.stringify([nt.t, nt.due, nt.time, nt.who, nt.src, nt.by]), JSON.stringify(["보안교육 자료 제출", "2026-11-19", "15:00", ["Thq"], "", "Thq"]));
+      ok(q(e, "#tk-quick") === qi && qi.value === "" && e.w.document.activeElement === qi, "같은 입력칸 · 비움 · 포커스");
+      eq(q(e, "#tk-qprev").textContent, "", "미리보기 비움");
+      ok(q(e, '#tk-list [data-id="' + nt.id + '"]'), "목록에 보임");
+      typeQ("   "); enter(qi); eq(e.S.data.tasks.length, n0 + 1, "빈 글 무시");
+    });
+    t("TK15 담당 기본값 · 바로 바꾸기 · 칩 기억", () => {
+      tkSeed();
+      eq(qa(e, "#tk-who [data-who]").map(b => b.dataset.who).join(), "*,me,가나다,라마바", "전체 · 나 · 파트 사람(내 이름은 '나')");
+      eq(q(e, "#tk-who [aria-pressed=true]").dataset.who, "*");
+      q(e, '#tk-who [data-who="가나다"]').click();
+      eq(ids("#tk-list .tk-row"), "tk_late", "가나다 담당만");
+      eq(e.S.navPrefs().tkWho, "가나다", "계정별 기억");
+      const qi = q(e, "#tk-quick");
+      typeQ("a"); eq(pressed(), "가나다", "고른 칩 사람");
+      enter(qi); eq(last().who.join(), "가나다");
+      typeQ("라마바 확인"); enter(qi); eq(last().who.join(), "라마바", "글 속 이름 우선");
+      typeQ("b"); q(e, '#tk-qprev [data-qwho="라마바"]').click();
+      eq(pressed(), "가나다,라마바", "누르면 바로 켜짐");
+      typeQ("bc"); eq(pressed(), "가나다,라마바", "누른 것은 글을 더 써도 유지");
+      enter(qi); eq(last().who.join(), "가나다,라마바", "누른 대로");
+      typeQ("c"); eq(pressed(), "가나다", "추가 뒤 기본값으로");
+      q(e, "#tk-qadd").click(); eq(last().t + "|" + last().who.join(), "c|가나다", "[추가] 단추");
+      ok(qi.value === "" && e.w.document.activeElement === qi, "추가 단추 뒤에도 입력칸 포커스");
+      q(e, '#tk-who [data-who="me"]').click();
+      const rows = qa(e, "#tk-list .tk-row");
+      ok(rows.length && rows.every(r => byId(r.dataset.id).who.indexOf("Thq") >= 0), "나 = 계정 이름 담당만");
+      TK.setState({ reset: true }); go(e, "tasks");
+      eq(q(e, "#tk-who [aria-pressed=true]").dataset.who, "me", "다시 열어도 고른 칩");
+      q(e, '#tk-who [data-who="*"]').click();
+    });
+    t("TK16 명단 밖 · 명단 없음 — 칩 = 전체 + 할 일에 적힌 이름 · 담당 비움", () => {
+      e.S.data.roster = { team: "", orgs: [], people: [] };
+      e.S.data.tasks = [TK.norm({ id: "tk_x", t: "명단 밖 일", who: ["사아자"] })];
+      TK.setState({ reset: true, who: "*" }); go(e, "tasks");
+      ok(!TK.meInPart(), "'나' 전제 어긋남");
+      eq(qa(e, "#tk-who [data-who]").map(b => b.dataset.who).join(), "*,사아자", "'나' 칩 없음");
+      ok(q(e, '#tk-list [data-id="tk_x"]'), "명단 밖 담당 할 일도 보임");
+      const qi = typeQ("a"); eq(qa(e, "#tk-qprev [data-qwho]").length, 0, "명단이 없으면 담당 칩 없음");
+      enter(qi); eq(JSON.stringify(last().who), "[]", "담당 비움");
+      q(e, '#tk-who [data-who="사아자"]').click(); typeQ("b");
+      eq(pressed(), "사아자", "고른 칩이 명단 밖 이름이어도 기본 담당");
+      TK.setState({ who: "*" });
+    });
+    t("TK17 마친 일 탭: 체크 켜진 채 · 끄면 다시 할 일 · 마친 날 묶음 · 100줄 + 더 보기", () => {
+      tkSeed();
+      q(e, '[data-ct-tab="done"]').click();
+      const cb = q(e, '#tk-list .tk-row[data-id="tk_done"] .tk-chk');
+      ok(cb && cb.checked, "켜진 채");
+      ok(!q(e, '#tk-list [data-id="tk_late"]'), "할 일은 없음");
+      eq(qa(e, "#tk-list .tk-bl").map(x => x.textContent).join(), "이번 주");
+      cb.click();
+      const x = byId("tk_done"); eq(x.done + "|" + x.doneAt + "|" + x.doneBy, "false||");
+      ok(!q(e, '#tk-list [data-id="tk_done"]'), "마친 일에서 빠짐");
+      e.S.data.tasks = Array.from({ length: 101 }, (_, i) => TK.norm({ id: "tk_d" + i, t: "마친 " + i, done: true, doneAt: new Date(Date.UTC(2026, 10, 18) - i * 3 * 3600e3).toISOString(), doneBy: "Thq" }));
+      TK.setState({ tab: "done" }); go(e, "tasks");
+      eq(qa(e, "#tk-list .tk-row").length, 100); eq(q(e, "#tk-list .tk-row").dataset.id, "tk_d0", "최근 순");
+      const mb = q(e, "#tk-list .tk-showmore"); ok(mb && mb.textContent.trim() === "더 보기", "더 보기");
+      mb.click(); eq(qa(e, "#tk-list .tk-row").length, 101); ok(!q(e, "#tk-list .tk-showmore"));
+      eq(qa(e, "#tk-list .tk-bl").map(x2 => x2.textContent).join(), "오늘,이번 주,그 전");
+    });
+    t("TK18 검색칸: 낱말 모두 포함 · 같은 입력칸(repaintKeep)", () => {
+      tkSeed();
+      const s = q(e, "#tk-q"), qi = q(e, "#tk-quick");
+      s.value = "회의실"; fire(s, "input");
+      eq(ids("#tk-list .tk-row"), "tk_today");
+      ok(q(e, "#tk-q") === s && q(e, "#tk-quick") === qi, "같은 입력칸");
+      s.value = "회의실 가나다"; fire(s, "input"); eq(qa(e, "#tk-list .tk-row").length, 0, "낱말 모두"); ok(q(e, "#tk-list .empty-state"));
+      s.value = "회의ㅅ"; fire(s, "input"); eq(ids("#tk-list .tk-row"), "tk_today", "끝 자모는 떼고");
+      q(e, '[data-ct-tab="done"]').click(); ok(q(e, "#tk-q") === s, "탭을 바꿔도 같은 검색칸");
+      s.value = ""; fire(s, "input"); eq(ids("#tk-list .tk-row"), "tk_done");
+    });
+    t("TK19 배지 · 요약: 지난 + 오늘 수 · 다 마치면 숨김 · 지난 일 칸 경고", () => {
+      tkSeed();
+      const mn = e.S.menuForModule("tasks");
+      eq(e.S.navBadgeOf(mn), "2");
+      eq([sv("할 일"), sv("오늘"), sv("지난 일"), sv("이번 주 마친 일")].join("|"), "4|1|1|1");
+      ok(statOf("지난 일").classList.contains("tone-bad"), "지난 일 경고");
+      e.S.data.tasks.filter(x => !x.done).forEach(x => TK.setDone(x.id, true));
+      eq(e.S.navBadgeOf(mn), "", "다 마치면 숨김");
+      eq(sv("지난 일"), "0"); ok(!statOf("지난 일").classList.contains("tone-bad"));
+      ok(q(e, "#tk-list .empty-state") && q(e, "#tk-list").textContent.includes("할 일이 없습니다."), "빈 화면");
+    });
+    t("TK20 권한: manager · user · 서명 세션 · 협력업체(편집 허용 포함) — 메뉴 · 화면 없음", () => {
+      try {
+        ["manager", "user", "signer"].forEach(r => {
+          loginAs(e, r); e.S.renderNav();
+          ok(!q(e, '#nav-menu [data-route="tasks"]') && !TK.canUse(), r + " 메뉴");
+          if (r !== "signer") ok(!e.S.navVisible(e.S.menuForModule("tasks")), r + " navVisible");
+          go(e, "tasks"); ok(!q(e, "#tk-list"), r + " 화면");
+        });
+        e.S.VENDOR_ACCESS["○○조업"] = { routes: ["dashboard"], links: [], edit: true, confid: false };
+        loginAs(e, "vendor"); e.S.renderNav();
+        ok(!q(e, '#nav-menu [data-route="tasks"]') && !TK.canUse(), "vendor 메뉴");
+        go(e, "tasks"); ok(!q(e, "#tk-list"), "vendor 화면");
+        e.S.VENDOR_ACCESS["○○조업"].routes.push("tasks");
+        go(e, "tasks"); ok(!q(e, "#tk-list") && q(e, "#view").textContent.includes("볼 수 있는 권한이 없습니다"), "허용 경로에 넣어도 화면 첫 줄이 막음");
+      } finally { delete e.S.VENDOR_ACCESS["○○조업"]; loginAs(e, "hq"); }
     });
     e.w.close();
   }

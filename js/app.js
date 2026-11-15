@@ -238,6 +238,7 @@ const SeMIS = (() => {
 
       h("hub-home", "홈", "home"),
       m("schedule", "일정관리", "📅", "schedule", "mgr", "hub-home"),
+      m("tasks", "Task 관리", "✅", "tasks", "hq", "hub-home"),
       m("minutes", "회의록", "🗒️", "minutes", "mgr", "hub-home"),
       m("flight", "운항 현황", "✈️", "flight", "all", "hub-home"),
       m("shortcuts", "바로가기", "🔗", "shortcuts", "all", "hub-home"),
@@ -708,7 +709,8 @@ const SeMIS = (() => {
     [/하드카피/, "하드카피", "종이 점검표 · 대장 — 디지털화 전 점검은 종이 대장을 보고 집계만 입력"],
     [/\bSSI\b/, "SSI", "민감보안정보 — 열람 · 취급이 제한되는 정보(안전보안파트 이상만 원문)"],
     [/CARES/, "CARES", "보안장비 고장신고 · 관리 시스템(별도 사이트)"],
-    [/\bDIP\b/, "DIP", "외교행낭 — 정해진 조건에서 개봉검색 면제 처리"]
+    [/\bDIP\b/, "DIP", "외교행낭 — 정해진 조건에서 개봉검색 면제 처리"],
+    [/\bTask\b/, "Task", "할 일 — 안전보안파트가 함께 보고 마치면 체크하는 목록"]
   ];
   function glossOf(text) {
     const s = String(text || "");

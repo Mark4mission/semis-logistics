@@ -7094,3 +7094,51 @@ button.chip-title:focus-visible, button.calm-body:focus-visible { outline: 2px s
   .ur-bar .seg:not(.ur-mseg), .ur-ynav .icon-btn, .ur-dirty { display: none !important; }
   .ur-tblv { display: none; }
 }
+
+/* ── Task 관리(js/tasks.js) — 빠른 입력 · 담당자 칩 · 기한 묶음 줄(체크 28px). 분류 · 사람 색은 일정 12색(.ev-*) 그대로 ── */
+.tk-quick { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.tk-qrow { display: flex; gap: 8px; }
+#tk-quick { flex: 1; min-width: 0; min-height: 44px; padding: 0 14px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); font-size: 1rem; }
+#tk-quick:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+.tk-qrow .btn { min-height: 44px; }
+.tk-qprev { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.tk-qprev:empty { display: none; }
+.tk-qc { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 999px; background: var(--primary-soft); color: var(--primary-dark); font-size: .86rem; font-weight: 600; white-space: nowrap; }
+.tk-qwho { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.tk-qwl { font-size: .86rem; color: var(--text-3); }
+.tk-qw { display: inline-flex; align-items: center; min-height: 30px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: 999px; background: var(--surface); color: var(--text-2); font-size: .86rem; font-weight: 600; white-space: nowrap; }
+.tk-qw[aria-pressed="true"] { background: var(--primary-soft); border-color: var(--primary); color: var(--primary-dark); }
+.tk-qw:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.tk-whoseg { margin-bottom: 12px; }
+.tk-dot { display: inline-block; flex-shrink: 0; width: 9px; height: 9px; margin-right: 6px; border-radius: 50%; vertical-align: middle; }
+.tk-grp + .tk-grp { margin-top: 16px; }
+.tk-bh { display: flex; align-items: baseline; gap: 8px; margin: 0; padding-bottom: 4px; border-bottom: 1px solid var(--hair); font-size: .92rem; font-weight: 700; color: var(--text-2); white-space: nowrap; }
+.tk-grp[data-b="late"] .tk-bh { color: var(--danger); }
+.tk-grp[data-b="today"] .tk-bh { color: var(--accent-dark); }
+.tk-bn { font-weight: 600; color: var(--text-3); }
+.tk-rows { list-style: none; margin: 0; padding: 0; }
+.tk-row { display: grid; grid-template-columns: 28px 22px minmax(0, 1fr); align-items: start; gap: 0 10px; padding: 10px 8px; border-bottom: 1px solid var(--hair); cursor: pointer; }
+.tk-row.tk-late { box-shadow: inset 3px 0 0 var(--danger); }
+.tk-chk { width: 28px; height: 28px; margin: 0; accent-color: var(--primary); cursor: pointer; }
+.tk-row .tk-cat { display: inline-flex; align-items: center; justify-content: center; height: 28px; background: none; box-shadow: none; color: var(--evc); }
+.tk-body { min-width: 0; }
+.tk-t { display: block; max-width: 100%; padding: 2px 0; border: 0; background: none; color: var(--text); font-size: 1rem; font-weight: 600; line-height: 1.5; text-align: left; cursor: pointer; }
+.tk-tt { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; white-space: pre-line; overflow-wrap: break-word; }
+.tk-row.tk-done .tk-t { color: var(--text-3); text-decoration: line-through; }
+.tk-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 3px; font-size: .86rem; color: var(--text-2); }
+.tk-due { padding: 1px 8px; border-radius: 4px; background: var(--surface-2); font-weight: 600; white-space: nowrap; }
+.tk-d-late { background: var(--danger-soft); color: var(--danger); }
+.tk-d-today { background: var(--accent-soft); color: var(--accent-dark); }
+.tk-d-tomorrow, .tk-d-week { color: var(--text); }
+.tk-d-later, .tk-d-done { color: var(--text-3); }
+.tk-p { display: inline-flex; align-items: center; white-space: nowrap; }
+.tk-ic { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+.tk-ic .ico { color: var(--text-3); }
+.tk-star .ico { color: var(--accent-dark); }
+.tk-showmore { margin-top: 12px; }
+@media (hover: hover) and (pointer: fine) { .tk-row:hover { background: var(--surface-2); } }
+@media screen and (max-width: 767px) {
+  .tk-row { gap: 0 8px; padding: 10px 2px; }
+  .tk-row.tk-late { padding-left: 8px; }
+  .tk-meta { gap: 4px 10px; }
+}

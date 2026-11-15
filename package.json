@@ -5,7 +5,7 @@
   "description": "H:drive(별칭 ARGOS) — 에어제타 인천화물팀 안전보안 종합정보 플랫폼 (정적 웹앱, 구 SeMIS · Logistics)",
   "type": "commonjs",
   "scripts": {
-    "test": "node --max-old-space-size=3072 tests/run-tests.cjs",
+    "test": "node --max-old-space-size=4096 tests/run-tests.cjs",
     "bump": "node tools/bump-version.cjs",
     "argo:guide": "node tools/build-argo-guide.cjs"
   },
