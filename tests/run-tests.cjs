@@ -12386,7 +12386,17 @@ function makeServer(opts = {}) {
       const deny = { __status: 403, body: { code: "42501", message: "semis_ksync_admin" } };
       const h = (name, fn) => { sv.rpc["semis_logi_ksync_" + name] = (b, o) => { k.calls.push({ name, b }); return sv.rankOf(o) >= 4 ? fn(b || {}) : deny; }; };
       h("status", () => ({ ok: true, now: k.now || new Date().toISOString(), state: k.state, agents: k.agents, maps: k.maps, last: k.runs[0] || null, today: "today" in k ? k.today : k.runs[0] || null, last_ok: k.lastOk || null,
-        counts: { hold: k.holds.length, ev_new: k.evNew, wait: k.files.length }, stale: k.stale, alert: k.alert || k.evNew > 0 }));
+        counts: { hold: k.holds.length, ev_new: k.evNew, wait: k.files.length }, stale: k.stale, newdirs: k.ndc,
+        alert: k.alert || k.evNew > 0 || !!(k.ndc && (k.ndc.n > 0 || k.ndc.gone > 0)) }));
+      // v1.74 새 K 폴더 — k.nd 가 없으면 마이그레이션 전(RPC 없음 → 404)
+      h("newdirs", () => (k.nd ? Object.assign({ ok: true, on: true, root: k.state.kidx.root, base: "2026-11-01T00:00:00Z", at: "2026-11-15T00:30:00Z",
+        n: (k.nd.items || []).length, n_link: 0, items: [], gone: [] }, k.nd) : { __status: 404, body: {} }));
+      h("newdir_ack", (b) => {
+        const p = b.p || {};
+        if (!Array.isArray(p.paths) || !p.paths.length || p.paths.length > 300 || ["skip", "seen"].indexOf(p.act) < 0) return { ok: false, error: "bad" };
+        if (k.nd && k.nd.items) k.nd.items = k.nd.items.filter(x => p.paths.indexOf(x.path) < 0);
+        return { ok: true, n: p.paths.length, skipped: 0 };
+      });
       h("pending", () => ({ ok: true, holds: k.holds, files: k.files, last: k.last }));
       h("runs", () => ({ ok: true, runs: k.runs }));
       h("events", (b) => {
@@ -12518,7 +12528,7 @@ function makeServer(opts = {}) {
         { id: 7, map: 1, rel_path: "c.xlsx", state: "conflict", note: "K 쪽이 늦게 고침" }, { id: 8, map: 1, rel_path: "big.zip", state: "skip", note: "too_large" }];
       ks.last = [{ m: 1, f: "run.bat", a: "skip", r: "type_block" }];
       await openTab(e);
-      eq(qa(e, "[data-ct-tabs=kspend] [data-ct-tab]").map(b => b.textContent).join("|"), "대량 변경 보류 1|삭제 대기 2|충돌 1|건너뜀 · 오류 2", "탭 건수");
+      eq(qa(e, "[data-ct-tabs=kspend] [data-ct-tab]").map(b => b.textContent).join("|"), "새 K 폴더|대량 변경 보류 1|삭제 대기 2|충돌 1|건너뜀 · 오류 2", "탭 건수(v1.74 새 K 폴더 칸이 맨 앞 — 목록 RPC 가 없으면 숫자 없음)");
       ok(/250건 \/ 맞춘 파일 300건/.test(q(e, '[data-ct-pane="kspend:hold"]').textContent), "보류 건수");
       q(e, '[data-ks-hold="approve"]').click(); clickOk(e); await tick(30);
       eq(JSON.stringify(ks.calls.filter(c => c.name === "hold").pop().b.p), '{"run_id":"41","act":"approve","map":"1"}', "승인");
@@ -13243,6 +13253,262 @@ function makeServer(opts = {}) {
       eq(await e2.w.SemisSync.rpc("semis_logi_ksync_kidx_save", { p: { on: true } }).then(() => "ok", (x) => x.status), 403, "서버도 거절(42501)");
       eq(e.errors.length, 0, e.errors.join(" | "));
       e.Sync.stop(); e.w.close(); e2.Sync.stop(); e2.w.close();
+    });
+
+    /* v1.74 '확인 필요' › 새 K 폴더 — 지어낸 색인 뿌리 · 경로 */
+    const ndIt = (o) => Object.assign({ path: "", first_seen: "2026-11-14T03:00:00Z", cls: "link", part: false, unit: null, unit_skip: false, unit_part: false, more: 0,
+      files: 2, bytes: 2048, bytes50: 2048, map: null, excl: null }, o);
+    const ndSetup = async (nd) => {
+      const r = await setup();
+      r.ks.state.kidx = { on: true, root: "항공보안", excludes: [], win_root: "" };
+      if (nd) r.ks.nd = nd;
+      return r;
+    };
+    const ndRows = (e) => qa(e, '[data-ct-pane="kspend:new"] .ks-nd-row');
+    const ndAcks = (ks) => ks.calls.filter(c => c.name === "newdir_ack").map(c => JSON.stringify(c.b.p));
+    const ND_AUTO = { id: 1, k_path: "항공보안/업무3/연결됨", mod: "audit", grp: "plan", state: "active", dir: "both" };
+    const ndFive = () => [ndIt({ path: "업무1/지방항공청 점검", cls: "link", more: 2, files: 3, bytes50: 3 * 1048576 }), ndIt({ path: "새업무", cls: "top" }),
+      ndIt({ path: "업무2/둘째/셋째", cls: "out", unit: "업무2/둘째" }), ndIt({ path: "업무3/연결됨/새것", cls: "auto", map: ND_AUTO }),
+      ndIt({ path: "업무4/임시", cls: "excl", excl: "항공보안/업무4/임시" })];
+    await ta("KS-N1 v1.74 확인 필요 › 새 K 폴더: 다섯 종류 + 사라진 연결 → 탭 '새 K 폴더 6' 먼저 · 경고 줄 맨 위 · 꼬리표 · 종류별 단추 · 많으면 '전체 N줄 중 300줄'", async () => {
+      const { ks, e } = await ndSetup({ items: ndFive(), n_link: 1, gone: [{ id: 2, k_path: "항공보안/옛이름/폴더", mod: "audit", grp: "foreign" }] });
+      ks.maps = [{ id: 1, k_path: "항공보안/업무3/연결됨", mod: "audit", grp: "plan", dir: "both", ssi: false, state: "active", n_files: 1 },
+        { id: 2, k_path: "항공보안/옛이름/폴더", mod: "audit", grp: "foreign", dir: "k2h", ssi: false, state: "active", n_files: 1 }];
+      await openTab(e);
+      const tab = q(e, '[data-ct-tabs="kspend"] [data-ct-tab]');
+      eq([tab.dataset.ctTab, tab.textContent, tab.getAttribute("aria-selected")].join("|"), "new|새 K 폴더 6|true", "맨 앞 탭(줄 5 + 경고 1) · 먼저 고름");
+      eq(q(e, '[data-ks-card="pend"] .card-title .badge').textContent, "6", "카드 머리 숫자에도 더함");
+      const pane = q(e, '[data-ct-pane="kspend:new"]');
+      ok(!pane.hidden, "새 K 폴더 칸이 보임");
+      ok(pane.firstElementChild.classList.contains("ks-warn") && /^연결 '항공보안\/옛이름\/폴더'의 K 폴더가 보이지 않습니다 — 이름 · 자리를 바꿨나요\?$/.test(pane.firstElementChild.textContent.trim()), "경고 줄 맨 위");
+      ok(!/전체 \d+줄 중/.test(pane.textContent), "다 받았으면 전체 수 줄 없음");
+      const rows = ndRows(e);
+      eq(rows.map(r => r.querySelector(".badge").textContent).join("|"), "연결 결정|새 업무 폴더|연결 안 된 폴더 안|저절로 올라감|올리지 않음", "꼬리표");
+      eq(rows.map(r => r.querySelectorAll("button").length).join(), "3,1,2,1,1", "종류별 단추 수");
+      eq(Array.from(rows[0].querySelectorAll("button")).map(b => b.textContent).join("|"), "이대로 연결|고쳐서 연결|연결 안 함", "연결 결정(추천 있음)");
+      ok(rows[0].querySelector("[data-nd-link]").className === "btn btn-ghost btn-sm" && rows[0].querySelector("[data-nd-fix]").classList.contains("link-btn"), "테두리 보조 단추 · 글자 링크");
+      eq(rows[0].querySelector(".ks-path").textContent, "지방항공청 점검", "제목 = 폴더 이름");
+      const fs = new Date("2026-11-14T03:00:00Z"), p2 = (x) => String(x).padStart(2, "0");
+      eq(rows[0].querySelector(".cell-sub").textContent, "업무1 · 처음 본 날 " + p2(fs.getMonth() + 1) + "-" + p2(fs.getDate()) + " · 파일 3 · 최대 3.0 MB · 아래 새 폴더 2개", "아래 줄");
+      eq(rows[0].querySelector(".ks-nd-d").textContent, "추천: 수검 대응 센터 › 국토부 · 지방항공청 보안점검 · K → H 만", "추천 줄(기준일 쓰는 연결 없음 → 칸 없음)");
+      ok(/^이름 '지방항공청, 점검' ↔ 분류/.test(rows[0].querySelector(".ks-nd-d + .cell-sub").textContent), "이유(보조 글자)");
+      eq(Array.from(rows[1].querySelectorAll("button")).map(b => b.textContent).join("|"), "확인", "새 업무 폴더");
+      ok(/새 업무 폴더 — 그 안 둘째 폴더를 하나씩 연결합니다/.test(rows[1].textContent), rows[1].textContent);
+      eq(Array.from(rows[2].querySelectorAll("button")).map(b => b.textContent).join("|"), "확인|고쳐서 연결", "연결 안 된 폴더 안");
+      ok(/연결 안 된 둘째 폴더 '업무2\/둘째' 안/.test(rows[2].textContent), rows[2].textContent);
+      eq(rows[3].querySelector(".ks-nd-d").textContent, "저절로 올라감 → 수검 대응 센터 › 점검 · 심사 계획 · 지침(연결 '항공보안/업무3/연결됨')");
+      ok(/올리지 않음\(지정 제외 '항공보안\/업무4\/임시' 아래\)/.test(rows[4].textContent), rows[4].textContent);
+      ok(q(e, '[data-ks-card="pend"] .card-title #ks-nd-seen-all.c-rare'), "카드 ⋯ 에 [알림만 모두 확인]");
+      // 추천이 쓰인 분류 · 아래 폴더를 먼저 연결함 · 연결 안 함으로 정한 단위 · 미리보기 · H → K 만 연결
+      ks.maps.push({ id: 3, k_path: "항공보안/업무9/AEO", mod: "audit", grp: "aeo", dir: "k2h", ssi: false, state: "active", n_files: 1 });
+      ks.nd = { items: [ndIt({ path: "업무1/AEO 심사", cls: "link" }), ndIt({ path: "업무1/묶음", cls: "link", part: true }),
+        ndIt({ path: "업무2/둘째/셋째", cls: "out", unit: "업무2/둘째", unit_skip: true }), ndIt({ path: "업무2/넷째/다섯째", cls: "out", unit: "업무2/넷째", unit_part: true }),
+        ndIt({ path: "업무3/미리/새것", cls: "auto", map: Object.assign({}, ND_AUTO, { id: 4, k_path: "항공보안/업무3/미리", grp: "checklist", state: "preview" }) }),
+        ndIt({ path: "업무3/한쪽/새것", cls: "auto", map: Object.assign({}, ND_AUTO, { id: 5, k_path: "항공보안/업무3/한쪽", grp: "misc", dir: "h2k" }) })] };
+      await openTab(e);
+      const r2 = ndRows(e);
+      eq(r2.map(r => Array.from(r.querySelectorAll("button")).map(b => b.textContent).join("+")).join("|"), "고쳐서 연결+연결 안 함|연결 안 함|확인|확인|확인|확인", "종류별 단추(쓰인 분류 · part · 단위 정함 · 단위 part)");
+      ok(/'항공보안\/업무9\/AEO' 폴더에 연결돼 있습니다/.test(r2[0].textContent), "쓰인 분류 = 이유 문장 그대로 " + r2[0].textContent);
+      ok(/연결 안 함으로 정한 '업무2\/둘째' 안/.test(r2[2].textContent), r2[2].textContent);
+      ok(/연결 '항공보안\/업무3\/미리'\(미리보기\) 안 — 시작하면 올라감/.test(r2[4].textContent), r2[4].textContent);
+      ok(/H → K 만 연결 '항공보안\/업무3\/한쪽' 안 — K 파일은 올라가지 않음/.test(r2[5].textContent), r2[5].textContent);
+      ks.nd = { n: 305, items: Array.from({ length: 300 }, (_, i) => ndIt({ path: "새업무" + i, cls: "top" })) };
+      await openTab(e);
+      ok(/전체 305줄 중 300줄/.test(q(e, '[data-ct-pane="kspend:new"]').textContent), "많으면 머리에 전체 수");
+      eq(q(e, '[data-ct-tabs="kspend"] [data-ct-tab="new"]').textContent, "새 K 폴더 305");
+      eq(ndRows(e).length, 300);
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS-N2 [이대로 연결]: 확인 창 없이 바로 map_save(추천 값 · 전체 K 경로) · 두 번 눌러도 1회 · 성공 → 알림 · 목록 다시 읽음 / 서버 거절 → 이유 알림 1번 + 연결 창(채운 값)", async () => {
+      const { sv, ks, e } = await ndSetup({ items: [ndIt({ path: "업무1/둘째", cls: "link" })], n_link: 1 });
+      ks.maps = [{ id: 1, k_path: "항공보안/업무1/첫째", mod: "audit", grp: "plan", dir: "k2h", ssi: false, since: "2025-08-01", state: "active", n_files: 1 }];
+      await openTab(e);
+      eq(q(e, ".ks-nd-row .ks-nd-d").textContent, "추천: 수검 대응 센터 › 기타 · K → H 만 · 기준일 2025-08-01", "이웃 화면의 기타 · 같은 업무 폴더의 기준일");
+      const nd0 = ks.calls.filter(c => c.name === "newdirs").length;
+      const b = q(e, "[data-nd-link]");
+      b.click(); b.click(); await tick(40);
+      const saves = ks.calls.filter(c => c.name === "map_save");
+      eq(saves.length, 1, "두 번 눌러도 1회");
+      eq(JSON.stringify(saves[0].b.p), JSON.stringify({ k_path: "항공보안/업무1/둘째", mod: "audit", grp: "misc", dir: "k2h", ssi: false, since: "2025-08-01" }), "보내는 값");
+      ok(q(e, "#modal-overlay").classList.contains("hidden"), "확인 창 없음");
+      ok(/연결을 만들었습니다 — Mac 이 건수를 세면\(10분 안\) 폴더 연결에서 \[시작\]하세요\./.test(q(e, "#toast-wrap").textContent), "알림");
+      eq(ks.calls.filter(c => c.name === "newdirs").length, nd0 + 1, "목록 다시 읽음");
+      sv.rpc.semis_logi_ksync_map_save = (bd) => { ks.calls.push({ name: "map_save", b: bd }); return { ok: false, error: "target_dup" }; };
+      q(e, "[data-nd-link]").click(); await tick(40);
+      eq(qa(e, "#toast-wrap .toast.err").filter(t => /그 화면 · 분류는 이미 다른 폴더와 연결되어 있습니다/.test(t.textContent)).length, 1, "거절 이유 알림 1번");
+      ok(!q(e, "#modal-overlay").classList.contains("hidden") && q(e, "#modal-box #ks-tg"), "연결 창이 열림");
+      eq([(q(e, "#ks-kp-in") || q(e, "#ks-kp")).value, q(e, "#ks-tg").value, q(e, "#ks-dir").value, q(e, "#ks-since").value, String(q(e, "#ks-ssi").checked)].join("|"),
+        "항공보안/업무1/둘째|audit|misc|k2h|2025-08-01|false", "채운 값");
+      ok(!q(e, "[data-nd-link]").disabled, "거절되면 다시 누를 수 있음");
+      e.w.SeMIS.closeModal();
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS-N3 [고쳐서 연결]: 연결 창을 추천 값으로 채움(분류 · K → H 만 · 경로에 (SSI) 면 SSI · K 폴더 = 전체 경로) · 연결 안 된 폴더 안 줄은 단위 둘째 폴더로", async () => {
+      const { ks, e } = await ndSetup({ items: [ndIt({ path: "업무1/지방항공청 점검 (SSI)", cls: "link" }), ndIt({ path: "업무2/지방항공청 점검/세부", cls: "out", unit: "업무2/지방항공청 점검" })] });
+      await openTab(e);
+      q(e, '[data-nd-fix="0"]').click();
+      eq([q(e, "#ks-tg").value, q(e, "#ks-dir").value, String(q(e, "#ks-ssi").checked), (q(e, "#ks-kp-in") || q(e, "#ks-kp")).value].join("|"),
+        "audit|gov|k2h|true|항공보안/업무1/지방항공청 점검 (SSI)", "연결 결정 줄");
+      e.w.SeMIS.closeModal();
+      q(e, '[data-nd-fix="1"]').click();
+      eq([q(e, "#ks-tg").value, q(e, "#ks-dir").value, String(q(e, "#ks-ssi").checked), (q(e, "#ks-kp-in") || q(e, "#ks-kp")).value].join("|"),
+        "audit|gov|k2h|false|항공보안/업무2/지방항공청 점검", "연결 안 된 폴더 안 줄 = 단위 둘째 폴더");
+      e.w.SeMIS.closeModal();
+      q(e, "#ks-map-add").click();
+      eq([q(e, "#ks-tg").value, q(e, "#ks-dir").value, String(q(e, "#ks-ssi").checked), q(e, "#ks-kp-in").value].join("|"), "|both|false|", "[연결 추가]는 그대로(빈 칸 · 양쪽)");
+      e.w.SeMIS.closeModal();
+      eq(ks.calls.filter(c => c.name === "map_save").length, 0, "창만 엶");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS-N4 처리: [연결 안 함] → skip · [확인] → seen · ⋯ [알림만 모두 확인] → 연결 결정 줄을 뺀 머리 줄 모두 seen · 처리 뒤 다시 읽음 · 시스템관리자만(함수 첫 줄)", async () => {
+      const { ks, e } = await ndSetup({ items: ndFive() });
+      await openTab(e);
+      q(e, '.ks-nd-row[data-nd-cls="link"] [data-nd-skip]').click(); await tick(30);
+      eq(ndAcks(ks).pop(), JSON.stringify({ paths: ["업무1/지방항공청 점검"], act: "skip" }), "[연결 안 함]");
+      ok(!q(e, '.ks-nd-row[data-nd-cls="link"]'), "처리 뒤 다시 읽어 빠짐");
+      q(e, '.ks-nd-row[data-nd-cls="top"] [data-nd-seen]').click(); await tick(30);
+      eq(ndAcks(ks).pop(), JSON.stringify({ paths: ["새업무"], act: "seen" }), "[확인]");
+      ks.nd.items = ndFive();
+      await openTab(e);
+      q(e, "#ks-nd-seen-all").click(); await tick(30);
+      eq(ndAcks(ks).pop(), JSON.stringify({ paths: ["새업무", "업무2/둘째/셋째", "업무3/연결됨/새것", "업무4/임시"], act: "seen" }), "[알림만 모두 확인] — 연결 결정 줄은 빼고");
+      eq(ndRows(e).map(r => r.dataset.ndCls).join(), "link", "남은 줄 = 연결 결정");
+      const n0 = ks.calls.length;
+      e.w.SeMIS.user.role = "manager";     // 탭을 연 뒤 시스템관리자가 아니게 된 세션 — 남은 단추를 눌러도
+      q(e, "[data-nd-skip]").click(); q(e, "[data-nd-link]").click(); q(e, "[data-nd-fix]").click(); await tick(30);
+      eq(ks.calls.length, n0, "처리 · 연결 요청 없음");
+      ok(q(e, "#modal-overlay").classList.contains("hidden"), "연결 창도 열지 않음");
+      e.w.SeMIS.user.role = "admin";
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS-N5 AI: 규칙이 못 맞춘 연결 결정 줄 12개 → 아르고 1회 · 앞 10줄 · 묻는 동안 '추천 찾는 중' · 결과 반영('AI 추천:') · 나머지 '추천 기다림' · 다시 그려도 다시 묻지 않음 · 실패 → '알맞은 분류가 없습니다'", async () => {
+      const { ks, e } = await ndSetup({ items: Array.from({ length: 12 }, (_, i) => ndIt({ path: "새업무/알수없음" + i, cls: "link" })) });
+      const f0 = e.w.fetch, ai = [];
+      let gate = null, fail = false;
+      e.w.fetch = (u, o) => {
+        if (String(u).indexOf("/functions/v1/semis-logi-argo") < 0) return f0(u, o);
+        const body = JSON.parse(o.body); ai.push(body);
+        if (fail) return Promise.reject(new Error("net"));
+        const res = { ok: true, status: 200, json: async () => ({ ok: true, model: "m", picks: body.items.map((x, i) => ({ path: x.path, key: i === 0 ? "audit|gov" : null, reason: i === 0 ? "점검 자료로 보임" : "없음" })) }) };
+        return gate ? gate.then(() => res) : Promise.resolve(res);
+      };
+      let open; gate = new Promise(r => { open = r; });
+      await openTab(e);
+      eq(ai.length, 1, "아르고 1회");
+      eq(ai[0].mode, "kfolder"); eq(ai[0].items.length, 10, "앞 10줄");
+      eq(ai[0].items.map(x => x.path).join(), Array.from({ length: 10 }, (_, i) => "새업무/알수없음" + i).join(), "규칙이 못 맞춘 줄의 경로");
+      ok(/추천 찾는 중/.test(ndRows(e)[0].textContent) && /추천 기다림/.test(ndRows(e)[11].textContent), "묻는 동안 · 다음 묶음");
+      open(); await tick(30);
+      const rows = ndRows(e);
+      ok(/^추천: 수검 대응 센터 › 국토부 · 지방항공청 보안점검/.test(rows[0].querySelector(".ks-nd-d").textContent) && /AI 추천: 점검 자료로 보임/.test(rows[0].textContent) && rows[0].querySelector("[data-nd-link]"), "결과 반영");
+      ok(/알맞은 분류가 없습니다/.test(rows[1].textContent) && !rows[1].querySelector("[data-nd-link]"), "AI 도 못 고름");
+      ok(/추천 기다림/.test(rows[10].textContent) && /추천 기다림/.test(rows[11].textContent), "11 · 12번째는 다음에");
+      e.w.SemisKsync.paint(); await tick(20);
+      eq(ai.length, 1, "다시 그려도 다시 묻지 않음");
+      ok(/AI 추천: 점검 자료로 보임/.test(ndRows(e)[0].textContent), "결과는 탭 메모리에");
+      gate = null; fail = true;
+      ks.nd.items = [0, 1, 2].map(i => ndIt({ path: "새업무/모름" + i, cls: "link" }));
+      await openTab(e);
+      eq(ai.length, 2, "새로 불러온 줄은 한 번 더");
+      eq(ai[1].items.map(x => x.path).join(), "새업무/모름0,새업무/모름1,새업무/모름2");
+      ok(ndRows(e).every(r => /알맞은 분류가 없습니다/.test(r.textContent)), "아르고 실패 → 알맞은 분류가 없습니다");
+      eq(qa(e, "#toast-wrap .toast.err").length, 0, "알림 창 없음");
+      e.w.fetch = f0;
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS-N6 레일 배지: 상태 newdirs(새 폴더 · 사라진 연결)만 있어도 서버 alert → '확인' · 탭을 열어도(화면 alertOf) 그대로 · 없으면 꺼짐", async () => {
+      const { ks, e } = await ndSetup(null);
+      e.w.__ksyncPoll = true;
+      ks.ndc = { n: 1, n_link: 0, gone: 0 };
+      await e.w.SemisKsync.poll(true); await tick(10);
+      eq(e.w.SemisKsync.badge(), "확인", "서버 alert → 배지");
+      eq(JSON.stringify(e.w.SemisKsync.newdirs()), '{"n":1,"n_link":0,"gone":0}', "홈 줄이 쓰는 숫자");
+      await openTab(e);
+      eq(e.w.SemisKsync.badge(), "확인", "탭을 열어도 그대로(alertOf)");
+      ks.ndc = { n: 0, n_link: 0, gone: 1 };
+      await openTab(e);
+      eq(e.w.SemisKsync.badge(), "확인", "사라진 연결 폴더만 있어도");
+      ks.ndc = { n: 0, n_link: 0, gone: 0 };
+      await openTab(e);
+      eq(e.w.SemisKsync.badge(), "", "없으면 꺼짐");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS-N7 홈 '오늘' 줄: 시스템관리자 · 새 폴더나 경고가 있을 때만(배지 때 받은 숫자 — 새 요청 없음) · 누르면 시스템 설정 › K드라이브 동기화 › 새 K 폴더 칸 · 다른 계정 없음", async () => {
+      const { sv, ks, e } = await ndSetup(null);
+      e.w.__ksyncPoll = true;
+      go(e, "dashboard"); await tick(5);
+      ok(!q(e, "#td-knew"), "숫자를 받기 전에는 없음");
+      ks.ndc = { n: 3, n_link: 1, gone: 1 };
+      await e.w.SemisKsync.poll(true); await tick(20);
+      const row = q(e, "#td-knew");
+      ok(row, "숫자가 바뀌면 홈을 다시 그려 줄이 생김");
+      eq([row.querySelector(".td-t").textContent, row.querySelector(".td-s").textContent, row.querySelector(".td-v").textContent.trim()].join("|"),
+        "K드라이브 새 폴더|연결 결정 1 · 알림 2 · 연결 폴더 안 보임 1|4", "제목 · 아래 줄 · 값");
+      ok(row.querySelector(".td-ico.t-amber"), "결정 · 경고가 있으면 주황");
+      const n0 = ks.calls.length;
+      go(e, "dashboard"); await tick(10);
+      eq(ks.calls.length, n0, "홈을 그릴 때 새 요청 없음");
+      q(e, "#td-knew").click(); await tick(60);
+      eq(e.w.location.hash, "#/settings");
+      eq(q(e, "#view .tab.active").dataset.tab, "ksync", "K드라이브 동기화 탭");
+      eq(q(e, '[data-ct-tabs="kspend"] [data-ct-tab][aria-selected="true"]').dataset.ctTab, "new", "새 K 폴더 칸(목록을 못 받아도 그 칸)");
+      go(e, "dashboard"); await tick(5);
+      ks.ndc = { n: 2, n_link: 0, gone: 0 };
+      await e.w.SemisKsync.poll(true); await tick(20);
+      ok(q(e, "#td-knew .td-ico.t-slate") && q(e, "#td-knew .td-s").textContent === "연결 결정 0 · 알림 2", "알림만이면 회색 · 경고 칸 없음");
+      ks.ndc = { n: 0, n_link: 0, gone: 0 };
+      await e.w.SemisKsync.poll(true); await tick(20);
+      ok(!q(e, "#td-knew"), "0 이면 줄 없음");
+      const e2 = makeEnv({ fetch: sv.fetch });
+      await sv.loginAs(e2, "hq-pw-2222"); await tick(10);
+      e2.w.SemisKsync._st.ndc = { n: 3, n_link: 1, gone: 1 };
+      go(e2, "dashboard"); await tick(5);
+      ok(!q(e2, "#td-knew"), "안전보안파트(hq) 줄 없음");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close(); e2.Sync.stop(); e2.w.close();
+    });
+    await ta("KS-N8 새 K 폴더 RPC 실패(마이그레이션 전 404) → 다른 카드 · 칸 그대로 · 탭 자리 한 줄 · 알림 창 없음 / 찾기 꺼짐 → 찾기 켜기 안내 한 줄", async () => {
+      const { ks, e } = await ndSetup(null);
+      ks.maps = [{ id: 1, k_path: "점검표", mod: "audit", grp: "checklist", dir: "both", ssi: false, state: "active", n_files: 3 }];
+      ks.files = [{ id: 8, map: 1, rel_path: "big.zip", state: "skip", note: "too_large" }];
+      await openTab(e);
+      ok(ks.calls.some(c => c.name === "newdirs"), "불러오기 newdirs");
+      eq(qa(e, "#tab-body .ks-card").map(c => c.dataset.ksCard).join(","), "maps,pend,runs,sec", "카드 그대로");
+      eq(q(e, '[data-ct-pane="kspend:new"]').textContent.trim(), "새 폴더 목록을 불러오지 못했습니다", "탭 자리 한 줄");
+      eq(q(e, '[data-ct-tabs="kspend"] [data-ct-tab="new"]').textContent, "새 K 폴더", "숫자 없음");
+      eq(q(e, '[data-ct-tabs="kspend"] [aria-selected="true"]').dataset.ctTab, "skip", "다른 칸을 먼저");
+      eq(qa(e, '[data-ct-pane="kspend:skip"] tbody tr').length, 1, "다른 칸 그대로");
+      eq(q(e, '[data-ks-card="pend"] .card-title .badge').textContent, "1", "카드 숫자는 그대로");
+      ok(!q(e, "#ks-nd-seen-all"), "⋯ [알림만 모두 확인] 없음");
+      eq(qa(e, "#toast-wrap .toast").length, 0, "알림 창 없음");
+      ks.nd = { on: false, n: 0, items: [], gone: [] };
+      await openTab(e);
+      eq(q(e, '[data-ct-pane="kspend:new"]').textContent.trim(), "새 폴더 알림은 K드라이브 찾기를 켜야 동작합니다", "찾기 꺼짐 안내");
+      ks.nd = { items: [] };
+      await openTab(e);
+      eq(q(e, '[data-ct-tabs="kspend"] [data-ct-tab="new"]').textContent, "새 K 폴더 0");
+      ok(/새 K 폴더가 없습니다/.test(q(e, '[data-ct-pane="kspend:new"]').textContent), "없으면 한 줄");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS-N9 저장소: 줄의 bytes50 이 남은 저장소(storeLeft — 저장소 관리 탭과 같은 셈)보다 크면 그 줄에 경고 한 줄 · 작으면 · 못 재면 없음", async () => {
+      const { ks, e } = await ndSetup({ items: [ndIt({ path: "업무1/큰폴더", cls: "link", bytes50: 600 * 1048576 }), ndIt({ path: "업무1/작은폴더", cls: "link", bytes50: 1048576 })] });
+      e.w.SemisSync.listFiles = async () => [{ size: 1024 * 1048576 - 100 * 1048576 }];     // 남은 저장소 100MB
+      await openTab(e);
+      const rows = ndRows(e);
+      ok(/남은 저장소보다 큼 — \[시작\]은 저장소를 늘린 뒤/.test(rows[0].textContent) && rows[0].querySelector(".ks-warn"), "큰 줄 경고");
+      ok(!/남은 저장소보다 큼/.test(rows[1].textContent), "작은 줄 없음");
+      e.w.SemisSync.listFiles = async () => { throw new Error("list"); };
+      await openTab(e);
+      ok(!/남은 저장소보다 큼/.test(q(e, '[data-ct-pane="kspend:new"]').textContent), "못 재면 경고 없음");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
     });
   }
 

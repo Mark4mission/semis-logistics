@@ -1,6 +1,6 @@
 /* K드라이브 동기화 감시 · 관리 — 시스템 설정 › 'K드라이브 동기화' 탭(시스템관리자만). 동기화한 자료 자체는 각 화면 문서함 · K 폴더의 일반 자료라 여기서 보여 주지 않는다.
    서버: RPC semis_logi_ksync_*(시스템관리자 세션이 아니면 42501) — tools/sql/semis-logi-ksync.sql. 실행은 Mac 에이전트(tools/ksync)가 하고 이 화면은 요청 표시 · 설정 · 확인 처리만 한다.
-   SemisKsync = { tab(box), badge(), poll(force), _st } */
+   SemisKsync = { tab(box), badge(), poll(force), newdirs() — 홈 '오늘' 줄 숫자, pane(id) — 다음에 열 '확인 필요' 칸, _st } */
 "use strict";
 
 (() => {
@@ -17,7 +17,8 @@
     mark: "서버가 맞춘 기록 일부를 받지 않음", state: "연결을 멈추거나 지워서 이 연결은 중단", run: "서버에서 이 실행이 이미 끝나 중단",
     apply: "문서함에 등록하지 못함(그 사이 H:drive 에 새 판 등) — 다음 실행에서 다시 맞춤",
     old: "기준일 전에 고친 파일이라 서버가 받지 않음", since: "기준일 형식이 틀려 이 연결은 건너뜀", excluded: "지정 제외" };
-  const st = { s: null, p: null, runs: null, ev: null, folders: null, rep: null, hash: null, evKind: "", err: "", busy: false, alert: false, at: 0, box: null };
+  const st = { s: null, p: null, runs: null, ev: null, folders: null, rep: null, hash: null, evKind: "", err: "", busy: false, alert: false, at: 0, box: null,
+    nd: null, ndc: null, ndRec: [], ndAsk: [], ai: Object.create(null), asking: new Set(), askNext: false, left: undefined, pane: "" };
 
   const pad = (n) => String(n).padStart(2, "0");
   const fmt = (t) => { const d = new Date(t); return !t || isNaN(d) ? "-" : (d.getMonth() + 1) + "-" + pad(d.getDate()) + " " + pad(d.getHours()) + ":" + pad(d.getMinutes()); };
@@ -52,7 +53,7 @@
   const isDom = () => typeof navigator !== "undefined" && /jsdom/i.test(navigator.userAgent || "");
   /* #tab-body 는 설정 탭이 모두 함께 쓰는 칸 — 늦게 온 결과가 다른 탭 위에 그려지지 않게 */
   const on = () => !!(st.box && st.box.isConnected && document.querySelector('#view .tab.active[data-tab="ksync"]'));
-  const alertOf = () => !!(st.s && (st.s.stale || (st.s.counts && st.s.counts.hold) || st.evNew));
+  const alertOf = () => !!(st.s && (st.s.stale || (st.s.counts && st.s.counts.hold) || st.evNew || (st.s.newdirs && (st.s.newdirs.n > 0 || st.s.newdirs.gone > 0))));
 
   /* ── 불러오기 ── */
   /* quiet = 원격 변경 등으로 화면만 다시 그린 것 — 아무도 보고 있지 않을 수 있어(숨은 창) '본 것'으로 하지 않는다 */
@@ -63,15 +64,21 @@
       const look = !quiet && st.secTab === "ev" && !st.evKind && on();
       const jobs = [rpc("semis_logi_ksync_status"), rpc("semis_logi_ksync_pending"), rpc("semis_logi_ksync_runs", { p: { limit: 30 } }),
         rpc("semis_logi_ksync_events", { p: { kind: st.evKind || null, limit: 100, seen: look } }),
-        rpc("semis_logi_ksync_report").catch(() => null),     // 보고 · 해시 채우기 진행은 없어도 나머지는 그린다
-        rpc("semis_logi_ksync_hash_todo", { p: {} }).catch(() => null)];
+        rpc("semis_logi_ksync_report").catch(() => null),     // 보고 · 해시 채우기 진행 · 새 K 폴더는 없어도 나머지는 그린다
+        rpc("semis_logi_ksync_hash_todo", { p: {} }).catch(() => null),
+        rpc("semis_logi_ksync_newdirs").catch(() => null)];
       if (full || !st.folders) jobs.push(rpc("semis_logi_ksync_folders"));
       const r = await Promise.all(jobs);
       st.s = r[0]; st.p = r[1]; st.runs = r[2].runs || []; st.ev = r[3]; st.rep = r[4] && r[4].ok ? r[4] : null; st.hash = r[5] && r[5].ok ? r[5] : null;
-      if (r[6]) st.folders = r[6].folders || [];
+      st.nd = r[6] && r[6].ok ? r[6] : null;
+      if (r[7]) st.folders = r[7].folders || [];
       st.err = "";
+      st.askNext = true;
       st.evNew = !look && !!(st.s && st.s.counts && st.s.counts.ev_new);
       if (full && st.evNew && on()) { st.secTab = "ev"; st.evKind = ""; await seen(); }     // 새 보안 이벤트는 열 때 그 칸을 전체로 펴서 보여 준다
+      // 새 K 폴더 줄의 저장소 경고 — 버킷 목록을 다 읽어야 해서 탭을 열 때만 잰다
+      if ((full || st.left === undefined) && st.nd && (st.nd.items || []).some(x => Number(x.bytes50) > 0)) st.left = await storeLeft();
+      ndSet(st.s && st.s.newdirs);
       setAlert(alertOf());
     } catch (e) { st.err = errText(e); }
     st.busy = false;
@@ -89,15 +96,26 @@
     st.alert = v;
     if (SeMIS.renderNav) SeMIS.renderNav();
   }
-  /* 레일 '시스템 설정' 배지 — 시스템관리자에게만, 이틀 넘게 실패 · 보류 · 새 보안 이벤트일 때 */
+  /* 레일 '시스템 설정' 배지 — 시스템관리자에게만, 이틀 넘게 실패 · 보류 · 새 보안 이벤트 · 새 K 폴더 · 사라진 연결 폴더일 때 */
   function badge() { return SeMIS.isAdmin && SeMIS.isAdmin() && st.alert ? "확인" : ""; }
   async function poll(force) {
     if (!SeMIS.user || !SeMIS.isAdmin() || !window.SemisSync) return;
     if (isDom() && !window.__ksyncPoll) return;
     if (!force && Date.now() - st.at < 10 * 60 * 1000) return;
     st.at = Date.now();
-    try { const s = await rpc("semis_logi_ksync_status"); if (s && s.ok) setAlert(!!s.alert); } catch (e) { /* 다음 확인 때 */ }
+    try { const s = await rpc("semis_logi_ksync_status"); if (s && s.ok) { setAlert(!!s.alert); ndSet(s.newdirs); } } catch (e) { /* 다음 확인 때 */ }
   }
+  /* 홈 '오늘' 줄의 숫자 — 배지 때 받은 상태를 그대로 쓴다(홈이 따로 묻지 않음). 보이는 숫자가 바뀌었고 홈을 보고 있으면 다시 그린다 */
+  function ndSet(v) {
+    const c = v ? { n: Number(v.n) || 0, n_link: Number(v.n_link) || 0, gone: Number(v.gone) || 0 } : null;
+    const key = (x) => (x && x.n + x.gone > 0 ? [x.n, x.n_link, x.gone].join() : "");
+    const was = key(st.ndc);
+    st.ndc = c;
+    if (key(c) !== was && (location.hash.replace(/^#\//, "") || "dashboard") === "dashboard" && SeMIS.renderView) SeMIS.renderView();
+  }
+  function newdirs() { return st.ndc; }
+  /* 시스템 설정 › K드라이브 동기화를 다른 화면에서 열 때 '확인 필요' 카드에서 고를 칸(한 번만) */
+  function pane(id) { st.pane = String(id || ""); }
   /* 화면을 다시 그리지 않아도 10분마다 — 숨은 탭에서는 묻지 않는다 */
   function tick() { if (document.visibilityState !== "hidden") poll(true); }
 
@@ -133,6 +151,9 @@
     if (st.err || !st.s) { box.innerHTML = `<div class="card"><div class="empty">${esc(st.err || "불러오지 못했습니다.")}</div></div>`; return; }
     box.innerHTML = stripHTML() + repHTML() + mapsHTML() + pendHTML() + runsHTML() + secHTML();
     wire(box);
+    const ask = st.ndAsk;
+    st.ndAsk = [];
+    if (ask.length) aiAsk(ask);
   }
 
   function stripHTML() {
@@ -245,6 +266,105 @@
         : ui.empty("연결한 폴더가 없습니다. [연결 추가]로 K 폴더와 화면 · 분류를 이으세요.")}</div>`;
   }
 
+  /* ── 새 K 폴더 — 색인에 새로 보인 폴더(종류 · 묶음 · 처리됨은 서버가 계산). path = 색인 뿌리 기준, 연결의 k_path = 뿌리 이름 + '/' + path ── */
+  const ND_TAG = { link: ["연결 결정", "amber"], top: ["새 업무 폴더", "blue"], out: ["연결 안 된 폴더 안", "gray"], auto: ["저절로 올라감", "green"], excl: ["올리지 않음", "gray"] };
+  const ND_ASK = 10;     // 한 번에 아르고에 묻는 줄 — SemisKfolder.ask 도 앞 10개만 보낸다
+  const kroot = () => String((st.s && st.s.state && st.s.state.kidx && st.s.state.kidx.root) || "");
+  const kctx = () => ({ root: kroot(), maps: (st.s && st.s.maps) || [], targets: targets(), gone: ((st.nd && st.nd.gone) || []).map(g => g.id) });
+  /* 사라진 연결 폴더 경고도 사람이 볼 것이라 숫자에 넣는다 */
+  const ndCount = () => (st.nd && st.nd.on !== false ? (Number(st.nd.n) || 0) + (st.nd.gone || []).length : 0);
+  const ndItem = (i) => ((st.nd && st.nd.items) || [])[Number(i)] || null;
+  /* 연결 창에 채울 값 — 분류는 비어 있는 분류를 추천했을 때만(쓰인 분류는 창에서 고를 수 없음) */
+  const preOf = (path, r) => Object.assign({ k_path: kroot() + "/" + path }, r ? { ssi: r.ssi, dir: r.dir, since: r.since } : {}, r && r.kind === "link" ? { mod: r.mod, grp: r.grp } : {});
+  function ndHTML() {
+    const nd = st.nd;
+    st.ndRec = []; st.ndAsk = [];
+    /* 규칙이 못 맞춘 줄은 불러온 뒤 처음 그릴 때만 묻는다 — 결과로 다시 그릴 때 다음 묶음을 잇달아 묻지 않게(나머지는 처리해 다시 불러올 때) */
+    const ask = st.askNext && !!window.SemisKfolder && SeMIS.isAdmin();
+    st.askNext = false;
+    if (!nd) return `<p class="ks-none">새 폴더 목록을 불러오지 못했습니다</p>`;
+    if (nd.on === false) return `<p class="ks-none">새 폴더 알림은 K드라이브 찾기를 켜야 동작합니다</p>`;
+    const items = nd.items || [], gone = nd.gone || [];
+    if (!items.length && !gone.length) return `<p class="ks-none">새 K 폴더가 없습니다.</p>`;
+    const c = kctx();
+    const warn = gone.map(g => `<p class="ks-warn" role="status">${icon("alert", 16)}<span>${esc("연결 '" + g.k_path + "'의 K 폴더가 보이지 않습니다 — 이름 · 자리를 바꿨나요?")}</span></p>`).join("");
+    const more = Number(nd.n) > items.length ? `<p class="ks-note">${esc("전체 " + nd.n + "줄 중 " + items.length + "줄 — 처리하면 다음 줄이 올라옵니다")}</p>` : "";
+    return warn + more + (items.length ? `<ul class="ks-nd">${items.map((it, i) => ndRow(it, i, c, ask)).join("")}</ul>` : "");
+  }
+  function ndRow(it, i, c, ask) {
+    const K = window.SemisKfolder, ups = String(it.path || "").split("/"), name = ups.pop(), d = new Date(it.first_seen);
+    const sub = [ups.join(" › "), isNaN(d) ? "" : "처음 본 날 " + pad(d.getMonth() + 1) + "-" + pad(d.getDate()), "파일 " + (Number(it.files) || 0), "최대 " + bytes(it.bytes50),
+      it.more ? "아래 새 폴더 " + it.more + "개" : ""].filter(Boolean).join(" · ");
+    const btn = (k, label, cls) => `<button type="button" class="${cls || "btn btn-ghost btn-sm"}" data-nd-${k}="${i}">${esc(label)}</button>`;
+    const skip = btn("skip", "연결 안 함"), seenB = btn("seen", "확인");
+    let line = "", why = "", acts = seenB;
+    if (it.cls === "link" && it.part) { line = "아래 폴더를 이미 연결해 이 폴더는 연결할 수 없습니다"; acts = skip; }
+    else if (it.cls === "link") {
+      let r = K ? K.recommend(it.path, c) : null;
+      if (r && r.kind === "none" && it.path in st.ai) r = K.applyAI(it.path, st.ai[it.path], c);
+      else if (r && r.kind === "none" && ask && !st.asking.has(it.path) && st.ndAsk.length < ND_ASK) { st.ndAsk.push(it.path); st.asking.add(it.path); }
+      st.ndRec[i] = r;
+      if (r && r.kind === "link") {
+        line = "추천: " + [r.label, r.ssi ? "SSI" : "", DIR[r.dir] || r.dir, r.since ? "기준일 " + r.since : ""].filter(Boolean).join(" · ");
+        why = r.reason; acts = btn("link", "이대로 연결") + btn("fix", "고쳐서 연결", "link-btn") + skip;
+      } else {
+        // 쓰인 분류 · 사라진 연결 · 없음(AI 까지 물은 뒤)은 이유가 곧 안내 문장
+        line = st.asking.has(it.path) ? "추천 찾는 중" : r && (r.kind !== "none" || r.by === "ai") ? r.reason : "추천 기다림";
+        acts = btn("fix", "고쳐서 연결") + skip;
+      }
+    } else if (it.cls === "out") {
+      line = it.unit_skip ? "연결 안 함으로 정한 '" + it.unit + "' 안" : "연결 안 된 둘째 폴더 '" + it.unit + "' 안";
+      if (!it.unit_part && !it.unit_skip) { st.ndRec[i] = K ? K.recommend(it.unit, c) : null; acts = seenB + btn("fix", "고쳐서 연결"); }
+    } else if (it.cls === "top") line = "새 업무 폴더 — 그 안 둘째 폴더를 하나씩 연결합니다";
+    else if (it.cls === "auto") {
+      const m = it.map || {};
+      line = m.dir === "h2k" ? "H → K 만 연결 '" + m.k_path + "' 안 — K 파일은 올라가지 않음"
+        : MSTATE[m.state] && m.state !== "active" ? "연결 '" + m.k_path + "'(" + MSTATE[m.state][0] + ") 안 — 시작하면 올라감"
+        : "저절로 올라감 → " + target(m) + "(연결 '" + m.k_path + "')";
+    } else if (it.cls === "excl") line = "올리지 않음(지정 제외 '" + (it.excl || "") + "' 아래)";
+    const big = st.left != null && Number(it.bytes50) > st.left ? `<p class="ks-warn" role="status">${icon("alert", 16)}<span>남은 저장소보다 큼 — [시작]은 저장소를 늘린 뒤</span></p>` : "";
+    const tag = ND_TAG[it.cls] || [it.cls, "gray"];
+    return `<li class="ks-nd-row" data-nd-cls="${esc(it.cls)}"><div class="ks-nd-main">
+        <div class="ks-nd-t"><b class="ks-path">${esc(name)}</b>${ui.chip(tag[0], tag[1])}</div>
+        <div class="cell-sub">${esc(sub)}</div>${line ? `<div class="ks-nd-d">${esc(line)}</div>` : ""}${why ? `<div class="cell-sub">${esc(why)}</div>` : ""}${big}</div>
+      <div class="ks-nd-act">${acts}</div></li>`;
+  }
+  /* 물은 경로는 결과(없음 포함)를 이 탭 메모리에 둔다 — 다시 그려도 다시 묻지 않음 */
+  async function aiAsk(paths) {
+    if (!SeMIS.isAdmin() || !window.SemisKfolder) { paths.forEach(p => st.asking.delete(p)); return; }
+    const res = await SemisKfolder.ask(paths, SemisKfolder.cats(kctx()));
+    paths.forEach(p => { st.ai[p] = res[p] || null; st.asking.delete(p); });
+    paint();
+  }
+  /* [이대로 연결] — 확인 창 없이(미리보기 상태라 파일은 안 올라가고, 잘못 만들었으면 연결을 지우면 됨). 거절되면 그 값으로 연결 창을 연다 */
+  async function ndLink(b, i) {
+    if (!SeMIS.isAdmin()) return;
+    const it = ndItem(i), r = st.ndRec[Number(i)];
+    if (!it || !r || r.kind !== "link" || b.disabled) return;
+    b.disabled = true;
+    const pre = preOf(it.path, r);
+    const p = { k_path: pre.k_path, mod: r.mod, grp: r.grp, dir: r.dir, ssi: !!r.ssi };
+    if (r.since) p.since = r.since;
+    let d;
+    try { d = await rpc("semis_logi_ksync_map_save", { p }); } catch (e) { b.disabled = false; toast(errText(e), true); return; }
+    if (!d || !d.ok) { b.disabled = false; fail(d); mapForm(null, null, pre); return; }
+    toast("연결을 만들었습니다 — Mac 이 건수를 세면(10분 안) 폴더 연결에서 [시작]하세요.");
+    await load(false); paint();
+  }
+  /* [고쳐서 연결] — 연결 안 된 폴더 안 줄은 그 단위 둘째 폴더로 */
+  function ndFix(i) {
+    if (!SeMIS.isAdmin()) return;
+    const it = ndItem(i);
+    if (!it) return;
+    const path = it.cls === "out" ? it.unit : it.path;
+    mapForm(null, null, preOf(path, st.ndRec[Number(i)]));
+  }
+  function ndAck(paths, a) {
+    if (!SeMIS.isAdmin()) return;
+    const ps = paths.filter(Boolean).slice(0, 300);
+    if (ps.length) act("semis_logi_ksync_newdir_ack", { p: { paths: ps, act: a } }, a === "skip" ? "연결하지 않기로 했습니다." : "확인했습니다.");
+  }
+
   function pendHTML() {
     const p = st.p || {}, holds = p.holds || [], files = p.files || [], last = p.last || [];
     const del = files.filter(f => f.state === "del_k" || f.state === "del_h"), conf = files.filter(f => f.state === "conflict");
@@ -261,15 +381,21 @@
         if (!f.last && f.h_name && hSide(f.note)) once.add("h|" + f.map + "|" + f.h_name + "|" + f.note);
         return true;
       });
-    const n = holds.length + del.length + conf.length + skip.length;
+    const ndN = ndCount(), ndOk = !!st.nd && st.nd.on !== false;
+    const n = holds.length + del.length + conf.length + skip.length + ndN;
     const mp = (id) => { const m = mapOf(id); return m ? m.k_path : ""; };
     const row = (f, acts) => `<tr><td data-role="title"><span class="ks-path">${esc(f.rel_path || f.h_name || "")}</span><div class="cell-sub">${esc(mp(f.map))}</div></td>
       <td>${esc(FSTATE[f.state] || f.state)}${f.note ? `<div class="cell-sub">${esc(why(f.note, f.map))}</div>` : ""}</td><td class="td-act">${acts || ""}</td></tr>`;
     const tbl = (rows, empty) => rows ? `<div class="table-wrap"><table class="tbl ks-tbl"><thead><tr><th>파일</th><th>내용</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p class="ks-none">${esc(empty)}</p>`;
-    const sel = holds.length ? "hold" : del.length ? "del" : conf.length ? "conf" : "skip";
-    const tabs = [["hold", "대량 변경 보류 " + holds.length], ["del", "삭제 대기 " + del.length], ["conf", "충돌 " + conf.length], ["skip", "건너뜀 · 오류 " + skip.length]];
-    return `<div class="card ks-card" data-ks-card="pend"><div class="card-title">${icon("alert", 17)}<span>확인 필요</span><span class="badge ${n ? "badge-amber" : "badge-gray"}">${n}</span></div>
+    const tabs = [["new", "새 K 폴더" + (ndOk ? " " + ndN : "")], ["hold", "대량 변경 보류 " + holds.length], ["del", "삭제 대기 " + del.length], ["conf", "충돌 " + conf.length], ["skip", "건너뜀 · 오류 " + skip.length]];
+    const want = st.pane;
+    st.pane = "";
+    const sel = tabs.some(t => t[0] === want) ? want : ndN ? "new" : holds.length ? "hold" : del.length ? "del" : conf.length ? "conf" : "skip";
+    const seenAll = ndOk && (st.nd.items || []).some(x => x.cls !== "link")
+      ? `<span class="spacer"></span><button type="button" class="btn btn-ghost btn-sm c-rare" id="ks-nd-seen-all">${icon("check", 15)}<span>알림만 모두 확인</span></button>` : "";
+    return `<div class="card ks-card" data-ks-card="pend"><div class="card-title">${icon("alert", 17)}<span>확인 필요</span><span class="badge ${n ? "badge-amber" : "badge-gray"}">${n}</span>${seenAll}</div>
       ${ui.tabs("kspend", tabs, sel)}
+      ${ui.pane("kspend", "new", sel, ndHTML())}
       ${ui.pane("kspend", "hold", sel, holds.length ? `<div class="table-wrap"><table class="tbl ks-tbl"><thead><tr><th>K 폴더</th><th>변경 · 삭제 대기</th><th></th></tr></thead><tbody>${holds.map(h => `<tr>
           <td data-role="title"><b class="ks-path">${esc(h.k_path)}</b><div class="cell-sub">${esc(target(h))} · ${esc(fmt(h.at))}</div></td>
           <td class="mono">${esc(String(h.n || 0))}건 / 맞춘 파일 ${esc(String(h.base || 0))}건</td>
@@ -383,6 +509,13 @@
       act("semis_logi_ksync_settings", { p: { ip_allow: (st.s.state.ip_allow || []).concat([v]) } }, "추가했습니다.");
     };
     $$("[data-ks-revoke]", box).forEach(b => b.onclick = () => keyRevoke(Number(b.dataset.ksRevoke)));
+    $$("[data-nd-link]", box).forEach(b => b.onclick = () => ndLink(b, b.dataset.ndLink));
+    $$("[data-nd-fix]", box).forEach(b => b.onclick = () => ndFix(b.dataset.ndFix));
+    $$("[data-nd-skip]", box).forEach(b => b.onclick = () => ndAck([(ndItem(b.dataset.ndSkip) || {}).path], "skip"));
+    $$("[data-nd-seen]", box).forEach(b => b.onclick = () => ndAck([(ndItem(b.dataset.ndSeen) || {}).path], "seen"));
+    // 알림 줄만 — 연결 결정 줄은 사람이 하나씩 정한다
+    const sa = $("#ks-nd-seen-all", box);
+    if (sa) sa.onclick = () => ndAck(((st.nd && st.nd.items) || []).filter(x => x.cls !== "link").map(x => x.path), "seen");
   }
 
   function request() { act("semis_logi_ksync_request", {}, "요청했습니다 — Mac 이 사내망에 연결되어 있으면 다음 확인(10분 안) 때 동기화합니다."); }
@@ -413,11 +546,14 @@
     return out;
   }
   const lines = (s) => String(s || "").split(/\r?\n/).map(x => x.trim()).filter(Boolean);
-  /* kp0 = 채워 둘 K 폴더(연결 안 된 폴더 목록의 [연결 추가]) */
-  function mapForm(m, kp0) {
+  /* kp0 = 채워 둘 K 폴더(연결 안 된 폴더 목록의 [연결 추가]), pre = 새 K 폴더 추천으로 채울 값 { k_path, mod, grp, ssi, dir, since } */
+  function mapForm(m, kp0, pre) {
+    pre = pre || {};
+    if (pre.k_path) kp0 = pre.k_path;
     const ts = targets(), edit = !!m, used = new Set(((st.s && st.s.maps) || []).filter(x => !m || x.id !== m.id).map(x => x.mod + "|" + x.grp));
     const fl = st.folders || [];
-    const opts = ts.map(t => `<optgroup label="${esc(t.label)}">${t.groups.map(g => `<option value="${esc(t.mod + "|" + g.id)}"${used.has(t.mod + "|" + g.id) ? " disabled" : ""}${m && m.mod === t.mod && m.grp === g.id ? " selected" : ""}>${esc(t.label + " › " + g.label)}</option>`).join("")}</optgroup>`).join("");
+    const cur = m || pre;
+    const opts = ts.map(t => `<optgroup label="${esc(t.label)}">${t.groups.map(g => `<option value="${esc(t.mod + "|" + g.id)}"${used.has(t.mod + "|" + g.id) ? " disabled" : ""}${cur.mod === t.mod && cur.grp === g.id ? " selected" : ""}>${esc(t.label + " › " + g.label)}</option>`).join("")}</optgroup>`).join("");
     const started = edit && m.state !== "preview";
     // 돌던 한 방향 연결은 다른 한 방향으로 바로 바꾸지 못한다(서버 oneway) — 양쪽(미리보기 관문)이나 지금 방향만
     const lockDir = (k) => started && m.dir !== "both" && k !== m.dir && k !== "both";
@@ -428,10 +564,10 @@
           : `<input id="ks-kp" value="${esc(m ? m.k_path : kp0 || "")}" maxlength="200" autocomplete="off" placeholder="예: 안전보안/점검표"${edit ? " disabled" : ""}>`}</div>
       <div class="form-row"><label for="ks-tg">화면 › 분류</label><select id="ks-tg"${edit ? " disabled" : ""}><option value="">고르세요</option>${opts}</select></div>
       <div class="form-row"><label for="ks-since">기준일 ${ui.tip("이 날(한국 시각 0시)보다 전에 고친 K 파일은 맞춘 적이 없으면 올리지 않습니다(건수만 셈). 비우면 모두 올립니다. 시작한 뒤에는 더 늦은 날로만 바꿀 수 있습니다.", "기준일 설명")}</label>
-        <input id="ks-since" type="date" value="${esc((m && m.since) || "")}"${started && m.since ? ` min="${esc(m.since)}"` : ""}></div>
+        <input id="ks-since" type="date" value="${esc(cur.since || "")}"${started && m.since ? ` min="${esc(m.since)}"` : ""}></div>
       <div class="form-grid">
-        <div class="form-row"><label for="ks-dir">방향</label><select id="ks-dir">${Object.keys(DIR).map(k => `<option value="${k}"${(m ? m.dir : "both") === k ? " selected" : ""}${lockDir(k) ? " disabled" : ""}>${esc(DIR[k])}</option>`).join("")}</select></div>
-        <div class="form-row"><label class="au-opt ks-ssi"><input type="checkbox" id="ks-ssi"${m && m.ssi ? " checked" : ""}> 민감보안정보(SSI) 폴더 ${ui.tip("K 에서 온 문서를 민감보안정보로 등록하고(안전보안파트 이상 열람), H:drive 의 SSI 문서도 이 폴더로 보냅니다. SSI 가 아닌 연결은 SSI 문서를 보내지 않습니다.", "SSI 설명")}</label></div>
+        <div class="form-row"><label for="ks-dir">방향</label><select id="ks-dir">${Object.keys(DIR).map(k => `<option value="${k}"${(m ? m.dir : pre.dir || "both") === k ? " selected" : ""}${lockDir(k) ? " disabled" : ""}>${esc(DIR[k])}</option>`).join("")}</select></div>
+        <div class="form-row"><label class="au-opt ks-ssi"><input type="checkbox" id="ks-ssi"${cur.ssi ? " checked" : ""}> 민감보안정보(SSI) 폴더 ${ui.tip("K 에서 온 문서를 민감보안정보로 등록하고(안전보안파트 이상 열람), H:drive 의 SSI 문서도 이 폴더로 보냅니다. SSI 가 아닌 연결은 SSI 문서를 보내지 않습니다.", "SSI 설명")}</label></div>
       </div>
       <div class="form-row"><label for="ks-ex">이 연결에서 뺄 폴더 ${ui.tip("연결 폴더 안의 경로를 한 줄에 하나씩(20개까지). 그 아래는 동기화하지 않고 '모름'으로 둡니다 — 이미 맞춘 H:drive 문서는 지우지 않고 그대로 남습니다.", "뺄 폴더 설명")}</label>
         <textarea id="ks-ex" rows="2" maxlength="4000" placeholder="예: 임시">${esc(((m && m.excludes) || []).join("\n"))}</textarea></div>
@@ -649,5 +785,5 @@
 
   SeMIS.onRerender(() => { poll(false); });
   if (!isDom()) setInterval(tick, 10 * 60 * 1000);
-  window.SemisKsync = { tab, badge, poll, load, paint, _tick: tick, get _st() { return st; } };
+  window.SemisKsync = { tab, badge, poll, load, paint, newdirs, pane, _tick: tick, get _st() { return st; } };
 })();

@@ -222,6 +222,12 @@
     }
     if (actions.length) rows.push(todayRow({ go: "minutes", icon: "notes", color: late ? "rose" : "slate", title: "회의 결정사항",
       sub: "미완료 " + actions.length + (late ? " · <em>기한 경과 " + late + "</em>" : ""), val: `<b class="mono">${actions.length}</b>`, tone: late ? "bad" : "" }));
+    /* K드라이브 새 폴더 — 시스템관리자, 새 폴더나 사라진 연결 폴더가 있을 때만. 숫자는 레일 배지 때 받은 상태(따로 묻지 않음) */
+    if (SeMIS.isAdmin() && window.SemisKsync && SemisKsync.newdirs) {
+      const k = SemisKsync.newdirs();
+      if (k && k.n + k.gone > 0) rows.push(todayRow({ go: "settings", id: "td-knew", icon: "folder", color: k.n_link || k.gone ? "amber" : "slate", title: "K드라이브 새 폴더",
+        sub: "연결 결정 " + k.n_link + " · 알림 " + (k.n - k.n_link) + (k.gone ? " · 연결 폴더 안 보임 " + k.gone : ""), val: `<b class="mono">${k.n + k.gone}</b>` }));
+    }
     /* 보안교육 자격 — 만료·미이수(빨강) · DUE_DAYS 안 갱신(주황), 있을 때만 */
     if (window.SemisTraining && SemisTraining.alertSummary && menuOk("training")) {
       let a = null;
@@ -373,6 +379,8 @@
       if (tdAud && tdAud.dataset.aid && window.SemisAudit && SemisAudit.open) tdAud.onclick = () => SemisAudit.open(tdAud.dataset.aid);
       const tdUsr = $("#td-usr");   // 화물보안 대시보드의 미주행 재보안검색 탭으로
       if (tdUsr) tdUsr.onclick = () => { if (window.SemisSecDash && SemisSecDash.setTab) SemisSecDash.setTab("usr"); SeMIS.navigate("sec-dash"); };
+      const tdKnew = $("#td-knew");   // 시스템 설정 › K드라이브 동기화의 새 K 폴더 칸으로
+      if (tdKnew) tdKnew.onclick = () => { SeMIS.settingsTab("ksync", { pane: "new" }); SeMIS.navigate("settings"); };
       if (window.SemisScreen && ($("#dash-scr") || $("#td-scr"))) SemisScreen.mountDash();
       if (window.SemisLearn && $("#td-ln")) SemisLearn.mountToday();
       if (window.SemisSerp && $("#dash-serp")) SemisSerp.mountDash();
@@ -595,8 +603,13 @@
   /* ── 시스템 설정(관리자 전용) ── */
   /* 원격 변경 · 저장으로 화면을 다시 그려도 보던 탭에 남는다 — 다른 화면에서 들어올 때만 첫 탭.
      onRerender 는 그리기가 끝난 뒤 불리므로 render 안에서 prevRoute = 직전에 그린 주소 */
-  let setTab = "menus", prevRoute = "";
+  let setTab = "menus", prevRoute = "", setNext = "";
   SeMIS.onRerender(() => { prevRoute = location.hash; });
+  /* 다른 화면에서 특정 탭으로 들어올 때(홈 '오늘' 줄 등) — 다음 그리기에서 그 탭을 연다. K드라이브 동기화면 '확인 필요' 카드의 칸(opt.pane)도 */
+  SeMIS.settingsTab = (id, opt) => {
+    setNext = String(id || "");
+    if (setNext === "ksync" && window.SemisKsync && SemisKsync.pane) SemisKsync.pane(opt && opt.pane);
+  };
   SeMIS.registerModule("settings", {
     title: "시스템 설정",
     navBadge: () => (window.SemisKsync ? SemisKsync.badge() : ""),
@@ -609,7 +622,9 @@
         data: renderDataTab, storage: renderStorageTab, security: renderSecurityTab,
         ksync: (box, again) => { if (window.SemisKsync) SemisKsync.tab(box, again); else box.innerHTML = ""; } };
       const again = prevRoute === location.hash;     // 같은 화면을 다시 그린 것(원격 변경 등) — 사용자가 탭을 연 것이 아니다
-      if (!again || !tabs[setTab]) setTab = "menus";
+      if (tabs[setNext]) setTab = setNext;
+      else if (!again || !tabs[setTab]) setTab = "menus";
+      setNext = "";
       const tb = (id, label) => `<button class="tab${id === setTab ? " active" : ""}" data-tab="${id}">${label}</button>`;
       root.innerHTML = `
         <div class="page-head">

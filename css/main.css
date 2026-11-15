@@ -6999,6 +6999,14 @@ button.chip-title:focus-visible, button.calm-body:focus-visible { outline: 2px s
 .ks-det { max-height: 60vh; overflow: auto; }
 .ks-ssi { margin-top: 26px; }
 #ks-kp-in { margin-top: 6px; }
+/* '확인 필요' › 새 K 폴더 — 줄마다 되풀이되는 단추라 강조하지 않고, 좁은 폭에서는 단추가 아래로 */
+.ks-nd { list-style: none; margin: 6px 0 0; padding: 0; }
+.ks-nd-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px 12px; padding: 10px 2px; border-top: 1px solid var(--border); }
+.ks-nd-row:first-child { border-top: 0; }
+.ks-nd-main { flex: 1 1 280px; min-width: 0; overflow-wrap: anywhere; }
+.ks-nd-t { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.ks-nd-d { margin-top: 4px; color: var(--text-2); font-size: max(var(--fs-min), .88rem); }
+.ks-nd-act { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .rail-btn.util { position: relative; }
 .rail-dot { position: absolute; top: 7px; right: 9px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--sidebar-bg); }
 @media screen and (max-width: 767px) {
