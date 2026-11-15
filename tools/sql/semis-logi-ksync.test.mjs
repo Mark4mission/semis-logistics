@@ -1917,6 +1917,10 @@ await db.exec("delete from semis_logi_private.kidx where true");
 r = await walk([...W2, ["잠김", 1, null, null]], ["잠김"]);
 eq([r.ok, await berr()], [true, ["잠김"]], "NEWD-05 기준선 걷기의 err → kidx_base_err [잠김]");
 await back();
+const base5 = await base();
+r = await walk([...W2, ["잠김", 1, null, null]], ["잠김"]);
+eq([r.ok, await base(), await berr(), await fresh()], [true, base5, ["잠김"], []], "NEWD-05 여전히 못 읽음 → 목록에 남음 · kidx_base 그대로");
+await back();
 r = await walk([...W2, ["잠김", 1, null, null], ["잠김/a", 1, null, null], ["잠김/a/b", 1, null, null]], []);
 eq([r.ok, (await rows("select k.path, k.first_seen = s.kidx_base same from semis_logi_private.kidx k, semis_logi_private.ksync_state s " +
     "where s.id = 1 and k.path in ('잠김/a', '잠김/a/b') order by k.path collate \"C\"")).map(x => [x.path, x.same]), await berr(), await fresh()],
@@ -1924,6 +1928,32 @@ eq([r.ok, (await rows("select k.path, k.first_seen = s.kidx_base same from semis
 await back();
 r = await walk([...W2, ["잠김", 1, null, null], ["잠김/a", 1, null, null], ["잠김/a/b", 1, null, null], ["잠김/c", 1, null, null]], []);
 eq([r.ok, await fresh()], [true, ["잠김/c"]], "NEWD-05 그 뒤 생긴 잠김/c 는 새 폴더");
+
+// NEWD-05b 위 폴더를 못 읽음 — 에이전트는 못 읽은 폴더 아래로 내려가지 않으므로 err 가 위 폴더 '가' 로 바뀌어도 가/잠김 은 아직 안 읽힌 것(목록에 남김)
+const F1 = [["다", 1, null, null], ["다/f.pdf", 0, 1, T]];
+await db.exec("delete from semis_logi_private.kidx where true");
+r = await walk([["가", 1, null, null], ["가/잠김", 1, null, null], ["가/나", 1, null, null], ...F1], ["가/잠김"]);
+eq([r.ok, await berr()], [true, ["가/잠김"]], "NEWD-05b 기준선 err [가/잠김]");
+await back();
+const base5b = await base();
+r = await walk([["가", 1, null, null], ...F1], ["가"]);
+eq([r.ok, await base(), await berr()], [true, base5b, ["가/잠김"]], "NEWD-05b 위 폴더 가 를 못 읽은 걷기 → 가/잠김 목록에 남음 · kidx_base 그대로");
+await back();
+r = await walk([["가", 1, null, null], ["가/잠김", 1, null, null], ["가/잠김/x", 1, null, null], ["가/나", 1, null, null], ...F1], []);
+eq([r.ok, await berr(), await fresh()], [true, [], []], "NEWD-05b 나중에 읽힌 가/잠김 아래 줄도 기준선(새 폴더 0) · 목록 비움");
+
+// NEWD-05c 일부만 읽힘 — 보관 은 읽혔지만 그 안 보관/비밀 을 못 읽음 → 목록이 보관/비밀 로 좁아지고, 나중에 읽힌 그 아래도 기준선
+await db.exec("delete from semis_logi_private.kidx where true");
+r = await walk([["보관", 1, null, null], ...F1], ["보관"]);
+eq([r.ok, await berr()], [true, ["보관"]], "NEWD-05c 기준선 err [보관]");
+await back();
+r = await walk([["보관", 1, null, null], ["보관/a", 1, null, null], ["보관/비밀", 1, null, null], ...F1], ["보관/비밀"]);
+eq([r.ok, (await rows("select k.path, k.first_seen = s.kidx_base same from semis_logi_private.kidx k, semis_logi_private.ksync_state s " +
+    "where s.id = 1 and k.path in ('보관/a', '보관/비밀') order by k.path collate \"C\"")).map(x => [x.path, x.same]), await berr(), await fresh()],
+  [true, [["보관/a", true], ["보관/비밀", true]], ["보관/비밀"], []], "NEWD-05c 보관 아래 새 줄 → first_seen = kidx_base · 목록 [보관/비밀] · 새 폴더 0");
+await back();
+r = await walk([["보관", 1, null, null], ["보관/a", 1, null, null], ["보관/비밀", 1, null, null], ["보관/비밀/x", 1, null, null], ...F1], []);
+eq([r.ok, await berr(), await fresh()], [true, [], []], "NEWD-05c 나중에 읽힌 보관/비밀 아래 줄도 기준선(새 폴더 0) · 목록 비움");
 
 // NEWD-06 뿌리 바꿈 — 기준선 · 처리 기록 비움(다음 첫 덧쓰기가 다시 적음). 대소문자만 바꾸면 그대로
 await db.exec("insert into semis_logi_private.kidx_ack(path, act, by) values ('가/나', 'seen', 'N-a1'); " +

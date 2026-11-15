@@ -1398,9 +1398,17 @@ begin
   if v_rebase then
     v_base := now();
     v_berr := v_err;
-  else     -- 이번에 읽힌 폴더는 목록에서 뺀다(그 아래는 방금 기준선 시각으로 들어옴 — 그 뒤 생기는 것은 새 폴더)
-    v_berr := coalesce((select jsonb_agg(to_jsonb(e.p) order by e.i) from jsonb_array_elements_text(v_berr) with ordinality e(p, i)
-                         where exists (select 1 from jsonb_array_elements_text(v_err) r(p) where lower(r.p) = lower(e.p))), '[]'::jsonb);
+  else
+    -- 아직 안 읽힌 곳만 남긴다 — 에이전트는 못 읽은 폴더 아래로 내려가지 않으므로 이번 err 아래에 있는 목록 경로(위 폴더를 못 읽음)는 그대로,
+    -- 목록 경로 아래의 이번 err(일부만 읽힘)는 새로 넣는다. 나머지는 읽힌 것(그 아래는 방금 기준선 시각으로 들어옴 — 그 뒤 생기는 것은 새 폴더)
+    v_berr := coalesce((select jsonb_agg(to_jsonb(u.p) order by u.k, u.i)
+                          from (select distinct on (lower(c.p)) c.p, c.k, c.i
+                                  from (select e.p, 0 as k, e.i from jsonb_array_elements_text(v_berr) with ordinality e(p, i)
+                                         where semis_logi_private.ksync_under(e.p, v_err)
+                                        union all
+                                        select r.p, 1, r.i from jsonb_array_elements_text(v_err) with ordinality r(p, i)
+                                         where semis_logi_private.ksync_under(r.p, v_berr)) c
+                                 order by lower(c.p), c.k, c.i) u), '[]'::jsonb);
   end if;
   select count(*) filter (where not k.is_dir), count(*) filter (where k.is_dir) into v_files, v_dirs from semis_logi_private.kidx k;
   delete from semis_logi_private.kidx_stage where agent_id = p_agent;
