@@ -215,7 +215,7 @@
 
   window.SemisTasks = {
     KEY, CATS, CAT_ORDER, BUCKETS, list, catOf, norm, make, parse, dueInfo,
-    canUse, me, meInPart, partPeople, teamNames, personColor, today, weekStart, dayOf, dayLabel,
+    canUse, me, meInPart, partPeople, teamNames, personColor, today, weekStart, dayOf, dayLabel, addDays,
     setToday(iso) { fixedToday = isISO(iso) ? iso : ""; }
   };
 })();

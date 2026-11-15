@@ -14987,10 +14987,67 @@ function makeServer(opts = {}) {
       act("cancel").click();
       TK.open("tk_nope"); await tick();
       ok(!mOpen() && q(e, "#tk-list"), "없는 id — 창 없이 목록만");
+      eq(qa(e, "#toast-wrap .toast").pop().textContent, "찾지 못한 할 일입니다 — 지워졌을 수 있습니다.", "오래된 검색 결과여도 말없이 넘어가지 않음");
       go(e, "dashboard"); await tick();
       TK.open("tk_nope"); await tick();
       ok(e.w.location.hash === "#/tasks" && q(e, "#tk-list") && !mOpen(), "다른 화면에서 없는 id — 목록만");
       go(e, "tasks"); ok(!mOpen(), "연 id 는 한 번만 쓴다");
+    });
+    /* 회의 중 동기화는 할 일 객체를 새것으로 바꿔 넣는다 — 그 모양으로 흉내 낸다 */
+    const remote = (id, o) => { const i = e.S.data.tasks.findIndex(x => x.id === id); e.S.data.tasks[i] = TK.norm(Object.assign({}, e.S.data.tasks[i], o)); };
+    t("TK26 동시 고침: 이 창이 바꾼 칸만 지금 할 일에 얹는다 · 바꾼 것 없으면 고친 때 그대로", () => {
+      tkSeed();
+      openRow("tk_today");
+      remote("tk_today", { due: "2026-11-20", upAt: "2026-11-18T01:00:00.000Z", upBy: "가나다" });
+      setV("tk-f-memo", "내 메모"); act("save").click();
+      let x = byId("tk_today");
+      eq([x.due, x.time, x.memo, x.place, x.upBy].join("|"), "2026-11-20|15:00|내 메모|2층 회의실|Thq", "남이 바꾼 날짜는 그대로 · 내 메모만");
+      ok(x.upAt && x.upAt !== "2026-11-18T01:00:00.000Z", "고친 때"); ok(!mOpen());
+      remote("tk_today", { upAt: "2026-11-18T02:00:00.000Z", upBy: "가나다" });
+      openRow("tk_today"); act("save").click();
+      x = byId("tk_today");
+      eq(x.upAt + "|" + x.upBy, "2026-11-18T02:00:00.000Z|가나다", "바꾼 것 없이 저장 — 고친 때 · 사람 그대로");
+      remote("tk_none", { who: ["라마바", "Thq"], upAt: "2026-11-18T03:00:00.000Z" });
+      openRow("tk_none"); act("save").click();
+      eq(byId("tk_none").who.join() + "|" + byId("tk_none").upAt, "라마바,Thq|2026-11-18T03:00:00.000Z", "담당 순서가 칩 순서와 달라도 바꾼 것 아님");
+      openRow("tk_late");
+      remote("tk_late", { place: "3층", memo: "남의 메모" });
+      act("done").click();
+      x = byId("tk_late");
+      eq([x.done, x.place, x.memo].join("|"), "true|3층|남의 메모", "마침도 남이 바꾼 칸은 그대로");
+    });
+    t("TK27 창이 열린 사이 지워진 할 일: 저장 · 마침 · 지우기 — 되살리지 않고 알림", () => {
+      tkSeed();
+      const gone = (id) => e.S.data.tasks.splice(e.S.data.tasks.findIndex(x => x.id === id), 1);
+      const errs = () => qa(e, "#toast-wrap .toast.err");
+      [["tk_none", "save"], ["tk_late", "done"]].forEach(([id, a]) => {
+        openRow(id); gone(id);
+        const n0 = e.S.data.tasks.length, e0 = errs().length;
+        setV("tk-f-memo", "x"); act(a).click();
+        eq(e.S.data.tasks.length, n0, a + " — 개수 그대로"); ok(!byId(id), a + " — 되살리지 않음");
+        eq(errs().length, e0 + 1, a + " — 오류 알림"); eq(errs().pop().textContent, "그 사이 지워진 할 일입니다.");
+        ok(!mOpen(), a + " — 창 닫힘"); ok(!q(e, '#tk-list [data-id="' + id + '"]'), a + " — 목록에서도 빠짐");
+      });
+      openRow("tk_star"); gone("tk_star");
+      const n1 = e.S.data.tasks.length;
+      act("del").click(); clickOk(e);
+      eq(e.S.data.tasks.length, n1, "지우기 — 다른 할 일을 빼지 않음");
+      const lt = qa(e, "#toast-wrap .toast").pop();
+      eq(lt.textContent + "|" + lt.classList.contains("err"), "그 사이 지워진 할 일입니다.|true", "지우기 — '지웠습니다' 대신");
+    });
+    t("TK28 새 할 일 처음 값(preset) — 칸에 채워 열고 그대로 저장", () => {
+      tkSeed();
+      TK.edit(null, { t: "회의 자료 준비", due: "2026-11-20", time: "09:30", place: "1층 로비", who: ["사아자"], teams: ["협력업체A"], cat: "meet", star: true, memo: "가져갈 것" });
+      ok(mOpen() && !act("del"), "새 할 일 창");
+      eq([fv("tk-f-t"), fv("tk-f-due"), fv("tk-f-time"), fv("tk-f-place"), fv("tk-f-memo"), fv("tk-f-cat")].join("|"), "회의 자료 준비|2026-11-20|09:30|1층 로비|가져갈 것|meet");
+      eq(onNames("tk-f-who") + "|" + onNames("tk-f-teams"), "사아자|협력업체A", "명단 밖 이름도 켠 칩으로");
+      ok(fchip("tk-f-who", "Thq") && q(e, "#tk-f-star").checked, "명단 칩 · 중요");
+      const n0 = e.S.data.tasks.length;
+      act("save").click();
+      const nt = last();
+      eq(e.S.data.tasks.length, n0 + 1);
+      eq(JSON.stringify([nt.t, nt.due, nt.time, nt.place, nt.who, nt.teams, nt.cat, nt.star, nt.memo, nt.src]),
+        JSON.stringify(["회의 자료 준비", "2026-11-20", "09:30", "1층 로비", ["사아자"], ["협력업체A"], "meet", true, "가져갈 것", ""]));
     });
     e.w.close();
   }

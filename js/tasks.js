@@ -188,12 +188,11 @@
     if (typeof o.meet === "boolean") st.meet = o.meet;
   }
 
-  const plus = (iso, n) => new Date(Date.parse(iso + "T00:00:00Z") + n * 864e5).toISOString().slice(0, 10);
   const DUE_CHIPS = [["today", "오늘"], ["tomorrow", "내일"], ["fri", "이번 주 금"], ["nextmon", "다음 주 월"], ["clear", "지움"]];
   /* '이번 주 금'은 이미 지났어도 이번 주(월~일)의 금요일 — 기한 묶음 · 요약과 같은 주를 본다 */
   function dueOf(k) {
     const td = T.today(), mon = T.weekStart(td);
-    return k === "today" ? td : k === "tomorrow" ? plus(td, 1) : k === "fri" ? plus(mon, 4) : k === "nextmon" ? plus(mon, 7) : "";
+    return k === "today" ? td : k === "tomorrow" ? T.addDays(td, 1) : k === "fri" ? T.addDays(mon, 4) : k === "nextmon" ? T.addDays(mon, 7) : "";
   }
   const union = (a, b) => a.concat(b.filter(x => a.indexOf(x) < 0));
   /* 장소 목록은 할 일에 적힌 장소에서만 모은다(코드에 값 없음) — 최근 고친 순 20개 */
@@ -208,12 +207,17 @@
         `<button type="button" class="tk-qw" aria-pressed="${on.indexOf(n) >= 0}" data-n="${esc(n)}">${dots ? dot(n) : ""}${esc(n)}</button>`).join("")}</div>
       <input id="${gid}-x" type="text" autocomplete="off" maxlength="200" placeholder="직접 적기 — 여럿이면 쉼표로"></div>`;
 
+  const FORM_KEYS = ["t", "due", "time", "place", "who", "teams", "cat", "star", "memo"];
+
   /* id 가 없으면 새 할 일(preset = 처음 칸 값). 창은 오래 쓰므로 바깥 누르기 · Esc 로 닫지 않는다(sticky) */
   function edit(id, preset) {
     if (!T.canUse()) return;
     const x = id ? T.list().find(t => t.id === id) : null;
     if (id && !x) return;
     const v = x || T.norm(Object.assign({}, preset));
+    /* 연 때 값(깊은 복사) — 저장할 때 이 창이 바꾼 칸만 지금 할 일에 얹는다. 창 값을 통째로 쓰면
+       창이 열린 사이 회의 동료가 고친 칸(동기화로 들어온 값)을 옛 값으로 되돌린다 */
+    const base0 = x ? T.norm(JSON.parse(JSON.stringify(x))) : null;
     const autoLb = (t) => "자동 — " + T.CATS[T.catOf(Object.assign({}, t, { cat: "" }))].label;
     const file = x && x.src === "desk" && x.file && x.file.url ? x.file : null;
     openModal(`<h3>${x ? "할 일 고치기" : "할 일 추가"}</h3>
@@ -242,10 +246,13 @@
       </div>`, { sticky: true });
 
     const form = $("#modal-box .tk-form"), due = $("#tk-f-due"), tm = $("#tk-f-time"), cat = $("#tk-f-cat");
-    const names = (gid) => union($$("#" + gid + " [aria-pressed=true]").map(b => b.dataset.n),
-      $("#" + gid + "-x").value.split(/[,，]/).map(s => s.trim()).filter(Boolean));
+    /* 연 때 이름 순서를 지킨다 — 칩 순서로 다시 쓰면 손대지 않은 담당도 '바뀐 칸'이 된다 */
+    const names = (gid, was) => {
+      const on = $$("#" + gid + " [aria-pressed=true]").map(b => b.dataset.n);
+      return union(union(was.filter(n => on.indexOf(n) >= 0), on), $("#" + gid + "-x").value.split(/[,，]/).map(s => s.trim()).filter(Boolean));
+    };
     const fields = () => ({ t: $("#tk-f-t").value, due: due.value, time: tm.value, place: $("#tk-f-place").value,
-      who: names("tk-f-who"), teams: names("tk-f-teams"), cat: cat.value, star: $("#tk-f-star").checked, memo: $("#tk-f-memo").value });
+      who: names("tk-f-who", v.who), teams: names("tk-f-teams", v.teams), cat: cat.value, star: $("#tk-f-star").checked, memo: $("#tk-f-memo").value });
     /* 날짜 없는 시각은 저장 때 지워지므로(norm) 시각 칸을 잠가 보이게 한다 */
     const syncTime = () => { tm.disabled = !due.value; if (!due.value) tm.value = ""; };
     const upAuto = () => { cat.options[0].textContent = autoLb(fields()); };
@@ -261,21 +268,26 @@
 
     /* 창이 열린 사이 원격 변경이 배열을 바꿨을 수 있다 — 고칠 대상은 늘 id 로 다시 찾는다 */
     const cur = () => T.list().find(t => t.id === v.id);
+    let dirty = false;
     function commit() {
       const f = fields();
       if (!T.norm({ t: f.t }).t) { toast("내용을 입력하세요.", true); $("#tk-f-t").focus(); return null; }
       if (!x) return add(f, "");
       const t = cur();
       if (!t) { closeModal(); refresh(); toast("그 사이 지워진 할 일입니다.", true); return null; }
-      const now = new Date().toISOString();
-      Object.assign(t, T.norm(Object.assign({}, t, f, { upAt: now, upBy: T.me() })));
+      const J = JSON.stringify, mine = T.norm(Object.assign({}, base0, f)), out = Object.assign({}, t);
+      FORM_KEYS.forEach(k => { if (J(mine[k]) !== J(base0[k])) out[k] = mine[k]; });
+      const n = T.norm(out);   // 날짜 · 시각 짝을 다시 맞춘다(남이 날짜를 지웠으면 이 창의 시각도 남지 않게)
+      /* 바뀐 것이 없으면 고친 때 · 사람을 두지 않는다 — 회의 중 '저장'만 눌러도 남이 고친 기록이 내 이름으로 바뀌지 않게 */
+      dirty = J(n) !== J(T.norm(t));
+      if (dirty) Object.assign(t, T.norm(Object.assign(n, { upAt: new Date().toISOString(), upBy: T.me() })));
       return t;
     }
     $('#modal-box [data-act="cancel"]').onclick = closeModal;
     $('#modal-box [data-act="save"]').onclick = () => {
       const t = commit();
       if (!t) return;
-      if (x) persist();
+      if (x && dirty) persist();
       closeModal();
       refresh();
       toast(x ? "저장했습니다." : "할 일을 추가했습니다.");
@@ -286,7 +298,7 @@
       const t = commit(), on = !v.done;
       if (!t) return;
       closeModal();
-      if (!setDone(t.id, on)) { persist(); refresh(); }
+      if (!setDone(t.id, on)) { if (dirty) persist(); refresh(); }
       if (on) toast("마쳤습니다.", false, { label: "되돌리기", run: () => setDone(t.id, false) });
       else toast("다시 할 일로 옮겼습니다.");
     };
@@ -294,7 +306,7 @@
       const arr = SeMIS.data[T.KEY], i = Array.isArray(arr) ? arr.findIndex(t => t.id === v.id) : -1;
       if (i >= 0) { arr.splice(i, 1); persist(); }
       refresh();
-      toast("지웠습니다.");
+      if (i >= 0) toast("지웠습니다."); else toast("그 사이 지워진 할 일입니다.", true);
     });
   }
   /* 검색 · 일정관리 · 아르고 결과 카드가 부른다 — 앱은 tasks/<id> 주소를 풀지 않으므로 id 를 들고 이동한 뒤, 그려지면 창을 연다 */
@@ -394,7 +406,8 @@
     };
     $("#tk-add", el).onclick = () => { if (typeof T.edit === "function") T.edit(null); };
     $("#tk-meet", el).onclick = () => { st.meet = !st.meet; render(el); };
-    if (want && T.list().some(t => t.id === want)) edit(want);
+    /* 오래된 검색 결과 · 일정 칩이 가리킨 할 일이 그 사이 지워졌으면 목록은 그대로 두고 알린다 — 말없이 목록만 보이면 누른 것이 안 된 줄 안다 */
+    if (want) { if (T.list().some(t => t.id === want)) edit(want); else toast("찾지 못한 할 일입니다 — 지워졌을 수 있습니다.", true); }
   }
 
   Object.assign(T, { add, setDone, setState, edit, open });
