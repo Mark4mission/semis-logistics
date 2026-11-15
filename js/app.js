@@ -433,6 +433,7 @@ const SeMIS = (() => {
       learn: { courses: [] },              // 교육 전파 · 서명 — 교육 정의 (이수 기록 · 서명은 서버 비공개 표, js/learn.js)
       roster: { team: "", people: [], orgs: [] }, // 인원 관리 — 임직원 · 협력업체 통합 명단 (명단 · 사번은 공용 DB만, js/roster.js)
       desk: { cfg: {}, log: [] },  // 접수 카운터 — 분야별 담당 · 올린 문서 기록 (js/desk.js)
+      tasks: [],                   // Task 관리 — 안전보안파트 할 일 (js/tasks-core.js)
       boards: defaultBoards()      // 게시판 정의 (글은 서버 비공개 표 — js/board.js)
     };
   }
@@ -599,8 +600,12 @@ const SeMIS = (() => {
     if (!isObj(dk.cfg)) dk.cfg = {};
     dk.log = (Array.isArray(dk.log) ? dk.log : []).filter(x => x && typeof x === "object" && x.id && x.file && typeof x.file === "object");
     ["serpRuns", "threatRuns", "threatChecks", "equipment", "audits", "seclog", "patrol", "patrolPeople",
-      "selfChecks", "docs", "contracts", "secCases"].forEach(rows);
+      "selfChecks", "docs", "contracts", "secCases", "tasks"].forEach(rows);
     DATA.equipment.forEach(x => { if (!Array.isArray(x.logs)) x.logs = []; });
+    if (typeof window !== "undefined" && window.SemisTasks) {
+      const tn = window.SemisTasks.norm;
+      DATA.tasks.forEach((x, i) => { const n = tn(x); if (JSON.stringify(n) !== JSON.stringify(x)) DATA.tasks[i] = n; });
+    }
     DATA.fleet = (Array.isArray(DATA.fleet) ? DATA.fleet : []).filter(f => f && typeof f === "object" && f.hex);
     DATA.regulations = (Array.isArray(DATA.regulations) ? DATA.regulations : []).filter(r => r && r.id);
     DATA.regulations.forEach(r => {

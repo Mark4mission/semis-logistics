@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/loginguard.js", "js/app.js", "js/argo-owl.js", "js/panel.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/preview.js", "js/preview-draw.js", "js/preview-cfb.js", "js/preview-xls.js", "js/preview-hwp.js", "js/docshelf.js", "js/kidx.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/board.js", "js/cares.js", "js/hazfind.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/contracts.js", "js/partners.js", "js/kcra.js", "js/seccases.js", "js/dissem.js", "js/roster.js", "js/learn-md.js", "js/learn.js", "js/scrstats.js", "js/usrescreen.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/docread.js", "js/desk.js", "js/argo.js", "js/selfcheck.js", "js/auddash.js", "js/hubhome.js", "js/ksync.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
+const FILES = ["js/loginguard.js", "js/app.js", "js/argo-owl.js", "js/panel.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/preview.js", "js/preview-draw.js", "js/preview-cfb.js", "js/preview-xls.js", "js/preview-hwp.js", "js/docshelf.js", "js/kidx.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/tasks-core.js", "js/board.js", "js/cares.js", "js/hazfind.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/contracts.js", "js/partners.js", "js/kcra.js", "js/seccases.js", "js/dissem.js", "js/roster.js", "js/learn-md.js", "js/learn.js", "js/scrstats.js", "js/usrescreen.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/docread.js", "js/desk.js", "js/argo.js", "js/selfcheck.js", "js/auddash.js", "js/hubhome.js", "js/ksync.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -1652,7 +1652,7 @@ function makeServer(opts = {}) {
     const e = makeEnv({ fetch: server.fetch });
     const { Sync } = e;
     t("Y01 SYNC_KEYS 구성(계정 자료 제외)", () =>
-      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,vault,regulations,equipment,crisis,fleet,audits,phonebook,training,seclog,seclogCfg,serp,serpRuns,threat,threatRuns,threatChecks,patrol,patrolCfg,patrolPeople,secPost,secPostImg,selfChecks,selfCheckCfg,docs,partners,contracts,kcra,secCases,dissem,scrStats,desk,boards,usRescreen,learn,roster"));
+      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,vault,regulations,equipment,crisis,fleet,audits,phonebook,training,seclog,seclogCfg,serp,serpRuns,threat,threatRuns,threatChecks,patrol,patrolCfg,patrolPeople,secPost,secPostImg,selfChecks,selfCheckCfg,docs,partners,contracts,kcra,secCases,dissem,scrStats,desk,boards,usRescreen,learn,roster,tasks"));
     t("Y02 SYNC_KEYS는 모두 freshData 컬렉션에 존재", () => Sync.SYNC_KEYS.forEach(k => ok(e.S.data[k] !== undefined, k)));
     await ta("Y03 로그인 전에는 서버를 부르지 않음 · 로그인 후 초기 pull + 쓰기 권한 있는 컬렉션만 시드", async () => {
       await Sync.start();
@@ -14547,6 +14547,61 @@ function makeServer(opts = {}) {
       ok($l(x, "#ln-next2").hidden, "건너뛰어 끝나면 시청 완료 아님");
       x.w.close();
     });
+  }
+
+  /* ══════════ [TK] Task 관리 — 데이터 · 권한표 · 날짜 말 · 분류(순수 로직) ══════════ */
+  {
+    const e = makeEnv(), fresh = JSON.parse(JSON.stringify(e.S.data)); loginAs(e, "hq");
+    const TK = e.w.SemisTasks || {};
+    if (TK.setToday) TK.setToday("2026-11-18");
+    t("TK01 권한표 · 동기화 · 기본값 · 마이그레이션 파일", () => {
+      eq((ACL.tasks || []).join(","), "3,3"); ok(e.w.SemisSync.SYNC_KEYS.indexOf("tasks") >= 0);
+      ok(Array.isArray(fresh.tasks) && fresh.tasks.length === 0);
+      ok(/\('tasks',3,3\)/.test(read("tools/sql/semis-logi-tasks.sql")) && /on conflict \(key\) do update/.test(read("tools/sql/semis-logi-tasks.sql")));
+    });
+    t("TK02 날짜 말", () => { const P = s => TK.parse(s, { today: "2026-11-18", names: [], teams: [] });
+      eq(P("오늘 a").due, "2026-11-18"); eq(P("내일 a").due, "2026-11-19"); eq(P("모레 a").due, "2026-11-20"); eq(P("글피 a").due, "2026-11-21");
+      eq(P("금요일 a").due, "2026-11-20"); eq(P("수요일 a").due, "2026-11-18"); eq(P("월요일 a").due, "2026-11-23");
+      eq(P("이번 주 금요일 a").due, "2026-11-20"); eq(P("이번주 월요일 a").due, "2026-11-16");
+      eq(P("다음 주 수요일 a").due, "2026-11-25"); eq(P("다음주 a").due, "2026-11-23"); eq(P("차주 금 a").due, "2026-11-27");
+      eq(P("11/20 a").due, "2026-11-20"); eq(P("11.20 a").due, "2026-11-20"); eq(P("11월 20일 a").due, "2026-11-20");
+      eq(P("2027-01-05 a").due, "2027-01-05"); eq(P("2026.11.20 a").due, "2026-11-20");
+      eq(P("2일간 교육").due, ""); eq(P("a 3시간").time, "");
+      const r20 = P("20일 이내 회신"); eq(r20.due, ""); eq(r20.t, "20일 이내 회신"); eq(P("월말 보고").due, ""); eq(P("월말 보고").t, "월말 보고");
+    });
+    t("TK03 경계: 연도 넘김 · 지난 날짜 · 다음 주가 해를 넘김", () => {
+      eq(TK.parse("1/5 a", { today: "2026-12-20", names: [], teams: [] }).due, "2027-01-05");
+      eq(TK.parse("11/1 a", { today: "2026-11-18", names: [], teams: [] }).due, "2026-11-01");
+      eq(TK.parse("다음 주 월요일 a", { today: "2026-12-30", names: [], teams: [] }).due, "2027-01-04");
+    });
+    t("TK04 시각 · 말 빼기 · 담당 · 관련 팀", () => { const o = { today: "2026-11-18", names: ["가나다"], teams: ["수출파트"] };
+      const r = TK.parse("내일 오후 3시 보안교육 자료 제출", o); eq([r.t, r.due, r.time].join("|"), "보안교육 자료 제출|2026-11-19|15:00");
+      eq(TK.parse("a 오전 10시 30분", o).time, "10:30"); eq(TK.parse("a 3시 반", o).time, "15:30"); eq(TK.parse("a 14:00", o).time, "14:00"); eq(TK.parse("a 9시", o).time, "09:00");
+      eq(TK.parse("내일", o).t, "내일");
+      const n = TK.parse("가나다 수출파트 회신 받기", o); eq(n.who.join(), "가나다"); eq(n.teams.join(), "수출파트"); eq(n.t, "가나다 수출파트 회신 받기");
+      ok(r.hits.length === 2);
+    });
+    t("TK05 분류 자동 · 직접", () => { const C = s => TK.catOf({ t: s, memo: "" });
+      eq(C("검색장비 정기 점검"), "equip"); eq(C("AEO 심사 준비"), "check"); eq(C("보안교육 자료 제출"), "edu");
+      eq(C("파트 회의 자료 작성"), "meet"); eq(C("월간 보고서 제출"), "doc"); eq(C("택배 받기"), "etc");
+      eq(TK.catOf({ t: "택배", memo: "", cat: "meet" }), "meet"); eq(TK.CATS.meet.color, "blue");
+    });
+    t("TK06 정규화 멱등 · 칸 규칙", () => { const n = TK.norm({ id: "tk_a", t: "x".repeat(400), due: "2026-13-01", time: "9:00", who: ["가나다", "가나다", " "], cat: "zzz", done: false, doneAt: "2026-11-01T00:00:00Z" });
+      eq(n.t.length, 300); eq(n.due, ""); eq(n.time, ""); eq(n.who.join(), "가나다"); eq(n.cat, ""); eq(n.doneAt, "");
+      eq(JSON.stringify(TK.norm(n)), JSON.stringify(n));
+      e.S.data.tasks = [n, { t: "id 없음" }]; e.S.normalizeData(); eq(e.S.data.tasks.length, 1); eq(e.S.normalizeData(), false, "멱등");
+    });
+    t("TK07 기한 상태 · 묶음 이름", () => { const D = (due, time) => TK.dueInfo({ due, time: time || "" }, "2026-11-18");
+      eq(D("2026-11-15").b + "|" + D("2026-11-15").label, "late|3일 지남"); eq(D("2026-11-18", "15:00").label, "오늘 15:00");
+      eq(D("2026-11-19").b + "|" + D("2026-11-19").label, "tomorrow|내일"); eq(D("2026-11-21").b + "|" + D("2026-11-21").label, "week|11-21(토)");
+      eq(D("2026-11-23").b, "later"); eq(D("").b, "none");
+    });
+    t("TK08 회의 중 동시 고침 = 할 일 단위 병합", () => { const a = TK.norm({ id: "tk_a", t: "A" }), b = TK.norm({ id: "tk_b", t: "B" });
+      const local = [{ ...a, done: true }, b], remote = [a, { ...b, due: "2026-11-20" }];
+      const m = e.w.SemisSync.merge3([a, b], local, remote);
+      eq(m.find(x => x.id === "tk_a").done, true); eq(m.find(x => x.id === "tk_b").due, "2026-11-20");
+    });
+    e.w.close();
   }
 
   /* ══════════ [W] 릴리스 위생 ══════════ */
