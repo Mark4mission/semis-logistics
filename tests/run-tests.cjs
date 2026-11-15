@@ -10595,6 +10595,102 @@ function makeServer(opts = {}) {
       ok(read("README.md").includes("**접속 주소: https://hdrive.kr/**") && read("docs/HANDOFF.md").includes("| 접속 주소 | https://hdrive.kr/"), "안내 문서");
       ok(!fs.existsSync(path.join(ROOT, "CNAME")) || read("CNAME").trim() === "hdrive.kr", "CNAME 은 hdrive.kr 만");
     });
+
+    /* [AR-K] K드라이브 찾기 — argoEnv 에 가짜 K 목록 RPC(semis_logi_kidx_list)를 더한다. 목록 모양은 KX 묶음과 같다 */
+    const AK_LIST = () => ({ ok: true, on: true, at: "2026-11-15T00:30:00Z", win_root: "\\\\srv\\share\\항공보안\\",
+      dirs: ["", "70 안전", "70 안전/국토부 항공안전 점검", "70 안전/국토부 항공안전 점검/2025"],
+      files: [[3, "점검 결과 통보.pdf", 1200, "2025-10-14", "d1"], [0, "00 안내.pdf", 10, "2026-11-01", null]] });
+    const argoK = (role, make, script) => {
+      const e = argoEnv(role, script), argoFetch = e.w.fetch;
+      e.kx = { calls: 0, make: make || AK_LIST };
+      e.w.fetch = async (url, init) => {
+        if (String(url).indexOf("/rest/v1/rpc/semis_logi_kidx_list") < 0) return argoFetch(url, init);
+        e.kx.calls++;
+        const r = e.kx.make(), st = r.__status || 200;
+        return { ok: st >= 200 && st < 300, status: st, json: async () => r };
+      };
+      return e;
+    };
+    const kIdOf = (e, title) => e.w.SemisKidx.items().find(it => it.title === title).id;
+
+    await ta("AR-K1 argos_find scope kdrive: hq → K 항목만(kind · name · folder · date · in_h · go k/<id>) · 모두 맞는 K 가 없으면 일부만 맞는 K(partial) · limit 기본 12 · 최대 30 · scope 없음 · all 은 지금 결과 그대로(K 없음)", async () => {
+      const e = argoK("hq");
+      e.S.data.regulations = [{ id: "ak-r1", scope: "sec", title: "국토부 점검 규정 갑", ideas: [] }];
+      let x = await run(e, "argos_find", { query: "국토부 점검", scope: "kdrive" });
+      eq(e.kx.calls, 1, "목록을 받아서 찾음");
+      ok(!x.r.error && !("note" in x.r), JSON.stringify(x.r));
+      eq(JSON.stringify([x.r.query, x.r.scope, x.r.count]), JSON.stringify(["국토부 점검", "kdrive", x.r.items.length]));
+      eq(x.r.items.map(i => i.name).sort().join("|"), ["2025", "국토부 항공안전 점검", "점검 결과 통보.pdf"].sort().join("|"), "K 만(규정 · 맞지 않는 K 없음)");
+      eq(JSON.stringify(x.r.items.find(i => i.kind === "file")),
+        JSON.stringify({ kind: "file", name: "점검 결과 통보.pdf", folder: "70 안전 › 국토부 항공안전 점검 › 2025", date: "2025-10-14", in_h: true, go: "k/" + kIdOf(e, "점검 결과 통보.pdf") }), "파일 항목");
+      eq(JSON.stringify(x.r.items.find(i => i.name === "국토부 항공안전 점검")),
+        JSON.stringify({ kind: "folder", name: "국토부 항공안전 점검", folder: "70 안전", in_h: false, go: "k/" + kIdOf(e, "국토부 항공안전 점검") }), "폴더 항목(날짜 없음)");
+      x = await run(e, "argos_find", { query: "국토부 없는말없는말", scope: "kdrive" });
+      ok(x.r.count > 0 && x.r.items.every(i => i.partial === true && /^k\/[0-9a-z]+$/.test(i.go)) && !x.r.items.some(i => /규정/.test(i.name)), "일부만 맞는 K(partial): " + JSON.stringify(x.r.items));
+      for (const inp of [{ query: "국토부 점검" }, { query: "국토부 점검", scope: "all" }]) {
+        x = await run(e, "argos_find", inp);
+        ok(x.r.items.some(i => i.group === "규정") && !x.r.items.some(i => i.group === "K드라이브" || /^k\//.test(i.go || "")), "scope " + (inp.scope || "없음") + ": H 결과 그대로 · K 없음: " + JSON.stringify(x.r.items));
+        eq(Object.keys(x.r).join(), "query,count,items", "결과 모양 그대로");
+      }
+      eq(e.kx.calls, 1, "30분 안엔 다시 받지 않음");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.w.close();
+      const m = argoK("hq", () => { const l = AK_LIST(); for (let i = 0; i < 40; i++) l.files.push([2, "국토부 점검 " + i + ".pdf", 10, "2026-01-01", null]); return l; });
+      x = await run(m, "argos_find", { query: "국토부 점검", scope: "kdrive" });
+      eq(x.r.count, 12, "기본 12");
+      x = await run(m, "argos_find", { query: "국토부 점검", scope: "kdrive", limit: 99 });
+      eq(x.r.count, 30, "최대 30");
+      eq(m.errors.length, 0, m.errors.join(" | "));
+      m.w.close();
+    });
+
+    await ta("AR-K2 답 속 K 단추: [[이름|k/<id>]] → K 위치 창(아르고 패널 · 화면 그대로) · 목록에 없는 id · K 를 못 쓰는 계정은 굵은 글자 · 이름은 글자 그대로 · 화면 바로 가기는 그대로", async () => {
+      let kgo = "";
+      const e = argoK("hq", null, (b, n) => {
+        if (n === 1) return { ok: true, stop: "tool_use", content: [{ type: "tool_use", id: "tu_k", name: "argos_find", input: { query: "국토부 점검 통보", scope: "kdrive" } }] };
+        const tr = JSON.parse(b.messages[b.messages.length - 1].content[0].content);
+        kgo = (tr.items.find(i => i.name === "점검 결과 통보.pdf") || {}).go || "";
+        return { ok: true, stop: "end_turn", content: [{ type: "text", text: "**2025** 폴더에 있습니다. [[통보 <i>x</i>|" + kgo + "]] · [[지운 파일|k/zz9]] · [[일정관리|schedule]]" }] };
+      });
+      const A = e.w.SemisArgo;
+      A.open();
+      ok(await A.send("국토부 점검 결과 통보 어디 있어?"), "보냄");
+      ok(/^k\/[0-9a-z]+$/.test(kgo), "도구 결과의 go: " + kgo);
+      const md = () => q(e, "#pnl-argo .ag-turn:last-child .ag-md");
+      const kb = md().querySelector(".ag-go[data-k]");
+      ok(kb && kb.dataset.k === kgo.slice(2) && kb.tagName === "BUTTON" && kb.type === "button" && !kb.dataset.go, "K 단추: " + md().innerHTML);
+      ok(kb.textContent.indexOf("통보 <i>x</i>") === 0 && !kb.querySelector("i"), "이름은 글자 그대로");
+      ok(!md().querySelector('[data-k="zz9"]') && Array.from(md().querySelectorAll("b")).some(x => x.textContent === "지운 파일"), "목록에 없는 id 는 굵은 글자");
+      ok(md().querySelector('.ag-go[data-go="schedule"]'), "화면 바로 가기 그대로");
+      const hash = e.w.location.hash;
+      kb.click(); await tick(5);
+      eq(q(e, "#modal-box h3") && q(e, "#modal-box h3").textContent, "점검 결과 통보.pdf", "K 위치 창");
+      ok(e.w.SemisPanel.isOpen("argo") && e.w.location.hash === hash, "아르고 패널 · 화면 그대로");
+      e.S.closeModal();
+      loginAs(e, "manager");
+      A.open();
+      ok(!md().querySelector("[data-k]") && Array.from(md().querySelectorAll("b")).some(x => x.textContent === "통보 <i>x</i>"), "K 를 못 쓰는 계정: 굵은 글자");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.w.close();
+    });
+
+    await ta("AR-K3 scope kdrive 를 못 쓸 때: 화물팀 관리자 · RPC 실패 · 꺼짐 → count 0 · 빈 목록 · 안내 한 줄(오류 아님) · 관리자는 RPC 를 부르지 않음", async () => {
+      const NOTE = JSON.stringify({ query: "국토부 점검", scope: "kdrive", count: 0, items: [], note: "K드라이브 찾기를 쓸 수 없거나 꺼져 있습니다." });
+      const e = argoK("manager", () => ({ __status: 500, ok: false }));
+      let x = await run(e, "argos_find", { query: "국토부 점검", scope: "kdrive" });
+      eq(JSON.stringify(x.r), NOTE, "화물팀 관리자");
+      eq(e.kx.calls, 0, "RPC 부르지 않음");
+      loginAs(e, "hq");
+      x = await run(e, "argos_find", { query: "국토부 점검", scope: "kdrive" });
+      eq(JSON.stringify(x.r), NOTE, "RPC 500");
+      eq(e.kx.calls, 1);
+      const off = argoK("hq", () => ({ ok: true, on: false }));
+      x = await run(off, "argos_find", { query: "국토부 점검", scope: "kdrive" });
+      eq(JSON.stringify(x.r), NOTE, "꺼짐");
+      eq(off.kx.calls, 1);
+      eq(e.errors.length + off.errors.length, 0, e.errors.concat(off.errors).join(" | "));
+      e.w.close(); off.w.close();
+    });
   }
 
   /* ══════════ [BB] 게시판 — 메뉴 · 목록 · 읽기 · 쓰기 · 댓글 · 관리 · 대시보드 · 아르고 · 서버 원본 ══════════ */
@@ -13542,6 +13638,19 @@ function makeServer(opts = {}) {
       e.S.data.docs = many();
       show("국토부");
       ok(/조건에 맞는 문서가 없습니다/.test(noneTxt()) && !kb(), "manager 게시판형: 단추 없음");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+
+    await ta("KX12 결과 상한(300): H 묶음이 상한을 채워도 K드라이브 묶음은 잘리지 않고 맨 끝 — H 를 K 수만큼 덜 넣는다", async () => {
+      const { e, K } = await kxSetup("hq-pw-2222");
+      await K.ensure();
+      const SS = e.w.SemisSearch;
+      for (let i = 0; i < 11; i++) SS.register({ id: "kx12-" + i, group: "시험 " + i, items: () => Array.from({ length: 30 }, (x, j) => ({ title: "국토부 점검 " + i + "-" + j, route: "dashboard" })) });
+      const r = SS.searchAll("국토부 점검");
+      eq(r.full.length, 300, "상한");
+      eq(r.full.filter(x => x.group === "K드라이브").map(x => x.title).sort().join("|"), ["2025", "국토부 항공안전 점검", "점검 결과 통보.pdf"].sort().join("|"), "K 묶음 그대로");
+      ok(r.full.slice(-3).every(x => x.group === "K드라이브"), "K 는 맨 끝");
       eq(e.errors.length, 0, e.errors.join(" | "));
       e.Sync.stop(); e.w.close();
     });

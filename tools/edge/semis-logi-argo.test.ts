@@ -75,6 +75,20 @@ Deno.test("user: 조회 도구만 · 자료 목록은 공지만 · 시스템 캐
   assertEquals([meter.body.p_in, meter.body.p_out, meter.body.p_cache], [10, 5, 7]);
 });
 
+Deno.test("argos_find scope: all · kdrive(K드라이브 이름 · 위치) · 도구 목록 그대로 · 지침 한 줄", async () => {
+  calls.length = 0;
+  begin = { ok: true, rank: 1, role: "user", name: "시험", used: 1, limit: 200 };
+  const r = await post({ messages: [userMsg("작년 국토부 점검 결과 어디 있어?")] });
+  await r.json();
+  const b = aiCalls()[0].body as Record<string, any>;
+  assertEquals(b.tools.map((t: any) => t.name).join(), "argos_find,argos_status,argos_records");
+  const f = b.tools[0], p = f.input_schema.properties;
+  assertEquals(p.scope, { type: "string", enum: ["all", "kdrive"], description: "kdrive = K드라이브(공유 폴더 '항공보안')의 파일 · 폴더 이름과 위치만" });
+  assertEquals([p.limit.maximum, f.input_schema.required.join()], [30, "query"]);
+  for (const w of ["scope kdrive", "동의어", "2~4번", "폴더 경로", "[[이름|go]]", "지어내지 않는다"]) assert(f.description.includes(w), w);
+  assert(b.system[0].text.includes("\n- K드라이브 자료의 위치는 argos_find(scope kdrive) 결과로만 말합니다.\n"));
+});
+
 Deno.test("hq: 쓰기 도구 · 계약 목록 · 왕복 5회째는 도구 없이 답(tool_choice none) · tool_use 는 그대로 돌려줌", async () => {
   calls.length = 0;
   begin = { ok: true, rank: 3, role: "hq", name: "파트", used: 9, limit: 200 };

@@ -278,7 +278,7 @@ const SemisSearch = (() => {
       if (isK) kHits = hits.slice(0, GROUP_MAX);
       else out.full.push.apply(out.full, hits.slice(0, GROUP_MAX));
     });
-    out.full = out.full.concat(kHits).slice(0, TOTAL_MAX);
+    out.full = out.full.slice(0, TOTAL_MAX - kHits.length).concat(kHits);   // 상한은 H 쪽을 줄여서 — K 묶음(최대 30)이 잘리지 않게
     out.partial = part.sort((a, b) => b.score - a.score).slice(0, PARTIAL_MAX);
     return out;
   }
