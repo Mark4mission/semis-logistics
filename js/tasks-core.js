@@ -45,7 +45,10 @@
   function catOf(t) {
     t = t || {};
     if (has(CATS, t.cat)) return t.cat;
-    const s = (String(t.t || "") + " " + String(t.memo || "")).toLowerCase();
+    let s = (String(t.t || "") + " " + String(t.memo || "")).toLowerCase();
+    /* 담당자 이름 속 글자가 분류 말로 잡히지 않게 먼저 뺀다('이수아' 의 '이수' → 교육) */
+    (Array.isArray(t.who) ? t.who : []).map(w => String(w == null ? "" : w).trim().toLowerCase()).filter(Boolean)
+      .sort((a, b) => b.length - a.length).forEach(w => { s = s.split(w).join(" "); });
     return CAT_ORDER.find(k => (CAT_WORDS[k] || []).some(w => s.indexOf(w) >= 0)) || "etc";
   }
 
@@ -92,28 +95,36 @@
   }
 
   /* ── 빠른 입력 말 ──
-     날만(20일 — 공문의 '20일 이내 회신' 같은 기간) · 월말(정기 '월말 보고'의 이름) · 반복 말(매주 · 매월)은 알아듣지 않는다.
+     날만(20일 — 공문의 '20일 이내 회신' 같은 기간) · 월말(정기 '월말 보고'의 이름)은 알아듣지 않는다.
      정규식은 뒤돌아보기(?<…)를 쓰지 않는다 — 지원하지 않는 브라우저에서는 이 파일 전체가 읽히지 않는다 */
   const B = "(^|[^가-힣A-Za-z0-9])";
   const BN = "(^|[^가-힣A-Za-z0-9./:-])";   // 2026.11.20 의 11.20 · 10:30 의 30 같은 조각을 따로 잡지 않게
-  const E = "(?:까지|부터|에)?(?![가-힣A-Za-z0-9])";   // 기한 말에 흔히 붙는 토씨는 함께 뺀다
-  const EN = "(?:까지|부터|에)?(?![가-힣A-Za-z0-9]|[./:-]\\d)";
-  /* 연도 없는 날짜는 올해 — 30일 넘게 지났으면 내년(12월에 적는 1월 일) */
-  const md = (mo, d, td) => {
+  /* 뒤 경계 — 기한 말에 흔히 붙는 토씨는 함께 뺀다. 날짜 뒤 '부터'는 시작 날이라 기한으로 잡지 않고,
+     시각 뒤 '부터'는 그 일을 하는 시각이라 잡는다 */
+  const end = (pp, num) => "(?:" + pp + ")?(?![가-힣A-Za-z0-9]" + (num ? "|[./:-]\\d" : "") + ")";
+  const E = end("까지|에"), EN = end("까지|에", true);
+  const ET = end("까지|부터|에"), ETN = end("까지|부터|에", true);
+  /* 반복 일은 한 번의 기한이 아니므로 날짜 · 시각을 하나도 알아듣지 않는다 */
+  const REPEAT = /(^|[^가-힣])(매주|매월|매일|격주|매년)(?![가-힣])/;
+  /* 연도 없는 날짜는 올해 — 30일 넘게 지났으면 내년(12월에 적는 1월 일). M.D 꼴은 소수(평점 4.5)와 헷갈리므로 넘기지 않고 버린다 */
+  const md = (mo, d, td, roll) => {
     const y = +td.slice(0, 4), iso = ymd(y, mo, d);
-    return iso && diffDays(iso, td) > 30 ? ymd(y + 1, mo, d) : iso;
+    if (!iso || diffDays(iso, td) <= 30) return iso;
+    return roll ? ymd(y + 1, mo, d) : "";
   };
   const DATE_RX = [
     [BN + "(\\d{4})[-./](\\d{1,2})[-./](\\d{1,2})" + EN, (m) => ymd(+m[2], +m[3], +m[4])],
-    [BN + "(\\d{1,2})월\\s*(\\d{1,2})일" + E, (m, td) => md(+m[2], +m[3], td)],
-    [BN + "(\\d{1,2})[/.](\\d{1,2})" + EN, (m, td) => md(+m[2], +m[3], td)],
+    [BN + "(\\d{1,2})월\\s*(\\d{1,2})일" + E, (m, td) => md(+m[2], +m[3], td, true)],
+    [BN + "(\\d{1,2})/(\\d{1,2})" + EN, (m, td) => md(+m[2], +m[3], td, true)],
+    [BN + "(\\d{1,2})\\.(\\d{1,2})" + EN, (m, td) => md(+m[2], +m[3], td, false)],
     [B + "(오늘|내일|모레|글피)" + E, (m, td) => addDays(td, ["오늘", "내일", "모레", "글피"].indexOf(m[2]))],
-    [B + "(이번\\s?주|금주|다음\\s?주|차주)(?:\\s*([월화수목금토일])(?:요일)?)?" + E, (m, td) => {
-      const mon = addDays(td, -((dowOf(td) + 6) % 7)), next = !/^(이번|금주)/.test(m[2]);
-      if (!m[3]) return next ? addDays(mon, 7) : "";
-      return addDays(mon, (next ? 7 : 0) + (DOW.indexOf(m[3]) + 6) % 7);
+    /* 주 뒤에 홀로 쓴 '일'은 '일 정리' 같은 낱말이 많아 일요일로 보지 않는다('일요일'만) */
+    [B + "(이번\\s?주|금주|다음\\s?주|차주)(?:\\s*(?:([월화수목금토])(?:요일)?|(일)요일))?" + E, (m, td) => {
+      const mon = addDays(td, -((dowOf(td) + 6) % 7)), next = !/^(이번|금주)/.test(m[2]), day = m[3] || m[4];
+      if (!day) return next ? addDays(mon, 7) : "";
+      return addDays(mon, (next ? 7 : 0) + (DOW.indexOf(day) + 6) % 7);
     }],
-    [B + "([월화수목금토일])요일" + E, (m, td, before) => (/매주\s*$/.test(before) ? "" : addDays(td, (DOW.indexOf(m[2]) - dowOf(td) + 7) % 7))]
+    [B + "([월화수목금토일])요일" + E, (m, td) => addDays(td, (DOW.indexOf(m[2]) - dowOf(td) + 7) % 7)]
   ];
   const hm = (ap, h, mi, guessPm) => {
     if (ap === "오후" && h < 12) h += 12;
@@ -122,8 +133,8 @@
     return h <= 23 && mi <= 59 ? p2(h) + ":" + p2(mi) : "";
   };
   const TIME_RX = [
-    [BN + "(오전|오후)?\\s*(\\d{1,2}):(\\d{2})" + EN, (m) => hm(m[2], +m[3], +m[4], false)],
-    [BN + "(오전|오후)?\\s*(\\d{1,2})시(?!간)(?:\\s*(\\d{1,2})분|\\s*(반))?" + E, (m) => hm(m[2], +m[3], m[5] ? 30 : +(m[4] || 0), true)]
+    [BN + "(오전|오후)?\\s*(\\d{1,2}):(\\d{2})" + ETN, (m) => hm(m[2], +m[3], +m[4], false)],
+    [BN + "(오전|오후)?\\s*(\\d{1,2})시(?!간)(?:\\s*(\\d{1,2})분|\\s*(반))?" + ET, (m) => hm(m[2], +m[3], m[5] ? 30 : +(m[4] || 0), true)]
   ];
   function find(src, rules, td, taken) {
     for (const [re, fn] of rules) {
@@ -131,30 +142,36 @@
       let m;
       while ((m = rx.exec(src))) {
         const a = m.index + m[1].length, b = m.index + m[0].length;
-        const v = taken && a < taken.b && taken.a < b ? "" : fn(m, td, src.slice(0, a));
+        const v = taken && a < taken.b && taken.a < b ? "" : fn(m, td);
         if (v) return { v, a, b, raw: src.slice(a, b).trim() };
         rx.lastIndex = a + 1;
       }
     }
     return null;
   }
+  /* 글에 그대로 있는 이름 — 더 긴 이름 속에만 있는 짧은 이름('가나다' 속 '가나')은 담지 않는다 */
+  function namesIn(src, arr) {
+    const list = [], hit = [];
+    (Array.isArray(arr) ? arr : []).forEach(x => { const s = String(x == null ? "" : x).trim(); if (s && list.indexOf(s) < 0) list.push(s); });
+    let rest = src;
+    list.slice().sort((a, b) => b.length - a.length).forEach(s => { if (rest.indexOf(s) >= 0) { hit.push(s); rest = rest.split(s).join("\u0000"); } });
+    return list.filter(s => hit.indexOf(s) >= 0);
+  }
   function parse(text, opts) {
     opts = opts || {};
     const td = isISO(opts.today) ? opts.today : today();
     const src = String(text == null ? "" : text).replace(/\s+/g, " ").trim();
-    const d = find(src, DATE_RX, td, null);
-    const tm = find(src, TIME_RX, td, d);
+    const rep = REPEAT.test(src);
+    const d = rep ? null : find(src, DATE_RX, td, null);
+    const tm = rep ? null : find(src, TIME_RX, td, d);
     const hits = [d, tm].filter(Boolean);
     let rest = src;
     hits.slice().sort((x, y) => y.a - x.a).forEach(h => { rest = rest.slice(0, h.a) + " " + rest.slice(h.b); });
     rest = rest.replace(/\s+/g, " ").trim();
-    const inText = (arr) => {
-      const out = [];
-      (Array.isArray(arr) ? arr : []).forEach(x => { const s = String(x == null ? "" : x).trim(); if (s && src.indexOf(s) >= 0 && out.indexOf(s) < 0) out.push(s); });
-      return out;
-    };
+    /* 시각만 있으면 오늘 — 날짜 없는 시각은 저장 때 지워지므로(norm) */
+    const due = d ? d.v : tm ? td : "";
     /* 남는 글이 없으면 원문 그대로 — 며칠 뒤 '내일'만 남은 줄이 무슨 일인지 헷갈리지 않게 */
-    return { t: rest || src, due: d ? d.v : "", time: tm ? tm.v : "", who: inText(opts.names), teams: inText(opts.teams), hits: hits.map(h => h.raw) };
+    return { t: rest || src, due, time: tm ? tm.v : "", who: namesIn(src, opts.names), teams: namesIn(src, opts.teams), hits: hits.map(h => h.raw) };
   }
 
   /* ── 기한 묶음 ── */

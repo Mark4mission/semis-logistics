@@ -14551,12 +14551,18 @@ function makeServer(opts = {}) {
 
   /* ══════════ [TK] Task 관리 — 데이터 · 권한표 · 날짜 말 · 분류(순수 로직) ══════════ */
   {
-    const e = makeEnv(), fresh = JSON.parse(JSON.stringify(e.S.data)); loginAs(e, "hq");
+    /* 읽을 권한이 없는 계정의 로그인(claimCache)은 그 컬렉션을 freshData() 값으로 되돌린다 — freshData 에 tasks 가 없으면 남은 줄이 그대로 남는다
+       (normalizeData 의 rows 표가 빈 배열을 만들어 주므로 로그인 뒤 data.tasks 만 보아서는 freshData 를 확인할 수 없다) */
+    const e = makeEnv();
+    e.S.data.tasks = [{ id: "tk_m", t: "남은 줄" }];
+    loginAs(e, "manager", { fresh: true });
+    const wiped = JSON.stringify(e.S.data.tasks);
+    loginAs(e, "hq");
     const TK = e.w.SemisTasks || {};
     if (TK.setToday) TK.setToday("2026-11-18");
     t("TK01 권한표 · 동기화 · 기본값 · 마이그레이션 파일", () => {
       eq((ACL.tasks || []).join(","), "3,3"); ok(e.w.SemisSync.SYNC_KEYS.indexOf("tasks") >= 0);
-      ok(Array.isArray(fresh.tasks) && fresh.tasks.length === 0);
+      eq(wiped, "[]", "manager 로그인 → freshData 기본값 tasks: [] 로 비움");
       ok(/\('tasks',3,3\)/.test(read("tools/sql/semis-logi-tasks.sql")) && /on conflict \(key\) do update/.test(read("tools/sql/semis-logi-tasks.sql")));
     });
     t("TK02 날짜 말", () => { const P = s => TK.parse(s, { today: "2026-11-18", names: [], teams: [] });
@@ -14568,9 +14574,17 @@ function makeServer(opts = {}) {
       eq(P("2027-01-05 a").due, "2027-01-05"); eq(P("2026.11.20 a").due, "2026-11-20");
       eq(P("2일간 교육").due, ""); eq(P("a 3시간").time, "");
       const r20 = P("20일 이내 회신"); eq(r20.due, ""); eq(r20.t, "20일 이내 회신"); eq(P("월말 보고").due, ""); eq(P("월말 보고").t, "월말 보고");
+      const rp = P("매주 화 · 목요일 순찰"); eq(rp.due + "|" + rp.t, "|매주 화 · 목요일 순찰", "반복 말");
+      eq(P("매월 첫째 주 월요일 회의").due, "", "반복 말");
+      const rf = P("매주 금요일 오후 3시 회의"); eq([rf.due, rf.time, rf.t].join("|"), "||매주 금요일 오후 3시 회의", "반복 말이면 시각도 안 잡음");
+      const rb = P("11/20부터 11/22까지 교육"); eq(rb.due + "|" + rb.t, "2026-11-22|11/20부터 교육", "'부터'는 시작 — 기한은 '까지'");
+      const ri = P("이번 주 일 정리"); eq(ri.due + "|" + ri.t, "|이번 주 일 정리", "홀로 쓴 '일'은 일요일 아님"); eq(P("이번 주 일요일 a").due, "2026-11-22");
+      const rd = P("평점 4.5 이상"); eq(rd.due + "|" + rd.t, "|평점 4.5 이상", "M.D 꼴 30일 넘게 지남 = 소수"); eq(P("버전 2.1 배포").due, "");
     });
     t("TK03 경계: 연도 넘김 · 지난 날짜 · 다음 주가 해를 넘김", () => {
       eq(TK.parse("1/5 a", { today: "2026-12-20", names: [], teams: [] }).due, "2027-01-05");
+      eq(TK.parse("1월 5일 a", { today: "2026-12-20", names: [], teams: [] }).due, "2027-01-05");
+      eq(TK.parse("1.5 a", { today: "2026-12-20", names: [], teams: [] }).due, "", "M.D 꼴은 내년으로 넘기지 않음");
       eq(TK.parse("11/1 a", { today: "2026-11-18", names: [], teams: [] }).due, "2026-11-01");
       eq(TK.parse("다음 주 월요일 a", { today: "2026-12-30", names: [], teams: [] }).due, "2027-01-04");
     });
@@ -14580,16 +14594,26 @@ function makeServer(opts = {}) {
       eq(TK.parse("내일", o).t, "내일");
       const n = TK.parse("가나다 수출파트 회신 받기", o); eq(n.who.join(), "가나다"); eq(n.teams.join(), "수출파트"); eq(n.t, "가나다 수출파트 회신 받기");
       ok(r.hits.length === 2);
+      const r3 = TK.parse("오후 3시 회의", o); eq([r3.due, r3.time, r3.t].join("|"), "2026-11-18|15:00|회의", "시각만 있으면 날짜 = 오늘");
+      const r2 = TK.parse("오후 2시부터 교육", o); eq([r2.due, r2.time, r2.t].join("|"), "2026-11-18|14:00|교육", "시각 뒤 '부터' = 그 일을 하는 시각");
+      eq(TK.parse("매주 가나다 점검", o).who.join(), "가나다", "반복 말이어도 담당은 채움");
+      const o2 = { today: "2026-11-18", names: ["가나다", "가나"], teams: [] };
+      eq(TK.parse("가나다 회신", o2).who.join(), "가나다", "긴 이름 속 짧은 이름은 빼기"); eq(TK.parse("가나 가나다 회신", o2).who.join(), "가나다,가나", "따로 있으면 둘 다");
     });
     t("TK05 분류 자동 · 직접", () => { const C = s => TK.catOf({ t: s, memo: "" });
       eq(C("검색장비 정기 점검"), "equip"); eq(C("AEO 심사 준비"), "check"); eq(C("보안교육 자료 제출"), "edu");
       eq(C("파트 회의 자료 작성"), "meet"); eq(C("월간 보고서 제출"), "doc"); eq(C("택배 받기"), "etc");
       eq(TK.catOf({ t: "택배", memo: "", cat: "meet" }), "meet"); eq(TK.CATS.meet.color, "blue");
+      eq(TK.catOf({ t: "이수아 회신 받기", memo: "", who: ["이수아"] }), "doc", "담당자 이름 속 '이수'는 교육 말이 아님");
     });
     t("TK06 정규화 멱등 · 칸 규칙", () => { const n = TK.norm({ id: "tk_a", t: "x".repeat(400), due: "2026-13-01", time: "9:00", who: ["가나다", "가나다", " "], cat: "zzz", done: false, doneAt: "2026-11-01T00:00:00Z" });
       eq(n.t.length, 300); eq(n.due, ""); eq(n.time, ""); eq(n.who.join(), "가나다"); eq(n.cat, ""); eq(n.doneAt, "");
       eq(JSON.stringify(TK.norm(n)), JSON.stringify(n));
       e.S.data.tasks = [n, { t: "id 없음" }]; e.S.normalizeData(); eq(e.S.data.tasks.length, 1); eq(e.S.normalizeData(), false, "멱등");
+      const z = { id: "tk_z", t: " a ", due: "bad", time: "10:00", x: 1 };
+      e.S.data.tasks = [n, z]; eq(e.S.normalizeData(), true, "고칠 줄이 있으면 바뀜");
+      eq(JSON.stringify(e.S.data.tasks[1]), JSON.stringify(TK.norm(z))); eq(e.S.data.tasks[1].t + "|" + e.S.data.tasks[1].time + "|" + ("x" in e.S.data.tasks[1]), "a||false");
+      eq(e.S.normalizeData(), false, "멱등");
     });
     t("TK07 기한 상태 · 묶음 이름", () => { const D = (due, time) => TK.dueInfo({ due, time: time || "" }, "2026-11-18");
       eq(D("2026-11-15").b + "|" + D("2026-11-15").label, "late|3일 지남"); eq(D("2026-11-18", "15:00").label, "오늘 15:00");
@@ -14600,6 +14624,29 @@ function makeServer(opts = {}) {
       const local = [{ ...a, done: true }, b], remote = [a, { ...b, due: "2026-11-20" }];
       const m = e.w.SemisSync.merge3([a, b], local, remote);
       eq(m.find(x => x.id === "tk_a").done, true); eq(m.find(x => x.id === "tk_b").due, "2026-11-20");
+    });
+    t("TK09 사용 조건: 안전보안파트 이상 · 협력업체 · 서명 세션 · manager 아님", () => {
+      try {
+        ok(TK.canUse(), "hq");
+        loginAs(e, "manager"); ok(!TK.canUse(), "manager");
+        e.S.VENDOR_ACCESS["○○조업"] = { routes: ["dashboard"], links: [], edit: true, confid: false };
+        loginAs(e, "vendor"); eq(e.S.roleRank(), 3, "편집 허용 업체 = 화면 등급 3"); ok(!TK.canUse(), "vendor");
+        loginAs(e, "signer"); ok(!TK.canUse(), "signer");
+        loginAs(e, "admin"); ok(TK.canUse(), "admin");
+      } finally { delete e.S.VENDOR_ACCESS["○○조업"]; loginAs(e, "hq"); }
+    });
+    t("TK10 파트 사람 · '나' · 관련 팀 · 새 할 일", () => {
+      const R = e.w.SemisRoster;
+      e.S.data.roster = { team: "", orgs: ["협력사"], people: [
+        { id: "p1", name: "가나다", org: R.SELF, part: "안전보안파트" }, { id: "p2", name: "Thq", org: R.SELF, part: "안전보안파트" },
+        { id: "p3", name: "라마바", org: R.SELF, part: "수출파트" }, { id: "p4", name: "사아자", org: "협력사" },
+        { id: "p5", name: "차카타", org: R.SELF, part: "안전보안파트", left: "2026-01-31" }] };
+      eq(TK.partPeople().join(), "가나다,Thq", "떠난 사람 · 다른 그룹 빼고 명단 순서"); eq(TK.me(), "Thq"); ok(TK.meInPart(), "계정 이름 = 파트 명단 이름");
+      eq(TK.teamNames().join(), "수출파트,안전보안파트,협력사");
+      const m = TK.make({ t: "새 일", due: "2026-11-20", done: true }, "argo");
+      ok(/^tk_[a-z0-9]{10}$/.test(m.id), m.id); eq([m.src, m.by, m.upBy, m.done, m.t, m.due].join("|"), "argo|Thq|Thq|false|새 일|2026-11-20");
+      ok(m.at && m.at === m.upAt, "만든 때 = 고친 때");
+      e.S.data.roster.people.splice(1, 1); ok(!TK.meInPart(), "계정 이름이 파트 명단에 없으면 '나' 없음");
     });
     e.w.close();
   }
