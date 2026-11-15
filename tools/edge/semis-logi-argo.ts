@@ -266,14 +266,15 @@ async function kfolder(body: Record<string, unknown>, rank: number, tok: string,
   const text = "폴더(색인 뿌리 기준 경로)와 후보 분류(key · label 화면 › 분류 · aka 별칭 · taken 그 분류를 이미 쓰는 연결의 K 폴더):\n" +
     JSON.stringify({ folders: k.paths, cats: k.cats }) + "\nkfolder_pick 으로 답한다.";
   const r = await askAI(tok, apiKey, {
-    max_tokens: 1024, system: KFOLDER_SYSTEM, tools: [KFOLDER_TOOL],
+    max_tokens: 2048, system: KFOLDER_SYSTEM, tools: [KFOLDER_TOOL],
     tool_choice: { type: "auto", disable_parallel_tool_use: true }, messages: [{ role: "user", content: text }]
   }, origin);
   if (r instanceof Response) return r;
   /* AI 가 돌려준 것은 다시 거른다: 보낸 폴더만(대소문자 무시 · 보낸 철자로), 후보에 없는 key 는 null */
   const sent = new Map(k.paths.map((p) => [p.toLowerCase(), p]));
   const keys = new Set(k.cats.map((c) => c.key));
-  const use = (r.d.content || []).find((b) => b && b.type === "tool_use" && b.name === KFOLDER_TOOL.name);
+  /* 도구 호출로 끝난 응답만 믿는다 — 잘린(max_tokens) 입력은 그럴듯한 일부 객체로 읽혀 틀린 key 를 낼 수 있다 */
+  const use = r.d.stop_reason === "tool_use" ? (r.d.content || []).find((b) => b && b.type === "tool_use" && b.name === KFOLDER_TOOL.name) : undefined;
   const raw = use && isObj(use.input) && Array.isArray(use.input.picks) ? use.input.picks : [];
   const picks: { path: string; key: string | null; reason: string }[] = [];
   const seen = new Set<string>();

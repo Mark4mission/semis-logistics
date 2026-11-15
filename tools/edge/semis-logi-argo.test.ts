@@ -181,7 +181,7 @@ Deno.test("kfolder: 시스템관리자만 · 입력 검사 · 도구 하나 · �
   assertEquals(b.tool_choice, { type: "auto", disable_parallel_tool_use: true });
   assertEquals([b.tools.length, b.tools[0].name], [1, "kfolder_pick"]);
   assert(String(b.system).includes(KFOLDER_SYSTEM), "고정 지침");
-  assertEquals(b.max_tokens, 1024);
+  assertEquals(b.max_tokens, 2048);
   assert(!("thinking" in b) && !("output_config" in b), "생각 깊이 설정 없음");
   const u = String(b.messages[0].content);
   assert(u.includes("업무1/둘째") && u.includes("audit|gov") && u.includes("업무0/감사") && u.trim().endsWith("kfolder_pick 으로 답한다."), "보낸 자료 · 마지막 줄 지침");
@@ -192,4 +192,11 @@ Deno.test("kfolder: 시스템관리자만 · 입력 검사 · 도구 하나 · �
   ai = () => new Response(JSON.stringify({ content: [{ type: "text", text: "모르겠습니다" }], stop_reason: "end_turn", usage: {} }), { status: 200 });
   r = await kf();
   assertEquals([r.status, await r.json()], [200, { ok: true, picks: [], model: "claude-sonnet-5-5" }], "도구 응답이 없으면 빈 추천");
+
+  calls.length = 0;
+  ai = () => new Response(JSON.stringify({ content: [{ type: "tool_use", id: "tu_m", name: "kfolder_pick", input: { picks: [{ path: "업무1/둘째", key: "audit|g" }] } }],
+    stop_reason: "max_tokens", usage: { input_tokens: 30, output_tokens: 2048 } }), { status: 200 });
+  r = await kf();
+  assertEquals([r.status, await r.json()], [200, { ok: true, picks: [], model: "claude-sonnet-5-5" }], "잘린 도구 입력은 버린다");
+  assertEquals(calls.filter((c) => c.url.endsWith("semis_logi_argo_meter")).map((c) => c.body.p_out), [2048], "잘려도 토큰은 센다");
 });
