@@ -3,12 +3,12 @@
 "use strict";
 
 (() => {
-  const { $, $$, esc, toast, ui, icon } = SeMIS;
+  const { $, $$, esc, toast, ui, icon, openModal, closeModal, confirmModal } = SeMIS;
   const T = window.SemisTasks;
   const MOD = "tasks";
   const TITLE = "Task 관리";
   const PAGE = 100;   // 마친 일은 지우지 않고 쌓이므로 최근 것부터 끊어 그린다
-  const st = { tab: "todo", who: null, q: "", meet: false, doneN: PAGE, qSel: null };
+  const st = { tab: "todo", who: null, q: "", meet: false, doneN: PAGE, qSel: null, open: "" };
   let root = null;
 
   const live = () => !!root && root.isConnected && !!$("#tk-list", root);
@@ -181,15 +181,133 @@
   }
   function setState(o) {
     o = o || {};
-    if (o.reset) Object.assign(st, { tab: "todo", who: null, q: "", meet: false, doneN: PAGE, qSel: null });
+    if (o.reset) Object.assign(st, { tab: "todo", who: null, q: "", meet: false, doneN: PAGE, qSel: null, open: "" });
     if (o.tab === "todo" || o.tab === "done") st.tab = o.tab;
     if (typeof o.who === "string") pickWho(o.who);
     if (typeof o.q === "string") st.q = ui.searchValue(o.q);
     if (typeof o.meet === "boolean") st.meet = o.meet;
   }
 
+  const plus = (iso, n) => new Date(Date.parse(iso + "T00:00:00Z") + n * 864e5).toISOString().slice(0, 10);
+  const DUE_CHIPS = [["today", "오늘"], ["tomorrow", "내일"], ["fri", "이번 주 금"], ["nextmon", "다음 주 월"], ["clear", "지움"]];
+  /* '이번 주 금'은 이미 지났어도 이번 주(월~일)의 금요일 — 기한 묶음 · 요약과 같은 주를 본다 */
+  function dueOf(k) {
+    const td = T.today(), mon = T.weekStart(td);
+    return k === "today" ? td : k === "tomorrow" ? plus(td, 1) : k === "fri" ? plus(mon, 4) : k === "nextmon" ? plus(mon, 7) : "";
+  }
+  const union = (a, b) => a.concat(b.filter(x => a.indexOf(x) < 0));
+  /* 장소 목록은 할 일에 적힌 장소에서만 모은다(코드에 값 없음) — 최근 고친 순 20개 */
+  function recentPlaces() {
+    const out = [];
+    T.list().slice().sort((a, b) => String(b.upAt || b.at).localeCompare(String(a.upAt || a.at)))
+      .forEach(t => { if (t.place && out.indexOf(t.place) < 0 && out.length < 20) out.push(t.place); });
+    return out;
+  }
+  const chipsHTML = (gid, label, all, on, dots) => `<div class="form-row"><label id="${gid}-l" for="${gid}-x">${esc(label)}</label>
+      <div class="tk-fchips" id="${gid}" role="group" aria-labelledby="${gid}-l">${all.map(n =>
+        `<button type="button" class="tk-qw" aria-pressed="${on.indexOf(n) >= 0}" data-n="${esc(n)}">${dots ? dot(n) : ""}${esc(n)}</button>`).join("")}</div>
+      <input id="${gid}-x" type="text" autocomplete="off" maxlength="200" placeholder="직접 적기 — 여럿이면 쉼표로"></div>`;
+
+  /* id 가 없으면 새 할 일(preset = 처음 칸 값). 창은 오래 쓰므로 바깥 누르기 · Esc 로 닫지 않는다(sticky) */
+  function edit(id, preset) {
+    if (!T.canUse()) return;
+    const x = id ? T.list().find(t => t.id === id) : null;
+    if (id && !x) return;
+    const v = x || T.norm(Object.assign({}, preset));
+    const autoLb = (t) => "자동 — " + T.CATS[T.catOf(Object.assign({}, t, { cat: "" }))].label;
+    const file = x && x.src === "desk" && x.file && x.file.url ? x.file : null;
+    openModal(`<h3>${x ? "할 일 고치기" : "할 일 추가"}</h3>
+      <div class="tk-form">
+        <div class="form-row"><label for="tk-f-t">내용</label><textarea id="tk-f-t" rows="2" maxlength="300">${esc(v.t)}</textarea></div>
+        <div class="form-grid">
+          <div class="form-row"><label for="tk-f-due">날짜</label><input type="date" id="tk-f-due" value="${esc(v.due)}"></div>
+          <div class="form-row"><label for="tk-f-time">시각</label><input type="time" id="tk-f-time" value="${esc(v.time)}"${v.due ? "" : " disabled"}></div>
+        </div>
+        <div class="tk-fdues" role="group" aria-label="빠른 날짜">${DUE_CHIPS.map(([k, lb]) => `<button type="button" class="tk-qw" data-due="${k}">${lb}</button>`).join("")}</div>
+        <div class="form-row"><label for="tk-f-place">장소</label><input id="tk-f-place" type="text" autocomplete="off" maxlength="100" list="tk-f-places" value="${esc(v.place)}">
+          <datalist id="tk-f-places">${recentPlaces().map(p => `<option value="${esc(p)}">`).join("")}</datalist></div>
+        ${chipsHTML("tk-f-who", "담당자", union(T.partPeople(), v.who), v.who, true)}
+        ${chipsHTML("tk-f-teams", "관련 팀", union(T.teamNames(), v.teams), v.teams, false)}
+        <div class="form-row"><label for="tk-f-cat">분류</label><select id="tk-f-cat"><option value="">${esc(autoLb(v))}</option>${T.CAT_ORDER.map(k =>
+          `<option value="${k}"${v.cat === k ? " selected" : ""}>${esc(T.CATS[k].label)}</option>`).join("")}</select></div>
+        <label class="tk-fchk"><input type="checkbox" id="tk-f-star"${v.star ? " checked" : ""}>${icon("star", 16)}<span>중요</span></label>
+        <div class="form-row"><label for="tk-f-memo">메모</label><textarea id="tk-f-memo" rows="3" maxlength="2000">${esc(v.memo)}</textarea></div>
+        ${file ? `<div class="form-row"><button type="button" class="btn btn-ghost btn-sm" id="tk-f-file">${icon("doc", 15)}<span>접수 카운터 원본</span></button></div>` : ""}
+      </div>
+      <div class="modal-actions">
+        ${x ? `<button type="button" class="btn btn-danger" data-act="del">지우기</button><span class="spacer"></span>
+          <button type="button" class="btn btn-ghost" data-act="done">${v.done ? "다시 열기" : "마침"}</button>` : ""}
+        <button type="button" class="btn btn-ghost" data-act="cancel">취소</button>
+        <button type="button" class="btn btn-primary" data-act="save">저장</button>
+      </div>`, { sticky: true });
+
+    const form = $("#modal-box .tk-form"), due = $("#tk-f-due"), tm = $("#tk-f-time"), cat = $("#tk-f-cat");
+    const names = (gid) => union($$("#" + gid + " [aria-pressed=true]").map(b => b.dataset.n),
+      $("#" + gid + "-x").value.split(/[,，]/).map(s => s.trim()).filter(Boolean));
+    const fields = () => ({ t: $("#tk-f-t").value, due: due.value, time: tm.value, place: $("#tk-f-place").value,
+      who: names("tk-f-who"), teams: names("tk-f-teams"), cat: cat.value, star: $("#tk-f-star").checked, memo: $("#tk-f-memo").value });
+    /* 날짜 없는 시각은 저장 때 지워지므로(norm) 시각 칸을 잠가 보이게 한다 */
+    const syncTime = () => { tm.disabled = !due.value; if (!due.value) tm.value = ""; };
+    const upAuto = () => { cat.options[0].textContent = autoLb(fields()); };
+    due.onchange = syncTime;
+    form.oninput = upAuto;
+    form.onclick = (ev) => {
+      const d = ev.target.closest("[data-due]"), c = ev.target.closest("[data-n]");
+      if (d) { due.value = dueOf(d.dataset.due); syncTime(); }
+      if (c) { c.setAttribute("aria-pressed", String(c.getAttribute("aria-pressed") !== "true")); upAuto(); }
+    };
+    if (file) $("#tk-f-file").onclick = () => { if (window.SemisFiles) SemisFiles.open([{ url: file.url, name: file.name || SemisFiles.nameFromUrl(file.url) }], 0); };
+    if (!x) $("#tk-f-t").focus();
+
+    /* 창이 열린 사이 원격 변경이 배열을 바꿨을 수 있다 — 고칠 대상은 늘 id 로 다시 찾는다 */
+    const cur = () => T.list().find(t => t.id === v.id);
+    function commit() {
+      const f = fields();
+      if (!T.norm({ t: f.t }).t) { toast("내용을 입력하세요.", true); $("#tk-f-t").focus(); return null; }
+      if (!x) return add(f, "");
+      const t = cur();
+      if (!t) { closeModal(); refresh(); toast("그 사이 지워진 할 일입니다.", true); return null; }
+      const now = new Date().toISOString();
+      Object.assign(t, T.norm(Object.assign({}, t, f, { upAt: now, upBy: T.me() })));
+      return t;
+    }
+    $('#modal-box [data-act="cancel"]').onclick = closeModal;
+    $('#modal-box [data-act="save"]').onclick = () => {
+      const t = commit();
+      if (!t) return;
+      if (x) persist();
+      closeModal();
+      refresh();
+      toast(x ? "저장했습니다." : "할 일을 추가했습니다.");
+    };
+    if (!x) return;
+    /* 고친 칸도 함께 저장한다 — 칸을 고치고 바로 '마침'을 눌러도 고친 글이 사라지지 않게 */
+    $('#modal-box [data-act="done"]').onclick = () => {
+      const t = commit(), on = !v.done;
+      if (!t) return;
+      closeModal();
+      if (!setDone(t.id, on)) { persist(); refresh(); }
+      if (on) toast("마쳤습니다.", false, { label: "되돌리기", run: () => setDone(t.id, false) });
+      else toast("다시 할 일로 옮겼습니다.");
+    };
+    $('#modal-box [data-act="del"]').onclick = () => confirmModal(`할 일 "${v.t}"을(를) 지웁니다.`, () => {
+      const arr = SeMIS.data[T.KEY], i = Array.isArray(arr) ? arr.findIndex(t => t.id === v.id) : -1;
+      if (i >= 0) { arr.splice(i, 1); persist(); }
+      refresh();
+      toast("지웠습니다.");
+    });
+  }
+  /* 검색 · 일정관리 · 아르고 결과 카드가 부른다 — 앱은 tasks/<id> 주소를 풀지 않으므로 id 를 들고 이동한 뒤, 그려지면 창을 연다 */
+  function open(id) {
+    st.open = String(id || "");
+    if ((location.hash.replace(/^#\//, "") || "dashboard") === MOD) setTimeout(() => SeMIS.renderView(), 0);
+    else SeMIS.navigate(MOD);
+  }
+
   function render(el) {
     root = el;
+    const want = st.open;   // 한 번만 쓴다 — 나중에 다시 그릴 때 창이 또 뜨지 않게
+    st.open = "";
     if (!T.canUse()) { el.innerHTML = ui.head({ title: TITLE }) + `<section class="card">${ui.empty("볼 수 있는 권한이 없습니다.")}</section>`; return; }
     st.qSel = null;
     const w = curWho();
@@ -276,9 +394,10 @@
     };
     $("#tk-add", el).onclick = () => { if (typeof T.edit === "function") T.edit(null); };
     $("#tk-meet", el).onclick = () => { st.meet = !st.meet; render(el); };
+    if (want && T.list().some(t => t.id === want)) edit(want);
   }
 
-  Object.assign(T, { add, setDone, setState });
+  Object.assign(T, { add, setDone, setState, edit, open });
 
   SeMIS.registerModule(MOD, {
     title: TITLE,

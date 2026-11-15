@@ -14862,6 +14862,136 @@ function makeServer(opts = {}) {
         go(e, "tasks"); ok(!q(e, "#tk-list") && q(e, "#view").textContent.includes("볼 수 있는 권한이 없습니다"), "허용 경로에 넣어도 화면 첫 줄이 막음");
       } finally { delete e.S.VENDOR_ACCESS["○○조업"]; loginAs(e, "hq"); }
     });
+
+    /* ── 고치기 창 · 지우기 · 특정 할 일 열기 ── */
+    const mOpen = () => !q(e, "#modal-overlay").classList.contains("hidden");
+    const fv = (id) => q(e, "#" + id).value;
+    const setV = (id, v) => { const x = q(e, "#" + id); x.value = v; fire(x, "input"); fire(x, "change"); };
+    const fchip = (box, n) => qa(e, "#" + box + " button[aria-pressed]").find(b => b.textContent.trim() === n);
+    const onNames = (box) => qa(e, "#" + box + " button[aria-pressed=true]").map(b => b.textContent.trim()).join();
+    const act = (a) => q(e, '#modal-box .modal-actions [data-act="' + a + '"]');
+    const dueChip = (k) => q(e, '#modal-box [data-due="' + k + '"]');
+    const openRow = (id) => q(e, '#tk-list .tk-row[data-id="' + id + '"] .tk-t').click();
+    t("TK21 새 할 일 창: 지우기 없음 · 내용 필수 · 날짜 칩 · 담당 칩 · 관련 팀 직접 적기", () => {
+      tkSeed();
+      q(e, "#tk-add").click();
+      ok(mOpen() && q(e, "#tk-f-t"), "창");
+      ok(q(e, "#modal-box").hasAttribute("data-sticky"), "오래 쓰는 창 — 바깥 누르기 · Esc 로 닫지 않음");
+      ok(!act("del") && !act("done"), "새 할 일에는 지우기 · 마침 없음");
+      eq(onNames("tk-f-who"), "", "빈 칸");
+      eq(qa(e, "#tk-f-who button[aria-pressed]").map(b => b.textContent.trim()).join(), "Thq,가나다,라마바", "사람 칩 = 파트 명단");
+      const n0 = e.S.data.tasks.length, errs = qa(e, "#toast-wrap .toast.err").length;
+      setV("tk-f-t", "  "); act("save").click();
+      eq(e.S.data.tasks.length, n0, "빈 내용은 저장 안 됨");
+      eq(qa(e, "#toast-wrap .toast.err").length, errs + 1, "오류 알림");
+      ok(mOpen() && q(e, "#tk-f-t"), "창 그대로");
+      setV("tk-f-t", "가");
+      dueChip("nextmon").click(); eq(fv("tk-f-due"), "2026-11-23", "다음 주 월");
+      dueChip("fri").click(); eq(fv("tk-f-due"), "2026-11-20", "이번 주 금");
+      dueChip("today").click(); eq(fv("tk-f-due"), "2026-11-18", "오늘");
+      dueChip("tomorrow").click(); eq(fv("tk-f-due"), "2026-11-19", "내일");
+      setV("tk-f-time", "10:00"); dueChip("clear").click();
+      eq(fv("tk-f-due") + "|" + fv("tk-f-time"), "|", "지움 = 날짜 · 시각 함께");
+      dueChip("nextmon").click(); eq(fv("tk-f-due"), "2026-11-23");
+      const c = fchip("tk-f-who", "가나다"); c.click(); eq(c.getAttribute("aria-pressed"), "true", "사람 칩 켬");
+      setV("tk-f-teams-x", "협력업체A");
+      act("save").click();
+      eq(e.S.data.tasks.length, n0 + 1);
+      const nt = last();
+      eq(JSON.stringify([nt.t, nt.due, nt.time, nt.who, nt.teams, nt.src, nt.by, nt.done]), JSON.stringify(["가", "2026-11-23", "", ["가나다"], ["협력업체A"], "", "Thq", false]));
+      ok(!mOpen(), "창 닫힘");
+      ok(q(e, '#tk-list [data-id="' + nt.id + '"]'), "목록에 보임");
+      q(e, "#tk-add").click(); act("cancel").click(); ok(!mOpen() && e.S.data.tasks.length === n0 + 1, "취소");
+    });
+    t("TK22 고치기: 칸 값 · 분류 직접(자동 판정 이름) · 고친 사람 · 쉼표로 나눔 · 장소 목록 · 접수 원본", () => {
+      tkSeed();
+      openRow("tk_today");
+      ok(mOpen(), "제목 단추 → 창");
+      eq([fv("tk-f-t"), fv("tk-f-due"), fv("tk-f-time"), fv("tk-f-place")].join("|"), "오늘 점검|2026-11-18|15:00|2층 회의실");
+      eq(onNames("tk-f-who"), "Thq");
+      ok(qa(e, "#tk-f-places option").some(o => o.value === "2층 회의실"), "장소 목록 = 할 일에 적힌 장소");
+      const sel = q(e, "#tk-f-cat");
+      eq(sel.value, ""); eq(sel.options[0].value + "|" + sel.options[0].textContent, "|자동 — " + TK.CATS[TK.catOf(byId("tk_today"))].label, "첫 항목 = 자동(지금 판정)");
+      eq(Array.from(sel.options).slice(1).map(o => o.value).join(), TK.CAT_ORDER.join(), "6 분류");
+      eq(qa(e, "#modal-box .modal-actions [data-act]").map(b => b.dataset.act).join(), "del,done,cancel,save", "아래 단추줄");
+      ok(act("del").classList.contains("btn-danger") && act("save").classList.contains("btn-primary"), "지우기 = 위험 · 저장 = 주");
+      sel.value = "edu"; fire(sel, "change");
+      setV("tk-f-teams-x", "협력업체A, 수출파트");
+      q(e, "#tk-f-star").click(); setV("tk-f-memo", "자료 확인");
+      act("save").click();
+      const x = byId("tk_today");
+      eq([x.cat, x.upBy, x.teams.join(), x.star, x.memo, x.t, x.who.join()].join("|"), "edu|Thq|협력업체A,수출파트|true|자료 확인|오늘 점검|Thq");
+      ok(x.upAt, "고친 때"); ok(!mOpen(), "창 닫힘");
+      const cat = q(e, '#tk-list .tk-row[data-id="tk_today"] .tk-cat');
+      ok(cat && cat.classList.contains("ev-" + TK.CATS.edu.color), "줄 분류 색 = 교육");
+      ok(e.S.data.tasks.every(t2 => JSON.stringify(TK.norm(t2)) === JSON.stringify(t2)), "저장 모양 = 정규화 모양");
+      openRow("tk_today"); eq(q(e, "#tk-f-cat").value, "edu", "고른 분류가 남음"); act("cancel").click();
+      ok(!qa(e, "#modal-box button").some(b => b.textContent.trim() === "접수 카운터 원본"), "화면에서 만든 할 일은 원본 단추 없음");
+      e.S.data.tasks.push(TK.norm({ id: "tk_desk", t: "회신 공문", src: "desk", file: { name: "공문.pdf", url: "https://x.test/tasks/a.pdf" } }));
+      go(e, "tasks");
+      const fo = e.w.SemisFiles.open, got = [];
+      try {
+        e.w.SemisFiles.open = (items, at) => got.push(items[at || 0].url + "|" + items[at || 0].name);
+        openRow("tk_desk");
+        const ob = qa(e, "#modal-box button").find(b => b.textContent.trim() === "접수 카운터 원본");
+        ok(ob, "접수 카운터 원본 단추"); ob.click();
+        eq(got.join(), "https://x.test/tasks/a.pdf|공문.pdf", "첨부 뷰어로");
+      } finally { e.w.SemisFiles.open = fo; }
+      ok(mOpen(), "원본을 봐도 창은 그대로"); act("cancel").click();
+    });
+    t("TK23 창의 마침 · 다시 열기", () => {
+      tkSeed();
+      openRow("tk_today");
+      eq(act("done").textContent.trim(), "마침");
+      act("done").click();
+      const x = byId("tk_today");
+      eq(x.done + "|" + x.doneBy, "true|Thq"); ok(x.doneAt, "마친 때"); ok(!mOpen(), "창 닫힘");
+      ok(!q(e, '#tk-list [data-id="tk_today"]'), "할 일 목록에서 빠짐");
+      const a = qa(e, "#toast-wrap .toast-act").pop(); ok(a && a.textContent === "되돌리기", "알림 되돌리기");
+      q(e, '[data-ct-tab="done"]').click();
+      openRow("tk_today");
+      eq(act("done").textContent.trim(), "다시 열기", "마친 할 일 창");
+      act("done").click();
+      eq(x.done + "|" + x.doneAt + "|" + x.doneBy, "false||"); ok(!mOpen());
+      ok(!q(e, '#tk-list [data-id="tk_today"]'), "마친 일에서 빠짐");
+      q(e, '[data-ct-tab="todo"]').click();
+      openRow("tk_none"); setV("tk-f-t", ""); act("done").click();
+      ok(mOpen() && !byId("tk_none").done, "내용을 비우면 마침도 막힘");
+      setV("tk-f-t", "날짜 없는 일 정리"); act("done").click();
+      eq(byId("tk_none").t + "|" + byId("tk_none").done, "날짜 없는 일 정리|true", "고친 칸도 함께 저장");
+    });
+    t("TK24 지우기: 확인 창 · 취소면 그대로 · 확인이면 배열에서 빠짐", () => {
+      tkSeed();
+      const n0 = e.S.data.tasks.length;
+      openRow("tk_none");
+      act("del").click();
+      ok(mOpen() && q(e, "#modal-box [data-act=ok]") && !q(e, "#tk-f-t"), "확인 창");
+      ok(q(e, "#modal-box").textContent.includes("날짜 없는 일"), "무엇을 지우는지");
+      q(e, "#modal-box [data-act=cancel]").click();
+      eq(e.S.data.tasks.length, n0); ok(byId("tk_none"), "취소 — 그대로");
+      openRow("tk_none"); act("del").click(); clickOk(e);
+      eq(e.S.data.tasks.length, n0 - 1); ok(!byId("tk_none"), "배열에서 빠짐"); ok(!mOpen());
+      ok(!q(e, '#tk-list [data-id="tk_none"]'), "목록에서도 빠짐"); eq(q(e, '[data-ct-tab="todo"]').textContent, "할 일 3");
+    });
+    await ta("TK25 open(id): 다른 화면에서 · 이미 그 화면에서 · 없는 id 면 목록만", async () => {
+      await tick();   // 앞 시험의 go() 가 남긴 hashchange 를 먼저 흘려보낸다
+      tkSeed();
+      go(e, "dashboard"); await tick();
+      ok(!q(e, "#tk-list") && !mOpen());
+      TK.open("tk_today"); await tick();
+      eq(e.w.location.hash, "#/tasks"); ok(q(e, "#tk-list"), "목록 화면");
+      ok(mOpen() && fv("tk-f-t") === "오늘 점검", "그 할 일 창");
+      act("cancel").click();
+      TK.open("tk_late"); await tick();
+      ok(mOpen() && fv("tk-f-t") === "지난 회신", "이미 #/tasks 에서 불러도 열림");
+      act("cancel").click();
+      TK.open("tk_nope"); await tick();
+      ok(!mOpen() && q(e, "#tk-list"), "없는 id — 창 없이 목록만");
+      go(e, "dashboard"); await tick();
+      TK.open("tk_nope"); await tick();
+      ok(e.w.location.hash === "#/tasks" && q(e, "#tk-list") && !mOpen(), "다른 화면에서 없는 id — 목록만");
+      go(e, "tasks"); ok(!mOpen(), "연 id 는 한 번만 쓴다");
+    });
     e.w.close();
   }
 

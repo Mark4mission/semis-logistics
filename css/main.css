@@ -7136,6 +7136,16 @@ button.chip-title:focus-visible, button.calm-body:focus-visible { outline: 2px s
 .tk-ic .ico { color: var(--text-3); }
 .tk-star .ico { color: var(--accent-dark); }
 .tk-showmore { margin-top: 12px; }
+/* 고치기 창 — 칩은 빠른 입력 담당 칩(.tk-qw)과 같은 모양. 단추 4개('다시 열기' · 큰 글자)가 좁은 폭에서 넘치지 않게 줄바꿈 */
+.tk-form #tk-f-t { min-height: 0; }
+.tk-fdues, .tk-fchips { display: flex; flex-wrap: wrap; gap: 6px; }
+.tk-fdues { margin: -4px 0 14px; }
+.tk-fchips { margin-bottom: 8px; }
+.tk-fchips:empty { display: none; }
+.tk-fchk { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; margin-bottom: 10px; font-weight: 600; color: var(--text-2); cursor: pointer; }
+.tk-fchk input { width: 20px; height: 20px; margin: 0; accent-color: var(--primary); }
+.tk-fchk .ico { color: var(--accent-dark); }
+.modal-box:has(.tk-form) .modal-actions { flex-wrap: wrap; }
 @media (hover: hover) and (pointer: fine) { .tk-row:hover { background: var(--surface-2); } }
 @media screen and (max-width: 767px) {
   .tk-row { gap: 0 8px; padding: 10px 2px; }
