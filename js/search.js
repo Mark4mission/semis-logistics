@@ -1,6 +1,6 @@
 /* 검색(공통 패널 — 처음 열 때 #cmdk 의 입력 · 결과 묶음을 패널 본문으로 옮긴다). 결과마다 해당 메뉴의 권한을 그대로 적용하고 대외비는 minRank로 한 번 더 막는다.
    신규 모듈은 SemisSearch.register 로 프로바이더를 등록한다.
-   찾는 방식: 낱말마다 업무 동의어(SYN)까지 넓혀 보고, 한글 초성만 넣으면(ㅂㅇㄱㅇ) 제목 초성과 비교한다. 모든 낱말이 맞는 결과가 위,
+   찾는 방식: 군말(어디 · 있어 · 자료 …)은 빼고, 낱말마다 업무 동의어(SYN) · 끝 조사를 뗀 꼴 · 때 표현(작년 → 2025)까지 넓혀 보고, 한글 초성만 넣으면(ㅂㅇㄱㅇ) 제목 초성과 비교한다. 모든 낱말이 맞는 결과가 위,
    일부만 맞는 결과는 '일부만 맞는 결과'로 따로. 아무것도 없으면 아르고에게 그대로 묻게 넘긴다. */
 "use strict";
 
@@ -71,19 +71,43 @@ const SemisSearch = (() => {
     ["보안등급", "항공보안등급"],
     ["기록부", "대장", "일지"],
     ["전파교육", "전파"],
-    ["ssi", "민감보안정보"]
+    ["ssi", "민감보안정보"],
+    ["국토부", "국토교통부"],
+    ["서항청", "서울지방항공청", "지방항공청"],
+    ["점검표", "체크리스트", "checklist"],
+    ["aeo", "수출입안전관리우수업체"],
+    ["tsa", "미국 교통보안청"],
+    ["대테러", "테러"],
+    ["위해물품", "금지물품"],
+    ["훈련", "연습"]
   ];
   const SYN_IDX = (() => {
-    const m = {};
+    const m = Object.create(null);     // 'constructor' · '__proto__' 같은 검색어가 객체 기본 속성에 걸리지 않게
     SYN.forEach(g => g.forEach(w => { (m[w] = m[w] || []).push(g); }));
     return m;
   })();
   /* 짧은 영문 동의어(ra · kc · dg 등)는 낱말 경계에서만 — 다른 영문 낱말 속에 섞여 맞지 않게 */
   const boundaryOK = (s) => /^[a-z0-9-]{1,3}$/.test(s);
+  /* 때 표현 — 한국 시각 올해 기준. 파일 · 폴더 이름에는 '2025' · '25년' 꼴로 적힌다 */
+  const REL_YEAR = new Map([["재작년", -2], ["작년", -1], ["올해", 0], ["내년", 1]]);
+  function yearsOf(t) {
+    if (REL_YEAR.has(t)) {
+      const y = new Date(Date.now() + 9 * 3600e3).getUTCFullYear() + REL_YEAR.get(t);
+      return [String(y), y % 100 + "년"];
+    }
+    const m = /^(\d{4})년$/.exec(t);
+    return m ? [m[1]] : [];
+  }
+  /* 끝 조사 — 긴 것 먼저. 뗀 뒤 두 글자 이상일 때만('회의' 가 '회' 가 되지 않게) */
+  const JOSA = ["에서", "으로", "은", "는", "이", "가", "을", "를", "의", "에", "로", "와", "과", "도", "만"];
   function altsOf(t) {
     const out = [{ s: t, b: false }];
-    const seen = { [t]: 1 };
-    (SYN_IDX[t] || []).forEach(g => g.forEach(w => { if (!seen[w]) { seen[w] = 1; out.push({ s: w, b: boundaryOK(w) }); } }));
+    const seen = new Set([t]);
+    const add = (w) => { if (!seen.has(w)) { seen.add(w); out.push({ s: w, b: boundaryOK(w) }); } };
+    const widen = (w) => { (SYN_IDX[w] || []).forEach(g => g.forEach(add)); yearsOf(w).forEach(add); };
+    widen(t);
+    const j = JOSA.find(x => t.endsWith(x));
+    if (j && t.length - j.length >= 2) { const base = t.slice(0, -j.length); add(base); widen(base); }
     return out;
   }
   const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -105,8 +129,12 @@ const SemisSearch = (() => {
     return o;
   }
 
+  /* 문장으로 물어도 — 낱말 끝 부호를 떼고, 군말은 다른 낱말이 하나라도 남을 때만 뺀다 */
+  const STOP = ["어디", "어디에", "어딨어", "있어", "있나요", "있는지", "있지", "찾아", "찾아줘", "알려줘", "보여줘", "좀", "관련", "관한", "대한", "자료", "파일", "문서"];
   function terms(q) {
-    return String(q || "").trim().toLowerCase().split(/\s+/).filter(Boolean).slice(0, 5);
+    const ws = String(q || "").trim().toLowerCase().split(/\s+/).map(w => w.replace(/[?!.,]+$/, "")).filter(Boolean);
+    const keep = ws.filter(w => STOP.indexOf(w) < 0);
+    return (keep.length ? keep : ws).slice(0, 5);
   }
   function haystack(it) {
     const src = it.text != null ? it.text : [it.title, it.sub];
@@ -114,21 +142,25 @@ const SemisSearch = (() => {
       .map(v => Array.isArray(v) ? v.join(" ") : v)
       .filter(v => v != null && v !== "").join(" \n ").toLowerCase();
   }
-  /* 낱말별로 맞았는지 — { sc 점수, hit 맞은 낱말 수, full 모두 맞음 } | null */
-  function scoreOf(it, ts) {
+  /* 낱말별로 맞았는지 — { sc 점수, hit 맞은 낱말 수, full 모두 맞음, words 낱말마다 실제로 맞은 대안(초성 제외) } | null
+     words 는 결과를 누를 때 화면 문서함에 넘긴다 — 문서함은 낱말을 글자 그대로 거르므로 친 글(군말 · 조사 · '작년')을 넘기면 문서가 걸러져 사라진다.
+     al = 낱말별 대안(searchAll 이 한 번만 만들어 넘김 — 수천 항목을 훑는다) */
+  function scoreOf(it, ts, al) {
+    al = al || ts.map(t => (isCho(t) ? null : altsOf(t)));
     const hay = haystack(it);
     const title = String(it.title || "").toLowerCase();
     let hit = 0, inTitle = 0, prefix = false;
     let choT = null;
-    ts.forEach(t => {
+    const words = [];
+    ts.forEach((t, i) => {
       let m = false, mt = false;
       if (isCho(t)) {
         choT = choT == null ? choOf(it.title) : choT;
         m = mt = choT.indexOf(t) >= 0;
         if (m && choT.indexOf(t) === 0) prefix = true;
       } else {
-        altsOf(t).forEach(a => {
-          if (!m && has(hay, a)) m = true;
+        al[i].forEach(a => {
+          if (!m && has(hay, a)) { m = true; words.push(a.s); }
           if (!mt && has(title, a)) { mt = true; if (title.indexOf(a.s) === 0) prefix = true; }
         });
       }
@@ -142,7 +174,7 @@ const SemisSearch = (() => {
     if (ts.length > 1 && inTitle === ts.length) sc += 2;   // 낱말이 모두 제목에 있으면 위로
     if (prefix) sc += 1;
     if (full) sc += 10;
-    return { sc, hit, full };
+    return { sc, hit, full, words };
   }
   function hl(s, ts) {
     s = String(s == null ? "" : s);
@@ -173,9 +205,10 @@ const SemisSearch = (() => {
   };
   function kindOf(it) {
     if (it.group === "메뉴 · 링크") return it.url ? "사이트" : "화면";
+    if (it.group === "K드라이브") return it.kind === "folder" ? "K폴더" : "K파일";   // K 항목의 kind 는 folder · file
     return KIND_OF[it.group] || "기록";
   }
-  const KIND_TONE = { "화면": "k-scr", "사이트": "k-scr", "문서": "k-doc", "규정": "k-doc", "일정": "k-cal", "연락처": "k-tel", "게시글": "k-bbs", "회의록": "k-bbs", "접수": "k-sup", "도우미": "k-sup" };
+  const KIND_TONE = { "화면": "k-scr", "사이트": "k-scr", "문서": "k-doc", "규정": "k-doc", "일정": "k-cal", "연락처": "k-tel", "게시글": "k-bbs", "회의록": "k-bbs", "접수": "k-sup", "도우미": "k-sup", "K폴더": "k-kd", "K파일": "k-kf" };
 
   const GROUP_MAX = 30, TOTAL_MAX = 300, PARTIAL_MAX = 8;
   /* 모든 낱말이 맞는 결과(full)와 일부만 맞는 결과(partial) */
@@ -184,11 +217,12 @@ const SemisSearch = (() => {
     const u = S().user;
     const out = { full: [], partial: [] };
     if (!ts.length || !u || u.role === "signer") return out;
+    const al = ts.map(t => (isCho(t) ? null : altsOf(t)));
     const take = (list, group, hits, part, extra) => list.forEach(it => {
       if (!it || !it.title) return;
-      const r = scoreOf(it, ts);
+      const r = scoreOf(it, ts, al);
       if (!r) return;
-      const row = Object.assign({ group, score: r.sc }, extra ? extra(it) : {}, it);
+      const row = Object.assign({ group, score: r.sc, matched: r.words.join(" ") }, extra ? extra(it) : {}, it);
       if (r.full) hits.push(row); else if (ts.length > 1) part.push(row);
     });
     const part = [];
@@ -236,7 +270,8 @@ const SemisSearch = (() => {
       try { items = p.items() || []; } catch (e) { items = []; }
       const hits = [];
       take(items, p.group, hits, part, (it) => ({ icon: it.icon || p.icon || "▪", ico: it.ico || p.ico || "", route: it.route != null ? it.route : (p.module || "dashboard") }));
-      hits.sort((a, b) => b.score - a.score);
+      const byDate = p.group === "K드라이브";   // K 는 같은 점수면 날짜가 늦은 것이 위(날짜 = YYYY-MM-DD, 폴더는 "")
+      hits.sort((a, b) => b.score - a.score || (byDate && a.date !== b.date ? (b.date > a.date ? 1 : -1) : 0));
       out.full.push.apply(out.full, hits.slice(0, GROUP_MAX));
     });
     out.full = out.full.slice(0, TOTAL_MAX);
@@ -356,6 +391,7 @@ const SemisSearch = (() => {
     const u = S().user;
     if (!u || u.role === "signer" || !wrap) return;
     if (S().closeOverlays) S().closeOverlays();
+    if (window.SemisKidx && SemisKidx.canUse()) SemisKidx.ensure();   // K 목록은 처음 필요할 때 받는다(다 받으면 onReady 가 다시 그림)
     if (!isOpen()) S().ui.panel({ id: PID, title: "검색", sub: "화면 · 문서 · 사람 · 일정을 한 번에", icon: "search", body: wrap, focus: "#hdr-search", cls: "pnl-search" });
     if (typeof q === "string" && input) input.value = q;
     if (input) { input.focus(); if (typeof q !== "string") input.select(); }
@@ -368,7 +404,8 @@ const SemisSearch = (() => {
     if (lastQ && terms(lastQ).length) rememberQ(lastQ);
     closePalette();
     if (it.url) { window.open(it.url, "_blank", "noopener"); return; }
-    if (typeof it.pick === "function") { try { it.pick(lastQ || ""); } catch (e) { /* 화면 상태 지정 실패는 이동만 */ } }
+    /* 화면 문서함은 낱말을 글자 그대로 거른다 — 친 글 대신 이 결과에 실제로 맞은 낱말을 넘긴다 */
+    if (typeof it.pick === "function") { try { it.pick(it.matched || lastQ || ""); } catch (e) { /* 화면 상태 지정 실패는 이동만 */ } }
     if (it.route) S().navigate(it.route);
   }
   /* 결과 없음 → 아르고에게 같은 말로 묻기 */
@@ -408,14 +445,14 @@ const SemisSearch = (() => {
   }
 
   /* ── 그리기 ── */
-  const act = (it) => (it.url ? "새 창" : "열기");
+  const act = (it, k) => (k === "K폴더" || k === "K파일" ? "위치" : it.url ? "새 창" : "열기");
   function rowHTML(it, i, ts) {
-    const k = it.kind || kindOf(it);
+    const k = it.group === "K드라이브" ? kindOf(it) : (it.kind || kindOf(it));
     return '<button type="button" class="sp-item" data-i="' + i + '">' +
       '<span class="sp-kind ' + (KIND_TONE[k] || "") + '">' + esc(k) + "</span>" +
       '<span class="sp-txt"><span class="sp-title">' + hl(it.title, ts) + "</span>" +
       (it.sub ? '<span class="sp-sub">' + hl(snip(it.sub, ts), ts) + "</span>" : "") +
-      '</span><span class="sp-act" aria-hidden="true">' + act(it) + S().icon("chevron", 15) + "</span></button>";
+      '</span><span class="sp-act" aria-hidden="true">' + act(it, k) + S().icon("chevron", 15) + "</span></button>";
   }
   /* 묶음별 — 처음 4건, 넘으면 'N건 더 보기' */
   const SHOW = 4;
@@ -503,15 +540,16 @@ const SemisSearch = (() => {
       pop.innerHTML = '<p class="sr-only" aria-live="polite"></p>' + homeHTML();
     } else {
       const r = searchAll(qs);
+      const kLoad = window.SemisKidx && SemisKidx.canUse() && SemisKidx.loading() ? '<p class="sp-load">K드라이브 목록을 불러오는 중…</p>' : "";
       if (!r.full.length) {
-        pop.innerHTML = '<p class="sr-only" aria-live="polite">맞는 결과 없음' + (r.partial.length ? " · 일부만 맞는 결과 " + r.partial.length + "건" : "") + "</p>" + emptyHTML(qs, ts, r.partial);
+        pop.innerHTML = '<p class="sr-only" aria-live="polite">맞는 결과 없음' + (r.partial.length ? " · 일부만 맞는 결과 " + r.partial.length + "건" : "") + "</p>" + emptyHTML(qs, ts, r.partial) + kLoad;
         const ow = pop.querySelector(".sp-ask-owl");
         if (ow && window.SemisOwl) ow.innerHTML = SemisOwl.svg("thinking", 40);
       } else {
         const list = kindFilter ? r.full.filter(it => kindOf(it) === kindFilter) : r.full;
         pop.innerHTML = '<p class="sr-only" aria-live="polite">' + r.full.length + "건</p>" + chipsHTML(r.full) +
           groupsHTML(list, ts, 0, !!kindFilter) +
-          (r.partial.length && !kindFilter ? groupsHTML(r.partial.map(it => Object.assign({}, it, { group: "일부만 맞는 결과" })), ts, items.length, false) : "");
+          (r.partial.length && !kindFilter ? groupsHTML(r.partial.map(it => Object.assign({}, it, it.group === "K드라이브" ? { kind: kindOf(it) } : null, { group: "일부만 맞는 결과" })), ts, items.length, false) : "") + kLoad;
       }
     }
     wirePop();
@@ -578,6 +616,8 @@ const SemisSearch = (() => {
 
     /* 입구 단추([data-sup="search"])는 코어가 위임으로 연결한다 */
     if (S().registerSupport) S().registerSupport("search", { open: openPalette });
+    /* K 목록이 늦게 오면 열린 패널의 결과만 다시 그린다 — 입력칸을 다시 만들면 한글 조합이 끊긴다 */
+    if (window.SemisKidx) SemisKidx.onReady(() => { if (isOpen()) renderPop(lastQ); });
   }
 
   return { init, search, searchAll, register, terms, open: openPalette, close: closePalette, isOpen, homeItems, ask: askArgo,

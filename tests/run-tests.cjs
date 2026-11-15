@@ -13267,6 +13267,201 @@ function makeServer(opts = {}) {
       eq(e.errors.length, 0, e.errors.join(" | "));
       e.Sync.stop(); e.w.close();
     });
+
+    /* 시계를 한 시각에 묶는다 — '작년' 같은 때 표현이 시험을 돌리는 해에 따라 바뀌지 않게(한국 시각 2026-11-15 12:00) */
+    const KST26 = Date.UTC(2026, 10, 15, 3, 0, 0);
+    const pinAt = async (e, ms, fn) => {
+      const real = e.w.Date.now;
+      e.w.Date.now = () => ms;
+      try { return await fn(); } finally { e.w.Date.now = real; }
+    };
+    /* 늦게 오는 응답 — 주소가 맞는 요청을 open() 할 때까지 붙잡는다([KS] 의 도우미와 같음) */
+    const hold = (e, re) => {
+      const f0 = e.w.fetch, waits = [];
+      e.w.fetch = (u, o) => (re.test(String(u)) ? new Promise(r => waits.push(() => r(f0(u, o)))) : f0(u, o));
+      return { open: () => { e.w.fetch = f0; waits.splice(0).forEach(fn => fn()); } };
+    };
+    /* 검색 패널의 묶음 이름 → 그 묶음의 결과 줄 */
+    const popGroups = (e) => {
+      const g = {}; let cur = "";
+      Array.from(q(e, "#hdr-search-pop").children).forEach(el => {
+        if (el.classList.contains("sp-group")) { cur = el.firstChild.textContent.trim(); g[cur] = []; }
+        else if (el.classList.contains("sp-item") && cur) g[cur].push(el);
+      });
+      return g;
+    };
+    const rowOf = (rows, title) => (rows || []).find(b => b.querySelector(".sp-title").textContent === title);
+
+    await ta("KX05 K 묶음: 패널을 열면 목록을 받아 'K드라이브' 묶음(파일 이름에 없는 말도 폴더 경로로) · 꼬리표 K파일 · K폴더 · 오른쪽 '위치' · 일부만 맞는 결과도 · 특수 글자 검색어도 예외 없이", async () => {
+      const { kx, e } = await kxSetup("hq-pw-2222", () => {
+        const d = KX_LIST();
+        d.dirs.push("70 안전/가나다 보관함");
+        d.files.push([1, "(SSI) 점검[1].hwp", 5, "2026-01-02", null], [4, "가나다 라마바.xlsx", 7, "2026-02-03", null]);
+        return d;
+      });
+      const SS = e.w.SemisSearch, P = e.w.SemisPanel;
+      SS.open("국토부 점검"); await tick(20);
+      eq(kx.calls, 1, "패널을 열 때 목록을 받음");
+      const rows = popGroups(e)["K드라이브"];
+      const f = rowOf(rows, "점검 결과 통보.pdf"), d = rowOf(rows, "국토부 항공안전 점검");
+      ok(f && d, "파일(폴더 경로로 맞음) · 폴더: " + Object.keys(popGroups(e)).join());
+      eq(f.querySelector(".sp-kind").textContent, "K파일");
+      eq(d.querySelector(".sp-kind").textContent, "K폴더");
+      ok(f.querySelector(".sp-kind").classList.contains("k-kf") && d.querySelector(".sp-kind").classList.contains("k-kd"), "꼬리표 색");
+      ok(/^위치/.test(f.querySelector(".sp-act").textContent) && /^위치/.test(d.querySelector(".sp-act").textContent), "오른쪽 글자 = 위치");
+      const chip = qa(e, "#hdr-search-pop .sp-kchip").find(c => c.dataset.kind === "K폴더");
+      ok(chip, "종류 칩 K폴더");
+      chip.click();
+      ok(qa(e, "#hdr-search-pop .sp-item").length > 0 && qa(e, "#hdr-search-pop .sp-item .sp-kind").every(k => k.textContent === "K폴더"), "K폴더만 거르기");
+      SS.open("가나다 라마바"); await tick(5);
+      const pr = rowOf(popGroups(e)["일부만 맞는 결과"], "가나다 보관함");
+      ok(pr && pr.querySelector(".sp-kind").textContent === "K폴더" && /^위치/.test(pr.querySelector(".sp-act").textContent), "일부만 맞는 결과의 K 줄도 K폴더 · 위치");
+      SS.open("가나다 없는말없는말"); await tick(5);
+      const er = popGroups(e)["일부만 맞는 결과"];
+      ok(q(e, "#hdr-search-pop .sp-none") && rowOf(er, "가나다 보관함").querySelector(".sp-kind").textContent === "K폴더" && rowOf(er, "가나다 라마바.xlsx").querySelector(".sp-kind").textContent === "K파일", "모두 맞는 결과가 없을 때도");
+      SS.open("국토부 점검"); await tick(5);
+      rowOf(popGroups(e)["K드라이브"], "점검 결과 통보.pdf").click(); await tick(5);
+      ok(!P.isOpen("search") && q(e, "#modal-box h3").textContent === "점검 결과 통보.pdf", "누르면 K 위치 창");
+      e.S.closeModal();
+      for (const w of ["(SSI) 점검[", "[(+?)", "점검+ (ssi"]) {
+        SS.open(w); await tick(5);
+        ok(P.isOpen("search") && q(e, "#hdr-search-pop .sp-none, #hdr-search-pop .sp-item"), "결과를 그림: " + w);
+      }
+      SS.open("(SSI) 점검["); await tick(5);
+      const sr = rowOf(popGroups(e)["K드라이브"], "(SSI) 점검[1].hwp");
+      ok(sr && /\(SSI\)/.test(sr.querySelector(".sp-title .sp-hl").textContent), "특수 글자 그대로 찾고 강조");
+      eq(kx.calls, 1, "30분 안엔 다시 받지 않음");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+
+    await ta("KX06 문장 · 조사 · 때 표현: 군말 빼기 · 끝 부호 · '작년' = 한국 시각 올해−1 · 조사 뗀 꼴(두 글자 이상만) · 대안은 { s, b }", async () => {
+      const { e, K } = await kxSetup("hq-pw-2222");
+      const SS = e.w.SemisSearch;
+      await K.ensure();
+      const js = (v) => JSON.stringify(v);
+      eq(js(SS.terms("작년 국토부 안전 점검 자료 어디 있어?")), '["작년","국토부","안전","점검"]', "군말 · 물음표");
+      eq(js(SS.terms("자료 어디 있어?")), '["자료","어디","있어"]', "다른 낱말이 없으면 군말도 그대로");
+      eq(js(SS.terms("점검, 결과. ! ?")), '["점검","결과"]', "끝 부호 · 빈 낱말");
+      eq(js(SS.terms("관련 문서 좀 보여줘 a b c d e f")), '["a","b","c","d","e"]', "군말을 빼고 5개까지");
+      const al = (t) => SS.altsOf(t).map(a => a.s);
+      await pinAt(e, KST26, () => {
+        ok(SS.searchAll("작년 국토부 안전 점검 자료 어디 있어?").full.some(x => x.group === "K드라이브" && x.title === "점검 결과 통보.pdf"), "작년 → 2025 폴더의 파일");
+        eq(js(al("작년")), '["작년","2025","25년"]');
+        eq(js(al("올해")), '["올해","2026","26년"]');
+        ok(al("재작년").includes("2024") && al("내년").includes("2027"), "재작년 · 내년");
+        eq(js(al("2025년")), '["2025년","2025"]');
+        ok(al("2025년에").includes("2025") && al("작년에").includes("2025"), "조사 뗀 뒤 연도");
+      });
+      await pinAt(e, Date.UTC(2025, 11, 31, 15, 30), () => ok(al("올해").includes("2026"), "한국 시각으로 해가 바뀜(UTC 로는 아직 2025)"));
+      ok(al("점검을").includes("점검") && al("점검을").includes("수검"), "조사 뗀 꼴과 그 동의어");
+      const sig = (w) => js(SS.search(w).map(x => x.group + "|" + x.title));
+      ok(SS.search("점검").length > 0);
+      eq(sig("점검을"), sig("점검"), "점검을 = 점검");
+      ok(!al("회의").includes("회"), "회의 → 회 아님");
+      ok(al("회의를").includes("회의") && al("회의를").includes("회의록"), "회의를 → 회의(와 동의어)");
+      ok(al("점검에서").includes("점검") && !al("점검에서").includes("점검에"), "긴 조사 먼저");
+      ok(SS.altsOf("ssi는").find(a => a.s === "ssi").b === true && SS.altsOf("ssi")[0].b === false, "짧은 영문 대안만 낱말 경계 · 친 낱말은 그대로");
+      ok(SS.altsOf("국토부").some(a => a.s === "국토교통부") && SS.altsOf("aeo").some(a => a.s === "수출입안전관리우수업체"), "업무 동의어 보강");
+      ok(SS.altsOf("constructor").length >= 1 && SS.searchAll("__proto__ constructor") && true, "객체 기본 이름도 예외 없이");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+
+    await ta("KX07 맞은 낱말: 문서함 문서를 문장으로 찾아 누르면 화면 문서함 검색어 = 맞은 낱말(군말 · 조사 없는 꼴 · 연도) · 문서가 보임 · K 위치 창의 'H:drive 에서 바로 열기'도", async () => {
+      const { e } = await kxSetup("hq-pw-2222");
+      e.S.data.docs = [{ id: "d1", mod: "audit", grp: "checklist", title: "2025 국토부 항공안전 점검 결과", date: "2025-10-14", files: [] }];
+      const SS = e.w.SemisSearch;
+      await pinAt(e, KST26, async () => {
+        SS.open("작년 국토부 점검 결과를"); await tick(20);
+        const row = rowOf(popGroups(e)["관련 문서"], "2025 국토부 항공안전 점검 결과");
+        ok(row, "모두 맞는 결과에 문서: " + Object.keys(popGroups(e)).join());
+        row.click(); await tick(5);
+      });
+      eq(e.w.location.hash, "#/audit");
+      eq(e.w.SemisDocs.getQuery("audit"), "2025 국토부 점검 결과", "맞은 낱말");
+      await tick(20);
+      ok(q(e, '#view [data-dk="d1"]'), "화면 문서함에 그 문서(빈 칸 아님)");
+      ok(e.w.SemisSearch.recentQ()[0] === "작년 국토부 점검 결과를", "최근 검색어는 친 글 그대로");
+      go(e, "dashboard"); await tick(5);
+      await pinAt(e, KST26, async () => {
+        SS.open("작년 국토부 점검 결과를"); await tick(20);
+        const kr = rowOf(popGroups(e)["K드라이브"], "점검 결과 통보.pdf");
+        ok(kr, "K 파일");
+        kr.click(); await tick(5);
+      });
+      q(e, "#modal-box [data-act=open]").click(); await tick(20);
+      eq(e.w.location.hash, "#/audit");
+      eq(e.w.SemisDocs.getQuery("audit"), "2025 국토부 점검 결과", "K 위치 창에서도 맞은 낱말");
+      ok(q(e, '#view [data-dk="d1"]'), "문서가 보임");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+
+    await ta("KX08 늦게 도착: 받는 동안 결과 끝에 '불러오는 중' 한 줄(검색어가 있을 때만) → 받으면 K 묶음이 나타나고 입력칸 노드 · 글자는 그대로", async () => {
+      const { kx, e } = await kxSetup("hq-pw-2222");
+      const SS = e.w.SemisSearch;
+      const h = hold(e, /semis_logi_kidx_list/);
+      SS.open(); await tick(5);
+      const pop = q(e, "#hdr-search-pop"), inp = q(e, "#hdr-search");
+      eq(kx.calls, 0, "붙잡힘");
+      ok(!/불러오는 중/.test(pop.textContent), "검색어가 없으면 한 줄 없음");
+      inp.value = "국토부"; inp.dispatchEvent(new e.w.Event("input", { bubbles: true }));
+      await tick(160);
+      ok(/K드라이브 목록을 불러오는 중…/.test(pop.textContent), "불러오는 중 한 줄");
+      ok(pop.lastElementChild.classList.contains("sp-load"), "결과 끝에");
+      ok(!popGroups(e)["K드라이브"], "아직 K 묶음 없음");
+      h.open(); await tick(20);
+      eq(kx.calls, 1);
+      ok(rowOf(popGroups(e)["K드라이브"], "국토부 항공안전 점검"), "받으면 K 묶음");
+      ok(!/불러오는 중/.test(pop.textContent), "한 줄 사라짐");
+      ok(q(e, "#hdr-search") === inp && inp.value === "국토부", "입력칸 노드 · 글자 그대로");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+
+    await ta("KX09 속도 · 같은 점수면 날짜가 늦은 것이 위: 지어낸 8,000 항목(폴더 1,400 · 파일 6,600)에서 searchAll 한 번 300ms 미만", async () => {
+      const p2 = (n) => String(n).padStart(2, "0");
+      const big = () => {
+        const dirs = [""], files = [];
+        for (let i = 0; i < 1400; i++) dirs.push("분류 " + (i % 20) + "/" + (i % 2 ? "국토부 " : "보관 ") + i);
+        for (let i = 0; i < 6600; i++) files.push([1 + (i % 1400), (i % 3 ? "자료 " : "점검 ") + i + ".pdf", 1000 + i, (2020 + i % 7) + "-" + p2(1 + i % 12) + "-" + p2(1 + i % 28), null]);
+        return { ok: true, on: true, at: "2026-11-15T00:30:00Z", win_root: "", dirs, files };
+      };
+      const { e, K } = await kxSetup("hq-pw-2222", big);
+      await K.ensure();
+      eq(K.items().length, 8000, "폴더 1,400 + 파일 6,600");
+      const t0 = performance.now();
+      const r = e.w.SemisSearch.searchAll("국토부 점검");
+      const ms = performance.now() - t0;
+      ok(ms < 300, "searchAll " + ms.toFixed(1) + "ms");
+      const kh = r.full.filter(x => x.group === "K드라이브");
+      eq(kh.length, 30, "묶음 상한");
+      ok(kh.every((x, i) => !i || kh[i - 1].score > x.score || (kh[i - 1].score === x.score && kh[i - 1].date >= x.date)), "같은 점수면 날짜가 늦은 것이 위: " + kh.slice(0, 6).map(x => x.score + "/" + x.date).join(" "));
+      ok(kh[0].date.slice(0, 4) === "2026", "가장 늦은 해가 맨 위");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+
+    await ta("KX10 권한: 안전보안파트는 K 묶음 · 같은 화면에서 화물팀 관리자 · 협력업체로 바꾸면 K 묶음 없음 · 패널을 열어도 RPC 없음", async () => {
+      const { kx, e } = await kxSetup("hq-pw-2222");
+      const SS = e.w.SemisSearch, P = e.w.SemisPanel;
+      SS.open("국토부 점검"); await tick(20);
+      ok(popGroups(e)["K드라이브"], "hq: K 묶음");
+      P.close("search");
+      eq(kx.calls, 1);
+      for (const role of ["manager", "vendor"]) {
+        loginAs(e, role);
+        SS.open("국토부 점검"); await tick(20);
+        ok(!popGroups(e)["K드라이브"] && !/불러오는 중/.test(q(e, "#hdr-search-pop").textContent), role + ": 패널에 K 묶음 · 불러오는 중 없음");
+        const r = SS.searchAll("국토부 점검");
+        ok(!r.full.concat(r.partial).some(x => x.group === "K드라이브"), role + ": searchAll 에도 없음");
+        P.close("search");
+      }
+      eq(kx.calls, 1, "다른 계정으로는 RPC 를 부르지 않음");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
   }
 
   /* ══════════ [US] 미주행 재보안검색 ══════════ */
