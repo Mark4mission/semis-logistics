@@ -73,7 +73,7 @@ const ADMIN = ["semis_logi_ksync_status()", "semis_logi_ksync_runs(jsonb)", "sem
   "semis_logi_ksync_map_save(jsonb)", "semis_logi_ksync_map_delete(bigint)", "semis_logi_ksync_map_start(bigint)", "semis_logi_ksync_pending()",
   "semis_logi_ksync_resolve(jsonb)", "semis_logi_ksync_hold(jsonb)", "semis_logi_ksync_request()", "semis_logi_ksync_settings(jsonb)",
   "semis_logi_ksync_ip_approve(text)", "semis_logi_ksync_agent_new(text)", "semis_logi_ksync_agent_revoke(bigint)", "semis_logi_ksync_hash_todo(jsonb)",
-  "semis_logi_ksync_kidx_save(jsonb)"];
+  "semis_logi_ksync_kidx_save(jsonb)", "semis_logi_ksync_newdirs()", "semis_logi_ksync_newdir_ack(jsonb)"];
 for (const f of ADMIN) {
   eq(await one("select has_function_privilege('anon', $1, 'EXECUTE')", ["public." + f]), true, f + " anon");
   eq(await one("select has_function_privilege('authenticated', $1, 'EXECUTE')", ["public." + f]), false, f + " authenticated 차단");
@@ -1981,6 +1981,184 @@ eq(await one("select kidx_base = '2020-03-01'::timestamptz from semis_logi_priva
 await db.exec("update semis_logi_private.kidx set first_seen = '2020-02-01' where path = '가/새'");
 await db.exec(SQL);
 eq(await one("select kidx_base = '2020-03-01'::timestamptz from semis_logi_private.ksync_state where id = 1"), true, "NEWD-08 한 번 더 실행해도 그대로");
+
+// NEWD-09 ~ 18 새 폴더 계산 · 관리 RPC · 상태 배지 — 색인 뿌리 '항공보안', 연결은 map_save('항공보안/…')
+const nd = () => rpc("semis_logi_ksync_newdirs");
+const ack = (p) => rpc("semis_logi_ksync_newdir_ack", p);
+const msave = (k, grp, o) => rpc("semis_logi_ksync_map_save", Object.assign({ k_path: "항공보안/" + k, mod: "audit", grp }, o || {}));
+const pick = (o, keys) => o ? keys.map(k => o[k]) : o;
+const row = (x, p) => x.items.find(i => i.path === p);
+const ndst = async () => { const s = await rpc("semis_logi_ksync_status"); return [s.newdirs && s.newdirs.n, s.newdirs && s.newdirs.n_link, s.newdirs && s.newdirs.gone, s.alert]; };
+// 시계가 1ms 단위라 — 지금까지의 일(처음 보인 때 · 기준선 · 마지막 걷기 · 연결을 만든 때 · 처리 기록)을 모두 1분 앞으로 옮겨 다음 일과 갈라 놓는다
+const tick = () => db.exec("update semis_logi_private.kidx set first_seen = first_seen - interval '1 minute'; " +
+  "update semis_logi_private.ksync_state set kidx_base = kidx_base - interval '1 minute', " +
+  "kidx_last = jsonb_set(kidx_last, '{at}', to_jsonb((kidx_last ->> 'at')::timestamptz - interval '1 minute')) where id = 1; " +
+  "update semis_logi_private.ksync_maps set created_at = created_at - interval '1 minute'; " +
+  "update semis_logi_private.kidx_ack set at = at - interval '1 minute'");
+// 걷기는 색인 줄 전체를 보낸다(안 보낸 줄은 지워짐) — K = 지금 색인에 둘 줄, 문자열은 폴더
+let K = [];
+const kw = async (add, drop) => {
+  K = K.filter(x => !(drop && (x[0] === drop || x[0].startsWith(drop + "/")))).concat(add.map(p => typeof p === "string" ? [p, 1, null, null] : p));
+  await as(null);
+  const w = await walk(K);
+  await as("a1", "admin");
+  return w;
+};
+const Fl = (p, n) => [p, 0, n, T];
+
+// NEWD-09 권한 · 꺼짐 — 새 RPC 2개는 시스템관리자만(0번 ADMIN 목록 · 42501), 찾기가 꺼졌거나 기준선이 없으면 on:false · 빈 결과
+await as("h1", "hq");
+ok(await raises(() => nd(), "42501"), "NEWD-09 hq 새 폴더 목록 → 42501");
+ok(await raises(() => ack({ paths: ["업무1"], act: "seen" }), "42501"), "NEWD-09 hq 처리 기록 → 42501");
+await as("a1", "admin");
+eq((await ks({ on: false, root: "항공보안", excludes: [] })).ok, true, "NEWD-09 색인 뿌리 항공보안 · 끔");
+r = await nd();
+eq([r.ok, r.root, r.on, r.n, r.n_link, r.items, r.gone], [true, "항공보안", false, 0, 0, [], []], "NEWD-09 찾기 꺼짐 → { ok, on:false, n:0 … }");
+eq((await ks({ on: true })).ok, true, "NEWD-09 켬");
+eq([(await nd()).on, (await ndst()).slice(0, 3)], [false, [0, 0, 0]], "NEWD-09 기준선 전(첫 걷기 전) → on:false · 상태 newdirs 0");
+const ex0 = (await rpc("semis_logi_ksync_status")).state.excludes;
+eq((await rpc("semis_logi_ksync_settings", { excludes: [...ex0, "항공보안/보관"] })).ok, true, "NEWD-09 전체 지정 제외에 항공보안/보관");
+
+// 기준선 걷기 — 아래 시험에서 '이미 있던' 폴더
+r = await kw(["업무2", "업무2/옛둘째", "업무2/연결됨", "업무2/연결됨/임시", "보관", "업무4", "업무4/AEO", "업무5", "업무6", "업무6/a_b", "업무6/axb",
+  "업무7", "업무7/옛둘째", "업무7/옛둘째/연결", "업무8", "업무9", Fl("안내.pdf", 1)]);
+const nd0 = await nd();
+eq([r.ok, nd0.on, nd0.n, nd0.items], [true, true, 0, []], "NEWD-09 기준선 걷기 → on · 새 폴더 0");
+
+// NEWD-10 종류 — top · link(새 업무 폴더 아래라도 둘째 폴더는 따로) · out · auto · excl(연결 뺄 폴더 · 전체 지정 제외) · map · excl 칸 · 정렬
+const mA = await msave("업무2/연결됨", "nd-a", { excludes: ["임시"] });
+eq(mA.ok, true, "NEWD-10 연결 업무2/연결됨(뺄 폴더 임시)");
+await tick();
+await kw(["업무1", "업무1/둘째", "업무2/옛둘째/2027", "업무2/연결됨/2027", "업무2/연결됨/임시/x", "보관/새"]);
+r = await nd();
+eq(r.items.map(x => [x.path, x.cls]), [["업무1/둘째", "link"], ["업무1", "top"], ["업무2/옛둘째/2027", "out"], ["업무2/연결됨/2027", "auto"],
+  ["보관/새", "excl"], ["업무2/연결됨/임시/x", "excl"]], "NEWD-10 종류 · 정렬(link · top · out · auto · excl, 같은 때면 경로 순)");
+eq([r.ok, r.on, r.n, r.n_link, typeof r.base, r.at === (await rpc("semis_logi_ksync_status")).state.kidx_last.at], [true, true, 6, 1, "string", true],
+  "NEWD-10 n · n_link · base · at(마지막 걷기)");
+eq(pick(row(r, "업무2/연결됨/2027").map, ["id", "k_path", "mod", "grp", "state", "dir"]), [mA.id, "항공보안/업무2/연결됨", "audit", "nd-a", "preview", "both"],
+  "NEWD-10 auto 줄의 map = 안에 든 연결");
+eq([pick(row(r, "업무2/연결됨/임시/x"), ["excl"]), row(r, "업무2/연결됨/임시/x").map.id, pick(row(r, "보관/새"), ["excl", "map"])],
+  [["임시"], mA.id, ["항공보안/보관", null]], "NEWD-10 excl 칸 = 연결 뺄 폴더(연결 기준) · 전체 지정 제외(공유 뿌리 기준)");
+eq(["업무1/둘째", "업무1", "업무2/옛둘째/2027"].map(p => pick(row(r, p), ["map", "excl", "part", "unit_skip", "unit_part", "more", "unit"])),
+  [[null, null, false, false, false, 0, "업무1/둘째"], [null, null, false, false, false, 0, "업무1"], [null, null, false, false, false, 0, "업무2/옛둘째"]],
+  "NEWD-10 link · top · out 줄의 칸(단위 = 깊이 2 이하면 자기, 아니면 앞 두 마디)");
+
+// NEWD-11 묶음 · 상한 — 위 폴더가 처리 안 된 새 폴더면 그 줄에 묶음(둘째 폴더 경계는 넘지 않음) · 줄은 300개까지, n 은 전체
+await tick();
+await kw(["업무3", "업무3/새둘째", "업무3/새둘째/a", "업무3/새둘째/a/b", "업무1/둘째/초안"]);
+r = await nd();
+eq([r.n, r.n_link, pick(row(r, "업무3/새둘째"), ["cls", "more"]), pick(row(r, "업무3"), ["cls", "more"]), row(r, "업무3/새둘째/a"), row(r, "업무3/새둘째/a/b"),
+  row(r, "업무1/둘째").more, r.items.slice(0, 2).map(x => x.path)],
+  [8, 2, ["link", 2], ["top", 0], undefined, undefined, 1, ["업무3/새둘째", "업무1/둘째"]],
+  "NEWD-11 업무3/새둘째 한 줄(more 2) · 업무3 은 top 한 줄 · 같은 종류 안은 최근 순");
+const n11 = r.n;
+await tick();
+await kw(["대량", ...Array.from({ length: 304 }, (_, i) => "대량/" + String(i).padStart(3, "0"))]);
+r = await nd();
+eq([r.items.length, r.n, r.n_link, r.items.every(x => x.cls === "link")], [300, n11 + 305, 2 + 304, true], "NEWD-11 머리 줄 305개 더 → items 300 · n 전체");
+eq((await ndst()).slice(0, 2), [n11 + 305, 306], "NEWD-11 상태 newdirs 도 전체 수");
+await kw([], "대량");
+eq((await nd()).n, n11, "NEWD-11 사라진 폴더는 목록에서 빠짐");
+
+// NEWD-12 처리됨 — (가) 연결로: 만들 때 있던 그 폴더 · 아래는 빠지고 그 뒤 생긴 것은 auto
+await tick();
+const m1 = await msave("업무1/둘째", "nd-b");
+r = await nd();
+eq([m1.ok, r.items.filter(x => x.path === "업무1/둘째" || x.path.startsWith("업무1/둘째/")).length, r.n_link], [true, 0, 1],
+  "NEWD-12 (가) 업무1/둘째 연결 → 그 줄 · 미리 있던 아래(초안) 빠짐");
+await tick();
+await kw(["업무1/둘째/2028"]);
+r = await nd();
+eq([pick(row(r, "업무1/둘째/2028"), ["cls", "more"]), row(r, "업무1/둘째/2028").map.id], [["auto", 0], m1.id], "NEWD-12 (가) 연결 뒤 생긴 업무1/둘째/2028 → auto");
+// (나) [연결 안 함]: 그 줄과 묶인 아래가 빠지고, 그 뒤 생긴 것은 out(unit_skip)
+await tick();
+r = await ack({ paths: ["업무3/새둘째"], act: "skip" });
+eq([r.ok, r.n, r.skipped], [true, 1, 0], "NEWD-12 (나) 연결 안 함 적음");
+eq((await rows("select path, act, by, at > now() - interval '5 seconds' recent from semis_logi_private.kidx_ack")).map(x => [x.path, x.act, x.by, x.recent]),
+  [["업무3/새둘째", "skip", "N-a1", true]], "NEWD-12 (나) 처리 기록 = 경로 · act · 세션 이름 · 지금");
+r = await nd();
+eq(r.items.filter(x => x.path.startsWith("업무3/새둘째")).length, 0, "NEWD-12 (나) 머리 줄 · 묶인 아래(a · a/b) 빠짐");
+await tick();
+await kw(["업무3/새둘째/c"]);
+r = await nd();
+eq(pick(row(r, "업무3/새둘째/c"), ["cls", "unit", "unit_skip", "unit_part"]), ["out", "업무3/새둘째", true, false], "NEWD-12 (나) 그 뒤 생긴 업무3/새둘째/c → out · unit_skip");
+// (다) 맨 위 폴더 [확인]은 그 폴더만 — 안의 새 둘째 폴더는 그 전에 생긴 것도 그대로 link
+await tick();
+await kw(["업무1/셋째"]);
+await tick();
+eq((await ack({ paths: ["업무1"], act: "seen" })).n, 1, "NEWD-12 (다) 업무1 확인");
+r = await nd();
+eq([row(r, "업무1"), pick(row(r, "업무1/셋째"), ["cls"])], [undefined, ["link"]], "NEWD-12 (다) 업무1 만 빠지고 이미 있던 새 둘째 폴더 업무1/셋째 는 link");
+await tick();
+await kw(["업무1/넷째"]);
+eq(pick(row(await nd(), "업무1/넷째"), ["cls"]), ["link"], "NEWD-12 (다) 그 뒤 생긴 새 둘째 폴더 업무1/넷째 도 link");
+
+// NEWD-13 대소문자 · 특수 문자 — 연결 · 처리 기록은 대소문자 무시, 앞부분은 글자 그대로('_' · '%' 가 와일드카드 아님)
+const SP = "업무6/100% 완료 (SSI) [초안";
+const m4 = await msave("업무4/Aeo", "nd-c");
+const m6 = await msave("업무6/a_b", "nd-d");
+await tick();
+await kw(["업무4/AEO/2027", "업무5/x", "업무5/x/깊은", "업무6/axb/새", SP, SP + "/하위"]);
+r = await nd();
+eq([pick(row(r, "업무4/AEO/2027"), ["cls"]), row(r, "업무4/AEO/2027").map.id], [["auto"], m4.id], "NEWD-13 연결 항공보안/업무4/Aeo 안의 업무4/AEO/2027 → auto");
+eq(pick(row(r, "업무6/axb/새"), ["cls", "map", "unit_part"]), ["out", null, false], "NEWD-13 연결 업무6/a_b 가 있어도 업무6/axb/새 는 연결 밖(out)");
+eq([m6.ok, pick(row(r, SP), ["cls", "more"]), pick(row(r, "업무5/x"), ["cls", "more"])], [true, ["link", 1], ["link", 1]], "NEWD-13 이름에 % · (SSI) · [ 가 있어도 오류 없음");
+await tick();
+r = await ack({ paths: ["업무5/X", SP], act: "skip" });
+eq([r.ok, r.n, r.skipped], [true, 2, 0], "NEWD-13 처리 기록 업무5/X(대소문자 다름) · 특수 문자 경로");
+r = await nd();
+eq([row(r, "업무5/x"), row(r, "업무5/x/깊은"), row(r, SP), row(r, SP + "/하위")], [undefined, undefined, undefined, undefined], "NEWD-13 업무5/X 처리 기록이 업무5/x · 아래를 덮음");
+
+// NEWD-14 part · unit_part — 아래 폴더를 먼저 연결한 둘째 폴더 · 단위 안에 연결이 있는 out 줄
+await tick();
+await kw(["업무7/새둘째", "업무7/새둘째/깊은"]);
+await tick();
+const m7 = await msave("업무7/새둘째/깊은", "nd-e");
+const m7b = await msave("업무7/옛둘째/연결", "nd-f");
+await tick();
+await kw(["업무7/옛둘째/새"]);
+r = await nd();
+eq([m7.ok, m7b.ok, pick(row(r, "업무7/새둘째"), ["cls", "part", "more"]), row(r, "업무7/새둘째/깊은")], [true, true, ["link", true, 0], undefined],
+  "NEWD-14 업무7/새둘째/깊은 을 먼저 연결 → 업무7/새둘째 줄 part · 깊은 은 연결로 처리됨");
+eq(pick(row(r, "업무7/옛둘째/새"), ["cls", "unit", "unit_part", "unit_skip"]), ["out", "업무7/옛둘째", true, false], "NEWD-14 단위 안에 연결이 있는 out 줄 → unit_part");
+
+// NEWD-15 크기 — 줄 아래 모든 파일(아래 폴더 포함) · bytes50 은 50MB 이하만 · 이름이 앞부분만 같은 옆 파일은 셈 밖
+await tick();
+await kw(["업무9/크기", Fl("업무9/크기/a.pdf", 1000), "업무9/크기/sub", Fl("업무9/크기/sub/b.mp4", 62914560), Fl("업무9/크기/sub/c.zip", 52428800), Fl("업무9/크기x.pdf", 7)]);
+r = await nd();
+eq(pick(row(r, "업무9/크기"), ["cls", "more", "files", "bytes", "bytes50"]), ["link", 1, 3, 1000 + 62914560 + 52428800, 1000 + 52428800],
+  "NEWD-15 files 3 · bytes 전체 · bytes50 = 60MB 파일 뺌");
+
+// NEWD-16 사라진 연결 — 마지막 걷기 전에 만든 연결의 폴더가 색인에 없으면 gone. 마지막 걷기 뒤 연결 · 찾기 뺄 폴더 아래 · 뿌리 밖(이름 앞부분만 같은 항공보안x · 앞선 시험의 연결들)은 아님
+await tick();
+const m8 = await msave("업무8/둘째", "nd-g");
+eq((await ks({ excludes: ["업무8/뺌"] })).ok, true, "NEWD-16 찾기 뺄 폴더 업무8/뺌");
+const m8x = await msave("업무8/뺌", "nd-h");
+const m8o = await rpc("semis_logi_ksync_map_save", { k_path: "항공보안x/업무8", mod: "audit", grp: "nd-j" });
+await tick();
+await kw([]);
+const m8n = await msave("업무8/나중", "nd-i");
+r = await nd();
+eq([m8.ok, m8x.ok, m8o.ok, m8n.ok, r.gone.map(g => [g.id, g.k_path, g.mod, g.grp])], [true, true, true, true, [[m8.id, "항공보안/업무8/둘째", "audit", "nd-g"]]],
+  "NEWD-16 gone = 업무8/둘째 만(대소문자만 다른 업무4/Aeo 는 있음)");
+
+// NEWD-17 상태 — 새 폴더 · gone 이 있으면 newdirs 숫자 · alert, 모두 처리하면 0 · alert 꺼짐(다른 경고는 보안 이벤트를 본 것으로 끔)
+eq((await rpc("semis_logi_ksync_events", { seen: true, limit: 1 })).ok, true, "NEWD-17 보안 이벤트 본 것으로");
+eq(await ndst(), [r.n, r.n_link, 1, true], "NEWD-17 새 폴더 · gone → 상태 newdirs { n, n_link, gone 수 } · alert");
+r = await ack({ paths: r.items.map(x => x.path), act: "seen" });
+eq([r.ok, r.skipped], [true, 0], "NEWD-17 줄 모두 확인");
+eq(await ndst(), [0, 0, 1, true], "NEWD-17 gone 만 남아도 alert");
+eq((await rpc("semis_logi_ksync_map_delete", m8.id, "::bigint")).ok, true, "NEWD-17 사라진 연결 지움");
+eq(await ndst(), [0, 0, 0, false], "NEWD-17 모두 처리 → n 0 · gone 0 · alert 꺼짐");
+
+// NEWD-18 처리 기록 검사 — act · paths(문자열 1~300개)가 틀리면 bad, 색인 폴더 줄이 아닌 경로는 그것만 건너뜀 · 이미 있으면 덮어씀
+for (const [p, m] of [[{ paths: ["업무1"], act: "done" }, "act 다른 값"], [{ paths: [], act: "seen" }, "빈 배열"],
+  [{ paths: Array.from({ length: 301 }, () => "업무1"), act: "seen" }, "301개"], [{ paths: [1], act: "seen" }, "문자열 아님"], [{ paths: "업무1", act: "seen" }, "배열 아님"]]) {
+  eq(await ack(p), { ok: false, error: "bad" }, "NEWD-18 " + m + " → bad");
+}
+r = await ack({ paths: ["업무1", "없음", "../x", "안내.pdf"], act: "skip" });
+eq([r.ok, r.n, r.skipped], [true, 1, 3], "NEWD-18 색인에 없는 경로 · ../x · 파일 줄은 건너뜀");
+eq(await one("select act from semis_logi_private.kidx_ack where path = '업무1'"), "skip", "NEWD-18 이미 있으면 덮어씀");
 }
 
 console.log(`ksync SQL: ${pass} 통과 / ${fail} 실패`);
