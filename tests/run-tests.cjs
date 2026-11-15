@@ -12355,7 +12355,8 @@ function makeServer(opts = {}) {
   {
     const ksFake = (sv) => {
       const k = sv.ks = { calls: [], alert: false, stale: false, evNew: 0, agents: [], maps: [], holds: [], files: [], last: [], runs: [], events: [], hash: { total: 0, done: 0, todo: 0, skip: 0, req: null }, folders: [{ path: "안전보안", depth: 1, n: 2 }, { path: "안전보안/점검표", depth: 2, n: 12 }],
-        state: { daily_at: "08:30", requested_at: null, net: { ok: false, at: "2026-11-04T00:10:00Z", msg: "K드라이브 응답 없음" }, ip_allow: [], ip_seen: [{ ip: "198.51.100.5", at: "2026-11-04T00:00:00Z", agent: 1 }], mass_limit: { files: 200, ratio: 0.3 } } };
+        state: { daily_at: "08:30", requested_at: null, net: { ok: false, at: "2026-11-04T00:10:00Z", msg: "K드라이브 응답 없음" }, ip_allow: [], ip_seen: [{ ip: "198.51.100.5", at: "2026-11-04T00:00:00Z", agent: 1 }], mass_limit: { files: 200, ratio: 0.3 },
+          kidx: { on: false, root: "", excludes: [], win_root: "" }, kidx_last: null } };
       const deny = { __status: 403, body: { code: "42501", message: "semis_ksync_admin" } };
       const h = (name, fn) => { sv.rpc["semis_logi_ksync_" + name] = (b, o) => { k.calls.push({ name, b }); return sv.rankOf(o) >= 4 ? fn(b || {}) : deny; }; };
       h("status", () => ({ ok: true, now: k.now || new Date().toISOString(), state: k.state, agents: k.agents, maps: k.maps, last: k.runs[0] || null, today: "today" in k ? k.today : k.runs[0] || null, last_ok: k.lastOk || null,
@@ -12387,6 +12388,16 @@ function makeServer(opts = {}) {
         return { ok: true, id: 9 };
       });
       h("agent_new", () => ({ ok: true, id: 7, key: "c0ffee".repeat(10) + "abcd" }));
+      // 서버 규칙(kidx_save): root · excludes = 공유 안 상대 경로(20개까지) · win_root = 'X:\' 또는 '\\' 로 시작 · 120자 — 한 칸이라도 틀리면 아무것도 저장하지 않음
+      const rel = (s) => typeof s === "string" && !!s && !/[\u0000-\u001f\\:]/.test(s) && s.split("/").every(g => g && g !== "." && g !== "..");
+      h("kidx_save", (b) => {
+        const p = b.p || {};
+        if (p.root && !rel(p.root)) return { ok: false, error: "root" };
+        if (p.excludes && (p.excludes.length > 20 || !p.excludes.every(rel))) return { ok: false, error: "excl" };
+        if (p.win_root && (p.win_root.length > 120 || !/^([A-Za-z]:\\|\\\\)/.test(p.win_root))) return { ok: false, error: "win" };
+        Object.assign(k.state.kidx, p);
+        return { ok: true };
+      });
       return k;
     };
     const setup = async () => {
@@ -12413,7 +12424,7 @@ function makeServer(opts = {}) {
       eq(qa(e, "#tab-body .ks-card").map(c => c.dataset.ksCard).join(","), "maps,pend,runs,sec", "카드 4");
       const head = q(e, "#view .page-head");
       eq(qa(e, "#view .page-head .btn-primary").map(b => b.textContent.trim()).join(), "지금 동기화 요청", "주 단추 하나");
-      eq(qa(e, "#view .page-head .ph-rare").map(b => b.textContent.trim()).join(), "에이전트 키 발급,에이전트 키 폐기,매일 실행 시각,대량 변경 한도,지정 제외,해시 채우기", "드문 기능은 ⋯");
+      eq(qa(e, "#view .page-head .ph-rare").map(b => b.textContent.trim()).join(), "에이전트 키 발급,에이전트 키 폐기,매일 실행 시각,대량 변경 한도,지정 제외,해시 채우기,K드라이브 찾기", "드문 기능은 ⋯");
       const kids = Array.from(head.children).filter(x => x.matches("button"));
       ok(kids[kids.length - 1].hasAttribute("data-print-btn"), "인쇄는 맨 끝");
       ["status", "pending", "runs", "events", "folders"].forEach(n => ok(ks.calls.some(c => c.name === n), "불러오기 " + n));
@@ -12676,7 +12687,7 @@ function makeServer(opts = {}) {
       eq(q(e, "#view .tab.active").dataset.tab, "ksync", "K드라이브 탭 그대로");
       ok(q(e, "#tab-body .ks-strip"), "다시 불러와 그림");
       const btns = Array.from(q(e, "#view .page-head").children).filter(x => x.matches("button"));
-      eq(btns.filter(b => b.classList.contains("ks-hb")).length, 7, "머리말 단추 한 벌(v1.72 해시 채우기 더함)");
+      eq(btns.filter(b => b.classList.contains("ks-hb")).length, 8, "머리말 단추 한 벌(v1.72 해시 채우기 · v1.73 K드라이브 찾기 더함)");
       ok(btns[btns.length - 1].hasAttribute("data-print-btn"), "인쇄는 맨 끝");
       q(e, '.tab[data-tab="data"]').click(); e.S.renderView();
       eq(q(e, "#view .tab.active").dataset.tab, "data", "다른 탭도 그대로");
@@ -13158,6 +13169,47 @@ function makeServer(opts = {}) {
       e.w.SeMIS.closeModal();
       eq(e.errors.length, 0, e.errors.join(" | "));
       e.Sync.stop(); e.w.close();
+    });
+    await ta("KS-K1 v1.73 ⋯ › K드라이브 찾기: 켜기 · 색인 뿌리(받은 폴더 목록 제안) · 뺄 폴더(한 줄에 하나) · 탐색기 경로 앞부분(ⓘ) · 마지막 색인 한 줄 → 저장 인자 그대로 · 서버 오류는 쉬운 말 · 시스템관리자만(단추 · 함수 첫 줄 · 서버)", async () => {
+      const { sv, ks, e } = await setup();
+      await openTab(e);
+      q(e, "#ks-kidx").click();
+      ok(!q(e, "#ks-kon").checked && !q(e, "#ks-kroot").value && !q(e, "#ks-kex").value && !q(e, "#ks-kwin").value, "처음 = 꺼짐 · 빈 칸");
+      eq(qa(e, "#" + q(e, "#ks-kroot").getAttribute("list") + " option").map(o => o.value).join(","), "안전보안,안전보안/점검표", "색인 뿌리 제안 = 받은 폴더 목록");
+      ok(/아직 색인한 적이 없습니다/.test(q(e, "#ks-klast").textContent), "마지막 색인 없음");
+      ok(qa(e, "#modal-box .help-tip").some(b => /동료 PC 어디서나 열리는 서버 경로 — \\\\서버\\공유\\…\\항공보안/.test(b.dataset.tip)), "경로 앞부분 ⓘ");
+      ok(!q(e, "#modal-box p:not(#ks-klast)"), "설명은 ⓘ 로만(문단 없음)");
+      q(e, "#ks-kon").checked = true; q(e, "#ks-kroot").value = " 안전보안 "; q(e, "#ks-kex").value = "임시\n \n사본 \n"; q(e, "#ks-kwin").value = "\\\\srv\\share\\항공보안";
+      clickOk(e); await tick(30);
+      eq(JSON.stringify(ks.calls.filter(c => c.name === "kidx_save").pop().b), JSON.stringify({ p: { on: true, root: "안전보안", excludes: ["임시", "사본"], win_root: "\\\\srv\\share\\항공보안" } }), "저장 인자(뺄 폴더는 줄마다 · 빈 줄 · 앞뒤 공백 정리)");
+      ok(/저장했습니다/.test(q(e, "#toast-wrap").textContent) && !q(e, "#modal-box #ks-kon"), "저장 → 안내 · 창 닫힘");
+      ks.state.kidx_last = { at: "2026-11-15T00:30:00Z", files: 6421, dirs: 312, rejected: 2, ms: 95000, err: 1 };
+      await openTab(e);
+      q(e, "#ks-kidx").click();
+      ok(q(e, "#ks-kon").checked && q(e, "#ks-kroot").value === "안전보안" && q(e, "#ks-kex").value === "임시\n사본" && q(e, "#ks-kwin").value === "\\\\srv\\share\\항공보안", "다시 열면 서버 값");
+      const last = q(e, "#ks-klast").textContent;
+      ok(/11-15 \d\d:30/.test(last) && /파일 6421개/.test(last) && /폴더 312개/.test(last) && /걸린 시간 2분/.test(last) && /못 읽은 폴더 1곳/.test(last) && /거절 줄 2개/.test(last), "마지막 색인 한 줄 " + last);
+      e.w.SeMIS.closeModal();
+      const saved = JSON.stringify(ks.state.kidx);
+      for (const [id, v, re] of [["#ks-kroot", "../밖", /색인 뿌리 경로를 확인하세요\(공유 뿌리 기준 상대 경로\)/],
+        ["#ks-kex", Array.from({ length: 21 }, (_, i) => "폴더" + i).join("\n"), /뺄 폴더 경로를 확인하세요/],
+        ["#ks-kwin", "K드라이브/항공보안", /경로 앞부분은 \\\\서버\\… 또는 K:\\… 꼴이어야 합니다/]]) {
+        q(e, "#ks-kidx").click(); q(e, id).value = v; clickOk(e); await tick(30);
+        ok(re.test(q(e, "#toast-wrap").textContent) && q(e, "#modal-box #ks-kon"), id + " 서버 오류 → 쉬운 말 · 창은 그대로");
+        e.w.SeMIS.closeModal();
+      }
+      eq(JSON.stringify(ks.state.kidx), saved, "틀리면 저장하지 않음");
+      e.w.SeMIS.user.role = "manager";     // 탭을 연 뒤 시스템관리자가 아니게 된 세션 — 남은 단추를 눌러도
+      q(e, "#ks-kidx").click();
+      ok(!q(e, "#modal-box #ks-kon"), "함수 첫 줄에서 막음");
+      e.w.SeMIS.user.role = "admin";
+      const e2 = makeEnv({ fetch: sv.fetch });
+      await sv.loginAs(e2, "hq-pw-2222"); await tick(10);
+      go(e2, "settings"); await tick(5);
+      ok(!q(e2, '.tab[data-tab="ksync"]') && !q(e2, "#ks-kidx"), "hq 화면에 탭 · 단추 없음");
+      eq(await e2.w.SemisSync.rpc("semis_logi_ksync_kidx_save", { p: { on: true } }).then(() => "ok", (x) => x.status), 403, "서버도 거절(42501)");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close(); e2.Sync.stop(); e2.w.close();
     });
   }
 

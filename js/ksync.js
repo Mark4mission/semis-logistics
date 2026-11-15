@@ -44,7 +44,8 @@
     recon: "양쪽으로 바꾸려면 먼저 ⋯ › 양쪽으로 바꾸기 미리보기로 건수를 받으세요(이틀 안 · 방향 말고는 그대로).",
     dup: "K 에 '이름 (2)' 로 내려올 파일이 있어 바꾸거나 시작할 수 없습니다 — H 쪽 옛 판 · 잘못 묶인 판 묶음을 먼저 정리하세요.",
     oneway: "돌고 있는 연결은 한 방향끼리 바로 바꿀 수 없습니다 — 양쪽으로 바꾸기 미리보기를 거쳐 양쪽으로 바꾼 뒤 줄이세요.",
-    hold: "대량 변경 보류를 먼저 승인하거나 거절하세요.", dir: "방향을 확인하세요." };
+    hold: "대량 변경 보류를 먼저 승인하거나 거절하세요.", dir: "방향을 확인하세요.",
+    root: "색인 뿌리 경로를 확인하세요(공유 뿌리 기준 상대 경로).", excl: "뺄 폴더 경로를 확인하세요.", win: "경로 앞부분은 \\\\서버\\… 또는 K:\\… 꼴이어야 합니다." };
   const STORE_LIMIT = 1024 * 1024 * 1024;     // 저장소 관리 탭(modules.js)과 같은 무료 플랜 파일 한도 — Pro 로 바꾸면 함께 고칠 것
   const bytes = (n) => { n = Number(n) || 0; return n < 1048576 ? (n / 1024).toFixed(1) + " KB" : n < STORE_LIMIT ? (n / 1048576).toFixed(1) + " MB" : (n / STORE_LIMIT).toFixed(2) + " GB"; };
   const fail = (d) => toast(ERR[(d && d.error) || ""] || "처리하지 못했습니다.", true);
@@ -124,6 +125,7 @@
     mk("btn-ghost ph-rare", "ks-limit", "alert", "대량 변경 한도").onclick = limitForm;
     mk("btn-ghost ph-rare", "ks-excl", "x", "지정 제외").onclick = exclForm;
     mk("btn-ghost ph-rare", "ks-hash", "shield", "해시 채우기").onclick = hashForm;
+    mk("btn-ghost ph-rare", "ks-kidx", "search", "K드라이브 찾기").onclick = kidxForm;
   }
   function paint() {
     const box = st.box;
@@ -534,6 +536,32 @@
       <div class="modal-actions"><button type="button" class="btn btn-ghost" data-act="cancel">취소</button><button type="button" class="btn btn-primary" data-act="ok">저장</button></div>`);
     $("#modal-box [data-act=cancel]").onclick = closeModal;
     $("#modal-box [data-act=ok]").onclick = async () => { const d = await act("semis_logi_ksync_settings", { p: { excludes: lines($("#ks-exg").value) } }, "저장했습니다."); if (d) closeModal(); };
+  }
+  /* K드라이브 찾기 — 걷기는 Mac 에이전트가 하루 한 번(설정은 hello 로 받음). 뺄 폴더는 동기화의 지정 제외와 따로다:
+     그쪽은 'H 로 올리지 않음', 이쪽은 '찾기에서 보이지 않음'(예: 올리지 않는 폴더도 찾을 수는 있어야 함) */
+  function kidxForm() {
+    if (!SeMIS.isAdmin()) return;
+    const state = (st.s && st.s.state) || {}, cur = state.kidx || {}, last = state.kidx_last;
+    const took = (ms) => { if (ms == null) return "-"; const s = Math.round(Number(ms) / 1000); return s < 60 ? s + "초" : Math.round(s / 60) + "분"; };
+    const lastTxt = last ? "마지막 색인 " + [fmt(last.at), "파일 " + (last.files || 0) + "개", "폴더 " + (last.dirs || 0) + "개", "걸린 시간 " + took(last.ms),
+      "못 읽은 폴더 " + (last.err || 0) + "곳", "거절 줄 " + (last.rejected || 0) + "개"].join(" · ") : "아직 색인한 적이 없습니다.";
+    openModal(`<h3>K드라이브 찾기</h3>
+      <div class="form-row"><label class="au-opt"><input type="checkbox" id="ks-kon"${cur.on ? " checked" : ""}> 켜기 ${ui.tip("켜면 Mac 에이전트가 하루 한 번 색인 뿌리 아래 파일 · 폴더 이름(크기 · 날짜)을 모아, 안전보안파트 이상이 검색칸 · 아르고에서 K 파일 위치를 찾게 합니다. 파일 내용은 열지 않습니다. 끄면 바로 보이지 않습니다.", "켜기 설명")}</label></div>
+      <div class="form-row"><label for="ks-kroot">색인 뿌리 ${ui.tip("공유 뿌리 기준 경로 — 이 폴더 아래를 모두 찾게 합니다. 목록(Mac 에이전트가 알려 준 3단계까지)에서 고르거나 직접 적으세요. 비우면 모으지 않습니다.", "색인 뿌리 설명")}</label>
+        <input id="ks-kroot" list="ks-kroots" value="${esc(cur.root || "")}" maxlength="300" autocomplete="off" placeholder="목록에서 고르거나 직접 적기">
+        <datalist id="ks-kroots">${(st.folders || []).map(f => `<option value="${esc(f.path)}">`).join("")}</datalist></div>
+      <div class="form-row"><label for="ks-kex">뺄 폴더 ${ui.tip("색인 뿌리 안의 경로를 한 줄에 하나씩(20개까지). 그 아래는 찾기에서 보이지 않습니다(저장하면 바로). 동기화의 지정 제외와는 따로입니다.", "뺄 폴더 설명")}</label>
+        <textarea id="ks-kex" rows="3" maxlength="4000">${esc((cur.excludes || []).join("\n"))}</textarea></div>
+      <div class="form-row"><label for="ks-kwin">탐색기 경로 앞부분 ${ui.tip("동료 PC 어디서나 열리는 서버 경로 — \\\\서버\\공유\\…\\항공보안", "경로 앞부분 설명")}</label>
+        <input id="ks-kwin" class="mono" value="${esc(cur.win_root || "")}" maxlength="120" autocomplete="off" placeholder="\\\\서버\\공유\\…\\항공보안"></div>
+      <p class="ks-note" id="ks-klast">${esc(lastTxt)}</p>
+      <div class="modal-actions"><button type="button" class="btn btn-ghost" data-act="cancel">취소</button><button type="button" class="btn btn-primary" data-act="ok">저장</button></div>`);
+    $("#modal-box [data-act=cancel]").onclick = closeModal;
+    $("#modal-box [data-act=ok]").onclick = async () => {
+      const p = { on: $("#ks-kon").checked, root: $("#ks-kroot").value.trim(), excludes: lines($("#ks-kex").value), win_root: $("#ks-kwin").value.trim() };
+      const d = await act("semis_logi_ksync_kidx_save", { p }, "저장했습니다.");
+      if (d) closeModal();
+    };
   }
   /* 남은 저장소(무료 플랜 한도 - 버킷 파일 합계, 저장소 관리 탭과 같은 셈) — 못 재면 null */
   async function storeLeft() {
