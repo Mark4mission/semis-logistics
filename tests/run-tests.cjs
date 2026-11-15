@@ -10644,13 +10644,14 @@ function makeServer(opts = {}) {
       m.w.close();
     });
 
-    await ta("AR-K2 답 속 K 단추: [[이름|k/<id>]] → K 위치 창(아르고 패널 · 화면 그대로) · 목록에 없는 id · K 를 못 쓰는 계정은 굵은 글자 · 이름은 글자 그대로 · 화면 바로 가기는 그대로", async () => {
+    await ta("AR-K2 답 속 K 단추: [[이름|k/<id>]] → K 위치 창(아르고 패널 · 화면 그대로) · 목록에 없는 id · K 를 못 쓰는 계정은 굵은 글자 · 이름은 글자 그대로 · 화면 바로 가기는 그대로 · 100자 가까운 K 이름도 단추", async () => {
       let kgo = "";
-      const e = argoK("hq", null, (b, n) => {
+      const LONGK = "하반기 화물터미널 보안검색 구역 출입 통제 개선 계획 및 이행 결과 보고서 별첨 자료 묶음 최종 수정본 내부 검토 의견 반영 완료 제출용 사본 2025년 12월 정리본.pdf";
+      const e = argoK("hq", () => { const l = AK_LIST(); l.files.push([1, LONGK, 5, "2025-12-01", null]); return l; }, (b, n) => {
         if (n === 1) return { ok: true, stop: "tool_use", content: [{ type: "tool_use", id: "tu_k", name: "argos_find", input: { query: "국토부 점검 통보", scope: "kdrive" } }] };
         const tr = JSON.parse(b.messages[b.messages.length - 1].content[0].content);
         kgo = (tr.items.find(i => i.name === "점검 결과 통보.pdf") || {}).go || "";
-        return { ok: true, stop: "end_turn", content: [{ type: "text", text: "**2025** 폴더에 있습니다. [[통보 <i>x</i>|" + kgo + "]] · [[지운 파일|k/zz9]] · [[일정관리|schedule]]" }] };
+        return { ok: true, stop: "end_turn", content: [{ type: "text", text: "**2025** 폴더에 있습니다. [[통보 <i>x</i>|" + kgo + "]] · [[지운 파일|k/zz9]] · [[일정관리|schedule]] · [[" + LONGK + "|k/" + kIdOf(e, LONGK) + "]]" }] };
       });
       const A = e.w.SemisArgo;
       A.open();
@@ -10662,6 +10663,8 @@ function makeServer(opts = {}) {
       ok(kb.textContent.indexOf("통보 <i>x</i>") === 0 && !kb.querySelector("i"), "이름은 글자 그대로");
       ok(!md().querySelector('[data-k="zz9"]') && Array.from(md().querySelectorAll("b")).some(x => x.textContent === "지운 파일"), "목록에 없는 id 는 굵은 글자");
       ok(md().querySelector('.ag-go[data-go="schedule"]'), "화면 바로 가기 그대로");
+      ok(LONGK.length > 90 && Array.from(md().querySelectorAll(".ag-go[data-k]")).some(x => x.dataset.k === kIdOf(e, LONGK) && x.textContent.indexOf(LONGK) === 0) && !md().textContent.includes("[["),
+        "100자 가까운 K 이름도 단추(글자 [[…]] 가 남지 않음): " + md().innerHTML.slice(-400));
       const hash = e.w.location.hash;
       kb.click(); await tick(5);
       eq(q(e, "#modal-box h3") && q(e, "#modal-box h3").textContent, "점검 결과 통보.pdf", "K 위치 창");
@@ -10690,6 +10693,21 @@ function makeServer(opts = {}) {
       eq(off.kx.calls, 1);
       eq(e.errors.length + off.errors.length, 0, e.errors.concat(off.errors).join(" | "));
       e.w.close(); off.w.close();
+    });
+
+    await ta("AR-K4 scope kdrive 일부만 맞는 K: 점수가 더 높은 H 결과 12건이 일부만 맞아도(검색 패널의 일부만 맞는 결과 8건에서 밀림) K 항목은 partial 로 나옴 · 폴더 글은 200자까지", async () => {
+      const LONGDIR = Array.from({ length: 15 }, (_, i) => "업무 폴더 " + String(i).padStart(2, "0") + " 하위 자료").join("/");
+      const e = argoK("hq", () => ({ ok: true, on: true, at: "2026-11-15T00:30:00Z", win_root: "", dirs: ["", LONGDIR], files: [[1, "통보 안내.pdf", 10, "2026-01-01", null]] }));
+      e.S.data.regulations = Array.from({ length: 12 }, (_, i) => ({ id: "ak4-r" + i, scope: "sec", title: "국토부 점검 규정 " + i, ideas: [] }));
+      const Q = "국토부 점검 통보";
+      const x = await run(e, "argos_find", { query: Q, scope: "kdrive" });
+      const sr = e.w.SemisSearch.searchAll(Q), isK = (it) => it.group === "K드라이브";
+      ok(!sr.full.some(isK) && sr.partial.length === 8 && !sr.partial.some(isK) && sr.partial.every(it => it.score > 4), "패널의 일부만 맞는 결과 8건은 그대로 — 점수가 더 높은 H 가 채움: " + JSON.stringify(sr.partial.map(it => [it.group, it.title, it.score])));
+      eq(JSON.stringify([x.r.count, x.r.items.map(i => [i.kind, i.name, i.partial, /^k\/[0-9a-z]+$/.test(i.go)])]), JSON.stringify([1, [["file", "통보 안내.pdf", true, true]]]), "K 항목이 partial 로: " + JSON.stringify(x.r));
+      const f = (x.r.items[0] || {}).folder || "";
+      ok(f.length === 201 && f.endsWith("…") && LONGDIR.split("/").join(" › ").startsWith(f.slice(0, 200)), "폴더 글 200자 + …: " + f.length);
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.w.close();
     });
   }
 
@@ -13178,6 +13196,11 @@ function makeServer(opts = {}) {
       eq(qa(e, "#" + q(e, "#ks-kroot").getAttribute("list") + " option").map(o => o.value).join(","), "안전보안,안전보안/점검표", "색인 뿌리 제안 = 받은 폴더 목록");
       ok(/아직 색인한 적이 없습니다/.test(q(e, "#ks-klast").textContent), "마지막 색인 없음");
       ok(qa(e, "#modal-box .help-tip").some(b => /동료 PC 어디서나 열리는 서버 경로 — \\\\서버\\공유\\…\\항공보안/.test(b.dataset.tip)), "경로 앞부분 ⓘ");
+      const tipOf = (lbl) => (qa(e, "#modal-box .help-tip").find(b => b.getAttribute("aria-label") === lbl) || { dataset: {} }).dataset.tip || "";
+      ok(/새로 여는 화면/.test(tipOf("켜기 설명")) && /30분/.test(tipOf("켜기 설명")) && !/바로 보이지 않습니다/.test(tipOf("켜기 설명")), "켜기 ⓘ: 끄면 새 화면에서 사라지고 열린 화면은 30분 안에: " + tipOf("켜기 설명"));
+      ok(/'\/'/.test(tipOf("색인 뿌리 설명")) && /항공보안/.test(tipOf("색인 뿌리 설명")), "색인 뿌리 ⓘ: 공유 기준 · '/' 구분 · 예: " + tipOf("색인 뿌리 설명"));
+      ok(/색인 뿌리 기준/.test(tipOf("뺄 폴더 설명")) && /'\/'/.test(tipOf("뺄 폴더 설명")) && /뿌리가 '항공보안'이면 '80 개인정보'/.test(tipOf("뺄 폴더 설명")) &&
+        /80 개인정보/.test(q(e, "#ks-kex").getAttribute("placeholder") || ""), "뺄 폴더 ⓘ · 칸 안내: 색인 뿌리 기준 · '/' 구분 · 예: " + tipOf("뺄 폴더 설명"));
       ok(!q(e, "#modal-box p:not(#ks-klast)"), "설명은 ⓘ 로만(문단 없음)");
       q(e, "#ks-kon").checked = true; q(e, "#ks-kroot").value = " 안전보안 "; q(e, "#ks-kex").value = "임시\n \n사본 \n"; q(e, "#ks-kwin").value = "\\\\srv\\share\\항공보안";
       clickOk(e); await tick(30);
@@ -13188,7 +13211,9 @@ function makeServer(opts = {}) {
       q(e, "#ks-kidx").click();
       ok(q(e, "#ks-kon").checked && q(e, "#ks-kroot").value === "안전보안" && q(e, "#ks-kex").value === "임시\n사본" && q(e, "#ks-kwin").value === "\\\\srv\\share\\항공보안", "다시 열면 서버 값");
       const last = q(e, "#ks-klast").textContent;
-      ok(/11-15 \d\d:30/.test(last) && /파일 6421개/.test(last) && /폴더 312개/.test(last) && /걸린 시간 2분/.test(last) && /못 읽은 폴더 1곳/.test(last) && /거절 줄 2개/.test(last), "마지막 색인 한 줄 " + last);
+      const atD = new Date("2026-11-15T00:30:00Z"), p2 = (n) => String(n).padStart(2, "0");     // 화면과 같은 현지 시각 — 시험 PC 의 시간대와 무관하게
+      const atTxt = (atD.getMonth() + 1) + "-" + p2(atD.getDate()) + " " + p2(atD.getHours()) + ":" + p2(atD.getMinutes());
+      ok(last.includes("마지막 색인 " + atTxt + " · ") && /파일 6421개/.test(last) && /폴더 312개/.test(last) && /걸린 시간 2분/.test(last) && /못 읽은 폴더 1곳/.test(last) && /거절 줄 2개/.test(last), "마지막 색인 한 줄 " + last);
       e.w.SeMIS.closeModal();
       const saved = JSON.stringify(ks.state.kidx);
       for (const [id, v, re] of [["#ks-kroot", "../밖", /색인 뿌리 경로를 확인하세요\(공유 뿌리 기준 상대 경로\)/],
@@ -13653,7 +13678,7 @@ function makeServer(opts = {}) {
       ok(/조건에 맞는 문서가 없습니다/.test(noneTxt()), "빈 칸");
       const b = kb();
       ok(b && b.closest(".empty-state"), "빈 칸 안에 단추");
-      eq(b.className, "btn btn-ghost"); eq(b.getAttribute("type"), "button");
+      eq(b.className, "btn btn-ghost btn-sm"); eq(b.getAttribute("type"), "button");
       eq(b.textContent, "K드라이브에서도 찾아보기"); ok(!b.hasAttribute("aria-label"), "aria-label 없음");
       b.click(); await tick(20);
       ok(SS.isOpen(), "검색 패널 열림");

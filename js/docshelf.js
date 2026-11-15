@@ -185,7 +185,7 @@
     return `<nav class="bb-pager" aria-label="쪽 이동">${h}<span class="bb-pgi mono">${page} / ${last}</span></nav>`;
   }
   /* 메뉴부터 눌러 보는 사람이 문서함에서 못 찾았을 때 같은 말로 K드라이브까지 찾게 잇는다(K 이름은 3등급만 — canUse) */
-  const kfindBtn = (mod) => (window.SemisKidx && SemisKidx.canUse() ? `<button type="button" class="btn btn-ghost" data-kfind="${esc(mod)}">K드라이브에서도 찾아보기</button>` : "");
+  const kfindBtn = (mod) => (window.SemisKidx && SemisKidx.canUse() ? `<button type="button" class="btn btn-ghost btn-sm" data-kfind="${esc(mod)}">K드라이브에서도 찾아보기</button>` : "");
   const wireKfind = (scope) => $$("[data-kfind]", scope).forEach(b => b.onclick = () => SemisSearch.open(stOf(b.dataset.kfind).q));
   let printing = false;
   function boardBodyHTML(mod, canW, all) {

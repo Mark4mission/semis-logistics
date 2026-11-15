@@ -546,12 +546,12 @@
     const lastTxt = last ? "마지막 색인 " + [fmt(last.at), "파일 " + (last.files || 0) + "개", "폴더 " + (last.dirs || 0) + "개", "걸린 시간 " + took(last.ms),
       "못 읽은 폴더 " + (last.err || 0) + "곳", "거절 줄 " + (last.rejected || 0) + "개"].join(" · ") : "아직 색인한 적이 없습니다.";
     openModal(`<h3>K드라이브 찾기</h3>
-      <div class="form-row"><label class="au-opt"><input type="checkbox" id="ks-kon"${cur.on ? " checked" : ""}> 켜기 ${ui.tip("켜면 Mac 에이전트가 하루 한 번 색인 뿌리 아래 파일 · 폴더 이름(크기 · 날짜)을 모아, 안전보안파트 이상이 검색칸 · 아르고에서 K 파일 위치를 찾게 합니다. 파일 내용은 열지 않습니다. 끄면 바로 보이지 않습니다.", "켜기 설명")}</label></div>
-      <div class="form-row"><label for="ks-kroot">색인 뿌리 ${ui.tip("공유 뿌리 기준 경로 — 이 폴더 아래를 모두 찾게 합니다. 목록(Mac 에이전트가 알려 준 3단계까지)에서 고르거나 직접 적으세요. 비우면 모으지 않습니다.", "색인 뿌리 설명")}</label>
+      <div class="form-row"><label class="au-opt"><input type="checkbox" id="ks-kon"${cur.on ? " checked" : ""}> 켜기 ${ui.tip("켜면 Mac 에이전트가 하루 한 번 색인 뿌리 아래 파일 · 폴더 이름(크기 · 날짜)을 모아, 안전보안파트 이상이 검색칸 · 아르고에서 K 파일 위치를 찾게 합니다. 파일 내용은 열지 않습니다. 끄면 새로 여는 화면에서는 보이지 않고, 이미 열려 있던 화면에서도 30분 안에 사라집니다.", "켜기 설명")}</label></div>
+      <div class="form-row"><label for="ks-kroot">색인 뿌리 ${ui.tip("공유 뿌리 기준 상대 경로, 폴더 구분은 '/'(예: 업무 공유/항공보안) — 이 폴더 아래를 모두 찾게 합니다. 목록(Mac 에이전트가 알려 준 3단계까지)에서 고르거나 직접 적으세요. 비우면 모으지 않습니다. 바꾸면 모은 목록을 비우고 다음 회차에 새 뿌리를 모읍니다.", "색인 뿌리 설명")}</label>
         <input id="ks-kroot" list="ks-kroots" value="${esc(cur.root || "")}" maxlength="300" autocomplete="off" placeholder="목록에서 고르거나 직접 적기">
         <datalist id="ks-kroots">${(st.folders || []).map(f => `<option value="${esc(f.path)}">`).join("")}</datalist></div>
-      <div class="form-row"><label for="ks-kex">뺄 폴더 ${ui.tip("색인 뿌리 안의 경로를 한 줄에 하나씩(20개까지). 그 아래는 찾기에서 보이지 않습니다(저장하면 바로). 동기화의 지정 제외와는 따로입니다.", "뺄 폴더 설명")}</label>
-        <textarea id="ks-kex" rows="3" maxlength="4000">${esc((cur.excludes || []).join("\n"))}</textarea></div>
+      <div class="form-row"><label for="ks-kex">뺄 폴더 ${ui.tip("색인 뿌리 기준 상대 경로를 한 줄에 하나씩(20개까지), 폴더 구분은 '/'. 예: 뿌리가 '항공보안'이면 '80 개인정보'(그 안 폴더는 '80 개인정보/2025'). 그 아래는 찾기에서 보이지 않습니다(새로 여는 화면부터 — 열려 있던 화면은 30분 안에). 동기화의 지정 제외와는 따로입니다.", "뺄 폴더 설명")}</label>
+        <textarea id="ks-kex" rows="3" maxlength="4000" placeholder="색인 뿌리 기준 — 예: 뿌리가 '항공보안'이면 80 개인정보">${esc((cur.excludes || []).join("\n"))}</textarea></div>
       <div class="form-row"><label for="ks-kwin">탐색기 경로 앞부분 ${ui.tip("동료 PC 어디서나 열리는 서버 경로 — \\\\서버\\공유\\…\\항공보안", "경로 앞부분 설명")}</label>
         <input id="ks-kwin" class="mono" value="${esc(cur.win_root || "")}" maxlength="120" autocomplete="off" placeholder="\\\\서버\\공유\\…\\항공보안"></div>
       <p class="ks-note" id="ks-klast">${esc(lastTxt)}</p>

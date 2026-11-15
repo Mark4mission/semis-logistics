@@ -213,11 +213,12 @@ const SemisSearch = (() => {
   const KIND_TONE = { "화면": "k-scr", "사이트": "k-scr", "문서": "k-doc", "규정": "k-doc", "일정": "k-cal", "연락처": "k-tel", "게시글": "k-bbs", "회의록": "k-bbs", "접수": "k-sup", "도우미": "k-sup", "K폴더": "k-kd", "K파일": "k-kf" };
 
   const GROUP_MAX = 30, TOTAL_MAX = 300, PARTIAL_MAX = 8;
-  /* 모든 낱말이 맞는 결과(full)와 일부만 맞는 결과(partial) */
+  /* 모든 낱말이 맞는 결과(full)와 일부만 맞는 결과(partial).
+     kPartial = 일부만 맞는 K 항목(최대 30) — 아르고 scope kdrive 가 쓴다. partial 8건에서는 점수가 높은 H 결과에 밀려 K 가 빠질 수 있어서 */
   function searchAll(q) {
     const ts = terms(q);
     const u = S().user;
-    const out = { full: [], partial: [] };
+    const out = { full: [], partial: [], kPartial: [] };
     if (!ts.length || !u || u.role === "signer") return out;
     const al = ts.map(t => (isCho(t) ? null : altsOf(t)));
     const take = (list, group, hits, part, extra) => list.forEach(it => {
@@ -279,7 +280,9 @@ const SemisSearch = (() => {
       else out.full.push.apply(out.full, hits.slice(0, GROUP_MAX));
     });
     out.full = out.full.slice(0, TOTAL_MAX - kHits.length).concat(kHits);   // 상한은 H 쪽을 줄여서 — K 묶음(최대 30)이 잘리지 않게
-    out.partial = part.sort((a, b) => b.score - a.score).slice(0, PARTIAL_MAX);
+    part.sort((a, b) => b.score - a.score);
+    out.partial = part.slice(0, PARTIAL_MAX);
+    out.kPartial = part.filter(it => it.group === "K드라이브").slice(0, GROUP_MAX);
     return out;
   }
   /* 모든 낱말이 맞는 결과(아르고 '찾기' 도구 · 테스트가 쓰는 기본 동작) */

@@ -184,9 +184,9 @@
     if (!K || !K.canUse() || !(await K.ensure())) return none;
     const r = SemisSearch.searchAll(q), isK = (it) => it.group === KG;
     let hits = r.full.filter(isK), part = false;
-    if (!hits.length) { hits = r.partial.filter(isK); part = true; }
+    if (!hits.length) { hits = r.kPartial; part = true; }
     const lim = Math.max(1, Math.min(30, Math.round(Number(inp.limit)) || 12));
-    const items = hits.slice(0, lim).map(it => ({ kind: it.kind, name: cut(it.title, 120), folder: it.dir ? it.dir.split("/").join(" › ") : "",
+    const items = hits.slice(0, lim).map(it => ({ kind: it.kind, name: cut(it.title, 120), folder: cut(it.dir ? it.dir.split("/").join(" › ") : "", 200),
       date: it.date || undefined, in_h: !!it.docId, go: "k/" + it.id, partial: part || undefined }));
     return { query: q, scope: "kdrive", count: items.length, items };
   }
@@ -768,7 +768,7 @@
   const kItem = (id) => { const K = window.SemisKidx; return K && K.canUse() ? K.byId(id) : null; };
   function inline(t) {
     let s = esc(t);
-    s = s.replace(/\[\[([^\]|]{1,60})\|([a-z0-9/-]{1,60})\]\]/g, (x, lb, rt) => {
+    s = s.replace(/\[\[([^\]|]{1,120})\|([a-z0-9/-]{1,60})\]\]/g, (x, lb, rt) => {
       const k = /^k\/([0-9a-z]{1,20})$/.exec(rt);
       if (k) return kItem(k[1]) ? '<button type="button" class="ag-go" data-k="' + k[1] + '">' + lb + icon("chevron", 14) + "</button>" : "<b>" + lb + "</b>";
       return goOk(rt) ? '<button type="button" class="ag-go" data-go="' + rt + '">' + lb + icon("chevron", 14) + "</button>" : "<b>" + lb + "</b>";
