@@ -144,3 +144,52 @@ Deno.test("모델 폴백 · 사용량 많음 · 키 오류", async () => {
   r = await post({ messages: [userMsg("a")] }); d = await r.json();
   assertEquals(d.error, "bad_key");
 });
+
+Deno.test("kfolder: 시스템관리자만 · 입력 검사 · 도구 하나 · 결과 거르기 · 사용량", async () => {
+  const KFOLDER_SYSTEM = "K드라이브 폴더 이름만 보고(내용은 모름) H:drive 문서 분류 후보 중 가장 알맞은 하나를 고른다. 맞는 것이 없으면 없음. 지어내지 않는다. 이유는 한국어 한 줄.";
+  const items = [{ path: "업무1/둘째" }, { path: "업무1/셋째" }];
+  const cats = [{ key: "audit|gov", label: "수검 › 정부 점검", aka: "점검", taken: "업무0/감사" }, { key: "docs|etc", label: "문서함 › 기타" }];
+  const kf = (extra: Record<string, unknown> = {}) => post({ mode: "kfolder", items, cats, ...extra });
+  calls.length = 0;
+  begin = { ok: true, rank: 3, role: "hq", name: "파트", used: 1, limit: 200 };
+  let r = await kf();
+  assertEquals([r.status, (await r.json()).error], [403, "forbidden"]);
+  assertEquals(aiCalls().length, 0, "시스템관리자가 아니면 AI 를 부르지 않는다");
+
+  begin = { ok: true, rank: 4, role: "admin", name: "관리", used: 1, limit: 200 };
+  const bad = async (extra: Record<string, unknown>, why: string) => {
+    const r = await kf(extra);
+    assertEquals([r.status, (await r.json()).error], [400, "bad_request"], why);
+  };
+  await bad({ items: Array.from({ length: 11 }, (_, i) => ({ path: "업무1/" + i })) }, "items 11개");
+  await bad({ cats: [{ key: "Audit|gov", label: "x" }] }, "키 형식");
+  assertEquals(aiCalls().length, 0);
+
+  ai = () => new Response(JSON.stringify({ content: [{ type: "tool_use", id: "tu_k", name: "kfolder_pick", input: { picks: [
+    { path: "업무1/둘째", key: "audit|gov", reason: "이름이 점검과 맞음" },
+    { path: "모름", key: "audit|gov", reason: "x" },
+    { path: "업무1/셋째", key: "x|y", reason: "가".repeat(100) }
+  ] } }], stop_reason: "tool_use", usage: { input_tokens: 30, output_tokens: 20 } }), { status: 200 });
+  r = await kf();
+  const d = await r.json();
+  assertEquals(r.status, 200);
+  assertEquals(d, { ok: true, picks: [
+    { path: "업무1/둘째", key: "audit|gov", reason: "이름이 점검과 맞음" },
+    { path: "업무1/셋째", key: null, reason: "가".repeat(80) }
+  ], model: "claude-sonnet-5-5" });
+  const b = aiCalls()[0].body as Record<string, any>;
+  assertEquals(b.tool_choice, { type: "auto", disable_parallel_tool_use: true });
+  assertEquals([b.tools.length, b.tools[0].name], [1, "kfolder_pick"]);
+  assert(String(b.system).includes(KFOLDER_SYSTEM), "고정 지침");
+  assertEquals(b.max_tokens, 1024);
+  assert(!("thinking" in b) && !("output_config" in b), "생각 깊이 설정 없음");
+  const u = String(b.messages[0].content);
+  assert(u.includes("업무1/둘째") && u.includes("audit|gov") && u.includes("업무0/감사") && u.trim().endsWith("kfolder_pick 으로 답한다."), "보낸 자료 · 마지막 줄 지침");
+  const meters = calls.filter((c) => c.url.endsWith("semis_logi_argo_meter"));
+  assertEquals(meters.length, 1);
+  assertEquals([meters[0].body.p_in, meters[0].body.p_out], [30, 20]);
+
+  ai = () => new Response(JSON.stringify({ content: [{ type: "text", text: "모르겠습니다" }], stop_reason: "end_turn", usage: {} }), { status: 200 });
+  r = await kf();
+  assertEquals([r.status, await r.json()], [200, { ok: true, picks: [], model: "claude-sonnet-5-5" }], "도구 응답이 없으면 빈 추천");
+});
