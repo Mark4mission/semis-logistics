@@ -157,6 +157,59 @@ export async function folderTree(root, depth = 3, cap = 3000, skip) {
   return out.slice(0, cap);
 }
 
+/* K드라이브 찾기 목록 — root 아래 이름 · 크기 · 고친 때만(readdir · lstat — 내용은 열지 않음). 링크는 따라가지 않는다.
+   폴더 줄은 부모 목록에서 낸다: 그 폴더를 못 읽어도 줄이 있어야 서버가 err 로 남긴 그 아래 옛 파일 줄을 보여 준다.
+   excludes = root 안 뺄 폴더(대소문자 무시) — 줄도 내지 않고 걷지도 않는다. VPN 에서는 하나씩 읽으면 느려 conc 개를 함께 돌린다(폴더 읽기 · lstat 모두).
+   줄 · 시간 상한에 닿으면 capped(부른 쪽이 보내지 않음 — 일부만 보내면 서버가 나머지를 지운다). 깊이 상한을 넘는 폴더는 err(서버가 그 아래를 둠).
+   root 자체를 못 읽으면 throw */
+export async function kidxWalk(root, opts = {}) {
+  const conc = opts.conc || 4, maxRows = opts.maxRows || 50000, maxDepth = opts.maxDepth || 20, maxMs = opts.maxMs || 1800000, now = opts.now || Date.now;
+  const skip = new Set((opts.excludes || []).map(x => nfc(x).toLowerCase()));
+  const t0 = now(), rows = [], err = [], q = [], waiters = [];
+  let capped = false, active = 0;
+  const add = (row) => { if (rows.length >= maxRows) capped = true; else rows.push(row); };
+  function list(abs, rel, depth, ents) {
+    for (const d of ents) {
+      if (capped) return;
+      const name = nfc(d.name), r = join(rel, name);
+      if (d.isSymbolicLink() || skip.has(r.toLowerCase())) continue;
+      if (d.isDirectory() && !excluded(name, true)) {
+        add([r, 1, null, null]);
+        if (depth + 1 > maxDepth) err.push(r); else q.push({ abs: path.join(abs, d.name), rel: r, depth: depth + 1 });
+      } else if (d.isFile() && !excluded(name, false)) q.push({ abs: path.join(abs, d.name), rel: r });
+    }
+  }
+  async function step(t) {
+    if (t.depth != null) {
+      let ents;
+      try { ents = await fsp.readdir(t.abs, { withFileTypes: true }); } catch (e) { err.push(t.rel); return; }
+      list(t.abs, t.rel, t.depth, ents);
+      return;
+    }
+    let st;
+    try { st = await fsp.lstat(t.abs); } catch (e) { if (e.code !== "ENOENT") err.push(t.rel); return; }     // 사이에 지워진 파일은 줄 없음, 못 읽은 파일은 서버가 옛 줄을 둠
+    add([t.rel, 0, st.size, Math.floor(st.mtimeMs)]);
+  }
+  const wake = () => waiters.splice(0).forEach(f => f());
+  async function worker() {
+    for (;;) {
+      if (!capped && now() - t0 > maxMs) capped = true;
+      if (capped) return wake();
+      const t = q.pop();
+      if (!t) {
+        if (!active) return wake();
+        await new Promise(r => waiters.push(r));     // 다른 워커가 읽는 폴더에서 일이 더 나올 수 있다
+        continue;
+      }
+      active++;
+      try { await step(t); } finally { active--; wake(); }
+    }
+  }
+  list(root, "", 0, await fsp.readdir(root, { withFileTypes: true }));
+  await Promise.all(Array.from({ length: conc }, worker));
+  return { rows, err, capped, ms: now() - t0 };
+}
+
 /* 연결 폴더 안 경로만 — 상위 이동 · 절대 경로 · 링크(중간 폴더 포함) 거절 */
 export function relOk(rel) {
   const s = String(rel || "");

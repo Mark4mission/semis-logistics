@@ -1408,6 +1408,54 @@ eq([r.status, (await rowsOf(MHX)).map(x => [x.rel_path, x.doc_id]), (await docs(
 await db.exec(`update semis_logi_private.ksync_state set flags = flags || '{"link_all": false}'`);
 await admin("select public.semis_logi_ksync_map_delete($1)", [MHX]);
 
+/* 19-18. v1.73 K드라이브 찾기 — 관리자가 켠 폴더('항공보안')를 회차 끝에 하루 한 번 걸어(읽기만) 이름 · 크기 · 날짜 목록을 Edge kidx 로 보냄.
+   뺄 폴더(대소문자 무시) · 이름 규칙은 보내지 않음 · 못 읽은 폴더는 err · 같은 날 다시 걷지 않음 · --dry-run 은 개수만 · 보내기 실패는 회차 결과와 무관 */
+const KX = path.join(MOUNT, "항공보안"), KT = Date.parse("2026-11-03T01:00:00Z");
+const kxw = (rel, s) => { const f = path.join(KX, ...rel.split("/")); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, s); fs.utimesSync(f, KT / 1000, KT / 1000); };
+kxw("10 점검/계획.pdf", "PLAN"); kxw("10 점검/2026/결과.hwp", "RESULT!"); kxw("목록.xlsx", "X"); kxw("~$목록.xlsx", "lock"); kxw("Private/명단.xlsx", "P");
+if (NOROOT) { kxw("잠김/x.pdf", "x"); fs.chmodSync(path.join(KX, "잠김"), 0o000); }
+await admin("select public.semis_logi_ksync_kidx_save($1::jsonb)", [JSON.stringify({ on: true, root: "항공보안", excludes: ["private"] })]);
+const kxPaths = async () => (await db.query("select path from semis_logi_private.kidx order by path collate \"C\"")).rows.map(x => x.path);
+const kxLast = () => one("select kidx_last - 'at' - 'ms' from semis_logi_private.ksync_state");
+const kxActs = (n) => rpcLog.slice(n).filter(x => x.act === "kidx").map(x => x.p.phase);
+let kn = rpcLog.length, kg = logs.length;
+r = await once();
+eq([r.status, kxActs(kn), await kxPaths()], ["ok", ["begin", "rows", "end"],
+  ["10 점검", "10 점검/2026", "10 점검/2026/결과.hwp", "10 점검/계획.pdf", "목록.xlsx"].concat(NOROOT ? ["잠김"] : [])],
+  "회차 끝에 걸어 보냄: 파일 · 폴더 줄(~$ · 뺄 폴더 제외 · 못 읽은 폴더도 폴더 줄)");
+eq([await kxLast(), rpcLog.slice(kn).find(x => x.act === "kidx" && x.p.phase === "end").p.err], [{ err: NOROOT ? 1 : 0, dirs: NOROOT ? 3 : 2, files: 3, rejected: 0 }, NOROOT ? ["잠김"] : []],
+  "kidx_last · 못 읽은 폴더는 end 의 err");
+eq([JSON.parse(fs.readFileSync(STATE, "utf8")).kidxDay, since(logs, kg, l => l.startsWith("warn")).length], [TODAY, 0], "보낸 날은 상태 파일 kidxDay · 경고 없음");
+const kl = await admin("select public.semis_logi_kidx_list()");
+eq([kl.on, kl.dirs, kl.files], [true, ["", "10 점검", "10 점검/2026"].concat(NOROOT ? ["잠김"] : []),
+  [[2, "결과.hwp", 7, "2026-11-03", null], [1, "계획.pdf", 4, "2026-11-03", null], [0, "목록.xlsx", 1, "2026-11-03", null]]], "읽기 RPC: dirs · files[폴더 번호, 이름, 크기, 날짜, H 문서]");
+kn = rpcLog.length;
+kxw("새 문서.pdf", "NEW");
+r = await once();
+eq([r.status, kxActs(kn), (await kxPaths()).includes("새 문서.pdf")], ["ok", [], false], "같은 날 두 번째 회차는 걷지 않음(kidxDay)");
+kn = rpcLog.length; outs.length = 0;
+const kxSnap = JSON.stringify([await kxPaths(), await one("select kidx_last from semis_logi_private.ksync_state")]);
+r = await once({ dryRun: true });
+const kxOut = outs.find(o => o.kidx);
+eq([r.status, kxActs(kn), kxOut && Object.assign({}, kxOut.kidx, { ms: typeof kxOut.kidx.ms })], ["dry-run", [], { files: 4, dirs: NOROOT ? 3 : 2, err: NOROOT ? 1 : 0, capped: false, ms: "number" }],
+  "--dry-run: 걷고 개수만 출력(보내지 않음)");
+eq(JSON.stringify([await kxPaths(), await one("select kidx_last from semis_logi_private.ksync_state")]), kxSnap, "--dry-run 은 DB 그대로");
+// 다음 날로 치고(kidxDay 지움) 끝 보고에서 서버 오류 — 회차는 그대로 ok · 경고 한 줄 · kidxDay 없음 · 색인은 그대로
+{ const s = JSON.parse(fs.readFileSync(STATE, "utf8")); delete s.kidxDay; fs.writeFileSync(STATE, JSON.stringify(s)); }
+hook.failRpc = (act, p) => act === "kidx" && p.phase === "end";
+kg = logs.length;
+r = await once();
+hook.failRpc = null;
+eq([r.status, since(logs, kg, l => l.startsWith("warn")), JSON.parse(fs.readFileSync(STATE, "utf8")).kidxDay, JSON.stringify([await kxPaths(), await one("select kidx_last from semis_logi_private.ksync_state")])],
+  ["ok", ["warn K드라이브 찾기 목록 보내기 실패: server"], undefined, kxSnap], "보내기 실패: 회차 결과 그대로 · 경고 한 줄 · 다음 회차에 다시");
+// 폴더가 없어짐(이름 바뀜) — 회차는 그대로 · 보내지 않음
+await admin("select public.semis_logi_ksync_kidx_save($1::jsonb)", [JSON.stringify({ root: "없는 폴더" })]);
+kn = rpcLog.length; kg = logs.length;
+r = await once();
+eq([r.status, kxActs(kn), since(logs, kg, l => l.startsWith("warn"))], ["ok", [], ["warn K드라이브 찾기 폴더를 읽지 못함: no_folder"]], "폴더 없음: 회차 그대로 · 보내지 않음 · 경고 한 줄");
+if (NOROOT) fs.chmodSync(path.join(KX, "잠김"), 0o755);
+await admin("select public.semis_logi_ksync_kidx_save($1::jsonb)", [JSON.stringify({ on: false, root: "" })]);
+
 /* 20. 동시 실행 막기 · 로컬 상태 · 전체 확인 */
 fs.writeFileSync(path.join(APP, "ksync.lock"), JSON.stringify({ pid: process.pid, at: Date.now() }));
 eq((await once()).status, "locked", "다른 실행 중이면 양보");
