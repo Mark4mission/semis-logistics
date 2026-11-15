@@ -13325,6 +13325,9 @@ function makeServer(opts = {}) {
       eq(c.dir, "k2h"); eq(c.since, "", "연결 없으면 비움"); eq(c.ssi, true);
       const up = [{ id: 31, k_path: "항공보안/Ops/Daily", since: "2023-01-01" }, { id: 32, k_path: "항공보안/X/Y", since: "2022-01-01" }, { id: 33, k_path: "항공보안/X/Z", since: "2022-01-01" }];
       eq(K.recommend("OPS/새 폴더", kfCtx({ maps: up })).since, "2023-01-01", "맨 위 폴더 비교는 대소문자 무시");
+      const blank = [{ id: 41, k_path: "항공보안/04 수검/가", since: null }, { id: 42, k_path: "항공보안/04 수검/나", since: null }, { id: 43, k_path: "항공보안/03 점검/다", since: "2025-08-01" }];
+      eq(K.recommend("04 수검/새것", kfCtx({ maps: blank })).since, "2025-08-01", "기준일 빈 연결은 세지 않음 → 전체 최빈값");
+      eq(K.recommend("04 수검/새것", kfCtx({ maps: blank.slice(0, 2) })).since, "", "기준일 있는 연결이 없으면 비움");
       e.w.close();
     });
     await ta("KF08 applyAI: 빈 후보 키 → link('AI 추천: ') · 쓰인 키 → taken · moved · 모르는 키 · null → none", async () => {

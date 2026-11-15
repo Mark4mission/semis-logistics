@@ -51,14 +51,15 @@
   /* 가장 많이 쓰는 기준일 — 같은 수면 늦은 날(덜 올림) */
   function mode(ms) {
     const n = new Map();
-    ms.forEach(m => { const v = String(m.since || ""); n.set(v, (n.get(v) || 0) + 1); });
+    ms.forEach(m => { const v = String(m.since); n.set(v, (n.get(v) || 0) + 1); });
     let best = "", c = 0;
     n.forEach((k, v) => { if (k > c || (k === c && v > best)) { best = v; c = k; } });
     return best;
   }
-  /* 함께 정하는 값 — 방향은 K → H 만, 기준일은 같은 맨 위 폴더 아래 연결 → 없으면 모든 연결 → 연결이 없으면 비움 */
+  /* 함께 정하는 값 — 방향은 K → H 만, 기준일은 같은 맨 위 폴더 아래 연결 → 없으면 모든 연결 → 없으면 비움.
+     기준일이 빈 연결(예전 연결은 비어 있을 수 있음)은 세지 않는다 — 빈 값이 다른 연결의 기준일을 가리지 않게 */
   function common(path, ctx) {
-    const top = low(segs(path)[0]), ms = ctx.maps || [];
+    const top = low(segs(path)[0]), ms = (ctx.maps || []).filter(m => m.since);
     const near = ms.filter(m => { const r = relOf(m.k_path, ctx.root); return r != null && low(segs(r)[0]) === top; });
     return { ssi: ssiOf(path), dir: "k2h", since: mode(near.length ? near : ms) };
   }
