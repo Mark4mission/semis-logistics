@@ -427,6 +427,8 @@
     if (!mn || !(SeMIS.hasModule && SeMIS.hasModule(mod))) return false;
     return SeMIS.navVisible ? SeMIS.navVisible(mn) : SeMIS.canSee(mn);
   };
+  /* 이 사람에게 보이는 문서 — 그 화면이 보이고, 민감보안정보(SSI)는 3등급 이상 */
+  const visible = (d) => !!(d && d.mod && modVisible(d.mod) && (!d.ssi || SeMIS.roleRank() >= 3));
   /* 검색 결과로 갈 때 — 문서가 있는 탭으로 바꾸고 그 화면 문서 목록을 검색어로 거른다 */
   function pickTo(mod, q) {
     const o = OPTS[mod] || {};
@@ -438,7 +440,7 @@
   /* 이 파일은 search.js 보다 먼저 읽힌다 → search.js 가 읽힐 때 대기열(__semisSearchQ)을 등록한다 */
   const searchProvider = {
     id: "docs", group: "관련 문서", ico: "folder", minRank: 2,
-    items: () => all().filter(d => d && d.mod && modVisible(d.mod) && (!d.ssi || SeMIS.roleRank() >= 3)).map(d => {
+    items: () => all().filter(visible).map(d => {
       const fn = (d.files || []).map(f => f && f.name).filter(Boolean);
       return {
         title: d.title, sub: [labelOf(d.mod, d.grp), dot(d.date), d.org].concat(fn).filter(Boolean).join(" · "),
@@ -450,5 +452,5 @@
   else (window.__semisSearchQ = window.__semisSearchQ || []).push(searchProvider);
 
   window.SemisDocs = { define, groupsOf, labelOf, shortOf, list, series, latest, forMid, midsOf, evid, shelf, groupsHTML, card, refresh, count, wire, form, daysAgo,
-    setQuery, getQuery: (mod) => stOf(mod).q, isBoard, BOARD_MIN, hits: (d, q) => hits(d, termsOf(q)), pickTo, uploadInto };
+    setQuery, getQuery: (mod) => stOf(mod).q, isBoard, BOARD_MIN, hits: (d, q) => hits(d, termsOf(q)), pickTo, uploadInto, visible };
 })();

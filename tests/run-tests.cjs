@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/loginguard.js", "js/app.js", "js/argo-owl.js", "js/panel.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/preview.js", "js/preview-draw.js", "js/preview-cfb.js", "js/preview-xls.js", "js/preview-hwp.js", "js/docshelf.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/board.js", "js/cares.js", "js/hazfind.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/contracts.js", "js/partners.js", "js/kcra.js", "js/seccases.js", "js/dissem.js", "js/roster.js", "js/learn-md.js", "js/learn.js", "js/scrstats.js", "js/usrescreen.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/docread.js", "js/desk.js", "js/argo.js", "js/selfcheck.js", "js/auddash.js", "js/hubhome.js", "js/ksync.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
+const FILES = ["js/loginguard.js", "js/app.js", "js/argo-owl.js", "js/panel.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/preview.js", "js/preview-draw.js", "js/preview-cfb.js", "js/preview-xls.js", "js/preview-hwp.js", "js/docshelf.js", "js/kidx.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/board.js", "js/cares.js", "js/hazfind.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/contracts.js", "js/partners.js", "js/kcra.js", "js/seccases.js", "js/dissem.js", "js/roster.js", "js/learn-md.js", "js/learn.js", "js/scrstats.js", "js/usrescreen.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/docread.js", "js/desk.js", "js/argo.js", "js/selfcheck.js", "js/auddash.js", "js/hubhome.js", "js/ksync.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -13060,6 +13060,200 @@ function makeServer(opts = {}) {
       q(e, "#ks-hash").click(); await tick(30);
       ok(q(e, "#modal-box [data-act=ok]").disabled, "남은 것이 없으면 잠금");
       e.w.SeMIS.closeModal();
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+  }
+
+  /* ══════════ [KX] K드라이브 찾기(목록은 메모리에만 · K 위치 창 · 검색 프로바이더) ══════════ */
+  {
+    const KX_LIST = () => ({ ok: true, on: true, at: "2026-11-15T00:30:00Z", win_root: "\\\\srv\\share\\항공보안\\",
+      dirs: ["", "70 안전", "70 안전/국토부 항공안전 점검", "70 안전/국토부 항공안전 점검/2025"],
+      files: [[3, "점검 결과 통보.pdf", 1200, "2025-10-14", "d1"], [0, "00 안내.pdf", 10, "2026-11-01", null]] });
+    const kxSetup = async (pw, make) => {
+      const sv = makeServer();
+      const kx = { calls: 0, make: make || KX_LIST };
+      sv.rpc.semis_logi_kidx_list = (b, o) => { kx.calls++; return sv.rankOf(o) >= 3 ? kx.make() : { __status: 403, body: { code: "42501", message: "semis_kidx" } }; };
+      const e = makeEnv({ fetch: sv.fetch });
+      if (pw) await sv.loginAs(e, pw);
+      await tick(10);
+      return { sv, kx, e, K: e.w.SemisKidx };
+    };
+    const byTitle = (K, title) => K.items().find(it => it.title === title);
+    /* 시계를 앞으로 — 받은 지 30분 · 실패 뒤 5분 */
+    const later = async (e, min, fn) => {
+      const real = e.w.Date.now, t0 = real.call(e.w.Date);
+      e.w.Date.now = () => t0 + min * 60e3;
+      try { return await fn(); } finally { e.w.Date.now = real; }
+    };
+    const stored = (e) => [e.w.localStorage, e.w.sessionStorage].map(s => { let o = ""; for (let i = 0; i < s.length; i++) o += s.key(i) + "=" + s.getItem(s.key(i)) + "\n"; return o; }).join("");
+    const cyrb53 = (str) => {
+      let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+      for (let i = 0; i < str.length; i++) { const ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); }
+      h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507); h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+      h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507); h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+      return 4294967296 * (2097151 & h2) + (h1 >>> 0);
+    };
+
+    await ta("KX01 등급: 안전보안파트 → 목록(폴더 3 · 파일 2, 뿌리는 항목 아님) · 검색 묶음 'K드라이브' · 화물팀 관리자 · 협력업체 · 서명 세션은 쓰지 않음(RPC 없음) · 저장소에 K 이름 없음", async () => {
+      const { kx, e, K } = await kxSetup("hq-pw-2222");
+      ok(K.canUse(), "hq 사용");
+      ok(!K.ready() && !K.loading() && kx.calls === 0, "처음 필요할 때까지 받지 않음");
+      const p = K.ensure();
+      ok(K.loading() && K.ensure() === p, "받는 중엔 같은 Promise");
+      eq(await p, true);
+      ok(K.ready() && K.on() && !K.loading(), "받음");
+      eq(kx.calls, 1);
+      eq(K.items().length, 5, "폴더 3 + 파일 2");
+      eq(K.items().filter(it => it.kind === "folder").map(it => it.title).join(), "70 안전,국토부 항공안전 점검,2025");
+      const f = byTitle(K, "점검 결과 통보.pdf"), r = byTitle(K, "00 안내.pdf");
+      eq(f.kind, "file");
+      eq(f.sub, "70 안전 › 국토부 항공안전 점검 › 2025 · 2025-10-14", "파일 아래 줄");
+      eq(r.sub, "2026-11-01", "뿌리 파일 아래 줄");
+      eq(byTitle(K, "국토부 항공안전 점검").sub, "70 안전 · 파일 0개", "폴더 아래 줄");
+      eq(byTitle(K, "2025").sub, "70 안전 › 국토부 항공안전 점검 · 파일 1개");
+      eq(byTitle(K, "70 안전").sub, "파일 0개");
+      eq(f.text, "점검 결과 통보.pdf 70 안전 국토부 항공안전 점검 2025", "찾는 글 = 이름 + 폴더 경로 전체");
+      eq(f.path, "70 안전/국토부 항공안전 점검/2025/점검 결과 통보.pdf"); eq(f.dir, "70 안전/국토부 항공안전 점검/2025");
+      eq(JSON.stringify([f.route, f.group, f.date, f.size, f.docId, r.docId]), '["","K드라이브","2025-10-14",1200,"d1",null]');
+      ok(K.byId(f.id) === f && K.byId("nope") === null, "byId");
+      eq(await K.ensure(), true); eq(kx.calls, 1, "30분 안엔 다시 받지 않음");
+      const hits = e.w.SemisSearch.search("점검 결과 통보").filter(x => x.group === "K드라이브");
+      eq(hits.map(x => x.title).join(), "점검 결과 통보.pdf", "검색 프로바이더");
+      eq(hits[0].route, "", "빈 route — 화면 이동 없음");
+      e.S.save(); await tick(10);
+      ok(!/점검 결과 통보|국토부 항공안전|00 안내/.test(stored(e)), "localStorage · sessionStorage 에 K 이름 없음");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+
+      const m = await kxSetup("mgr-pw-3333");
+      ok(!m.K.canUse(), "화물팀 관리자");
+      eq(await m.K.ensure(), false);
+      eq(m.e.w.SemisSearch.search("점검").filter(x => x.group === "K드라이브").length, 0, "관리자 검색에 K 묶음 없음");
+      loginAs(m.e, "vendor");
+      ok(!m.K.canUse(), "협력업체");
+      eq(await m.K.ensure(), false);
+      m.e.S.devSession({ ok: true, kind: "signer", user: { id: "__signer__", name: "회의록 참석 서명", role: "signer", signMinuteId: "m-x" }, minute: null }, null, { keep: true });
+      ok(m.e.S.user.role === "signer" && !m.K.canUse(), "서명 세션");
+      eq(await m.K.ensure(), false);
+      eq(m.kx.calls, 0, "RPC 부르지 않음");
+      eq(m.e.errors.length, 0, m.e.errors.join(" | "));
+      m.e.Sync.stop(); m.e.w.close();
+    });
+
+    await ta("KX02 위치 경로: 파일은 든 폴더 · 뿌리 파일은 뿌리 · 폴더는 그 자신 · 뿌리 끝 \\ 는 한 번 · 경로 앞부분이 비면 '' 와 창 안내", async () => {
+      let root = "\\\\srv\\share\\항공보안\\";
+      const { kx, e, K } = await kxSetup("hq-pw-2222", () => Object.assign(KX_LIST(), { win_root: root }));
+      await K.ensure();
+      eq(K.winPath(byTitle(K, "점검 결과 통보.pdf")), "\\\\srv\\share\\항공보안\\70 안전\\국토부 항공안전 점검\\2025");
+      eq(K.winPath(byTitle(K, "00 안내.pdf")), "\\\\srv\\share\\항공보안");
+      eq(K.winPath(byTitle(K, "국토부 항공안전 점검")), "\\\\srv\\share\\항공보안\\70 안전\\국토부 항공안전 점검");
+      root = "\\\\srv\\share\\항공보안";
+      await later(e, 31, () => K.ensure());
+      eq(kx.calls, 2);
+      eq(K.winPath(byTitle(K, "점검 결과 통보.pdf")), "\\\\srv\\share\\항공보안\\70 안전\\국토부 항공안전 점검\\2025", "끝 \\ 없는 앞부분");
+      root = "";
+      await later(e, 62, () => K.ensure());
+      eq(kx.calls, 3);
+      const f = byTitle(K, "점검 결과 통보.pdf");
+      eq(K.winPath(f), "");
+      K.openSheet(f);
+      const box = q(e, "#modal-box");
+      ok(box.textContent.includes("관리자가 경로 앞부분을 아직 넣지 않았습니다"), "안내");
+      ok(box.textContent.includes("항공보안 › 70 안전 › 국토부 항공안전 점검 › 2025"), "항공보안 › … 경로");
+      ok(!q(e, "#modal-box [data-act=copy]"), "복사 단추 없음");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+
+    await ta("KX03 실패: 500 · 42501 · 꺼짐 → false · 알림 없음 · 실패 뒤 5분 안엔 RPC 를 다시 부르지 않음 · 받기를 마칠 때마다 onReady", async () => {
+      const { kx, e, K } = await kxSetup("hq-pw-2222", () => ({ __status: 500, body: { message: "boom" } }));
+      let fired = 0;
+      K.onReady(() => fired++);
+      const toasts = qa(e, "#toast-wrap .toast").length;
+      eq(await K.ensure(), false, "500");
+      ok(!K.ready() && !K.loading() && K.items().length === 0, "목록 없음");
+      eq(fired, 1, "실패도 받기를 마침");
+      eq(await K.ensure(), false);
+      eq(kx.calls, 1, "5분 안 두 번째 ensure 는 RPC 를 부르지 않음");
+      kx.make = () => ({ __status: 403, body: { code: "42501", message: "semis_kidx" } });
+      eq(await later(e, 6, () => K.ensure()), false, "42501");
+      eq(kx.calls, 2, "5분 지나면 다시");
+      kx.make = () => ({ ok: true, on: false });
+      eq(await later(e, 12, () => K.ensure()), false, "꺼짐");
+      ok(!K.on() && K.items().length === 0, "꺼짐 → 항목 없음");
+      eq(qa(e, "#toast-wrap .toast").length, toasts, "토스트 없음");
+      eq(fired, 3);
+      kx.make = KX_LIST;
+      eq(await later(e, 45, () => K.ensure()), true, "켜지면 받음");
+      eq(K.items().length, 5);
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+
+    await ta("KX04 위치 창: 이름 · 위치 · 날짜 · 크기 · 색인 시각 · [폴더 위치 복사](막히면 선택된 경로 칸) · 보이는 H 문서면 [H:drive 에서 바로 열기] → 그 화면 · 문서함 검색어", async () => {
+      const { e, K } = await kxSetup("hq-pw-2222", () => { const d = KX_LIST(); d.files.push([1, "<img src=x onerror=alert(1)>.pdf", 5, "2026-01-02", "d1"]); return d; });
+      e.S.data.docs = [{ id: "d1", mod: "audit", grp: "checklist", title: "2025 국토부 항공안전 점검 결과", date: "2025-10-14", files: [] }];
+      await K.ensure();
+      const clip = [];
+      Object.defineProperty(e.w.navigator, "clipboard", { configurable: true, value: { writeText: (s) => { clip.push(s); return Promise.resolve(); } } });
+      const f = byTitle(K, "점검 결과 통보.pdf");
+      f.pick("국토부 점검");
+      const box = q(e, "#modal-box"), txt = box.textContent;
+      ok(!q(e, "#modal-overlay").classList.contains("hidden"), "창 열림");
+      ["점검 결과 통보.pdf", K.winPath(f), "2025-10-14", "1KB", "K 에서 확인", "탐색기 주소창에 붙여 넣고(Ctrl+V) Enter"].forEach(s => ok(txt.includes(s), "창 글자: " + s));
+      eq(qa(e, "#modal-box .modal-actions .btn-primary").map(b => b.textContent.trim()).join(), "폴더 위치 복사", "주 단추");
+      ok(qa(e, "#modal-box button").every(b => !b.hasAttribute("aria-label") || !b.textContent.trim()), "보이는 글자가 있는 단추에 aria-label 없음");
+      q(e, "#modal-box [data-act=copy]").click(); await tick(5);
+      eq(clip.join("|"), "\\\\srv\\share\\항공보안\\70 안전\\국토부 항공안전 점검\\2025", "복사한 것 = 폴더 위치");
+      ok(!q(e, "#modal-overlay").classList.contains("hidden"), "복사 뒤 창은 그대로(안내를 읽게)");
+      Object.defineProperty(e.w.navigator, "clipboard", { configurable: true, value: { writeText: () => Promise.reject(new Error("denied")) } });
+      q(e, "#modal-box [data-act=copy]").click(); await tick(5);
+      const inp = q(e, "#kx-path");
+      ok(inp && !inp.closest("[hidden]"), "복사가 막히면 경로 칸");
+      eq(inp.value, K.winPath(f));
+      ok(inp.readOnly && inp.selectionStart === 0 && inp.selectionEnd === inp.value.length, "경로 글자 선택됨");
+      q(e, "#modal-box [data-act=open]").click(); await tick(5);
+      ok(q(e, "#modal-overlay").classList.contains("hidden"), "창 닫힘");
+      eq(e.w.location.hash, "#/audit", "그 화면으로");
+      eq(e.w.SemisDocs.getQuery("audit"), "국토부 점검", "문서함 검색어 = 넘긴 q");
+      K.openSheet(f);
+      q(e, "#modal-box [data-act=open]").click(); await tick(5);
+      eq(e.w.SemisDocs.getQuery("audit"), "2025 국토부 항공안전 점검 결과", "q 가 없으면 문서 이름");
+      K.openSheet(byTitle(K, "00 안내.pdf"));
+      ok(!q(e, "#modal-box [data-act=open]"), "docId 없는 파일엔 없음");
+      e.S.data.docs[0].mod = "no-such-mod";
+      K.openSheet(f);
+      ok(!q(e, "#modal-box [data-act=open]"), "보이지 않는 화면의 문서면 없음");
+      ok(e.w.SemisDocs.visible({ id: "x", mod: "audit", grp: "checklist" }) === true && e.w.SemisDocs.visible({ id: "y", mod: "no-such-mod" }) === false, "SemisDocs.visible");
+      K.openSheet(byTitle(K, "<img src=x onerror=alert(1)>.pdf"));
+      eq(qa(e, "#modal-box img").length, 0, "이름은 글자로만");
+      ok(q(e, "#modal-box").textContent.includes("<img src=x onerror=alert(1)>.pdf"));
+      K.openSheet(byTitle(K, "2025"));
+      ok(q(e, "#modal-box").textContent.includes("\\\\srv\\share\\항공보안\\70 안전\\국토부 항공안전 점검\\2025") && !q(e, "#modal-box [data-act=open]"), "폴더 창 = 그 폴더 위치");
+      e.S.closeModal();
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+
+    await ta("KX-ID 같은 경로는 다시 받아도(순서 · 대소문자가 바뀌어도) 같은 id — cyrb53(소문자 경로) 36진수 · 30분 지나면 다시 받음", async () => {
+      const { kx, e, K } = await kxSetup("hq-pw-2222");
+      let fired = 0;
+      K.onReady(() => fired++);
+      await K.ensure();
+      const ids = {};
+      K.items().forEach(it => { ids[it.path.toLowerCase()] = it.id; });
+      eq(new Set(Object.values(ids)).size, 5, "서로 다른 id");
+      K.items().forEach(it => eq(it.id, cyrb53(it.path.toLowerCase()).toString(36), "cyrb53 " + it.path));
+      kx.make = () => Object.assign(KX_LIST(), {
+        dirs: ["", "70 안전/국토부 항공안전 점검/2025", "70 안전", "70 안전/국토부 항공안전 점검"],
+        files: [[0, "00 안내.PDF", 10, "2026-11-01", null], [1, "점검 결과 통보.pdf", 1200, "2025-10-14", "d1"]] });
+      eq(await later(e, 31, () => K.ensure()), true);
+      eq(kx.calls, 2, "30분 지나면 다시 받음");
+      eq(fired, 2, "받을 때마다 onReady");
+      eq(K.items().length, 5);
+      K.items().forEach(it => eq(it.id, ids[it.path.toLowerCase()], "같은 id " + it.path));
+      ok(K.byId(ids["00 안내.pdf"]).title === "00 안내.PDF", "대소문자만 바뀐 같은 파일");
       eq(e.errors.length, 0, e.errors.join(" | "));
       e.Sync.stop(); e.w.close();
     });
