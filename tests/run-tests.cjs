@@ -15049,6 +15049,155 @@ function makeServer(opts = {}) {
       eq(JSON.stringify([nt.t, nt.due, nt.time, nt.place, nt.who, nt.teams, nt.cat, nt.star, nt.memo, nt.src]),
         JSON.stringify(["회의 자료 준비", "2026-11-20", "09:30", "1층 로비", ["사아자"], ["협력업체A"], "meet", true, "가져갈 것", ""]));
     });
+
+    /* ── 회의 모드 · 인쇄 ── */
+    const cols = () => qa(e, "#tk-meetbox .tk-col").map(c => c.dataset.col);
+    const colEl = (n) => qa(e, "#tk-meetbox .tk-col").find(c => c.dataset.col === n);
+    const cin = (n) => colEl(n).querySelector("input.tk-cin");
+    const cids = (n) => Array.from(colEl(n).querySelectorAll(".tk-clist .tk-row")).map(r => r.dataset.id).join();
+    const cnum = (n) => colEl(n).querySelector(".tk-ch .tk-cnum").textContent;
+    const wkb = (n) => colEl(n).querySelector(".tk-wkdone [data-wk]");
+    const typeIn = (el, s) => { el.value = s; fire(el, "input"); return el; };
+    t("TK29 회의 모드 칸: 명단 순 · 명단 밖 · 담당 없음(있을 때만) · 여러 담당은 각 칸 · 칸 머리 남은 수", () => {
+      tkSeed();
+      e.S.data.tasks.push(TK.norm({ id: "tk_out", t: "명단 밖 일", who: ["사아자"] }), TK.norm({ id: "tk_two", t: "함께 하는 일", due: "2026-11-19", who: ["가나다", "라마바"] }));
+      go(e, "tasks");
+      q(e, "#tk-meet").click();
+      ok(q(e, "#tk-meetbox") && !q(e, "#tk-list"), "목록 대신 칸");
+      eq(q(e, "#tk-meet").textContent.trim(), "목록 보기", "머리말 단추 글");
+      eq(cols().join("|"), "Thq|가나다|라마바|사아자|", "명단 순 + 명단 밖(가나다 순) + 담당 없음");
+      eq([cids("Thq"), cids("가나다"), cids("라마바"), cids("사아자"), cids("")].join("|"), "tk_today|tk_late,tk_two|tk_two,tk_none|tk_out|tk_star", "여러 담당은 각 칸 · 기한 순 · 마친 일 없음");
+      eq(cols().map(cnum).join(), "1,2,2,1,1", "칸 머리 남은 수");
+      ok(colEl("").querySelector(".tk-ch").textContent.includes("담당 없음"), "담당 없음 칸 이름");
+      ok(colEl("가나다").querySelector(".tk-ch .tk-dot.ev-" + TK.personColor("가나다")), "칸 머리 사람 색");
+      const two = colEl("가나다").querySelector('.tk-row[data-id="tk_two"]');
+      ok(/함께:\s*라마바/.test(two.textContent) && !/함께/.test(colEl("Thq").textContent), "함께: 이름(칸 사람은 빼고)");
+      const all = qa(e, "#tk-meetbox [id]").map(x => x.id);
+      eq(new Set(all).size, all.length, "같은 할 일이 두 칸에 있어도 id 겹침 없음");
+      const cb = two.querySelector("input.tk-chk");
+      ok(cb.type === "checkbox" && e.w.document.getElementById(cb.getAttribute("aria-labelledby")).closest(".tk-row") === two, "체크박스 이름 = 그 칸의 내용 단추");
+      ok(!two.hasAttribute("role") && !two.hasAttribute("tabindex"), "줄 상자에 role · tabindex 없음");
+      ok(cols().every(n => cin(n).getAttribute("aria-label") && cin(n).placeholder), "칸 입력 이름 · 자리 글");
+      const ed0 = TK.edit, got = [];
+      try {
+        TK.edit = (id) => got.push(id);
+        two.querySelector("button.tk-t").click(); two.querySelector(".tk-due").click();
+        eq(got.join(), "tk_two,tk_two", "제목 단추 · 줄 누름 = 고치기 창");
+      } finally { TK.edit = ed0; }
+      const keep = {}; cols().forEach(n => { keep[n] = cin(n); });
+      TK.setDone("tk_star", true);
+      eq(cols().join("|"), "Thq|가나다|라마바|사아자", "담당 없는 남은 할 일이 없으면 담당 없음 칸 없음");
+      ok(cols().every(n => cin(n) === keep[n]), "칸이 빠져도 다른 칸 입력칸은 같은 노드");
+    });
+    t("TK30 회의 모드 — 명단 없음: 할 일에 적힌 이름 + 담당 없음 · 아무것도 없으면 담당 없음 한 칸", () => {
+      e.S.data.roster = { team: "", orgs: [], people: [] };
+      e.S.data.tasks = [TK.norm({ id: "tk_x", t: "명단 밖 일", who: ["사아자"] }), TK.norm({ id: "tk_y", t: "담당 없는 일" })];
+      TK.setState({ reset: true, who: "*", meet: true }); go(e, "tasks");
+      ok(q(e, "#tk-meetbox"), "모듈 상태로 회의 모드");
+      eq(cols().join("|"), "사아자|", "할 일에 적힌 이름 + 담당 없음");
+      e.S.data.tasks = []; go(e, "tasks");
+      eq(JSON.stringify(cols()), '[""]', "할 일도 명단도 없으면 담당 없음 한 칸");
+      const ci = cin(""); ci.focus(); typeIn(ci, "내일 보고"); enter(ci);
+      eq(JSON.stringify([last().t, last().due, last().who]), JSON.stringify(["보고", "2026-11-19", []]), "담당 없음 칸 = 담당 비움");
+      ok(cin("") === ci && ci.value === "" && e.w.document.activeElement === ci, "같은 입력칸");
+    });
+    t("TK31 칸 입력: 날짜 말 · 담당 = 칸 사람 ∪ 글 속 이름 · 같은 입력칸 · 비움 · 포커스 · 다른 칸 입력칸도 그대로", () => {
+      tkSeed(); q(e, "#tk-meet").click();
+      const ci = cin("라마바"), keep = cols().map(cin);
+      ci.focus(); typeIn(ci, "금요일 장비 교체");
+      const n0 = e.S.data.tasks.length;
+      enter(ci, { isComposing: true }); eq(e.S.data.tasks.length, n0, "조합 중 Enter 는 무시");
+      enter(ci);
+      eq(e.S.data.tasks.length, n0 + 1);
+      const nt = last();
+      eq(JSON.stringify([nt.t, nt.due, nt.who, nt.src, nt.by]), JSON.stringify(["장비 교체", "2026-11-20", ["라마바"], "", "Thq"]));
+      ok(cin("라마바") === ci && ci.value === "" && e.w.document.activeElement === ci, "같은 입력칸 · 비움 · 포커스");
+      ok(cols().every((n, i) => cin(n) === keep[i]), "다른 칸 입력칸도 같은 노드");
+      ok(colEl("라마바").querySelector('.tk-clist [data-id="' + nt.id + '"]') && cnum("라마바") === "2", "그 칸 목록 · 남은 수");
+      eq(sv("할 일"), "5", "요약도");
+      typeIn(ci, "가나다 서류 확인"); enter(ci);
+      eq(last().who.join(), "라마바,가나다", "칸 사람 ∪ 글 속 이름");
+      ok(colEl("가나다").querySelector('[data-id="' + last().id + '"]') && cnum("가나다") === "2", "글 속 사람 칸에도");
+      const ce = cin(""); typeIn(ce, "가나다 회신 받기"); enter(ce);
+      eq(last().who.join(), "가나다", "담당 없음 칸 = 글 속 이름만");
+      const n1 = e.S.data.tasks.length; typeIn(ce, "   "); enter(ce); eq(e.S.data.tasks.length, n1, "빈 글 무시");
+      ok(cols().every((n, i) => cin(n) === keep[i]), "여러 번 넣어도 입력칸은 그대로");
+      ok(e.S.data.tasks.every(t2 => JSON.stringify(TK.norm(t2)) === JSON.stringify(t2)), "저장 모양 = 정규화 모양");
+    });
+    t("TK32 회의 모드 체크 · 이번 주 마친 일: 빠지고 그 칸 수 · 펼쳐 끄면 다시 할 일 · 지난주에 마친 일은 세지 않음", () => {
+      tkSeed();
+      e.S.data.tasks.push(TK.norm({ id: "tk_old", t: "지난주 마친 일", who: ["가나다"], done: true, doneAt: "2026-11-15T14:00:00Z" }));
+      go(e, "tasks"); q(e, "#tk-meet").click();
+      eq(wkb("가나다").textContent.trim(), "이번 주 마친 일 0", "지난주(한국 시각 일요일)에 마친 일은 세지 않음");
+      eq(wkb("").textContent.trim(), "이번 주 마친 일 1", "담당 없음 칸 = 담당 없이 마친 일");
+      const ci = cin("가나다");
+      colEl("가나다").querySelector('.tk-clist [data-id="tk_late"] .tk-chk').click();
+      eq(byId("tk_late").done + "|" + byId("tk_late").doneBy, "true|Thq");
+      ok(!colEl("가나다").querySelector('.tk-clist [data-id="tk_late"]') && cnum("가나다") === "0", "칸에서 빠짐 · 남은 수");
+      eq(wkb("가나다").textContent.trim(), "이번 주 마친 일 1");
+      const ul = colEl("가나다").querySelector(".tk-wklist");
+      ok(ul.hidden && wkb("가나다").getAttribute("aria-expanded") === "false", "처음은 접힘");
+      ok(cin("가나다") === ci, "입력칸 그대로");
+      const a = qa(e, "#toast-wrap .toast-act").pop(); ok(a && a.textContent === "되돌리기", "알림 되돌리기");
+      wkb("가나다").click();
+      ok(!ul.hidden && wkb("가나다").getAttribute("aria-expanded") === "true" && wkb("가나다").getAttribute("aria-controls") === ul.id, "펼침");
+      const dcb = ul.querySelector('[data-id="tk_late"] .tk-chk');
+      ok(dcb && dcb.checked && !ul.querySelector('[data-id="tk_old"]'), "체크된 줄 · 지난주 일 없음");
+      dcb.click();
+      eq(byId("tk_late").done + "|" + byId("tk_late").doneAt, "false|", "끄면 다시 할 일");
+      ok(colEl("가나다").querySelector('.tk-clist [data-id="tk_late"]') && wkb("가나다").textContent.trim() === "이번 주 마친 일 0", "칸에 다시 · 수");
+      const nb = colEl("라마바").querySelector('.tk-clist [data-id="tk_none"] .tk-chk');
+      nb.focus(); nb.click();
+      ok(e.w.document.activeElement === cin("라마바"), "키보드로 마지막 줄을 체크하면 그 칸 입력칸으로");
+    });
+    t("TK33 회의 모드 인쇄 · 목록으로: 인쇄 단추(코어) · 인쇄용 날짜 줄 · 인쇄 때 마친 일 펼침 · PC 여러 칸 · 모바일 쌓음", () => {
+      tkSeed();
+      const prefs = () => JSON.stringify(Object.assign({}, e.S.navPrefs(), { ro: 0 }));   // ro = 코어 '최근 연 화면'(다시 그릴 때마다 시각)
+      const p0 = prefs();
+      q(e, "#tk-meet").click();
+      ok(q(e, "#view .page-head [data-print-btn]"), "회의 모드에도 머리말 인쇄 단추");
+      const d = q(e, "#tk-meetbox .tk-mdate");
+      ok(d && d.classList.contains("print-only"), "인쇄용 날짜 줄이 회의 상자 안에"); eq(d.textContent.trim(), "2026-11-18(수)");
+      const css = read("css/main.css");
+      ok(/@media print \{[^@]*#tk-meetbox \.tk-wklist \{ display: block !important; \}/.test(css), "인쇄 때 이번 주 마친 일 펼침");
+      ok(/@media print \{[^@]*\.tk-cin[^{]*\{ display: none !important; \}/.test(css), "인쇄에는 칸 입력 없음");
+      ok(/#tk-meetbox \.tk-cols \{[^}]*grid-template-columns: repeat\(auto-fill, minmax\(300px, 1fr\)\)/.test(css), "PC 여러 칸");
+      ok(/@media screen and \(max-width: 767px\) \{[^@]*#tk-meetbox \.tk-cols \{ grid-template-columns: 1fr; \}/.test(css), "모바일 한 줄로 쌓음");
+      ok(/#tk-meetbox \.tk-chk \{[^}]*width: 32px; height: 32px;/.test(css), "큰 체크박스");
+      q(e, "#tk-meet").click();
+      ok(q(e, "#tk-list") && !q(e, "#tk-meetbox"), "목록 보기 → 목록");
+      eq(q(e, "#tk-meet").textContent.trim(), "회의 모드");
+      ok(e.w.document.activeElement === q(e, "#tk-meet"), "바꾼 뒤에도 단추에 포커스");
+      eq(prefs(), p0, "회의 모드는 계정 설정에 남기지 않음(새로 열면 목록)");
+    });
+    t("TK34 원격 변경으로 화면을 통째로 다시 그려도 치던 글 · 포커스 그대로(빠른 입력 · 칸 입력)", () => {
+      tkSeed();
+      typeQ("내일 보고서");
+      q(e, "#tk-meet").click();
+      eq(q(e, "#tk-quick").value, "내일 보고서", "회의 모드로 바꿔도 빠른 입력 글 그대로");
+      const ci = cin("라마바"); ci.focus(); typeIn(ci, "금요일 장비");
+      e.S.data.tasks.push(TK.norm({ id: "tk_r", t: "동료가 넣은 일", who: ["가나다"] }));
+      e.S.renderView();
+      ok(cin("라마바") !== ci && colEl("가나다").querySelector('[data-id="tk_r"]'), "다시 그림 · 원격 변경 보임");
+      eq(q(e, "#tk-quick").value + "|" + cin("라마바").value, "내일 보고서|금요일 장비", "치던 글 그대로");
+      ok(e.w.document.activeElement === cin("라마바") && cin("라마바").selectionStart === "금요일 장비".length, "포커스 · 글 끝 커서");
+      ok(q(e, "#tk-qprev").textContent.includes("11-19"), "빠른 입력 미리보기도 다시");
+      q(e, "#tk-quick").focus();
+      e.S.renderView();
+      ok(e.w.document.activeElement === q(e, "#tk-quick"), "빠른 입력 포커스 그대로");
+      enter(q(e, "#tk-quick")); eq(last().t, "보고서");
+      enter(cin("라마바")); eq(last().t + "|" + last().who.join(), "장비|라마바");
+      e.S.renderView();
+      eq(q(e, "#tk-quick").value + "|" + cin("라마바").value, "|", "추가한 글은 다시 그려도 남지 않음");
+      cin("Thq").focus(); q(e, "#tk-add").click();
+      const ta = q(e, "#tk-f-t"); ok(mOpen() && e.w.document.activeElement === ta, "새 할 일 창");
+      e.S.renderView();
+      ok(e.w.document.activeElement === ta, "다른 곳(창)에 포커스가 있으면 빼앗지 않음");
+      act("cancel").click();
+      q(e, "#tk-meet").click(); typeQ("목록 글"); q(e, "#tk-quick").focus();
+      e.S.renderView();
+      ok(q(e, "#tk-quick").value === "목록 글" && e.w.document.activeElement === q(e, "#tk-quick"), "목록 화면에서도 그대로");
+    });
     e.w.close();
   }
 

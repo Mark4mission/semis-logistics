@@ -7152,3 +7152,35 @@ button.chip-title:focus-visible, button.calm-body:focus-visible { outline: 2px s
   .tk-row.tk-late { padding-left: 8px; }
   .tk-meta { gap: 4px 10px; }
 }
+/* 회의 모드 — 사람별 칸(PC 여러 칸 · 모바일 한 줄로 쌓음) · 큰 체크(32px) · 큰 글자(rem — 글자 크게 보기를 따름) */
+#tk-meetbox .tk-cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; align-items: start; }
+.tk-col { min-width: 0; padding: 10px 12px 12px; border: 1px solid var(--line); border-radius: 4px; }
+.tk-ch { display: flex; align-items: center; margin: 0 0 2px; padding-bottom: 6px; border-bottom: 2px solid var(--rule); font-size: 1.2rem; font-weight: 700; white-space: nowrap; }
+.tk-ch .tk-dot { width: 12px; height: 12px; }
+.tk-cname { overflow: hidden; text-overflow: ellipsis; }
+.tk-cnum { margin-left: 8px; font-weight: 600; color: var(--text-3); }
+#tk-meetbox .tk-row { grid-template-columns: 32px 22px minmax(0, 1fr); padding: 10px 4px; }
+#tk-meetbox .tk-chk { width: 32px; height: 32px; }
+#tk-meetbox .tk-row .tk-cat { height: 32px; }
+#tk-meetbox .tk-t { font-size: 1.14rem; }
+#tk-meetbox .tk-meta { font-size: .92rem; }
+.tk-with { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
+.tk-cin { width: 100%; min-height: 44px; margin-top: 8px; padding: 0 12px; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); font-size: 1rem; }
+.tk-cin:focus { outline: none; border-style: solid; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+.tk-wkdone { margin-top: 8px; }
+.tk-wkb { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 0 4px; border: 0; background: none; color: var(--text-2); font-size: .92rem; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.tk-wkb:disabled { color: var(--text-3); cursor: default; }
+.tk-wkb:disabled .ico { display: none; }
+.tk-wkb[aria-expanded="true"] .ico { transform: rotate(180deg); }
+.tk-wkb:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+@media screen and (max-width: 767px) {
+  #tk-meetbox .tk-cols { grid-template-columns: 1fr; }
+  .tk-col { padding: 8px 10px 10px; }
+}
+/* 인쇄(A4 회의 자료) = 사람별 할 일 + 이번 주 마친 일(펼쳐서) — 입력칸은 종이에 쓸모없음 */
+@media print {
+  .tk-meeting .tk-qbox, .tk-cin, .tk-wkb .ico { display: none !important; }
+  #tk-meetbox .tk-wklist { display: block !important; }
+  #tk-meetbox .tk-row { break-inside: avoid; cursor: default; }
+  .tk-mdate { margin: 0 0 3mm; font-weight: 700; }
+}

@@ -8,10 +8,12 @@
   const MOD = "tasks";
   const TITLE = "Task 관리";
   const PAGE = 100;   // 마친 일은 지우지 않고 쌓이므로 최근 것부터 끊어 그린다
-  const st = { tab: "todo", who: null, q: "", meet: false, doneN: PAGE, qSel: null, open: "" };
+  /* drafts · fk = 입력칸(빠른 입력 "q" · 회의 칸 "c"+이름)에 치던 글 · 포커스 — 원격 변경이 화면을 통째로 다시 그려도 남게.
+     wk = 회의 칸 '이번 주 마친 일'을 펼친 칸 이름. 모두 모듈 상태에만(새로고침하면 목록 · 빈 칸) */
+  const st = { tab: "todo", who: null, q: "", meet: false, doneN: PAGE, qSel: null, open: "", drafts: {}, fk: "", wk: [] };
   let root = null;
 
-  const live = () => !!root && root.isConnected && !!$("#tk-list", root);
+  const live = () => !!root && root.isConnected && !!$("#tk-list, #tk-meetbox", root);
   const dot =(n) => `<i class="tk-dot ev-${esc(T.personColor(n))}" aria-hidden="true"></i>`;
 
   /* 담당자 칩 = 파트 명단(코드에 이름 없음) 다음에 할 일에만 적힌 이름 — 명단이 비었거나 명단 밖 담당이어도 칩으로 고를 수 있게.
@@ -65,32 +67,38 @@
   /* 탭 건수는 담당자 칩만 따른다 — 검색 글자를 칠 때는 목록만 다시 그리므로 */
   const todoCount = () => { const w = curWho(); return T.list().filter(t => !t.done && byWho(t, w)).length; };
 
-  function rowHTML(t, td) {
-    const id = esc(t.id), c = T.CATS[T.catOf(t)];
+  /* m = 회의 칸({ col: 칸 이름, k: 칸 표지 }) — 같은 할 일이 여러 칸에 그려지므로 id 에 칸 표지를 붙이고, 담당은 칸 사람을 빼고 '함께'로 */
+  function rowHTML(t, td, m) {
+    const id = esc(t.id), tid = esc("tk-t-" + (m ? m.k + "-" : "") + t.id), c = T.CATS[T.catOf(t)];
     const d = t.done ? null : T.dueInfo(t, td);
     const dd = t.done ? T.dayOf(t.doneAt) : "";
+    const who = (m ? t.who.filter(n => n !== m.col) : t.who).map(n => `<span class="tk-p">${dot(n)}${esc(n)}</span>`).join("");
     const meta = [
       t.done ? `<span class="tk-due tk-d-done">${esc((dd ? T.dayLabel(dd, td) + " " : "") + "마침" + (t.doneBy ? " · " + t.doneBy : ""))}</span>`
         : d.label ? `<span class="tk-due tk-d-${d.b}">${esc(d.label)}</span>` : "",
       t.place ? `<span class="tk-ic">${icon("pin", 14)}${esc(t.place)}</span>` : "",
-      t.who.map(n => `<span class="tk-p">${dot(n)}${esc(n)}</span>`).join(""),
+      m && who ? `<span class="tk-with">함께:${who}</span>` : who,
       t.teams.map(g => `<span class="tk-ic">${icon("building", 14)}${esc(g)}</span>`).join(""),
       t.memo ? `<span class="tk-ic" title="메모 있음">${icon("notes", 14)}<span class="sr-only">메모 있음</span></span>` : "",
       t.star ? `<span class="tk-ic tk-star" title="중요">${icon("star", 14)}<span class="sr-only">중요</span></span>` : "",
       t.src === "desk" ? `<span class="tk-ic">${icon("forward", 14)}접수</span>` : ""
     ].join("");
     return `<li class="tk-row${d && d.b === "late" ? " tk-late" : ""}${t.done ? " tk-done" : ""}" data-id="${id}">
-      <input type="checkbox" class="tk-chk" aria-labelledby="tk-t-${id}"${t.done ? " checked" : ""}>
+      <input type="checkbox" class="tk-chk" aria-labelledby="${tid}"${t.done ? " checked" : ""}>
       <span class="tk-cat ev-${esc(c.color)}" title="${esc(c.label)}">${icon(c.ico, 18)}</span>
-      <div class="tk-body"><button type="button" class="tk-t" id="tk-t-${id}"><span class="tk-tt">${esc(t.t)}</span></button>${meta ? `<div class="tk-meta">${meta}</div>` : ""}</div>
+      <div class="tk-body"><button type="button" class="tk-t" id="${tid}"><span class="tk-tt">${esc(t.t)}</span></button>${meta ? `<div class="tk-meta">${meta}</div>` : ""}</div>
     </li>`;
   }
   const grpHTML = (b, lb, rows, td) => `<div class="tk-grp" data-b="${b}"><h3 class="tk-bh"><span class="tk-bl">${esc(lb)}</span><span class="tk-bn mono">${rows.length}</span></h3>
     <ul class="tk-rows">${rows.map(t => rowHTML(t, td)).join("")}</ul></div>`;
+  /* 기한 묶음 → 중요 → 날짜 → 시각 → 만든 순 — 목록 묶음 안 · 회의 칸이 같은 순서 */
+  function byDue(td) {
+    const idx = new Map(T.list().map((t, i) => [t, i])), bs = T.BUCKETS.map(x => x[0]), bi = (t) => bs.indexOf(T.dueInfo(t, td).b);
+    return (a, b) => bi(a) - bi(b) || (b.star - a.star) || a.due.localeCompare(b.due) || a.time.localeCompare(b.time) || idx.get(a) - idx.get(b);
+  }
   function todoHTML(items, td) {
-    const idx = new Map(T.list().map((t, i) => [t, i])), by = {};
+    const by = {}, order = byDue(td);
     items.forEach(t => { const b = T.dueInfo(t, td).b; (by[b] = by[b] || []).push(t); });
-    const order = (a, b) => (b.star - a.star) || a.due.localeCompare(b.due) || a.time.localeCompare(b.time) || idx.get(a) - idx.get(b);
     return T.BUCKETS.filter(([b]) => by[b]).map(([b, lb]) => grpHTML(b, lb, by[b].sort(order), td)).join("");
   }
   /* 묶음 열쇠를 할 일 탭(today · late …)과 다르게 둔다 — 같으면 마친 '오늘'에 기한 경고 색이 붙는다 */
@@ -120,16 +128,97 @@
   function refresh() {
     if (!live()) return;
     $("#tk-stats", root).innerHTML = statsHTML();
+    if ($("#tk-meetbox", root)) { paintMeet(); return; }
     const tb = $('[data-ct-tab="todo"]', root);
     if (tb) tb.textContent = "할 일 " + todoCount();
     paintList();
   }
 
+  /* ── 회의 모드 — 사람별 칸 ── */
+  /* 칸 = 파트 명단 순 + 남은 할 일에 적힌 명단 밖 이름(가나다 순) + 담당 없는 남은 할 일이 있을 때만 '담당 없음'(""),
+     칸이 하나도 없으면 '담당 없음' 한 칸 — 입력할 곳이 있게 */
+  function meetCols() {
+    const part = T.partPeople(), extra = [], open = T.list().filter(t => !t.done);
+    open.forEach(t => t.who.forEach(n => { if (part.indexOf(n) < 0 && extra.indexOf(n) < 0) extra.push(n); }));
+    const cols = part.concat(extra.sort((a, b) => a.localeCompare(b, "ko")));
+    if (!cols.length || open.some(t => !t.who.length)) cols.push("");
+    return cols;
+  }
+  function colNode(n) {
+    const c = document.createElement("section"), who = n || "담당 없음";
+    c.className = "tk-col";
+    c.dataset.col = n;
+    c.innerHTML = `<h3 class="tk-ch">${n ? dot(n) : ""}<span class="tk-cname">${esc(who)}</span><span class="tk-cnum mono"></span></h3>
+      <ul class="tk-rows tk-clist"></ul>
+      <input type="text" class="tk-cin" data-col="${esc(n)}" autocomplete="off" aria-label="${esc(who + " 할 일 추가")}" placeholder="${esc(n ? "+ " + n + " 할 일" : "+ 할 일")}">
+      <div class="tk-wkdone"><button type="button" class="tk-wkb" data-wk="${esc(n)}" aria-expanded="false">이번 주 마친 일 <span class="mono"></span>${icon("chevdown", 15)}</button>
+        <ul class="tk-rows tk-wklist" hidden></ul></div>`;
+    $(".tk-cin", c).value = st.drafts["c" + n] || "";
+    return c;
+  }
+  function fillCol(c, n, i, td) {
+    const mine = (t) => (n ? t.who.indexOf(n) >= 0 : !t.who.length), mon = T.weekStart(td);
+    const open = T.list().filter(t => !t.done && mine(t)).sort(byDue(td));
+    const wk = T.list().filter(t => t.done && mine(t) && T.dayOf(t.doneAt) >= mon).sort((a, b) => String(b.doneAt).localeCompare(String(a.doneAt)));
+    $(".tk-cnum", c).textContent = open.length;
+    $(".tk-clist", c).innerHTML = open.map(t => rowHTML(t, td, { col: n, k: "c" + i })).join("");
+    const b = $("[data-wk]", c), ul = $(".tk-wklist", c), on = wk.length > 0 && st.wk.indexOf(n) >= 0;
+    ul.id = "tk-wk-" + i;
+    $(".mono", b).textContent = wk.length;
+    b.disabled = !wk.length;
+    b.setAttribute("aria-controls", ul.id);
+    b.setAttribute("aria-expanded", String(on));
+    ul.hidden = !on;
+    ul.innerHTML = wk.map(t => rowHTML(t, td, { col: n, k: "w" + i })).join("");
+  }
+  /* 칸은 이름으로 짝지어 고쳐 그린다 — 있던 칸의 입력칸은 그대로 두고(한글 조합 · 포커스 · HANDOFF §6-11) 목록 · 수만 바꾸며,
+     생긴 칸만 만들고 없어진 칸만 뺀다. 여러 담당 할 일은 다른 칸에도 들므로 모든 칸의 목록을 다시 그린다 */
+  function paintMeet() {
+    const box = $("#tk-cols", root), td = T.today(), have = new Map($$(".tk-col", box).map(c => [c.dataset.col, c]));
+    let at = box.firstElementChild;
+    meetCols().forEach((n, i) => {
+      let c = have.get(n);
+      if (c) have.delete(n); else c = colNode(n);
+      if (c === at) at = at.nextElementSibling; else box.insertBefore(c, at);
+      fillCol(c, n, i, td);
+    });
+    have.forEach(c => c.remove());
+  }
+  const colOf = (n) => $$(".tk-col", root).find(c => c.dataset.col === n);
+  /* 담당 = 칸 사람 ∪ 글 속 이름('담당 없음' 칸은 글 속 이름만) */
+  function colAdd(inp) {
+    const text = inp.value.trim(), n = inp.dataset.col;
+    if (!text) return;
+    const p = parseIn(text);
+    add({ t: p.t, due: p.due, time: p.time, who: union(n ? [n] : [], p.who), teams: p.teams }, "");
+    inp.value = "";
+    delete st.drafts["c" + n];
+    refresh();
+    toast("할 일을 추가했습니다.");
+  }
+
+  /* 입력칸 글 · 포커스 기억(st.drafts · st.fk) */
+  const dkey = (el) => (el.id === "tk-quick" ? "q" : el.classList.contains("tk-cin") ? "c" + el.dataset.col : "");
+  const inputOf = (k) => $$("#tk-quick, .tk-cin", root).find(x => dkey(x) === k);
+  function keepDraft(el) {
+    const k = dkey(el);
+    if (!k) return;
+    if (el.value) st.drafts[k] = el.value; else delete st.drafts[k];
+  }
+  /* 포커스가 빠진 까닭은 한 박자 뒤에 본다 — 다시 그리기로 칸이 문서 밖으로 나가 빠진 것은 기억을 두고
+     (브라우저마다 그때 blur 가 오기도 · 안 오기도 한다), 사람이 다른 곳으로 옮긴 것만 지운다 */
+  function dropFocus(x, k) {
+    if (st.fk !== k) return;
+    const a = document.activeElement;
+    if (x.isConnected ? a !== x : a && a !== document.body && dkey(a) !== k) st.fk = "";
+  }
+
+  const parseIn = (text) => T.parse(text, { today: T.today(), names: T.partPeople(), teams: T.teamNames() });
   /* 담당을 비워 두면 회의 때 '누구 몫인지'가 다시 문제가 되므로 글 속 이름이 없으면 고른 칩 · 나를 켜 둔다
      (나는 계정 이름이 명단의 파트 사람일 때만 — meInPart) */
   function quickCtx(text) {
     const people = T.partPeople();
-    const p = T.parse(text, { today: T.today(), names: people, teams: T.teamNames() });
+    const p = parseIn(text);
     const w = curWho(), picked = w === "*" ? "" : w === "me" ? T.me() : w;
     const def = p.who.length ? p.who : picked ? [picked] : T.meInPart() ? [T.me()] : [];
     const on = st.qSel || def, chips = people.slice();
@@ -152,6 +241,7 @@
     const { p, on } = quickCtx(text);
     add({ t: p.t, due: p.due, time: p.time, who: on.slice(), teams: p.teams }, "");
     qi.value = "";
+    delete st.drafts.q;
     st.qSel = null;
     $("#tk-qprev", root).innerHTML = "";
     refresh();
@@ -181,7 +271,7 @@
   }
   function setState(o) {
     o = o || {};
-    if (o.reset) Object.assign(st, { tab: "todo", who: null, q: "", meet: false, doneN: PAGE, qSel: null, open: "" });
+    if (o.reset) Object.assign(st, { tab: "todo", who: null, q: "", meet: false, doneN: PAGE, qSel: null, open: "", drafts: {}, fk: "", wk: [] });
     if (o.tab === "todo" || o.tab === "done") st.tab = o.tab;
     if (typeof o.who === "string") pickWho(o.who);
     if (typeof o.q === "string") st.q = ui.searchValue(o.q);
@@ -316,52 +406,23 @@
     else SeMIS.navigate(MOD);
   }
 
-  function render(el) {
-    root = el;
-    const want = st.open;   // 한 번만 쓴다 — 나중에 다시 그릴 때 창이 또 뜨지 않게
-    st.open = "";
-    if (!T.canUse()) { el.innerHTML = ui.head({ title: TITLE }) + `<section class="card">${ui.empty("볼 수 있는 권한이 없습니다.")}</section>`; return; }
-    st.qSel = null;
-    const w = curWho();
-    el.innerHTML =
-      ui.head({
-        title: TITLE,
-        actions: `<button type="button" class="btn btn-primary" id="tk-add">${icon("plus", 17)}<span>할 일 추가</span></button>` +
-          `<button type="button" class="btn btn-ghost" id="tk-meet">${icon("users", 17)}<span>${st.meet ? "목록 보기" : "회의 모드"}</span></button>`
-      }) +
-      `<div id="tk-stats">${statsHTML()}</div>
-      <section class="card tk-card">
-        <div class="tk-qbox">
-          <div class="tk-qrow"><input id="tk-quick" type="text" autocomplete="off" aria-label="할 일 빠른 입력" placeholder="할 일을 적고 Enter — 예: 내일 오후 3시 보안교육 자료 제출">
-            <button type="button" class="btn btn-ghost" id="tk-qadd">${icon("plus", 16)}<span>추가</span></button></div>
-          <div class="tk-qprev" id="tk-qprev"></div>
-        </div>
-        <div class="seg tk-whoseg" id="tk-who" role="group" aria-label="담당">${whoHTML(w)}</div>
-        ${ui.tabs("tk", [["todo", "할 일 " + todoCount()], ["done", "마친 일"]], st.tab)}
-        <div id="tk-list">${listHTML()}</div>
-      </section>`;
+  /* 체크 = 마침 · 끄면 다시 할 일 — 그 사이 지워졌거나 이미 바뀐 할 일이면 체크 모양만 되돌린다 */
+  function checkRow(cb) {
+    const id = cb.closest(".tk-row").dataset.id, on = cb.checked;
+    if (!setDone(id, on)) { cb.checked = !on; return false; }
+    if (on) toast("마쳤습니다.", false, { label: "되돌리기", run: () => setDone(id, false) });
+    else toast("다시 할 일로 옮겼습니다.");
+    return true;
+  }
+  /* 줄 상자 누름은 마우스 편의 — 키보드 · 화면 읽기 프로그램은 제목 단추로 같은 창(줄 상자에는 role · tabindex 없음) */
+  function rowClick(ev) {
+    const row = ev.target.closest(".tk-row"), hit = ev.target.closest("input, button, a");
+    if (!row || (hit && !hit.classList.contains("tk-t"))) return;
+    if (typeof T.edit === "function") T.edit(row.dataset.id);
+  }
 
-    /* 입력칸을 다시 만들면 한글 조합이 자모로 풀린다 — 입력 중에는 미리보기 · 목록만 바꾼다 */
-    const qi = $("#tk-quick", el), qp = $("#tk-qprev", el), box = $("#tk-list", el), qs = $("#tk-q", el);
-    qi.oninput = () => {
-      if (!qi.value.trim()) st.qSel = null;   // 글을 다 지우면 새로 쓰는 할 일 — 앞서 누른 담당을 끌고 가지 않게
-      qp.innerHTML = prevHTML(qi.value);
-    };
-    qi.onkeydown = (ev) => {
-      if (ev.key !== "Enter" || ev.isComposing || ev.keyCode === 229) return;
-      ev.preventDefault();
-      quickAdd();
-    };
-    $("#tk-qadd", el).onclick = () => { quickAdd(); qi.focus(); };
-    /* 미리보기 담당 칩은 그 자리에서 켜고 끈다 — 다시 그리면 누른 칩의 포커스가 사라진다 */
-    qp.onclick = (ev) => {
-      const b = ev.target.closest("[data-qwho]");
-      if (!b) return;
-      const sel = (st.qSel || quickCtx(qi.value).on).slice(), n = b.dataset.qwho, i = sel.indexOf(n);
-      if (i >= 0) sel.splice(i, 1); else sel.push(n);
-      st.qSel = sel;
-      b.setAttribute("aria-pressed", String(i < 0));
-    };
+  function wireList(el, qi, qp) {
+    const box = $("#tk-list", el), qs = $("#tk-q", el);
     $("#tk-who", el).onclick = (ev) => {
       const b = ev.target.closest("[data-who]");
       if (!b) return;
@@ -381,15 +442,11 @@
     box.onchange = (ev) => {
       const cb = ev.target.closest(".tk-chk");
       if (!cb) return;
-      const id = cb.closest(".tk-row").dataset.id, on = cb.checked;
       const had = document.activeElement === cb, at = $$(".tk-chk", box).indexOf(cb);
-      if (!setDone(id, on)) { cb.checked = !on; return; }   // 그 사이 지워졌거나 이미 바뀐 할 일 — 체크 모양만 남지 않게
-      if (on) toast("마쳤습니다.", false, { label: "되돌리기", run: () => setDone(id, false) });
-      else toast("다시 할 일로 옮겼습니다.");
+      if (!checkRow(cb)) return;
       /* 키보드로 체크하면 줄이 빠지며 포커스가 사라진다 — 같은 자리의 다음 줄로 */
       if (had) { const cs = $$(".tk-chk", box); (cs[Math.min(at, cs.length - 1)] || $("#tk-q", box)).focus(); }
     };
-    /* 줄 상자 누름은 마우스 편의 — 키보드 · 화면 읽기 프로그램은 제목 단추로 같은 창(줄 상자에는 role · tabindex 없음) */
     box.onclick = (ev) => {
       if (ev.target.closest(".tk-showmore")) {
         /* 누른 단추가 사라지므로 새로 보인 첫 줄로 — 마친 일 묶음은 최근 순 그대로라 줄 차례 = 보인 차례 */
@@ -400,12 +457,105 @@
         if (c) c.focus();
         return;
       }
-      const row = ev.target.closest(".tk-row"), hit = ev.target.closest("input, button, a");
-      if (!row || (hit && !hit.classList.contains("tk-t"))) return;
-      if (typeof T.edit === "function") T.edit(row.dataset.id);
+      rowClick(ev);
     };
+  }
+  function wireMeet(el) {
+    const mb = $("#tk-meetbox", el);
+    paintMeet();
+    mb.onkeydown = (ev) => {
+      const inp = ev.target.closest(".tk-cin");
+      if (!inp || ev.key !== "Enter" || ev.isComposing || ev.keyCode === 229) return;
+      ev.preventDefault();
+      colAdd(inp);
+    };
+    mb.onchange = (ev) => {
+      const cb = ev.target.closest(".tk-chk");
+      if (!cb) return;
+      const ul = cb.closest("ul"), sel = ul.classList.contains("tk-wklist") ? ".tk-wklist" : ".tk-clist", n = cb.closest(".tk-col").dataset.col;
+      const had = document.activeElement === cb, at = $$(".tk-chk", ul).indexOf(cb);
+      if (!checkRow(cb)) return;
+      /* 줄이 빠지며 포커스가 사라진다 — 그 칸 같은 목록의 같은 자리, 없으면 그 칸 입력칸(칸이 없어졌으면 첫 칸 입력칸) */
+      if (had) {
+        const c = colOf(n), cs = c ? $$(sel + " .tk-chk", c) : [];
+        const to = cs[Math.min(at, cs.length - 1)] || (c && $(".tk-cin", c)) || $(".tk-cin", mb);
+        if (to) to.focus();
+      }
+    };
+    mb.onclick = (ev) => {
+      const b = ev.target.closest("[data-wk]");
+      if (!b) { rowClick(ev); return; }
+      const n = b.dataset.wk, i = st.wk.indexOf(n);
+      if (i >= 0) st.wk.splice(i, 1); else st.wk.push(n);
+      b.setAttribute("aria-expanded", String(i < 0));
+      $(".tk-wklist", b.closest(".tk-col")).hidden = i >= 0;
+    };
+  }
+
+  function render(el) {
+    root = el;
+    const want = st.open;   // 한 번만 쓴다 — 나중에 다시 그릴 때 창이 또 뜨지 않게
+    st.open = "";
+    if (!T.canUse()) { el.innerHTML = ui.head({ title: TITLE }) + `<section class="card">${ui.empty("볼 수 있는 권한이 없습니다.")}</section>`; return; }
+    if (!st.drafts.q) st.qSel = null;   // 누른 담당 칩은 치던 글이 남아 있을 때만 이어 간다
+    const w = curWho(), mday = T.dayLabel(T.today(), "");   // 기준 날을 비우면 연도까지 — 인쇄한 회의 자료의 날짜
+    el.innerHTML =
+      ui.head({
+        title: TITLE,
+        actions: `<button type="button" class="btn btn-primary" id="tk-add">${icon("plus", 17)}<span>할 일 추가</span></button>` +
+          `<button type="button" class="btn btn-ghost" id="tk-meet">${icon("users", 17)}<span>${st.meet ? "목록 보기" : "회의 모드"}</span></button>`
+      }) +
+      `<div id="tk-stats">${statsHTML()}</div>
+      <section class="card tk-card${st.meet ? " tk-meeting" : ""}">
+        <div class="tk-qbox">
+          <div class="tk-qrow"><input id="tk-quick" type="text" autocomplete="off" aria-label="할 일 빠른 입력" placeholder="할 일을 적고 Enter — 예: 내일 오후 3시 보안교육 자료 제출">
+            <button type="button" class="btn btn-ghost" id="tk-qadd">${icon("plus", 16)}<span>추가</span></button></div>
+          <div class="tk-qprev" id="tk-qprev"></div>
+        </div>
+        ${st.meet ? `<div id="tk-meetbox"><p class="print-only tk-mdate">${esc(mday)}</p><div class="tk-cols" id="tk-cols"></div></div>`
+          : `<div class="seg tk-whoseg" id="tk-who" role="group" aria-label="담당">${whoHTML(w)}</div>
+        ${ui.tabs("tk", [["todo", "할 일 " + todoCount()], ["done", "마친 일"]], st.tab)}
+        <div id="tk-list">${listHTML()}</div>`}
+      </section>`;
+
+    /* 입력칸을 다시 만들면 한글 조합이 자모로 풀린다 — 입력 중에는 미리보기 · 목록만 바꾼다 */
+    const qi = $("#tk-quick", el), qp = $("#tk-qprev", el), card = $(".tk-card", el);
+    qi.value = st.drafts.q || "";
+    qp.innerHTML = prevHTML(qi.value);
+    qi.oninput = () => {
+      if (!qi.value.trim()) st.qSel = null;   // 글을 다 지우면 새로 쓰는 할 일 — 앞서 누른 담당을 끌고 가지 않게
+      qp.innerHTML = prevHTML(qi.value);
+    };
+    qi.onkeydown = (ev) => {
+      if (ev.key !== "Enter" || ev.isComposing || ev.keyCode === 229) return;
+      ev.preventDefault();
+      quickAdd();
+    };
+    $("#tk-qadd", el).onclick = () => { quickAdd(); qi.focus(); };
+    /* 미리보기 담당 칩은 그 자리에서 켜고 끈다 — 다시 그리면 누른 칩의 포커스가 사라진다 */
+    qp.onclick = (ev) => {
+      const b = ev.target.closest("[data-qwho]");
+      if (!b) return;
+      const sel = (st.qSel || quickCtx(qi.value).on).slice(), n = b.dataset.qwho, i = sel.indexOf(n);
+      if (i >= 0) sel.splice(i, 1); else sel.push(n);
+      st.qSel = sel;
+      b.setAttribute("aria-pressed", String(i < 0));
+    };
+    if (st.meet) wireMeet(el); else wireList(el, qi, qp);
+    card.addEventListener("input", (ev) => keepDraft(ev.target));
+    card.addEventListener("focusin", (ev) => { const k = dkey(ev.target); if (k) st.fk = k; });
+    card.addEventListener("focusout", (ev) => { const x = ev.target, k = dkey(x); if (k) setTimeout(() => dropFocus(x, k), 0); });
     $("#tk-add", el).onclick = () => { if (typeof T.edit === "function") T.edit(null); };
-    $("#tk-meet", el).onclick = () => { st.meet = !st.meet; render(el); };
+    /* 코어 다시 그리기로 — 머리말 인쇄 단추는 코어가 붙인다 */
+    $("#tk-meet", el).onclick = () => {
+      st.meet = !st.meet;
+      SeMIS.renderView();
+      const b = $("#tk-meet", root);
+      if (b) b.focus();
+    };
+    /* 다시 그리기 전에 입력칸에 있던 포커스를 돌려준다 — 다른 곳(열린 창 등)에 포커스가 있으면 빼앗지 않는다 */
+    const fi = st.fk ? inputOf(st.fk) : null, a = document.activeElement;
+    if (fi && (!a || a === document.body)) { fi.focus(); fi.setSelectionRange(fi.value.length, fi.value.length); }
     /* 오래된 검색 결과 · 일정 칩이 가리킨 할 일이 그 사이 지워졌으면 목록은 그대로 두고 알린다 — 말없이 목록만 보이면 누른 것이 안 된 줄 안다 */
     if (want) { if (T.list().some(t => t.id === want)) edit(want); else toast("찾지 못한 할 일입니다 — 지워졌을 수 있습니다.", true); }
   }
