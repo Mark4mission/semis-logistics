@@ -1317,13 +1317,15 @@ begin
   return jsonb_build_object('ok', true);
 end $$;
 
-/* 줄 = [경로, 폴더 0|1, 크기 | null, 고친 때 ms | null]. 뺄 폴더 아래 · 경로가 틀린 줄 · 크기(0 이상 정수)나 날짜(숫자)가 없는 파일은 거절 */
+/* 줄 = [경로, 폴더 0|1, 크기 | null, 고친 때 ms | null]. 뺄 폴더 아래 · 경로가 틀린 줄 · 크기(0 이상 정수)나 날짜(숫자)가 없는 파일은 거절.
+   한 걷기에 받는 줄은 6만까지 — 에이전트 상한(5만)을 넘는 덩어리가 받는 중 표를 끝없이 키우지 않게 */
 create or replace function semis_logi_private.ksync_kidx_rows(p_agent bigint, p jsonb) returns jsonb
 language plpgsql volatile security definer set search_path = '' as $$
 declare v_ex jsonb; x jsonb; v text; v_dir boolean; n int := 0; rej int := 0;
 begin
   if jsonb_typeof(p -> 'items') is distinct from 'array' or jsonb_array_length(p -> 'items') > 2000
-     or not exists (select 1 from semis_logi_private.kidx_stage_meta mt where mt.agent_id = p_agent) then
+     or not exists (select 1 from semis_logi_private.kidx_stage_meta mt where mt.agent_id = p_agent
+                     and mt.sent + jsonb_array_length(p -> 'items') <= 60000) then
     return jsonb_build_object('ok', false, 'error', 'bad');
   end if;
   select s.kidx -> 'excludes' into v_ex from semis_logi_private.ksync_state s where s.id = 1;
@@ -1347,7 +1349,8 @@ begin
 end $$;
 
 /* 받은 줄 수(거절 포함)가 n 과 같을 때만 한 번에 덧쓴다 — 있던 줄은 크기 · 날짜 · seen_at 만, 새 줄은 지금, 이번에 안 보인 줄은 지움.
-   err = 못 읽은 폴더: 그 자체 · 그 아래는 안 보였어도 남긴다(일시 오류 한 번에 그 폴더가 검색에서 사라지지 않게) */
+   err = 못 읽은 폴더: 그 자체 · 그 아래는 안 보였어도 남긴다(일시 오류 한 번에 그 폴더가 검색에서 사라지지 않게).
+   색인에 파일이 있는데 받은 파일이 하나도 없으면 empty — 빈 것처럼 보이는 마운트 한 번에 first_seen 이 모두 새로 매겨지지 않게 */
 create or replace function semis_logi_private.ksync_kidx_end(p_agent bigint, p jsonb) returns jsonb
 language plpgsql volatile security definer set search_path = '' as $$
 declare mt semis_logi_private.kidx_stage_meta; v_err jsonb := '[]'::jsonb; x jsonb; v text; v_files int; v_dirs int;
@@ -1356,6 +1359,10 @@ begin
   if mt.agent_id is null or mt.sent is distinct from (case when coalesce(p ->> 'n', '') ~ '^[0-9]{1,9}$' then (p ->> 'n')::int end)
      or jsonb_typeof(p -> 'err') is distinct from 'array' or jsonb_array_length(p -> 'err') > 200 then
     return jsonb_build_object('ok', false, 'error', 'bad');
+  end if;
+  if not exists (select 1 from semis_logi_private.kidx_stage s where s.agent_id = p_agent and not s.is_dir)
+     and exists (select 1 from semis_logi_private.kidx k where not k.is_dir) then
+    return jsonb_build_object('ok', false, 'error', 'empty');
   end if;
   for x in select value from jsonb_array_elements(p -> 'err') loop
     v := case when jsonb_typeof(x) = 'string' then semis_logi_private.ksync_rel(x #>> '{}') end;
@@ -1977,14 +1984,16 @@ create trigger semis_logi_store_ksync_req after insert or update on public.semis
 
 /* ─── K드라이브 찾기(kidx) — 설정(시스템관리자) · 읽기(3등급 세션) ─── */
 /* 보낸 칸만 고친다 — 한 칸이라도 틀리면 아무것도 저장하지 않음. root · excludes = 공유 안 상대 경로,
-   win_root = 윈도에서 root 폴더를 여는 경로 앞부분(드라이브 'X:\' 또는 서버 '\\') — 위치 복사에만 쓴다 */
+   win_root = 윈도에서 root 폴더를 여는 경로 앞부분(드라이브 'X:\' 또는 서버 '\\') — 위치 복사에만 쓴다.
+   root 가 바뀌면(대소문자 무시) 같은 저장에서 모은 줄 · 받는 중 줄 · 마지막 기록을 비운다 — 옛 뿌리의 경로가 새 경로 앞부분과 함께 보이지 않게(걷던 end 는 bad) */
 create or replace function public.semis_logi_ksync_kidx_save(p jsonb) returns jsonb
 language plpgsql volatile security definer set search_path = '' as $$
-declare v jsonb; x jsonb; v_ex jsonb := '[]'::jsonb; w text;
+declare v jsonb; v_old text; v_ex jsonb; w text;
 begin
   perform semis_logi_private.ksync_admin();
   if jsonb_typeof(p) is distinct from 'object' then return jsonb_build_object('ok', false, 'error', 'bad'); end if;
   select s.kidx into v from semis_logi_private.ksync_state s where s.id = 1 for update;
+  v_old := coalesce(v ->> 'root', '');
   if p ? 'on' then
     if jsonb_typeof(p -> 'on') is distinct from 'boolean' then return jsonb_build_object('ok', false, 'error', 'bad'); end if;
     v := v || jsonb_build_object('on', p -> 'on');
@@ -1996,15 +2005,8 @@ begin
     v := v || jsonb_build_object('root', coalesce(semis_logi_private.ksync_rel(p ->> 'root'), ''));
   end if;
   if p ? 'excludes' then
-    if jsonb_typeof(p -> 'excludes') is distinct from 'array' or jsonb_array_length(p -> 'excludes') > 20 then
-      return jsonb_build_object('ok', false, 'error', 'excl');
-    end if;
-    for x in select value from jsonb_array_elements(p -> 'excludes') loop
-      if jsonb_typeof(x) is distinct from 'string' or semis_logi_private.ksync_rel(x #>> '{}') is null then
-        return jsonb_build_object('ok', false, 'error', 'excl');
-      end if;
-      v_ex := v_ex || to_jsonb(semis_logi_private.ksync_rel(x #>> '{}'));
-    end loop;
+    v_ex := semis_logi_private.ksync_excl(p -> 'excludes');
+    if v_ex is null then return jsonb_build_object('ok', false, 'error', 'excl'); end if;
     v := v || jsonb_build_object('excludes', v_ex);
   end if;
   if p ? 'win_root' then
@@ -2015,7 +2017,15 @@ begin
     end if;
     v := v || jsonb_build_object('win_root', w);
   end if;
-  update semis_logi_private.ksync_state set kidx = v where id = 1;
+  if lower(coalesce(v ->> 'root', '')) <> lower(v_old) then
+    -- where true — API 세션에 safeupdate(WHERE 없는 DELETE 거절)를 켜도 막히지 않게
+    delete from semis_logi_private.kidx where true;
+    delete from semis_logi_private.kidx_stage where true;
+    delete from semis_logi_private.kidx_stage_meta where true;
+    update semis_logi_private.ksync_state set kidx = v, kidx_last = null where id = 1;
+  else
+    update semis_logi_private.ksync_state set kidx = v where id = 1;
+  end if;
   return jsonb_build_object('ok', true);
 end $$;
 

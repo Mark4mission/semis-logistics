@@ -354,3 +354,12 @@ Deno.test("kidx 넘김: 꺼져 있으면 off · 켠 뒤 begin → rows → end �
   r = await post({ act: "kidx", phase: "rows", items: Array.from({ length: 2001 }, (_, i) => ["f" + i + ".pdf", 0, 1, 1]) });
   assertEquals([r.status, r.d], [400, { ok: false, error: "bad" }], "2,001줄");
 });
+
+Deno.test("kidx end: 색인에 파일이 있는데 받은 줄에 파일이 없으면 empty(409) — 에이전트가 그 코드를 받음", async () => {
+  assertEquals(await one("select count(*)::int from semis_logi_private.kidx where not is_dir"), 1, "색인에 파일 1줄");
+  await post({ act: "kidx", phase: "begin" });
+  await post({ act: "kidx", phase: "rows", items: [["A", 1, null, null]] });
+  const r = await post({ act: "kidx", phase: "end", n: 1, err: [], ms: 1 });
+  assertEquals([r.status, r.d], [409, { ok: false, error: "empty" }]);
+  assertEquals(await one("select count(*)::int from semis_logi_private.kidx"), 2, "색인 그대로");
+});

@@ -30,7 +30,7 @@ const HASH_MAX = 20, HASH_BYTES = 100 * 1024 * 1024;     // 해시 채우기 한
 const ACTS = ["hello", "net", "folders", "preview", "recon", "run", "mark", "put", "apply", "get", "hash", "kidx"];
 const STATUS: Record<string, number> = {
   auth: 401, ip: 403, origin: 403, scope: 403, rate: 429, quota: 429, type: 415, too_large: 413,
-  hash: 409, held: 409, state: 409, run: 409, old: 409, off: 409, bad: 400, method: 405, server: 500
+  hash: 409, held: 409, state: 409, run: 409, old: 409, off: 409, empty: 409, bad: 400, method: 405, server: 500
 };
 
 type Res = { ok?: boolean; error?: string; [k: string]: unknown };

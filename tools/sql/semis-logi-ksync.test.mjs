@@ -1788,8 +1788,8 @@ eq((await kx("begin")).ok, true, "KIDX-07 begin");
 eq([await stageN(), await one("select sent from semis_logi_private.kidx_stage_meta where agent_id = $1", [AG])], [[0, 1], 0], "KIDX-07 begin 이 남은 받는 중 줄을 비우고 기록을 새로");
 await kx("rows", { items: [["B", 1, null, null], ["B/x.pdf", 0, 5, T], ["C", 1, null, null], ["C/y.pdf", 0, 6, T]] });
 eq((await kx("end", { n: 4, err: [], ms: 1 })).ok, true, "KIDX-07 첫 색인(B/x.pdf · C/y.pdf)");
-r = await walk([["C", 1, null, null]], ["B", "../bad", 3]);
-eq([r.ok, r.files, r.dirs, await kpaths()], [true, 1, 2, ["B", "B/x.pdf", "C"]], "KIDX-07 err 폴더 B 자체 · 그 아래 B/x.pdf 남음 · 안 보인 C/y.pdf 지움");
+r = await walk([["C", 1, null, null], ["C/z.pdf", 0, 6, T]], ["B", "../bad", 3]);
+eq([r.ok, r.files, r.dirs, await kpaths()], [true, 2, 2, ["B", "B/x.pdf", "C", "C/z.pdf"]], "KIDX-07 err 폴더 B 자체 · 그 아래 B/x.pdf 남음 · 안 보인 C/y.pdf 지움");
 eq(await one("select (kidx_last ->> 'err')::int from semis_logi_private.ksync_state"), 1, "KIDX-07 err 개수 = 경로 검사를 지난 것만");
 
 // KIDX-08 읽기 RPC — 3등급 세션만 · dirs[0] = 뿌리 · 폴더 번호 · 한국 날짜 · 활성 연결 기준선의 H 문서(대소문자 무시) · 뺄 폴더는 읽을 때도 거름
@@ -1825,6 +1825,50 @@ eq([r.accepted, r.rejected], [1, 2], "KIDX-08 뺄 폴더 그 자체 · 아래 �
 // KIDX-09 hello — 에이전트가 걸을 설정(on · root · excludes)만, 윈도 경로는 보내지 않음
 r = await call("hello", {});
 eq([r.kidx, "win_root" in r.kidx], [{ on: true, root: "A/항공보안", excludes: ["01 규정"] }, false], "KIDX-09 hello 에 kidx on · root · excludes(win_root 없음)");
+
+// KIDX-10 빈 걷기 막기 — 색인에 파일 줄이 있는데 받은 줄에 파일이 하나도 없으면 empty · 아무것도 바꾸지 않음(빈 것처럼 보이는 마운트가 first_seen 을 지우지 않게)
+const k10 = await snap(), last10 = await one("select kidx_last::text from semis_logi_private.ksync_state");
+eq(await walk([["02 교육", 1, null, null], ["03 새", 1, null, null]]), { ok: false, error: "empty" }, "KIDX-10 폴더 줄만 → empty");
+eq(await walk([]), { ok: false, error: "empty" }, "KIDX-10 줄 없음 → empty");
+eq([await snap(), await one("select kidx_last::text from semis_logi_private.ksync_state")], [k10, last10], "KIDX-10 색인 · 마지막 기록 그대로");
+await db.exec("delete from semis_logi_private.kidx where not is_dir");
+r = await walk([["02 교육", 1, null, null]]);
+eq([r.ok, r.files, r.dirs], [true, 0, 1], "KIDX-10 색인에 파일 줄이 없으면 폴더만 받은 걷기도 덧씀");
+
+// KIDX-11 받는 중 줄 합계 상한 — begin 뒤 받은 줄(거절 포함)이 6만을 넘게 될 rows 는 bad · 아무것도 더하지 않음
+eq((await kx("begin")).ok, true, "KIDX-11 begin");
+await db.query("update semis_logi_private.kidx_stage_meta set sent = 59999 where agent_id = $1", [AG]);
+const sent11 = () => one("select sent from semis_logi_private.kidx_stage_meta where agent_id = $1", [AG]);
+eq(await kx("rows", { items: [["x1.pdf", 0, 1, T], ["x2.pdf", 0, 1, T]] }), { ok: false, error: "bad" }, "KIDX-11 59,999 + 2줄 → bad");
+eq([await stageN(), await sent11()], [[0, 1], 59999], "KIDX-11 받는 중 줄 · 받은 수 그대로");
+r = await kx("rows", { items: [["x1.pdf", 0, 1, T]] });
+eq([r.ok, r.accepted, await sent11()], [true, 1, 60000], "KIDX-11 6만 줄까지는 받음");
+
+// KIDX-12 뺄 폴더 정리 — 동기화 지정 제외와 같은 검사(앞뒤 공백 떼기 · 대소문자만 다른 것은 하나로)
+await as("a1", "admin");
+eq((await ks({ excludes: [" 80 개인정보 ", "80 개인정보", "Temp", "TEMP"] })).ok, true, "KIDX-12 저장");
+eq((await rpc("semis_logi_ksync_status")).state.kidx.excludes, ["80 개인정보", "Temp"], "KIDX-12 앞뒤 공백 · 대소문자만 다른 것은 하나로");
+
+// KIDX-13 색인 뿌리를 바꾸면 같은 저장에서 색인 · 받는 중 줄 · 마지막 기록을 비움(걷던 end 는 bad). 대소문자만 바꾸거나 다른 칸만 저장하면 그대로
+await as(null);
+r = await walk([["가.pdf", 0, 1, T], ["나", 1, null, null]]);
+eq([r.ok, r.files, r.dirs], [true, 1, 1], "KIDX-13 색인");
+const kxN = () => one("select count(*)::int from semis_logi_private.kidx");
+const last13 = () => one("select kidx_last is not null from semis_logi_private.ksync_state");
+await as("a1", "admin");
+eq((await ks({ on: true, root: "A/항공보안", excludes: [] })).ok, true, "KIDX-13 같은 뿌리로 저장");
+eq((await ks({ root: "a/항공보안" })).ok, true, "KIDX-13 대소문자만 바꿈");
+eq([await kxN(), await last13()], [2, true], "KIDX-13 같은 뿌리(대소문자 무시)면 색인 · 마지막 기록 그대로");
+await as(null);
+eq((await kx("begin")).ok, true, "KIDX-13 걷던 중 begin");
+await kx("rows", { items: [["가.pdf", 0, 1, T]] });
+await as("a1", "admin");
+eq((await ks({ root: "B/항공보안" })).ok, true, "KIDX-13 다른 뿌리로 저장");
+eq([await kxN(), await one("select count(*)::int from semis_logi_private.kidx_stage"), await one("select count(*)::int from semis_logi_private.kidx_stage_meta"), await last13()],
+  [0, 0, 0, false], "KIDX-13 뿌리를 바꾸면 색인 · 받는 중 줄(모든 에이전트) · 마지막 기록 비움");
+eq((await rpc("semis_logi_ksync_status")).state.kidx.root, "B/항공보안", "KIDX-13 새 뿌리 저장");
+await as(null);
+eq(await kx("end", { n: 1, err: [], ms: 1 }), { ok: false, error: "bad" }, "KIDX-13 옛 뿌리로 걷던 end → bad");
 await as("a1", "admin");
 }
 
