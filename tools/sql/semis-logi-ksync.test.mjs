@@ -1870,6 +1870,87 @@ eq((await rpc("semis_logi_ksync_status")).state.kidx.root, "B/항공보안", "KI
 await as(null);
 eq(await kx("end", { n: 1, err: [], ms: 1 }), { ok: false, error: "bad" }, "KIDX-13 옛 뿌리로 걷던 end → bad");
 await as("a1", "admin");
+
+// NEWD 새 폴더 알림 — 기준선(kidx_base · kidx_base_err) · 처리 기록(kidx_ack). 새 폴더 = 폴더 줄 중 first_seen > kidx_base
+const base = () => one("select kidx_base::text from semis_logi_private.ksync_state where id = 1");
+const berr = () => one("select kidx_base_err from semis_logi_private.ksync_state where id = 1");
+const baseIsWalk = () => one("select kidx_base = (kidx_last ->> 'at')::timestamptz from semis_logi_private.ksync_state where id = 1");
+const fresh = async () => (await rows("select k.path from semis_logi_private.kidx k, semis_logi_private.ksync_state s where s.id = 1 and k.is_dir and k.first_seen > s.kidx_base " +
+  "order by k.path collate \"C\"")).map(x => x.path);
+const acks = async () => (await rows("select path from semis_logi_private.kidx_ack order by path collate \"C\"")).map(x => x.path);
+// 시계가 1ms 단위라 이어진 걷기가 같은 시각일 수 있다 — 기준선 줄과 기준선을 함께 1분 앞으로 옮겨 다음 걷기의 '지금'과 갈라 놓는다
+const back = () => db.exec("update semis_logi_private.kidx set first_seen = first_seen - interval '1 minute'; " +
+  "update semis_logi_private.ksync_state set kidx_base = kidx_base - interval '1 minute' where id = 1");
+const W2 = [["가/나", 1, null, null], ["가/나/다", 1, null, null], ["가/나/a.pdf", 0, 1, T]];
+
+// NEWD-01 권한 — 처리 기록 표는 막고 RLS · 경로는 대소문자 무시로 하나
+eq(await one("select has_table_privilege('anon', 'semis_logi_private.kidx_ack', 'SELECT')"), false, "NEWD-01 kidx_ack 읽기 차단");
+eq(await one("select relrowsecurity from pg_class where oid = 'semis_logi_private.kidx_ack'::regclass"), true, "NEWD-01 kidx_ack RLS");
+await db.exec("insert into semis_logi_private.kidx_ack(path, act) values ('가/Ab', 'seen')");
+ok(await raises(() => db.exec("insert into semis_logi_private.kidx_ack(path, act) values ('가/aB', 'skip')"), "23505"), "NEWD-01 kidx_ack 경로는 대소문자 무시로 하나");
+await db.exec("delete from semis_logi_private.kidx_ack where true");
+
+// NEWD-02 첫 걷기(빈 표) = 기준선 — kidx_base = 그 줄들의 first_seen · kidx_base_err 비움
+await as(null);
+r = await walk(W2);
+eq([r.ok, await one("select count(*)::int from semis_logi_private.kidx k, semis_logi_private.ksync_state s where s.id = 1 and k.first_seen = s.kidx_base"), await berr()],
+  [true, 3, []], "NEWD-02 첫 걷기 → kidx_base = 세 줄의 first_seen · kidx_base_err []");
+
+// NEWD-03 둘째 걷기 — 기준선 그대로 · 새로 보인 폴더만 first_seen > kidx_base
+await back();
+const base3 = await base();
+r = await walk([...W2, ["가/새", 1, null, null]]);
+eq([r.ok, await base(), await fresh()], [true, base3, ["가/새"]], "NEWD-03 둘째 걷기 → kidx_base 그대로 · 가/새 만 새 폴더");
+
+// NEWD-04 ⓑ 겹침 0 — 옛 뿌리 줄만 든 표에 전혀 다른 경로만 보낸 덧쓰기 = 기준선(그 덧쓰기 시각) · 새 폴더 0. 표를 비운 뒤 첫 덧쓰기(ⓐ)도 기준선
+await db.exec("delete from semis_logi_private.kidx where true; " +
+  "insert into semis_logi_private.kidx(path, is_dir, size, mtime, first_seen) values ('옛', true, null, null, '2020-01-01'), ('옛/x', false, 1, '2020-01-01', '2020-01-01'); " +
+  "update semis_logi_private.ksync_state set kidx_base = '2020-01-01' where id = 1");
+r = await walk([["가/나", 1, null, null], ["가/나/a.pdf", 0, 1, T]]);
+eq([r.ok, await baseIsWalk(), await fresh(), await kpaths()], [true, true, [], ["가/나", "가/나/a.pdf"]], "NEWD-04 겹침 0 → kidx_base = 그 덧쓰기 시각 · 새 폴더 0 · 옛 줄 지움");
+await db.exec("delete from semis_logi_private.kidx where true; update semis_logi_private.ksync_state set kidx_base = '2020-01-01' where id = 1");
+r = await walk([...W2, ["가/새", 1, null, null]]);
+eq([r.ok, await baseIsWalk(), await fresh()], [true, true, []], "NEWD-04 표를 비운 뒤 첫 덧쓰기 → 다시 기준선 · 새 폴더 0");
+
+// NEWD-05 기준선 걷기에서 못 읽은 폴더 — 그 아래 처음 들어오는 줄은 기준선에 넣고(first_seen = kidx_base), 읽히면 목록에서 뺌. 그 뒤 생긴 폴더는 새 폴더
+await db.exec("delete from semis_logi_private.kidx where true");
+r = await walk([...W2, ["잠김", 1, null, null]], ["잠김"]);
+eq([r.ok, await berr()], [true, ["잠김"]], "NEWD-05 기준선 걷기의 err → kidx_base_err [잠김]");
+await back();
+r = await walk([...W2, ["잠김", 1, null, null], ["잠김/a", 1, null, null], ["잠김/a/b", 1, null, null]], []);
+eq([r.ok, (await rows("select k.path, k.first_seen = s.kidx_base same from semis_logi_private.kidx k, semis_logi_private.ksync_state s " +
+    "where s.id = 1 and k.path in ('잠김/a', '잠김/a/b') order by k.path collate \"C\"")).map(x => [x.path, x.same]), await berr(), await fresh()],
+  [true, [["잠김/a", true], ["잠김/a/b", true]], [], []], "NEWD-05 읽힌 잠김 아래 줄 → first_seen = kidx_base · kidx_base_err [] · 새 폴더 0");
+await back();
+r = await walk([...W2, ["잠김", 1, null, null], ["잠김/a", 1, null, null], ["잠김/a/b", 1, null, null], ["잠김/c", 1, null, null]], []);
+eq([r.ok, await fresh()], [true, ["잠김/c"]], "NEWD-05 그 뒤 생긴 잠김/c 는 새 폴더");
+
+// NEWD-06 뿌리 바꿈 — 기준선 · 처리 기록 비움(다음 첫 덧쓰기가 다시 적음). 대소문자만 바꾸면 그대로
+await db.exec("insert into semis_logi_private.kidx_ack(path, act, by) values ('가/나', 'seen', 'N-a1'); " +
+  "update semis_logi_private.ksync_state set kidx_base_err = '[\"잠김\"]' where id = 1");
+const s6 = async () => [await one("select kidx_base is null from semis_logi_private.ksync_state where id = 1"), await berr(),
+  await one("select count(*)::int from semis_logi_private.kidx_ack")];
+await as("a1", "admin");
+eq((await ks({ root: "b/항공보안" })).ok, true, "NEWD-06 대소문자만 바꿈");
+eq(await s6(), [false, ["잠김"], 1], "NEWD-06 대소문자만 바꾸면 기준선 · 처리 기록 그대로");
+eq((await ks({ root: "다른" })).ok, true, "NEWD-06 다른 뿌리로 저장");
+eq(await s6(), [true, [], 0], "NEWD-06 뿌리 바꿈 → kidx_base null · kidx_base_err [] · kidx_ack 0줄");
+
+// NEWD-07 처리 기록 정리 — 덧쓰기 뒤 색인 폴더 줄에 없는 처리 기록은 지움(표가 자라지 않게)
+await as(null);
+r = await walk([...W2, ["가/새", 1, null, null]]);
+eq(r.ok, true, "NEWD-07 색인");
+await db.exec("insert into semis_logi_private.kidx_ack(path, act, by) values ('가/새', 'skip', 'N-a1'), ('가/없음', 'seen', 'N-a1')");
+r = await walk([...W2, ["가/새", 1, null, null]]);
+eq([r.ok, await acks()], [true, ["가/새"]], "NEWD-07 다음 덧쓰기 뒤 색인에 있는 가/새 만 남음");
+
+// NEWD-08 마이그레이션 채움 — kidx_base 가 비었고 색인에 줄이 있으면 min(first_seen). 다시 실행해도 그대로(비었을 때만 채움)
+await db.exec("update semis_logi_private.kidx set first_seen = '2020-03-01' where path = '가/나'; update semis_logi_private.ksync_state set kidx_base = null where id = 1");
+await db.exec(SQL);
+eq(await one("select kidx_base = '2020-03-01'::timestamptz from semis_logi_private.ksync_state where id = 1"), true, "NEWD-08 SQL 다시 실행 → kidx_base = min(first_seen)");
+await db.exec("update semis_logi_private.kidx set first_seen = '2020-02-01' where path = '가/새'");
+await db.exec(SQL);
+eq(await one("select kidx_base = '2020-03-01'::timestamptz from semis_logi_private.ksync_state where id = 1"), true, "NEWD-08 한 번 더 실행해도 그대로");
 }
 
 console.log(`ksync SQL: ${pass} 통과 / ${fail} 실패`);
