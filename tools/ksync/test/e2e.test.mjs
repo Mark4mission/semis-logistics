@@ -4,6 +4,7 @@
 // K드라이브 = 임시 폴더. 실행: npm i --no-save @electric-sql/pglite && node tools/ksync/test/e2e.test.mjs   (Node ≥ 22.18 — .ts 형식 제거)
 //   PGlite 를 다른 곳에 설치했으면 PGLITE_DIR=<…/node_modules/@electric-sql/pglite> 로 지정
 import fs from "node:fs";
+import fsp from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import http from "node:http";
@@ -1453,6 +1454,20 @@ await admin("select public.semis_logi_ksync_kidx_save($1::jsonb)", [JSON.stringi
 kn = rpcLog.length; kg = logs.length;
 r = await once();
 eq([r.status, kxActs(kn), since(logs, kg, l => l.startsWith("warn"))], ["ok", [], ["warn K드라이브 찾기 폴더를 읽지 못함: no_folder"]], "폴더 없음: 회차 그대로 · 보내지 않음 · 경고 한 줄");
+// 줄 상한(5만) — 뿌리 목록만 5만 1개 폴더로 바꿔 끼운다. 상한에 닿은 걷기는 보내지 않고(기존 색인 그대로) 그날은 다시 걷지 않음(나무는 몇 분 사이 줄지 않는다)
+await admin("select public.semis_logi_ksync_kidx_save($1::jsonb)", [JSON.stringify({ root: "항공보안" })]);
+const realReaddir = fsp.readdir, many = Array.from({ length: 50001 }, (_, i) => ({ name: "d" + i, isSymbolicLink: () => false, isDirectory: () => true, isFile: () => false }));
+let kxReads = 0;
+fsp.readdir = (p, o) => (p === KX ? (kxReads++, Promise.resolve(many)) : realReaddir(p, o));
+kn = rpcLog.length; kg = logs.length;
+try {
+  r = await once();
+  eq([r.status, kxActs(kn), since(logs, kg, l => l.startsWith("warn")).map(l => /상한에 닿아 보내지 않음/.test(l)), JSON.parse(fs.readFileSync(STATE, "utf8")).kidxDay,
+    JSON.stringify([await kxPaths(), await one("select kidx_last from semis_logi_private.ksync_state")])], ["ok", [], [true], TODAY, kxSnap],
+    "상한에 닿음: 회차 그대로 · 보내지 않음(색인 그대로) · 경고 한 줄 · kidxDay");
+  r = await once();
+  eq([r.status, kxActs(kn), kxReads], ["ok", [], 1], "상한에 닿은 날 다음 회차는 다시 걷지 않음");
+} finally { fsp.readdir = realReaddir; }
 if (NOROOT) fs.chmodSync(path.join(KX, "잠김"), 0o755);
 await admin("select public.semis_logi_ksync_kidx_save($1::jsonb)", [JSON.stringify({ on: false, root: "" })]);
 

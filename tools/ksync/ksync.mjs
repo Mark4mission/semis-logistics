@@ -182,7 +182,8 @@ async function agent(deps, args) {
     if (kidxWanted(full) && st.kidxDay !== today && !msg) {
       const k = await kidxScan(mount, full.kidx);
       if (k.error) log("warn", "K드라이브 찾기 폴더를 읽지 못함: " + k.error);
-      else if (k.capped) log("warn", `K드라이브 찾기 목록이 상한에 닿아 보내지 않음(줄 ${k.rows.length} · ${k.ms}ms) — 기존 목록 그대로`);
+      // 상한에 닿은 걷기는 그날 다시 걸어도 같다(나무는 몇 분 사이 줄지 않음) — 수동 요청 회차마다 최대 30분씩 걷지 않게 그날은 끝. 보내기 실패만 그날 다시
+      else if (k.capped) { log("warn", `K드라이브 찾기 목록이 상한에 닿아 보내지 않음(줄 ${k.rows.length} · ${k.ms}ms) — 기존 목록 그대로`); st.kidxDay = today; }
       else if (await sendKidx(srv, log, k)) st.kidxDay = today;
     }
   } catch (e) {
