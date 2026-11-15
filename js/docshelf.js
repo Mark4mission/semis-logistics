@@ -445,7 +445,8 @@
       return {
         title: d.title, sub: [labelOf(d.mod, d.grp), dot(d.date), d.org].concat(fn).filter(Boolean).join(" · "),
         text: [d.title, d.org, d.note, d.ser, labelOf(d.mod, d.grp), akaOf(d.mod, d.grp), d.date, dot(d.date), d.ssi ? "" : d.sum].concat(fn), route: d.mod,
-        pick: (q) => pickTo(d.mod, q) };
+        /* 요약(sum)으로만 맞은 문서는 화면 문서함(요약은 안 거름)이 그 낱말로 걸러 숨긴다 — 그럴 땐 문서 이름으로 */
+        pick: (q) => pickTo(d.mod, hits(d, termsOf(q)) ? q : d.title) };
     })
   };
   if (window.SemisSearch) SemisSearch.register(searchProvider);

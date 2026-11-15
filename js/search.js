@@ -100,14 +100,15 @@ const SemisSearch = (() => {
   }
   /* 끝 조사 — 긴 것 먼저. 뗀 뒤 두 글자 이상일 때만('회의' 가 '회' 가 되지 않게) */
   const JOSA = ["에서", "으로", "은", "는", "이", "가", "을", "를", "의", "에", "로", "와", "과", "도", "만"];
+  const unJosa = (t) => { const j = JOSA.find(x => t.endsWith(x)); return j && t.length - j.length >= 2 ? t.slice(0, -j.length) : ""; };
   function altsOf(t) {
     const out = [{ s: t, b: false }];
     const seen = new Set([t]);
     const add = (w) => { if (!seen.has(w)) { seen.add(w); out.push({ s: w, b: boundaryOK(w) }); } };
     const widen = (w) => { (SYN_IDX[w] || []).forEach(g => g.forEach(add)); yearsOf(w).forEach(add); };
     widen(t);
-    const j = JOSA.find(x => t.endsWith(x));
-    if (j && t.length - j.length >= 2) { const base = t.slice(0, -j.length); add(base); widen(base); }
+    const base = unJosa(t);
+    if (base) { add(base); widen(base); }
     return out;
   }
   const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -129,11 +130,12 @@ const SemisSearch = (() => {
     return o;
   }
 
-  /* 문장으로 물어도 — 낱말 끝 부호를 떼고, 군말은 다른 낱말이 하나라도 남을 때만 뺀다 */
+  /* 문장으로 물어도 — 낱말 끝 부호를 떼고, 군말('자료를' 처럼 조사가 붙은 꼴 포함)은 다른 낱말이 하나라도 남을 때만 뺀다 */
   const STOP = ["어디", "어디에", "어딨어", "있어", "있나요", "있는지", "있지", "찾아", "찾아줘", "알려줘", "보여줘", "좀", "관련", "관한", "대한", "자료", "파일", "문서"];
+  const isStop = (w) => STOP.indexOf(w) >= 0 || STOP.indexOf(unJosa(w)) >= 0;
   function terms(q) {
     const ws = String(q || "").trim().toLowerCase().split(/\s+/).map(w => w.replace(/[?!.,]+$/, "")).filter(Boolean);
-    const keep = ws.filter(w => STOP.indexOf(w) < 0);
+    const keep = ws.filter(w => !isStop(w));
     return (keep.length ? keep : ws).slice(0, 5);
   }
   function haystack(it) {
@@ -264,17 +266,19 @@ const SemisSearch = (() => {
     menuHits.sort((a, b) => b.score - a.score);
     out.full.push.apply(out.full, menuHits.slice(0, GROUP_MAX));
 
+    let kHits = [];   // K드라이브 묶음은 H 결과 아래에 — 프로바이더 등록 순서로는 중간에 끼므로 따로 두었다 끝에 붙인다
     providers.forEach(p => {
       if (!canUseProvider(p)) return;
       let items = [];
       try { items = p.items() || []; } catch (e) { items = []; }
       const hits = [];
       take(items, p.group, hits, part, (it) => ({ icon: it.icon || p.icon || "▪", ico: it.ico || p.ico || "", route: it.route != null ? it.route : (p.module || "dashboard") }));
-      const byDate = p.group === "K드라이브";   // K 는 같은 점수면 날짜가 늦은 것이 위(날짜 = YYYY-MM-DD, 폴더는 "")
-      hits.sort((a, b) => b.score - a.score || (byDate && a.date !== b.date ? (b.date > a.date ? 1 : -1) : 0));
-      out.full.push.apply(out.full, hits.slice(0, GROUP_MAX));
+      const isK = p.group === "K드라이브";   // K 는 같은 점수면 날짜가 늦은 것이 위(날짜 = YYYY-MM-DD, 폴더는 "")
+      hits.sort((a, b) => b.score - a.score || (isK && a.date !== b.date ? (b.date > a.date ? 1 : -1) : 0));
+      if (isK) kHits = hits.slice(0, GROUP_MAX);
+      else out.full.push.apply(out.full, hits.slice(0, GROUP_MAX));
     });
-    out.full = out.full.slice(0, TOTAL_MAX);
+    out.full = out.full.concat(kHits).slice(0, TOTAL_MAX);
     out.partial = part.sort((a, b) => b.score - a.score).slice(0, PARTIAL_MAX);
     return out;
   }

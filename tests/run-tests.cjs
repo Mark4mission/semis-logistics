@@ -13300,8 +13300,13 @@ function makeServer(opts = {}) {
         return d;
       });
       const SS = e.w.SemisSearch, P = e.w.SemisPanel;
+      e.S.data.regulations = [{ id: "kx-r1", scope: "sec", title: "국토부 점검 규정 갑", ideas: [] }];   // '규정' 은 K 프로바이더보다 늦게 등록된다
       SS.open("국토부 점검"); await tick(20);
       eq(kx.calls, 1, "패널을 열 때 목록을 받음");
+      const names = Object.keys(popGroups(e)).filter(n => n !== "일부만 맞는 결과");
+      ok(names.includes("규정") && names[names.length - 1] === "K드라이브", "K드라이브 묶음은 H 결과 아래(늦게 등록된 '규정' 보다도): " + names.join(" → "));
+      const fullG = []; SS.searchAll("국토부 점검").full.forEach(x => { if (fullG.indexOf(x.group) < 0) fullG.push(x.group); });
+      eq(fullG[fullG.length - 1], "K드라이브", "searchAll 에서도 맨 끝: " + fullG.join(" → "));
       const rows = popGroups(e)["K드라이브"];
       const f = rowOf(rows, "점검 결과 통보.pdf"), d = rowOf(rows, "국토부 항공안전 점검");
       ok(f && d, "파일(폴더 경로로 맞음) · 폴더: " + Object.keys(popGroups(e)).join());
@@ -13344,9 +13349,14 @@ function makeServer(opts = {}) {
       eq(js(SS.terms("자료 어디 있어?")), '["자료","어디","있어"]', "다른 낱말이 없으면 군말도 그대로");
       eq(js(SS.terms("점검, 결과. ! ?")), '["점검","결과"]', "끝 부호 · 빈 낱말");
       eq(js(SS.terms("관련 문서 좀 보여줘 a b c d e f")), '["a","b","c","d","e"]', "군말을 빼고 5개까지");
+      eq(js(SS.terms("작년 국토부 항공안전 점검 자료를 찾아줘")), '["작년","국토부","항공안전","점검"]', "조사가 붙은 군말(자료를)도 뺌");
+      eq(js(SS.terms("파일을 문서를 점검")), '["점검"]');
+      eq(js(SS.terms("자료를")), '["자료를"]', "혼자면 그대로 찾음");
+      ok(SS.altsOf("자료를").some(a => a.s === "자료"), "혼자 남은 '자료를' 도 조사 뗀 꼴로");
       const al = (t) => SS.altsOf(t).map(a => a.s);
       await pinAt(e, KST26, () => {
         ok(SS.searchAll("작년 국토부 안전 점검 자료 어디 있어?").full.some(x => x.group === "K드라이브" && x.title === "점검 결과 통보.pdf"), "작년 → 2025 폴더의 파일");
+        ok(SS.searchAll("작년 국토부 항공안전 점검 자료를 찾아줘").full.some(x => x.group === "K드라이브" && x.title === "점검 결과 통보.pdf"), "'자료를 찾아줘' 문장도 모두 맞는 결과에");
         eq(js(al("작년")), '["작년","2025","25년"]');
         eq(js(al("올해")), '["올해","2026","26년"]');
         ok(al("재작년").includes("2024") && al("내년").includes("2027"), "재작년 · 내년");
@@ -13394,6 +13404,23 @@ function makeServer(opts = {}) {
       eq(e.w.location.hash, "#/audit");
       eq(e.w.SemisDocs.getQuery("audit"), "2025 국토부 점검 결과", "K 위치 창에서도 맞은 낱말");
       ok(q(e, '#view [data-dk="d1"]'), "문서가 보임");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+
+    await ta("KX07b 요약(sum)으로만 맞은 문서: 누르면 화면 문서함 검색어 = 문서 이름(요약은 문서함이 거르지 않음) · 문서가 보임", async () => {
+      const { e } = await kxSetup("hq-pw-2222");
+      e.S.data.docs = [{ id: "d2", mod: "audit", grp: "checklist", title: "감독관 서식 을", sum: "가상요약낱말 이 들어 있는 요약", date: "2025-10-14", files: [] }];
+      const SS = e.w.SemisSearch;
+      ok(!e.w.SemisDocs.hits(e.S.data.docs[0], "가상요약낱말"), "문서함 자체 거르기에는 요약이 없음");
+      SS.open("가상요약낱말"); await tick(20);
+      const row = rowOf(popGroups(e)["관련 문서"], "감독관 서식 을");
+      ok(row, "통합 검색은 요약으로 찾음");
+      row.click(); await tick(5);
+      eq(e.w.location.hash, "#/audit");
+      eq(e.w.SemisDocs.getQuery("audit"), "감독관 서식 을", "맞은 낱말 대신 문서 이름");
+      await tick(20);
+      ok(q(e, '#view [data-dk="d2"]'), "문서가 걸러져 사라지지 않음");
       eq(e.errors.length, 0, e.errors.join(" | "));
       e.Sync.stop(); e.w.close();
     });
