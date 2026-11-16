@@ -10097,6 +10097,12 @@ function makeServer(opts = {}) {
         eq(p2.filter(x => x.k === "task").map(x => x.t + "|" + x.due).join(), "자료 제출 — 자료 제출 요청|2026-10-30,결과 보고 — 자료 제출 요청|2026-11-20");
         eq(DK.plan(DK.clean(DL({ title: "자료 제출" }))).find(x => x.k === "task").t, "자료 제출", "문서 제목과 같으면 기한 제목만");
         eq(DK.plan(DK.clean(DL({ org: "서울지방항공청" }))).find(x => x.k === "task").teams, "", "명단 그룹이 아닌 기관은 관련 팀에 넣지 않음");
+        const pa = DK.plan(DK.clean(AI({ type: "audit", title: "정기점검 결과", audit: { body: "gov", org: "서울지방항공청", kind: "정기점검", findings: [{ type: "car", text: "출입 통제 미흡", due: "2026-11-30" }] },
+          events: [{ title: "조치 결과 회신", start: "2026-11-30", cat: "deadline", area: "security" }] })));
+        eq(pa.map(x => x.k + ":" + x.on).join(), "event:false,task:false,audit:true", "점검 결과 — 수검이 기한을 관리하므로 할 일 줄도 꺼서 제안");
+        const pc = DK.plan(DK.clean(AI({ type: "cert", certs: [{ name: "가나다", cid: "c-cargo-r", date: "2026-10-05" }],
+          events: [{ title: "다음 이수 신청", start: "2026-12-01", cat: "deadline", area: "security" }] })));
+        eq(pc.map(x => x.k + ":" + x.on).join(), "cert:true,event:false,task:false", "이수증 — 일정 줄은 예전처럼 끔 · 할 일 줄도 끔");
         DK.keep(lg.id);
       });
 
@@ -10186,6 +10192,11 @@ function makeServer(opts = {}) {
           e.w.SemisTasks = Object.assign({}, TKs, { canUse: () => false });
           eq(DK.plan(DK.clean(DL({}))).map(a => a.k + ":" + a.on).join(), "event:true", "canUse 거짓");
           DK.keep(lg.id);
+          const lg2 = await upload("t49b.txt", DL({}));
+          eq(kOn(lg2), "event:true", "canUse 거짓 — 카드도 일정 줄만");
+          const c2 = q(e, '.dk-item[data-dk="' + lg2.id + '"]');
+          ok(c2 && c2.querySelector('[data-add="event"]') && !c2.querySelector('[data-add="task"]'), "canUse 거짓 — 할 일 추가 단추 없음");
+          DK.keep(lg2.id);
         } finally { e.w.SemisTasks = TKs; }
       });
 

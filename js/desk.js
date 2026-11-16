@@ -223,11 +223,13 @@
        할 일 줄은 그 일정 줄 바로 뒤(사람이 나란히 보고 고름) */
     const tk = tasksOk();
     const teams = tk && ai.org && SemisTasks.teamNames().indexOf(ai.org) >= 0 ? ai.org : "";
+    /* 이수증 · 점검 결과 등은 수검 · 이수 흐름이 그 기한을 따로 관리하므로 할 일 줄도 꺼서 제안한다 */
+    const evOn = T === "notice" || T === "dissem" || T === "other";
     ai.events.forEach(e => {
       const dl = tk && e.cat === "deadline";
-      out.push(eventAct(e, !dl && (T === "notice" || T === "dissem" || T === "other")));
+      out.push(eventAct(e, evOn && !dl));
       if (dl) out.push(taskAct({ t: (ai.title && ai.title !== e.title ? e.title + " — " + ai.title : e.title).slice(0, 300), due: e.start, time: e.time, place: e.place,
-        who: areaNames(e.area), teams, memo: String(ai.summary || "").slice(0, 2000) }, true));
+        who: areaNames(e.area), teams, memo: String(ai.summary || "").slice(0, 2000) }, evOn));
     });
     if (ai.dissem) out.push({ id: aid(), k: "dissem", on: T === "dissem", date: ai.date || todayISO(), title: ai.dissem.title, kind: ai.dissem.kind || dissemKinds().slice(-1)[0], src: ai.org, due: ai.dissem.due });
     if (ai.audit) {
@@ -308,6 +310,7 @@
     const out = [];
     const nowS = new Date().toISOString(), by = me();
     const fileArr = (a) => { const f = files[folderFor(a)]; return f ? [Object.assign({}, f)] : []; };
+    const csv = (s) => String(s == null ? "" : s).split(",").map(norm).filter(Boolean);
     acts.forEach(a => {
       if (a.k === "cert") {
         const t = D().training = isObj(D().training) ? D().training : { courses: [], people: [], records: [], sessions: [] };
@@ -397,7 +400,6 @@
         out.push({ k: "shelf", label: "문서함 · " + (m ? m.label : a.mod) + " › " + (window.SemisDocs ? SemisDocs.labelOf(a.mod, a.grp) : a.grp), route: a.mod });
       } else if (a.k === "task") {
         const f = files[folderFor(a)];
-        const csv = (s) => String(s == null ? "" : s).split(",").map(norm).filter(Boolean);
         const tk = SemisTasks.make({ t: a.t, due: a.due, time: a.time, place: a.place, who: csv(a.who), teams: csv(a.teams), memo: a.memo,
           file: f ? { name: f.name, url: f.url } : null }, "desk");
         if (!Array.isArray(D().tasks)) D().tasks = [];
