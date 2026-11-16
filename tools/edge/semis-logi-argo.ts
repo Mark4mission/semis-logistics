@@ -36,7 +36,7 @@ const COLORS = ["red", "orange", "yellow", "green", "teal", "sky", "blue", "purp
 const COLLECTIONS: [string, number, string][] = [
   ["notices", 1, "공지(공지사항 게시판 최근 글)"],
   ["schedules", 2, "일정(반복 일정은 원본 1건 — 날짜별 펼침은 argos_status schedule)"],
-  ["tasks", 3, "Task 관리 — 안전보안파트 할 일(done 이면 마친 일 · due 기한 · who 담당 · teams 관련 팀)"],
+  ["tasks", 3, "Task 관리 — 안전보안파트 할 일(done 이면 마친 일 · due 기한 · who 담당 · teams 관련 팀). 지난 일(기한 지남)도 함께 보려면 from/to 없이 받아 due 로 고른다"],
   ["minutes", 2, "회의록(제목 · 일자 · 장소 · 참석 인원 수 · 결정사항)"],
   ["phonebook", 2, "업무 연락처"],
   ["contacts", 2, "비상연락망"],
@@ -107,7 +107,7 @@ function toolList(rank: number): Tool[] {
     { name: "task_update", min: 3,
       description: "할 일을 고친다. id 는 argos_records(tasks)로 확인. 바꿀 칸만 넣는다.",
       input_schema: { type: "object", properties: Object.assign({ id: S("할 일 id"),
-        cat: { type: "string", enum: ["", "meet", "edu", "check", "doc", "equip", "etc"], description: "분류(빈 값 = 자동): meet 회의 · edu 교육 · check 점검 · 수검 · doc 보고 · 제출 · equip 장비 · 시설 · etc 기타" } }, TASK_FIELDS), required: ["id"] } },
+        cat: { type: "string", enum: ["", "equip", "check", "edu", "meet", "doc", "etc"], description: "분류(빈 값 = 자동): equip 장비 · 시설 / check 점검 · 수검 / edu 교육 / meet 회의 / doc 보고 · 제출 / etc 기타" } }, TASK_FIELDS), required: ["id"] } },
     { name: "task_done", min: 3,
       description: "할 일 마침 표시 · 다시 열기(done false).",
       input_schema: { type: "object", properties: { id: S("할 일 id"), done: { type: "boolean" } }, required: ["id", "done"] } },

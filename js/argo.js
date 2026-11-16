@@ -494,7 +494,13 @@
   const tkLine = (t) => [t.due ? dot(t.due) + (t.time ? " " + t.time : "") : "", t.t, t.place, arr(t.who).length ? "담당 " + t.who.join(", ") : "",
     arr(t.teams).length ? "관련 팀 " + t.teams.join(", ") : "", t.star ? "중요" : ""].filter(Boolean).join(" · ");
   const TASK_GO = [{ label: "Task 관리에서 보기", route: "tasks" }];
+  const tkGo = (id) => [Object.assign({ open: id }, TASK_GO[0])];   // 한 건이면 그 할 일 창까지
   const TK_KEYS = [["t", "내용"], ["due", "날짜"], ["time", "시각"], ["place", "장소"], ["who", "담당"], ["teams", "관련 팀"], ["memo", "메모"], ["star", "중요"], ["cat", "분류"]];
+  /* 실제로 달라지는 칸만 — 같은 값을 다시 넣은 칸은 빼고, 날짜를 지워 norm 이 함께 지우는 시각은 넣는다 */
+  function tkDiff(k, o) {
+    const cur = TK().norm(k), next = TK().norm(Object.assign({}, k, o));
+    return { next, keys: TK_KEYS.filter(([f]) => JSON.stringify(cur[f]) !== JSON.stringify(next[f])) };
+  }
   /* 넣은 칸만 검사해 돌려준다 — 시각은 고친 뒤 날짜(due0 = 지금 날짜)가 있어야 한다. 날짜는 norm 과 같은 엄격한 검사(2026-02-30 거절) */
   function tkFields(it, due0, at) {
     const o = {};
@@ -648,10 +654,10 @@
         return { list };
       },
       run(inp, ctx, p) {
-        if (!Array.isArray(D().tasks)) D().tasks = [];
         const recs = p.list.map(o => TK().make(o, "argo"));
         recs.forEach(r => D().tasks.push(r));
-        return { lines: recs.map(tkLine), go: TASK_GO, result: { ids: recs.map(r => r.id) }, log: "task_add " + recs.map(r => r.id + " '" + r.t + "'" + (r.due ? " " + r.due : "")).join(", ") };
+        return { lines: recs.map(tkLine), go: recs.length === 1 ? tkGo(recs[0].id) : TASK_GO, result: { ids: recs.map(r => r.id) },
+          log: "task_add " + recs.map(r => r.id + " '" + r.t + "'" + (r.due ? " " + r.due : "")).join(", ") };
       }
     },
     task_update: {
@@ -662,7 +668,7 @@
         const show = { t: () => "내용 → " + cut(n.t, 80), due: () => "날짜 → " + (n.due ? dot(n.due) : "(지움)"), time: () => "시각 → " + (n.time || "(지움)"),
           place: () => "장소 → " + (n.place || "(지움)"), who: () => "담당 → " + (n.who.join(", ") || "(지움)"), teams: () => "관련 팀 → " + (n.teams.join(", ") || "(지움)"),
           memo: () => "메모 고침", star: () => (n.star ? "중요 표시" : "중요 해제"), cat: () => "분류 → " + (n.cat ? CS[n.cat].label : "자동(" + CS[TK().catOf(n)].label + ")") };
-        return [tkLine(p.k)].concat(TK_KEYS.filter(([f]) => f in p.o).map(([f]) => show[f]()));
+        return [tkLine(p.k)].concat(p.keys.map(([f]) => show[f]()));
       },
       prep(inp) {
         const k = findTk(inp.id);
@@ -670,18 +676,22 @@
         const o = tkFields(inp, k.due, "");
         if (o.error) return o;
         if (inp.cat != null) {
-          if (inp.cat !== "" && TK().CAT_ORDER.indexOf(inp.cat) < 0) return { error: "cat 은 " + TK().CAT_ORDER.join(" · ") + " 중 하나이거나 빈 값(자동)이어야 합니다." };
+          if (inp.cat !== "" && TK().CAT_ORDER.indexOf(inp.cat) < 0) return { error: "cat 은 " + TK().CAT_ORDER.join(" / ") + " 중 하나이거나 빈 값(자동)이어야 합니다." };
           o.cat = inp.cat;
         }
-        const ch = TK_KEYS.filter(([f]) => f in o).map(x => x[1]);
-        if (!ch.length) return { error: "바꿀 내용이 없습니다." };
-        return { k, o, ch, next: TK().norm(Object.assign({}, k, o)) };
+        const d = tkDiff(k, o);
+        if (!d.keys.length) return { error: "바꿀 내용이 없습니다." };
+        return { k, o, keys: d.keys, next: d.next };
       },
       run(inp, ctx, p) {
         const k = findTk(p.k.id);
         if (!k) return noTk(p.k.id);
-        Object.assign(k, TK().norm(Object.assign({}, k, p.o, { upAt: new Date().toISOString(), upBy: TK().me() })));
-        return { lines: [tkLine(k), "바뀐 칸: " + p.ch.join(" · ")], go: TASK_GO, result: { id: k.id, changed: p.ch }, log: "task_update " + k.id + " (" + p.ch.join(",") + ")" };
+        const d = tkDiff(k, p.o);
+        if (!d.keys.length) return { error: "바꿀 내용이 없습니다(그 사이 같은 내용으로 바뀌었습니다)." };
+        d.keys.forEach(([f]) => { k[f] = d.next[f]; });
+        Object.assign(k, { upAt: new Date().toISOString(), upBy: TK().me() });
+        const ch = d.keys.map(x => x[1]);
+        return { lines: [tkLine(k), "바뀐 칸: " + ch.join(" · ")], go: tkGo(k.id), result: { id: k.id, changed: ch }, log: "task_update " + k.id + " (" + ch.join(",") + ")" };
       }
     },
     task_done: {
@@ -695,11 +705,13 @@
         return { k };
       },
       run(inp, ctx, p) {
-        const k = findTk(p.k.id);
+        const k = findTk(p.k.id), on = inp.done;
         if (!k) return noTk(p.k.id);
-        const now = new Date().toISOString(), by = TK().me(), on = inp.done;
+        /* 확인을 기다리는 사이 다른 사람이 같은 상태로 바꿨으면 그 사람의 마친 때 · 사람을 덮어쓰지 않는다(화면 setDone 과 같음) */
+        if (k.done === on) return { error: on ? "이미 마친 할 일입니다." : "마치지 않은 할 일입니다." };
+        const now = new Date().toISOString(), by = TK().me();
         Object.assign(k, { done: on, doneAt: on ? now : "", doneBy: on ? by : "", upAt: now, upBy: by });
-        return { lines: [tkLine(k), on ? "마침" : "다시 열기"], go: TASK_GO, result: { id: k.id, done: on }, log: "task_done " + k.id + " " + (on ? "마침" : "다시 열기") };
+        return { lines: [tkLine(k), on ? "마침" : "다시 열기"], go: tkGo(k.id), result: { id: k.id, done: on }, log: "task_done " + k.id + " " + (on ? "마침" : "다시 열기") };
       }
     },
     task_delete: {
@@ -945,7 +957,7 @@
     return `<div class="ag-card is-result${c.state === "undone" ? " is-undone" : ""}" role="group" aria-label="${esc(c.title)} 결과">
       <div class="ag-card-h">${icon(c.state === "undone" ? "refresh" : "check", 16)}<b>${esc(c.title)}</b><span class="ag-card-st">${c.state === "undone" ? "되돌림" : "완료"}</span></div>
       <ul class="ag-card-l">${arr(c.lines).map(l => "<li>" + esc(l) + "</li>").join("")}</ul>
-      ${(c.state !== "undone" && arr(c.go).length) || canUndo ? `<div class="ag-acts">${c.state !== "undone" ? arr(c.go).filter(g => goOk(g.route)).map(g => `<button type="button" class="ag-go" data-go="${esc(g.route)}">${esc(g.label)}${icon("chevron", 14)}</button>`).join("") : ""}
+      ${(c.state !== "undone" && arr(c.go).length) || canUndo ? `<div class="ag-acts">${c.state !== "undone" ? arr(c.go).filter(g => goOk(g.route)).map(g => `<button type="button" class="ag-go" data-go="${esc(g.route)}"${g.open ? ` data-open="${esc(g.open)}"` : ""}>${esc(g.label)}${icon("chevron", 14)}</button>`).join("") : ""}
         ${canUndo ? `<button type="button" class="link-btn ag-undo" data-undo="${esc(c.undo)}">${icon("refresh", 14)}되돌리기</button>` : ""}</div>` : ""}
       ${c.undo && c.state === "done" && !canUndo && !busy ? '<p class="ag-undo-tip">되돌리기는 가장 최근 작업부터 할 수 있습니다.</p>' : ""}
     </div>`;
@@ -989,7 +1001,7 @@
         ${l.map(q => `<button type="button" class="ag-sug" data-sug="${esc(q)}">${esc(q)}</button>`).join("")}</div>`).join("")}</div></div>`;
   }
   function wireLog(box) {
-    box.querySelectorAll("[data-go]").forEach(b => { b.onclick = () => go(b.dataset.go); });
+    box.querySelectorAll("[data-go]").forEach(b => { b.onclick = () => go(b.dataset.go, b.dataset.open); });
     box.querySelectorAll("[data-k]").forEach(b => { b.onclick = () => { const it = kItem(b.dataset.k); if (it) SemisKidx.openSheet(it); }; });   // 아르고 패널은 그대로
     box.querySelectorAll("[data-undo]").forEach(b => { b.onclick = () => undo(b.dataset.undo); });
     box.querySelectorAll("[data-cf]").forEach(b => { b.onclick = () => { const f = confirms[b.dataset.cf]; if (f) f(b.dataset.ok === "1"); }; });
@@ -1021,10 +1033,12 @@
     /* 다른 결과 카드의 되돌리기 단추는 '가장 최근' 하나만 */
     log.querySelectorAll(".ag-turn").forEach(s => { if (s !== node && s.querySelector(".is-result")) { const tt = C0().turns.find(x => x.id === s.dataset.turn); if (tt) { const n2 = document.createElement("div"); n2.innerHTML = turnHTML(tt); const nn = n2.firstElementChild; s.replaceWith(nn); wireLog(nn); } } });
   }
-  function go(route) {
+  function go(route, open) {
     if (!goOk(route)) return;
     close();
     if (route === "desk") { setTimeout(() => SeMIS.openSupport("desk"), 0); return; }
+    /* 할 일 결과 카드 — 앱은 tasks/<id> 주소를 풀지 않으므로 Task 관리가 id 를 들고 이동해 그 창을 연다(지워졌으면 알림) */
+    if (open && route === "tasks" && window.SemisTasks && SemisTasks.open) { SemisTasks.open(open); return; }
     SeMIS.navigate(route);
   }
   function setMood(m) {
