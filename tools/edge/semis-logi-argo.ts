@@ -4,6 +4,7 @@
    - 시스템 프롬프트 · 안내 지식(argo-guide.ts) · 도구 정의는 여기 고정. 등급별로 쓸 수 있는 도구만 보낸다(프롬프트 캐시 — 도구 + 고정 지침).
    - 도구는 브라우저가 실행한다: 이 함수는 Claude 응답(text · tool_use)을 돌려주고, 화면이 tool_result 를 붙여 다시 부른다(한 질문에 왕복 최대 5회).
      읽기 자료는 브라우저가 이미 권한대로 받은 것, 쓰기는 공용 DB 권한표(RLS)가 다시 확인한다.
+   - 본문 mode "kfolder"(시스템관리자만): K드라이브 새 폴더 이름 → 문서 분류 추천. 도구 kfolder_pick 하나, 결과는 보낸 폴더 · 후보 key 만 남긴다.
    - 대화 내용은 저장 · 기록하지 않는다. 토큰 수만 semis_logi_argo_meter() 로 더한다.
    - 비밀값: ANTHROPIC_API_KEY. 모델: ARGO_MODEL → claude-sonnet-5-5 → 폴백.
    - 배포: Supabase MCP deploy_edge_function (verify_jwt false — 위의 세션 확인으로 대신), 파일 index.ts(이 파일) + argo-guide.ts. 이 파일이 원본. */
@@ -27,6 +28,8 @@ const MAX_TOKENS = 2500;
 const ID_RE = /^[A-Za-z0-9_-]{1,100}$/;
 const IMG_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const B64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
+const KFOLDER_KEY_RE = /^[a-z][a-z0-9-]{1,39}\|[A-Za-z0-9_-]{1,40}$/;
+const KFOLDER_SYSTEM = "K드라이브 폴더 이름만 보고(내용은 모름) H:drive 문서 분류 후보 중 가장 알맞은 하나를 고른다. 맞는 것이 없으면 없음. 지어내지 않는다. 이유는 한국어 한 줄.";
 
 /* ── 도구 (min = 최소 등급: user 1 · manager 2 · hq 3 · admin 4) ── */
 type Tool = { name: string; min: number; description: string; input_schema: Record<string, unknown> };
@@ -226,6 +229,65 @@ export function cleanMessages(raw: unknown, names: Set<string>): { msgs: Msg[]; 
   return { msgs, rounds };
 }
 
+/* ── K드라이브 새 폴더 → 문서 분류 추천 (시스템관리자, 화면이 다시 검사) ── */
+type Cat = { key: string; label: string; aka?: string; taken?: string };
+const KFOLDER_TOOL = {
+  name: "kfolder_pick",
+  description: "폴더마다 고른 분류 key(맞는 것이 없으면 null)와 이유 한 줄.",
+  input_schema: { type: "object", properties: { picks: { type: "array", items: { type: "object", properties: {
+    path: S("보낸 폴더 경로 그대로"), key: { anyOf: [{ type: "string" }, { type: "null" }], description: "후보 분류 key — 맞는 것이 없으면 null" },
+    reason: S("이유 — 한국어 한 줄") }, required: ["path", "key", "reason"] } } }, required: ["picks"] }
+};
+const optStr = (v: unknown, max: number) => v === undefined || (typeof v === "string" && v.length <= max);
+function cleanKfolder(body: Record<string, unknown>): { paths: string[]; cats: Cat[] } | null {
+  const { items, cats } = body;
+  if (!Array.isArray(items) || items.length < 1 || items.length > 10) return null;
+  if (!Array.isArray(cats) || cats.length < 1 || cats.length > 300) return null;
+  const paths: string[] = [];
+  for (const it of items) {
+    if (!isObj(it) || typeof it.path !== "string" || it.path.length < 1 || it.path.length > 300) return null;
+    paths.push(it.path);
+  }
+  const out: Cat[] = [];
+  for (const c of cats) {
+    if (!isObj(c) || typeof c.key !== "string" || !KFOLDER_KEY_RE.test(c.key) || typeof c.label !== "string" || c.label.length > 120) return null;
+    if (!optStr(c.aka, 200) || !optStr(c.taken, 200)) return null;
+    const cat: Cat = { key: c.key, label: c.label };
+    if (c.aka !== undefined) cat.aka = c.aka as string;
+    if (c.taken !== undefined) cat.taken = c.taken as string;
+    out.push(cat);
+  }
+  return { paths, cats: out };
+}
+async function kfolder(body: Record<string, unknown>, rank: number, tok: string, apiKey: string, origin: string): Promise<Response> {
+  if (rank !== 4) return json({ ok: false, error: "forbidden" }, 403, origin);
+  const k = cleanKfolder(body);
+  if (!k) return json({ ok: false, error: "bad_request" }, 400, origin);
+  const text = "폴더(색인 뿌리 기준 경로)와 후보 분류(key · label 화면 › 분류 · aka 별칭 · taken 그 분류를 이미 쓰는 연결의 K 폴더):\n" +
+    JSON.stringify({ folders: k.paths, cats: k.cats }) + "\nkfolder_pick 으로 답한다.";
+  const r = await askAI(tok, apiKey, {
+    max_tokens: 2048, system: KFOLDER_SYSTEM, tools: [KFOLDER_TOOL],
+    tool_choice: { type: "auto", disable_parallel_tool_use: true }, messages: [{ role: "user", content: text }]
+  }, origin);
+  if (r instanceof Response) return r;
+  /* AI 가 돌려준 것은 다시 거른다: 보낸 폴더만(대소문자 무시 · 보낸 철자로), 후보에 없는 key 는 null */
+  const sent = new Map(k.paths.map((p) => [p.toLowerCase(), p]));
+  const keys = new Set(k.cats.map((c) => c.key));
+  /* 도구 호출로 끝난 응답만 믿는다 — 잘린(max_tokens) 입력은 그럴듯한 일부 객체로 읽혀 틀린 key 를 낼 수 있다 */
+  const use = r.d.stop_reason === "tool_use" ? (r.d.content || []).find((b) => b && b.type === "tool_use" && b.name === KFOLDER_TOOL.name) : undefined;
+  const raw = use && isObj(use.input) && Array.isArray(use.input.picks) ? use.input.picks : [];
+  const picks: { path: string; key: string | null; reason: string }[] = [];
+  const seen = new Set<string>();
+  for (const p of raw) {
+    const path = isObj(p) && typeof p.path === "string" ? sent.get(p.path.toLowerCase()) : undefined;
+    if (!path || seen.has(path)) continue;
+    seen.add(path);
+    const key = typeof p.key === "string" && keys.has(p.key) ? p.key : null;
+    picks.push({ path, key, reason: typeof p.reason === "string" ? p.reason.slice(0, 80) : "" });
+  }
+  return json({ ok: true, picks, model: r.model }, 200, origin);
+}
+
 function cors(origin: string): Record<string, string> {
   const allow = ORIGINS.includes(origin) || LOCAL_RE.test(origin) ? origin : ORIGINS[0];
   return {
@@ -256,6 +318,41 @@ async function rpc(tok: string, name: string, args: unknown): Promise<Record<str
   }
 }
 
+/* 모델 목록 · 404 폴백 · 오류 응답 · 토큰 계량 — 대화와 kfolder 가 함께 쓴다. 실패면 돌려줄 응답 */
+type AiReply = {
+  content?: Blk[]; stop_reason?: string;
+  usage?: { input_tokens?: number; output_tokens?: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number };
+};
+async function askAI(tok: string, apiKey: string, payload: Record<string, unknown>, origin: string): Promise<{ d: AiReply; model: string } | Response> {
+  const envModel = Deno.env.get("ARGO_MODEL");
+  const models = envModel ? [envModel, ...AI_MODELS.filter((m) => m !== envModel)] : AI_MODELS.slice();
+  let res: Response | null = null, model = "";
+  try {
+    for (const m of models) {
+      model = m;
+      res = await fetch(AI_URL, {
+        method: "POST",
+        headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+        body: JSON.stringify({ ...payload, model: m })
+      });
+      if (res.status !== 404) break;
+    }
+  } catch (_e) {
+    return json({ ok: false, error: "ai" }, 502, origin);
+  }
+  if (!res) return json({ ok: false, error: "ai" }, 502, origin);
+  if (res.status === 401 || res.status === 403) return json({ ok: false, error: "bad_key" }, 502, origin);
+  if (res.status === 429 || res.status === 529) return json({ ok: false, error: "busy" }, 503, origin);
+  if (res.status === 413) return json({ ok: false, error: "too_large" }, 413, origin);
+  if (!res.ok) return json({ ok: false, error: "ai", status: res.status }, 502, origin);
+  const d = await res.json() as AiReply;
+  const u = d.usage || {};
+  await rpc(tok, "semis_logi_argo_meter", {
+    p_in: (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0), p_out: u.output_tokens || 0, p_cache: u.cache_read_input_tokens || 0
+  });
+  return { d, model };
+}
+
 Deno.serve(async (req: Request) => {
   const origin = req.headers.get("origin") || "";
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors(origin) });
@@ -281,6 +378,7 @@ Deno.serve(async (req: Request) => {
     return json({ ok: false, error: e, used: me.used, limit: me.limit }, e === "limit" ? 429 : e === "forbidden" ? 403 : 401, origin);
   }
   const rank = Math.max(1, Math.min(4, Number(me.rank) || 1));
+  if (body.mode === "kfolder") return await kfolder(body, rank, tok, apiKey, origin);
   const tools = toolList(rank);
   const names = new Set(tools.map((t) => t.name));
   const cm = cleanMessages(body.messages, names);
@@ -297,35 +395,9 @@ Deno.serve(async (req: Request) => {
   const payload: Record<string, unknown> = { max_tokens: MAX_TOKENS, system, tools: toolDefs, messages: msgs };
   if (rounds >= MAX_ROUNDS) payload.tool_choice = { type: "none" };
 
-  const envModel = Deno.env.get("ARGO_MODEL");
-  const models = envModel ? [envModel, ...AI_MODELS.filter((m) => m !== envModel)] : AI_MODELS.slice();
-  let res: Response | null = null, model = "";
-  try {
-    for (const m of models) {
-      model = m;
-      res = await fetch(AI_URL, {
-        method: "POST",
-        headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-        body: JSON.stringify({ ...payload, model: m })
-      });
-      if (res.status !== 404) break;
-    }
-  } catch (_e) {
-    return json({ ok: false, error: "ai" }, 502, origin);
-  }
-  if (!res) return json({ ok: false, error: "ai" }, 502, origin);
-  if (res.status === 401 || res.status === 403) return json({ ok: false, error: "bad_key" }, 502, origin);
-  if (res.status === 429 || res.status === 529) return json({ ok: false, error: "busy" }, 503, origin);
-  if (res.status === 413) return json({ ok: false, error: "too_large" }, 413, origin);
-  if (!res.ok) return json({ ok: false, error: "ai", status: res.status }, 502, origin);
-  const d = await res.json() as {
-    content?: Blk[]; stop_reason?: string;
-    usage?: { input_tokens?: number; output_tokens?: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number };
-  };
-  const u = d.usage || {};
-  await rpc(tok, "semis_logi_argo_meter", {
-    p_in: (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0), p_out: u.output_tokens || 0, p_cache: u.cache_read_input_tokens || 0
-  });
+  const r = await askAI(tok, apiKey, payload, origin);
+  if (r instanceof Response) return r;
+  const { d, model } = r;
   const content = (d.content || []).filter((b) => b && (b.type === "text" || (b.type === "tool_use" && names.has(String(b.name)))))
     .map((b) => b.type === "text" ? { type: "text", text: String(b.text || "") } : { type: "tool_use", id: b.id, name: b.name, input: b.input });
   return json({ ok: true, content, stop: d.stop_reason || "", model, used: me.used, limit: me.limit, rounds }, 200, origin);

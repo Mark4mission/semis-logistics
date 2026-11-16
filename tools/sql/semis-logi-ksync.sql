@@ -13,7 +13,8 @@
    - 적용: 마이그레이션 semis_logi_security_30_ksync · v1.64 기준일 · 막는 형식 semis_logi_security_32_ksync_since ·
      v1.68 링크 정확도 semis_logi_security_34_ksync_links · 보고 · 지정 제외 · H → K 준실시간 semis_logi_security_35_ksync_report ·
      v1.72 '양쪽' 안전 전환 · H 첨부 해시 semis_logi_security_36_ksync_both ·
-     v1.73 K드라이브 찾기 semis_logi_security_37_ksync_kidx(이 파일 전체).
+     v1.73 K드라이브 찾기 semis_logi_security_37_ksync_kidx ·
+     v1.74 K드라이브 새 폴더 알림 semis_logi_security_38_ksync_newdirs(이 파일 전체).
      이 파일이 원본(다시 실행해도 같은 결과).
      검증: node tools/sql/semis-logi-ksync.test.mjs tools/sql/semis-logi-ksync.sql (PGlite + pgcrypto)
    ═══════════════════════════════════════════════════════ */
@@ -205,12 +206,24 @@ create table if not exists semis_logi_private.kidx_stage_meta (
   rejected   int not null default 0,
   started_at timestamptz not null default now()
 );
+-- 새 폴더 알림의 기준선 — 새 폴더 = 폴더 줄 중 first_seen > kidx_base(기준선을 적은 덧쓰기의 줄은 모두 그 시각이라 기존 폴더가 쏟아지지 않는다).
+-- kidx_base_err = 기준선 걷기에서 못 읽은 폴더 — 그 아래는 줄이 없어서 나중에 읽히면 모두 새것처럼 보이므로 처음 들어올 때 기준선 시각으로 적는다
+alter table semis_logi_private.ksync_state add column if not exists kidx_base timestamptz;
+alter table semis_logi_private.ksync_state add column if not exists kidx_base_err jsonb not null default '[]'::jsonb;
+-- 새 폴더 처리 기록 — [연결 안 함](skip) · [확인](seen). path = 색인 뿌리 안 경로(맥 SMB 처럼 대소문자 무시로 하나)
+create table if not exists semis_logi_private.kidx_ack (
+  path text not null,
+  act  text not null check (act in ('skip', 'seen')),
+  at   timestamptz not null default now(),
+  by   text
+);
+create unique index if not exists kidx_ack_lpath on semis_logi_private.kidx_ack (lower(path));
 
 do $$
 declare t text;
 begin
   foreach t in array array['ksync_agents', 'ksync_maps', 'ksync_files', 'ksync_runs', 'ksync_folders', 'ksync_events', 'ksync_state', 'ksync_uploads', 'ksync_fails', 'ksync_run_sers', 'ksync_hash_skip', 'ksync_hash_val',
-                           'kidx', 'kidx_stage', 'kidx_stage_meta'] loop
+                           'kidx', 'kidx_stage', 'kidx_stage_meta', 'kidx_ack'] loop
     execute format('alter table semis_logi_private.%I enable row level security', t);
     execute format('revoke all on semis_logi_private.%I from public, anon, authenticated', t);
   end loop;
@@ -1350,10 +1363,13 @@ end $$;
 
 /* 받은 줄 수(거절 포함)가 n 과 같을 때만 한 번에 덧쓴다 — 있던 줄은 크기 · 날짜 · seen_at 만, 새 줄은 지금, 이번에 안 보인 줄은 지움.
    err = 못 읽은 폴더: 그 자체 · 그 아래는 안 보였어도 남긴다(일시 오류 한 번에 그 폴더가 검색에서 사라지지 않게).
-   색인에 파일이 있는데 받은 파일이 하나도 없으면 empty — 빈 것처럼 보이는 마운트 한 번에 first_seen 이 모두 새로 매겨지지 않게 */
+   색인에 파일이 있는데 받은 파일이 하나도 없으면 empty — 빈 것처럼 보이는 마운트 한 번에 first_seen 이 모두 새로 매겨지지 않게.
+   새 폴더 기준선: 색인이 비어 있었거나 옛 줄과 경로가 하나도 겹치지 않으면(뿌리를 바꿈 · 통째로 다시 정리) 이 덧쓰기 시각을 기준선으로 다시 적는다 —
+   그대로 두면 이번 줄이 모두 새 폴더로 쏟아진다 */
 create or replace function semis_logi_private.ksync_kidx_end(p_agent bigint, p jsonb) returns jsonb
 language plpgsql volatile security definer set search_path = '' as $$
 declare mt semis_logi_private.kidx_stage_meta; v_err jsonb := '[]'::jsonb; x jsonb; v text; v_files int; v_dirs int;
+        v_rebase boolean; v_base timestamptz; v_berr jsonb;
 begin
   select * into mt from semis_logi_private.kidx_stage_meta where agent_id = p_agent for update;
   if mt.agent_id is null or mt.sent is distinct from (case when coalesce(p ->> 'n', '') ~ '^[0-9]{1,9}$' then (p ->> 'n')::int end)
@@ -1368,19 +1384,44 @@ begin
     v := case when jsonb_typeof(x) = 'string' then semis_logi_private.ksync_rel(x #>> '{}') end;
     if v is not null then v_err := v_err || to_jsonb(v); end if;
   end loop;
+  v_rebase := not exists (select 1 from semis_logi_private.kidx)
+              or not exists (select 1 from semis_logi_private.kidx k join semis_logi_private.kidx_stage s on s.agent_id = p_agent and s.path = k.path);
+  select s.kidx_base, s.kidx_base_err into v_base, v_berr from semis_logi_private.ksync_state s where s.id = 1;
   delete from semis_logi_private.kidx k
    where not semis_logi_private.ksync_under(k.path, v_err)
      and not exists (select 1 from semis_logi_private.kidx_stage s where s.agent_id = p_agent and s.path = k.path);
-  insert into semis_logi_private.kidx(path, is_dir, size, mtime)
-  select s.path, s.is_dir, s.size, s.mtime from semis_logi_private.kidx_stage s where s.agent_id = p_agent
+  -- 기준선 때 못 읽은 폴더 아래 처음 들어오는 줄은 기준선 시각 — 권한을 나중에 받은 보관 폴더가 통째로 새 폴더로 뜨지 않게(있던 줄은 first_seen 그대로)
+  insert into semis_logi_private.kidx(path, is_dir, size, mtime, first_seen)
+  select s.path, s.is_dir, s.size, s.mtime,
+         case when not v_rebase and semis_logi_private.ksync_under(s.path, v_berr) then v_base else now() end
+    from semis_logi_private.kidx_stage s where s.agent_id = p_agent
   on conflict (path) do update set is_dir = excluded.is_dir, size = excluded.size, mtime = excluded.mtime, seen_at = now();
+  if v_rebase then
+    v_base := now();
+    v_berr := v_err;
+  else
+    -- 아직 안 읽힌 곳만 남긴다 — 에이전트는 못 읽은 폴더 아래로 내려가지 않으므로 이번 err 아래에 있는 목록 경로(위 폴더를 못 읽음)는 그대로,
+    -- 목록 경로 아래의 이번 err(일부만 읽힘)는 새로 넣는다. 나머지는 읽힌 것(그 아래는 방금 기준선 시각으로 들어옴 — 그 뒤 생기는 것은 새 폴더)
+    v_berr := coalesce((select jsonb_agg(to_jsonb(u.p) order by u.k, u.i)
+                          from (select distinct on (lower(c.p)) c.p, c.k, c.i
+                                  from (select e.p, 0 as k, e.i from jsonb_array_elements_text(v_berr) with ordinality e(p, i)
+                                         where semis_logi_private.ksync_under(e.p, v_err)
+                                        union all
+                                        select r.p, 1, r.i from jsonb_array_elements_text(v_err) with ordinality r(p, i)
+                                         where semis_logi_private.ksync_under(r.p, v_berr)) c
+                                 order by lower(c.p), c.k, c.i) u), '[]'::jsonb);
+  end if;
   select count(*) filter (where not k.is_dir), count(*) filter (where k.is_dir) into v_files, v_dirs from semis_logi_private.kidx k;
   delete from semis_logi_private.kidx_stage where agent_id = p_agent;
   delete from semis_logi_private.kidx_stage_meta where agent_id = p_agent;
+  -- 처리 기록은 지금 색인 폴더 줄에 있는 것만 — 사라진 폴더의 기록이 쌓이지 않게(다시 보이면 새 폴더로 다시 알림)
+  delete from semis_logi_private.kidx_ack a
+   where not exists (select 1 from semis_logi_private.kidx k where k.is_dir and lower(k.path) = lower(a.path));
   -- 상태 줄은 맨 끝에 — 문서함 트리거가 그 줄을 오래 기다리지 않게
   update semis_logi_private.ksync_state
      set kidx_last = jsonb_build_object('at', now(), 'files', v_files, 'dirs', v_dirs, 'rejected', mt.rejected,
-                                        'ms', case when coalesce(p ->> 'ms', '') ~ '^[0-9]{1,9}$' then (p ->> 'ms')::int end, 'err', jsonb_array_length(v_err))
+                                        'ms', case when coalesce(p ->> 'ms', '') ~ '^[0-9]{1,9}$' then (p ->> 'ms')::int end, 'err', jsonb_array_length(v_err)),
+         kidx_base = v_base, kidx_base_err = v_berr
    where id = 1;
   return jsonb_build_object('ok', true, 'files', v_files, 'dirs', v_dirs);
 end $$;
@@ -1421,10 +1462,11 @@ end $$;
 /* ─── 감시 · 관리(시스템관리자) ─── */
 create or replace function public.semis_logi_ksync_status() returns jsonb
 language plpgsql stable security definer set search_path = '' as $$
-declare st semis_logi_private.ksync_state; v_ok timestamptz; v_active int; v_hold int; v_ev int; v_stale boolean; v_last jsonb; v_today jsonb;
+declare st semis_logi_private.ksync_state; v_ok timestamptz; v_active int; v_hold int; v_ev int; v_stale boolean; v_last jsonb; v_today jsonb; v_nd jsonb;
 begin
   perform semis_logi_private.ksync_admin();
   select * into st from semis_logi_private.ksync_state where id = 1;
+  v_nd := semis_logi_private.ksync_newdirs(0);     -- 수만 — 처리할 새 폴더 · 사라진 연결 폴더도 레일 배지를 켠다
   select max(coalesce(r.ended_at, r.started_at)) into v_ok from semis_logi_private.ksync_runs r where r.result in ('ok', 'partial', 'held');
   select count(*) into v_active from semis_logi_private.ksync_maps where state = 'active';
   select count(*) into v_hold from semis_logi_private.ksync_maps where hold is not null and not coalesce((hold ->> 'ok')::boolean, false);
@@ -1450,7 +1492,8 @@ begin
     'last', v_last, 'today', v_today, 'last_ok', v_ok,
     'counts', jsonb_build_object('hold', v_hold, 'ev_new', v_ev,
       'wait', (select count(*) from semis_logi_private.ksync_files f where f.state <> 'ok')),
-    'stale', v_stale, 'alert', v_stale or v_hold > 0 or v_ev > 0);
+    'newdirs', jsonb_build_object('n', v_nd -> 'n', 'n_link', v_nd -> 'n_link', 'gone', jsonb_array_length(v_nd -> 'gone')),
+    'stale', v_stale, 'alert', v_stale or v_hold > 0 or v_ev > 0 or (v_nd ->> 'n')::int > 0 or jsonb_array_length(v_nd -> 'gone') > 0);
 end $$;
 
 create or replace function public.semis_logi_ksync_runs(p jsonb) returns jsonb
@@ -1985,7 +2028,8 @@ create trigger semis_logi_store_ksync_req after insert or update on public.semis
 /* ─── K드라이브 찾기(kidx) — 설정(시스템관리자) · 읽기(3등급 세션) ─── */
 /* 보낸 칸만 고친다 — 한 칸이라도 틀리면 아무것도 저장하지 않음. root · excludes = 공유 안 상대 경로,
    win_root = 윈도에서 root 폴더를 여는 경로 앞부분(드라이브 'X:\' 또는 서버 '\\') — 위치 복사에만 쓴다.
-   root 가 바뀌면(대소문자 무시) 같은 저장에서 모은 줄 · 받는 중 줄 · 마지막 기록을 비운다 — 옛 뿌리의 경로가 새 경로 앞부분과 함께 보이지 않게(걷던 end 는 bad) */
+   root 가 바뀌면(대소문자 무시) 같은 저장에서 모은 줄 · 받는 중 줄 · 마지막 기록을 비운다 — 옛 뿌리의 경로가 새 경로 앞부분과 함께 보이지 않게(걷던 end 는 bad).
+   새 폴더 기준선 · 처리 기록도 옛 뿌리 기준 경로라 함께 비운다(다음 첫 덧쓰기가 기준선을 다시 적음) */
 create or replace function public.semis_logi_ksync_kidx_save(p jsonb) returns jsonb
 language plpgsql volatile security definer set search_path = '' as $$
 declare v jsonb; v_old text; v_ex jsonb; w text;
@@ -2022,7 +2066,8 @@ begin
     delete from semis_logi_private.kidx where true;
     delete from semis_logi_private.kidx_stage where true;
     delete from semis_logi_private.kidx_stage_meta where true;
-    update semis_logi_private.ksync_state set kidx = v, kidx_last = null where id = 1;
+    delete from semis_logi_private.kidx_ack where true;
+    update semis_logi_private.ksync_state set kidx = v, kidx_last = null, kidx_base = null, kidx_base_err = '[]'::jsonb where id = 1;
   else
     update semis_logi_private.ksync_state set kidx = v where id = 1;
   end if;
@@ -2067,6 +2112,122 @@ begin
   return jsonb_build_object('ok', true, 'on', true, 'at', st.kidx_last -> 'at', 'win_root', coalesce(st.kidx ->> 'win_root', ''), 'dirs', v_dirs, 'files', v_files);
 end $$;
 
+/* ─── K드라이브 새 폴더 알림(시스템관리자) — 색인(kidx)으로만 계산한다(따로 쌓는 표 없음) ─── */
+/* 새 폴더 = 색인 폴더 줄 중 first_seen > kidx_base. 처리됨 = 연결을 만들 때 이미 있던 그 연결 안 폴더(그 연결 결정에 들어감) ·
+   처리 기록을 누른 때까지 있던 그 폴더와 같은 단위 아래(맨 위 업무 폴더의 기록은 그 폴더만 — 안의 둘째 폴더는 각자 결정).
+   단위 = 둘째 폴더(K 규칙 '연결은 둘째 폴더'). 위 폴더가 처리 안 된 새 폴더인 깊은 폴더는 그 줄에 묶어 센다(폴더를 통째로 옮긴 날 한 줄로) —
+   묶음은 둘째 폴더 경계를 넘지 않는다. 지정 제외는 연결 안에서도 올리지 않으므로(에이전트가 걷지 않음) 연결 안이어도 excl.
+   p_limit = 돌려줄 줄 수(0 = 수만 — 상태 배지). 크기 합은 돌려줄 줄만, 폴더마다 바로 든 파일을 먼저 모아 접두 비교를 줄인다 */
+create or replace function semis_logi_private.ksync_newdirs(p_limit int) returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+declare st semis_logi_private.ksync_state; v_root text; v_n int; v_link int; v_items jsonb; v_gone jsonb;
+begin
+  select * into st from semis_logi_private.ksync_state where id = 1;
+  v_root := coalesce(st.kidx ->> 'root', '');
+  if not coalesce((st.kidx ->> 'on')::boolean, false) or v_root = '' or st.kidx_base is null then
+    return jsonb_build_object('on', false, 'n', 0, 'n_link', 0, 'items', '[]'::jsonb, 'gone', '[]'::jsonb);
+  end if;
+  with f as materialized (     -- 새 폴더 + 안에 든 연결(연결끼리는 겹치지 않음 — map_save k_dup)
+    select k.path, lower(k.path) lp, lower(v_root || '/' || k.path) lfull, k.first_seen, array_length(string_to_array(k.path, '/'), 1) depth,
+           m.id m_id, m.k_path m_k, m.created_at m_at, m.excludes m_ex, m.mod m_mod, m.grp m_grp, m.state m_state, m.dir m_dir
+      from semis_logi_private.kidx k
+      left join lateral (select x.* from semis_logi_private.ksync_maps x
+                          where lower(v_root || '/' || k.path) = lower(x.k_path) or starts_with(lower(v_root || '/' || k.path), lower(x.k_path) || '/')
+                          order by length(x.k_path) desc limit 1) m on true
+     where k.is_dir and k.first_seen > st.kidx_base
+  ), u as materialized (       -- 처리 안 된 것
+    select f.* from f
+     where not (f.m_id is not null and f.first_seen <= f.m_at)
+       and not exists (select 1 from semis_logi_private.kidx_ack a
+                        where f.first_seen <= a.at
+                          and (f.lp = lower(a.path) or (strpos(a.path, '/') > 0 and starts_with(f.lp, lower(a.path) || '/'))))
+  ), h as materialized (       -- 머리 줄 = 깊이 2 이하이거나 위 폴더가 처리 안 된 새 폴더가 아님
+    select u.*, e.excl,
+           case when e.excl is not null then 'excl' when u.m_id is not null then 'auto'
+                when u.depth = 1 then 'top' when u.depth = 2 then 'link' else 'out' end cls
+      from u
+      left join lateral (select x.v excl from (
+          select me.v, 0 o from jsonb_array_elements_text(case when u.m_id is not null then u.m_ex else '[]'::jsonb end) me(v), substr(u.lfull, length(lower(u.m_k)) + 2) r
+           where lower(me.v) = r or starts_with(r, lower(me.v) || '/')
+          union all
+          select ge.v, 1 from jsonb_array_elements_text(st.excludes) ge(v)
+           where lower(ge.v) = u.lfull or starts_with(u.lfull, lower(ge.v) || '/')) x order by x.o limit 1) e on true
+     where u.depth <= 2 or not exists (select 1 from u p where p.lp = regexp_replace(u.lp, '/[^/]*$', ''))
+  ), b as materialized (       -- 묶인 줄 → 가장 가까운 머리 줄(그 사이는 모두 처리 안 된 새 폴더라 그 줄이 묶음의 머리)
+    select distinct on (u.lp) u.lp, h.lp head
+      from u join h on starts_with(u.lp, h.lp || '/')
+     where not exists (select 1 from h x where x.lp = u.lp)
+     order by u.lp, length(h.lp) desc
+  ), it as materialized (
+    select h.*, case when h.depth <= 2 then h.path else split_part(h.path, '/', 1) || '/' || split_part(h.path, '/', 2) end unit,
+           row_number() over (order by array_position(array['link', 'top', 'out', 'auto', 'excl'], h.cls), h.first_seen desc, h.path collate "C") o
+      from h order by o limit p_limit
+  ), d as materialized (       -- 폴더마다 바로 든 파일
+    select lower(regexp_replace(k.path, '/[^/]*$', '')) lp, count(*) n, sum(k.size) b, coalesce(sum(k.size) filter (where k.size <= 52428800), 0) b50
+      from semis_logi_private.kidx k where not k.is_dir and strpos(k.path, '/') > 0 group by 1
+  )
+  select (select count(*) from h), (select count(*) from h where h.cls = 'link'),
+         coalesce((select jsonb_agg(jsonb_build_object('path', it.path, 'first_seen', it.first_seen, 'cls', it.cls,
+             'part', it.cls = 'link' and exists (select 1 from semis_logi_private.ksync_maps m where starts_with(lower(m.k_path), it.lfull || '/')),
+             'unit', it.unit,
+             'unit_skip', it.cls = 'out' and exists (select 1 from semis_logi_private.kidx_ack a where a.act = 'skip' and lower(a.path) = lower(it.unit)),
+             'unit_part', it.cls = 'out' and exists (select 1 from semis_logi_private.ksync_maps m
+                                                      where semis_logi_private.ksync_under(m.k_path, jsonb_build_array(v_root || '/' || it.unit))),
+             'more', (select count(*) from b where b.head = it.lp),
+             'files', coalesce(s.n, 0), 'bytes', coalesce(s.b, 0), 'bytes50', coalesce(s.b50, 0),
+             'map', case when it.m_id is not null then jsonb_build_object('id', it.m_id, 'k_path', it.m_k, 'mod', it.m_mod, 'grp', it.m_grp,
+                                                                         'state', it.m_state, 'dir', it.m_dir) end,
+             'excl', it.excl) order by it.o)
+             from it left join lateral (select sum(d.n) n, sum(d.b) b, sum(d.b50) b50 from d where d.lp = it.lp or starts_with(d.lp, it.lp || '/')) s on true),
+           '[]'::jsonb)
+    into v_n, v_link, v_items;
+  -- 사라진 연결 폴더 — 마지막 걷기보다 먼저 만든 연결인데 그 걷기에 폴더가 없음(이름 · 자리를 바꿨을 때). 찾기 뺄 폴더 아래는 걷지 않으니 모름
+  select coalesce(jsonb_agg(jsonb_build_object('id', m.id, 'k_path', m.k_path, 'mod', m.mod, 'grp', m.grp) order by m.id), '[]'::jsonb) into v_gone
+    from semis_logi_private.ksync_maps m
+   where m.state in ('active', 'preview', 'paused')
+     and starts_with(lower(m.k_path), lower(v_root) || '/')
+     and not semis_logi_private.ksync_under(substr(m.k_path, length(v_root) + 2), st.kidx -> 'excludes')
+     and m.created_at < (st.kidx_last ->> 'at')::timestamptz
+     and not exists (select 1 from semis_logi_private.kidx k where k.is_dir and lower(k.path) = lower(substr(m.k_path, length(v_root) + 2)));
+  return jsonb_build_object('on', true, 'base', st.kidx_base, 'at', st.kidx_last -> 'at', 'n', v_n, 'n_link', v_link, 'items', v_items, 'gone', v_gone);
+end $$;
+
+create or replace function public.semis_logi_ksync_newdirs() returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+begin
+  perform semis_logi_private.ksync_admin();
+  return jsonb_build_object('ok', true, 'root', coalesce((select s.kidx ->> 'root' from semis_logi_private.ksync_state s where s.id = 1), ''))
+         || semis_logi_private.ksync_newdirs(300);
+end $$;
+
+/* [연결 안 함](skip) · [확인](seen) — 지금 색인의 폴더 줄만 적는다(아니면 그 경로만 건너뛰고 수를 돌려줌). 이미 있으면 덮어씀.
+   되돌리기는 없다 — 잘못 [연결 안 함]을 눌렀으면 [연결 추가]로 연결하면 된다 */
+create or replace function public.semis_logi_ksync_newdir_ack(p jsonb) returns jsonb
+language plpgsql volatile security definer set search_path = '' as $$
+declare me text := semis_logi_private.ksync_admin(); x jsonb; v text; n int := 0; k int := 0;
+begin
+  if jsonb_typeof(p) is distinct from 'object' or coalesce(p ->> 'act', '') not in ('skip', 'seen')
+     or jsonb_typeof(p -> 'paths') is distinct from 'array' or jsonb_array_length(p -> 'paths') not between 1 and 300
+     or exists (select 1 from jsonb_array_elements(p -> 'paths') e where jsonb_typeof(e) <> 'string') then
+    return jsonb_build_object('ok', false, 'error', 'bad');
+  end if;
+  for x in select value from jsonb_array_elements(p -> 'paths') loop
+    v := semis_logi_private.ksync_rel(x #>> '{}');
+    if v is not null and exists (select 1 from semis_logi_private.kidx d where d.is_dir and lower(d.path) = lower(v)) then
+      insert into semis_logi_private.kidx_ack(path, act, at, by) values (v, p ->> 'act', now(), me)
+      on conflict (lower(path)) do update set act = excluded.act, at = excluded.at, by = excluded.by;
+      n := n + 1;
+    else
+      k := k + 1;
+    end if;
+  end loop;
+  return jsonb_build_object('ok', true, 'n', n, 'skipped', k);
+end $$;
+
+-- 기준선 없이 이미 모은 색인 — 첫 색인 시각을 기준선으로(그 뒤 생긴 폴더는 first_seen 이 남아 있어 새 폴더로 잡힌다). 비었을 때만 채워 다시 실행해도 같다
+update semis_logi_private.ksync_state set kidx_base = (select min(k.first_seen) from semis_logi_private.kidx k)
+ where id = 1 and kidx_base is null and exists (select 1 from semis_logi_private.kidx);
+
 /* ─── 실행 권한 ─── */
 revoke all on function public.semis_logi_ksync_agent(text, text, text, jsonb) from public, anon, authenticated;
 grant execute on function public.semis_logi_ksync_agent(text, text, text, jsonb) to service_role;
@@ -2075,14 +2236,16 @@ revoke all on function public.semis_logi_ksync_status(), public.semis_logi_ksync
   public.semis_logi_ksync_map_start(bigint), public.semis_logi_ksync_pending(), public.semis_logi_ksync_resolve(jsonb),
   public.semis_logi_ksync_hold(jsonb), public.semis_logi_ksync_request(), public.semis_logi_ksync_settings(jsonb),
   public.semis_logi_ksync_ip_approve(text), public.semis_logi_ksync_agent_new(text), public.semis_logi_ksync_agent_revoke(bigint),
-  public.semis_logi_ksync_hash_todo(jsonb), public.semis_logi_ksync_kidx_save(jsonb), public.semis_logi_kidx_list()
+  public.semis_logi_ksync_hash_todo(jsonb), public.semis_logi_ksync_kidx_save(jsonb), public.semis_logi_kidx_list(),
+  public.semis_logi_ksync_newdirs(), public.semis_logi_ksync_newdir_ack(jsonb)
   from public, authenticated;
 grant execute on function public.semis_logi_ksync_status(), public.semis_logi_ksync_runs(jsonb), public.semis_logi_ksync_events(jsonb),
   public.semis_logi_ksync_folders(), public.semis_logi_ksync_report(), public.semis_logi_ksync_map_save(jsonb), public.semis_logi_ksync_map_delete(bigint),
   public.semis_logi_ksync_map_start(bigint), public.semis_logi_ksync_pending(), public.semis_logi_ksync_resolve(jsonb),
   public.semis_logi_ksync_hold(jsonb), public.semis_logi_ksync_request(), public.semis_logi_ksync_settings(jsonb),
   public.semis_logi_ksync_ip_approve(text), public.semis_logi_ksync_agent_new(text), public.semis_logi_ksync_agent_revoke(bigint),
-  public.semis_logi_ksync_hash_todo(jsonb), public.semis_logi_ksync_kidx_save(jsonb), public.semis_logi_kidx_list()
+  public.semis_logi_ksync_hash_todo(jsonb), public.semis_logi_ksync_kidx_save(jsonb), public.semis_logi_kidx_list(),
+  public.semis_logi_ksync_newdirs(), public.semis_logi_ksync_newdir_ack(jsonb)
   to anon, service_role;
 do $$
 declare f record;

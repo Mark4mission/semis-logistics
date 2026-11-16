@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/loginguard.js", "js/app.js", "js/argo-owl.js", "js/panel.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/preview.js", "js/preview-draw.js", "js/preview-cfb.js", "js/preview-xls.js", "js/preview-hwp.js", "js/docshelf.js", "js/kidx.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/board.js", "js/cares.js", "js/hazfind.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/contracts.js", "js/partners.js", "js/kcra.js", "js/seccases.js", "js/dissem.js", "js/roster.js", "js/learn-md.js", "js/learn.js", "js/scrstats.js", "js/usrescreen.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/docread.js", "js/desk.js", "js/argo.js", "js/selfcheck.js", "js/auddash.js", "js/hubhome.js", "js/ksync.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
+const FILES = ["js/loginguard.js", "js/app.js", "js/argo-owl.js", "js/panel.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/preview.js", "js/preview-draw.js", "js/preview-cfb.js", "js/preview-xls.js", "js/preview-hwp.js", "js/docshelf.js", "js/kidx.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/board.js", "js/cares.js", "js/hazfind.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/contracts.js", "js/partners.js", "js/kcra.js", "js/seccases.js", "js/dissem.js", "js/roster.js", "js/learn-md.js", "js/learn.js", "js/scrstats.js", "js/usrescreen.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/docread.js", "js/desk.js", "js/argo.js", "js/selfcheck.js", "js/auddash.js", "js/hubhome.js", "js/kfolder.js", "js/ksync.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -10546,8 +10546,16 @@ function makeServer(opts = {}) {
 
     t("AR13 서버 원본(Edge): 세션 · 등급 · 사용량은 서버 RPC · 등급별 도구(클라이언트 TOOL_MIN 과 같음) · 왕복 5회 · 캐시 · 대화 저장 안 함 · CORS", () => {
       const src = read("tools/edge/semis-logi-argo.ts");
-      const i1 = src.indexOf('rpc(tok, "semis_logi_argo_begin"'), i2 = src.indexOf("fetch(AI_URL");
-      ok(i1 > 0 && i2 > i1, "사용량 확인 뒤에 AI 호출");
+      const at = (re) => Array.from(src.matchAll(re)).map(m => m.index);
+      const fnBody = (name) => { const s = src.indexOf("async function " + name + "("); return [s, s < 0 ? -1 : src.indexOf("\n}\n", s)]; };
+      const inside = (i, [s, e]) => s > 0 && i > s && i < e;
+      const serve = src.indexOf("Deno.serve("), begin = at(/rpc\(tok, "semis_logi_argo_begin"/g);
+      ok(serve > 0 && begin.length === 1 && begin[0] > serve, "사용량 확인은 요청 처리 안에서 한 번");
+      const askFn = fnBody("askAI"), kfFn = fnBody("kfolder"), fetches = at(/fetch\(AI_URL/g);
+      ok(fetches.length === 1 && inside(fetches[0], askFn), "AI 호출은 askAI 안에서만");
+      const asks = at(/(?<!function |\w)askAI\(/g), kfs = at(/(?<!function |\w)kfolder\(/g);
+      ok(asks.length === 2 && asks.some(i => i > begin[0]) && asks.some(i => inside(i, kfFn)) && asks.every(i => i > begin[0] || inside(i, kfFn)), "사용량 확인 뒤에 AI 호출(대화)");
+      ok(kfs.length === 1 && kfs[0] > begin[0], "사용량 확인 뒤에 AI 호출(kfolder)");
       ok(/\/\^\[0-9a-f\]\{64\}\$\/\.test\(tok\)/.test(src), "토큰 모양 확인");
       ok(src.includes('semis_logi_argo_meter') && src.includes("cache_control: { type: \"ephemeral\" }"), "토큰 계량 · 캐시");
       ok(/const MAX_ROUNDS = 5;/.test(src) && src.includes('payload.tool_choice = { type: "none" }'), "왕복 5회");
@@ -12378,7 +12386,17 @@ function makeServer(opts = {}) {
       const deny = { __status: 403, body: { code: "42501", message: "semis_ksync_admin" } };
       const h = (name, fn) => { sv.rpc["semis_logi_ksync_" + name] = (b, o) => { k.calls.push({ name, b }); return sv.rankOf(o) >= 4 ? fn(b || {}) : deny; }; };
       h("status", () => ({ ok: true, now: k.now || new Date().toISOString(), state: k.state, agents: k.agents, maps: k.maps, last: k.runs[0] || null, today: "today" in k ? k.today : k.runs[0] || null, last_ok: k.lastOk || null,
-        counts: { hold: k.holds.length, ev_new: k.evNew, wait: k.files.length }, stale: k.stale, alert: k.alert || k.evNew > 0 }));
+        counts: { hold: k.holds.length, ev_new: k.evNew, wait: k.files.length }, stale: k.stale, newdirs: k.ndc,
+        alert: k.alert || k.evNew > 0 || !!(k.ndc && (k.ndc.n > 0 || k.ndc.gone > 0)) }));
+      // v1.74 새 K 폴더 — k.nd 가 없으면 마이그레이션 전(RPC 없음 → 404)
+      h("newdirs", () => (k.nd ? Object.assign({ ok: true, on: true, root: k.state.kidx.root, base: "2026-11-01T00:00:00Z", at: "2026-11-15T00:30:00Z",
+        n: (k.nd.items || []).length, n_link: 0, items: [], gone: [] }, k.nd) : { __status: 404, body: {} }));
+      h("newdir_ack", (b) => {
+        const p = b.p || {};
+        if (!Array.isArray(p.paths) || !p.paths.length || p.paths.length > 300 || ["skip", "seen"].indexOf(p.act) < 0) return { ok: false, error: "bad" };
+        if (k.nd && k.nd.items) k.nd.items = k.nd.items.filter(x => p.paths.indexOf(x.path) < 0);
+        return { ok: true, n: p.paths.length, skipped: 0 };
+      });
       h("pending", () => ({ ok: true, holds: k.holds, files: k.files, last: k.last }));
       h("runs", () => ({ ok: true, runs: k.runs }));
       h("events", (b) => {
@@ -12510,7 +12528,7 @@ function makeServer(opts = {}) {
         { id: 7, map: 1, rel_path: "c.xlsx", state: "conflict", note: "K 쪽이 늦게 고침" }, { id: 8, map: 1, rel_path: "big.zip", state: "skip", note: "too_large" }];
       ks.last = [{ m: 1, f: "run.bat", a: "skip", r: "type_block" }];
       await openTab(e);
-      eq(qa(e, "[data-ct-tabs=kspend] [data-ct-tab]").map(b => b.textContent).join("|"), "대량 변경 보류 1|삭제 대기 2|충돌 1|건너뜀 · 오류 2", "탭 건수");
+      eq(qa(e, "[data-ct-tabs=kspend] [data-ct-tab]").map(b => b.textContent).join("|"), "새 K 폴더|대량 변경 보류 1|삭제 대기 2|충돌 1|건너뜀 · 오류 2", "탭 건수(v1.74 새 K 폴더 칸이 맨 앞 — 목록 RPC 가 없으면 숫자 없음)");
       ok(/250건 \/ 맞춘 파일 300건/.test(q(e, '[data-ct-pane="kspend:hold"]').textContent), "보류 건수");
       q(e, '[data-ks-hold="approve"]').click(); clickOk(e); await tick(30);
       eq(JSON.stringify(ks.calls.filter(c => c.name === "hold").pop().b.p), '{"run_id":"41","act":"approve","map":"1"}', "승인");
@@ -13235,6 +13253,462 @@ function makeServer(opts = {}) {
       eq(await e2.w.SemisSync.rpc("semis_logi_ksync_kidx_save", { p: { on: true } }).then(() => "ok", (x) => x.status), 403, "서버도 거절(42501)");
       eq(e.errors.length, 0, e.errors.join(" | "));
       e.Sync.stop(); e.w.close(); e2.Sync.stop(); e2.w.close();
+    });
+
+    /* v1.74 '확인 필요' › 새 K 폴더 — 지어낸 색인 뿌리 · 경로 */
+    const ndIt = (o) => Object.assign({ path: "", first_seen: "2026-11-14T03:00:00Z", cls: "link", part: false, unit: null, unit_skip: false, unit_part: false, more: 0,
+      files: 2, bytes: 2048, bytes50: 2048, map: null, excl: null }, o);
+    const ndSetup = async (nd) => {
+      const r = await setup();
+      r.ks.state.kidx = { on: true, root: "항공보안", excludes: [], win_root: "" };
+      if (nd) r.ks.nd = nd;
+      return r;
+    };
+    const ndRows = (e) => qa(e, '[data-ct-pane="kspend:new"] .ks-nd-row');
+    const ndAcks = (ks) => ks.calls.filter(c => c.name === "newdir_ack").map(c => JSON.stringify(c.b.p));
+    const ND_AUTO = { id: 1, k_path: "항공보안/업무3/연결됨", mod: "audit", grp: "plan", state: "active", dir: "both" };
+    const ndFive = () => [ndIt({ path: "업무1/지방항공청 점검", cls: "link", more: 2, files: 3, bytes50: 3 * 1048576 }), ndIt({ path: "새업무", cls: "top" }),
+      ndIt({ path: "업무2/둘째/셋째", cls: "out", unit: "업무2/둘째" }), ndIt({ path: "업무3/연결됨/새것", cls: "auto", map: ND_AUTO }),
+      ndIt({ path: "업무4/임시", cls: "excl", excl: "항공보안/업무4/임시" })];
+    await ta("KS-N1 v1.74 확인 필요 › 새 K 폴더: 다섯 종류 + 사라진 연결 → 탭 '새 K 폴더 6' 먼저 · 경고 줄 맨 위 · 꼬리표 · 종류별 단추 · 많으면 '전체 N줄 중 300줄'", async () => {
+      const { ks, e } = await ndSetup({ items: ndFive(), n_link: 1, gone: [{ id: 2, k_path: "항공보안/옛이름/폴더", mod: "audit", grp: "foreign" }] });
+      ks.maps = [{ id: 1, k_path: "항공보안/업무3/연결됨", mod: "audit", grp: "plan", dir: "both", ssi: false, state: "active", n_files: 1 },
+        { id: 2, k_path: "항공보안/옛이름/폴더", mod: "audit", grp: "foreign", dir: "k2h", ssi: false, state: "active", n_files: 1 }];
+      await openTab(e);
+      const tab = q(e, '[data-ct-tabs="kspend"] [data-ct-tab]');
+      eq([tab.dataset.ctTab, tab.textContent, tab.getAttribute("aria-selected")].join("|"), "new|새 K 폴더 6|true", "맨 앞 탭(줄 5 + 경고 1) · 먼저 고름");
+      eq(q(e, '[data-ks-card="pend"] .card-title .badge').textContent, "6", "카드 머리 숫자에도 더함");
+      const pane = q(e, '[data-ct-pane="kspend:new"]');
+      ok(!pane.hidden, "새 K 폴더 칸이 보임");
+      ok(pane.firstElementChild.classList.contains("ks-warn") && /^연결 '항공보안\/옛이름\/폴더'의 K 폴더가 보이지 않습니다 — 이름 · 자리를 바꿨나요\?$/.test(pane.firstElementChild.textContent.trim()), "경고 줄 맨 위");
+      ok(!/전체 \d+줄 중/.test(pane.textContent), "다 받았으면 전체 수 줄 없음");
+      const rows = ndRows(e);
+      eq(rows.map(r => r.querySelector(".badge").textContent).join("|"), "연결 결정|새 업무 폴더|연결 안 된 폴더 안|저절로 올라감|올리지 않음", "꼬리표");
+      eq(rows.map(r => r.querySelectorAll("button").length).join(), "3,1,2,1,1", "종류별 단추 수");
+      eq(Array.from(rows[0].querySelectorAll("button")).map(b => b.textContent).join("|"), "이대로 연결|고쳐서 연결|연결 안 함", "연결 결정(추천 있음)");
+      ok(rows[0].querySelector("[data-nd-link]").className === "btn btn-ghost btn-sm" && rows[0].querySelector("[data-nd-fix]").classList.contains("link-btn"), "테두리 보조 단추 · 글자 링크");
+      eq(rows[0].querySelector(".ks-path").textContent, "지방항공청 점검", "제목 = 폴더 이름");
+      const fs = new Date("2026-11-14T03:00:00Z"), p2 = (x) => String(x).padStart(2, "0");
+      eq(rows[0].querySelector(".cell-sub").textContent, "업무1 · 처음 본 날 " + p2(fs.getMonth() + 1) + "-" + p2(fs.getDate()) + " · 파일 3 · 최대 3.0 MB · 아래 새 폴더 2개", "아래 줄");
+      eq(rows[0].querySelector(".ks-nd-d").textContent, "추천: 수검 대응 센터 › 국토부 · 지방항공청 보안점검 · K → H 만", "추천 줄(기준일 쓰는 연결 없음 → 칸 없음)");
+      ok(/^이름 '지방항공청, 점검' ↔ 분류/.test(rows[0].querySelector(".ks-nd-d + .cell-sub").textContent), "이유(보조 글자)");
+      eq(Array.from(rows[1].querySelectorAll("button")).map(b => b.textContent).join("|"), "확인", "새 업무 폴더");
+      ok(/새 업무 폴더 — 그 안 둘째 폴더를 하나씩 연결합니다/.test(rows[1].textContent), rows[1].textContent);
+      eq(Array.from(rows[2].querySelectorAll("button")).map(b => b.textContent).join("|"), "확인|고쳐서 연결", "연결 안 된 폴더 안");
+      ok(/연결 안 된 둘째 폴더 '업무2\/둘째' 안/.test(rows[2].textContent), rows[2].textContent);
+      eq(rows[3].querySelector(".ks-nd-d").textContent, "저절로 올라감 → 수검 대응 센터 › 점검 · 심사 계획 · 지침(연결 '항공보안/업무3/연결됨')");
+      ok(/올리지 않음\(지정 제외 '항공보안\/업무4\/임시' 아래\)/.test(rows[4].textContent), rows[4].textContent);
+      ok(q(e, '[data-ks-card="pend"] .card-title #ks-nd-seen-all.c-rare'), "카드 ⋯ 에 [알림만 모두 확인]");
+      // 추천이 쓰인 분류 · 아래 폴더를 먼저 연결함 · 연결 안 함으로 정한 단위 · 미리보기 · H → K 만 연결
+      ks.maps.push({ id: 3, k_path: "항공보안/업무9/AEO", mod: "audit", grp: "aeo", dir: "k2h", ssi: false, state: "active", n_files: 1 });
+      ks.nd = { items: [ndIt({ path: "업무1/AEO 심사", cls: "link" }), ndIt({ path: "업무1/묶음", cls: "link", part: true }),
+        ndIt({ path: "업무2/둘째/셋째", cls: "out", unit: "업무2/둘째", unit_skip: true }), ndIt({ path: "업무2/넷째/다섯째", cls: "out", unit: "업무2/넷째", unit_part: true }),
+        ndIt({ path: "업무3/미리/새것", cls: "auto", map: Object.assign({}, ND_AUTO, { id: 4, k_path: "항공보안/업무3/미리", grp: "checklist", state: "preview" }) }),
+        ndIt({ path: "업무3/한쪽/새것", cls: "auto", map: Object.assign({}, ND_AUTO, { id: 5, k_path: "항공보안/업무3/한쪽", grp: "misc", dir: "h2k" }) })] };
+      await openTab(e);
+      const r2 = ndRows(e);
+      eq(r2.map(r => Array.from(r.querySelectorAll("button")).map(b => b.textContent).join("+")).join("|"), "고쳐서 연결+연결 안 함|연결 안 함|확인|확인|확인|확인", "종류별 단추(쓰인 분류 · part · 단위 정함 · 단위 part)");
+      ok(/'항공보안\/업무9\/AEO' 폴더에 연결돼 있습니다/.test(r2[0].textContent), "쓰인 분류 = 이유 문장 그대로 " + r2[0].textContent);
+      ok(/연결 안 함으로 정한 '업무2\/둘째' 안/.test(r2[2].textContent), r2[2].textContent);
+      ok(/연결 '항공보안\/업무3\/미리'\(미리보기\) 안 — 시작하면 올라감/.test(r2[4].textContent), r2[4].textContent);
+      ok(/H → K 만 연결 '항공보안\/업무3\/한쪽' 안 — K 파일은 올라가지 않음/.test(r2[5].textContent), r2[5].textContent);
+      ks.nd = { n: 305, items: Array.from({ length: 300 }, (_, i) => ndIt({ path: "새업무" + i, cls: "top" })) };
+      await openTab(e);
+      ok(/전체 305줄 중 300줄/.test(q(e, '[data-ct-pane="kspend:new"]').textContent), "많으면 머리에 전체 수");
+      eq(q(e, '[data-ct-tabs="kspend"] [data-ct-tab="new"]').textContent, "새 K 폴더 305");
+      eq(ndRows(e).length, 300);
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS-N2 [이대로 연결]: 확인 창 없이 바로 map_save(추천 값 · 전체 K 경로) · 두 번 눌러도 1회 · 성공 → 알림 · 목록 다시 읽음 / 서버 거절 → 이유 알림 1번 + 연결 창(채운 값)", async () => {
+      const { sv, ks, e } = await ndSetup({ items: [ndIt({ path: "업무1/둘째", cls: "link" })], n_link: 1 });
+      ks.maps = [{ id: 1, k_path: "항공보안/업무1/첫째", mod: "audit", grp: "plan", dir: "k2h", ssi: false, since: "2025-08-01", state: "active", n_files: 1 }];
+      await openTab(e);
+      eq(q(e, ".ks-nd-row .ks-nd-d").textContent, "추천: 수검 대응 센터 › 기타 · K → H 만 · 기준일 2025-08-01", "이웃 화면의 기타 · 같은 업무 폴더의 기준일");
+      const nd0 = ks.calls.filter(c => c.name === "newdirs").length;
+      const b = q(e, "[data-nd-link]");
+      b.click(); b.click(); await tick(40);
+      const saves = ks.calls.filter(c => c.name === "map_save");
+      eq(saves.length, 1, "두 번 눌러도 1회");
+      eq(JSON.stringify(saves[0].b.p), JSON.stringify({ k_path: "항공보안/업무1/둘째", mod: "audit", grp: "misc", dir: "k2h", ssi: false, since: "2025-08-01" }), "보내는 값");
+      ok(q(e, "#modal-overlay").classList.contains("hidden"), "확인 창 없음");
+      ok(/연결을 만들었습니다 — Mac 이 건수를 세면\(10분 안\) 폴더 연결에서 \[시작\]하세요\./.test(q(e, "#toast-wrap").textContent), "알림");
+      eq(ks.calls.filter(c => c.name === "newdirs").length, nd0 + 1, "목록 다시 읽음");
+      sv.rpc.semis_logi_ksync_map_save = (bd) => { ks.calls.push({ name: "map_save", b: bd }); return { ok: false, error: "target_dup" }; };
+      q(e, "[data-nd-link]").click(); await tick(40);
+      eq(qa(e, "#toast-wrap .toast.err").filter(t => /그 화면 · 분류는 이미 다른 폴더와 연결되어 있습니다/.test(t.textContent)).length, 1, "거절 이유 알림 1번");
+      ok(!q(e, "#modal-overlay").classList.contains("hidden") && q(e, "#modal-box #ks-tg"), "연결 창이 열림");
+      eq([(q(e, "#ks-kp-in") || q(e, "#ks-kp")).value, q(e, "#ks-tg").value, q(e, "#ks-dir").value, q(e, "#ks-since").value, String(q(e, "#ks-ssi").checked)].join("|"),
+        "항공보안/업무1/둘째|audit|misc|k2h|2025-08-01|false", "채운 값");
+      ok(!q(e, "[data-nd-link]").disabled, "거절되면 다시 누를 수 있음");
+      e.w.SeMIS.closeModal();
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS-N3 [고쳐서 연결]: 연결 창을 추천 값으로 채움(분류 · K → H 만 · 경로에 (SSI) 면 SSI · K 폴더 = 전체 경로) · 연결 안 된 폴더 안 줄은 단위 둘째 폴더로", async () => {
+      const { ks, e } = await ndSetup({ items: [ndIt({ path: "업무1/지방항공청 점검 (SSI)", cls: "link" }), ndIt({ path: "업무2/지방항공청 점검/세부", cls: "out", unit: "업무2/지방항공청 점검" })] });
+      await openTab(e);
+      q(e, '[data-nd-fix="0"]').click();
+      eq([q(e, "#ks-tg").value, q(e, "#ks-dir").value, String(q(e, "#ks-ssi").checked), (q(e, "#ks-kp-in") || q(e, "#ks-kp")).value].join("|"),
+        "audit|gov|k2h|true|항공보안/업무1/지방항공청 점검 (SSI)", "연결 결정 줄");
+      e.w.SeMIS.closeModal();
+      q(e, '[data-nd-fix="1"]').click();
+      eq([q(e, "#ks-tg").value, q(e, "#ks-dir").value, String(q(e, "#ks-ssi").checked), (q(e, "#ks-kp-in") || q(e, "#ks-kp")).value].join("|"),
+        "audit|gov|k2h|false|항공보안/업무2/지방항공청 점검", "연결 안 된 폴더 안 줄 = 단위 둘째 폴더");
+      e.w.SeMIS.closeModal();
+      q(e, "#ks-map-add").click();
+      eq([q(e, "#ks-tg").value, q(e, "#ks-dir").value, String(q(e, "#ks-ssi").checked), q(e, "#ks-kp-in").value].join("|"), "|both|false|", "[연결 추가]는 그대로(빈 칸 · 양쪽)");
+      e.w.SeMIS.closeModal();
+      eq(ks.calls.filter(c => c.name === "map_save").length, 0, "창만 엶");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS-N4 처리: [연결 안 함] → skip · [확인] → seen · ⋯ [알림만 모두 확인] → 연결 결정 줄을 뺀 머리 줄 모두 seen · 처리 뒤 다시 읽음 · 시스템관리자만(함수 첫 줄)", async () => {
+      const { ks, e } = await ndSetup({ items: ndFive() });
+      await openTab(e);
+      q(e, '.ks-nd-row[data-nd-cls="link"] [data-nd-skip]').click(); await tick(30);
+      eq(ndAcks(ks).pop(), JSON.stringify({ paths: ["업무1/지방항공청 점검"], act: "skip" }), "[연결 안 함]");
+      ok(!q(e, '.ks-nd-row[data-nd-cls="link"]'), "처리 뒤 다시 읽어 빠짐");
+      q(e, '.ks-nd-row[data-nd-cls="top"] [data-nd-seen]').click(); await tick(30);
+      eq(ndAcks(ks).pop(), JSON.stringify({ paths: ["새업무"], act: "seen" }), "[확인]");
+      ks.nd.items = ndFive();
+      await openTab(e);
+      q(e, "#ks-nd-seen-all").click(); await tick(30);
+      eq(ndAcks(ks).pop(), JSON.stringify({ paths: ["새업무", "업무2/둘째/셋째", "업무3/연결됨/새것", "업무4/임시"], act: "seen" }), "[알림만 모두 확인] — 연결 결정 줄은 빼고");
+      eq(ndRows(e).map(r => r.dataset.ndCls).join(), "link", "남은 줄 = 연결 결정");
+      const n0 = ks.calls.length;
+      e.w.SeMIS.user.role = "manager";     // 탭을 연 뒤 시스템관리자가 아니게 된 세션 — 남은 단추를 눌러도
+      q(e, "[data-nd-skip]").click(); q(e, "[data-nd-link]").click(); q(e, "[data-nd-fix]").click(); await tick(30);
+      eq(ks.calls.length, n0, "처리 · 연결 요청 없음");
+      ok(q(e, "#modal-overlay").classList.contains("hidden"), "연결 창도 열지 않음");
+      e.w.SeMIS.user.role = "admin";
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS-N5 AI: 규칙이 못 맞춘 연결 결정 줄 12개 → 아르고 1회 · 앞 10줄 · 묻는 동안 '추천 찾는 중' · 결과 반영('AI 추천:') · 나머지 '추천 기다림' · 다시 그려도 다시 묻지 않음 · 실패 → '알맞은 분류가 없습니다'", async () => {
+      const { ks, e } = await ndSetup({ items: Array.from({ length: 12 }, (_, i) => ndIt({ path: "새업무/알수없음" + i, cls: "link" })) });
+      const f0 = e.w.fetch, ai = [];
+      let gate = null, fail = false;
+      e.w.fetch = (u, o) => {
+        if (String(u).indexOf("/functions/v1/semis-logi-argo") < 0) return f0(u, o);
+        const body = JSON.parse(o.body); ai.push(body);
+        if (fail) return Promise.reject(new Error("net"));
+        const res = { ok: true, status: 200, json: async () => ({ ok: true, model: "m", picks: body.items.map((x, i) => ({ path: x.path, key: i === 0 ? "audit|gov" : null, reason: i === 0 ? "점검 자료로 보임" : "없음" })) }) };
+        return gate ? gate.then(() => res) : Promise.resolve(res);
+      };
+      let open; gate = new Promise(r => { open = r; });
+      await openTab(e);
+      eq(ai.length, 1, "아르고 1회");
+      eq(ai[0].mode, "kfolder"); eq(ai[0].items.length, 10, "앞 10줄");
+      eq(ai[0].items.map(x => x.path).join(), Array.from({ length: 10 }, (_, i) => "새업무/알수없음" + i).join(), "규칙이 못 맞춘 줄의 경로");
+      ok(/추천 찾는 중/.test(ndRows(e)[0].textContent) && /추천 기다림/.test(ndRows(e)[11].textContent), "묻는 동안 · 다음 묶음");
+      open(); await tick(30);
+      const rows = ndRows(e);
+      ok(/^추천: 수검 대응 센터 › 국토부 · 지방항공청 보안점검/.test(rows[0].querySelector(".ks-nd-d").textContent) && /AI 추천: 점검 자료로 보임/.test(rows[0].textContent) && rows[0].querySelector("[data-nd-link]"), "결과 반영");
+      ok(/알맞은 분류가 없습니다/.test(rows[1].textContent) && !rows[1].querySelector("[data-nd-link]"), "AI 도 못 고름");
+      ok(/추천 기다림/.test(rows[10].textContent) && /추천 기다림/.test(rows[11].textContent), "11 · 12번째는 다음에");
+      e.w.SemisKsync.paint(); await tick(20);
+      eq(ai.length, 1, "다시 그려도 다시 묻지 않음");
+      ok(/AI 추천: 점검 자료로 보임/.test(ndRows(e)[0].textContent), "결과는 탭 메모리에");
+      gate = null; fail = true;
+      ks.nd.items = [0, 1, 2].map(i => ndIt({ path: "새업무/모름" + i, cls: "link" }));
+      await openTab(e);
+      eq(ai.length, 2, "새로 불러온 줄은 한 번 더");
+      eq(ai[1].items.map(x => x.path).join(), "새업무/모름0,새업무/모름1,새업무/모름2");
+      ok(ndRows(e).every(r => /알맞은 분류가 없습니다/.test(r.textContent)), "아르고 실패 → 알맞은 분류가 없습니다");
+      eq(qa(e, "#toast-wrap .toast.err").length, 0, "알림 창 없음");
+      e.w.fetch = f0;
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS-N6 레일 배지: 상태 newdirs(새 폴더 · 사라진 연결)만 있어도 서버 alert → '확인' · 탭을 열어도(화면 alertOf) 그대로 · 없으면 꺼짐", async () => {
+      const { ks, e } = await ndSetup(null);
+      e.w.__ksyncPoll = true;
+      ks.ndc = { n: 1, n_link: 0, gone: 0 };
+      await e.w.SemisKsync.poll(true); await tick(10);
+      eq(e.w.SemisKsync.badge(), "확인", "서버 alert → 배지");
+      eq(JSON.stringify(e.w.SemisKsync.newdirs()), '{"n":1,"n_link":0,"gone":0}', "홈 줄이 쓰는 숫자");
+      await openTab(e);
+      eq(e.w.SemisKsync.badge(), "확인", "탭을 열어도 그대로(alertOf)");
+      ks.ndc = { n: 0, n_link: 0, gone: 1 };
+      await openTab(e);
+      eq(e.w.SemisKsync.badge(), "확인", "사라진 연결 폴더만 있어도");
+      ks.ndc = { n: 0, n_link: 0, gone: 0 };
+      await openTab(e);
+      eq(e.w.SemisKsync.badge(), "", "없으면 꺼짐");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS-N7 홈 '오늘' 줄: 시스템관리자 · 새 폴더나 경고가 있을 때만(배지 때 받은 숫자 — 새 요청 없음) · 누르면 시스템 설정 › K드라이브 동기화 › 새 K 폴더 칸 · 다른 계정 없음", async () => {
+      const { sv, ks, e } = await ndSetup(null);
+      e.w.__ksyncPoll = true;
+      go(e, "dashboard"); await tick(5);
+      ok(!q(e, "#td-knew"), "숫자를 받기 전에는 없음");
+      ks.ndc = { n: 3, n_link: 1, gone: 1 };
+      await e.w.SemisKsync.poll(true); await tick(20);
+      const row = q(e, "#td-knew");
+      ok(row, "숫자가 바뀌면 홈을 다시 그려 줄이 생김");
+      eq([row.querySelector(".td-t").textContent, row.querySelector(".td-s").textContent, row.querySelector(".td-v").textContent.trim()].join("|"),
+        "K드라이브 새 폴더|연결 결정 1 · 알림 2 · 연결 폴더 안 보임 1|4", "제목 · 아래 줄 · 값");
+      ok(row.querySelector(".td-ico.t-amber"), "결정 · 경고가 있으면 주황");
+      const n0 = ks.calls.length;
+      go(e, "dashboard"); await tick(10);
+      eq(ks.calls.length, n0, "홈을 그릴 때 새 요청 없음");
+      q(e, "#td-knew").click(); await tick(60);
+      eq(e.w.location.hash, "#/settings");
+      eq(q(e, "#view .tab.active").dataset.tab, "ksync", "K드라이브 동기화 탭");
+      eq(q(e, '[data-ct-tabs="kspend"] [data-ct-tab][aria-selected="true"]').dataset.ctTab, "new", "새 K 폴더 칸(목록을 못 받아도 그 칸)");
+      go(e, "dashboard"); await tick(5);
+      ks.ndc = { n: 2, n_link: 0, gone: 0 };
+      await e.w.SemisKsync.poll(true); await tick(20);
+      ok(q(e, "#td-knew .td-ico.t-slate") && q(e, "#td-knew .td-s").textContent === "연결 결정 0 · 알림 2", "알림만이면 회색 · 경고 칸 없음");
+      ks.ndc = { n: 0, n_link: 0, gone: 0 };
+      await e.w.SemisKsync.poll(true); await tick(20);
+      ok(!q(e, "#td-knew"), "0 이면 줄 없음");
+      const e2 = makeEnv({ fetch: sv.fetch });
+      await sv.loginAs(e2, "hq-pw-2222"); await tick(10);
+      e2.w.SemisKsync._st.ndc = { n: 3, n_link: 1, gone: 1 };
+      go(e2, "dashboard"); await tick(5);
+      ok(!q(e2, "#td-knew"), "안전보안파트(hq) 줄 없음");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close(); e2.Sync.stop(); e2.w.close();
+    });
+    await ta("KS-N8 새 K 폴더 RPC 실패(마이그레이션 전 404) → 다른 카드 · 칸 그대로 · 탭 자리 한 줄 · 알림 창 없음 / 찾기 꺼짐 → 찾기 켜기 안내 한 줄", async () => {
+      const { ks, e } = await ndSetup(null);
+      ks.maps = [{ id: 1, k_path: "점검표", mod: "audit", grp: "checklist", dir: "both", ssi: false, state: "active", n_files: 3 }];
+      ks.files = [{ id: 8, map: 1, rel_path: "big.zip", state: "skip", note: "too_large" }];
+      await openTab(e);
+      ok(ks.calls.some(c => c.name === "newdirs"), "불러오기 newdirs");
+      eq(qa(e, "#tab-body .ks-card").map(c => c.dataset.ksCard).join(","), "maps,pend,runs,sec", "카드 그대로");
+      eq(q(e, '[data-ct-pane="kspend:new"]').textContent.trim(), "새 폴더 목록을 불러오지 못했습니다", "탭 자리 한 줄");
+      eq(q(e, '[data-ct-tabs="kspend"] [data-ct-tab="new"]').textContent, "새 K 폴더", "숫자 없음");
+      eq(q(e, '[data-ct-tabs="kspend"] [aria-selected="true"]').dataset.ctTab, "skip", "다른 칸을 먼저");
+      eq(qa(e, '[data-ct-pane="kspend:skip"] tbody tr').length, 1, "다른 칸 그대로");
+      eq(q(e, '[data-ks-card="pend"] .card-title .badge').textContent, "1", "카드 숫자는 그대로");
+      ok(!q(e, "#ks-nd-seen-all"), "⋯ [알림만 모두 확인] 없음");
+      eq(qa(e, "#toast-wrap .toast").length, 0, "알림 창 없음");
+      ks.nd = { on: false, n: 0, items: [], gone: [] };
+      await openTab(e);
+      eq(q(e, '[data-ct-pane="kspend:new"]').textContent.trim(), "새 폴더 알림은 K드라이브 찾기를 켜야 동작합니다", "찾기 꺼짐 안내");
+      ks.nd = { items: [] };
+      await openTab(e);
+      eq(q(e, '[data-ct-tabs="kspend"] [data-ct-tab="new"]').textContent, "새 K 폴더 0");
+      ok(/새 K 폴더가 없습니다/.test(q(e, '[data-ct-pane="kspend:new"]').textContent), "없으면 한 줄");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS-N9 저장소: 줄의 bytes50 이 남은 저장소(storeLeft — 저장소 관리 탭과 같은 셈)보다 크면 그 줄에 경고 한 줄 · 작으면 · 못 재면 없음", async () => {
+      const { ks, e } = await ndSetup({ items: [ndIt({ path: "업무1/큰폴더", cls: "link", bytes50: 600 * 1048576 }), ndIt({ path: "업무1/작은폴더", cls: "link", bytes50: 1048576 })] });
+      e.w.SemisSync.listFiles = async () => [{ size: 1024 * 1048576 - 100 * 1048576 }];     // 남은 저장소 100MB
+      await openTab(e);
+      const rows = ndRows(e);
+      ok(/남은 저장소보다 큼 — \[시작\]은 저장소를 늘린 뒤/.test(rows[0].textContent) && rows[0].querySelector(".ks-warn"), "큰 줄 경고");
+      ok(!/남은 저장소보다 큼/.test(rows[1].textContent), "작은 줄 없음");
+      e.w.SemisSync.listFiles = async () => { throw new Error("list"); };
+      await openTab(e);
+      ok(!/남은 저장소보다 큼/.test(q(e, '[data-ct-pane="kspend:new"]').textContent), "못 재면 경고 없음");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS-N10 '확인 필요' 칸: 처음은 대량 변경 보류 → 새 K 폴더 → … · 고른 칸은 처리 · 다시 그려도 그대로 · 홈 줄로 들어오면 보류가 있어도 새 K 폴더", async () => {
+      const { ks, e } = await ndSetup({ items: ndFive() });
+      const hold = { map: 1, k_path: "점검표", mod: "audit", grp: "checklist", run: 41, n: 250, base: 300, at: "2026-11-04T00:00:00Z" };
+      ks.maps = [{ id: 1, k_path: "점검표", mod: "audit", grp: "checklist", dir: "both", ssi: false, state: "active", n_files: 3 }];
+      ks.holds = [hold];
+      ks.files = [{ id: 5, map: 1, rel_path: "a.xlsx", state: "del_k", note: "" }, { id: 6, map: 1, rel_path: "b.pdf", state: "del_h", note: "" }];
+      const selTab = () => q(e, '[data-ct-tabs="kspend"] [aria-selected="true"]').dataset.ctTab;
+      await openTab(e);
+      eq(selTab(), "hold", "보류와 새 폴더가 함께 있으면 보류 먼저");
+      ks.holds = [];
+      await openTab(e);
+      eq(selTab(), "new", "보류가 없으면 새 K 폴더");
+      q(e, '[data-ct-tabs="kspend"] [data-ct-tab="del"]').click();
+      q(e, '[data-ks-res="restore"][data-id="6"]').click(); await tick(30);
+      eq(JSON.stringify(ks.calls.filter(c => c.name === "resolve").pop().b.p), '{"ids":[6],"act":"restore"}', "복원");
+      eq(selTab(), "del", "처리 뒤 다시 그려도 고른 칸(새 K 폴더로 돌아가지 않음)");
+      ok(!q(e, '[data-ct-pane="kspend:del"]').hidden && q(e, '[data-ct-pane="kspend:new"]').hidden, "칸 내용도 그대로");
+      e.w.SemisKsync.paint();
+      eq(selTab(), "del", "다시 그려도");
+      ks.holds = [hold];
+      e.w.SeMIS.settingsTab("ksync", { pane: "new" });
+      go(e, "dashboard"); go(e, "settings"); await tick(40);
+      eq(q(e, "#view .tab.active").dataset.tab, "ksync", "K드라이브 동기화 탭");
+      eq(selTab(), "new", "홈 줄로 들어오면 보류가 있어도 새 K 폴더");
+      q(e, '.ks-nd-row[data-nd-cls="top"] [data-nd-seen]').click(); await tick(30);
+      eq(ndAcks(ks).pop(), JSON.stringify({ paths: ["새업무"], act: "seen" }));
+      eq(selTab(), "new", "그 칸에서 처리해도 그대로");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS-N11 그린 줄과 지금 목록의 같은 자리 줄이 다르면 누름을 버림(보내지 않음) · 새 목록은 저장소를 다 잰 뒤에 바꿈 — 그동안 옛 화면의 단추는 옛 목록 그대로", async () => {
+      const A = ndIt({ path: "업무1/지방항공청 점검", cls: "link", bytes50: 0 }), B = ndIt({ path: "업무2/AEO 심사", cls: "link", bytes50: 0 }), T = ndIt({ path: "새업무", cls: "top", bytes50: 0 });
+      const { ks, e } = await ndSetup({ items: [A, B, T] });
+      await openTab(e);
+      const st = e.w.SemisKsync._st;
+      st.nd = Object.assign({}, st.nd, { items: [B, A, T] });     // 화면을 다시 그리기 전에 목록이 바뀜
+      const n0 = ks.calls.length;
+      q(e, '[data-nd-link="0"]').click(); q(e, '[data-nd-fix="0"]').click(); q(e, '[data-nd-skip="0"]').click(); await tick(30);
+      eq(ks.calls.length, n0, "어긋난 줄의 [이대로 연결] · [연결 안 함]은 보내지 않음");
+      ok(q(e, "#modal-overlay").classList.contains("hidden"), "[고쳐서 연결]도 창을 열지 않음");
+      q(e, '[data-nd-seen="2"]').click(); await tick(30);
+      eq(ndAcks(ks).pop(), JSON.stringify({ paths: ["새업무"], act: "seen" }), "같은 자리가 같은 폴더면 그대로");
+      eq(ndRows(e).map(r => r.dataset.ndPath).join("|"), "업무1/지방항공청 점검|업무2/AEO 심사", "다시 읽어 그림");
+      // 처음엔 잴 것이 없었고(bytes50 0) 이번 목록에 생김 — 처리 뒤 다시 불러올 때 저장소를 잰다(그동안 화면은 옛것)
+      const waits = [];
+      e.w.SemisSync.listFiles = () => new Promise(r => waits.push(() => r([])));
+      ks.nd.items = [ndIt({ path: "업무3/새것", cls: "link", bytes50: 5 })].concat(ks.nd.items);
+      q(e, '[data-nd-skip="1"]').click(); await tick(30);
+      eq(ndAcks(ks).pop(), JSON.stringify({ paths: ["업무2/AEO 심사"], act: "skip" }));
+      ok(waits.length >= 1, "저장소를 재는 중");
+      eq(st.nd.items.map(x => x.path).join("|"), "업무1/지방항공청 점검|업무2/AEO 심사", "재는 동안 목록은 화면과 같은 옛것");
+      q(e, '[data-nd-link="0"]').click(); await tick(10);
+      eq(JSON.stringify(ks.calls.filter(c => c.name === "map_save").pop().b.p), JSON.stringify({ k_path: "항공보안/업무1/지방항공청 점검", mod: "audit", grp: "gov", dir: "k2h", ssi: false }),
+        "그동안 누른 [이대로 연결] = 그린 그 줄의 폴더 · 분류");
+      while (waits.length) { waits.splice(0).forEach(f => f()); await tick(20); }
+      eq(ndRows(e).map(r => r.dataset.ndPath).join("|"), "업무3/새것|업무1/지방항공청 점검", "다 잰 뒤 새 목록으로 그림");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+  }
+
+  /* ══════════ [KF] K드라이브 새 폴더 분류 추천(규칙 · AI — 화면 없이 계산만, 지어낸 분류 · 연결) ══════════ */
+  {
+    const KF_TG = [
+      { mod: "audit", label: "수검 대응", groups: [{ id: "gov", label: "국토부 · 지방항공청 보안점검" }, { id: "aeo", label: "AEO 인증 · 심사" }, { id: "misc", label: "기타" }] },
+      { mod: "inspection", label: "보안 기록부", groups: [{ id: "monthly", label: "월간 자체 보안점검" }, { id: "quarterly", label: "분기 자체 보안점검 · Self Audit" }, { id: "misc", label: "기타" }] }
+    ];
+    const KF_MAPS = [
+      { id: 11, k_path: "항공보안/04 수검/AEO", mod: "audit", grp: "aeo", since: "2025-08-01", state: "active" },
+      { id: 12, k_path: "항공보안/03 점검/월간", mod: "inspection", grp: "monthly", since: "2025-08-01", state: "active" }
+    ];
+    const kfCtx = (o) => Object.assign({ root: "항공보안", maps: KF_MAPS, targets: KF_TG, gone: [] }, o || {});
+    const kfEnv = () => { const e = makeEnv({ boot: false }); return { e, K: e.w.SemisKfolder }; };
+    const kfKey = (r) => r.kind + (r.mod ? " " + r.mod + "|" + r.grp : "");
+    await ta("KF01 tokens: 앞 번호 · (MM.DD) · 20NN · 끝 (SSI) 를 떼고 · , _ 공백으로 나눈 2글자 이상 소문자 낱말 · 정규식 글자에도 예외 없음", async () => {
+      const { e, K } = kfEnv();
+      eq(JSON.stringify(K.tokens("04 수검")), '["수검"]');
+      eq(JSON.stringify(K.tokens("(03.15) 현장 점검 2026")), '["현장","점검"]');
+      eq(JSON.stringify(K.tokens("위해물품·적발 (SSI)")), '["위해물품","적발"]');
+      eq(JSON.stringify(K.tokens("AEO_심사,결과 x")), '["aeo","심사","결과"]');
+      eq(JSON.stringify(K.tokens("a[b+(c)")), '["a[b+(c)"]');
+      eq(K.recommend("a[b+(c)/x(y*", kfCtx()).kind, "none", "정규식 글자가 든 경로도 계산");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.w.close();
+    });
+    await ta("KF02 ssiOf: 마디 하나라도 끝이 (SSI)(대소문자 · 앞뒤 공백 무시)", async () => {
+      const { e, K } = kfEnv();
+      eq(K.ssiOf("04 수검/지방청 점검 (SSI)/2026"), true);
+      eq(K.ssiOf("a/b (ssi)  "), true);
+      eq(K.ssiOf("a/SSI 자료"), false);
+      e.w.close();
+    });
+    await ta("KF03 이름 · 동의어: 폴더 이름 낱말이 분류 이름에 맞으면 link — 국토부 ↔ 국토교통부, 이유에 분류 이름", async () => {
+      const { e, K } = kfEnv();
+      const a = K.recommend("04 수검/지방항공청 점검", kfCtx());
+      eq(kfKey(a), "link audit|gov"); eq(a.label, "수검 대응 › 국토부 · 지방항공청 보안점검"); eq(a.by, "rule"); ok(!a.map, "빈 분류엔 연결 없음");
+      const b = K.recommend("04 수검/국토교통부 보안점검", kfCtx());
+      eq(kfKey(b), "link audit|gov");
+      ok(b.reason.indexOf("분류 '국토부 · 지방항공청 보안점검'") >= 0 && b.reason.indexOf("국토교통부") >= 0, "이유: " + b.reason);
+      eq(kfKey(K.recommend("04 수검/지방항공청의 자료", kfCtx())), "link audit|gov", "조사 뗀 꼴");
+      e.w.close();
+    });
+    await ta("KF04 이웃: 같은 업무 폴더의 다른 연결이 쓰는 화면으로 기울어짐", async () => {
+      const { e, K } = kfEnv();
+      const a = K.recommend("03 점검/분기 점검", kfCtx());
+      eq(kfKey(a), "link inspection|quarterly"); ok(/같은 업무 폴더의 다른 연결이 이 화면/.test(a.reason), a.reason);
+      eq(kfKey(K.recommend("09 공통/점검", kfCtx({ maps: [] }))), "link audit|gov", "이웃 없으면 이름 점수만(같으면 앞 화면)");
+      const nb = [{ id: 13, k_path: "항공보안/09 공통/분기", mod: "inspection", grp: "quarterly", since: "", state: "active" }];
+      eq(kfKey(K.recommend("09 공통/점검", kfCtx({ maps: nb }))), "link inspection|monthly", "같은 업무 폴더 연결의 화면");
+      const away = [{ id: 14, k_path: "다른공유/09 공통/분기", mod: "inspection", grp: "quarterly", since: "", state: "active" }];
+      eq(kfKey(K.recommend("09 공통/점검", kfCtx({ maps: away }))), "link audit|gov", "색인 뿌리 밖 연결은 이웃 아님");
+      e.w.close();
+    });
+    await ta("KF05 taken · moved: 맞는 분류를 다른 연결이 쓰면 taken(그 연결) · 그 연결의 K 폴더가 사라졌으면 moved", async () => {
+      const { e, K } = kfEnv();
+      const t = K.recommend("04 수검/AEO 2차", kfCtx());
+      eq(kfKey(t), "taken audit|aeo"); eq(JSON.stringify(t.map), JSON.stringify({ id: 11, k_path: "항공보안/04 수검/AEO" }));
+      ok(/'항공보안\/04 수검\/AEO' 폴더에 연결돼 있습니다/.test(t.reason), t.reason);
+      const m = K.recommend("04 수검/AEO 2차", kfCtx({ gone: [11] }));
+      eq(kfKey(m), "moved audit|aeo"); eq(m.map.id, 11); ok(/폴더 이름이 바뀐 것 같습니다/.test(m.reason), m.reason);
+      e.w.close();
+    });
+    await ta("KF06 기타: 이름이 맞는 분류가 없을 때만 이웃 화면의 기타 · 이웃도 없으면 none(다른 분류는 이웃 점수만으로 문턱을 넘지 못함)", async () => {
+      const { e, K } = kfEnv();
+      eq(kfKey(K.recommend("03 점검/양식", kfCtx())), "link inspection|misc");
+      const n = K.recommend("11 새업무/알수없음", kfCtx());
+      eq(kfKey(n), "none"); ok(!n.map && !n.label, "후보 없음"); eq(n.by, "rule"); ok(/^알맞은 분류가 없습니다/.test(n.reason), n.reason);
+      e.w.close();
+    });
+    await ta("KF07 기본값: 방향 언제나 k2h · 기준일 = 같은 맨 위 폴더 연결 최빈값 → 전체 최빈값 → 비움 · SSI = ssiOf", async () => {
+      const { e, K } = kfEnv();
+      const maps = KF_MAPS.concat(["정기", "수시", "외부"].map((n, i) => ({ id: 21 + i, k_path: "항공보안/05 교육/" + n, mod: "edu", grp: "g" + i, since: "2024-03-01", state: "active" })));
+      const a = K.recommend("04 수검/지방청 점검 (SSI)", kfCtx({ maps }));
+      eq(a.dir, "k2h"); eq(a.since, "2025-08-01", "같은 맨 위 폴더"); eq(a.ssi, true);
+      const b = K.recommend("11 새업무/알수없음", kfCtx({ maps }));
+      eq(b.dir, "k2h"); eq(b.since, "2024-03-01", "전체 최빈값"); eq(b.ssi, false);
+      const c = K.recommend("11 새업무/알수없음 (SSI)", kfCtx({ maps: [] }));
+      eq(c.dir, "k2h"); eq(c.since, "", "연결 없으면 비움"); eq(c.ssi, true);
+      const up = [{ id: 31, k_path: "항공보안/Ops/Daily", since: "2023-01-01" }, { id: 32, k_path: "항공보안/X/Y", since: "2022-01-01" }, { id: 33, k_path: "항공보안/X/Z", since: "2022-01-01" }];
+      eq(K.recommend("OPS/새 폴더", kfCtx({ maps: up })).since, "2023-01-01", "맨 위 폴더 비교는 대소문자 무시");
+      const blank = [{ id: 41, k_path: "항공보안/04 수검/가", since: null }, { id: 42, k_path: "항공보안/04 수검/나", since: null }, { id: 43, k_path: "항공보안/03 점검/다", since: "2025-08-01" }];
+      eq(K.recommend("04 수검/새것", kfCtx({ maps: blank })).since, "2025-08-01", "기준일 빈 연결은 세지 않음 → 전체 최빈값");
+      eq(K.recommend("04 수검/새것", kfCtx({ maps: blank.slice(0, 2) })).since, "", "기준일 있는 연결이 없으면 비움");
+      e.w.close();
+    });
+    await ta("KF08 applyAI: 빈 후보 키 → link('AI 추천: ') · 쓰인 키 → taken · moved · 모르는 키 · null → none", async () => {
+      const { e, K } = kfEnv();
+      const p = "11 새업무/알수없음 (SSI)", r0 = K.recommend(p, kfCtx());
+      const a = K.applyAI(p, { key: "audit|gov", reason: "점검 자료로 보임" }, kfCtx());
+      eq(kfKey(a), "link audit|gov"); eq(a.by, "ai"); eq(a.label, "수검 대응 › 국토부 · 지방항공청 보안점검");
+      ok(a.reason.indexOf("AI 추천: ") === 0 && a.reason.indexOf("점검 자료로 보임") > 0, a.reason);
+      eq([a.ssi, a.dir, a.since].join(), [r0.ssi, r0.dir, r0.since].join(), "SSI · 방향 · 기준일은 규칙과 같게");
+      const b = K.applyAI(p, { key: "inspection|monthly", reason: "월간" }, kfCtx());
+      eq(kfKey(b), "taken inspection|monthly"); eq(b.map.id, 12); eq(b.by, "ai"); ok(b.reason.indexOf("AI 추천: ") === 0);
+      eq(K.applyAI(p, { key: "inspection|monthly", reason: "월간" }, kfCtx({ gone: [12] })).kind, "moved");
+      for (const pk of [{ key: "nope|x", reason: "?" }, { key: null, reason: "없음" }, undefined]) {
+        const n = K.applyAI(p, pk, kfCtx());
+        eq(kfKey(n), "none", JSON.stringify(pk)); eq(n.by, "ai"); ok(/^알맞은 분류가 없습니다/.test(n.reason));
+      }
+      e.w.close();
+    });
+    await ta("KF09 ask: 본문 mode kfolder · 앞 10개 · x-semis-token · 결과 { 경로: { key, reason } } · cats 는 없는 aka · taken 을 키째 빼고 길이를 자름 · 실패 · 10초 넘김(가짜 타이머) → {}", async () => {
+      const { e, K } = kfEnv();
+      e.w.SemisSync.auth.token = () => "tok-kf";
+      const calls = [];
+      let reply = () => Promise.resolve({ ok: true, status: 200, json: async () => ({ ok: true, model: "m",
+        picks: [{ path: "11 새업무/p0", key: "audit|gov", reason: "점검" }, { path: "11 새업무/p1", key: null, reason: "없음" }] }) });
+      e.w.fetch = (u, o) => { calls.push({ u, o, body: JSON.parse(o.body) }); return reply(); };
+      const paths = Array.from({ length: 12 }, (_, i) => "11 새업무/p" + i);
+      const cs = K.cats(kfCtx());
+      eq(cs.map(c => c.key).join(), "audit|gov,audit|aeo,audit|misc,inspection|monthly,inspection|quarterly,inspection|misc");
+      eq(JSON.stringify(cs[1]), JSON.stringify({ key: "audit|aeo", label: "수검 대응 › AEO 인증 · 심사", taken: "04 수검/AEO" }), "쓰는 연결 = K 경로 끝 두 마디");
+      eq(JSON.stringify(cs[0]), JSON.stringify({ key: "audit|gov", label: "수검 대응 › 국토부 · 지방항공청 보안점검" }), "없는 값은 키째 뺌(null 이면 400)");
+      const long = K.cats({ root: "r", maps: [{ id: 1, k_path: "r/" + "가".repeat(150) + "/" + "나".repeat(150), mod: "audit", grp: "gov" }], targets: [{ mod: "audit", label: "수검 대응", groups: [{ id: "gov", label: "다".repeat(130), aka: "라".repeat(250) }] }], gone: [] })[0];
+      eq([long.label.length, long.aka.length, long.taken.length].join(), "120,200,200", "Edge 길이 제한");
+      const r = await K.ask(paths, cs);
+      eq(calls.length, 1); eq(calls[0].u, e.w.SemisSync.FN_ARGO); eq(calls[0].o.method, "POST");
+      eq(calls[0].o.headers["x-semis-token"], "tok-kf"); eq(calls[0].o.headers["Content-Type"], "application/json");
+      eq(calls[0].body.mode, "kfolder"); eq(calls[0].body.items.length, 10, "앞 10개만");
+      eq(JSON.stringify(calls[0].body.items[0]), '{"path":"11 새업무/p0"}'); eq(JSON.stringify(calls[0].body.cats), JSON.stringify(cs));
+      eq(JSON.stringify(r), JSON.stringify({ "11 새업무/p0": { key: "audit|gov", reason: "점검" }, "11 새업무/p1": { key: null, reason: "없음" } }));
+      reply = () => Promise.reject(new Error("net"));
+      eq(JSON.stringify(await K.ask(paths, cs)), "{}", "연결 실패");
+      reply = () => Promise.resolve({ ok: false, status: 500, json: async () => ({ ok: false, error: "busy" }) });
+      eq(JSON.stringify(await K.ask(paths, cs)), "{}", "서버 오류");
+      const st0 = e.w.setTimeout, late = [];
+      e.w.setTimeout = (fn, ms) => (ms === 10000 ? (late.push(fn), 0) : st0.call(e.w, fn, ms));
+      reply = () => new Promise(() => {});
+      const pend = K.ask(paths, cs);
+      await tick(5);
+      eq(late.length, 1, "10초 시계");
+      late[0]();
+      eq(JSON.stringify(await pend), "{}", "10초 넘김");
+      e.w.setTimeout = st0;
+      ok(calls[calls.length - 1].o.signal.aborted, "늦은 요청은 끊음");
+      e.w.SemisSync.auth.token = () => "";
+      const n0 = calls.length;
+      eq(JSON.stringify(await K.ask(paths, cs)), "{}"); eq(calls.length, n0, "세션 없으면 보내지 않음");
+      e.w.close();
     });
   }
 
