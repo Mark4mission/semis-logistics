@@ -13,7 +13,7 @@
 
   /* 화면 칸 아이콘(선 아이콘 키) — 없으면 문서 */
   const MOD_ICO = {
-    schedule: "calendar", minutes: "notes", flight: "plane", shortcuts: "link",
+    schedule: "calendar", tasks: "check", minutes: "notes", flight: "plane", shortcuts: "link",
     "scr-status": "scan", "us-rescreen": "chart", "scr-equip": "xray", "sec-cases": "doc", "kc-ra": "building", partners: "users",
     inspection: "clipboard", "daily-safety": "patrol", audit: "clipboard", selfcheck: "check", training: "shield", dissem: "megaphone",
     serp: "alert", threat: "phone", phonebook: "phone", contacts: "users", crisis: "users",

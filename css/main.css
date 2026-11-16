@@ -6201,9 +6201,10 @@ a.dkb-t:hover, a.dkb-t:focus-visible { color: var(--primary-dark); text-decorati
 .dk-act:not(.on) .dk-ab { display: none; }
 .dk-f { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: max(var(--fs-min), .82rem); font-weight: 600; color: var(--text-3); }
 .dk-w { grid-column: span 2; }
-.dk-f input, .dk-f select, .dk-find input, .dk-find select { width: 100%; min-width: 0; padding: 7px 9px; border: 1.5px solid var(--border-strong); border-radius: var(--radius-xs);
+.dk-f input, .dk-f select, .dk-f textarea, .dk-find input, .dk-find select { width: 100%; min-width: 0; padding: 7px 9px; border: 1.5px solid var(--border-strong); border-radius: var(--radius-xs);
   background: var(--surface); font-size: .88rem; font-weight: 400; color: var(--text); outline: none; }
-.dk-f input:focus, .dk-f select:focus, .dk-find input:focus, .dk-find select:focus { border-color: var(--primary); }
+.dk-f textarea { resize: vertical; }
+.dk-f input:focus, .dk-f select:focus, .dk-f textarea:focus, .dk-find input:focus, .dk-find select:focus { border-color: var(--primary); }
 .dk-ck { display: inline-flex; align-items: center; gap: 6px; align-self: end; padding: 7px 0; font-size: .86rem; color: var(--text-2); cursor: pointer; }
 .dk-note { grid-column: 1 / -1; margin: 0; font-size: max(var(--fs-min), .8rem); color: var(--text-3); }
 .dk-finds { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; }
@@ -7089,4 +7090,100 @@ button.chip-title:focus-visible, button.calm-body:focus-visible { outline: 2px s
   .ur-in { border: 0; background: none; padding: 0; min-height: 0; }
   .ur-bar .seg:not(.ur-mseg), .ur-ynav .icon-btn, .ur-dirty { display: none !important; }
   .ur-tblv { display: none; }
+}
+
+/* ── Task 관리(js/tasks.js) — 빠른 입력 · 담당자 칩 · 기한 묶음 줄(체크 28px). 분류 · 사람 색은 일정 12색(.ev-*) 그대로 ── */
+.tk-qbox { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.tk-qrow { display: flex; gap: 8px; }
+#tk-quick { flex: 1; min-width: 0; min-height: 44px; padding: 0 14px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); font-size: 1rem; }
+#tk-quick:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+.tk-qrow .btn { min-height: 44px; }
+.tk-qprev { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.tk-qprev:empty { display: none; }
+.tk-qc { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 999px; background: var(--primary-soft); color: var(--primary-dark); font-size: .86rem; font-weight: 600; white-space: nowrap; }
+.tk-qwho { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.tk-qwl { font-size: .86rem; color: var(--text-3); }
+.tk-qw { display: inline-flex; align-items: center; min-height: 30px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: 999px; background: var(--surface); color: var(--text-2); font-size: .86rem; font-weight: 600; white-space: nowrap; }
+.tk-qw[aria-pressed="true"] { background: var(--primary-soft); border-color: var(--primary); color: var(--primary-dark); }
+.tk-qw:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.tk-whoseg { margin-bottom: 12px; }
+.tk-dot { display: inline-block; flex-shrink: 0; width: 9px; height: 9px; margin-right: 6px; border-radius: 50%; vertical-align: middle; }
+.tk-grp + .tk-grp { margin-top: 16px; }
+.tk-bh { display: flex; align-items: baseline; gap: 8px; margin: 0; padding-bottom: 4px; border-bottom: 1px solid var(--hair); font-size: .92rem; font-weight: 700; color: var(--text-2); white-space: nowrap; }
+.tk-grp[data-b="late"] .tk-bh { color: var(--danger); }
+.tk-grp[data-b="today"] .tk-bh { color: var(--accent-dark); }
+.tk-bn { font-weight: 600; color: var(--text-3); }
+.tk-rows { list-style: none; margin: 0; padding: 0; }
+.tk-row { display: grid; grid-template-columns: 28px 22px minmax(0, 1fr); align-items: start; gap: 0 10px; padding: 10px 8px; border-bottom: 1px solid var(--hair); cursor: pointer; }
+.tk-row.tk-late { box-shadow: inset 3px 0 0 var(--danger); }
+.tk-chk { width: 28px; height: 28px; margin: 0; accent-color: var(--primary); cursor: pointer; }
+.tk-row .tk-cat { display: inline-flex; align-items: center; justify-content: center; height: 28px; background: none; box-shadow: none; color: var(--evc); }
+.tk-body { min-width: 0; }
+.tk-t { display: block; max-width: 100%; padding: 2px 0; border: 0; background: none; color: var(--text); font-size: 1rem; font-weight: 600; line-height: 1.5; text-align: left; cursor: pointer; }
+.tk-tt { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; white-space: pre-line; overflow-wrap: break-word; }
+.tk-row.tk-done .tk-t { color: var(--text-3); text-decoration: line-through; }
+.tk-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 3px; font-size: .86rem; color: var(--text-2); }
+.tk-due { padding: 1px 8px; border-radius: 4px; background: var(--surface-2); font-weight: 600; white-space: nowrap; }
+.tk-d-late { background: var(--danger-soft); color: var(--danger); }
+.tk-d-today { background: var(--accent-soft); color: var(--accent-dark); }
+.tk-d-tomorrow, .tk-d-week { color: var(--text); }
+.tk-d-later, .tk-d-done { color: var(--text-3); }
+.tk-p { display: inline-flex; align-items: center; white-space: nowrap; }
+.tk-ic { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+.tk-ic .ico { color: var(--text-3); }
+.tk-star .ico { color: var(--accent-dark); }
+.tk-showmore { margin-top: 12px; }
+/* 고치기 창 — 칩은 빠른 입력 담당 칩(.tk-qw)과 같은 모양. 단추 4개('다시 열기' · 큰 글자)가 좁은 폭에서 넘치지 않게 줄바꿈 */
+.tk-form #tk-f-t { min-height: 0; }
+.tk-fdues, .tk-fchips { display: flex; flex-wrap: wrap; gap: 6px; }
+.tk-fdues { margin: -4px 0 14px; }
+.tk-fchips { margin-bottom: 8px; }
+.tk-fchips:empty { display: none; }
+.tk-fchk { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; margin-bottom: 10px; font-weight: 600; color: var(--text-2); cursor: pointer; }
+.tk-fchk input { width: 20px; height: 20px; margin: 0; accent-color: var(--primary); }
+.tk-fchk .ico { color: var(--accent-dark); }
+.modal-box:has(.tk-form) .modal-actions { flex-wrap: wrap; }
+/* 칸이 많아 창이 화면보다 길다 — 본문(.tk-form)만 스크롤하고 단추줄은 아래에 둔다(HANDOFF §6-10 · 일정관리 .evf 와 같은 방식).
+   스크롤 상자가 칸 포커스 테두리를 자르지 않게 좌우로 조금 넓힌다 */
+.modal-box:has(.tk-form) { display: flex; flex-direction: column; overflow: hidden; }
+.tk-form { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin: 0 -4px; padding: 0 4px; }
+.modal-box:has(.tk-form) .modal-actions { flex-shrink: 0; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+@media (hover: hover) and (pointer: fine) { .tk-row:hover { background: var(--surface-2); } }
+@media screen and (max-width: 767px) {
+  .tk-row { gap: 0 8px; padding: 10px 2px; }
+  .tk-row.tk-late { padding-left: 8px; }
+  .tk-meta { gap: 4px 10px; }
+}
+/* 회의 모드 — 사람별 칸(PC 여러 칸 · 모바일 한 줄로 쌓음) · 큰 체크(2.29rem = 본문 14px 에서 32px) · 큰 글자 — rem 이라 글자 크게 보기를 따름 */
+#tk-meetbox .tk-cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; align-items: start; }
+.tk-col { min-width: 0; padding: 10px 12px 12px; border: 1px solid var(--line); border-radius: 4px; }
+.tk-ch { display: flex; align-items: center; margin: 0 0 2px; padding-bottom: 6px; border-bottom: 2px solid var(--rule); font-size: 1.2rem; font-weight: 700; white-space: nowrap; }
+.tk-ch .tk-dot { width: 12px; height: 12px; }
+.tk-cname { overflow: hidden; text-overflow: ellipsis; }
+.tk-cnum { margin-left: 8px; font-weight: 600; color: var(--text-3); }
+#tk-meetbox .tk-row { grid-template-columns: 2.29rem 22px minmax(0, 1fr); padding: 10px 4px; }
+#tk-meetbox .tk-row.tk-late { padding-left: 10px; }
+#tk-meetbox .tk-chk { width: 2.29rem; height: 2.29rem; }
+#tk-meetbox .tk-row .tk-cat { height: 2.29rem; }
+#tk-meetbox .tk-t { font-size: 1.14rem; }
+#tk-meetbox .tk-meta { font-size: .92rem; }
+.tk-with { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
+.tk-cin { width: 100%; min-height: 44px; margin-top: 8px; padding: 0 12px; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); font-size: 1rem; }
+.tk-cin:focus { outline: none; border-style: solid; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+.tk-wkdone { margin-top: 8px; }
+.tk-wkb { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 0 4px; border: 0; background: none; color: var(--text-2); font-size: .92rem; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.tk-wkb:disabled { color: var(--text-3); cursor: default; }
+.tk-wkb:disabled .ico { display: none; }
+.tk-wkb[aria-expanded="true"] .ico { transform: rotate(180deg); }
+.tk-wkb:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+@media screen and (max-width: 767px) {
+  #tk-meetbox .tk-cols { grid-template-columns: 1fr; }
+  .tk-col { padding: 8px 10px 10px; }
+}
+/* 인쇄(A4 회의 자료) = 사람별 할 일 + 이번 주 마친 일(펼쳐서) — 입력칸은 종이에 쓸모없음 */
+@media print {
+  .tk-meeting .tk-qbox, .tk-cin, .tk-wkb .ico { display: none !important; }
+  #tk-meetbox .tk-wklist { display: block !important; }
+  #tk-meetbox .tk-row { break-inside: avoid; cursor: default; }
+  .tk-mdate { margin: 0 0 3mm; font-weight: 700; }
 }
