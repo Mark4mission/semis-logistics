@@ -15353,6 +15353,156 @@ function makeServer(opts = {}) {
       act("cancel").click();
       eq(e.errors.length, 0, e.errors.join(" | "));
     });
+
+    /* ── 아르고(argo.js COLS.tasks · W.task_*) — 같은 창의 아르고를 AR 묶음과 같은 방법(tool_use 를 runTool 로 · 확인 카드 단추)으로 ── */
+    const AG = e.w.SemisArgo;
+    let agN = 0;
+    const agCtx = () => { const turn = { id: "tka" + (++agN), q: "", files: [], a: "", log: "", cards: [], pending: true }; AG.conv.turns.push(turn); return { turn, files: {}, up: {}, log: [] }; };
+    const agRun = (name, inp, ctx) => AG.runTool(name, inp, ctx || agCtx());
+    const agBtn = (yes) => q(e, '#pnl-argo [data-cf][data-ok="' + (yes ? 1 : 0) + '"]');
+    const agAuto = (on) => e.S.setNavPref({ argoAuto: on });
+    const plain = (o) => JSON.parse(JSON.stringify(o));
+    await ta("TK40 아르고 읽기: argos_records tasks 이번 주 = 이번 주 기한 · 이번 주(한국 날짜) 마친 일만 — 만든 때(at)는 줄에 없음 · 할 일(날짜 순, 날짜 없음 끝) → 마친 일(최근 순) · 줄 칸", async () => {
+      await tick();
+      tkSeed2();
+      e.S.data.tasks.push(
+        TK.norm({ id: "tk_next", t: "다음 달 점검 준비", due: "2026-12-10", at: "2026-11-17T02:00:00Z", by: "Thq", upAt: "2026-11-17T02:00:00Z", upBy: "Thq" }),
+        TK.norm({ id: "tk_done2", t: "지난주 기한 회신", due: "2026-11-12", done: true, doneAt: "2026-11-15T16:30:00Z", doneBy: "Thq" }));
+      byId("tk_none").memo = "가".repeat(250);
+      AG._reset();
+      let r = await agRun("argos_records", { collection: "tasks", from: "2026-11-16", to: "2026-11-22" });
+      eq(r.collection + "|" + r.total, "tasks|4");
+      eq(r.items.map(x => x.id).join(), "tk_today,tk_edu,tk_done,tk_done2", "이번 주 기한(할 일) · 이번 주 마친 일(마친 날은 한국 날짜) — 다음 달 기한 할 일은 이번 주에 만들었어도 없음");
+      eq(JSON.stringify(plain(r.items[1])), JSON.stringify({ id: "tk_edu", title: "보안교육 자료 제출", due: "2026-11-20", place: "창고동", who: ["라마바"], teams: ["수출파트"], cat: "교육", memo: "출력본 두 부" }), "줄 칸 · 빈 칸 빼기");
+      eq(JSON.stringify(plain(r.items[3])), JSON.stringify({ id: "tk_done2", title: "지난주 기한 회신", due: "2026-11-12", cat: "보고 · 제출", done: true, doneAt: "2026-11-16" }), "마친 날 = 날짜 10자(한국)");
+      eq(r.items[0].time + "|" + r.items[0].cat, "15:00|" + TK.CATS[TK.catOf(byId("tk_today"))].label, "분류 이름");
+      r = await agRun("argos_records", { collection: "tasks" });
+      eq(r.items.map(x => x.id).join(), "tk_late,tk_today,tk_edu,tk_next,tk_none,tk_star,tk_done,tk_done2,tk_edu2", "할 일 날짜 순(날짜 없음 끝) → 마친 일 최근 순");
+      ok(!r.items.some(x => ["at", "by", "upAt", "upBy", "doneBy", "t", "file"].some(k => k in x)), "만든 때 · 고친 때 · 사람 칸 없음");
+      eq(r.items.find(x => x.id === "tk_star").star, true);
+      eq(r.items.find(x => x.id === "tk_none").memo, "가".repeat(200) + "…", "메모 200자");
+      r = await agRun("argos_records", { collection: "tasks", query: "창고동" });
+      eq(r.items.map(x => x.id).join(), "tk_edu", "낱말");
+    });
+    await ta("TK41 아르고 할 일 추가: 확인 카드(추가하기) 뒤에만 · 1건(src argo · 만든 사람) · 결과 카드 [Task 관리에서 보기] · 되돌리기 → 0건 · 2건은 '바로 실행'이어도 확인 · 검사", async () => {
+      e.S.data.tasks = [];
+      AG._reset(); agAuto(false); AG.open();
+      let c = agCtx();
+      let p = agRun("task_add", { items: [{ t: "보안교육 자료 제출", due: "2026-11-20", time: "15:00", place: "창고동", who: ["라마바"], teams: ["수출파트"], memo: "두 부", star: true }] }, c);
+      await tick(5);
+      const card = q(e, "#pnl-argo .ag-card.is-confirm");
+      ok(card && !card.classList.contains("is-danger"), "확인 카드");
+      eq(agBtn(true).textContent.trim(), "추가하기", "동사");
+      ok(/할 일 추가/.test(card.querySelector(".ag-card-h").textContent) && card.textContent.includes("2026.11.20 15:00") && card.textContent.includes("보안교육 자료 제출") && card.textContent.includes("라마바"), "카드 내용: " + card.textContent);
+      eq(e.S.data.tasks.length, 0, "누르기 전 그대로");
+      agBtn(true).click();
+      let r = await p;
+      ok(r.ok && r.ids.length === 1, JSON.stringify(r));
+      const x = e.S.data.tasks[0];
+      eq([x.id === r.ids[0], x.t, x.due, x.time, x.place, x.who.join(), x.teams.join(), x.memo, x.star, x.src, x.by, x.upBy, x.done].join("|"),
+        "true|보안교육 자료 제출|2026-11-20|15:00|창고동|라마바|수출파트|두 부|true|argo|Thq|Thq|false");
+      const res = c.turn.cards.find(k => k.k === "result");
+      ok(res && res.go.some(g => g.route === "tasks" && g.label === "Task 관리에서 보기") && res.undo && res.lines[0].includes("보안교육 자료 제출"), "결과 카드 · 바로 가기 · 되돌리기");
+      ok(AG.undo(res.undo)); eq(e.S.data.tasks.length, 0, "되돌리기 → 0건");
+      agAuto(true);
+      p = agRun("task_add", { items: [{ t: "가" }, { t: "나" }] }); await tick(5);
+      ok(/할 일 추가 2건/.test(qa(e, "#pnl-argo .ag-card.is-confirm .ag-card-h").pop().textContent), "2건 → 바로 실행이어도 확인");
+      eq(e.S.data.tasks.length, 0);
+      agBtn(true).click(); r = await p;
+      eq(e.S.data.tasks.length, 2);
+      ok(AG.undo(AG.latestUndo().id)); eq(e.S.data.tasks.length, 0, "두 건 함께 되돌림");
+      r = await agRun("task_add", { items: [{ t: "바로 넣기" }] });
+      ok(r.ok && e.S.data.tasks.length === 1 && agBtn(true) === null, "한 건 + 바로 실행 = 확인 없이");
+      const bad = [[{ items: [] }, /없습니다/], [{ items: [{ t: " " }] }, /내용/], [{ items: [{ t: "x".repeat(301) }] }, /300자/], [{ items: [{ t: "a", due: "내일" }] }, /due/],
+        [{ items: [{ t: "a", time: "15:00" }] }, /날짜/], [{ items: [{ t: "a", due: "2026-11-20", time: "3시" }] }, /HH:MM/], [{ items: [{ t: "a", who: "가나다" }] }, /who/],
+        [{ items: [{ t: "a", teams: [1] }] }, /teams/], [{ items: Array.from({ length: 11 }, (_, i) => ({ t: "t" + i })) }, /10건/]];
+      for (const [inp, re] of bad) { r = await agRun("task_add", inp); ok(r.error && re.test(r.error), JSON.stringify(inp).slice(0, 60) + " → " + JSON.stringify(r)); }
+      eq(e.S.data.tasks.length, 1, "검사에 걸리면 바꾸지 않음");
+      agAuto(false);
+    });
+    await ta("TK42 아르고 고치기 · 마침 · 지우기: 바뀐 칸 줄 · 고친 사람 · 마침(마친 때 · 사람) · 지우기는 '바로 실행'이어도 확인(위험 단추) · 되돌리기 · 없는 id 는 '찾지 못했습니다'", async () => {
+      tkSeed();
+      AG._reset(); agAuto(true); AG.open();
+      const c = agCtx();
+      let r = await agRun("task_update", { id: "tk_none", due: "2026-11-20", time: "10:00", who: ["가나다", "라마바"] }, c);
+      ok(r.ok, JSON.stringify(r));
+      const x = byId("tk_none");
+      eq([x.due, x.time, x.who.join(), x.upBy, x.t].join("|"), "2026-11-20|10:00|가나다,라마바|Thq|날짜 없는 일");
+      const res = c.turn.cards.find(k => k.k === "result");
+      ok(res.lines.indexOf("바뀐 칸: 날짜 · 시각 · 담당") >= 0 && res.go.some(g => g.route === "tasks"), res.lines.join(" / "));
+      r = await agRun("task_update", { id: "tk_none", due: "" });
+      eq(byId("tk_none").due + "|" + byId("tk_none").time, "|", "날짜를 지우면 시각도");
+      r = await agRun("task_update", { id: "tk_none", cat: "meet", star: true, t: "회의 자료" });
+      eq([byId("tk_none").cat, byId("tk_none").star, byId("tk_none").t].join("|"), "meet|true|회의 자료");
+      r = await agRun("task_update", { id: "tk_none" }); ok(/바꿀 내용/.test(r.error), "바꿀 칸 없음");
+      r = await agRun("task_update", { id: "tk_none", time: "11:00" }); ok(/날짜/.test(r.error), "날짜 없는 할 일에 시각만");
+      r = await agRun("task_update", { id: "tk_none", cat: "zzz" }); ok(/cat/.test(r.error), "분류 목록 밖");
+      r = await agRun("task_done", { id: "tk_today", done: true });
+      const d = byId("tk_today");
+      eq(d.done + "|" + d.doneBy + "|" + d.upBy, "true|Thq|Thq"); ok(d.doneAt && d.doneAt === d.upAt, "마친 때");
+      r = await agRun("task_done", { id: "tk_today", done: true }); ok(/이미/.test(r.error), "이미 마친 일");
+      r = await agRun("task_done", { id: "tk_today", done: false });
+      eq([byId("tk_today").done, byId("tk_today").doneAt, byId("tk_today").doneBy].join("|"), "false||", "다시 열기");
+      ok(AG.undo(AG.latestUndo().id)); ok(byId("tk_today").done, "되돌리기 → 다시 마친 일");
+      const p = agRun("task_delete", { id: "tk_late" }); await tick(5);
+      ok(q(e, "#pnl-argo .ag-card.is-confirm.is-danger") && agBtn(true).classList.contains("btn-danger"), "바로 실행이어도 확인 · 위험 단추");
+      eq(agBtn(true).textContent.trim(), "지우기");
+      ok(byId("tk_late"), "누르기 전 그대로");
+      agBtn(true).click(); r = await p;
+      ok(r.ok && !byId("tk_late"), "지움");
+      ok(AG.undo(AG.latestUndo().id)); eq(e.S.data.tasks[0].id, "tk_late", "되돌리기 → 제자리");
+      for (const [n, inp] of [["task_update", { id: "tk_nope", t: "x" }], ["task_done", { id: "tk_nope", done: true }], ["task_delete", { id: "tk_nope" }]]) {
+        r = await agRun(n, inp); ok(r.error && /찾지 못했습니다/.test(r.error), n + " 없는 id → " + JSON.stringify(r));
+      }
+      ok(agBtn(true) === null, "없는 id 는 확인 카드 없이 오류");
+      agAuto(false);
+    });
+    await ta("TK43 아르고 권한: manager 는 Task 관리 자료 · 할 일 도구 모두 권한 밖 · TOOL_MIN 에 task_* 모두 3", async () => {
+      tkSeed();
+      const rows = e.S.data.tasks;
+      try {
+        loginAs(e, "manager");
+        e.S.data.tasks = rows;   // 자료가 남아 있어도 권한이 거르는지 본다
+        let r = await agRun("argos_records", { collection: "tasks" });
+        ok(r.error && /권한 밖/.test(r.error) && !r.items, "manager 읽기 → 권한 밖: " + JSON.stringify(r).slice(0, 80));
+        eq(AG.COLS.tasks.rows().length, 0, "줄 함수도 빈 목록(SemisTasks.canUse)");
+        r = await agRun("task_add", { items: [{ t: "x" }] });
+        ok(/권한 밖/.test(r.error) && e.S.data.tasks.length === rows.length, "manager 쓰기 거절");
+      } finally { loginAs(e, "hq"); }
+      eq(["task_add", "task_update", "task_done", "task_delete"].map(k => AG.TOOL_MIN[k]).join(), "3,3,3,3");
+      eq(AG.COLS.tasks.mod + "|" + AG.COLS.tasks.label, "tasks|Task 관리");
+      eq(Object.keys(AG.COLS).indexOf("tasks"), Object.keys(AG.COLS).indexOf("schedules") + 1, "일정관리 다음");
+      eq(["task_add", "task_update", "task_done", "task_delete"].map(k => AG.W[k].label + "/" + AG.W[k].keys.join()).join(), "할 일 추가/tasks,할 일 고치기/tasks,할 일 마침/tasks,할 일 지우기/tasks");
+      ok(AG.W.task_delete.danger && AG.W.task_delete.confirm({}) && AG.W.task_add.confirm({ items: [1, 2] }) && !AG.W.task_add.confirm({ items: [1] }), "지우기 늘 확인 · 2건 이상 확인");
+    });
+    t("TK44 Edge 대조 · 안내 지식: COLLECTIONS tasks(3) · 할 일 도구 4개 min 3(AR13 대조) · 공유 칸 · 쓰기 지침 한 줄 · 모델 · 토큰 그대로 · 메뉴 표 · 용어 Task(GLOSS 와 같은 뜻) · §7 · 사본 일치 · 보던 화면 제안", () => {
+      const src = read("tools/edge/semis-logi-argo.ts");
+      const srvMin = {};
+      Array.from(src.matchAll(/\{ name: "([a-z_]+)", min: (\d)/g)).forEach(m => { srvMin[m[1]] = Number(m[2]); });
+      eq(["task_add", "task_update", "task_done", "task_delete"].map(k => srvMin[k]).join(), "3,3,3,3", "Edge 도구 min");
+      eq(JSON.stringify(Object.keys(srvMin).sort()), JSON.stringify(Object.keys(AG.TOOL_MIN).sort()), "도구 이름 = 클라이언트 TOOL_MIN");
+      const srvCols = {};
+      Array.from(src.matchAll(/\["([a-z_]+)", (\d), "/g)).forEach(m => { srvCols[m[1]] = Number(m[2]); });
+      eq(srvCols.tasks, 3, "COLLECTIONS tasks 등급");
+      eq(JSON.stringify(Object.keys(srvCols).sort()), JSON.stringify(Object.keys(AG.COLS).sort()), "자료 목록 = COLS");
+      ok(src.includes('["tasks", 3, "Task 관리 — 안전보안파트 할 일(done 이면 마친 일 · due 기한 · who 담당 · teams 관련 팀)"]'), "COLLECTIONS 설명");
+      ok(/\nconst TASK_FIELDS = \{/.test(src) && (src.match(/TASK_FIELDS/g) || []).length >= 3, "TASK_FIELDS 공유");
+      ok(/\n- 할 일[^\n]*task_\*[^\n]*\[지금\][^\n]*YYYY-MM-DD[^\n]*이름 그대로[^\n]*일정\(시간이 정해진 모임\)[^\n]*할 일\(누가 해야 할 일\)[^\n]*묻습니다\./.test(src), "쓰기 지침 한 줄");
+      ok(src.includes('const AI_MODELS = ["claude-sonnet-5-5", "claude-sonnet-4-5", "claude-haiku-4-5"];') && src.includes("const MAX_TOKENS = 2500;") && src.includes("const MAX_ROUNDS = 5;"), "모델 · 토큰 · 왕복 그대로");
+      ok(!/effort|budget_tokens|thinking:/.test(src), "생각 깊이 칸 없음");
+      const md = read("docs/ARGO-GUIDE.md"), B = require(path.join(ROOT, "tools/build-argo-guide.cjs"));
+      ok(md.includes("\n| 홈 | Task 관리 | tasks | hq 이상 | 안전보안파트 할 일 — 맨 앞 체크 · 날짜 · 장소 · 담당 · 관련 팀 · 회의 모드, 날짜 있는 할 일은 일정관리에 칩 |\n"), "메뉴 표 줄");
+      ok(md.indexOf("| schedule |") < md.indexOf("| tasks |") && md.indexOf("| tasks |") < md.indexOf("| minutes |"), "일정관리 다음");
+      const gl = /\[\/\\bTask\\b\/, "Task", "([^"]+)"\]/.exec(read("js/app.js"));
+      ok(gl && md.includes("\n- **Task**: " + gl[1]), "용어 풀이 = 화면 GLOSS 와 같은 뜻");
+      ok(/\n- [^\n]*할 일[^\n]*추가 · 고치기 · 마침 · 지우기[^\n]*\n/.test(md.slice(md.indexOf("## 7."))), "§7 쓰기 기능 한 줄");
+      eq(read("tools/edge/argo-guide.ts"), B.tsOf(md), "argo-guide.ts 사본 — npm run argo:guide");
+      const g = B.guideText(md);
+      ok(g.length > 4000 && g.length < 20000 && e.S.hasModule("tasks"), "길이 " + g.length + " · route 실재");
+      go(e, "tasks");
+      eq(AG.sugCols().find(c => c[0] === "tell")[2][0], "이번 주 할 일 정리해줘", "Task 관리 화면에서 연 아르고 제안");
+      AG.close();
+    });
     e.w.close();
   }
 

@@ -325,9 +325,21 @@
       .sort((a, b) => String(b.date).localeCompare(String(a.date)));
     return people.concat(recs);
   }
+  /* 할 일 — 날짜 칸은 기한 · 마친 날(한국 날짜)만. 만든 때 · 고친 때를 넣으면 from/to(이번 주)가 '이번 주에 만든 다음 달 일'까지 잡는다 */
+  function taskRows() {
+    const T = window.SemisTasks;
+    if (!T || !T.canUse()) return [];
+    const all = T.list().filter(t => t && t.id);
+    const open = all.filter(t => !t.done).sort((a, b) => (a.due ? 0 : 1) - (b.due ? 0 : 1) || String(a.due || "").localeCompare(String(b.due || "")) || String(a.time || "").localeCompare(String(b.time || "")));
+    const done = all.filter(t => t.done).sort((a, b) => String(b.doneAt || "").localeCompare(String(a.doneAt || "")));
+    return open.concat(done).map(t => ({ id: t.id, title: t.t, due: t.due || undefined, time: t.time || undefined, place: t.place || undefined,
+      who: arr(t.who).length ? t.who : undefined, teams: arr(t.teams).length ? t.teams : undefined, cat: T.CATS[T.catOf(t)].label, star: t.star || undefined,
+      done: t.done || undefined, doneAt: t.done ? T.dayOf(t.doneAt) || undefined : undefined, memo: cut(t.memo, 200) || undefined, src: t.src || undefined }));
+  }
   const COLS = {
     notices: { mod: "", label: "공지", rows: () => noticeIndex() },
     schedules: { mod: "schedule", label: "일정관리", rows: () => arr(D().schedules).filter(e => e && e.id && (!C() || C().canSeePriv(e))).map(schedView).sort((a, b) => String(b.start).localeCompare(String(a.start))) },
+    tasks: { mod: "tasks", label: "Task 관리", rows: taskRows },
     minutes: { mod: "minutes", label: "회의록", rows: () => (window.SemisMinutes ? SemisMinutes.visibleAll() : []).map(m => ({ id: m.id, title: m.title, no: m.no || undefined,
       folder: SemisMinutes.folderName ? SemisMinutes.folderName(m.folder) : undefined, date: m.date, time: m.time || undefined, place: m.place || undefined,
       attendees: arr(m.attendees).length || undefined, agenda: cut(m.agenda, 300) || undefined, body: cut(m.body, 600) || undefined,
@@ -474,6 +486,44 @@
   const audLink = (e) => /^(aud_|audf_)/.test(String(e && e.id));
   function backSync(e) { if (C() && C().backSyncInsp) { try { C().backSyncInsp(e); } catch (er) { /* 연동 실패는 일정만 */ } } }
 
+  /* 할 일 — 칸 정리 · 새 할 일은 SemisTasks(norm · make) 그대로, 마침 칸은 화면 setDone 과 같은 규칙.
+     setDone 은 저장까지 하므로 부르지 않는다(저장 · 되돌리기 비교는 runTool). 확인을 기다리는 사이 바뀌었을 수 있어 실행 때 다시 찾는다 */
+  const TK = () => window.SemisTasks;
+  const findTk = (id) => (TK() && TK().canUse() && TK().list().find(t => t && t.id === id)) || null;
+  const noTk = (id) => ({ error: "할 일을 찾지 못했습니다(id 확인): " + str(id, 40) });
+  const tkLine = (t) => [t.due ? dot(t.due) + (t.time ? " " + t.time : "") : "", t.t, t.place, arr(t.who).length ? "담당 " + t.who.join(", ") : "",
+    arr(t.teams).length ? "관련 팀 " + t.teams.join(", ") : "", t.star ? "중요" : ""].filter(Boolean).join(" · ");
+  const TASK_GO = [{ label: "Task 관리에서 보기", route: "tasks" }];
+  const TK_KEYS = [["t", "내용"], ["due", "날짜"], ["time", "시각"], ["place", "장소"], ["who", "담당"], ["teams", "관련 팀"], ["memo", "메모"], ["star", "중요"], ["cat", "분류"]];
+  /* 넣은 칸만 검사해 돌려준다 — 시각은 고친 뒤 날짜(due0 = 지금 날짜)가 있어야 한다. 날짜는 norm 과 같은 엄격한 검사(2026-02-30 거절) */
+  function tkFields(it, due0, at) {
+    const o = {};
+    if (it.t != null) {
+      const t = String(it.t).trim();
+      if (!t) return { error: at + "할 일 내용(t)이 없습니다." };
+      if (t.length > 300) return { error: at + "할 일 내용(t)은 300자까지입니다 — 긴 설명은 memo 에 넣습니다." };
+      o.t = t;
+    }
+    if (it.due != null) {
+      if (it.due !== "" && TK().norm({ due: it.due }).due !== it.due) return { error: at + "due 는 YYYY-MM-DD 이거나 빈 값이어야 합니다." };
+      o.due = it.due;
+    }
+    if (it.time != null) {
+      if (it.time !== "" && !isHM(it.time)) return { error: at + "time 은 HH:MM 이어야 합니다." };
+      if (it.time !== "" && !("due" in o ? o.due : due0)) return { error: at + "시각(time)은 날짜(due)가 있을 때만 넣습니다." };
+      o.time = it.time;
+    }
+    if (it.place != null) o.place = it.place;
+    for (const k of ["who", "teams"]) {
+      if (it[k] == null) continue;
+      if (!Array.isArray(it[k]) || !it[k].every(x => typeof x === "string")) return { error: at + k + " 는 이름(문자열) 배열이어야 합니다." };
+      o[k] = it[k];
+    }
+    if (it.memo != null) o.memo = it.memo;
+    if (it.star != null) o.star = it.star === true;
+    return o;
+  }
+
   const W = {
     schedule_add: {
       label: "일정 등록", verb: "등록하기", keys: ["schedules"],
@@ -577,6 +627,91 @@
         if (audLink(e) && window.SemisAudit && SemisAudit.unlinkBySchedule) { try { SemisAudit.unlinkBySchedule(e.id); } catch (er) { /* 연동 해제 실패는 무시 */ } }
         D().schedules = arr(D().schedules).filter(x => x.id !== e.id);
         return { lines: [evLine(e)], go: SCHED_GO, result: { id: e.id, deleted: true }, log: "schedule_delete " + e.id + " '" + e.title + "'" };
+      }
+    },
+    task_add: {
+      label: "할 일 추가", verb: "추가하기", keys: ["tasks"],
+      confirm: (inp) => arr(inp.items).length >= 2,
+      preview: (inp, p) => (p && p.list ? p.list : []).map(o => tkLine(TK().norm(o))),
+      prep(inp) {
+        if (!TK()) return { error: "Task 관리를 쓸 수 없습니다." };
+        const items = arr(inp.items);
+        if (!items.length) return { error: "추가할 할 일이 없습니다." };
+        if (items.length > 10) return { error: "할 일은 한 번에 10건까지 넣습니다." };
+        const list = [];
+        for (let i = 0; i < items.length; i++) {
+          const it = isObj(items[i]) ? items[i] : {}, at = items.length > 1 ? (i + 1) + "번째 " : "";
+          const o = tkFields(Object.assign({}, it, { t: it.t == null ? "" : it.t }), "", at);
+          if (o.error) return o;
+          list.push(o);
+        }
+        return { list };
+      },
+      run(inp, ctx, p) {
+        if (!Array.isArray(D().tasks)) D().tasks = [];
+        const recs = p.list.map(o => TK().make(o, "argo"));
+        recs.forEach(r => D().tasks.push(r));
+        return { lines: recs.map(tkLine), go: TASK_GO, result: { ids: recs.map(r => r.id) }, log: "task_add " + recs.map(r => r.id + " '" + r.t + "'" + (r.due ? " " + r.due : "")).join(", ") };
+      }
+    },
+    task_update: {
+      label: "할 일 고치기", verb: "바꾸기", keys: ["tasks"],
+      preview: (inp, p) => {
+        if (!p || !p.k) return [str(inp.id, 40)];
+        const n = p.next, CS = TK().CATS;
+        const show = { t: () => "내용 → " + cut(n.t, 80), due: () => "날짜 → " + (n.due ? dot(n.due) : "(지움)"), time: () => "시각 → " + (n.time || "(지움)"),
+          place: () => "장소 → " + (n.place || "(지움)"), who: () => "담당 → " + (n.who.join(", ") || "(지움)"), teams: () => "관련 팀 → " + (n.teams.join(", ") || "(지움)"),
+          memo: () => "메모 고침", star: () => (n.star ? "중요 표시" : "중요 해제"), cat: () => "분류 → " + (n.cat ? CS[n.cat].label : "자동(" + CS[TK().catOf(n)].label + ")") };
+        return [tkLine(p.k)].concat(TK_KEYS.filter(([f]) => f in p.o).map(([f]) => show[f]()));
+      },
+      prep(inp) {
+        const k = findTk(inp.id);
+        if (!k) return noTk(inp.id);
+        const o = tkFields(inp, k.due, "");
+        if (o.error) return o;
+        if (inp.cat != null) {
+          if (inp.cat !== "" && TK().CAT_ORDER.indexOf(inp.cat) < 0) return { error: "cat 은 " + TK().CAT_ORDER.join(" · ") + " 중 하나이거나 빈 값(자동)이어야 합니다." };
+          o.cat = inp.cat;
+        }
+        const ch = TK_KEYS.filter(([f]) => f in o).map(x => x[1]);
+        if (!ch.length) return { error: "바꿀 내용이 없습니다." };
+        return { k, o, ch, next: TK().norm(Object.assign({}, k, o)) };
+      },
+      run(inp, ctx, p) {
+        const k = findTk(p.k.id);
+        if (!k) return noTk(p.k.id);
+        Object.assign(k, TK().norm(Object.assign({}, k, p.o, { upAt: new Date().toISOString(), upBy: TK().me() })));
+        return { lines: [tkLine(k), "바뀐 칸: " + p.ch.join(" · ")], go: TASK_GO, result: { id: k.id, changed: p.ch }, log: "task_update " + k.id + " (" + p.ch.join(",") + ")" };
+      }
+    },
+    task_done: {
+      label: "할 일 마침", verb: "처리하기", keys: ["tasks"],
+      preview: (inp, p) => [p && p.k ? tkLine(p.k) : str(inp.id, 40), inp.done ? "마침으로 표시" : "다시 열기(할 일로)"],
+      prep(inp) {
+        const k = findTk(inp.id);
+        if (!k) return noTk(inp.id);
+        if (typeof inp.done !== "boolean") return { error: "done(true · false)이 필요합니다." };
+        if (k.done === inp.done) return { error: inp.done ? "이미 마친 할 일입니다." : "마치지 않은 할 일입니다." };
+        return { k };
+      },
+      run(inp, ctx, p) {
+        const k = findTk(p.k.id);
+        if (!k) return noTk(p.k.id);
+        const now = new Date().toISOString(), by = TK().me(), on = inp.done;
+        Object.assign(k, { done: on, doneAt: on ? now : "", doneBy: on ? by : "", upAt: now, upBy: by });
+        return { lines: [tkLine(k), on ? "마침" : "다시 열기"], go: TASK_GO, result: { id: k.id, done: on }, log: "task_done " + k.id + " " + (on ? "마침" : "다시 열기") };
+      }
+    },
+    task_delete: {
+      label: "할 일 지우기", verb: "지우기", keys: ["tasks"], danger: true,
+      confirm: () => true,
+      preview: (inp, p) => [p && p.k ? tkLine(p.k) : str(inp.id, 40)],
+      prep(inp) { const k = findTk(inp.id); return k ? { k } : noTk(inp.id); },
+      run(inp, ctx, p) {
+        const a = arr(D().tasks), i = a.findIndex(x => x && x.id === p.k.id);
+        if (i < 0) return noTk(p.k.id);
+        a.splice(i, 1);
+        return { lines: [tkLine(p.k)], go: TASK_GO, result: { id: p.k.id, deleted: true }, log: "task_delete " + p.k.id + " '" + p.k.t + "'" };
       }
     },
     notice_add: {
@@ -832,7 +967,7 @@
     "reg-sec": ["find", 0, "항공보안 규정 최신본 찾아줘"], "reg-safety": ["find", 0, "안전관리 규정 최신본 찾아줘"], "reg-dg": ["find", 0, "위험물 규정 최신본 찾아줘"],
     inspection: ["tell", 1, "보안 기록부 누락 있어?"], "daily-safety": ["tell", 1, "보안 기록부 누락 있어?"],
     contacts: ["find", 1, "비상연락망 보여줘"], phonebook: ["find", 1, "업무 연락처 찾아줘"], crisis: ["find", 1, "위기대응 조직 보여줘"],
-    schedule: ["tell", 0, "이번 주 일정 알려줘"], minutes: ["find", 0, "지난 보안회의 회의록 찾아줘"]
+    schedule: ["tell", 0, "이번 주 일정 알려줘"], tasks: ["tell", 0, "이번 주 할 일 정리해줘"], minutes: ["find", 0, "지난 보안회의 회의록 찾아줘"]
   };
   function sugCols() {
     const r = rank();

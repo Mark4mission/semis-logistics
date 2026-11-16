@@ -36,6 +36,7 @@ const COLORS = ["red", "orange", "yellow", "green", "teal", "sky", "blue", "purp
 const COLLECTIONS: [string, number, string][] = [
   ["notices", 1, "공지(공지사항 게시판 최근 글)"],
   ["schedules", 2, "일정(반복 일정은 원본 1건 — 날짜별 펼침은 argos_status schedule)"],
+  ["tasks", 3, "Task 관리 — 안전보안파트 할 일(done 이면 마친 일 · due 기한 · who 담당 · teams 관련 팀)"],
   ["minutes", 2, "회의록(제목 · 일자 · 장소 · 참석 인원 수 · 결정사항)"],
   ["phonebook", 2, "업무 연락처"],
   ["contacts", 2, "비상연락망"],
@@ -59,6 +60,11 @@ const SCHED_FIELDS = {
   assignee: S("담당자 이름(여러 명은 쉼표) — argos_catalog 의 assignees"), color: { type: "string", enum: COLORS, description: "일정 색" },
   room: { type: "boolean", description: "인천화물터미널 회의실 사용" },
   reminders: { type: "array", items: { type: "string", enum: ["2w", "1w", "1d", "1h"] }, description: "미리알림" }
+};
+const NAMES = (description: string) => ({ type: "array", items: { type: "string" }, description });
+const TASK_FIELDS = {
+  t: S("할 일 내용(300자까지)"), due: DATE("기한 — 없으면 생략, 빈 값이면 날짜 지움"), time: S("시각 HH:MM — due 가 있을 때만"), place: S("장소"),
+  who: NAMES("담당자 이름(사용자가 말한 그대로)"), teams: NAMES("관련 팀 이름"), memo: S("메모"), star: { type: "boolean", description: "중요" }
 };
 function toolList(rank: number): Tool[] {
   const cols = COLLECTIONS.filter((c) => c[1] <= rank);
@@ -94,6 +100,20 @@ function toolList(rank: number): Tool[] {
     { name: "schedule_delete", min: 3,
       description: "일정을 지운다(화면이 확인 카드를 띄운다). 반복 일정은 전체가 지워진다.",
       input_schema: { type: "object", properties: { id: S("일정 id") }, required: ["id"] } },
+    { name: "task_add", min: 3,
+      description: "Task 관리에 할 일을 추가한다(여러 건 가능 — 화면이 실행 전에 확인 카드를 띄운다).",
+      input_schema: { type: "object", properties: { items: { type: "array", minItems: 1, maxItems: 10,
+        items: { type: "object", properties: TASK_FIELDS, required: ["t"] } } }, required: ["items"] } },
+    { name: "task_update", min: 3,
+      description: "할 일을 고친다. id 는 argos_records(tasks)로 확인. 바꿀 칸만 넣는다.",
+      input_schema: { type: "object", properties: Object.assign({ id: S("할 일 id"),
+        cat: { type: "string", enum: ["", "meet", "edu", "check", "doc", "equip", "etc"], description: "분류(빈 값 = 자동): meet 회의 · edu 교육 · check 점검 · 수검 · doc 보고 · 제출 · equip 장비 · 시설 · etc 기타" } }, TASK_FIELDS), required: ["id"] } },
+    { name: "task_done", min: 3,
+      description: "할 일 마침 표시 · 다시 열기(done false).",
+      input_schema: { type: "object", properties: { id: S("할 일 id"), done: { type: "boolean" } }, required: ["id", "done"] } },
+    { name: "task_delete", min: 3,
+      description: "할 일을 지운다(화면이 확인 카드를 띄운다).",
+      input_schema: { type: "object", properties: { id: S("할 일 id") }, required: ["id"] } },
     { name: "notice_add", min: 3,
       description: "공지사항 게시판(B001)에 글을 올린다 — 대시보드 공지에도 보인다. pinned 는 상단 고정.",
       input_schema: { type: "object", properties: { title: S("제목"), body: S("본문(줄바꿈 가능)"), pinned: { type: "boolean", description: "상단 고정" } }, required: ["title", "body"] } },
@@ -126,6 +146,7 @@ function staticSystem(rank: number): string {
 - 기존 항목을 고칠 때는 먼저 argos_records 나 argos_status 로 정확한 id 를 확인합니다. 후보가 여럿이면 사용자에게 고르게 합니다.
 - 교육 과정 · 수검 · 문서함 위치 · 담당자는 argos_catalog 로 확인합니다.
 - 일정 색: 회의 blue · 교육 green · 점검 red · 연차 등 휴무 yellow · 앱 개발 purple · 규정 brown · 중요도 낮음 gray. 인천화물터미널 회의실이면 room true.
+- 할 일(Task 관리)은 task_* 로 합니다. 날짜는 [지금] 기준 YYYY-MM-DD, 담당 · 관련 팀은 사용자가 말한 이름 그대로 넣습니다. 일정(시간이 정해진 모임)인지 할 일(누가 해야 할 일)인지 헷갈리면 한 문장으로 묻습니다.
 - 실행이 끝나면 무엇을 어디에 했는지 한두 문장으로 말합니다. 화면에 결과 카드와 '되돌리기' 단추가 함께 나옵니다.
 - 사용자 메시지의 [첨부 f1: …] 를 원본으로 보관하려면 도구의 file 에 그 id 를 넣습니다. 이수증 → training_record, 보관 문서 → doc_shelve, 점검 결과 지적사항 → audit_findings_add.`
     : `[자료 등록 · 수정]
