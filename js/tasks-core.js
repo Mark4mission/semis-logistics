@@ -50,7 +50,7 @@
     t = t || {};
     if (has(CATS, t.cat)) return t.cat;
     let s = (String(t.t || "") + " " + String(t.memo || "")).toLowerCase();
-    /* 담당자 이름 속 글자가 분류 말로 잡히지 않게 먼저 뺀다('이수아' 의 '이수' → 교육) */
+    /* 담당자 이름 속 글자가 분류 말로 잡히지 않게 먼저 뺀다('가나이수' 의 '이수' → 교육) */
     (Array.isArray(t.who) ? t.who : []).map(w => String(w == null ? "" : w).trim().toLowerCase()).filter(Boolean)
       .sort((a, b) => b.length - a.length).forEach(w => { s = s.split(w).join(" "); });
     return CAT_ORDER.find(k => (CAT_WORDS[k] || []).some(w => s.indexOf(w) >= 0)) || "etc";
@@ -66,6 +66,7 @@
   };
   /* 화면은 내용을 2줄까지 그리므로 줄바꿈은 하나만 남긴다 */
   const lines2 = (v) => { let n = 0; return cut(v, 1e5).replace(/\r\n?|\n/g, () => (n++ ? " " : "\n")).slice(0, 300).trim(); };
+  const KNOWN = ["id", "t", "memo", "due", "time", "place", "who", "teams", "cat", "star", "done", "doneAt", "doneBy", "at", "by", "upAt", "upBy", "src", "file"];
   function norm(t) {
     const o = t && typeof t === "object" ? t : {};
     const due = isISO(o.due) ? o.due : "";
@@ -90,6 +91,8 @@
     };
     const f = o.file;
     if (f && typeof f === "object" && typeof f.url === "string") n.file = { name: typeof f.name === "string" ? f.name : "", url: f.url };
+    /* 모르는 칸은 그대로 둔다(아는 칸 뒤, 원래 순서 — 멱등) — 다음 버전이 더한 칸을 옛 탭이 지워 서버에 되돌려 보내지 않게 */
+    Object.keys(o).forEach(k => { if (KNOWN.indexOf(k) < 0) n[k] = o[k]; });
     return n;
   }
   const rid = () => { let s = ""; while (s.length < 10) s += Math.random().toString(36).slice(2); return s.slice(0, 10); };
@@ -204,18 +207,33 @@
   /* 계정 이름이 명단의 파트 사람과 같을 때만 '나'를 쓴다 — 여럿이 한 계정을 쓰면 엉뚱한 이름이 담당으로 쌓인다 */
   const meInPart = () => { const n = me(); return !!n && partPeople().indexOf(n) >= 0; };
   const teamNames = () => (window.SemisRoster ? window.SemisRoster.groups().map(x => x.g) : []);
-  /* 명단 순서와 무관하게 같은 이름은 늘 같은 색 */
+  /* 이름 해시만 쓰면 파트 사람끼리 같은 색이 되므로 명단의 파트 사람은 명단 순서대로 다른 색(6명까지 겹치지 않음),
+     명단 밖 이름은 글자 해시(FNV-1a)라 명단 순서가 바뀌어도 같은 색 */
   const PCOL = ["blue", "green", "orange", "purple", "teal", "rose"];
+  /* 칩마다 부르므로 파트 명단 차례를 한 번 그리는 동안만 기억한다 — 명단은 제자리에서 고쳐지기도 해서(인원 관리 저장)
+     명단 · 사람 배열 · 사람 수가 같아도 다음 차례에는 다시 센다 */
+  let pc = null;
+  function partIndex() {
+    const r = SeMIS.data && SeMIS.data.roster, ps = r && r.people, n = Array.isArray(ps) ? ps.length : -1;
+    if (!pc || pc.r !== r || pc.ps !== ps || pc.n !== n) {
+      pc = { r, ps, n, m: new Map(partPeople().map((x, i) => [x, i])) };
+      setTimeout(() => { pc = null; }, 0);
+    }
+    return pc.m;
+  }
   const personColor = (name) => {
-    const s = String(name || "");
-    let h = 0;
-    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    const s = String(name || ""), i = partIndex().get(s);
+    if (i != null) return PCOL[i % PCOL.length];
+    let h = 0x811c9dc5;
+    for (let k = 0; k < s.length; k++) h = Math.imul(h ^ s.charCodeAt(k), 0x01000193) >>> 0;
     return PCOL[h % PCOL.length];
   };
+  /* 여러 이름 칸(담당 · 관련 팀 직접 적기 · 접수 카운터 줄)이 같은 구분 규칙을 쓰게 — 일정관리 담당 칸의 '、 ·' 도 받는다 */
+  const splitNames = (s) => String(s == null ? "" : s).split(/\s*[,，、·]\s*/).map(x => x.trim()).filter(Boolean);
 
   window.SemisTasks = {
     KEY, CATS, CAT_ORDER, BUCKETS, list, catOf, norm, make, parse, dueInfo,
-    canUse, me, meInPart, partPeople, teamNames, personColor, today, weekStart, dayOf, dayLabel, addDays,
+    canUse, me, meInPart, partPeople, teamNames, personColor, splitNames, today, weekStart, dayOf, dayLabel, addDays,
     setToday(iso) { fixedToday = isISO(iso) ? iso : ""; }
   };
 })();

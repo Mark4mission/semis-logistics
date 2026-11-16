@@ -14,7 +14,7 @@
   let root = null;
 
   const live = () => !!root && root.isConnected && !!$("#tk-list, #tk-meetbox", root);
-  const dot =(n) => `<i class="tk-dot ev-${esc(T.personColor(n))}" aria-hidden="true"></i>`;
+  const dot = (n) => `<i class="tk-dot ev-${esc(T.personColor(n))}" aria-hidden="true"></i>`;
 
   /* 담당자 칩 = 파트 명단(코드에 이름 없음) 다음에 할 일에만 적힌 이름 — 명단이 비었거나 명단 밖 담당이어도 칩으로 고를 수 있게.
      '나' 칩이 있으면 내 이름 칩은 따로 두지 않는다 */
@@ -208,12 +208,12 @@
     toast("할 일을 추가했습니다.");
   }
 
-  /* 입력칸 글 · 포커스 기억(st.drafts · st.fk) */
-  const dkey = (el) => (el.id === "tk-quick" ? "q" : el.classList.contains("tk-cin") ? "c" + el.dataset.col : "");
-  const inputOf = (k) => $$("#tk-quick, .tk-cin", root).find(x => dkey(x) === k);
+  /* 입력칸 글 · 포커스 기억(st.drafts · st.fk). 검색칸("s")은 포커스만 — 글은 st.q 가 들고 있다 */
+  const dkey = (el) => (el.id === "tk-quick" ? "q" : el.id === "tk-q" ? "s" : el.classList.contains("tk-cin") ? "c" + el.dataset.col : "");
+  const inputOf = (k) => $$("#tk-quick, #tk-q, .tk-cin", root).find(x => dkey(x) === k);
   function keepDraft(el) {
     const k = dkey(el);
-    if (!k) return;
+    if (!k || k === "s") return;
     if (el.value) st.drafts[k] = el.value; else delete st.drafts[k];
   }
   /* 포커스가 빠진 까닭은 한 박자 뒤에 본다 — 다시 그리기로 칸이 문서 밖으로 나가 빠진 것은 기억을 두고
@@ -320,6 +320,7 @@
        창이 열린 사이 회의 동료가 고친 칸(동기화로 들어온 값)을 옛 값으로 되돌린다 */
     const base0 = x ? T.norm(JSON.parse(JSON.stringify(x))) : null;
     const autoLb = (t) => "자동 — " + T.CATS[T.catOf(Object.assign({}, t, { cat: "" }))].label;
+    const doneOn = !v.done;   // 단추 글(마침 · 다시 열기) = 누르면 할 일 — 연 때 정한다
     const file = x && x.src === "desk" && x.file && x.file.url ? x.file : null;
     openModal(`<h3>${x ? "할 일 고치기" : "할 일 추가"}</h3>
       <div class="tk-form">
@@ -341,7 +342,7 @@
       </div>
       <div class="modal-actions">
         ${x ? `<button type="button" class="btn btn-danger" data-act="del">지우기</button><span class="spacer"></span>
-          <button type="button" class="btn btn-ghost" data-act="done">${v.done ? "다시 열기" : "마침"}</button>` : ""}
+          <button type="button" class="btn btn-ghost" data-act="done">${doneOn ? "마침" : "다시 열기"}</button>` : ""}
         <button type="button" class="btn btn-ghost" data-act="cancel">취소</button>
         <button type="button" class="btn btn-primary" data-act="save">저장</button>
       </div>`, { sticky: true });
@@ -350,7 +351,7 @@
     /* 연 때 이름 순서를 지킨다 — 칩 순서로 다시 쓰면 손대지 않은 담당도 '바뀐 칸'이 된다 */
     const names = (gid, was) => {
       const on = $$("#" + gid + " [aria-pressed=true]").map(b => b.dataset.n);
-      return union(union(was.filter(n => on.indexOf(n) >= 0), on), $("#" + gid + "-x").value.split(/[,，]/).map(s => s.trim()).filter(Boolean));
+      return union(union(was.filter(n => on.indexOf(n) >= 0), on), T.splitNames($("#" + gid + "-x").value));
     };
     const fields = () => ({ t: $("#tk-f-t").value, due: due.value, time: tm.value, place: $("#tk-f-place").value,
       who: names("tk-f-who", v.who), teams: names("tk-f-teams", v.teams), cat: cat.value, star: $("#tk-f-star").checked, memo: $("#tk-f-memo").value });
@@ -394,18 +395,22 @@
       toast(x ? "저장했습니다." : "할 일을 추가했습니다.");
     };
     if (!x) return;
-    /* 고친 칸도 함께 저장한다 — 칸을 고치고 바로 '마침'을 눌러도 고친 글이 사라지지 않게 */
+    /* 고친 칸도 함께 저장한다 — 칸을 고치고 바로 '마침'을 눌러도 고친 글이 사라지지 않게.
+       마침 · 다시 열기는 지금 할 일(cur)에 한다. 창을 연 사이 동료가 이미 그렇게 바꿨으면 그 사람의 마친 때 · 사람을 두고
+       되돌리기도 주지 않는다 — 되돌리면 동료가 마친 일이 다시 열린다 */
     $('#modal-box [data-act="done"]').onclick = () => {
-      const t = commit(), on = !v.done;
+      const t = commit();
       if (!t) return;
       closeModal();
-      if (!setDone(t.id, on)) { if (dirty) persist(); refresh(); }
-      if (on) toast("마쳤습니다.", false, { label: "되돌리기", run: () => setDone(t.id, false) });
-      else toast("다시 할 일로 옮겼습니다.");
+      const changed = setDone(t.id, doneOn);
+      if (!changed) { if (dirty) persist(); refresh(); }
+      if (doneOn && changed) toast("마쳤습니다.", false, { label: "되돌리기", run: () => setDone(t.id, false) });
+      else toast(doneOn ? "이미 마친 할 일입니다." : "다시 할 일로 옮겼습니다.");
     };
     $('#modal-box [data-act="del"]').onclick = () => confirmModal(`할 일 "${v.t}"을(를) 지웁니다.`, () => {
       const arr = SeMIS.data[T.KEY], i = Array.isArray(arr) ? arr.findIndex(t => t.id === v.id) : -1;
-      if (i >= 0) { arr.splice(i, 1); persist(); }
+      /* 마지막 한 건을 지우면 목록이 빈다 — 사람이 확인한 지우기이므로 대량 삭제 방어(2건 이상 → 0건)가 되살리지 않게 */
+      if (i >= 0) { arr.splice(i, 1); if (!arr.length && window.SemisSync && SemisSync.confirmWipe) SemisSync.confirmWipe(T.KEY); persist(); }
       refresh();
       if (i >= 0) toast("지웠습니다."); else toast("그 사이 지워진 할 일입니다.", true);
     });

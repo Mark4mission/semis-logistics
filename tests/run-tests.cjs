@@ -10218,6 +10218,42 @@ function makeServer(opts = {}) {
         ok(!("file" in D.tasks[D.tasks.length - 1]), "file 없음");
         eq(e.errors.length, 0, e.errors.join(" | "));
       });
+
+      await ta("TK51 메뉴 숨김(되돌리기 — 설계 §13): 할 일 줄 · 추가 단추 없음 · 기한 일정 줄은 예전처럼 켬 · 다시 보이면 예전처럼", async () => {
+        const mn = e.S.menuForModule("tasks");
+        try {
+          mn.hidden = true;
+          eq(DK.plan(DK.clean(DL({}))).map(a => a.k + ":" + a.on).join(), "event:true", "숨긴 메뉴 — 할 일 줄 없음 · 일정 줄 켬");
+          const lg = await upload("t51.txt", DL({}));
+          eq(kOn(lg), "event:true", "카드도 일정 줄만");
+          const c = q(e, '.dk-item[data-dk="' + lg.id + '"]');
+          ok(c && c.querySelector('[data-add="event"]') && !c.querySelector('[data-add="task"]'), "할 일 추가 단추 없음");
+          DK.keep(lg.id);
+        } finally { delete mn.hidden; }
+        eq(DK.plan(DK.clean(DL({}))).map(a => a.k + ":" + a.on).join(), "event:false,task:true", "다시 보이면 할 일 줄 켬");
+      });
+
+      await ta("TK52 이름 구분(쉼표 · '，' · '、' · '·') · 할 일에는 줄 칸을 넣지 않음 · '이대로 저장' 뒤 패널 배지 바로", async () => {
+        const n0 = D.tasks.length;
+        DK.commit([{ id: "dk_x", k: "task", on: true, t: "이름 나눔", due: "", time: "", place: "", who: "가나다 · 라마바", teams: "수출파트，협력사、본부", memo: "", file: false }], {}, null);
+        eq(D.tasks.length, n0 + 1);
+        const tk = D.tasks[D.tasks.length - 1];
+        eq(tk.who.join("|") + "/" + tk.teams.join("|"), "가나다|라마바/수출파트|협력사|본부", "'가나다 · 라마바' = 두 사람");
+        ok(tk.id !== "dk_x" && !["k", "on"].some(k => k in tk), "줄(act) 칸은 할 일에 없음: " + Object.keys(tk).join());
+        D.tasks.pop();
+        const TKs = e.w.SemisTasks;
+        const navB = () => { const x = q(e, '#nav-menu .nav-item[data-route="tasks"] .nav-meta'); return x ? x.textContent : ""; };
+        try {
+          TKs.setToday("2026-10-30");   // DL 의 기한 = 오늘
+          e.S.renderNav();
+          const b0 = Number(navB() || 0);
+          const lg = await upload("t52.txt", DL({}));
+          eq(navB(), String(b0 || ""), "판독만으로는 그대로");
+          await DK.apply(lg.id);
+          eq(lg.status, "done");
+          eq(navB(), String(b0 + 1), "오늘 기한 할 일 저장 뒤 패널 배지(메뉴를 다시 그림)");
+        } finally { TKs.setToday(""); }
+      });
       e.w.close();
     }
   }
@@ -14785,7 +14821,7 @@ function makeServer(opts = {}) {
       eq(C("검색장비 정기 점검"), "equip"); eq(C("AEO 심사 준비"), "check"); eq(C("보안교육 자료 제출"), "edu");
       eq(C("파트 회의 자료 작성"), "meet"); eq(C("월간 보고서 제출"), "doc"); eq(C("택배 받기"), "etc");
       eq(TK.catOf({ t: "택배", memo: "", cat: "meet" }), "meet"); eq(TK.CATS.meet.color, "blue");
-      eq(TK.catOf({ t: "이수아 회신 받기", memo: "", who: ["이수아"] }), "doc", "담당자 이름 속 '이수'는 교육 말이 아님");
+      eq(TK.catOf({ t: "가나이수 회신 받기", memo: "", who: ["가나이수"] }), "doc", "담당자 이름 속 '이수'는 교육 말이 아님");
     });
     t("TK06 정규화 멱등 · 칸 규칙", () => { const n = TK.norm({ id: "tk_a", t: "x".repeat(400), due: "2026-13-01", time: "9:00", who: ["가나다", "가나다", " "], cat: "zzz", done: false, doneAt: "2026-11-01T00:00:00Z" });
       eq(n.t.length, 300); eq(n.due, ""); eq(n.time, ""); eq(n.who.join(), "가나다"); eq(n.cat, ""); eq(n.doneAt, "");
@@ -14793,8 +14829,11 @@ function makeServer(opts = {}) {
       e.S.data.tasks = [n, { t: "id 없음" }]; e.S.normalizeData(); eq(e.S.data.tasks.length, 1); eq(e.S.normalizeData(), false, "멱등");
       const z = { id: "tk_z", t: " a ", due: "bad", time: "10:00", x: 1 };
       e.S.data.tasks = [n, z]; eq(e.S.normalizeData(), true, "고칠 줄이 있으면 바뀜");
-      eq(JSON.stringify(e.S.data.tasks[1]), JSON.stringify(TK.norm(z))); eq(e.S.data.tasks[1].t + "|" + e.S.data.tasks[1].time + "|" + ("x" in e.S.data.tasks[1]), "a||false");
+      eq(JSON.stringify(e.S.data.tasks[1]), JSON.stringify(TK.norm(z))); eq(e.S.data.tasks[1].t + "|" + e.S.data.tasks[1].time + "|" + e.S.data.tasks[1].x, "a||1", "모르는 칸(다음 버전이 더한 칸)은 그대로");
       eq(e.S.normalizeData(), false, "멱등");
+      const f = TK.norm({ zz: [1], id: "tk_f", t: "a", file: "bad", yy: "b" });
+      eq(Object.keys(f).join(), "id,t,memo,due,time,place,who,teams,cat,star,done,doneAt,doneBy,at,by,upAt,upBy,src,zz,yy", "아는 칸(정한 차례) 다음 모르는 칸(원래 차례) · 틀린 file 은 버림");
+      eq(JSON.stringify(TK.norm(f)), JSON.stringify(f), "모르는 칸이 있어도 멱등");
     });
     t("TK07 기한 상태 · 묶음 이름", () => { const D = (due, time) => TK.dueInfo({ due, time: time || "" }, "2026-11-18");
       eq(D("2026-11-15").b + "|" + D("2026-11-15").label, "late|3일 지남"); eq(D("2026-11-18", "15:00").label, "오늘 15:00");
@@ -15395,6 +15434,12 @@ function makeServer(opts = {}) {
       q(e, "#tk-meet").click(); typeQ("목록 글"); q(e, "#tk-quick").focus();
       e.S.renderView();
       ok(q(e, "#tk-quick").value === "목록 글" && e.w.document.activeElement === q(e, "#tk-quick"), "목록 화면에서도 그대로");
+      const s0 = q(e, "#tk-q"); s0.focus(); s0.value = "회의실"; fire(s0, "input");
+      e.S.renderView();
+      const s1 = q(e, "#tk-q");
+      ok(s1 !== s0 && s1.value === "회의실" && e.w.document.activeElement === s1 && s1.selectionStart === 3, "검색칸도 다시 그려진 뒤 포커스 · 글 끝 커서");
+      ok(q(e, "#tk-quick").value === "목록 글", "빠른 입력 글은 그대로");
+      s1.value = ""; fire(s1, "input"); q(e, "#tk-quick").focus();
       go(e, "dashboard"); go(e, "tasks");
       ok(q(e, "#tk-quick").value === "목록 글" && e.w.document.activeElement !== q(e, "#tk-quick"), "다른 화면에 다녀오면 글은 남고 포커스는 돌려주지 않음(모바일 자판)");
       const sv0 = e.S.save;
@@ -15728,6 +15773,118 @@ function makeServer(opts = {}) {
       go(e, "tasks");
       eq(AG.sugCols().find(c => c[0] === "tell")[2][0], "이번 주 할 일 정리해줘", "Task 관리 화면에서 연 아르고 제안");
       AG.close();
+    });
+
+    /* ── 전체 리뷰 반영 ── */
+    await ta("TK53 목록을 비우는 지우기 · 되돌리기 = 사람이 확인한 것 → confirmWipe('tasks')(대량 삭제 방어가 되살리지 않게) · 남는 목록이면 부르지 않음", async () => {
+      const Sy = e.w.SemisSync, cw0 = Sy.confirmWipe, wiped = [];
+      try {
+        Sy.confirmWipe = (k) => wiped.push(k);
+        tkSeed();
+        e.S.data.tasks = e.S.data.tasks.filter(x => x.id === "tk_none" || x.id === "tk_star");
+        go(e, "tasks");
+        openRow("tk_none"); act("del").click(); clickOk(e);
+        eq(e.S.data.tasks.length + "|" + wiped.join(), "1|", "화면 지우기 — 한 건 남음");
+        openRow("tk_star"); act("del").click(); clickOk(e);
+        eq(e.S.data.tasks.length + "|" + wiped.join(), "0|tasks", "화면 지우기 — 마지막 한 건");
+        wiped.length = 0;
+        e.S.data.tasks = [TK.norm({ id: "tk_a1", t: "가" }), TK.norm({ id: "tk_a2", t: "나" })];
+        AG._reset(); agAuto(false); AG.open();
+        let p = agRun("task_delete", { id: "tk_a1" }); await tick(5); agBtn(true).click(); let r = await p;
+        ok(r.ok && wiped.length === 0, "아르고 지우기 — 한 건 남음");
+        p = agRun("task_delete", { id: "tk_a2" }); await tick(5); agBtn(true).click(); r = await p;
+        eq(e.S.data.tasks.length + "|" + wiped.join(), "0|tasks", "아르고 지우기 — 마지막 한 건");
+        wiped.length = 0;
+        p = agRun("task_add", { items: [{ t: "가" }, { t: "나" }] }); await tick(5); agBtn(true).click(); r = await p;
+        eq(e.S.data.tasks.length + "|" + wiped.join(), "2|", "추가는 부르지 않음");
+        ok(AG.undo(AG.latestUndo().id));
+        eq(e.S.data.tasks.length + "|" + wiped.join(), "0|tasks", "빈 목록에 두 건 추가 → 되돌리기");
+        wiped.length = 0;
+        e.S.data.tasks = [TK.norm({ id: "tk_keep", t: "남는 일" })];
+        p = agRun("task_add", { items: [{ t: "다" }, { t: "라" }] }); await tick(5); agBtn(true).click(); r = await p;
+        ok(AG.undo(AG.latestUndo().id));
+        eq(e.S.data.tasks.length + "|" + wiped.join(), "1|", "되돌려도 남는 목록 — 부르지 않음");
+      } finally { Sy.confirmWipe = cw0; AG.close(); }
+    });
+    await ta("TK54 메뉴 숨김(되돌리기 — 설계 §13): 아르고 할 일 도구 · 자료 모두 권한 밖 · 아무것도 쓰지 않음 · 다시 보이면 씀(알려진 칸만)", async () => {
+      tkSeed();
+      const mn = e.S.menuForModule("tasks"), snap = JSON.stringify(e.S.data.tasks);
+      AG._reset(); agAuto(true);
+      try {
+        mn.hidden = true;
+        for (const [n, inp] of [["task_add", { items: [{ t: "x" }] }], ["task_update", { id: "tk_none", t: "y" }], ["task_done", { id: "tk_none", done: true }], ["task_delete", { id: "tk_none" }], ["argos_records", { collection: "tasks" }]]) {
+          const r = await agRun(n, inp);
+          ok(r.error && /권한 밖/.test(r.error), n + " → " + JSON.stringify(r));
+        }
+        eq(JSON.stringify(e.S.data.tasks), snap, "할 일 그대로");
+        ok(agBtn(true) === null, "확인 카드 없이 거절");
+      } finally { delete mn.hidden; agAuto(false); }
+      AG._reset(); agAuto(true);
+      const r = await agRun("task_add", { items: [{ t: "다시 보임", zz: 1 }] });
+      ok(r.ok && last().t === "다시 보임" && !("zz" in last()), "다시 보이면 씀 · 아르고는 알려진 칸만: " + JSON.stringify(r));
+      agAuto(false);
+    });
+    await ta("TK55 사람 색: 명단의 파트 사람은 명단 순서로 서로 다른 색 · 명단 밖 이름은 되풀이 · 명단 순서를 바꿔도 같은 색 · 제자리에서 고친 명단은 다음 차례에", async () => {
+      const R = e.w.SemisRoster, P = (ns) => ({ team: "", orgs: [], people: ns.map((n, i) => ({ id: "pc" + i, name: n, org: R.SELF, part: "안전보안파트" })) });
+      const four = ["가나다", "라마바", "사아자", "차카타"];
+      e.S.data.roster = P(four);
+      const cs = four.map(n => TK.personColor(n));
+      eq(new Set(cs).size, 4, "예전 해시에서 모두 같은 색이던 넷 = 네 색: " + cs.join());
+      eq(new Set(cs.slice(0, 3)).size, 3, "셋 = 세 색");
+      const out = TK.personColor("타파하");
+      eq(TK.personColor("타파하"), out, "명단 밖 이름 — 되풀이");
+      e.S.data.roster = P(four.slice().reverse());
+      eq(TK.personColor("타파하"), out, "명단 순서를 바꿔도 명단 밖 이름은 같은 색");
+      eq(four.slice().reverse().map(n => TK.personColor(n)).join(), cs.join(), "파트 사람은 명단 차례대로 색");
+      e.S.data.roster.people[0].left = "2026-01-31";   // 인원 관리 저장처럼 제자리에서 고침
+      await tick(5);
+      eq(TK.personColor("사아자"), cs[0], "떠난 사람을 빼고 다시 센 명단 차례");
+      tkSeed();
+    });
+    t("TK56 고치기 창 단추줄: 본문(.tk-form)만 스크롤 · 단추줄은 본문 밖 뒤 형제(HANDOFF §6-10)", () => {
+      const css = read("css/main.css");
+      ok(css.includes(".modal-box:has(.tk-form) { display: flex; flex-direction: column; overflow: hidden; }"), "창 = 세로 flex · 넘침 숨김");
+      ok(/\n\.tk-form \{ flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;/.test(css), "본문만 스크롤");
+      ok(css.includes(".modal-box:has(.tk-form) .modal-actions { flex-shrink: 0; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }") &&
+        css.includes(".modal-box:has(.tk-form) .modal-actions { flex-wrap: wrap; }"), "단추줄 고정 · 줄바꿈 그대로");
+      tkSeed(); openRow("tk_today");
+      const f = q(e, "#modal-box .tk-form"), ma = q(e, "#modal-box .modal-actions");
+      ok(f && ma && !f.contains(ma) && ma.parentElement === f.parentElement && (f.compareDocumentPosition(ma) & e.w.Node.DOCUMENT_POSITION_FOLLOWING), "단추줄은 스크롤 본문 밖 · 그 뒤");
+      ok(!f.querySelector("[data-act]") && ma.querySelector('[data-act="save"]') && ma.querySelector('[data-act="done"]'), "저장 · 마침은 단추줄에");
+      act("cancel").click();
+    });
+    await ta("TK57 패널 배지: 아르고 할 일 추가(확인 뒤) · 되돌리기 뒤 바로", async () => {
+      tkSeed(); e.S.renderNav();
+      const b0 = navB();
+      AG._reset(); agAuto(false); AG.open();
+      const p = agRun("task_add", { items: [{ t: "오늘 회신", due: "2026-11-18" }] }); await tick(5);
+      eq(navB(), b0, "확인 전 그대로");
+      agBtn(true).click(); ok((await p).ok);
+      eq(navB(), String(Number(b0) + 1), "오늘 기한 할 일 추가 뒤 배지");
+      ok(AG.undo(AG.latestUndo().id)); eq(navB(), b0, "되돌린 뒤 배지");
+      AG.close();
+    });
+    t("TK58 창의 마침: 연 사이 동료가 이미 마쳤으면 그 사람의 마친 때 · 사람 그대로 · 되돌리기 없음", () => {
+      tkSeed();
+      openRow("tk_late");
+      remote("tk_late", { done: true, doneAt: "2026-11-18T02:00:00.000Z", doneBy: "가나다" });
+      const acts = qa(e, "#toast-wrap .toast-act").length;
+      act("done").click();
+      const x = byId("tk_late");
+      eq([x.done, x.doneAt, x.doneBy].join("|"), "true|2026-11-18T02:00:00.000Z|가나다", "동료가 마친 기록 그대로");
+      eq(qa(e, "#toast-wrap .toast-act").length, acts, "되돌리기 없음(누르면 동료가 마친 일이 다시 열림)");
+      eq(qa(e, "#toast-wrap .toast").pop().textContent, "이미 마친 할 일입니다.");
+      ok(!mOpen());
+      openRow("tk_today"); act("done").click();
+      ok(byId("tk_today").done && qa(e, "#toast-wrap .toast-act").length === acts + 1, "직접 마치면 되돌리기");
+    });
+    t("TK59 이름 구분: 고치기 창 직접 적기도 쉼표 · '，' · '、' · '·' (접수 카운터와 같은 규칙)", () => {
+      eq(TK.splitNames(" 가나다 ·라마바,, 사아자，차카타、 ").join("|"), "가나다|라마바|사아자|차카타");
+      tkSeed();
+      openRow("tk_none");
+      setV("tk-f-who-x", "가나다 · 사아자"); setV("tk-f-teams-x", "수출파트、협력사");
+      act("save").click();
+      eq(byId("tk_none").who.join() + "|" + byId("tk_none").teams.join(), "라마바,가나다,사아자|수출파트,협력사");
     });
     e.w.close();
   }

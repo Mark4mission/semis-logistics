@@ -447,7 +447,12 @@
     let miss = 0;
     u.ops.slice().reverse().forEach(op => { if (!invert(op)) miss++; });
     u.done = true;
+    /* 되돌리기는 사람이 누른 것 — 여러 건 추가를 되돌려 목록이 통째로 비어도 대량 삭제 방어(2건 이상 → 0건)가 되살리지 않게 */
+    Array.from(new Set(u.ops.map(op => op.path && op.path[0]).filter(k => typeof k === "string"))).forEach(k => {
+      if (Array.isArray(D()[k]) && !D()[k].length && window.SemisSync && SemisSync.confirmWipe) SemisSync.confirmWipe(k);
+    });
     SeMIS.save();
+    try { SeMIS.renderNav(); } catch (e) { /* 메뉴 배지만 영향 */ }
     C0().turns.forEach(t => arr(t.cards).forEach(c => { if (c.undo === id) c.state = "undone"; }));
     const t = C0().turns.find(x => arr(x.cards).some(c => c.undo === id));
     if (t) t.log = cut((t.log ? t.log + "; " : "") + "[되돌림] " + u.label, LOG_MAX);
@@ -489,7 +494,10 @@
   /* 할 일 — 칸 정리 · 새 할 일은 SemisTasks(norm · make) 그대로, 마침 칸은 화면 setDone 과 같은 규칙.
      setDone 은 저장까지 하므로 부르지 않는다(저장 · 되돌리기 비교는 runTool). 확인을 기다리는 사이 바뀌었을 수 있어 실행 때 다시 찾는다 */
   const TK = () => window.SemisTasks;
-  const findTk = (id) => (TK() && TK().canUse() && TK().list().find(t => t && t.id === id)) || null;
+  /* 메뉴를 숨기면(되돌리기 — 설계 §13) 화면 · 일정관리 칩처럼 아르고도 할 일을 쓰지 않는다 */
+  const tkOk = () => !!(TK() && TK().canUse() && canMod("tasks"));
+  const tkDeny = () => deny("Task 관리");
+  const findTk = (id) => (tkOk() && TK().list().find(t => t && t.id === id)) || null;
   const noTk = (id) => ({ error: "할 일을 찾지 못했습니다(id 확인): " + str(id, 40) });
   const tkLine = (t) => [t.due ? dot(t.due) + (t.time ? " " + t.time : "") : "", t.t, t.place, arr(t.who).length ? "담당 " + t.who.join(", ") : "",
     arr(t.teams).length ? "관련 팀 " + t.teams.join(", ") : "", t.star ? "중요" : ""].filter(Boolean).join(" · ");
@@ -641,6 +649,7 @@
       preview: (inp, p) => (p && p.list ? p.list : []).map(o => tkLine(TK().norm(o))),
       prep(inp) {
         if (!TK()) return { error: "Task 관리를 쓸 수 없습니다." };
+        if (!tkOk()) return tkDeny();
         const items = arr(inp.items);
         if (!items.length) return { error: "추가할 할 일이 없습니다." };
         if (items.length > 10) return { error: "할 일은 한 번에 10건까지 넣습니다." };
@@ -654,6 +663,7 @@
         return { list };
       },
       run(inp, ctx, p) {
+        if (!tkOk()) return tkDeny();
         const recs = p.list.map(o => TK().make(o, "argo"));
         recs.forEach(r => D().tasks.push(r));
         return { lines: recs.map(tkLine), go: recs.length === 1 ? tkGo(recs[0].id) : TASK_GO, result: { ids: recs.map(r => r.id) },
@@ -671,6 +681,7 @@
         return [tkLine(p.k)].concat(p.keys.map(([f]) => show[f]()));
       },
       prep(inp) {
+        if (!tkOk()) return tkDeny();
         const k = findTk(inp.id);
         if (!k) return noTk(inp.id);
         const o = tkFields(inp, k.due, "");
@@ -698,6 +709,7 @@
       label: "할 일 마침", verb: "처리하기", keys: ["tasks"],
       preview: (inp, p) => [p && p.k ? tkLine(p.k) : str(inp.id, 40), inp.done ? "마침으로 표시" : "다시 열기(할 일로)"],
       prep(inp) {
+        if (!tkOk()) return tkDeny();
         const k = findTk(inp.id);
         if (!k) return noTk(inp.id);
         if (typeof inp.done !== "boolean") return { error: "done(true · false)이 필요합니다." };
@@ -718,11 +730,14 @@
       label: "할 일 지우기", verb: "지우기", keys: ["tasks"], danger: true,
       confirm: () => true,
       preview: (inp, p) => [p && p.k ? tkLine(p.k) : str(inp.id, 40)],
-      prep(inp) { const k = findTk(inp.id); return k ? { k } : noTk(inp.id); },
+      prep(inp) { if (!tkOk()) return tkDeny(); const k = findTk(inp.id); return k ? { k } : noTk(inp.id); },
       run(inp, ctx, p) {
+        if (!tkOk()) return tkDeny();
         const a = arr(D().tasks), i = a.findIndex(x => x && x.id === p.k.id);
         if (i < 0) return noTk(p.k.id);
         a.splice(i, 1);
+        /* 확인 카드를 거친 지우기 — 마지막 한 건이면 대량 삭제 방어가 되살리지 않게 */
+        if (!a.length && window.SemisSync && SemisSync.confirmWipe) SemisSync.confirmWipe("tasks");
         return { lines: [tkLine(p.k)], go: TASK_GO, result: { id: p.k.id, deleted: true }, log: "task_delete " + p.k.id + " '" + p.k.t + "'" };
       }
     },
@@ -887,6 +902,8 @@
     ctx.turn.cards.push({ k: "result", title: T.label, lines: r.lines || [], go: (r.go || []).filter(g => goOk(g.route)), undo: ops.length ? u.id : "", state: "done", danger: !!T.danger });
     ctx.log.push(r.log || T.label);
     ctx.wrote = true;
+    /* save() 는 메뉴를 다시 그리지 않는다 — 패널 배지(Task 관리 오늘 + 지난 일 등)가 남지 않게 */
+    try { SeMIS.renderNav(); } catch (e) { /* 메뉴 배지만 영향 */ }
     try { SeMIS.renderView(); } catch (e) { /* 뒤 화면 다시 그리기 실패는 무시 */ }
     return Object.assign({ ok: true }, r.result || {});
   }

@@ -7147,6 +7147,11 @@ button.chip-title:focus-visible, button.calm-body:focus-visible { outline: 2px s
 .tk-fchk input { width: 20px; height: 20px; margin: 0; accent-color: var(--primary); }
 .tk-fchk .ico { color: var(--accent-dark); }
 .modal-box:has(.tk-form) .modal-actions { flex-wrap: wrap; }
+/* 칸이 많아 창이 화면보다 길다 — 본문(.tk-form)만 스크롤하고 단추줄은 아래에 둔다(HANDOFF §6-10 · 일정관리 .evf 와 같은 방식).
+   스크롤 상자가 칸 포커스 테두리를 자르지 않게 좌우로 조금 넓힌다 */
+.modal-box:has(.tk-form) { display: flex; flex-direction: column; overflow: hidden; }
+.tk-form { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin: 0 -4px; padding: 0 4px; }
+.modal-box:has(.tk-form) .modal-actions { flex-shrink: 0; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
 @media (hover: hover) and (pointer: fine) { .tk-row:hover { background: var(--surface-2); } }
 @media screen and (max-width: 767px) {
   .tk-row { gap: 0 8px; padding: 10px 2px; }

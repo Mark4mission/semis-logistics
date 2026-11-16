@@ -172,8 +172,9 @@
     return { id: aid(), k: "event", on, title: e.title, start: e.start, end: e.end, time: e.time, timeEnd: e.timeEnd, place: e.place, cat: e.cat,
       area: e.area, assignee: areaNames(e.area), room: ROOM(e.place), memo: e.memo, file: src !== false };
   }
-  /* 할 일은 Task 관리를 쓸 수 있는 화면에서만 제안한다(서버 권한표 tasks 3/3 과 같은 조건) */
-  const tasksOk = () => !!(window.SemisTasks && SemisTasks.canUse());
+  /* 할 일은 Task 관리를 쓸 수 있는 화면에서만 제안한다(서버 권한표 tasks 3/3 과 같은 조건).
+     메뉴를 숨기면(되돌리기 — 설계 §13) 할 일 줄을 만들지 않고 기한 일정 줄을 예전처럼 켠다 */
+  const tasksOk = () => !!(window.SemisTasks && SemisTasks.canUse() && goOk("tasks"));
   function taskAct(f, on) {
     return Object.assign({ id: aid(), k: "task", on, t: "", due: "", time: "", place: "", who: "", teams: "", memo: "", file: true }, f);
   }
@@ -310,7 +311,7 @@
     const out = [];
     const nowS = new Date().toISOString(), by = me();
     const fileArr = (a) => { const f = files[folderFor(a)]; return f ? [Object.assign({}, f)] : []; };
-    const csv = (s) => String(s == null ? "" : s).split(",").map(norm).filter(Boolean);
+    const csv = (s) => SemisTasks.splitNames(s).map(norm).filter(Boolean);
     acts.forEach(a => {
       if (a.k === "cert") {
         const t = D().training = isObj(D().training) ? D().training : { courses: [], people: [], records: [], sessions: [] };
@@ -546,6 +547,7 @@
     delete drafts[id]; delete fixOpen[id]; delete busy[id];
     setMood("happy");
     SeMIS.save(); repaint();
+    try { SeMIS.renderNav(); } catch (er) { /* save() 는 메뉴를 다시 그리지 않는다 — 패널 배지(Task 관리 등)만 영향 */ }
     closeInbox(cur, "done");
     const go = done.find(x => x.route && goOk(x.route));
     const where = Array.from(new Set(done.map(x => (KINDS[x.k] || {}).label).filter(Boolean)));
