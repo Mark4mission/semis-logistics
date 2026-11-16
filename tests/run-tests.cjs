@@ -15227,6 +15227,125 @@ function makeServer(opts = {}) {
         ok(last().t === "확인" && cin("Thq").value === "", "저장하며 다시 그려도 넣은 글이 되살아나지 않음(칸 입력)");
       } finally { e.S.save = sv0; }
     });
+
+    /* ── 일정관리 칩 · 홈 '오늘' 띠 · 통합 검색 ── */
+    const C = e.w.SemisCalendar, SS = e.w.SemisSearch;
+    const COLOR_IDS = ["red", "orange", "yellow", "green", "teal", "sky", "blue", "purple", "pink", "rose", "brown", "gray"];
+    const calGo = () => { C.setView("month"); C.setAnchor("2026-11-18"); C.setFilter("", false); go(e, "schedule"); };
+    const chip = (id) => q(e, '#view .is-insp[data-ik="tk:' + id + '"]');
+    const tkIks = () => Array.from(new Set(qa(e, '#view .is-insp[data-ik^="tk:"]').map(x => x.dataset.ik))).sort().join();
+    const lastToast = () => qa(e, "#toast-wrap .toast").pop().textContent;
+    /* 시드 + 보안교육 두 줄(남은 일 · 마친 일) — 메모 · 장소 · 관련 팀으로도 찾는지 본다 */
+    const tkSeed2 = () => {
+      tkSeed();
+      e.S.data.tasks.push(
+        TK.norm({ id: "tk_edu", t: "보안교육 자료 제출", due: "2026-11-20", who: ["라마바"], memo: "출력본 두 부", place: "창고동", teams: ["수출파트"] }),
+        TK.norm({ id: "tk_edu2", t: "보안교육 결과 보고", due: "2026-11-10", who: ["가나다"], done: true, doneAt: "2026-11-10T01:00:00Z", doneBy: "Thq" }));
+    };
+    await ta("TK35 일정관리 칩: 날짜 있는 할 일만(마친 일 포함) · [할 일] 제목 · 분류 색 · 시각 · 장소 · 담당 · 'Task 관리에서 열기' → 그 할 일 창", async () => {
+      await tick();   // 앞 시험의 go() 가 남긴 hashchange 를 먼저 흘려보낸다
+      tkSeed(); calGo();
+      eq(tkIks(), "tk:tk_done,tk:tk_late,tk:tk_today", "날짜 없는 할 일(tk_none · tk_star)은 칩 없음");
+      eq(chip("tk_today").querySelector(".chip-title").textContent, "[할 일] 오늘 점검");
+      ["tk_today", "tk_late", "tk_done"].forEach(id => {
+        const col = TK.CATS[TK.catOf(byId(id))].color;
+        ok(COLOR_IDS.indexOf(col) >= 0 && chip(id).classList.contains("ev-" + col), id + " 칩 색 = 분류 색(일정관리 색 이름)");
+      });
+      ok(chip("tk_done").classList.contains("done") && chip("tk_late").classList.contains("late") && !chip("tk_today").classList.contains("late"), "마친 일 흐리게 · 지난 일");
+      const it = TK.calItems("2026-11-01", "2026-11-30").find(x => x.ik === "tk:tk_today");
+      eq(it.sub, "15:00 · 2층 회의실 · Thq", "시각 · 장소 · 담당은 아래 줄(다른 모듈 항목은 종일로 그림)");
+      eq(it.start + "|" + it.end, "2026-11-18|2026-11-18");
+      eq(TK.calItems("2026-12-01", "2026-12-31").length, 0, "기간 밖 없음");
+      C.setFilter("Thq", false); go(e, "schedule");
+      eq(tkIks(), "", "일정 담당 거르기를 켜면 숨김(교육 · 점검과 같음)");
+      calGo();
+      chip("tk_today").querySelector(".chip-title").click();
+      ok(mOpen() && q(e, "#modal-box h3").textContent.includes("[할 일] 오늘 점검"), "칩 상세");
+      const gb = qa(e, "#modal-box .modal-actions [data-igo]").find(b => b.textContent.trim() === "Task 관리에서 열기");
+      ok(gb, "'Task 관리에서 열기'");
+      gb.click(); await tick();
+      eq(e.w.location.hash, "#/tasks"); ok(q(e, "#tk-list"), "목록 화면");
+      ok(mOpen() && fv("tk-f-t") === "오늘 점검", "그 할 일 창");
+      act("cancel").click();
+    });
+    t("TK36 칩 ○ 마침 · ✓ 다시 열기: 할 일만 바꿈(일정 데이터 그대로) · 할 일 알림 글 · 다른 모듈 칩은 예전 글", () => {
+      tkSeed(); calGo();
+      const sch0 = JSON.stringify(e.S.data.schedules);
+      chip("tk_today").querySelector(".chip-check.todo[data-itoggle]").click();
+      ok(!mOpen(), "상세 창 열지 않음");
+      const x = byId("tk_today");
+      eq(x.done + "|" + x.doneBy, "true|Thq"); ok(x.doneAt, "마친 때");
+      eq(lastToast(), "할 일을 마침으로 표시했습니다.");
+      ok(chip("tk_today").classList.contains("done"), "다시 그려 ✓");
+      chip("tk_today").querySelector(".chip-check.done[data-itoggle]").click();
+      eq(byId("tk_today").done + "|" + byId("tk_today").doneAt, "false|", "✓ → 다시 열기");
+      eq(lastToast(), "할 일을 다시 열었습니다.");
+      eq(JSON.stringify(e.S.data.schedules), sch0, "일정 데이터에 저장하지 않음");
+      const L = e.w.SemisLearn, ci0 = L.calItems;
+      let got = null;
+      try {
+        L.calItems = () => [{ ik: "ln:tkx", start: "2026-11-19", end: "2026-11-19", title: "[교육] 시험", color: "green", done: false, late: false, sub: "", go: [],
+          chk: { parts: [], edit: true, on: true, off: false }, mark: (w) => { got = w; return 1; } }];
+        calGo();
+        q(e, '#view .is-insp[data-ik="ln:tkx"] .chip-check.todo[data-itoggle]').click();
+        eq(got, true); eq(lastToast(), "완료 처리했습니다. 보안 기록부에 '확인'으로 남습니다.", "chkMsg 없는 항목은 예전 글");
+      } finally { L.calItems = ci0; }
+    });
+    t("TK37 홈 '오늘' 띠: 할 일 칸 = 오늘 · 지난 수 · 지난 일 있으면 경고 · 누르면 Task 관리 · 남은 할 일 없으면 칸 없음", () => {
+      tkSeed(); go(e, "dashboard");
+      const r = q(e, ".today-strip #td-tk");
+      ok(r && r.dataset.go === "tasks", "칸");
+      eq(r.querySelector(".td-s").textContent, "오늘 1 · 지난 1");
+      eq(r.querySelector(".td-v").textContent, "4", "남은 할 일 수");
+      ok(r.classList.contains("tone-warn"), "지난 일 경고");
+      eq(JSON.stringify(TK.todayData()), JSON.stringify({ open: 4, today: 1, late: 1 }));
+      eq(TK.todaySub({ open: 3, today: 2, late: 1 }), "오늘 2 · 지난 1");
+      r.click(); eq(e.w.location.hash, "#/tasks", "누르면 Task 관리");
+      TK.setDone("tk_late", true); go(e, "dashboard");
+      ok(q(e, "#td-tk .td-s").textContent === "오늘 1 · 지난 0" && !q(e, "#td-tk").classList.contains("tone-warn"), "지난 일 없으면 경고 없음");
+      e.S.data.tasks.filter(x => !x.done).forEach(x => TK.setDone(x.id, true));
+      eq(TK.todayData(), null); go(e, "dashboard");
+      ok(q(e, ".today-strip") && !q(e, "#td-tk"), "남은 할 일 없으면 칸 없음");
+    });
+    t("TK38 권한 밖(manager): 일정관리 칩 · 홈 띠 · 검색 'Task 관리' 묶음 모두 없음", () => {
+      tkSeed2();
+      const rows = e.S.data.tasks;
+      try {
+        loginAs(e, "manager");
+        e.S.data.tasks = rows;   // 자료가 남아 있어도 권한이 거르는지 본다
+        eq(TK.calItems("2026-11-01", "2026-11-30").length, 0, "calItems 빈 목록"); eq(TK.todayData(), null, "todayData 없음");
+        calGo();
+        ok(q(e, "#view .cal-gridwrap") && tkIks() === "", "일정관리는 보이고 할 일 칩은 없음");
+        go(e, "dashboard");
+        ok(q(e, ".today-strip") && !q(e, "#td-tk"), "대시보드 '오늘' 띠는 보이고 할 일 칸은 없음");
+        const all = SS.searchAll("보안교육");
+        ok(!all.full.concat(all.partial).some(x => x.group === "Task 관리"), "검색 묶음 없음");
+      } finally { loginAs(e, "hq"); }
+    });
+    await ta("TK39 검색: 'Task 관리' 묶음 · 꼬리표 '할 일' · 아래 줄 날짜 · 담당(마친 일은 '마침') · 메모 · 장소 · 관련 팀으로도 · 누르면 그 할 일 창", async () => {
+      await tick();
+      tkSeed2(); go(e, "dashboard"); await tick();
+      const hits = SS.search("보안교육").filter(x => x.group === "Task 관리");
+      eq(hits.map(x => x.title).sort().join(), "보안교육 결과 보고,보안교육 자료 제출");
+      eq(hits.find(x => x.title === "보안교육 자료 제출").sub, "11-20(금) · 라마바");
+      eq(hits.find(x => x.title === "보안교육 결과 보고").sub, "마침 · 11-10(화) · 가나다");
+      eq(SS.kindOf(hits[0]), "할 일");
+      ["출력본", "창고동", "수출파트"].forEach(w => ok(SS.search(w).some(x => x.group === "Task 관리" && x.title === "보안교육 자료 제출"), w + " 로도 찾음"));
+      const pop = (re) => qa(e, "#hdr-search-pop .sp-item").find(b => re.test(b.textContent));
+      SS.open("보안교육"); await tick(5);
+      const row = pop(/보안교육 자료 제출/), drow = pop(/보안교육 결과 보고/);
+      ok(row && row.querySelector(".sp-kind").textContent === "할 일", "꼬리표 '할 일'");
+      ok(drow && drow.querySelector(".sp-sub").textContent.includes("마침") && !row.querySelector(".sp-sub").textContent.includes("마침"), "마친 일만 아래 줄에 '마침'");
+      row.click(); await tick();
+      eq(e.w.location.hash, "#/tasks"); ok(q(e, "#tk-list"), "목록 화면");
+      ok(mOpen() && fv("tk-f-t") === "보안교육 자료 제출", "그 할 일 창");
+      act("cancel").click();
+      SS.open("보안교육"); await tick(5);
+      pop(/보안교육 결과 보고/).click(); await tick();
+      ok(mOpen() && fv("tk-f-t") === "보안교육 결과 보고", "이미 #/tasks 에서 눌러도 열림");
+      act("cancel").click();
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
     e.w.close();
   }
 

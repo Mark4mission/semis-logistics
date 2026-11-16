@@ -64,6 +64,13 @@
       { label: "이번 주 마친 일", value: c.wk }
     ]);
   }
+  /* 홈 '오늘' 띠 — 남은 할 일이 없으면 칸을 그리지 않는다 */
+  function todayData() {
+    if (!T.canUse()) return null;
+    const c = counts();
+    return c.open ? { open: c.open, today: c.today, late: c.late } : null;
+  }
+  const todaySub = (d) => "오늘 " + d.today + " · 지난 " + d.late;
   /* 탭 건수는 담당자 칩만 따른다 — 검색 글자를 칠 때는 목록만 다시 그리므로 */
   const todoCount = () => { const w = curWho(); return T.list().filter(t => !t.done && byWho(t, w)).length; };
 
@@ -403,11 +410,31 @@
     });
   }
   const onHere = () => (location.hash.replace(/^#\//, "") || "dashboard") === MOD;
-  /* 검색 · 일정관리 · 아르고 결과 카드가 부른다 — 앱은 tasks/<id> 주소를 풀지 않으므로 id 를 들고 이동한 뒤, 그려지면 창을 연다 */
-  function open(id) {
+  /* 앱은 tasks/<id> 주소를 풀지 않으므로 id 를 모듈 상태에 두고, 그려지면 창을 연다 — 이미 이 화면이면 이동이 없으므로 다시 그린다 */
+  function hold(id) {
     st.open = String(id || "");
     if (onHere()) setTimeout(() => SeMIS.renderView(), 0);
-    else SeMIS.navigate(MOD);
+  }
+  /* 일정관리 · 아르고 결과 카드가 부른다(검색은 이동을 스스로 맡으므로 hold 만 — search.js goItem) */
+  function open(id) {
+    hold(id);
+    if (!onHere()) SeMIS.navigate(MOD);
+  }
+
+  /* 일정관리 칩 — 일정 데이터에 저장하지 않고 그릴 때 만든다. chk · mark 는 점검 일정(seclog chkOf · calMark)과 같은 모양 */
+  function calItems(from, to) {
+    if (!T.canUse()) return [];
+    const td = T.today();
+    return T.list().filter(t => t.due && t.due >= from && t.due <= to).map(t => {
+      const id = t.id;
+      return { ik: "tk:" + id, start: t.due, end: t.due, title: "[할 일] " + t.t, color: T.CATS[T.catOf(t)].color,
+        done: t.done, late: !t.done && T.dueInfo(t, td).b === "late",
+        sub: [t.time, t.place, t.who.join(", ")].filter(Boolean).join(" · "),
+        go: [{ lb: "Task 관리에서 열기", ico: "check", run: () => open(id) }],
+        chk: { parts: [], edit: true, on: !t.done, off: t.done },
+        chkMsg: { on: "할 일을 마침으로 표시했습니다.", off: "할 일을 다시 열었습니다." },
+        mark: (want) => (typeof want === "boolean" && setDone(id, want) ? 1 : 0) };
+    });
   }
   /* 직전에 그린 화면이 이 화면이었나 — 다른 화면에서 들어올 때는 입력칸 포커스를 돌려주지 않는다
      (모바일에서 자판이 저절로 뜸). 치던 글은 남긴다 */
@@ -569,11 +596,23 @@
     if (want) { if (T.list().some(t => t.id === want)) edit(want); else toast("찾지 못한 할 일입니다 — 지워졌을 수 있습니다.", true); }
   }
 
-  Object.assign(T, { add, setDone, setState, edit, open });
+  Object.assign(T, { add, setDone, setState, edit, open, calItems, todayData, todaySub });
 
   SeMIS.registerModule(MOD, {
     title: TITLE,
     navBadge() { const c = counts(); return c.today + c.late || ""; },
     render
+  });
+
+  /* 찾는 글에 제목도 넣는다 — text 를 주면 검색은 제목을 따로 보지 않는다 */
+  if (window.SemisSearch) SemisSearch.register({
+    id: MOD, group: TITLE, ico: "check", module: MOD, minRank: 3,
+    items: () => {
+      if (!T.canUse()) return [];
+      const td = T.today();
+      return T.list().map(t => ({ title: t.t,
+        sub: [t.done ? "마침" : "", t.due ? T.dayLabel(t.due, td) : "", t.who.join(", ")].filter(Boolean).join(" · "),
+        text: [t.t, t.who, t.memo, t.place, t.teams], route: MOD, pick: () => hold(t.id) }));
+    }
   });
 })();
