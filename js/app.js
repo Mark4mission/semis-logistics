@@ -3,7 +3,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.72.1";
+  const VERSION = "1.75.0";
   const APP_NAME = "H:drive";
   const APP_ALIAS = "ARGOS (Air-cargo Risk & Guard Operations System)";
   /* 데이터 캐시는 탭 sessionStorage 에만(탭 닫기·로그아웃 시 소멸). 화면 설정(LS_UI)만 localStorage */
@@ -238,6 +238,7 @@ const SeMIS = (() => {
 
       h("hub-home", "홈", "home"),
       m("schedule", "일정관리", "📅", "schedule", "mgr", "hub-home"),
+      m("tasks", "Task 관리", "✅", "tasks", "hq", "hub-home"),
       m("minutes", "회의록", "🗒️", "minutes", "mgr", "hub-home"),
       m("flight", "운항 현황", "✈️", "flight", "all", "hub-home"),
       m("shortcuts", "바로가기", "🔗", "shortcuts", "all", "hub-home"),
@@ -433,6 +434,7 @@ const SeMIS = (() => {
       learn: { courses: [] },              // 교육 전파 · 서명 — 교육 정의 (이수 기록 · 서명은 서버 비공개 표, js/learn.js)
       roster: { team: "", people: [], orgs: [] }, // 인원 관리 — 임직원 · 협력업체 통합 명단 (명단 · 사번은 공용 DB만, js/roster.js)
       desk: { cfg: {}, log: [] },  // 접수 카운터 — 분야별 담당 · 올린 문서 기록 (js/desk.js)
+      tasks: [],                   // Task 관리 — 안전보안파트 할 일 (js/tasks-core.js)
       boards: defaultBoards()      // 게시판 정의 (글은 서버 비공개 표 — js/board.js)
     };
   }
@@ -599,8 +601,12 @@ const SeMIS = (() => {
     if (!isObj(dk.cfg)) dk.cfg = {};
     dk.log = (Array.isArray(dk.log) ? dk.log : []).filter(x => x && typeof x === "object" && x.id && x.file && typeof x.file === "object");
     ["serpRuns", "threatRuns", "threatChecks", "equipment", "audits", "seclog", "patrol", "patrolPeople",
-      "selfChecks", "docs", "contracts", "secCases"].forEach(rows);
+      "selfChecks", "docs", "contracts", "secCases", "tasks"].forEach(rows);
     DATA.equipment.forEach(x => { if (!Array.isArray(x.logs)) x.logs = []; });
+    if (typeof window !== "undefined" && window.SemisTasks) {
+      const tn = window.SemisTasks.norm;
+      DATA.tasks.forEach((x, i) => { const n = tn(x); if (JSON.stringify(n) !== JSON.stringify(x)) DATA.tasks[i] = n; });
+    }
     DATA.fleet = (Array.isArray(DATA.fleet) ? DATA.fleet : []).filter(f => f && typeof f === "object" && f.hex);
     DATA.regulations = (Array.isArray(DATA.regulations) ? DATA.regulations : []).filter(r => r && r.id);
     DATA.regulations.forEach(r => {
@@ -703,7 +709,8 @@ const SeMIS = (() => {
     [/하드카피/, "하드카피", "종이 점검표 · 대장 — 디지털화 전 점검은 종이 대장을 보고 집계만 입력"],
     [/\bSSI\b/, "SSI", "민감보안정보 — 열람 · 취급이 제한되는 정보(안전보안파트 이상만 원문)"],
     [/CARES/, "CARES", "보안장비 고장신고 · 관리 시스템(별도 사이트)"],
-    [/\bDIP\b/, "DIP", "외교행낭 — 정해진 조건에서 개봉검색 면제 처리"]
+    [/\bDIP\b/, "DIP", "외교행낭 — 정해진 조건에서 개봉검색 면제 처리"],
+    [/\bTask\b/, "Task", "할 일 — 안전보안파트가 함께 보고 마치면 체크하는 목록"]
   ];
   function glossOf(text) {
     const s = String(text || "");

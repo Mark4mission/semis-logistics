@@ -194,6 +194,12 @@
         sub: tod.length ? tod.slice(0, 2).map(s => esc(s.title)).join(" · ") + (tod.length > 2 ? " 외 " + (tod.length - 2) : "") : "예정 없음",
         val: `<b class="mono">${tod.length}</b>` }));
     }
+    if (menuOk("tasks", "SemisTasks")) {
+      let d = null;
+      try { d = SemisTasks.todayData(); } catch (e) { d = null; }
+      if (d) rows.push(todayRow({ go: "tasks", id: "td-tk", icon: "check", color: d.late ? "amber" : "teal", title: "할 일",
+        sub: SemisTasks.todaySub(d), val: `<b class="mono">${d.open}</b>`, tone: d.late ? "warn" : "" }));
+    }
     if (menuOk("flight", "SemisFlight")) rows.push(todayRow({ go: "flight", id: "td-flt", icon: "plane", color: "amber", title: "인천 접근",
       sub: "불러오는 중", val: '<b class="mono">·</b>' }));
     if (cardVis("screen") && window.SemisScreen && SemisScreen.todayEnv && menuOk("scr-status")) {

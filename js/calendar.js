@@ -526,7 +526,7 @@
 
   /* ── 점검 일정 연동(일정 데이터에 저장 안 함 — 완료 체크는 원본 모듈의 mark 로) ── */
   /* 자체 보안점검(국토부 수검대비)은 선택 실행이라 기한·기록을 일정에 넣지 않는다 */
-  const INSP_SRC = [["inspection", () => window.SemisSeclog], ["learn", () => window.SemisLearn]];
+  const INSP_SRC = [["inspection", () => window.SemisSeclog], ["learn", () => window.SemisLearn], ["tasks", () => window.SemisTasks]];
   let inspCache = {}, inspIdx = {};
   function modCan(module) {
     const mn = SeMIS.menuForModule && SeMIS.menuForModule(module);
@@ -581,7 +581,8 @@
     if (!inspCan(e)) return;
     const on = !e.done;
     if (!(on ? e.chk.on : e.chk.off) || !e.mark(on)) return;
-    toast(on ? "완료 처리했습니다. 보안 기록부에 '확인'으로 남습니다." : "완료를 해제했습니다.");
+    const m = e.chkMsg || {};   // 보안 기록부가 아닌 모듈(할 일 등)은 항목이 제 알림 글을 준다
+    toast(on ? m.on || "완료 처리했습니다. 보안 기록부에 '확인'으로 남습니다." : m.off || "완료를 해제했습니다.");
     SeMIS.renderView();
   }
   function inspDetail(ik) {

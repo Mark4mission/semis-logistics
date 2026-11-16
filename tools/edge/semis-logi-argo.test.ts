@@ -90,6 +90,8 @@ Deno.test("hq: 쓰기 도구 · 계약 목록 · 왕복 5회째는 도구 없이
   const b = aiCalls()[0].body as Record<string, any>;
   assert(b.tools.some((t: any) => t.name === "training_record") && b.tools.some((t: any) => t.name === "argos_catalog"));
   assert(b.tools.find((t: any) => t.name === "argos_records").input_schema.properties.collection.enum.includes("contracts"));
+  assert(b.tools.some((t: any) => t.name === "task_add") && b.tools.some((t: any) => t.name === "task_delete"), "할 일 도구");
+  assert(b.tools.find((t: any) => t.name === "argos_records").input_schema.properties.collection.enum.includes("tasks"), "할 일 자료");
   assertEquals(b.tool_choice, { type: "none" });
   assertEquals(d.content.map((x: any) => x.type).join(), "tool_use", "thinking 등 다른 블록은 빼고 돌려줌");
   const r2 = await post({ messages: msgs.slice(0, 3) });
