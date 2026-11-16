@@ -7152,16 +7152,17 @@ button.chip-title:focus-visible, button.calm-body:focus-visible { outline: 2px s
   .tk-row.tk-late { padding-left: 8px; }
   .tk-meta { gap: 4px 10px; }
 }
-/* 회의 모드 — 사람별 칸(PC 여러 칸 · 모바일 한 줄로 쌓음) · 큰 체크(32px) · 큰 글자(rem — 글자 크게 보기를 따름) */
+/* 회의 모드 — 사람별 칸(PC 여러 칸 · 모바일 한 줄로 쌓음) · 큰 체크(2.29rem = 본문 14px 에서 32px) · 큰 글자 — rem 이라 글자 크게 보기를 따름 */
 #tk-meetbox .tk-cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; align-items: start; }
 .tk-col { min-width: 0; padding: 10px 12px 12px; border: 1px solid var(--line); border-radius: 4px; }
 .tk-ch { display: flex; align-items: center; margin: 0 0 2px; padding-bottom: 6px; border-bottom: 2px solid var(--rule); font-size: 1.2rem; font-weight: 700; white-space: nowrap; }
 .tk-ch .tk-dot { width: 12px; height: 12px; }
 .tk-cname { overflow: hidden; text-overflow: ellipsis; }
 .tk-cnum { margin-left: 8px; font-weight: 600; color: var(--text-3); }
-#tk-meetbox .tk-row { grid-template-columns: 32px 22px minmax(0, 1fr); padding: 10px 4px; }
-#tk-meetbox .tk-chk { width: 32px; height: 32px; }
-#tk-meetbox .tk-row .tk-cat { height: 32px; }
+#tk-meetbox .tk-row { grid-template-columns: 2.29rem 22px minmax(0, 1fr); padding: 10px 4px; }
+#tk-meetbox .tk-row.tk-late { padding-left: 10px; }
+#tk-meetbox .tk-chk { width: 2.29rem; height: 2.29rem; }
+#tk-meetbox .tk-row .tk-cat { height: 2.29rem; }
 #tk-meetbox .tk-t { font-size: 1.14rem; }
 #tk-meetbox .tk-meta { font-size: .92rem; }
 .tk-with { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }

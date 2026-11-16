@@ -135,13 +135,15 @@
   }
 
   /* ── 회의 모드 — 사람별 칸 ── */
-  /* 칸 = 파트 명단 순 + 남은 할 일에 적힌 명단 밖 이름(가나다 순) + 담당 없는 남은 할 일이 있을 때만 '담당 없음'(""),
-     칸이 하나도 없으면 '담당 없음' 한 칸 — 입력할 곳이 있게 */
+  /* 칸 = 파트 명단 순 + 할 일에 적힌 명단 밖 이름(가나다 순) + 담당 없는 할 일이 있을 때만 '담당 없음'(""),
+     칸이 하나도 없으면 '담당 없음' 한 칸 — 입력할 곳이 있게.
+     '할 일' = 남은 일 + 이번 주에 마친 일 — 회의 중 마지막 줄을 체크해도 그 칸(이번 주 마친 일 · 인쇄)이 사라지지 않게 */
   function meetCols() {
-    const part = T.partPeople(), extra = [], open = T.list().filter(t => !t.done);
-    open.forEach(t => t.who.forEach(n => { if (part.indexOf(n) < 0 && extra.indexOf(n) < 0) extra.push(n); }));
+    const mon = T.weekStart(T.today()), part = T.partPeople(), extra = [];
+    const seen = T.list().filter(t => !t.done || T.dayOf(t.doneAt) >= mon);
+    seen.forEach(t => t.who.forEach(n => { if (part.indexOf(n) < 0 && extra.indexOf(n) < 0) extra.push(n); }));
     const cols = part.concat(extra.sort((a, b) => a.localeCompare(b, "ko")));
-    if (!cols.length || open.some(t => !t.who.length)) cols.push("");
+    if (!cols.length || seen.some(t => !t.who.length)) cols.push("");
     return cols;
   }
   function colNode(n) {
@@ -172,27 +174,28 @@
     ul.innerHTML = wk.map(t => rowHTML(t, td, { col: n, k: "w" + i })).join("");
   }
   /* 칸은 이름으로 짝지어 고쳐 그린다 — 있던 칸의 입력칸은 그대로 두고(한글 조합 · 포커스 · HANDOFF §6-11) 목록 · 수만 바꾸며,
-     생긴 칸만 만들고 없어진 칸만 뺀다. 여러 담당 할 일은 다른 칸에도 들므로 모든 칸의 목록을 다시 그린다 */
+     생긴 칸만 만들고 없어진 칸만 뺀다. 없어진 칸을 먼저 빼야 남은 칸이 제자리 — 노드를 옮기면 포커스 · 조합이 끊긴다.
+     여러 담당 할 일은 다른 칸에도 들므로 모든 칸의 목록을 다시 그린다 */
   function paintMeet() {
-    const box = $("#tk-cols", root), td = T.today(), have = new Map($$(".tk-col", box).map(c => [c.dataset.col, c]));
+    const box = $("#tk-cols", root), td = T.today(), cols = meetCols(), have = new Map();
+    $$(".tk-col", box).forEach(c => { if (cols.indexOf(c.dataset.col) >= 0) have.set(c.dataset.col, c); else c.remove(); });
     let at = box.firstElementChild;
-    meetCols().forEach((n, i) => {
-      let c = have.get(n);
-      if (c) have.delete(n); else c = colNode(n);
+    cols.forEach((n, i) => {
+      const c = have.get(n) || colNode(n);
       if (c === at) at = at.nextElementSibling; else box.insertBefore(c, at);
       fillCol(c, n, i, td);
     });
-    have.forEach(c => c.remove());
   }
   const colOf = (n) => $$(".tk-col", root).find(c => c.dataset.col === n);
-  /* 담당 = 칸 사람 ∪ 글 속 이름('담당 없음' 칸은 글 속 이름만) */
+  /* 담당 = 칸 사람 ∪ 글 속 이름('담당 없음' 칸은 글 속 이름만).
+     글 · 기억은 add() 앞에 비운다 — 저장 중 화면이 다시 그려져도 넣은 글이 되살아나지 않게 */
   function colAdd(inp) {
     const text = inp.value.trim(), n = inp.dataset.col;
     if (!text) return;
     const p = parseIn(text);
-    add({ t: p.t, due: p.due, time: p.time, who: union(n ? [n] : [], p.who), teams: p.teams }, "");
     inp.value = "";
     delete st.drafts["c" + n];
+    add({ t: p.t, due: p.due, time: p.time, who: union(n ? [n] : [], p.who), teams: p.teams }, "");
     refresh();
     toast("할 일을 추가했습니다.");
   }
@@ -215,11 +218,11 @@
 
   const parseIn = (text) => T.parse(text, { today: T.today(), names: T.partPeople(), teams: T.teamNames() });
   /* 담당을 비워 두면 회의 때 '누구 몫인지'가 다시 문제가 되므로 글 속 이름이 없으면 고른 칩 · 나를 켜 둔다
-     (나는 계정 이름이 명단의 파트 사람일 때만 — meInPart) */
+     (나는 계정 이름이 명단의 파트 사람일 때만 — meInPart). 회의 모드에는 담당자 칩이 보이지 않으므로 칩은 보지 않는다 */
   function quickCtx(text) {
     const people = T.partPeople();
     const p = parseIn(text);
-    const w = curWho(), picked = w === "*" ? "" : w === "me" ? T.me() : w;
+    const w = st.meet ? "*" : curWho(), picked = w === "*" ? "" : w === "me" ? T.me() : w;
     const def = p.who.length ? p.who : picked ? [picked] : T.meInPart() ? [T.me()] : [];
     const on = st.qSel || def, chips = people.slice();
     def.forEach(n => { if (chips.indexOf(n) < 0) chips.push(n); });
@@ -239,11 +242,11 @@
     const qi = $("#tk-quick", root), text = qi.value.trim();
     if (!text) return;
     const { p, on } = quickCtx(text);
-    add({ t: p.t, due: p.due, time: p.time, who: on.slice(), teams: p.teams }, "");
-    qi.value = "";
+    qi.value = "";   // add() 앞에 비운다 — colAdd 와 같은 까닭
     delete st.drafts.q;
     st.qSel = null;
     $("#tk-qprev", root).innerHTML = "";
+    add({ t: p.t, due: p.due, time: p.time, who: on.slice(), teams: p.teams }, "");
     refresh();
     toast("할 일을 추가했습니다.");
   }
@@ -399,12 +402,17 @@
       if (i >= 0) toast("지웠습니다."); else toast("그 사이 지워진 할 일입니다.", true);
     });
   }
+  const onHere = () => (location.hash.replace(/^#\//, "") || "dashboard") === MOD;
   /* 검색 · 일정관리 · 아르고 결과 카드가 부른다 — 앱은 tasks/<id> 주소를 풀지 않으므로 id 를 들고 이동한 뒤, 그려지면 창을 연다 */
   function open(id) {
     st.open = String(id || "");
-    if ((location.hash.replace(/^#\//, "") || "dashboard") === MOD) setTimeout(() => SeMIS.renderView(), 0);
+    if (onHere()) setTimeout(() => SeMIS.renderView(), 0);
     else SeMIS.navigate(MOD);
   }
+  /* 직전에 그린 화면이 이 화면이었나 — 다른 화면에서 들어올 때는 입력칸 포커스를 돌려주지 않는다
+     (모바일에서 자판이 저절로 뜸). 치던 글은 남긴다 */
+  let wasHere = false;
+  SeMIS.onRerender(() => { wasHere = onHere(); });
 
   /* 체크 = 마침 · 끄면 다시 할 일 — 그 사이 지워졌거나 이미 바뀐 할 일이면 체크 모양만 되돌린다 */
   function checkRow(cb) {
@@ -496,6 +504,7 @@
     root = el;
     const want = st.open;   // 한 번만 쓴다 — 나중에 다시 그릴 때 창이 또 뜨지 않게
     st.open = "";
+    if (!wasHere) st.fk = "";
     if (!T.canUse()) { el.innerHTML = ui.head({ title: TITLE }) + `<section class="card">${ui.empty("볼 수 있는 권한이 없습니다.")}</section>`; return; }
     if (!st.drafts.q) st.qSel = null;   // 누른 담당 칩은 치던 글이 남아 있을 때만 이어 간다
     const w = curWho(), mday = T.dayLabel(T.today(), "");   // 기준 날을 비우면 연도까지 — 인쇄한 회의 자료의 날짜

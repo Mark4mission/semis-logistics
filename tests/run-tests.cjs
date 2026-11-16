@@ -15085,16 +15085,29 @@ function makeServer(opts = {}) {
         eq(got.join(), "tk_two,tk_two", "제목 단추 · 줄 누름 = 고치기 창");
       } finally { TK.edit = ed0; }
       const keep = {}; cols().forEach(n => { keep[n] = cin(n); });
-      TK.setDone("tk_star", true);
-      eq(cols().join("|"), "Thq|가나다|라마바|사아자", "담당 없는 남은 할 일이 없으면 담당 없음 칸 없음");
-      ok(cols().every(n => cin(n) === keep[n]), "칸이 빠져도 다른 칸 입력칸은 같은 노드");
+      eq(wkb("").textContent.trim(), "이번 주 마친 일 1", "담당 없음 칸 = 담당 없이 이번 주에 마친 일");
+      colEl("").querySelector('.tk-clist [data-id="tk_star"] .tk-chk').click();
+      eq(cols().join("|"), "Thq|가나다|라마바|사아자|", "담당 없는 마지막 할 일을 마쳐도 담당 없음 칸은 남음");
+      eq(cnum("") + "|" + wkb("").textContent.trim(), "0|이번 주 마친 일 2", "남은 0 · 이번 주 마친 일");
+      colEl("사아자").querySelector('.tk-clist [data-id="tk_out"] .tk-chk').click();
+      eq(cols().join("|"), "Thq|가나다|라마바|사아자|", "명단 밖 사람의 마지막 할 일을 마쳐도 그 칸은 남음");
+      eq(cnum("사아자") + "|" + wkb("사아자").textContent.trim(), "0|이번 주 마친 일 1");
+      ok(cols().every(n => cin(n) === keep[n]), "체크해도 입력칸은 같은 노드");
+      const gi = cin("가나다"); gi.focus();
+      e.S.data.roster.people = e.S.data.roster.people.filter(p => p.name !== "Thq"); byId("tk_today").who = [];
+      TK.setDone("tk_none", true);
+      eq(cols().join("|"), "가나다|라마바|사아자|", "앞 칸(명단에서 빠지고 할 일도 없는 사람)이 없어짐");
+      ok(cin("가나다") === gi && e.w.document.activeElement === gi, "없어진 칸을 먼저 빼므로 포커스 있는 칸은 옮기지 않음");
     });
     t("TK30 회의 모드 — 명단 없음: 할 일에 적힌 이름 + 담당 없음 · 아무것도 없으면 담당 없음 한 칸", () => {
       e.S.data.roster = { team: "", orgs: [], people: [] };
-      e.S.data.tasks = [TK.norm({ id: "tk_x", t: "명단 밖 일", who: ["사아자"] }), TK.norm({ id: "tk_y", t: "담당 없는 일" })];
+      e.S.data.tasks = [TK.norm({ id: "tk_x", t: "명단 밖 일", who: ["사아자"] }), TK.norm({ id: "tk_y", t: "담당 없는 일" }),
+        TK.norm({ id: "tk_z", t: "지난주 일", who: ["차카타"], done: true, doneAt: "2026-11-15T14:00:00Z" })];
       TK.setState({ reset: true, who: "*", meet: true }); go(e, "tasks");
       ok(q(e, "#tk-meetbox"), "모듈 상태로 회의 모드");
-      eq(cols().join("|"), "사아자|", "할 일에 적힌 이름 + 담당 없음");
+      eq(cols().join("|"), "사아자|", "할 일에 적힌 이름 + 담당 없음 — 지난주(한국 시각 일요일 밤)에 마친 일의 이름은 칸 아님");
+      e.S.data.tasks = [TK.norm({ id: "tk_x", t: "명단 밖 일", who: ["사아자"], done: true, doneAt: "2026-11-15T15:30:00Z" })]; go(e, "tasks");
+      eq(cols().join("|") + "|" + wkb("사아자").textContent.trim(), "사아자|이번 주 마친 일 1", "이번 주(한국 시각 월요일 0시 반)에 마친 일의 이름은 칸 · 담당 없는 할 일이 없으면 담당 없음 칸 없음");
       e.S.data.tasks = []; go(e, "tasks");
       eq(JSON.stringify(cols()), '[""]', "할 일도 명단도 없으면 담당 없음 한 칸");
       const ci = cin(""); ci.focus(); typeIn(ci, "내일 보고"); enter(ci);
@@ -15102,7 +15115,9 @@ function makeServer(opts = {}) {
       ok(cin("") === ci && ci.value === "" && e.w.document.activeElement === ci, "같은 입력칸");
     });
     t("TK31 칸 입력: 날짜 말 · 담당 = 칸 사람 ∪ 글 속 이름 · 같은 입력칸 · 비움 · 포커스 · 다른 칸 입력칸도 그대로", () => {
-      tkSeed(); q(e, "#tk-meet").click();
+      tkSeed(); q(e, '#tk-who [data-who="가나다"]').click(); q(e, "#tk-meet").click();
+      typeQ("a"); eq(pressed(), "Thq", "회의 모드 빠른 입력은 숨은 담당자 칩(가나다)을 담당 기본값으로 쓰지 않음 — 나");
+      typeQ("라마바 b"); eq(pressed(), "라마바", "글 속 이름이 먼저"); typeQ("");
       const ci = cin("라마바"), keep = cols().map(cin);
       ci.focus(); typeIn(ci, "금요일 장비 교체");
       const n0 = e.S.data.tasks.length;
@@ -15126,15 +15141,16 @@ function makeServer(opts = {}) {
     });
     t("TK32 회의 모드 체크 · 이번 주 마친 일: 빠지고 그 칸 수 · 펼쳐 끄면 다시 할 일 · 지난주에 마친 일은 세지 않음", () => {
       tkSeed();
-      e.S.data.tasks.push(TK.norm({ id: "tk_old", t: "지난주 마친 일", who: ["가나다"], done: true, doneAt: "2026-11-15T14:00:00Z" }));
+      e.S.data.tasks.push(TK.norm({ id: "tk_old", t: "지난주 마친 일", who: ["가나다"], done: true, doneAt: "2026-11-15T14:00:00Z" }),
+        TK.norm({ id: "tk_mon", t: "월요일 새벽에 마친 일", who: ["가나다"], done: true, doneAt: "2026-11-15T15:30:00Z" }));
       go(e, "tasks"); q(e, "#tk-meet").click();
-      eq(wkb("가나다").textContent.trim(), "이번 주 마친 일 0", "지난주(한국 시각 일요일)에 마친 일은 세지 않음");
+      eq(wkb("가나다").textContent.trim(), "이번 주 마친 일 1", "한국 시각 월요일 0시 반은 이번 주 · 일요일 밤 11시는 지난주");
       eq(wkb("").textContent.trim(), "이번 주 마친 일 1", "담당 없음 칸 = 담당 없이 마친 일");
       const ci = cin("가나다");
       colEl("가나다").querySelector('.tk-clist [data-id="tk_late"] .tk-chk').click();
       eq(byId("tk_late").done + "|" + byId("tk_late").doneBy, "true|Thq");
       ok(!colEl("가나다").querySelector('.tk-clist [data-id="tk_late"]') && cnum("가나다") === "0", "칸에서 빠짐 · 남은 수");
-      eq(wkb("가나다").textContent.trim(), "이번 주 마친 일 1");
+      eq(wkb("가나다").textContent.trim(), "이번 주 마친 일 2");
       const ul = colEl("가나다").querySelector(".tk-wklist");
       ok(ul.hidden && wkb("가나다").getAttribute("aria-expanded") === "false", "처음은 접힘");
       ok(cin("가나다") === ci, "입력칸 그대로");
@@ -15143,9 +15159,10 @@ function makeServer(opts = {}) {
       ok(!ul.hidden && wkb("가나다").getAttribute("aria-expanded") === "true" && wkb("가나다").getAttribute("aria-controls") === ul.id, "펼침");
       const dcb = ul.querySelector('[data-id="tk_late"] .tk-chk');
       ok(dcb && dcb.checked && !ul.querySelector('[data-id="tk_old"]'), "체크된 줄 · 지난주 일 없음");
+      eq(Array.from(ul.querySelectorAll(".tk-row")).map(r => r.dataset.id).join(), "tk_late,tk_mon", "최근에 마친 순");
       dcb.click();
       eq(byId("tk_late").done + "|" + byId("tk_late").doneAt, "false|", "끄면 다시 할 일");
-      ok(colEl("가나다").querySelector('.tk-clist [data-id="tk_late"]') && wkb("가나다").textContent.trim() === "이번 주 마친 일 0", "칸에 다시 · 수");
+      ok(colEl("가나다").querySelector('.tk-clist [data-id="tk_late"]') && wkb("가나다").textContent.trim() === "이번 주 마친 일 1", "칸에 다시 · 수");
       const nb = colEl("라마바").querySelector('.tk-clist [data-id="tk_none"] .tk-chk');
       nb.focus(); nb.click();
       ok(e.w.document.activeElement === cin("라마바"), "키보드로 마지막 줄을 체크하면 그 칸 입력칸으로");
@@ -15163,7 +15180,8 @@ function makeServer(opts = {}) {
       ok(/@media print \{[^@]*\.tk-cin[^{]*\{ display: none !important; \}/.test(css), "인쇄에는 칸 입력 없음");
       ok(/#tk-meetbox \.tk-cols \{[^}]*grid-template-columns: repeat\(auto-fill, minmax\(300px, 1fr\)\)/.test(css), "PC 여러 칸");
       ok(/@media screen and \(max-width: 767px\) \{[^@]*#tk-meetbox \.tk-cols \{ grid-template-columns: 1fr; \}/.test(css), "모바일 한 줄로 쌓음");
-      ok(/#tk-meetbox \.tk-chk \{[^}]*width: 32px; height: 32px;/.test(css), "큰 체크박스");
+      ok(/#tk-meetbox \.tk-chk \{[^}]*width: 2\.29rem; height: 2\.29rem;/.test(css) && /#tk-meetbox \.tk-row \{ grid-template-columns: 2\.29rem /.test(css), "큰 체크박스 · 그 칸 너비는 rem(글자 크게 보기를 따름)");
+      ok(/#tk-meetbox \.tk-row\.tk-late \{ padding-left: 10px; \}/.test(css), "지난 일 빨간 띠와 체크박스 사이 띄움");
       q(e, "#tk-meet").click();
       ok(q(e, "#tk-list") && !q(e, "#tk-meetbox"), "목록 보기 → 목록");
       eq(q(e, "#tk-meet").textContent.trim(), "회의 모드");
@@ -15197,6 +15215,17 @@ function makeServer(opts = {}) {
       q(e, "#tk-meet").click(); typeQ("목록 글"); q(e, "#tk-quick").focus();
       e.S.renderView();
       ok(q(e, "#tk-quick").value === "목록 글" && e.w.document.activeElement === q(e, "#tk-quick"), "목록 화면에서도 그대로");
+      go(e, "dashboard"); go(e, "tasks");
+      ok(q(e, "#tk-quick").value === "목록 글" && e.w.document.activeElement !== q(e, "#tk-quick"), "다른 화면에 다녀오면 글은 남고 포커스는 돌려주지 않음(모바일 자판)");
+      const sv0 = e.S.save;
+      try {
+        e.S.save = function () { const r = sv0.apply(this, arguments); e.S.renderView(); return r; };   // 저장 중 바로 다시 그리는 경우
+        const qi = q(e, "#tk-quick"); qi.focus(); enter(qi);
+        ok(last().t === "목록 글" && q(e, "#tk-quick").value === "", "저장하며 다시 그려도 넣은 글이 되살아나지 않음(빠른 입력)");
+        q(e, "#tk-meet").click();
+        const c = cin("Thq"); c.focus(); typeIn(c, "모레 확인"); enter(c);
+        ok(last().t === "확인" && cin("Thq").value === "", "저장하며 다시 그려도 넣은 글이 되살아나지 않음(칸 입력)");
+      } finally { e.S.save = sv0; }
     });
     e.w.close();
   }
