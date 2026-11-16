@@ -225,7 +225,7 @@ Claude가 할 일(순서대로):
 
 ## 7. 미결 · 주의 (열린 일만 — 끝나면 HISTORY.md 로)
 
-- **Task 관리(v1.75.0) — 운영 적용 전**(main 위(v1.72.1 다음) — K드라이브 PR #17 · #18 · #19 와 따로. 설계 `docs/superpowers/specs/2026-11-15-task-manager-design.md` §13 · 계획 `docs/superpowers/plans/2026-11-15-task-manager.md`). 적용 순서(Mark 승인 뒤):
+- **Task 관리(v1.75.0) — 운영 적용 중(11-17: ① 마이그레이션 적용 끝 — `20261116153319 semis_logi_tasks_1`, 적용 뒤 key_acl tasks = 3 · 3 · 권한표 54줄 · 공용 행 tasks 없음 확인 → ② 병합 · ③ Edge 재배포 이어서)**(main 위(v1.72.1 다음) — K드라이브 PR #17 · #18 · #19 와 따로. 설계 `docs/superpowers/specs/2026-11-15-task-manager-design.md` §13 · 계획 `docs/superpowers/plans/2026-11-15-task-manager.md`). 적용 순서(Mark 승인 뒤):
   ① 마이그레이션 `semis_logi_tasks_1` = `tools/sql/semis-logi-tasks.sql`(`insert into semis_logi_private.key_acl(key, read_rank, write_rank) values ('tasks',3,3) on conflict (key) do update …` — 다시 실행해도 같음) — **병합 전에 먼저**(없으면 기본 2/3 이라 manager 가 읽을 수 있음). 번호 붙은 `semis_logi_security_NN` 대신 이름을 따로 둔 까닭: 진행 중인 K드라이브 PR #17 · #18 · #19 의 `security_NN` 번호와 겹치지 않게. 적용 뒤 `select * from semis_logi_private.key_acl where key = 'tasks'` → 3 · 3 확인
   ② main 병합(GitHub Pages 배포 — K드라이브 PR #17 · #18 · #19 를 기다리지 않음)
   ③ Edge `semis-logi-argo` 재배포(COLLECTIONS `tasks` · toolList `task_add` · `task_update` · `task_done` · `task_delete` · 지침 한 줄 · 안내 지식 `argo-guide.ts`, verify_jwt false) — **병합 뒤**(병합 전에 배포하면 옛 화면이 모르는 도구를 받음). 이때 배포되는 것은 main 의 아르고 + Task 도구 — K드라이브 찾기(#18 `argos_find` `scope`)는 아직 배포되지 않으며 괜찮다(#18 이 뒤에 병합되면 그 아르고 재배포가 둘 다 담는다). 모델 · 생각 깊이 · max_tokens 는 그대로
