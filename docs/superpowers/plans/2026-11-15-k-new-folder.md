@@ -52,7 +52,7 @@
   - `semis_logi_ksync_kidx_save` 의 뿌리 바꿈 가지: 지금 지우는 것에 더해 `kidx_ack` 비움 · `kidx_base = null` · `kidx_base_err = '[]'`.
   - 파일 끝(실행 권한 앞) 한 번 채움: `update … set kidx_base = (select min(first_seen) from kidx) where id = 1 and kidx_base is null and exists (select 1 from kidx);`
 
-- [ ] **Step 1: 실패하는 시험을 쓴다** — 기존 KIDX 도우미(`kx` · `ks` · `one` · `eq`, 걷기 begin → rows → end)를 그대로 쓴다. 시험 경로는 지어낸 것.
+- [x] **Step 1: 실패하는 시험을 쓴다** — 기존 KIDX 도우미(`kx` · `ks` · `one` · `eq`, 걷기 begin → rows → end)를 그대로 쓴다. 시험 경로는 지어낸 것.
   - `NEWD-01` 권한: `kidx_ack` anon SELECT 차단 · RLS 켜짐.
   - `NEWD-02` 첫 걷기(빈 표, 폴더 `가/나`, `가/나/다`, 파일 1) 뒤 `kidx_base` = 그 줄들의 `first_seen` · `kidx_base_err = []`.
   - `NEWD-03` 둘째 걷기(같은 줄 + 새 폴더 `가/새`) 뒤 `kidx_base` 그대로 · `가/새` 만 `first_seen > kidx_base`.
@@ -61,10 +61,10 @@
   - `NEWD-06` 뿌리 바꿈(`ks({root: "다른"})`) → `kidx_base` null · `kidx_base_err = []` · `kidx_ack` 0줄. 대소문자만 바꾸면 그대로.
   - `NEWD-07` 처리 기록 정리: `kidx_ack` 에 `가/새`(있음) · `가/없음`(색인에 없음) → 다음 덧쓰기 뒤 `가/새` 만 남음.
   - `NEWD-08` 마이그레이션 채움: `kidx_base` 를 null 로 바꾸고 SQL 파일을 다시 실행 → `min(first_seen)`; 한 번 더 실행해도 그대로.
-- [ ] **Step 2: 돌려 실패를 본다** — Run: `node tools/sql/semis-logi-ksync.test.mjs tools/sql/semis-logi-ksync.sql tools/sql/semis-logi-conflict.sql` — Expected: NEWD-01~08 FAIL(열 · 표 없음).
-- [ ] **Step 3: 위 Interfaces 대로 구현한다.** 기존 KIDX-01~13 은 그대로 통과해야 한다.
-- [ ] **Step 4: 돌려 통과를 본다** — 같은 명령, Expected: 실패 0.
-- [ ] **Step 5: 커밋** — `K드라이브 새 폴더 알림 — 서버: 기준선 · 처리 기록 표`
+- [x] **Step 2: 돌려 실패를 본다** — Run: `node tools/sql/semis-logi-ksync.test.mjs tools/sql/semis-logi-ksync.sql tools/sql/semis-logi-conflict.sql` — Expected: NEWD-01~08 FAIL(열 · 표 없음).
+- [x] **Step 3: 위 Interfaces 대로 구현한다.** 기존 KIDX-01~13 은 그대로 통과해야 한다.
+- [x] **Step 4: 돌려 통과를 본다** — 같은 명령, Expected: 실패 0.
+- [x] **Step 5: 커밋** — `K드라이브 새 폴더 알림 — 서버: 기준선 · 처리 기록 표`
 
 ### Task 2: SQL — 새 폴더 계산 · 관리 RPC · 상태(배지)
 
@@ -90,7 +90,7 @@
   - `semis_logi_ksync_status()` 결과에 `'newdirs', { n, n_link, gone: gone 수 }`(`ksync_newdirs(0)`) · `alert` 에 `or n > 0 or gone > 0`.
   - 두 새 RPC 를 기존 revoke(public, authenticated) · grant(anon, service_role) 목록에 넣는다.
 
-- [ ] **Step 1: 실패하는 시험을 쓴다** — 연결은 `map_save` 로 만든다(`k_path` = `항공보안/…`, 색인 뿌리 `항공보안`).
+- [x] **Step 1: 실패하는 시험을 쓴다** — 연결은 `map_save` 로 만든다(`k_path` = `항공보안/…`, 색인 뿌리 `항공보안`).
   - `NEWD-09` 권한 · 꺼짐: 새 RPC 2개 `ADMIN` 목록(시스템관리자 밖 42501 — 기존 0번 대조가 확인) · 찾기 꺼짐이면 `{ ok: true, on: false, n: 0 … }`.
   - `NEWD-10` 종류: 기준선 뒤 새 폴더 `업무1`(top) · `업무1/둘째`(link — top 아래지만 둘째 폴더라 따로 머리) · `업무2/옛둘째/2027`(out, 부모 연결 없음) · `업무2/연결됨/2027`(auto — `업무2/연결됨` 연결) · `업무2/연결됨/임시/x`(excl — 연결 `excludes: ["임시"]`, `excl` = `임시`) · `보관/새`(excl — 전체 제외 `항공보안/보관`) → 각 `cls`, `map` · `excl` 칸, 정렬 순서.
   - `NEWD-11` 묶음 · 상한: `업무3/새둘째/a/b`(넷 다 새것) → 머리는 `업무3/새둘째` 하나(`more` 2 — `a`, `a/b`) + `업무3` 은 top 한 줄; 머리 줄 305개를 만들면 `items` 300 · `n` 305.
@@ -101,10 +101,10 @@
   - `NEWD-16` 사라진 연결: 연결 `항공보안/업무8/둘째`(마지막 걷기 전에 만듦) 폴더가 색인에 없으면 `gone` 에 있음; 마지막 걷기 뒤 만든 연결 · 찾기 `excludes` 아래 연결 · 뿌리 밖 연결은 없음.
   - `NEWD-17` 상태: 새 폴더 · gone 있으면 `newdirs` 숫자 · `alert` true; 모두 처리하면 `n` 0 · (다른 조건 없으면) `alert` false.
   - `NEWD-18` ack 검사: `act` 다른 값 · 빈 배열 · 301개 → `bad`; 색인에 없는 경로 · `../x` → `skipped`.
-- [ ] **Step 2: 돌려 실패를 본다** — Task 1 과 같은 명령, Expected: NEWD-09~18 FAIL.
-- [ ] **Step 3: 위 Interfaces 대로 구현한다.** 한 번 부를 때 폴더 1,400 · 연결 30 기준 수십 ms 안(재귀 CTE 또는 집합 조인 — 구현자 판단, `LIKE` 금지).
-- [ ] **Step 4: 돌려 통과를 본다** — Expected: 실패 0(기존 시험 포함).
-- [ ] **Step 5: 커밋** — `K드라이브 새 폴더 알림 — 서버: 새 폴더 계산 · 관리 RPC · 배지`
+- [x] **Step 2: 돌려 실패를 본다** — Task 1 과 같은 명령, Expected: NEWD-09~18 FAIL.
+- [x] **Step 3: 위 Interfaces 대로 구현한다.** 한 번 부를 때 폴더 1,400 · 연결 30 기준 수십 ms 안(재귀 CTE 또는 집합 조인 — 구현자 판단, `LIKE` 금지).
+- [x] **Step 4: 돌려 통과를 본다** — Expected: 실패 0(기존 시험 포함).
+- [x] **Step 5: 커밋** — `K드라이브 새 폴더 알림 — 서버: 새 폴더 계산 · 관리 RPC · 배지`
 
 ### Task 3: Edge `semis-logi-argo` — `mode: "kfolder"`
 
@@ -120,11 +120,11 @@
   - 응답 200 `{ ok: true, picks: [{ path, key: string|null, reason: string(80자까지) }], model }` — 보낸 `path` 가 아닌 것은 버리고, `cats` 에 없는 `key` 는 `null` 로. `semis_logi_argo_meter` 로 토큰 셈.
   - `mode` 가 없으면 지금 대화 흐름 그대로.
 
-- [ ] **Step 1: 실패하는 시험** `Deno.test("kfolder: 시스템관리자만 · 입력 검사 · 강제 도구 · 결과 거르기 · 사용량", …)`: rank 3 → 403 이고 AI fetch 0회; items 11개 · 키 형식 틀림 → 400; rank 4 정상 → AI 요청 본문에 `tool_choice.name === "kfolder_pick"` · `tools.length === 1` · system 에 `KFOLDER_SYSTEM`; 가짜 AI 가 `[{path:"업무1/둘째", key:"audit|gov"}, {path:"모름", key:"audit|gov"}, {path:"업무1/셋째", key:"x|y"}]` 를 주면 응답 `picks` = `[{path:"업무1/둘째", key:"audit|gov", …}, {path:"업무1/셋째", key:null, …}]`; meter 1회.
-- [ ] **Step 2: 돌려 실패를 본다** — Run: `deno test --allow-net --allow-env tools/edge/semis-logi-argo.test.ts` — Expected: 새 시험 FAIL, 기존 7건 PASS.
-- [ ] **Step 3: 구현한다**(위 Interfaces).
-- [ ] **Step 4: 돌려 통과를 본다** — Expected: 8 passed.
-- [ ] **Step 5: 커밋** — `K드라이브 새 폴더 알림 — Edge argo: kfolder 추천(시스템관리자)`
+- [x] **Step 1: 실패하는 시험** `Deno.test("kfolder: 시스템관리자만 · 입력 검사 · 강제 도구 · 결과 거르기 · 사용량", …)`: rank 3 → 403 이고 AI fetch 0회; items 11개 · 키 형식 틀림 → 400; rank 4 정상 → AI 요청 본문에 `tool_choice.name === "kfolder_pick"` · `tools.length === 1` · system 에 `KFOLDER_SYSTEM`; 가짜 AI 가 `[{path:"업무1/둘째", key:"audit|gov"}, {path:"모름", key:"audit|gov"}, {path:"업무1/셋째", key:"x|y"}]` 를 주면 응답 `picks` = `[{path:"업무1/둘째", key:"audit|gov", …}, {path:"업무1/셋째", key:null, …}]`; meter 1회.
+- [x] **Step 2: 돌려 실패를 본다** — Run: `deno test --allow-net --allow-env tools/edge/semis-logi-argo.test.ts` — Expected: 새 시험 FAIL, 기존 7건 PASS.
+- [x] **Step 3: 구현한다**(위 Interfaces).
+- [x] **Step 4: 돌려 통과를 본다** — Expected: 8 passed.
+- [x] **Step 5: 커밋** — `K드라이브 새 폴더 알림 — Edge argo: kfolder 추천(시스템관리자)`
 
 ### Task 4: 추천 — 새 `js/kfolder.js`
 
@@ -146,7 +146,7 @@
   - `SemisKfolder.applyAI(path, pick, ctx) → Rec` — `pick.key` 가 후보이고 비었으면 `link`(`by: "ai"`, `reason` 앞 'AI 추천: '), 쓰였으면 `taken`/`moved`, 없거나 모르는 키면 `none`. `ssi` · `dir` · `since` 는 `recommend` 와 같은 규칙.
   - 점수 숫자 · 문턱은 구현자 판단 — 아래 시험이 기준.
 
-- [ ] **Step 1: 실패하는 시험** — 지어낸 분류 · 연결로(예: 화면 `수검 대응`(`audit`: `gov` '국토부 · 지방항공청 보안점검' · `aeo` 'AEO 인증 · 심사' · `misc` '기타'), 화면 `보안 기록부`(`inspection`: `monthly` '월간 자체 보안점검' · `quarterly` '분기 자체 보안점검 · Self Audit' · `misc` '기타'), 연결 `항공보안/04 수검/AEO`(audit/aeo, since 2025-08-01) · `항공보안/03 점검/월간`(inspection/monthly, since 2025-08-01)):
+- [x] **Step 1: 실패하는 시험** — 지어낸 분류 · 연결로(예: 화면 `수검 대응`(`audit`: `gov` '국토부 · 지방항공청 보안점검' · `aeo` 'AEO 인증 · 심사' · `misc` '기타'), 화면 `보안 기록부`(`inspection`: `monthly` '월간 자체 보안점검' · `quarterly` '분기 자체 보안점검 · Self Audit' · `misc` '기타'), 연결 `항공보안/04 수검/AEO`(audit/aeo, since 2025-08-01) · `항공보안/03 점검/월간`(inspection/monthly, since 2025-08-01)):
   - `KF01 tokens`: `"04 수검"` → `["수검"]` · `"(03.15) 현장 점검 2026"` → `["현장", "점검"]` · `"위해물품·적발 (SSI)"` → `["위해물품", "적발"]` · `"a[b+(c)"` 에서 예외 없음.
   - `KF02 ssiOf`: `"04 수검/지방청 점검 (SSI)/2026"` true · `"a/b (ssi)  "` true · `"a/SSI 자료"` false.
   - `KF03 이름 · 동의어`: `"04 수검/지방항공청 점검"` → link `audit|gov`; `"04 수검/국토교통부 보안점검"` → link `audit|gov`(국토부 ↔ 국토교통부, `reason` 에 분류 이름).
@@ -156,10 +156,10 @@
   - `KF07 기본값`: `dir` 언제나 `"k2h"`; `since` = 같은 맨 위 폴더 연결 최빈값 → 없으면 전체 최빈값 → 연결 없으면 `""`; `ssi` = `ssiOf`.
   - `KF08 applyAI`: 빈 후보 키 → link(`by "ai"`, 'AI 추천: '로 시작) · 쓰인 키 → `taken` · 모르는 키 / `null` → `none`.
   - `KF09 ask`: 가짜 fetch 가 받은 본문 `mode === "kfolder"` · `items.length <= 10` · 헤더 `x-semis-token`; 실패 · 10초 넘김(가짜 타이머) → `{}`.
-- [ ] **Step 2: 돌려 실패를 본다** — Run: `T_ONLY='^KF' npm test` — Expected: KF01~09 FAIL(`SemisKfolder` 없음).
-- [ ] **Step 3: 구현한다.** 낱말 비교에 정규식을 만들면 escape(Review Focus 2).
-- [ ] **Step 4: 돌려 통과를 본다** — Run: `T_ONLY='^KF' npm test` → PASS, 그다음 `npm test` 전체 실패 0(스크립트 `defer` 시험 LG01 포함).
-- [ ] **Step 5: 커밋** — `K드라이브 새 폴더 알림 — 화면: 분류 추천(규칙 · AI)`
+- [x] **Step 2: 돌려 실패를 본다** — Run: `T_ONLY='^KF' npm test` — Expected: KF01~09 FAIL(`SemisKfolder` 없음).
+- [x] **Step 3: 구현한다.** 낱말 비교에 정규식을 만들면 escape(Review Focus 2).
+- [x] **Step 4: 돌려 통과를 본다** — Run: `T_ONLY='^KF' npm test` → PASS, 그다음 `npm test` 전체 실패 0(스크립트 `defer` 시험 LG01 포함).
+- [x] **Step 5: 커밋** — `K드라이브 새 폴더 알림 — 화면: 분류 추천(규칙 · AI)`
 
 ### Task 5: 화면 — 동기화 탭 '새 K 폴더' · 레일 배지 · 홈 '오늘' 한 줄
 
@@ -184,7 +184,7 @@
   - 찾기 꺼짐(`st.nd && st.nd.on === false`) → 탭 자리 한 줄 `새 폴더 알림은 K드라이브 찾기를 켜야 동작합니다`; RPC 실패(`st.nd === null`) → 탭 자리 `새 폴더 목록을 불러오지 못했습니다`(알림 창 없음).
   - `modules.js`: `SeMIS.settingsTab(id: string, opt?: { pane?: string })` — 다음 시스템 설정 그리기에서 그 탭을 열고(`setTab = id`), `ksync` 면 `SemisKsync` 가 '확인 필요' 카드의 `opt.pane` 탭을 고른다. `todayHTML` 에 줄 하나(`SeMIS.isAdmin()` 이고 `SemisKsync.newdirs()` 의 `n + gone > 0` 일 때만, 보안교육 자격 줄 앞): `{ id: "td-knew", icon: "folder", color: n_link || gone ? "amber" : "slate", title: "K드라이브 새 폴더", sub: "연결 결정 " + n_link + " · 알림 " + (n - n_link) + (gone ? " · 연결 폴더 안 보임 " + gone : ""), val: n + gone, go: "settings" }` — 누르면 `SeMIS.settingsTab("ksync", { pane: "new" })`.
 
-- [ ] **Step 1: 실패하는 시험**(기존 [KS] 가짜 rpc · 시스템관리자 세션 도우미, 지어낸 경로):
+- [x] **Step 1: 실패하는 시험**(기존 [KS] 가짜 rpc · 시스템관리자 세션 도우미, 지어낸 경로):
   - `KS-N1 묶음`: `newdirs` 응답에 다섯 종류 + `gone` 1 → 탭 '새 K 폴더 6' 이 먼저 골라짐 · 경고 줄이 맨 위 · 꼬리표 · 종류별 단추 수(위 표) · `n: 305` 면 '전체 305줄 중 300줄'.
   - `KS-N2 [이대로 연결]`: 보내는 값 `{ k_path: "항공보안/업무1/둘째", mod, grp, dir: "k2h", ssi: false, since: "2025-08-01" }` · 확인 창 없음 · 두 번 눌러도 `map_save` 1회 · 성공 뒤 목록 다시 읽음 · `{ ok: false, error: "target_dup" }` → 알림 1번 + 연결 창이 채운 값으로 열림.
   - `KS-N3 [고쳐서 연결]`: 연결 창 `#ks-tg` 값 `audit|gov` · `#ks-dir` `k2h` · `#ks-ssi` 켜짐(경로에 `(SSI)`) · K 폴더 칸 = 전체 경로; `out` 줄은 단위 둘째 폴더 경로로 채움.
@@ -194,11 +194,11 @@
   - `KS-N7 홈 줄`: 시스템관리자 · `n: 3, n_link: 1, gone: 1` → '오늘' 에 `#td-knew`(제목 · '연결 결정 1 · 알림 2 · 연결 폴더 안 보임 1' · 값 4); 누르면 시스템 설정 › K드라이브 동기화 탭 · 새 K 폴더 칸; 숫자 0 이면 줄 없음; 안전보안파트(hq) 세션이면 줄 없음.
   - `KS-N8 실패 · 꺼짐`: `newdirs` RPC 404 → 다른 카드 그대로 · 탭 자리 한 줄 · 알림 창 없음; `{ on: false }` → 찾기 켜기 안내 한 줄.
   - `KS-N9 저장소`: `bytes50` 이 `storeLeft()` 보다 크면 그 줄에 '남은 저장소보다 큼' 경고, 작으면 없음.
-- [ ] **Step 2: 돌려 실패를 본다** — Run: `T_ONLY='^KS-N' npm test` — Expected: KS-N1~9 FAIL.
-- [ ] **Step 3: 구현한다.** 함수 첫 줄에서 `if (!SeMIS.isAdmin()) return;`(단추 처리 · 처리 RPC · 연결 · AI 호출 모두).
-- [ ] **Step 4: 돌려 통과를 본다** — `T_ONLY='^KS' npm test` → PASS, 그다음 `npm test` 전체 실패 0(KS01 · KS12 등 기존 기대값이 탭 수 · 카드 숫자 때문에 바뀌면 그 이유를 커밋 메시지에).
-- [ ] **Step 5: 브라우저 확인**(HANDOFF §6-3 — 운영 DB 비-GET 차단, 가짜 응답): 동기화 탭 새 K 폴더 칸 · 홈 '오늘' 줄을 390px · 1024px 에서 넘침 없이. playwright 가 없으면 확인 못 했다고 기록.
-- [ ] **Step 6: 커밋** — `K드라이브 새 폴더 알림 — 화면: 동기화 탭 새 K 폴더 · 배지 · 홈 오늘 한 줄`
+- [x] **Step 2: 돌려 실패를 본다** — Run: `T_ONLY='^KS-N' npm test` — Expected: KS-N1~9 FAIL.
+- [x] **Step 3: 구현한다.** 함수 첫 줄에서 `if (!SeMIS.isAdmin()) return;`(단추 처리 · 처리 RPC · 연결 · AI 호출 모두).
+- [x] **Step 4: 돌려 통과를 본다** — `T_ONLY='^KS' npm test` → PASS, 그다음 `npm test` 전체 실패 0(KS01 · KS12 등 기존 기대값이 탭 수 · 카드 숫자 때문에 바뀌면 그 이유를 커밋 메시지에).
+- [x] **Step 5: 브라우저 확인**(HANDOFF §6-3 — 운영 DB 비-GET 차단, 가짜 응답): 동기화 탭 새 K 폴더 칸 · 홈 '오늘' 줄을 390px · 1024px 에서 넘침 없이. playwright 가 없으면 확인 못 했다고 기록. — playwright 없음, 확인 못 함(HANDOFF §7 에 기록).
+- [x] **Step 6: 커밋** — `K드라이브 새 폴더 알림 — 화면: 동기화 탭 새 K 폴더 · 배지 · 홈 오늘 한 줄`
 
 ### Task 6: E2E · 문서 · 버전 1.74.0
 
@@ -212,8 +212,8 @@
 **Interfaces:**
 - Consumes: Task 1 · 2 의 SQL(실제 Edge `semis-logi-ksync` 코드 ↔ 실제 SQL 을 PGlite 로 — 기존 E2E 와 같음).
 
-- [ ] **Step 1: 실패하는 E2E**(`19-19`): 임시 K 의 `항공보안` 에서 회차 1(첫 걷기 = 기준선) → `semis_logi_ksync_newdirs` 의 `n` 0 → 새 폴더 `업무9/새둘째` 와 이미 있는 연결 폴더 안 `…/2027` 을 만들고 다음 날 회차(상태 파일 `kidxDay` 를 어제로) → `link` 1 · `auto` 1 → `map_save` 로 `항공보안/업무9/새둘째` 연결 → `link` 빠짐 → `auto` 경로 `newdir_ack seen` → `n` 0 · 상태 `alert` 이 새 폴더 때문에 켜지지 않음. K 에 아무것도 쓰지 않았는지(걷기 전후 임시 K 나무 같음).
-- [ ] **Step 2: 돌려 실패 → 통과를 본다** — Run: `node tools/ksync/test/e2e.test.mjs` — Expected: 새 묶음 통과, 기존 287건 그대로. `node tools/ksync/test/plan.test.mjs` 도 그대로(405).
-- [ ] **Step 3: 버전 · 문서** — `node tools/bump-version.cjs 1.74.0` · package 두 파일. KSYNC §11 은 spec §4 · §6 · §8 의 규칙을 운영자 말로(누가 보나 · 무엇이 뜨나 · 단추 · 한계 · 되돌리기 SQL). HANDOFF §7 은 spec §11 순서(마이그레이션 38 → Edge argo 재배포 → main 병합 → 확인, Mac 재설치 없음). 실제 K 이름 · 서버 값 금지.
-- [ ] **Step 4: 시험 5종 모두** — 위 Global Constraints 의 명령 5개 모두 실패 0. 숫자(건수)를 HANDOFF §1 테스트 칸에.
-- [ ] **Step 5: 커밋** — `v1.74.0 K드라이브 새 폴더 알림 · 분류 추천 — E2E · 문서`
+- [x] **Step 1: 실패하는 E2E**(`19-19`): 임시 K 의 `항공보안` 에서 회차 1(첫 걷기 = 기준선) → `semis_logi_ksync_newdirs` 의 `n` 0 → 새 폴더 `업무9/새둘째` 와 이미 있는 연결 폴더 안 `…/2027` 을 만들고 다음 날 회차(상태 파일 `kidxDay` 를 어제로) → `link` 1 · `auto` 1 → `map_save` 로 `항공보안/업무9/새둘째` 연결 → `link` 빠짐 → `auto` 경로 `newdir_ack seen` → `n` 0 · 상태 `alert` 이 새 폴더 때문에 켜지지 않음. K 에 아무것도 쓰지 않았는지(걷기 전후 임시 K 나무 같음).
+- [x] **Step 2: 돌려 실패 → 통과를 본다** — Run: `node tools/ksync/test/e2e.test.mjs` — Expected: 새 묶음 통과, 기존 287건 그대로. `node tools/ksync/test/plan.test.mjs` 도 그대로(405).
+- [x] **Step 3: 버전 · 문서** — `node tools/bump-version.cjs 1.74.0` · package 두 파일. KSYNC §11 은 spec §4 · §6 · §8 의 규칙을 운영자 말로(누가 보나 · 무엇이 뜨나 · 단추 · 한계 · 되돌리기 SQL). HANDOFF §7 은 spec §11 순서(마이그레이션 38 → Edge argo 재배포 → main 병합 → 확인, Mac 재설치 없음). 실제 K 이름 · 서버 값 금지.
+- [x] **Step 4: 시험 5종 모두** — 위 Global Constraints 의 명령 5개 모두 실패 0. 숫자(건수)를 HANDOFF §1 테스트 칸에.
+- [x] **Step 5: 커밋** — `v1.74.0 K드라이브 새 폴더 알림 · 분류 추천 — E2E · 문서`

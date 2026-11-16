@@ -13,7 +13,8 @@
    - 적용: 마이그레이션 semis_logi_security_30_ksync · v1.64 기준일 · 막는 형식 semis_logi_security_32_ksync_since ·
      v1.68 링크 정확도 semis_logi_security_34_ksync_links · 보고 · 지정 제외 · H → K 준실시간 semis_logi_security_35_ksync_report ·
      v1.72 '양쪽' 안전 전환 · H 첨부 해시 semis_logi_security_36_ksync_both ·
-     v1.73 K드라이브 찾기 semis_logi_security_37_ksync_kidx(이 파일 전체).
+     v1.73 K드라이브 찾기 semis_logi_security_37_ksync_kidx ·
+     v1.74 K드라이브 새 폴더 알림 semis_logi_security_38_ksync_newdirs(이 파일 전체).
      이 파일이 원본(다시 실행해도 같은 결과).
      검증: node tools/sql/semis-logi-ksync.test.mjs tools/sql/semis-logi-ksync.sql (PGlite + pgcrypto)
    ═══════════════════════════════════════════════════════ */

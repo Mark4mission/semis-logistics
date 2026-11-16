@@ -1508,6 +1508,47 @@ eq([r.status, kxActs(kn), since(logs, kg, l => l.startsWith("warn"))], ["ok", []
 if (NOROOT) fs.chmodSync(path.join(KX, "잠김"), 0o755);
 await admin("select public.semis_logi_ksync_kidx_save($1::jsonb)", [JSON.stringify({ on: false, root: "" })]);
 
+/* 19-19. v1.74 K드라이브 새 폴더 알림 — 첫 걷기가 기준선(기존 폴더는 새 폴더가 아님) → 다음 날 걷기에 새로 생긴 폴더만:
+   연결 밖 둘째 폴더 = 연결 결정(link) · 이미 있는 연결 안 = 저절로 올라감(auto). [이대로 연결](map_save) 하면 link 줄이 빠지고 · [확인] 하면 auto 줄이 빠지며 배지가 꺼진다.
+   걷기는 읽기만 — 걷기 전후 '항공보안' 나무가 같다 */
+const ndTree = () => { const out = []; const w = (d, r) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const rr = r ? r + "/" + e.name : e.name, f = path.join(d, e.name);
+  if (e.isDirectory()) { out.push(rr + "/"); w(f, rr); } else { const s = fs.statSync(f); out.push(rr + " " + s.size + " " + s.mtimeMs); } } }; w(KX, ""); return JSON.stringify(out.sort()); };
+const ndList = () => admin("select public.semis_logi_ksync_newdirs()");
+// 배지 = 새 폴더 · 사라진 연결 폴더 말고 다른 이유(이틀 넘게 실패 · 보류 · 새 보안 이벤트)가 없을 때 새 폴더 때문인지 본다
+const ndStatus = async () => { const s = await admin("select public.semis_logi_ksync_status()");
+  return [s.newdirs.n, s.newdirs.n_link, s.newdirs.gone, s.alert, s.stale || s.counts.hold > 0 || s.counts.ev_new > 0]; };
+kxw("업무9/기존둘째/안내.pdf", "OLD");
+const MKO = (await admin("select public.semis_logi_ksync_map_save($1::jsonb)", [JSON.stringify({ k_path: "항공보안/업무9/기존둘째", mod: "audit", grp: "kold", dir: "k2h" })])).id;
+await admin("select public.semis_logi_ksync_kidx_save($1::jsonb)", [JSON.stringify({ on: true, root: "항공보안", excludes: [] })]);
+let ndT = ndTree();
+kn = rpcLog.length;
+r = await once();
+const nd1 = await ndList();
+eq([r.status, kxActs(kn), ndTree() === ndT, nd1.on, !!nd1.base, nd1.n, nd1.n_link, nd1.items, nd1.gone], ["ok", ["begin", "rows", "end"], true, true, true, 0, 0, [], []],
+  "첫 걷기 = 기준선: 기존 폴더는 새 폴더가 아님 · K 그대로");
+kxw("업무9/새둘째/계획.pdf", "NEWPLAN"); fs.mkdirSync(path.join(KX, "업무9", "기존둘째", "2027"));
+{ const s = kxSt(); s.kidxDay = new Date(NOW + 9 * 3600e3 - 86400e3).toISOString().slice(0, 10); fs.writeFileSync(STATE, JSON.stringify(s)); }
+ndT = ndTree();
+kn = rpcLog.length;
+r = await once();
+const nd2 = await ndList();
+eq([r.status, kxActs(kn), ndTree() === ndT], ["ok", ["begin", "rows", "end"], true], "다음 날(kidxDay 어제) 다시 걸음 · K 그대로");
+eq([nd2.n, nd2.n_link, nd2.items.map(i => [i.path, i.cls, i.part, i.more, i.files, i.bytes, i.map && i.map.id])],
+  [2, 1, [["업무9/새둘째", "link", false, 0, 1, 7, null], ["업무9/기존둘째/2027", "auto", false, 0, 0, 0, MKO]]], "새 폴더만: 연결 밖 둘째 폴더 link · 이미 있는 연결 안 auto(그 연결)");
+await admin("select public.semis_logi_ksync_events($1::jsonb)", [JSON.stringify({ seen: true })]);
+eq(await ndStatus(), [2, 1, 0, true, false], "상태: newdirs 수 · 새 폴더 때문에 배지(alert) 켜짐");
+const MKN = await admin("select public.semis_logi_ksync_map_save($1::jsonb)", [JSON.stringify({ k_path: "항공보안/업무9/새둘째", mod: "audit", grp: "knew", dir: "k2h", ssi: false })]);
+const nd3 = await ndList();
+eq([MKN.ok, await one("select state from semis_logi_private.ksync_maps where id = $1", [MKN.id]), nd3.n, nd3.n_link, nd3.items.map(i => [i.path, i.cls])],
+  [true, "preview", 1, 0, [["업무9/기존둘째/2027", "auto"]]], "[이대로 연결](map_save) = 미리보기 연결 · 그 뒤 link 줄 빠짐(연결로 처리됨)");
+const ndAck = await admin("select public.semis_logi_ksync_newdir_ack($1::jsonb)", [JSON.stringify({ paths: ["업무9/기존둘째/2027"], act: "seen" })]);
+const nd4 = await ndList();
+eq([ndAck.ok, ndAck.n, ndAck.skipped, nd4.n, nd4.n_link, nd4.items], [true, 1, 0, 0, 0, []], "auto 줄 [확인](seen) 뒤 새 폴더 0");
+eq(await ndStatus(), [0, 0, 0, false, false], "상태: newdirs 0 · 새 폴더 때문에 배지가 켜지지 않음");
+await admin("select public.semis_logi_ksync_map_delete($1)", [MKO]);
+await admin("select public.semis_logi_ksync_map_delete($1)", [MKN.id]);
+await admin("select public.semis_logi_ksync_kidx_save($1::jsonb)", [JSON.stringify({ on: false, root: "" })]);
+
 /* 20. 동시 실행 막기 · 로컬 상태 · 전체 확인 */
 fs.writeFileSync(path.join(APP, "ksync.lock"), JSON.stringify({ pid: process.pid, at: Date.now() }));
 eq((await once()).status, "locked", "다른 실행 중이면 양보");
