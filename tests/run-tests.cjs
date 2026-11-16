@@ -13591,6 +13591,10 @@ function makeServer(opts = {}) {
       const bd = doc.querySelector("td.bd");
       ok(bd.querySelector("table th") && bd.querySelectorAll("table td").length === 2 && bd.querySelectorAll(".md-flow span").length === 3 && bd.querySelector(".mr img"), "기록부: 표 · 흐름 · 사진");
       eq(L.RC(c).body, c.recBody);
+      // v1.72.1 — 표 · 소제목 글자는 em(글자를 줄이면 함께 줄어 표가 잘리지 않음) · 맞춤 결과를 돌려줌
+      const LSRC = read("js/learn.js");
+      ok(/\.bd table \{ width: 100%; margin: 1\.5mm 0; font-size: \.95em; \}/.test(LSRC) && /\.bd h3 \{ font-size: 1\.05em;/.test(LSRC) && /\.bd \.tx\.tight table th/.test(LSRC), "기록부 표 글자 em · 촘촘한 표");
+      eq(L.fitRecord(doc), true, "넘치지 않으면 true");
       const M = e.w.SemisLearnMd;
       ok(!/<script/.test(M.html("| <script>x</script> | b |")) && /&lt;script/.test(M.html("| <script>x</script> | b |")), "표 칸도 이스케이프");
       eq(e.errors.length, 0, e.errors.join("|")); e.w.close();

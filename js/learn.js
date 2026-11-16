@@ -827,14 +827,16 @@
   .bd { height: 84mm; vertical-align: top; text-align: left; padding: 2.5mm 3mm; overflow: hidden; font-size: 9.5pt; line-height: 1.5; }
   .bd .in { height: 78mm; overflow: hidden; display: flex; flex-direction: column; gap: 1.5mm; }
   .bd .tx { flex: 1 1 auto; min-height: 0; overflow: hidden; }
-  .bd table { width: 100%; margin: 1.5mm 0; font-size: 9pt; } .bd table th, .bd table td { height: auto; padding: .8mm 1.5mm; text-align: left; border: .4px solid #555; } .bd table th { background: #f1f1f1; }
+  .bd table { width: 100%; margin: 1.5mm 0; font-size: .95em; } .bd table th, .bd table td { height: auto; padding: .8mm 1.5mm; text-align: left; border: .4px solid #555; } .bd table th { background: #f1f1f1; }
   .bd .md-flow { display: flex; flex-wrap: wrap; gap: 1mm 1.5mm; align-items: center; margin: 1.5mm 0; } .bd .md-flow span { border: .4px solid #555; border-radius: 1.5mm; padding: .6mm 2mm; } .bd .md-flow i { font-style: normal; }
   .bd .mr { flex: none; display: flex; gap: 1.5mm; justify-content: center; align-items: center; }
   .bd .mr span { flex: 1 1 0; min-width: 0; display: block; text-align: center; }
   .bd .mr img { display: inline-block; max-width: 100%; object-fit: contain; border: .3px solid #999; vertical-align: top; }
   .bd .mr.vd img { width: 100%; height: auto; max-height: 30mm; }
   .lgf { position: fixed; right: 0; bottom: 0; width: 26mm; height: 5mm; } .lgf svg { display: block; width: 100%; height: 100%; }
-  .bd h3 { font-size: 10pt; margin: 2mm 0 1mm; } .bd h3:first-child { margin-top: 0; } .bd h4 { font-size: 9.5pt; margin: 1.5mm 0 .5mm; }
+  .bd h3 { font-size: 1.05em; margin: 2mm 0 1mm; } .bd h3:first-child { margin-top: 0; } .bd h4 { font-size: 1em; margin: 1.5mm 0 .5mm; }
+  .bd .tx.tight h3 { margin: 1mm 0 .4mm; } .bd .tx.tight h4 { margin: .8mm 0 .2mm; } .bd .tx.tight p { margin: .3mm 0; } .bd .tx.tight ul, .bd .tx.tight ol { margin: .2mm 0 .4mm 4mm; } .bd .tx.tight li { margin: 0; }
+  .bd .tx.tight table { margin: .6mm 0; } .bd .tx.tight table th, .bd .tx.tight table td { padding: .2mm 1mm; } .bd .tx.tight .md-flow { margin: .6mm 0; gap: .5mm 1mm; } .bd .tx.tight .md-flow span { padding: .2mm 1.2mm; }
   .bd p { margin: .8mm 0; } .bd ul, .bd ol { margin: .5mm 0 1mm 5mm; padding: 0; } .bd li { margin: .3mm 0; }
   .sg { height: 9mm; padding: .5mm; } .sg img { max-height: 8mm; max-width: 100%; display: block; margin: 0 auto; }
   .nt { font-size: 9pt; color: #333; }
@@ -906,23 +908,33 @@
     }
     return out;
   }
-  /* '교육 내용' 칸에 글이 다 들어가게 — 넘치면 사진을 먼저 줄이고(18mm 까지), 그래도 넘치면 글자를 줄인다(7pt 까지) */
+  /* '교육 내용' 칸에 글 · 표가 다 들어가게 — 글이 먼저다. 넘치면 사진 → 동영상 장면 → 글자(8pt) → 줄 간격 · 표 여백 → 글자(7pt)
+     → 사진 더 작게(12mm) 순으로 줄이고, 그래도 넘치면 사진 · 장면을 빼고 글자를 6pt 까지. 다 못 넣으면 false. 표 · 소제목 글자는 em 이라 함께 줄어든다 */
   function fitRecord(doc) {
+    let left = 0;
     try {
       Array.from(doc.querySelectorAll(".bd .in")).forEach(box => {
         const tx = box.querySelector(".tx");
         if (!tx) return;
         const over = () => tx.scrollHeight > tx.clientHeight + 1;
-        const imgs = Array.from(box.querySelectorAll(".mr:not(.vd) img"));
-        let h = 28;
-        while (over() && imgs.length && h > 18) { h -= 2; imgs.forEach(im => { im.style.maxHeight = h + "mm"; }); }
-        const vd = Array.from(box.querySelectorAll(".mr.vd img"));
-        let vh = 30;
-        while (over() && vd.length && vh > 16) { vh -= 2; vd.forEach(im => { im.style.maxHeight = vh + "mm"; im.style.width = "auto"; }); }
-        let fs = 10.5;
-        while (over() && fs > 7) { fs -= 0.5; tx.style.fontSize = fs + "pt"; tx.style.lineHeight = fs < 9 ? "1.35" : "1.45"; }
+        const imgs = Array.from(box.querySelectorAll(".mr:not(.vd) img")), vd = Array.from(box.querySelectorAll(".mr.vd img"));
+        const setI = (h) => imgs.forEach(im => { im.style.maxHeight = h + "mm"; });
+        const setV = (h) => vd.forEach(im => { im.style.maxHeight = h + "mm"; im.style.width = "auto"; });
+        const font = (to) => { while (over() && fs > to) { fs -= 0.5; tx.style.fontSize = fs + "pt"; tx.style.lineHeight = fs < 7 ? "1.25" : fs < 9 ? "1.35" : "1.45"; } };
+        let h = 28, vh = 30, fs = 10;
+        while (over() && imgs.length && h > 18) { h -= 2; setI(h); }
+        while (over() && vd.length && vh > 16) { vh -= 2; setV(vh); }
+        font(8);
+        if (over()) tx.classList.add("tight");
+        font(7);
+        while (over() && imgs.length && h > 12) { h -= 2; setI(h); }
+        while (over() && vd.length && vh > 12) { vh -= 2; setV(vh); }
+        if (over()) Array.from(box.querySelectorAll(".mr")).reverse().forEach(r => { if (over()) r.style.display = "none"; });
+        font(6);
+        if (over()) left++;
       });
     } catch (e) { /* 맞추지 못하면 그대로 인쇄 */ }
+    return left === 0;
   }
   /* 전파교육 화면(js/dissem.js)이 읽는 교육별 · 그룹별 이행 — 준비 중 교육은 빼고 */
   function dissemRows() {
@@ -947,7 +959,7 @@
       const fire = () => { try { fr.contentWindow.focus(); fr.contentWindow.print(); } catch (e) { /* 무시 */ } };
       const imgs = Array.from(doc.images || []).filter(i => !i.complete);
       const ready = Promise.all(imgs.map(i => new Promise(r => { i.onload = i.onerror = r; })));
-      Promise.race([ready, new Promise(r => setTimeout(r, 8000))]).then(() => { fitRecord(doc); setTimeout(fire, 300); });
+      Promise.race([ready, new Promise(r => setTimeout(r, 8000))]).then(() => { if (!fitRecord(doc)) toast("교육 내용이 길어 기록부 칸에 다 들어가지 않습니다. 내용을 줄여 주세요.", true); setTimeout(fire, 300); });
       setTimeout(() => { try { fr.remove(); } catch (e) { /* 무시 */ } }, 60000);
     } catch (e) { toast("인쇄 대화상자를 열 수 없습니다.", true); }
   }
