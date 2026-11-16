@@ -122,7 +122,7 @@
   /* ── 상태 ── */
   let view = "list", sel = "", filt = "live", q = "", dq = "", dfilt = "all", dgrp = "", dtab = "mem";
   let edit = null;
-  const memo = {};    // 올린 문서의 글(이 화면에서만 — AI 요약용)
+  const memo = {}, vmemo = {};    // 올린 문서의 글(이 화면에서만 — AI 요약용)
   const cur = () => courses().find(c => c.id === sel) || null;
   function go(v, id) { view = v; if (id !== undefined) sel = id; if (location.hash.replace(/^#\//, "") === MOD) SeMIS.renderView(); else SeMIS.navigate(MOD); }
 
@@ -499,16 +499,16 @@
           <div class="form-row"><label for="le-host">교육 주관</label><input id="le-host" maxlength="60" value="${esc(e.host)}"></div>
           <div class="form-row"><label for="le-place">장소</label><input id="le-place" maxlength="60" value="${esc(e.place)}"></div>
           <div class="form-row ln-span2"><label for="le-ov">개요 ${ui.tip ? ui.tip("학습 첫 화면에 제목과 함께 보이는 2~3줄 안내입니다.") : ""}</label><textarea id="le-ov" rows="3" maxlength="600">${esc(e.overview)}</textarea></div>
-          <label class="ln-ck ln-span2"><input type="checkbox" id="le-ssi" ${e.ssi ? "checked" : ""}> 민감보안정보(SSI) — AI 요약을 쓰지 않고 직접 작성</label>
         </div></section>
       <section class="card ln-form"><h2 class="card-title"><span class="ct-t">${e.offline ? "교육 내용(기록부용)" : "교육 자료 · 요약"}</span></h2>
         ${e.offline ? `<p class="ln-dim ln-note">집체 교육 — 아래 내용은 학습 화면에 나오지 않고 기록부 '교육 내용' 칸에만 들어갑니다. 교육이 끝난 뒤에 고쳐도 됩니다.</p>` : ""}
+        <label class="ln-ck"><input type="checkbox" id="le-ssi" ${e.ssi ? "checked" : ""}> 민감보안정보(SSI) — AI 에 보내지 않고 직접 작성 <small class="ln-dim">자료를 올리기 전에 표시</small></label>
         <label class="ln-drop" id="le-drop"><input type="file" id="le-file" multiple hidden accept=".pdf,.hwp,.hwpx,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,image/*,video/mp4,video/webm,video/quicktime">
-          ${icon("clip", 22)}<span><b>파일을 끌어다 놓거나 눌러서 고르기</b><small>${e.offline ? "공문 · 보고서 · 규정 등 문서를 올리면 AI 가 기록부에 들어갈 분량으로 정리합니다" : "문서 · 사진 · 동영상(50MB 이하) — 문서는 아래 요약으로 보여 줍니다"}</small></span></label>
+          ${icon("clip", 22)}<span><b>파일을 끌어다 놓거나 눌러서 고르기</b><small>${e.offline ? "공문 · 보고서 · 규정 등 문서를 올리면 AI 가 기록부에 들어갈 분량으로 정리합니다" : "문서 · 사진 · 동영상(50MB 이하) — 올리면 교육명 · 개요 · 교육 내용을 자동으로 채웁니다"}</small></span></label>
         <ul class="ln-items" id="le-items">${e.items.map(itemRow).join("")}</ul>
         <div class="ln-sumbar"><b>교육 내용(한 쪽 요약)</b><span class="spacer"></span>
           ${e.ssi ? "" : `<button type="button" class="btn btn-ghost btn-sm" id="le-ai">${icon("star", 15)}<span>AI 요약 만들기</span></button>`}</div>
-        <p class="ln-dim ln-note">문서(PDF · HWPX · DOCX · PPTX · XLSX) · 사진을 올리고 [AI 요약 만들기]를 누르면 기록부 한 칸 분량으로 정리해 왼쪽에 넣고, 오른쪽에 미리 보여 줍니다. 표는 <span class="mono">| 칸 | 칸 |</span>, 흐름은 <span class="mono">[접수] -&gt; [보고]</span> 로 적습니다.</p>
+        <p class="ln-dim ln-note">문서(PDF · HWPX · DOCX · PPTX · XLSX) · 사진 · 동영상을 올리면 기록부 한 칸 분량으로 자동 정리해 왼쪽에 넣고, 오른쪽에 미리 보여 줍니다. 동영상은 화면 장면의 글 · 자막만 읽습니다(말소리 제외). 다시 만들려면 [AI 요약 만들기]. 표는 <span class="mono">| 칸 | 칸 |</span>, 흐름은 <span class="mono">[접수] -&gt; [보고]</span> 로 적습니다.</p>
         <div class="ln-ed"><textarea id="le-body" rows="14" maxlength="20000" placeholder="## 소제목&#10;- 실무자가 지킬 것&#10;**강조**">${esc(e.body)}</textarea>
           <div class="ln-sum ln-prev" id="le-prev" aria-label="미리보기">${md() ? md().html(e.body) : ""}</div></div>
         <div class="ln-sumbar"><b>교육 장면 사진</b><small class="ln-dim">기록부에만 들어갑니다(4장까지) — 교육이 끝난 뒤 추가</small><span class="spacer"></span>
@@ -537,6 +537,7 @@
     const e = edit;
     $("#ln-ecancel", root).onclick = () => { edit = null; go(e.id ? "detail" : "list", e.id || sel); };
     $("#ln-esave", root).onclick = () => saveEdit(root);
+    const tl0 = $("#le-title", root); if (tl0) tl0.addEventListener("input", () => { e._tAuto = false; });
     $$("[data-lek]", root).forEach(b => b.onclick = () => { e.kind = b.dataset.lek; $$("[data-lek]", root).forEach(x => x.setAttribute("aria-pressed", String(x === b))); });
     const body = $("#le-body", root), prev = $("#le-prev", root), mn = $("#le-min", root);
     body.oninput = () => { e.body = body.value; if (prev && md()) prev.innerHTML = md().html(body.value); if (e._auto) mn.value = autoMin(e); $("#le-auto", root).textContent = "자동(" + mmss(autoMin(e)) + ")"; };
@@ -612,7 +613,7 @@
     });
   }
   /* 동영상 주요 장면 — 길이를 n 등분한 가운데 장면을 JPEG(data URL)로. 실패하면 받은 만큼만 */
-  function frames(src, n, cross) {
+  function frames(src, n, cross, W0, q0) {
     return new Promise((res) => {
       const out = []; let done = false, k = 0, ts = [];
       let v = null;
@@ -629,26 +630,30 @@
         };
         v.onseeked = () => {
           try {
-            const W = 480, H = Math.max(1, Math.round(W * v.videoHeight / v.videoWidth));
+            let W = W0 || 480, H = Math.max(1, Math.round(W * v.videoHeight / v.videoWidth));
+            if (W0 && H > W0) { H = W0; W = Math.max(1, Math.round(H * v.videoWidth / v.videoHeight)); } /* 세로 영상 — 긴 변 기준 */
             const c = document.createElement("canvas"); c.width = W; c.height = H;
             c.getContext("2d").drawImage(v, 0, 0, W, H);
-            out.push(c.toDataURL("image/jpeg", 0.72));
+            out.push(c.toDataURL("image/jpeg", q0 || 0.72));
           } catch (e) { return fin(); }
           k++; next();
         };
         v.onerror = fin;
-        setTimeout(fin, 20000);
+        setTimeout(fin, 30000);
         v.src = src;
       } catch (e) { fin(); }
     });
   }
   const dataFile = (d, name) => { const m = /^data:([^;]+);base64,(.*)$/.exec(d); return m ? new File([b64u8(m[2])], name, { type: m[1] }) : null; };
-  /* 올릴 때 장면 4장을 저장소에 같이 둔다(기록부 '교육 내용' 칸) */
-  async function videoShots(file) {
+  /* 올릴 때 장면 8장을 뽑아 4장은 저장소에 같이 두고(기록부 '교육 내용' 칸), 8장은 이 화면에서 AI 요약에 쓴다 */
+  const VF_N = 8, VF_W = 640, VF_Q = 0.7;
+  async function videoShots(file, key) {
     let u = "";
     try {
       u = URL.createObjectURL(file);
-      const fs = await frames(u, 4, false), out = [];
+      const all = await frames(u, VF_N, false, VF_W, VF_Q), out = [];
+      if (key && all.length) vmemo[key] = all;
+      const fs = all.length > 4 ? all.filter((_, i) => i % 2 === 0).slice(0, 4) : all;
       for (let i = 0; i < fs.length; i++) {
         const f = dataFile(fs[i], "shot" + (i + 1) + ".jpg");
         if (!f) continue;
@@ -662,6 +667,7 @@
     if (!files.length) return;
     if (!window.SemisSync || !SemisSync.uploadFile) { toast("오프라인에서는 올릴 수 없습니다.", true); return; }
     pullForm(root);
+    const added = [];
     for (const f of files) {
       if (f.size > FILE_MAX) { toast(f.name + " — 50MB 를 넘습니다. 줄여서 다시 올려 주세요.", true); continue; }
       const type = typeOf(f);
@@ -669,18 +675,23 @@
       try {
         const up = await SemisSync.uploadFile(f, "learn");
         const it = { id: uid("li"), type, name: up.name, size: up.size, url: up.url };
-        if (type === "video") { it.dur = await videoDur(f); const sh = await videoShots(f); if (sh.length) it.shots = sh; }
+        if (type === "video") { it.dur = await videoDur(f); const sh = await videoShots(f, up.url); if (sh.length) it.shots = sh; }
         if (type === "doc" && window.SemisDocRead) {
           try { const x = await SemisDocRead.extract(f); if (x && x.mode === "text" && x.text) memo[up.url] = x.text; } catch (e) { /* 요약 때 다시 */ }
         }
-        edit.items.push(it);
+        edit.items.push(it); added.push(it);
         paintItems(root);
       } catch (e) { toast(f.name + " — 올리지 못했습니다.", true); }
     }
-    if (!edit.title) { const d = edit.items.find(i => i.type === "doc"); if (d) { const tl = $("#le-title", root); if (tl && !tl.value) tl.value = d.name.replace(/\.[^.]+$/, "").slice(0, 80); } }
-    toast("올렸습니다.");
+    if (!edit.title) { const d = edit.items.find(i => i.type === "doc") || edit.items[0]; if (d) { const tl = $("#le-title", root); if (tl && !tl.value) { tl.value = d.name.replace(/\.[^.]+$/, "").slice(0, 80); edit._tAuto = true; } } }
+    if (!added.length) return;
+    /* 올리면 바로 교육명 · 개요 · 교육 내용을 채운다 — SSI 표시 교육 · SSI 로 보이는 파일 이름은 보내지 않는다 */
+    if (edit.ssi) { toast("올렸습니다."); return; }
+    if (added.some(i => SSI_NAME.test(i.name))) { toast("올렸습니다. 파일 이름에 SSI · 대외비 표시가 있어 AI 로 정리하지 않았습니다.", true); return; }
+    aiSum(root, true);
   }
-  /* AI 요약 — PDF · 사진은 저장소 원본, 그 밖 문서는 글을 뽑아 보낸다 */
+  /* AI 요약 — PDF · 사진은 저장소 원본, 그 밖 문서는 글을 뽑아 보내고, 동영상은 화면 장면(JPEG)을 보낸다(말소리는 읽지 못함) */
+  const SSI_NAME = /(^|[^a-z])ssi([^a-z]|$)|민감보안|대외비|비밀/i;
   async function partOf(it) {
     const path = String(it.url || "").replace(/^.*\/object\/public\/semis-logi-files\//, "");
     if (/\.pdf$/i.test(it.name) || it.type === "image") return { name: it.name, path };
@@ -694,37 +705,66 @@
     if (t) memo[it.url] = t;
     return t ? { name: it.name, text: t } : null;
   }
-  async function aiSum(root) {
+  async function framesOf(it, n) {
+    let fs = vmemo[it.url];
+    if (!fs || !fs.length) {
+      const FA = window.SemisFileAuth;
+      if (!FA) return [];
+      fs = await frames(await FA.resolve(it.url), VF_N, true, VF_W, VF_Q);
+      if (fs.length) vmemo[it.url] = fs;
+    }
+    const pick = fs.length > n ? Array.from({ length: n }, (_, i) => Math.min(fs.length - 1, Math.floor((i + 0.5) * fs.length / n))) : fs.map((_, i) => i);
+    const d = Number(it.dur) || 0;
+    return pick.map(i => { const m = /^data:image\/jpeg;base64,(.+)$/.exec(fs[i]); return m ? { name: it.name, frame: m[1], at: d ? Math.round(d * (i + 0.5) / fs.length) : 0 } : null; }).filter(Boolean);
+  }
+  let aiBusy = false;
+  async function aiSum(root, auto) {
     pullForm(root);
     const e = edit;
     if (e.ssi) return;
-    const docs = e.items.filter(i => i.type !== "video").slice(0, 4);
-    if (!docs.length) { toast("요약할 문서나 사진을 먼저 올리세요(동영상은 요약하지 않습니다).", true); return; }
+    const docs = e.items.filter(i => i.type !== "video").slice(0, 4), vids = e.items.filter(i => i.type === "video").slice(0, 4);
+    if (!docs.length && !vids.length) { if (!auto) toast("요약할 문서 · 사진 · 동영상을 먼저 올리세요.", true); return; }
+    if (aiBusy) { if (!auto) toast("정리하는 중입니다. 잠시만 기다려 주세요."); return; }
     const go2 = async () => {
+      if (aiBusy) return;
+      aiBusy = true;
       const btn = $("#le-ai", root); if (btn) btn.disabled = true;
-      toast("자료를 읽고 요약하는 중… (30초 안팎)");
+      toast("자료를 읽고 정리하는 중… (30초 안팎)");
+      const body0 = e.body;
       try {
         const parts = (await Promise.all(docs.map(it => partOf(it).catch(() => null)))).filter(Boolean);
-        if (!parts.length) throw new Error("read");
+        const per = vids.length ? Math.max(2, Math.floor(VF_N / vids.length)) : 0;
+        for (const v of vids) { const fr = await framesOf(v, per).catch(() => []); fr.forEach(x => parts.push(x)); }
+        if (!parts.length) throw new Error(docs.length ? "read" : "video");
+        const first = docs[0] || vids[0];
         const res = await fetch(SemisSync.URL + "/functions/v1/semis-logi-learn", { method: "POST",
           headers: { "Content-Type": "application/json", "x-semis-token": SemisSync.auth.token() },
-          body: JSON.stringify({ op: "sum", name: docs[0].name, title: e.title, parts }) });
+          body: JSON.stringify({ op: "sum", name: first.name, title: e._tAuto ? "" : e.title, parts }) });
         let d = null;
         try { d = await res.json(); } catch (x) { d = null; }
         if (!d || !d.ok || !d.data) throw new Error((d && d.error) || "ai");
-        if (!e.title && d.data.title) e.title = d.data.title;
-        if (!e.overview && d.data.overview) e.overview = d.data.overview;
-        e.body = d.data.body || e.body;
-        if (e._auto) e.minSec = autoMin(e);
-        toast("요약을 넣었습니다. 내용을 확인하고 고치세요.");
-        if (view === "edit" && edit === e) SeMIS.renderView();
+        const live = view === "edit" && edit === e;
+        if (live && document.body.contains(root) && $("#le-body", root)) pullForm(root);
+        const put = () => {
+          if (d.data.title && (!e.title || e._tAuto)) { e.title = d.data.title; e._tAuto = false; }
+          if (d.data.overview && (!e.overview || e.overview === e._aiOv)) { e.overview = d.data.overview; e._aiOv = e.overview; }
+          if (d.data.body) { e.body = d.data.body; e._aiBody = e.body; }
+          if (e._auto) e.minSec = autoMin(e);
+          toast(vids.length && !docs.length ? "동영상 장면으로 정리했습니다(말소리는 반영되지 않음). 확인하고 고치세요." : "교육명 · 개요 · 교육 내용을 넣었습니다. 확인하고 고치세요.");
+          if (view === "edit" && edit === e) SeMIS.renderView();
+        };
+        // 기다리는 동안 손으로 고친 내용은 묻고 바꾼다
+        if (String(e.body || "").trim() && e.body !== body0) confirmModal("정리하는 동안 고친 교육 내용을 AI 요약으로 바꿀까요?", put); else put();
       } catch (x) {
         const m = String(x.message || x);
-        toast(m === "read" ? "문서 글을 읽지 못했습니다. PDF 로 저장해 다시 올려 주세요." : m === "busy" ? "AI 가 바쁩니다. 잠시 뒤 다시 눌러 주세요." : m === "too_large" ? "파일이 커서 요약하지 못했습니다." : "요약하지 못했습니다.", true);
-        if (btn) btn.disabled = false;
+        toast(m === "read" ? "문서 글을 읽지 못했습니다. PDF 로 저장해 다시 올려 주세요." : m === "video" ? "동영상 장면을 읽지 못했습니다. 교육 내용을 직접 적어 주세요." : m === "busy" ? "AI 가 바쁩니다. 잠시 뒤 [AI 요약 만들기]를 눌러 주세요." : m === "too_large" ? "파일이 커서 요약하지 못했습니다." : "요약하지 못했습니다. [AI 요약 만들기]로 다시 해 보세요.", true);
+      } finally {
+        aiBusy = false;
+        const b2 = $("#le-ai", root); if (b2) b2.disabled = false;
       }
     };
-    if (String(e.body || "").trim()) confirmModal("지금 적힌 교육 내용을 AI 요약으로 바꿀까요?", go2); else go2();
+    const cur = String(e.body || "").trim();
+    if (cur && !(auto && e.body === e._aiBody)) confirmModal(auto ? "새로 올린 자료로 교육 내용을 다시 정리할까요? 지금 적힌 내용이 바뀝니다." : "지금 적힌 교육 내용을 AI 요약으로 바꿀까요?", go2); else go2();
   }
   function saveEdit(root) {
     pullForm(root);
@@ -1129,6 +1169,6 @@
     open(id) { go("detail", id); }, openEdit, go,
     setToday(t) { fixedToday = isISO(t) ? t : ""; },
     setState(o) { o = o || {}; if (o.view) view = o.view; if (o.sel !== undefined) sel = o.sel; if (o.filt) filt = o.filt; if (o.q !== undefined) q = o.q; if (o.dfilt) dfilt = o.dfilt; if (o.dtab) dtab = o.dtab; if (o.dgrp !== undefined) dgrp = o.dgrp; if (o.reset) { view = "list"; sel = ""; filt = "live"; q = ""; dq = ""; dfilt = "all"; dgrp = ""; dtab = "mem"; edit = null; } },
-    _S: S, _setRows(rows) { S.rows = rows; S.at = rows ? Date.now() : 0; }, _setSigns(cid, m) { S.signs[cid] = m; }, _edit: () => edit
+    _S: S, _setRows(rows) { S.rows = rows; S.at = rows ? Date.now() : 0; }, _setSigns(cid, m) { S.signs[cid] = m; }, _edit: () => edit, _vmemo: vmemo
   };
 })();
