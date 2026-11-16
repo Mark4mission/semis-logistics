@@ -212,6 +212,7 @@
       const seen = {};
       for (let d = from; d <= to; d = addDays(d, 1)) {
         arr(CA.inspOnDay(d)).forEach(x => {
+          if (/^tk:/.test(x.ik)) return;   // 할 일 칩은 점검 기한이 아니다 — 일정 답에 섞으면 일정 · 할 일이 헷갈린다
           const k = x.ik || x.title + x.start;
           if (seen[k]) return;
           seen[k] = 1;

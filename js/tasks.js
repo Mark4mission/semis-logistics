@@ -70,7 +70,8 @@
     const c = counts();
     return c.open ? { open: c.open, today: c.today, late: c.late } : null;
   }
-  const todaySub = (d) => "오늘 " + d.today + " · 지난 " + d.late;
+  /* HTML(띠의 다른 줄처럼 경고 부분 em) — 숫자만 들어가므로 할 일 글이 섞이지 않는다 */
+  const todaySub = (d) => "오늘 " + d.today + " · 지난 " + (d.late ? "<em>" + d.late + "</em>" : d.late);
   /* 탭 건수는 담당자 칩만 따른다 — 검색 글자를 칠 때는 목록만 다시 그리므로 */
   const todoCount = () => { const w = curWho(); return T.list().filter(t => !t.done && byWho(t, w)).length; };
 
@@ -430,7 +431,7 @@
       return { ik: "tk:" + id, start: t.due, end: t.due, title: "[할 일] " + t.t, color: T.CATS[T.catOf(t)].color,
         done: t.done, late: !t.done && T.dueInfo(t, td).b === "late",
         sub: [t.time, t.place, t.who.join(", ")].filter(Boolean).join(" · "),
-        go: [{ lb: "Task 관리에서 열기", ico: "check", run: () => open(id) }],
+        go: [{ lb: "Task 관리에서 열기", ico: "external", run: () => open(id) }],   // 체크 모양은 ○ 옆에서 잘못 누르기 쉽다
         chk: { parts: [], edit: true, on: !t.done, off: t.done },
         chkMsg: { on: "할 일을 마침으로 표시했습니다.", off: "할 일을 다시 열었습니다." },
         mark: (want) => (typeof want === "boolean" && setDone(id, want) ? 1 : 0) };

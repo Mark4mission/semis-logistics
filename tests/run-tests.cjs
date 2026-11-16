@@ -15246,6 +15246,8 @@ function makeServer(opts = {}) {
       await tick();   // 앞 시험의 go() 가 남긴 hashchange 를 먼저 흘려보낸다
       tkSeed(); calGo();
       eq(tkIks(), "tk:tk_done,tk:tk_late,tk:tk_today", "날짜 없는 할 일(tk_none · tk_star)은 칩 없음");
+      const ar = e.w.SemisArgo.status({ topic: "schedule", from: "2026-11-01", to: "2026-11-30" });
+      ok(Array.isArray(ar.items) && !ar.items.some(i => /\[할 일\]/.test(i.title)), "아르고 기간 일정 답에 할 일을 '점검 기한'으로 섞지 않음: " + JSON.stringify(ar.items));
       eq(chip("tk_today").querySelector(".chip-title").textContent, "[할 일] 오늘 점검");
       ["tk_today", "tk_late", "tk_done"].forEach(id => {
         const col = TK.CATS[TK.catOf(byId(id))].color;
@@ -15271,15 +15273,19 @@ function makeServer(opts = {}) {
     t("TK36 칩 ○ 마침 · ✓ 다시 열기: 할 일만 바꿈(일정 데이터 그대로) · 할 일 알림 글 · 다른 모듈 칩은 예전 글", () => {
       tkSeed(); calGo();
       const sch0 = JSON.stringify(e.S.data.schedules);
+      e.S.renderNav(); eq(navB(), "2", "패널 배지(오늘 + 지난)");
       chip("tk_today").querySelector(".chip-check.todo[data-itoggle]").click();
       ok(!mOpen(), "상세 창 열지 않음");
       const x = byId("tk_today");
       eq(x.done + "|" + x.doneBy, "true|Thq"); ok(x.doneAt, "마친 때");
       eq(lastToast(), "할 일을 마침으로 표시했습니다.");
+      eq(navB(), "1", "칩 ○ 뒤 패널 배지도 바로");
       ok(chip("tk_today").classList.contains("done"), "다시 그려 ✓");
+      eq(TK.calItems("2026-11-18", "2026-11-18")[0].go[0].ico, "external", "바로 가기 아이콘은 체크 모양이 아님(○ 옆 잘못 누름)");
       chip("tk_today").querySelector(".chip-check.done[data-itoggle]").click();
       eq(byId("tk_today").done + "|" + byId("tk_today").doneAt, "false|", "✓ → 다시 열기");
       eq(lastToast(), "할 일을 다시 열었습니다.");
+      eq(navB(), "2", "다시 열면 패널 배지도");
       eq(JSON.stringify(e.S.data.schedules), sch0, "일정 데이터에 저장하지 않음");
       const L = e.w.SemisLearn, ci0 = L.calItems;
       let got = null;
@@ -15296,13 +15302,14 @@ function makeServer(opts = {}) {
       const r = q(e, ".today-strip #td-tk");
       ok(r && r.dataset.go === "tasks", "칸");
       eq(r.querySelector(".td-s").textContent, "오늘 1 · 지난 1");
+      eq(r.querySelector(".td-s em") && r.querySelector(".td-s em").textContent, "1", "지난 수는 강조(다른 줄과 같이 em)");
       eq(r.querySelector(".td-v").textContent, "4", "남은 할 일 수");
       ok(r.classList.contains("tone-warn"), "지난 일 경고");
       eq(JSON.stringify(TK.todayData()), JSON.stringify({ open: 4, today: 1, late: 1 }));
-      eq(TK.todaySub({ open: 3, today: 2, late: 1 }), "오늘 2 · 지난 1");
+      eq(TK.todaySub({ open: 3, today: 2, late: 1 }) + "|" + TK.todaySub({ open: 3, today: 2, late: 0 }), "오늘 2 · 지난 <em>1</em>|오늘 2 · 지난 0", "숫자만 든 HTML");
       r.click(); eq(e.w.location.hash, "#/tasks", "누르면 Task 관리");
       TK.setDone("tk_late", true); go(e, "dashboard");
-      ok(q(e, "#td-tk .td-s").textContent === "오늘 1 · 지난 0" && !q(e, "#td-tk").classList.contains("tone-warn"), "지난 일 없으면 경고 없음");
+      ok(q(e, "#td-tk .td-s").textContent === "오늘 1 · 지난 0" && !q(e, "#td-tk .td-s em") && !q(e, "#td-tk").classList.contains("tone-warn"), "지난 일 없으면 강조 · 경고 없음");
       e.S.data.tasks.filter(x => !x.done).forEach(x => TK.setDone(x.id, true));
       eq(TK.todayData(), null); go(e, "dashboard");
       ok(q(e, ".today-strip") && !q(e, "#td-tk"), "남은 할 일 없으면 칸 없음");
@@ -15334,7 +15341,7 @@ function makeServer(opts = {}) {
       const pop = (re) => qa(e, "#hdr-search-pop .sp-item").find(b => re.test(b.textContent));
       SS.open("보안교육"); await tick(5);
       const row = pop(/보안교육 자료 제출/), drow = pop(/보안교육 결과 보고/);
-      ok(row && row.querySelector(".sp-kind").textContent === "할 일", "꼬리표 '할 일'");
+      ok(row && row.querySelector(".sp-kind").textContent === "할 일" && row.querySelector(".sp-kind").classList.contains("k-cal"), "꼬리표 '할 일' · 일정과 같은 색");
       ok(drow && drow.querySelector(".sp-sub").textContent.includes("마침") && !row.querySelector(".sp-sub").textContent.includes("마침"), "마친 일만 아래 줄에 '마침'");
       row.click(); await tick();
       eq(e.w.location.hash, "#/tasks"); ok(q(e, "#tk-list"), "목록 화면");

@@ -198,7 +198,7 @@
       let d = null;
       try { d = SemisTasks.todayData(); } catch (e) { d = null; }
       if (d) rows.push(todayRow({ go: "tasks", id: "td-tk", icon: "check", color: d.late ? "amber" : "teal", title: "할 일",
-        sub: esc(SemisTasks.todaySub(d)), val: `<b class="mono">${d.open}</b>`, tone: d.late ? "warn" : "" }));
+        sub: SemisTasks.todaySub(d), val: `<b class="mono">${d.open}</b>`, tone: d.late ? "warn" : "" }));
     }
     if (menuOk("flight", "SemisFlight")) rows.push(todayRow({ go: "flight", id: "td-flt", icon: "plane", color: "amber", title: "인천 접근",
       sub: "불러오는 중", val: '<b class="mono">·</b>' }));

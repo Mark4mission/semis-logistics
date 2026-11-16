@@ -211,7 +211,7 @@ const SemisSearch = (() => {
     if (it.group === "K드라이브") return it.kind === "folder" ? "K폴더" : "K파일";   // K 항목의 kind 는 folder · file
     return KIND_OF[it.group] || "기록";
   }
-  const KIND_TONE = { "화면": "k-scr", "사이트": "k-scr", "문서": "k-doc", "규정": "k-doc", "일정": "k-cal", "연락처": "k-tel", "게시글": "k-bbs", "회의록": "k-bbs", "접수": "k-sup", "도우미": "k-sup", "K폴더": "k-kd", "K파일": "k-kf" };
+  const KIND_TONE = { "화면": "k-scr", "사이트": "k-scr", "문서": "k-doc", "규정": "k-doc", "일정": "k-cal", "할 일": "k-cal", "연락처": "k-tel", "게시글": "k-bbs", "회의록": "k-bbs", "접수": "k-sup", "도우미": "k-sup", "K폴더": "k-kd", "K파일": "k-kf" };
 
   const GROUP_MAX = 30, TOTAL_MAX = 300, PARTIAL_MAX = 8;
   /* 모든 낱말이 맞는 결과(full)와 일부만 맞는 결과(partial).
