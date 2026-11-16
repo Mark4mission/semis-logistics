@@ -18,7 +18,7 @@
     apply: "문서함에 등록하지 못함(그 사이 H:drive 에 새 판 등) — 다음 실행에서 다시 맞춤",
     old: "기준일 전에 고친 파일이라 서버가 받지 않음", since: "기준일 형식이 틀려 이 연결은 건너뜀", excluded: "지정 제외" };
   const st = { s: null, p: null, runs: null, ev: null, folders: null, rep: null, hash: null, evKind: "", err: "", busy: false, alert: false, at: 0, box: null,
-    nd: null, ndc: null, ndRec: [], ndAsk: [], ai: Object.create(null), asking: new Set(), askNext: false, left: undefined, pane: "" };
+    nd: null, ndc: null, ndRoot: "", ndRec: [], ndAsk: [], ai: Object.create(null), asking: new Set(), askNext: false, left: undefined, pendTab: "" };
 
   const pad = (n) => String(n).padStart(2, "0");
   const fmt = (t) => { const d = new Date(t); return !t || isNaN(d) ? "-" : (d.getMonth() + 1) + "-" + pad(d.getDate()) + " " + pad(d.getHours()) + ":" + pad(d.getMinutes()); };
@@ -70,14 +70,16 @@
       if (full || !st.folders) jobs.push(rpc("semis_logi_ksync_folders"));
       const r = await Promise.all(jobs);
       st.s = r[0]; st.p = r[1]; st.runs = r[2].runs || []; st.ev = r[3]; st.rep = r[4] && r[4].ok ? r[4] : null; st.hash = r[5] && r[5].ok ? r[5] : null;
-      st.nd = r[6] && r[6].ok ? r[6] : null;
+      const nd = r[6] && r[6].ok ? r[6] : null;
       if (r[7]) st.folders = r[7].folders || [];
       st.err = "";
-      st.askNext = true;
       st.evNew = !look && !!(st.s && st.s.counts && st.s.counts.ev_new);
       if (full && st.evNew && on()) { st.secTab = "ev"; st.evKind = ""; await seen(); }     // 새 보안 이벤트는 열 때 그 칸을 전체로 펴서 보여 준다
       // 새 K 폴더 줄의 저장소 경고 — 버킷 목록을 다 읽어야 해서 탭을 열 때만 잰다
-      if ((full || st.left === undefined) && st.nd && (st.nd.items || []).some(x => Number(x.bytes50) > 0)) st.left = await storeLeft();
+      if ((full || st.left === undefined) && nd && (nd.items || []).some(x => Number(x.bytes50) > 0)) st.left = await storeLeft();
+      /* 새 목록은 기다릴 것이 다 끝난 뒤 그리기 직전에 바꾼다 — 기다리는 동안 옛 화면의 단추가 새 목록의 같은 자리 줄을 가리키지 않게 */
+      st.nd = nd;
+      st.askNext = true;
       ndSet(st.s && st.s.newdirs);
       setAlert(alertOf());
     } catch (e) { st.err = errText(e); }
@@ -114,8 +116,8 @@
     if (key(c) !== was && (location.hash.replace(/^#\//, "") || "dashboard") === "dashboard" && SeMIS.renderView) SeMIS.renderView();
   }
   function newdirs() { return st.ndc; }
-  /* 시스템 설정 › K드라이브 동기화를 다른 화면에서 열 때 '확인 필요' 카드에서 고를 칸(한 번만) */
-  function pane(id) { st.pane = String(id || ""); }
+  /* 다른 화면에서 '확인 필요'의 칸을 정해 들어올 때(홈 '오늘' 줄) — 사람이 고른 칸처럼 기억해 처리 뒤 다시 그려도 그 칸에 남는다 */
+  function pane(id) { if (["new", "hold", "del", "conf", "skip"].indexOf(id) >= 0) st.pendTab = id; }
   /* 화면을 다시 그리지 않아도 10분마다 — 숨은 탭에서는 묻지 않는다 */
   function tick() { if (document.visibilityState !== "hidden") poll(true); }
 
@@ -273,9 +275,13 @@
   const kctx = () => ({ root: kroot(), maps: (st.s && st.s.maps) || [], targets: targets(), gone: ((st.nd && st.nd.gone) || []).map(g => g.id) });
   /* 사라진 연결 폴더 경고도 사람이 볼 것이라 숫자에 넣는다 */
   const ndCount = () => (st.nd && st.nd.on !== false ? (Number(st.nd.n) || 0) + (st.nd.gone || []).length : 0);
-  const ndItem = (i) => ((st.nd && st.nd.items) || [])[Number(i)] || null;
-  /* 연결 창에 채울 값 — 분류는 비어 있는 분류를 추천했을 때만(쓰인 분류는 창에서 고를 수 없음) */
-  const preOf = (path, r) => Object.assign({ k_path: kroot() + "/" + path }, r ? { ssi: r.ssi, dir: r.dir, since: r.since } : {}, r && r.kind === "link" ? { mod: r.mod, grp: r.grp } : {});
+  /* 누른 줄 — 그린 줄과 지금 목록의 같은 자리 줄이 같은 폴더일 때만. 그 사이 목록이 바뀌었으면 누름을 버린다(다른 폴더로 연결 · 처리하지 않게) */
+  function ndHit(b, i) {
+    const it = ((st.nd && st.nd.items) || [])[Number(i)], li = b.closest(".ks-nd-row");
+    return it && li && li.dataset.ndPath === it.path ? it : null;
+  }
+  /* 연결 창에 채울 값 — 뿌리는 그 줄을 그릴 때의 것, 분류는 비어 있는 분류를 추천했을 때만(쓰인 분류는 창에서 고를 수 없음) */
+  const preOf = (path, r) => Object.assign({ k_path: st.ndRoot + "/" + path }, r ? { ssi: r.ssi, dir: r.dir, since: r.since } : {}, r && r.kind === "link" ? { mod: r.mod, grp: r.grp } : {});
   function ndHTML() {
     const nd = st.nd;
     st.ndRec = []; st.ndAsk = [];
@@ -287,6 +293,7 @@
     const items = nd.items || [], gone = nd.gone || [];
     if (!items.length && !gone.length) return `<p class="ks-none">새 K 폴더가 없습니다.</p>`;
     const c = kctx();
+    st.ndRoot = c.root;
     const warn = gone.map(g => `<p class="ks-warn" role="status">${icon("alert", 16)}<span>${esc("연결 '" + g.k_path + "'의 K 폴더가 보이지 않습니다 — 이름 · 자리를 바꿨나요?")}</span></p>`).join("");
     const more = Number(nd.n) > items.length ? `<p class="ks-note">${esc("전체 " + nd.n + "줄 중 " + items.length + "줄 — 처리하면 다음 줄이 올라옵니다")}</p>` : "";
     return warn + more + (items.length ? `<ul class="ks-nd">${items.map((it, i) => ndRow(it, i, c, ask)).join("")}</ul>` : "");
@@ -324,7 +331,7 @@
     } else if (it.cls === "excl") line = "올리지 않음(지정 제외 '" + (it.excl || "") + "' 아래)";
     const big = st.left != null && Number(it.bytes50) > st.left ? `<p class="ks-warn" role="status">${icon("alert", 16)}<span>남은 저장소보다 큼 — [시작]은 저장소를 늘린 뒤</span></p>` : "";
     const tag = ND_TAG[it.cls] || [it.cls, "gray"];
-    return `<li class="ks-nd-row" data-nd-cls="${esc(it.cls)}"><div class="ks-nd-main">
+    return `<li class="ks-nd-row" data-nd-cls="${esc(it.cls)}" data-nd-path="${esc(it.path)}"><div class="ks-nd-main">
         <div class="ks-nd-t"><b class="ks-path">${esc(name)}</b>${ui.chip(tag[0], tag[1])}</div>
         <div class="cell-sub">${esc(sub)}</div>${line ? `<div class="ks-nd-d">${esc(line)}</div>` : ""}${why ? `<div class="cell-sub">${esc(why)}</div>` : ""}${big}</div>
       <div class="ks-nd-act">${acts}</div></li>`;
@@ -339,7 +346,7 @@
   /* [이대로 연결] — 확인 창 없이(미리보기 상태라 파일은 안 올라가고, 잘못 만들었으면 연결을 지우면 됨). 거절되면 그 값으로 연결 창을 연다 */
   async function ndLink(b, i) {
     if (!SeMIS.isAdmin()) return;
-    const it = ndItem(i), r = st.ndRec[Number(i)];
+    const it = ndHit(b, i), r = st.ndRec[Number(i)];
     if (!it || !r || r.kind !== "link" || b.disabled) return;
     b.disabled = true;
     const pre = preOf(it.path, r);
@@ -352,9 +359,9 @@
     await load(false); paint();
   }
   /* [고쳐서 연결] — 연결 안 된 폴더 안 줄은 그 단위 둘째 폴더로 */
-  function ndFix(i) {
+  function ndFix(b, i) {
     if (!SeMIS.isAdmin()) return;
-    const it = ndItem(i);
+    const it = ndHit(b, i);
     if (!it) return;
     const path = it.cls === "out" ? it.unit : it.path;
     mapForm(null, null, preOf(path, st.ndRec[Number(i)]));
@@ -388,9 +395,8 @@
       <td>${esc(FSTATE[f.state] || f.state)}${f.note ? `<div class="cell-sub">${esc(why(f.note, f.map))}</div>` : ""}</td><td class="td-act">${acts || ""}</td></tr>`;
     const tbl = (rows, empty) => rows ? `<div class="table-wrap"><table class="tbl ks-tbl"><thead><tr><th>파일</th><th>내용</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p class="ks-none">${esc(empty)}</p>`;
     const tabs = [["new", "새 K 폴더" + (ndOk ? " " + ndN : "")], ["hold", "대량 변경 보류 " + holds.length], ["del", "삭제 대기 " + del.length], ["conf", "충돌 " + conf.length], ["skip", "건너뜀 · 오류 " + skip.length]];
-    const want = st.pane;
-    st.pane = "";
-    const sel = tabs.some(t => t[0] === want) ? want : ndN ? "new" : holds.length ? "hold" : del.length ? "del" : conf.length ? "conf" : "skip";
+    /* 고른 칸(홈 줄로 들어온 칸 포함)은 처리 · 다시 그려도 그대로. 처음은 보류 먼저 — 대량 변경 보류는 동기화를 멈춘 보안 정지라서 */
+    const sel = tabs.some(t => t[0] === st.pendTab) ? st.pendTab : holds.length ? "hold" : ndN ? "new" : del.length ? "del" : conf.length ? "conf" : "skip";
     const seenAll = ndOk && (st.nd.items || []).some(x => x.cls !== "link")
       ? `<span class="spacer"></span><button type="button" class="btn btn-ghost btn-sm c-rare" id="ks-nd-seen-all">${icon("check", 15)}<span>알림만 모두 확인</span></button>` : "";
     return `<div class="card ks-card" data-ks-card="pend"><div class="card-title">${icon("alert", 17)}<span>확인 필요</span><span class="badge ${n ? "badge-amber" : "badge-gray"}">${n}</span>${seenAll}</div>
@@ -469,7 +475,7 @@
   function wire(box) {
     /* 숨어 있던 칸의 표는 처음 정돈 때 잴 수 없었다 — 고를 때 다시(모바일 한 줄 쌓기) */
     const retidy = () => { if (SeMIS.tidyTables) SeMIS.tidyTables(box); };
-    ui.wireTabs(box, "kspend", retidy);
+    ui.wireTabs(box, "kspend", (id) => { st.pendTab = id; retidy(); });
     ui.wireTabs(box, "kssec", (id) => { st.secTab = id; retidy(); if (id === "ev" && st.evNew) seen(); });
     const add = $("#ks-map-add", box); if (add) add.onclick = () => mapForm();
     const ul = $("#ks-unlinked", box); if (ul) ul.onclick = unlinked;
@@ -510,12 +516,12 @@
     };
     $$("[data-ks-revoke]", box).forEach(b => b.onclick = () => keyRevoke(Number(b.dataset.ksRevoke)));
     $$("[data-nd-link]", box).forEach(b => b.onclick = () => ndLink(b, b.dataset.ndLink));
-    $$("[data-nd-fix]", box).forEach(b => b.onclick = () => ndFix(b.dataset.ndFix));
-    $$("[data-nd-skip]", box).forEach(b => b.onclick = () => ndAck([(ndItem(b.dataset.ndSkip) || {}).path], "skip"));
-    $$("[data-nd-seen]", box).forEach(b => b.onclick = () => ndAck([(ndItem(b.dataset.ndSeen) || {}).path], "seen"));
-    // 알림 줄만 — 연결 결정 줄은 사람이 하나씩 정한다
+    $$("[data-nd-fix]", box).forEach(b => b.onclick = () => ndFix(b, b.dataset.ndFix));
+    $$("[data-nd-skip]", box).forEach(b => b.onclick = () => ndAck([(ndHit(b, b.dataset.ndSkip) || {}).path], "skip"));
+    $$("[data-nd-seen]", box).forEach(b => b.onclick = () => ndAck([(ndHit(b, b.dataset.ndSeen) || {}).path], "seen"));
+    // 화면에 보이는 알림 줄만 — 연결 결정 줄은 사람이 하나씩 정한다
     const sa = $("#ks-nd-seen-all", box);
-    if (sa) sa.onclick = () => ndAck(((st.nd && st.nd.items) || []).filter(x => x.cls !== "link").map(x => x.path), "seen");
+    if (sa) sa.onclick = () => ndAck($$(".ks-nd-row", box).filter(li => li.dataset.ndCls !== "link").map(li => li.dataset.ndPath), "seen");
   }
 
   function request() { act("semis_logi_ksync_request", {}, "요청했습니다 — Mac 이 사내망에 연결되어 있으면 다음 확인(10분 안) 때 동기화합니다."); }

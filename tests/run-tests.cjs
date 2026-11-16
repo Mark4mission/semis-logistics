@@ -13510,6 +13510,65 @@ function makeServer(opts = {}) {
       eq(e.errors.length, 0, e.errors.join(" | "));
       e.Sync.stop(); e.w.close();
     });
+    await ta("KS-N10 '확인 필요' 칸: 처음은 대량 변경 보류 → 새 K 폴더 → … · 고른 칸은 처리 · 다시 그려도 그대로 · 홈 줄로 들어오면 보류가 있어도 새 K 폴더", async () => {
+      const { ks, e } = await ndSetup({ items: ndFive() });
+      const hold = { map: 1, k_path: "점검표", mod: "audit", grp: "checklist", run: 41, n: 250, base: 300, at: "2026-11-04T00:00:00Z" };
+      ks.maps = [{ id: 1, k_path: "점검표", mod: "audit", grp: "checklist", dir: "both", ssi: false, state: "active", n_files: 3 }];
+      ks.holds = [hold];
+      ks.files = [{ id: 5, map: 1, rel_path: "a.xlsx", state: "del_k", note: "" }, { id: 6, map: 1, rel_path: "b.pdf", state: "del_h", note: "" }];
+      const selTab = () => q(e, '[data-ct-tabs="kspend"] [aria-selected="true"]').dataset.ctTab;
+      await openTab(e);
+      eq(selTab(), "hold", "보류와 새 폴더가 함께 있으면 보류 먼저");
+      ks.holds = [];
+      await openTab(e);
+      eq(selTab(), "new", "보류가 없으면 새 K 폴더");
+      q(e, '[data-ct-tabs="kspend"] [data-ct-tab="del"]').click();
+      q(e, '[data-ks-res="restore"][data-id="6"]').click(); await tick(30);
+      eq(JSON.stringify(ks.calls.filter(c => c.name === "resolve").pop().b.p), '{"ids":[6],"act":"restore"}', "복원");
+      eq(selTab(), "del", "처리 뒤 다시 그려도 고른 칸(새 K 폴더로 돌아가지 않음)");
+      ok(!q(e, '[data-ct-pane="kspend:del"]').hidden && q(e, '[data-ct-pane="kspend:new"]').hidden, "칸 내용도 그대로");
+      e.w.SemisKsync.paint();
+      eq(selTab(), "del", "다시 그려도");
+      ks.holds = [hold];
+      e.w.SeMIS.settingsTab("ksync", { pane: "new" });
+      go(e, "dashboard"); go(e, "settings"); await tick(40);
+      eq(q(e, "#view .tab.active").dataset.tab, "ksync", "K드라이브 동기화 탭");
+      eq(selTab(), "new", "홈 줄로 들어오면 보류가 있어도 새 K 폴더");
+      q(e, '.ks-nd-row[data-nd-cls="top"] [data-nd-seen]').click(); await tick(30);
+      eq(ndAcks(ks).pop(), JSON.stringify({ paths: ["새업무"], act: "seen" }));
+      eq(selTab(), "new", "그 칸에서 처리해도 그대로");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
+    await ta("KS-N11 그린 줄과 지금 목록의 같은 자리 줄이 다르면 누름을 버림(보내지 않음) · 새 목록은 저장소를 다 잰 뒤에 바꿈 — 그동안 옛 화면의 단추는 옛 목록 그대로", async () => {
+      const A = ndIt({ path: "업무1/지방항공청 점검", cls: "link", bytes50: 0 }), B = ndIt({ path: "업무2/AEO 심사", cls: "link", bytes50: 0 }), T = ndIt({ path: "새업무", cls: "top", bytes50: 0 });
+      const { ks, e } = await ndSetup({ items: [A, B, T] });
+      await openTab(e);
+      const st = e.w.SemisKsync._st;
+      st.nd = Object.assign({}, st.nd, { items: [B, A, T] });     // 화면을 다시 그리기 전에 목록이 바뀜
+      const n0 = ks.calls.length;
+      q(e, '[data-nd-link="0"]').click(); q(e, '[data-nd-fix="0"]').click(); q(e, '[data-nd-skip="0"]').click(); await tick(30);
+      eq(ks.calls.length, n0, "어긋난 줄의 [이대로 연결] · [연결 안 함]은 보내지 않음");
+      ok(q(e, "#modal-overlay").classList.contains("hidden"), "[고쳐서 연결]도 창을 열지 않음");
+      q(e, '[data-nd-seen="2"]').click(); await tick(30);
+      eq(ndAcks(ks).pop(), JSON.stringify({ paths: ["새업무"], act: "seen" }), "같은 자리가 같은 폴더면 그대로");
+      eq(ndRows(e).map(r => r.dataset.ndPath).join("|"), "업무1/지방항공청 점검|업무2/AEO 심사", "다시 읽어 그림");
+      // 처음엔 잴 것이 없었고(bytes50 0) 이번 목록에 생김 — 처리 뒤 다시 불러올 때 저장소를 잰다(그동안 화면은 옛것)
+      const waits = [];
+      e.w.SemisSync.listFiles = () => new Promise(r => waits.push(() => r([])));
+      ks.nd.items = [ndIt({ path: "업무3/새것", cls: "link", bytes50: 5 })].concat(ks.nd.items);
+      q(e, '[data-nd-skip="1"]').click(); await tick(30);
+      eq(ndAcks(ks).pop(), JSON.stringify({ paths: ["업무2/AEO 심사"], act: "skip" }));
+      ok(waits.length >= 1, "저장소를 재는 중");
+      eq(st.nd.items.map(x => x.path).join("|"), "업무1/지방항공청 점검|업무2/AEO 심사", "재는 동안 목록은 화면과 같은 옛것");
+      q(e, '[data-nd-link="0"]').click(); await tick(10);
+      eq(JSON.stringify(ks.calls.filter(c => c.name === "map_save").pop().b.p), JSON.stringify({ k_path: "항공보안/업무1/지방항공청 점검", mod: "audit", grp: "gov", dir: "k2h", ssi: false }),
+        "그동안 누른 [이대로 연결] = 그린 그 줄의 폴더 · 분류");
+      while (waits.length) { waits.splice(0).forEach(f => f()); await tick(20); }
+      eq(ndRows(e).map(r => r.dataset.ndPath).join("|"), "업무3/새것|업무1/지방항공청 점검", "다 잰 뒤 새 목록으로 그림");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.Sync.stop(); e.w.close();
+    });
   }
 
   /* ══════════ [KF] K드라이브 새 폴더 분류 추천(규칙 · AI — 화면 없이 계산만, 지어낸 분류 · 연결) ══════════ */
