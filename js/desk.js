@@ -50,7 +50,8 @@
     audit: { label: "수검 · 지적사항", save: "수검 기록에 저장", folder: "audits", route: "audit" },
     case: { label: "보안 처리 대장", save: "보안 처리 대장에 저장", folder: "cases", route: "sec-cases" },
     hc: { label: "기록부 하드카피 확인", save: "하드카피 집계에 저장", folder: "", route: "inspection" },
-    shelf: { label: "문서함", save: "문서함에 저장", folder: "docs", route: "" }
+    shelf: { label: "문서함", save: "문서함에 저장", folder: "docs", route: "" },
+    task: { label: "할 일", save: "Task 관리에 할 일로 저장", folder: "tasks", route: "tasks" }
   };
   const ST = { reading: ["내용 확인 중", "amber"], wait: ["확인 대기", "blue"], done: ["저장됨", "green"], kept: ["보관", "gray"] };
   const FTYPES = { car: "시정조치", rec: "개선권고", onsite: "현장시정", obs: "관찰사항" };
@@ -171,6 +172,11 @@
     return { id: aid(), k: "event", on, title: e.title, start: e.start, end: e.end, time: e.time, timeEnd: e.timeEnd, place: e.place, cat: e.cat,
       area: e.area, assignee: areaNames(e.area), room: ROOM(e.place), memo: e.memo, file: src !== false };
   }
+  /* 할 일은 Task 관리를 쓸 수 있는 화면에서만 제안한다(서버 권한표 tasks 3/3 과 같은 조건) */
+  const tasksOk = () => !!(window.SemisTasks && SemisTasks.canUse());
+  function taskAct(f, on) {
+    return Object.assign({ id: aid(), k: "task", on, t: "", due: "", time: "", place: "", who: "", teams: "", memo: "", file: true }, f);
+  }
   /* 민감보안정보 K 연결(서항청 보안점검 · TSA 평가 · 분기 점검 · Self Audit — Mark 결정 3 · 9)의 분류를 제안하면 SSI 칸을 켜 둔다. 그 밖은 꺼짐 */
   const SSI_AT = ["audit/gov", "audit/foreign", "inspection/quarterly"];
   function shelfAct(s, on, ai) {
@@ -213,7 +219,16 @@
     ai = ai || clean({});
     const T = ai.type, out = [];
     ai.certs.forEach(c => out.push(certAct(c, T === "cert")));
-    ai.events.forEach(e => out.push(eventAct(e, T === "notice" || T === "dissem" || T === "other")));
+    /* 제출 · 회신 기한은 할 일로 켜고 같은 기한의 일정 줄은 끈다 — 할 일이 일정관리에 칩으로 보이므로 둘 다 켜면 달력에 같은 기한이 두 번 뜬다.
+       할 일 줄은 그 일정 줄 바로 뒤(사람이 나란히 보고 고름) */
+    const tk = tasksOk();
+    const teams = tk && ai.org && SemisTasks.teamNames().indexOf(ai.org) >= 0 ? ai.org : "";
+    ai.events.forEach(e => {
+      const dl = tk && e.cat === "deadline";
+      out.push(eventAct(e, !dl && (T === "notice" || T === "dissem" || T === "other")));
+      if (dl) out.push(taskAct({ t: (ai.title && ai.title !== e.title ? e.title + " — " + ai.title : e.title).slice(0, 300), due: e.start, time: e.time, place: e.place,
+        who: areaNames(e.area), teams, memo: String(ai.summary || "").slice(0, 2000) }, true));
+    });
     if (ai.dissem) out.push({ id: aid(), k: "dissem", on: T === "dissem", date: ai.date || todayISO(), title: ai.dissem.title, kind: ai.dissem.kind || dissemKinds().slice(-1)[0], src: ai.org, due: ai.dissem.due });
     if (ai.audit) {
       const a = ai.audit;
@@ -249,10 +264,17 @@
         return "";
       }
       case "shelf": return !shelfOk(a.mod, a.grp) ? "문서함 위치(화면 · 묶음)를 고르세요." : !norm(a.title) ? "문서 이름을 입력하세요." : "";
+      case "task":
+        if (!norm(a.t)) return "할 일 내용을 입력하세요.";
+        if (a.due && !realDay(a.due)) return "날짜를 바르게 입력하세요.";
+        if (a.time && !isHM(a.time)) return "시각을 바르게 입력하세요.";
+        return a.time && !a.due ? "시각은 날짜와 함께 입력하세요." : "";
       default: return "알 수 없는 항목";
     }
   }
-  const folderFor = (a) => (a.k === "shelf" ? (a.ssi ? "docs-ssi" : "docs") : a.k === "event" && !a.file ? "" : KINDS[a.k].folder);
+  /* 형식만 맞는 날(2026-13-01 · 02-30)은 할 일 칸 정리(SemisTasks.norm)가 말없이 비우므로 저장 전에 막는다 */
+  const realDay = (s) => { const n = Date.parse(s + "T00:00:00Z"); return isISO(s) && !isNaN(n) && new Date(n).toISOString().slice(0, 10) === s; };
+  const folderFor = (a) => (a.k === "shelf" ? (a.ssi ? "docs-ssi" : "docs") : (a.k === "event" || a.k === "task") && !a.file ? "" : KINDS[a.k].folder);
   const pickColor = (cat) => (CATS[cat] || CATS.other)[1];
   function schedRec(o) {
     return Object.assign({ memo: "", memoHtml: "", end: o.start, allDay: true, time: "", timeEnd: "", color: "blue", assignee: "", vehicle: false, room: false,
@@ -373,6 +395,14 @@
           ssi: !!a.ssi, mids: [], files: fileArr(a), src: "desk", at: nowS, by }, sum ? { sum } : {}));
         const m = shelfMods().find(x => x.mod === a.mod);
         out.push({ k: "shelf", label: "문서함 · " + (m ? m.label : a.mod) + " › " + (window.SemisDocs ? SemisDocs.labelOf(a.mod, a.grp) : a.grp), route: a.mod });
+      } else if (a.k === "task") {
+        const f = files[folderFor(a)];
+        const csv = (s) => String(s == null ? "" : s).split(",").map(norm).filter(Boolean);
+        const tk = SemisTasks.make({ t: a.t, due: a.due, time: a.time, place: a.place, who: csv(a.who), teams: csv(a.teams), memo: a.memo,
+          file: f ? { name: f.name, url: f.url } : null }, "desk");
+        if (!Array.isArray(D().tasks)) D().tasks = [];
+        D().tasks.push(tk);
+        out.push({ k: "task", label: "할 일 · " + (tk.due ? dot(tk.due) + " " : "") + norm(tk.t), route: "tasks" });
       }
     });
     return out;
@@ -686,6 +716,10 @@
           + sel(a, "grp", "묶음", opt("", "선택", a.grp) + (m ? m.groups.map(g => opt(g.id, g.label, a.grp)).join("") : ""))
           + inp(a, "title", "문서 이름", "", true) + inp(a, "date", "문서 일자", "date") + inp(a, "org", "기관") + ck(a, "ssi", "민감보안정보");
       }
+      case "task":
+        return fld("내용", `<textarea data-f="t" rows="2" maxlength="300">${esc(a.t)}</textarea>`, true) + inp(a, "due", "날짜", "date") + inp(a, "time", "시각", "time")
+          + inp(a, "place", "장소", "", true) + fld("담당", `<input data-f="who" value="${esc(a.who)}" list="dk-dl-as" autocomplete="off">`) + inp(a, "teams", "관련 팀")
+          + inp(a, "memo", "메모", "", true) + ck(a, "file", "원본 첨부");
       default: return "";
     }
   }
@@ -712,6 +746,7 @@
         const m = shelfMods().find(x => x.mod === a.mod);
         return [(m ? m.label : "화면 미정") + (a.grp && window.SemisDocs ? " › " + SemisDocs.labelOf(a.mod, a.grp) : ""), norm(a.title)].filter(Boolean).join(" · ") + (a.ssi ? " · 민감보안정보" : "");
       }
+      case "task": return [d(a.due) + (isISO(a.due) && isHM(a.time) ? " " + a.time : ""), norm(a.t), norm(a.who) ? "담당 " + norm(a.who) : ""].filter(Boolean).join(" · ");
       default: return "";
     }
   }
@@ -769,7 +804,8 @@
       ${e.status === "wait" && !b ? `<div class="dkc-add"><span>저장할 곳 추가</span>
         <button type="button" class="link-btn" data-add="event">${icon("plus", 14)}<span>일정</span></button>
         <button type="button" class="link-btn" data-add="cert">${icon("plus", 14)}<span>이수 기록</span></button>
-        <button type="button" class="link-btn" data-add="shelf">${icon("plus", 14)}<span>문서함</span></button></div>
+        <button type="button" class="link-btn" data-add="shelf">${icon("plus", 14)}<span>문서함</span></button>${tasksOk() ? `
+        <button type="button" class="link-btn" data-add="task">${icon("plus", 14)}<span>할 일</span></button>` : ""}</div>
       <footer class="dkc-foot">
         <button type="button" class="btn btn-ghost dkc-keep" data-do="keep"${lock ? " disabled" : ""}>보관만 하기</button><span class="spacer"></span>
         <button type="button" class="btn btn-primary dkc-go" data-do="apply"${lock || !n ? " disabled" : ""}>${icon("check", 18)}<span>이대로 저장${n ? " · " + n + "곳" : ""}</span></button></footer>` : ""}</article>`;
@@ -958,6 +994,7 @@
       let a;
       if (k === "event") a = eventAct({ title: (ai && ai.title) || "", start: (ai && ai.date) || todayISO(), end: "", time: "", timeEnd: "", place: "", cat: "other", area: "", memo: "" }, true);
       else if (k === "cert") a = certAct({ name: "", emp: "", cid: "", date: "", expire: "", org: "", certNo: "", hours: null, course: "" }, true);
+      else if (k === "task") a = taskAct({ t: (ai && ai.title) || "" }, true);
       else a = shelfAct(guessShelf(ai, e.file && e.file.name), true, ai);
       ds.push(a);
       (fixOpen[id] = fixOpen[id] || {})[a.id] = true;

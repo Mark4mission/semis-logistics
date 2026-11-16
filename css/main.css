@@ -6205,9 +6205,10 @@ a.dkb-t:hover, a.dkb-t:focus-visible { color: var(--primary-dark); text-decorati
 .dk-act:not(.on) .dk-ab { display: none; }
 .dk-f { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: max(var(--fs-min), .82rem); font-weight: 600; color: var(--text-3); }
 .dk-w { grid-column: span 2; }
-.dk-f input, .dk-f select, .dk-find input, .dk-find select { width: 100%; min-width: 0; padding: 7px 9px; border: 1.5px solid var(--border-strong); border-radius: var(--radius-xs);
+.dk-f input, .dk-f select, .dk-f textarea, .dk-find input, .dk-find select { width: 100%; min-width: 0; padding: 7px 9px; border: 1.5px solid var(--border-strong); border-radius: var(--radius-xs);
   background: var(--surface); font-size: .88rem; font-weight: 400; color: var(--text); outline: none; }
-.dk-f input:focus, .dk-f select:focus, .dk-find input:focus, .dk-find select:focus { border-color: var(--primary); }
+.dk-f textarea { resize: vertical; }
+.dk-f input:focus, .dk-f select:focus, .dk-f textarea:focus, .dk-find input:focus, .dk-find select:focus { border-color: var(--primary); }
 .dk-ck { display: inline-flex; align-items: center; gap: 6px; align-self: end; padding: 7px 0; font-size: .86rem; color: var(--text-2); cursor: pointer; }
 .dk-note { grid-column: 1 / -1; margin: 0; font-size: max(var(--fs-min), .8rem); color: var(--text-3); }
 .dk-finds { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; }

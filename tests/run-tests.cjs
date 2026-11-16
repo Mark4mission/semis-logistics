@@ -9581,10 +9581,14 @@ function makeServer(opts = {}) {
       eq(ps.filter(a => a.k === "cert").map(a => a.pid + ":" + a.on).join(), "p1:true,_new:true,p1:false", "사번 · 퇴직자 · 중복");
       eq(ps.find(a => a.k === "event").on, false, "이수증의 일정은 기본 꺼짐");
       ok(ps.find(a => a.k === "cert").sched, "주기 과정은 다음 이수 일정");
-      const pn = DK.plan(DK.clean(AI({ type: "notice", events: [{ title: "협의회", start: "2026-11-05", time: "14:00", place: "인천화물터미널 2층 회의실", cat: "meeting", area: "security" },
+      const pn = DK.plan(DK.clean(AI({ type: "notice", title: "협의회 개최 알림", events: [{ title: "협의회", start: "2026-11-05", time: "14:00", place: "인천화물터미널 2층 회의실", cat: "meeting", area: "security" },
         { title: "회신", start: "2026-10-30", cat: "deadline", area: "" }] })));
       const ev = pn.filter(a => a.k === "event");
-      eq(ev.map(a => a.on + ":" + a.room + ":" + a.assignee).join(), "true:true:보안담당,true:false:", "분야 담당 · 회의실");
+      eq(ev.map(a => a.on + ":" + a.room + ":" + a.assignee).join(), "true:true:보안담당,false:false:", "분야 담당 · 회의실 · 기한 일정은 꺼짐(할 일로 제안)");
+      const tk = pn.filter(a => a.k === "task");
+      eq(tk.length, 1, "기한마다 할 일 줄");
+      ok(tk[0].on && tk[0].t === "회신 — 협의회 개최 알림" && tk[0].due === "2026-10-30", "할 일 줄 켬 · 내용 = 기한 — 문서 제목 · 날짜 = 기한: " + JSON.stringify(tk[0]));
+      eq(pn.map(a => a.k).join(), "event,event,task", "할 일 줄은 그 기한 일정 바로 뒤");
       const ph = DK.plan(DK.clean(AI({ type: "hardcopy", hardcopy: { tid: "t-hazmat", date: "2026-09-01" }, shelf: { mod: "inspection", grp: "hazmat", title: "9월 대장" } })));
       eq(ph.map(a => a.k + ":" + a.on).join(), "hc:true,shelf:true");
       const po = DK.plan(DK.clean(AI({ type: "other" })));
@@ -10040,6 +10044,171 @@ function makeServer(opts = {}) {
       ok(/id="hdr-desk"[^>]*hidden/.test(html), "머리말 버튼 기본 숨김");
       ok(/@media print \{ \.dk-queue, \.dk-drop \{ display: none !important; \} \}/.test(read("css/main.css")), "인쇄 시 올리기 · 대기 숨김");
     });
+
+    /* ── Task 관리 '할 일' 저장할 곳 — 한 창을 함께 쓰고 묶음 끝에 닫는다(시험 묶음 메모리) ── */
+    {
+      const e = deskEnv("hq");
+      const DK = e.w.SemisDesk, Sy = e.w.SemisSync, D = e.S.data;
+      D.roster = { team: "", orgs: ["수출파트"], people: [] };
+      const copies = [];
+      let reading = null;
+      Sy.uploadFile = async (file, prefix) => ({ name: file.name, size: file.size, url: PUB + prefix + "/zz_" + file.name });
+      Sy.filesCall = async (b) => {
+        if (b.op === "desk-read") return { ok: true, data: reading };
+        if (b.op === "copy") { copies.push(b.prefix); return { ok: true, url: PUB + b.prefix + "/cc_" + String(b.from).split("/").pop() }; }
+        throw new Error("op");
+      };
+      const fire = (el, type) => el.dispatchEvent(new e.w.Event(type, { bubbles: true }));
+      /* 올리기 → 판독 → 확인 대기 카드 */
+      const upload = async (name, ai) => {
+        reading = ai;
+        await DK.intake([new e.w.File([enc("본문")], name)]);
+        for (let i = 0; i < 20 && D.desk.log[0] && D.desk.log[0].status !== "wait"; i++) await tick(5);
+        await tick(40);
+        return D.desk.log[0];
+      };
+      const rows = (lg) => DK.drafts[lg.id] || [];
+      const kOn = (lg) => rows(lg).map(a => a.k + ":" + a.on).join();
+      const row = (lg, a) => q(e, '.dk-item[data-dk="' + lg.id + '"] [data-aid="' + a.id + '"]');
+      const taskOf = (lg) => rows(lg).find(a => a.k === "task");
+      const DL = (o) => AI(Object.assign({ type: "notice", title: "자료 제출 요청", summary: "요약 글", org: "수출파트",
+        events: [{ title: "자료 제출", start: "2026-10-30", time: "15:00", place: "본관 2층", cat: "deadline", area: "security" }] }, o));
+      go(e, "desk");
+      await tick(10);
+
+      await ta("TK45 기한 없으면 할 일 줄 없음 · '저장할 곳 추가' 할 일 → 켜진 빈 할 일 줄(칸 펼침 · 내용 = 문서 제목) · 기한마다 바로 뒤 · 관련 팀은 명단 그룹일 때만", async () => {
+        const lg = await upload("t45.txt", AI({ type: "notice", title: "협의회 개최 알림", events: [{ title: "협의회", start: "2026-11-05", cat: "meeting", area: "security" }] }));
+        eq(kOn(lg), "event:true", "회의 일정만 — 할 일 줄 없음");
+        const b = q(e, '.dk-item[data-dk="' + lg.id + '"] [data-add="task"]');
+        ok(b && b.textContent.trim() === "할 일" && !b.hasAttribute("aria-label"), "할 일 단추(보이는 글자)");
+        b.click();
+        const a = taskOf(lg);
+        ok(a && a.on && a.t === "협의회 개최 알림" && a.file === true, "켜진 빈 할 일 줄: " + JSON.stringify(a));
+        const r = row(lg, a);
+        ok(r.classList.contains("on") && !r.querySelector(".dk-ab").hidden, "칸 펼침");
+        eq(r.querySelector(".dkc-rt b").textContent, "Task 관리에 할 일로 저장", "저장할 곳 이름");
+        eq(r.querySelector('textarea[data-f="t"]').value, "협의회 개최 알림", "내용 칸");
+        eq(["due", "time", "place", "who", "teams", "memo", "file"].filter(f => r.querySelector('[data-f="' + f + '"]')).join(), "due,time,place,who,teams,memo,file", "날짜 · 시각 · 장소 · 담당 · 관련 팀 · 메모 · 원본 첨부");
+        ok(r.querySelector('[data-f="file"]').checked, "원본 첨부 켬");
+        ok(/이대로 저장 · 2곳/.test(q(e, '.dk-item[data-dk="' + lg.id + '"] .dkc-go').textContent), "n곳 셈에 들어감");
+        const mt = { title: "협의회", start: "2026-11-05", cat: "meeting", area: "" };
+        const p2 = DK.plan(DK.clean(DL({ events: [DL().events[0], mt, Object.assign({}, DL().events[0], { title: "결과 보고", start: "2026-11-20" })] })));
+        eq(p2.map(x => x.k + ":" + x.on).join(), "event:false,task:true,event:true,event:false,task:true", "기한마다 그 일정 줄 바로 뒤");
+        eq(p2.filter(x => x.k === "task").map(x => x.t + "|" + x.due).join(), "자료 제출 — 자료 제출 요청|2026-10-30,결과 보고 — 자료 제출 요청|2026-11-20");
+        eq(DK.plan(DK.clean(DL({ title: "자료 제출" }))).find(x => x.k === "task").t, "자료 제출", "문서 제목과 같으면 기한 제목만");
+        eq(DK.plan(DK.clean(DL({ org: "서울지방항공청" }))).find(x => x.k === "task").teams, "", "명단 그룹이 아닌 기관은 관련 팀에 넣지 않음");
+        DK.keep(lg.id);
+      });
+
+      await ta("TK46 기한 있는 공문: 할 일 줄 켬 · 기한 일정 줄 끔 · 판독만으로는 안 씀 · '이대로 저장' 뒤 1건(src desk · tasks/ 사본) · 기록 '할 일' · route tasks", async () => {
+        const n0 = D.tasks.length;
+        const lg = await upload("t46.txt", DL({}));
+        eq(kOn(lg), "event:false,task:true");
+        eq(qa(e, '.dk-item[data-dk="' + lg.id + '"] .dkc-row').map(x => x.classList.contains("on")).join(), "false,true", "화면도 일정 끔 · 할 일 켬");
+        eq(D.tasks.length, n0, "판독이 와도 쓰지 않음(사람이 '이대로 저장'을 눌러야)");
+        ok(/1곳/.test(q(e, '.dk-item[data-dk="' + lg.id + '"] .dkc-say .dkc-s').textContent), "한 문장 확인 1곳");
+        eq(row(lg, taskOf(lg)).querySelector(".dkc-rt small").textContent, "2026.10.30 15:00 · 자료 제출 — 자료 제출 요청 · 담당 보안담당", "요약 줄");
+        copies.length = 0;
+        await DK.apply(lg.id);
+        eq(copies.join(), "tasks", "사본은 tasks/ 한 번");
+        eq(D.tasks.length, n0 + 1);
+        const tk = D.tasks[D.tasks.length - 1];
+        eq([tk.src, tk.t, tk.due, tk.time, tk.place, tk.who.join(), tk.teams.join(), tk.memo, tk.by, tk.done].join("|"),
+          "desk|자료 제출 — 자료 제출 요청|2026-10-30|15:00|본관 2층|보안담당|수출파트|요약 글|Thq|false");
+        ok(/^tk_/.test(tk.id), tk.id);
+        eq(tk.file && tk.file.name + "|" + tk.file.url, "t46.txt|" + PUB + "tasks/cc_zz_t46.txt", "원본 사본");
+        eq(JSON.stringify(e.w.SemisTasks.norm(tk)), JSON.stringify(tk), "칸 정리된 모양");
+        eq(lg.status, "done");
+        eq(lg.acts.map(x => x.k + "|" + x.route + "|" + x.label).join(), "task|tasks|할 일 · 2026.10.30 자료 제출 — 자료 제출 요청", "기록");
+        eq(DK.resultText(lg.acts), "할 일", "직원 '저장한 곳' = 화면 이름만");
+        ok(!D.schedules.some(s => s.title === "자료 제출"), "끈 일정 줄은 저장 안 함");
+      });
+
+      await ta("TK47 끈 할 일 줄은 저장 안 함 · 사람이 일정 줄을 켜면 둘 다 저장", async () => {
+        const n0 = D.tasks.length;
+        const lg = await upload("t47.txt", DL({}));
+        const ck = (l, a) => { const c = row(l, a).querySelector('[data-f="on"]'); c.checked = !c.checked; fire(c, "change"); };
+        ck(lg, rows(lg).find(a => a.k === "event"));
+        ck(lg, taskOf(lg));
+        eq(kOn(lg), "event:true,task:false");
+        copies.length = 0;
+        await DK.apply(lg.id);
+        eq(lg.status, "done");
+        eq(D.tasks.length, n0, "할 일 0건");
+        eq(copies.join(), "schedules", "일정 사본만");
+        eq(lg.acts.map(x => x.k).join(), "event");
+        const lg2 = await upload("t47b.txt", DL({}));
+        ck(lg2, rows(lg2).find(a => a.k === "event"));
+        eq(kOn(lg2), "event:true,task:true");
+        const s0 = D.schedules.length;
+        copies.length = 0;
+        await DK.apply(lg2.id);
+        eq(copies.slice().sort().join(), "schedules,tasks", "폴더마다 사본 한 번");
+        eq(D.tasks.length + "|" + D.schedules.length, (n0 + 1) + "|" + (s0 + 1), "둘 다 저장(막지 않음)");
+        eq(lg2.acts.map(x => x.k).join(), "event,task");
+      });
+
+      await ta("TK48 할 일 줄 검사: 내용 비움 → 저장 막힘(그 줄 펼침 · 검사 문구) · 없는 날짜 → 막힘 · 시각 형식 · 날짜 없는 시각", async () => {
+        const n0 = D.tasks.length;
+        const lg = await upload("t48.txt", DL({}));
+        const a = taskOf(lg);
+        const ta0 = row(lg, a).querySelector('[data-f="t"]');
+        ta0.value = "  "; fire(ta0, "input"); fire(ta0, "change");
+        await DK.apply(lg.id);
+        eq(lg.status, "wait", "막힘"); eq(D.tasks.length, n0);
+        await tick(40);
+        const r = row(lg, a);
+        ok(!r.querySelector(".dk-ab").hidden, "그 줄 펼침");
+        eq(r.querySelector(".dkc-need").textContent, "할 일 내용을 입력하세요.", "검사 문구");
+        ok(qa(e, "#toast-wrap .toast.err").some(x => x.textContent === "할 일: 할 일 내용을 입력하세요."), "알림");
+        a.t = "자료 제출"; a.due = "2026-13-01";
+        eq(DK.check(a), "날짜를 바르게 입력하세요.");
+        await DK.apply(lg.id);
+        eq(lg.status + "|" + D.tasks.length, "wait|" + n0, "없는 날짜 → 막힘");
+        const C = (o) => DK.check(Object.assign({}, a, o));
+        eq(C({ due: "2026-02-30" }), "날짜를 바르게 입력하세요.", "없는 날");
+        eq(C({ due: "2026-10-30", time: "25:00" }), "시각을 바르게 입력하세요.");
+        eq(C({ due: "", time: "15:00" }), "시각은 날짜와 함께 입력하세요.");
+        eq(C({ due: "", time: "" }), "", "날짜 · 시각 없어도 됨");
+        eq(C({ due: "2026-10-30", time: "15:00" }), "");
+        DK.keep(lg.id);
+      });
+
+      await ta("TK49 할 일을 못 쓰는 화면(SemisTasks 없음 · canUse 거짓): 할 일 줄 · 추가 단추 없음 · 기한 일정 줄은 예전처럼 켬", async () => {
+        const TKs = e.w.SemisTasks;
+        try {
+          e.w.SemisTasks = undefined;
+          eq(DK.plan(DK.clean(DL({}))).map(a => a.k + ":" + a.on).join(), "event:true", "SemisTasks 없음");
+          const lg = await upload("t49.txt", DL({}));
+          eq(kOn(lg), "event:true", "카드도 일정 줄만");
+          const c = q(e, '.dk-item[data-dk="' + lg.id + '"]');
+          ok(c && c.querySelector('[data-add="event"]') && !c.querySelector('[data-add="task"]'), "할 일 추가 단추 없음");
+          e.w.SemisTasks = Object.assign({}, TKs, { canUse: () => false });
+          eq(DK.plan(DK.clean(DL({}))).map(a => a.k + ":" + a.on).join(), "event:true", "canUse 거짓");
+          DK.keep(lg.id);
+        } finally { e.w.SemisTasks = TKs; }
+      });
+
+      await ta("TK50 원본 첨부 끔: tasks/ 사본 요청 없음 · 저장된 할 일에 file 없음", async () => {
+        const n0 = D.tasks.length;
+        const lg = await upload("t50.txt", DL({}));
+        const a = taskOf(lg);
+        row(lg, a).querySelector("[data-fix]").click();
+        const f = row(lg, a).querySelector('[data-f="file"]');
+        ok(f && f.checked, "원본 첨부 처음 켬");
+        f.checked = false; fire(f, "change");
+        eq(a.file, false);
+        eq(DK.folderFor(a), "", "사본 폴더 없음");
+        copies.length = 0;
+        await DK.apply(lg.id);
+        eq(lg.status, "done");
+        eq(copies.length, 0, "사본 요청 없음: " + copies.join());
+        eq(D.tasks.length, n0 + 1);
+        ok(!("file" in D.tasks[D.tasks.length - 1]), "file 없음");
+        eq(e.errors.length, 0, e.errors.join(" | "));
+      });
+      e.w.close();
+    }
   }
 
   /* ══════════ [UI] v1.48 지원 카드 · 공통 패널 · 부엉이 ══════════ */
