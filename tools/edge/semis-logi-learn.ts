@@ -2,7 +2,8 @@
    - op "media": 학습 화면(learn.html, 로그인 없음)이 시작한 뒤 교육 자료(그림 · 동영상) 서명 URL(3시간).
      표 · 시작 기록 · 경로는 public.semis_logi_learn_media_ok(서비스 권한만)가 확인하고 learn/ 경로만 준다
    - op "sum": 관리 화면(hq 이상 세션)이 올린 자료를 실무자용 한 쪽 요약으로. PDF · 그림은 저장소 learn/ 원본,
-     워드 · 한글 · 엑셀 · 파워포인트는 화면이 뽑은 글(text). 민감보안정보 교육은 화면이 부르지 않는다
+     워드 · 한글 · 엑셀 · 파워포인트는 화면이 뽑은 글(text), 동영상은 화면이 뽑은 장면(frame = JPEG base64, 10장까지).
+     민감보안정보 교육은 화면이 부르지 않는다
    - 올리기 · 관리 화면의 열람 서명은 기존 semis-logi-files(폴더 learn = 기본 등급 3)
    - 배포: Supabase MCP deploy_edge_function (verify_jwt false — 위의 표 · 세션 확인으로 대신). 이 파일이 원본 */
 
@@ -17,6 +18,8 @@ const MEDIA_EXPIRES = 3 * 3600;
 const AI_URL = "https://api.anthropic.com/v1/messages";
 const AI_MODELS = ["claude-sonnet-5-5", "claude-sonnet-4-5", "claude-haiku-4-5"];
 const AI_MAX_PDF = 15 * 1024 * 1024, AI_MAX_IMG = 5 * 1024 * 1024, MAX_TEXT = 60000;
+const MAX_BODY = 400000, MAX_BODY_SUM = 3000000, MAX_FRAMES = 10, MAX_FRAME = 400000, MAX_FILES = 4;
+const B64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
 const AI_IMG: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif" };
 const SUM_SYSTEM = `당신은 항공화물터미널 안전보안 부서의 교육 담당입니다. 첨부 자료(공문 · 보고서 · 규정 · 발표 자료 · 사진)를 현장 실무자(화물 조업 · 보안검색 · 사무 직원)가 휴대폰으로 2~3분 안에 읽고, 「교육 실시 결과 기록부」의 '교육 내용' 한 칸(A4 3분의 1쪽)에 그대로 들어갈 분량의 핵심 요약 교육 자료로 만듭니다.
 JSON 객체 하나로만 답합니다. 설명 · 코드펜스 금지.
@@ -28,6 +31,7 @@ body 규칙:
 - 표: 기준 · 비교 · 일정처럼 표가 더 읽기 쉬울 때만 하나. "| 구분 | 내용 |" 줄로 쓰고 둘째 줄은 "|---|---|". 4칸 · 6줄 이내.
 - 흐름: 절차 · 보고 순서는 "[발견] -> [신고] -> [조치]" 처럼 대괄호와 -> 로 한 줄. 5단계 이내, 하나만.
 - 자료의 그림 · 도표 · 사진에 담긴 내용도 읽어 글 · 표 · 흐름으로 옮긴다. 링크 · 그림 삽입 · HTML 금지.
+- 동영상 장면(시간 순 정지 화면)이 오면 화면에 보이는 제목 · 자막 · 글 · 도표 · 장면만 근거로 정리한다. 말소리는 알 수 없으니 짐작해서 채우지 않고, 읽을 내용이 적으면 짧게 쓴다.
 - 쉬운 말, 업무 용어는 그대로. 자료에 있는 사실만. 날짜 · 수치 · 조항은 자료 그대로. 전화번호 · 주민번호 · 개인 연락처는 옮기지 않는다.`;
 
 type Who = { ok: boolean; kind?: string; rank?: number };
@@ -113,10 +117,22 @@ async function summarize(w: Who, body: Record<string, unknown>, origin: string):
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY") || "";
   if (!apiKey) return json({ ok: false, error: "no_key" }, 200, origin);
   const name = str(body.name, 160);
-  const parts = (Array.isArray(body.parts) ? body.parts : []).slice(0, 4) as Record<string, unknown>[];
+  const parts = (Array.isArray(body.parts) ? body.parts : []).slice(0, MAX_FILES + MAX_FRAMES) as Record<string, unknown>[];
   const blocks: Record<string, unknown>[] = [];
-  let textLeft = MAX_TEXT;
+  let textLeft = MAX_TEXT, nFile = 0, nFrame = 0;
   for (const p of parts) {
+    if (!p || typeof p !== "object") continue;
+    if (typeof p.frame === "string") {
+      if (nFrame >= MAX_FRAMES) continue;
+      if (p.frame.length < 16 || p.frame.length > MAX_FRAME || !B64_RE.test(p.frame)) return json({ ok: false, error: "frame" }, 400, origin);
+      nFrame++;
+      const at = Math.max(0, Math.min(86400, Math.round(Number(p.at) || 0)));
+      blocks.push({ type: "text", text: `[동영상 장면 — ${str(p.name, 160) || "동영상"} · ${Math.floor(at / 60)}분 ${at % 60}초]` });
+      blocks.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: p.frame } });
+      continue;
+    }
+    if (nFile >= MAX_FILES) continue;
+    nFile++;
     const text = typeof p.text === "string" ? p.text.slice(0, textLeft) : "";
     if (text.trim()) { textLeft -= text.length; blocks.push({ type: "text", text: `[자료 — ${str(p.name, 160) || "파일"}]\n${text}` }); continue; }
     const path = String(p.path || "");
@@ -168,8 +184,10 @@ Deno.serve(async (req: Request) => {
   let body: Record<string, unknown>;
   try {
     const raw = await req.text();
-    if (raw.length > 400000) return json({ ok: false, error: "too_large" }, 413, origin);
+    if (raw.length > MAX_BODY_SUM) return json({ ok: false, error: "too_large" }, 413, origin);
     body = JSON.parse(raw);
+    // 동영상 장면이 실리는 요약만 크게 받는다
+    if (raw.length > MAX_BODY && String((body && body.op) || "") !== "sum") return json({ ok: false, error: "too_large" }, 413, origin);
   } catch (_e) { return json({ ok: false, error: "bad_json" }, 400, origin); }
   const op = String((body && body.op) || "");
   try {

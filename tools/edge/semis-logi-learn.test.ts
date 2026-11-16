@@ -82,6 +82,20 @@ Deno.test("sum: 세션 없음 401 · hq 미만 403 · 경로 · 글/PDF 요약 �
   assertEquals(r.d.ok, true);
   const ai2 = calls.find((c) => c.url === "https://api.anthropic.com/v1/messages")!;
   assertEquals((ai2.body.messages as { content: { type: string }[] }[])[0].content[0].type, "document");
+  // 동영상 장면 — JPEG base64 만, 10장까지, 장면마다 시간 표시
+  assertEquals((await post({ op: "sum", parts: [{ name: "v.mp4", frame: "data:image/jpeg;base64,AAAA" }] })).d.error, "frame");
+  assertEquals((await post({ op: "sum", parts: [{ name: "v.mp4", frame: "<script>alert(1)</script>" }] })).d.error, "frame");
+  calls.length = 0;
+  r = await post({ op: "sum", name: "v.mp4", parts: Array.from({ length: 12 }, (_, i) => ({ name: "v.mp4", frame: "AAAA".repeat(8), at: 65 * i })) });
+  assertEquals(r.d.ok, true);
+  const c3 = (calls.find((c) => c.url === "https://api.anthropic.com/v1/messages")!.body.messages as { content: { type: string; text?: string; source?: { media_type: string } }[] }[])[0].content;
+  assertEquals(c3.filter((b) => b.type === "image").length, 10);
+  assertEquals(c3.filter((b) => b.type === "image").every((b) => b.source!.media_type === "image/jpeg"), true);
+  assertEquals(c3[2].text, "[동영상 장면 — v.mp4 · 1분 5초]");
+  // 큰 요청 — 요약만 받는다
+  assertEquals((await post({ op: "media", pad: "x".repeat(500000) }, { tok: false })).status, 413);
+  assertEquals((await post({ op: "sum", parts: [{ text: "가" }], pad: "x".repeat(500000) })).d.ok, true);
+  assertEquals((await post({ op: "sum", parts: [{ text: "가" }], pad: "x".repeat(3100000) })).status, 413);
   aiText = "죄송합니다";
   assertEquals((await post({ op: "sum", parts: [{ text: "가" }] })).d.error, "parse");
 });

@@ -13595,6 +13595,56 @@ function makeServer(opts = {}) {
       ok(!/<script/.test(M.html("| <script>x</script> | b |")) && /&lt;script/.test(M.html("| <script>x</script> | b |")), "표 칸도 이스케이프");
       eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
     });
+    await ta("LN23 관리(v1.72): 자료를 올리면 바로 교육명 · 개요 · 교육 내용 자동 채움 · 동영상은 장면(JPEG)으로 · SSI 표시/SSI 파일 이름은 보내지 않음 · 손으로 고친 내용은 묻고 바꿈", async () => {
+      const { e, L } = lnEnv("hq", { courses: [] });
+      const PUB = "https://x.supabase.co/storage/v1/object/public/semis-logi-files/";
+      const up0 = e.w.SemisSync.uploadFile, f0 = e.w.fetch, tk0 = e.w.SemisSync.auth.token;
+      e.w.SemisSync.uploadFile = async (file, prefix) => ({ url: PUB + prefix + "/ab12_" + file.name, name: file.name, size: file.size });
+      e.w.SemisSync.auth.token = () => "a".repeat(64);
+      const sums = []; let reply = { ok: true, data: { title: "지게차 통로 확보", overview: "통로 기준을 알립니다.", body: "## 핵심\n- 통로 1.2m" } };
+      e.w.fetch = async (u, o) => { if (/functions\/v1\/semis-logi-learn$/.test(String(u))) { sums.push(JSON.parse(o.body)); return { ok: true, json: async () => reply }; } return { ok: false, json: async () => ({}) }; };
+      const dropFiles = (fs) => { const ev = new e.w.Event("drop", { bubbles: true, cancelable: true }); Object.defineProperty(ev, "dataTransfer", { value: { files: fs } }); q(e, "#le-drop").dispatchEvent(ev); };
+      const F = (name, type) => new e.w.File(["%PDF-1.4"], name, { type });
+      go(e, "learn");
+      q(e, ".page-head [data-ln-new]").click();
+      ok(q(e, ".ln-drop").compareDocumentPosition(q(e, "#le-ssi")) & 2, "SSI 표시는 올리는 칸 위");
+      // ① PDF 를 올리면 묻지 않고 채운다 — 파일 이름으로 넣은 임시 교육명은 AI 제목으로 바뀜
+      dropFiles([F("협의체 결과.pdf", "application/pdf")]); await tick(120);
+      eq(sums.length, 1, "올리자마자 한 번");
+      eq(sums[0].op, "sum"); eq(sums[0].title, "", "임시 교육명은 힌트로 보내지 않음");
+      eq(sums[0].parts[0].path, "learn/ab12_협의체 결과.pdf");
+      eq(q(e, "#le-title").value, "지게차 통로 확보"); eq(q(e, "#le-ov").value, "통로 기준을 알립니다."); ok(/통로 1\.2m/.test(q(e, "#le-body").value));
+      // ② AI 가 넣은 그대로면 다음 자료 때 묻지 않고 다시 — 적어 둔 교육명은 지키고 힌트로 보냄
+      reply = { ok: true, data: { title: "다른 제목", overview: "둘째 개요", body: "## 둘째" } };
+      dropFiles([F("추가.pdf", "application/pdf")]); await tick(120);
+      eq(sums.length, 2); eq(sums[1].title, "지게차 통로 확보"); eq(sums[1].parts.length, 2);
+      eq(q(e, "#le-title").value, "지게차 통로 확보", "교육명 유지"); eq(q(e, "#le-ov").value, "둘째 개요"); eq(q(e, "#le-body").value, "## 둘째");
+      // ③ 손으로 고쳤으면 묻는다
+      q(e, "#le-body").value = "직접 고침"; q(e, "#le-body").dispatchEvent(new e.w.Event("input", { bubbles: true }));
+      dropFiles([F("셋째.pdf", "application/pdf")]); await tick(120);
+      eq(sums.length, 2, "묻기 전에는 보내지 않음");
+      ok(/다시 정리할까요/.test(e.w.document.body.textContent), "확인 창");
+      const no = qa(e, ".modal button").find(b => /취소|아니/.test(b.textContent)); if (no) no.click();
+      eq(q(e, "#le-body").value, "직접 고침");
+      // ④ 동영상 — 뽑아 둔 장면을 frame 으로(말소리 없음)
+      const ed = L._edit();
+      ed.items = [{ id: "v1", type: "video", name: "안전.mp4", size: 5, url: PUB + "learn/ab12_v.mp4", dur: 80 }]; ed.body = ""; ed._aiBody = "";
+      L._vmemo[PUB + "learn/ab12_v.mp4"] = Array.from({ length: 8 }, (_, i) => "data:image/jpeg;base64,AAAA" + i + "AAA");
+      e.S.renderView(); await tick(20);
+      q(e, "#le-ai").click(); await tick(120);
+      eq(sums.length, 3);
+      eq(sums[2].parts.length, 8); ok(sums[2].parts.every(p => typeof p.frame === "string" && !/^data:/.test(p.frame) && p.name === "안전.mp4"), "장면 8장");
+      eq(sums[2].parts[0].at, 5); eq(sums[2].parts[7].at, 75);
+      // ⑤ SSI — 표시했거나 파일 이름에 SSI 가 있으면 보내지 않는다
+      dropFiles([F("TSA SSI 통보.pdf", "application/pdf")]); await tick(120);
+      eq(sums.length, 3, "SSI 파일 이름");
+      q(e, "#le-ssi").checked = true; q(e, "#le-ssi").dispatchEvent(new e.w.Event("change", { bubbles: true })); await tick(20);
+      ok(!q(e, "#le-ai"), "SSI 교육은 AI 단추 없음");
+      dropFiles([F("일반.pdf", "application/pdf")]); await tick(120);
+      eq(sums.length, 3, "SSI 표시 교육");
+      e.w.SemisSync.uploadFile = up0; e.w.fetch = f0; e.w.SemisSync.auth.token = tk0;
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
     await ta("LN19 학습 화면: 명단에 없으면 소속 · (에어제타면 파트 · 사번 필수) 직접 입력 · 이미 이수 · 최소 시간 · 잘못된 주소 · 기간 끝", async () => {
       const x = makeLearn({ find: { ok: true, list: [] }, start: (b) => b.p.org === "AAP" ? { ok: true, done: "2026-11-11 09:00", person: { name: b.p.name, org: "AAP" } } : { ok: true, rid: "lr" + "2".repeat(18), minSec: 30, elapsed: 0, body: "본문", items: [], person: { name: b.p.name, org: b.p.org, part: b.p.part, emp: b.p.emp, manual: true } },
         submit: (b, n) => n === 1 ? { ok: false, error: "too_fast", wait: 12 } : { ok: true, at: "2026-11-12 11:00", name: "새사람" } });
