@@ -1,5 +1,7 @@
 # Task 관리 Implementation Plan
 
+> **기록용(11-16)**: 이 계획은 PR #18 위에서 실행됐고, 끝난 뒤 Mark 결정으로 K드라이브 PR(#17 · #18 · #19)과 떼어 **main 위로 옮겼다**(브랜치 `claude/v175-tasks-main`). 아래의 '#18 위' · '#17 · #18 · v1.74 다음' · deno 7건은 옮기기 전 기준 — 지금 기준은 설계 §13 · HANDOFF §7(deno argo 6건).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 안전보안파트(hq) · 시스템관리자가 함께 쓰는 할 일 메뉴 'Task 관리'(`#/tasks`) — 맨 앞 체크 · 한 줄 빠른 입력(날짜 말 알아듣기) · 색 · 아이콘 자동 구분 · 회의 모드 · 일정관리 칩 · 아르고 도구 · 접수 카운터 '할 일' 줄.
@@ -20,7 +22,7 @@
 - 아르고 **모델 · 생각 깊이(effort) · MAX_TOKENS · MAX_ROUNDS 변경 금지**(AR13 이 문자열 확인).
 - 사용 조건 `SemisTasks.canUse()` = `SeMIS.roleRank() >= 3 && role !== "vendor" && role !== "signer"`(spec §5).
 - 날짜: 한국 시각 오늘(`SemisTasks.today()` — 시험 훅 `SemisTasks.setToday(iso)`), 날짜 칸 `YYYY-MM-DD` · 시각 `HH:MM`. 주 = 월~일.
-- 커밋: `git -c user.name=Mark -c user.email=mark4mission@gmail.com commit`, 메시지 끝 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. 메시지 머리 `Task 관리 — …`. `npm audit fix` 금지.
+- 커밋: 작성자 Mark(저장소 관례 — `git -c user.name=Mark -c user.email=<Mark 계정> commit`), 메시지 끝 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. 메시지 머리 `Task 관리 — …`. `npm audit fix` 금지.
 - 시험 실행: `npm test`(전체 — 실패 0). 새 시험 묶음 이름 `[TK]`(시험 id `TK01`…), `tests/run-tests.cjs` 의 [LN] 묶음 뒤에 둔다. 한국 시각 00~09시에 날짜 경계 실패가 나면 기존 SC05 · SC06 등과 같은 까닭인지 확인(HANDOFF §1 테스트 칸).
 
 ## Review Focus
