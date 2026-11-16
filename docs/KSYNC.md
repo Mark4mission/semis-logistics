@@ -21,7 +21,7 @@ H:drive 안에서 K드라이브를 들여다보는 화면은 없고(v1.73 부터
 | SQL(표 · 관리 RPC · 에이전트 함수 · 문서함 트리거) | `tools/sql/semis-logi-ksync.sql` (마이그레이션 `semis_logi_security_30_ksync` · v1.64 `semis_logi_security_32_ksync_since` · v1.68 `semis_logi_security_34_ksync_links` · `semis_logi_security_35_ksync_report` · v1.72 `semis_logi_security_36_ksync_both` · v1.73 `semis_logi_security_37_ksync_kidx` · v1.74 `semis_logi_security_38_ksync_newdirs`) | `node tools/sql/semis-logi-ksync.test.mjs tools/sql/semis-logi-ksync.sql tools/sql/semis-logi-conflict.sql` (PGlite + pgcrypto) |
 | Edge | `tools/edge/semis-logi-ksync.ts` (verify_jwt false) | `deno test --node-modules-dir=none --allow-net --allow-env --allow-read tools/edge/semis-logi-ksync.test.ts` (실제 SQL 을 PGlite 로) |
 | Mac 에이전트 | `tools/ksync/ksync.mjs` · `plan.mjs`(계획 — 순수 함수) · `lib.mjs` · `install.sh` · `uninstall.sh` | `node tools/ksync/test/plan.test.mjs`(npm test 에 포함) · `node tools/ksync/test/e2e.test.mjs`(에이전트 ↔ 실제 Edge 코드 ↔ 실제 SQL, K = 임시 폴더) |
-| 대시보드 | `js/ksync.js` (시스템 설정 탭) | `npm test` [KS] |
+| 대시보드 | `js/ksync.js` (시스템 설정 탭) · `js/kfolder.js` (새 K 폴더 분류 추천 — 규칙 · AI, v1.74) | `npm test` [KS] · [KF] |
 
 PGlite 는 `npm i --no-save @electric-sql/pglite` 로 받고 끝나면 `npm prune`. E2E 는 Node 22.18 이상(.ts 형식 제거).
 
