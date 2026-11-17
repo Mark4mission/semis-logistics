@@ -13306,7 +13306,7 @@ function makeServer(opts = {}) {
       { id: "p6", name: "나다라", org: "AAP", part: "", emp: "", gender: "M" },
       { id: "p7", name: "마바사", org: "에어제타", part: "안전보안파트", emp: "900007", left: "2026-01-01" } ] });
     const COURSE = (o) => Object.assign({ id: "lc1", code: "abcdefgh2345", state: "open", title: "11월 협의체 결과 회람", kind: "안전", overview: "개요 두 줄", host: "안전보안파트",
-      place: "온라인(H:drive)", start: "2026-11-10", end: "2026-11-20", body: "## 핵심\n- 지게차 통로 확보\n- **보호구** 착용", minSec: 60,
+      place: "온라인", start: "2026-11-10", end: "2026-11-20", body: "## 핵심\n- 지게차 통로 확보\n- **보호구** 착용", minSec: 60,
       items: [{ id: "i1", type: "video", name: "v.mp4", size: 1000, url: PUB + "learn/aa11_v.mp4", dur: 40 }],
       targets: { groups: ["안전보안파트", "AAP"], add: ["p4"], except: ["p3"] }, excuse: { p2: "병가" }, dissem: "" }, o || {});
     const ROWS = () => [
@@ -13451,7 +13451,7 @@ function makeServer(opts = {}) {
       ok(tds.some(r => r === "교육대상|2|1|1|"), "대상 계 · 남 · 여 " + tds.join(" / "));
       ok(tds.some(r => r === "교육실시|1|1|0|"), "실시");
       ok(tds.some(r => r === "교육미실시|1|0|1|병가"), "미실시 · 사유");
-      ok(tds.some(r => /안전보안파트\|온라인\(H:drive\)\|'26\. 11\. 10 ~ 11\. 20/.test(r)), "주관 · 장소 · 일시");
+      ok(tds.some(r => /안전보안파트\|온라인\|'26\. 11\. 10 ~ 11\. 20/.test(r)), "주관 · 장소 · 일시");
       eq(pg.querySelectorAll("td.sg img").length, 1, "서명 1");
       ok(/병가/.test(pg.querySelector("td.sg .nt").textContent), "서명 칸 사유");
       ok(/지게차 통로/.test(pg.querySelector("td.bd").textContent), "교육 내용");
@@ -13947,6 +13947,18 @@ function makeServer(opts = {}) {
       e.S.data.learn.courses = [COURSE({ targets: { groups: ["UCC"], add: [], except: [] } })]; L._setRows([]);
       sd = L.sheetData(e.S.data.learn.courses[0]);
       eq(sd.map(x => x.g).join(","), "UCC"); eq(sd[0].mem[0].name, "하하하");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+    t("LN26 장소(v1.76.2): 새 교육 기본 '온라인' · 옛 '온라인(H:drive)'는 수정 화면에서 '온라인' · 집체 ↔ 온라인 전환", () => {
+      const { e, L } = lnEnv("hq", { courses: [COURSE({ place: "온라인(H:drive)" })] });
+      go(e, "learn");
+      L.openEdit(""); eq(q(e, "#le-place").value, "온라인", "새 교육 기본");
+      q(e, '[data-lem="1"]').click(); eq(q(e, "#le-place").value, "", "집체면 비움");
+      q(e, '[data-lem="0"]').click(); eq(q(e, "#le-place").value, "온라인", "온라인 학습으로 되돌리면");
+      q(e, "#ln-ecancel").click();
+      L.openEdit("lc1"); eq(q(e, "#le-place").value, "온라인", "옛 값 바꿈");
+      q(e, "#ln-esave").click(); eq(e.S.data.learn.courses[0].place, "온라인");
+      ok(!/H:drive/.test(read("js/learn.js").replace(/const OLD_PLACE = "온라인\(H:drive\)";.*/, "").match(/place: "[^"]*"/g).join("")), "기본값에 H:drive 없음");
       eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
     });
     await ta("LN19 학습 화면: 명단에 없으면 소속 · (에어제타면 파트 · 사번 필수) 직접 입력 · 이미 이수 · 최소 시간 · 잘못된 주소 · 기간 끝", async () => {

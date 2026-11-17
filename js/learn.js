@@ -14,6 +14,7 @@
   const SELF = "에어제타", TEAM = "인천화물팀";
   const KINDS = ["보안", "안전", "위험물", "기타"];
   const FILE_MAX = 50 * 1024 * 1024;
+  const OLD_PLACE = "온라인(H:drive)";   // v1.76.2 전 기본 장소 — H:drive 는 공식 명칭이 아니라 '온라인'으로
   const D = () => SeMIS.data;
   const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
   const L = () => (isObj(D()[KEY]) ? D()[KEY] : (D()[KEY] = { courses: [] }));
@@ -453,7 +454,7 @@
   const RC = (c) => (c && c.offline ? Object.assign({}, c, { body: c.recBody || "", items: arrOf(c.recItems) }) : c);
   function blank() {
     const t = todayISO();
-    return { id: "", code: "", state: "draft", title: "", kind: "보안", overview: "", host: "안전보안파트", place: "온라인(H:drive)", start: t, end: addDays(t, 7),
+    return { id: "", code: "", state: "draft", title: "", kind: "보안", overview: "", host: "안전보안파트", place: "온라인", start: t, end: addDays(t, 7),
       body: "", minSec: 0, ssi: false, offline: false, items: [], photos: [], targets: { groups: [], add: [], except: [] }, excuse: {}, dissem: "" };
   }
   function openEdit(id) {
@@ -461,6 +462,7 @@
     const c = id ? courses().find(x => x.id === id) : null;
     edit = JSON.parse(JSON.stringify(c || blank()));
     edit.targets = isObj(edit.targets) ? edit.targets : { groups: [], add: [], except: [] };
+    if (edit.place === OLD_PLACE) edit.place = "온라인";
     ["groups", "add", "except"].forEach(k => { edit.targets[k] = arrOf(edit.targets[k]).slice(); });
     if (edit.offline) { edit.body = edit.recBody || ""; edit.items = arrOf(edit.recItems); }
     delete edit.recBody; delete edit.recItems;
@@ -591,8 +593,8 @@
     $("#le-ssi", root).onchange = () => { pullForm(root); SeMIS.renderView(); };
     $$("[data-lem]", root).forEach(b => b.onclick = () => {
       pullForm(root); e.offline = b.dataset.lem === "1";
-      if (e.offline && (!e.place || e.place === "온라인(H:drive)")) e.place = "";
-      if (!e.offline && !e.place) e.place = "온라인(H:drive)";
+      if (e.offline && (!e.place || e.place === "온라인" || e.place === OLD_PLACE)) e.place = "";
+      if (!e.offline && !e.place) e.place = "온라인";
       SeMIS.renderView();
     });
     const pb = $("#le-photo-btn", root); if (pb) pb.onclick = () => { const x = $("#le-photo", root); if (x) x.click(); };
