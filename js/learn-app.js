@@ -443,9 +443,13 @@
       if (box) box.classList.add("inked");
       const sb = $("#ln-submit"); if (sb) sb.disabled = st.ink < 8;
     };
-    cv.addEventListener("pointerdown", (ev) => { down = true; last = pt(ev); try { cv.setPointerCapture(ev.pointerId); } catch (e) { /* 없음 */ } if (ctx) { ctx.beginPath(); ctx.arc(last.x, last.y, 1.2, 0, Math.PI * 2); ctx.fillStyle = "#111827"; ctx.fill(); } mark(); ev.preventDefault(); });
+    /* 화면 고정(v1.76.3) — 서명란 안 손가락 움직임이 화면을 끌어 올리거나(iOS · 카카오톡 등 앱 안 브라우저는 touch-action 을 무시하기도 함)
+       당겨서 새로고침 · 두 손가락 확대 · 길게 눌러 돋보기로 새지 않게 터치 이벤트 자체를 막는다(포인터 이벤트는 그대로 온다) */
+    const hold = (ev) => { if (ev.cancelable) ev.preventDefault(); };
+    if (box) ["touchstart", "touchmove", "touchend", "gesturestart", "gesturechange"].forEach(t => box.addEventListener(t, hold, { passive: false }));
+    cv.addEventListener("pointerdown", (ev) => { if (ev.isPrimary === false) return; down = true; last = pt(ev); try { cv.setPointerCapture(ev.pointerId); } catch (e) { /* 없음 */ } if (ctx) { ctx.beginPath(); ctx.arc(last.x, last.y, 1.2, 0, Math.PI * 2); ctx.fillStyle = "#111827"; ctx.fill(); } mark(); ev.preventDefault(); });
     cv.addEventListener("pointermove", (ev) => {
-      if (!down) return;
+      if (!down || ev.isPrimary === false) return;
       const p = pt(ev);
       if (ctx) { ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(p.x, p.y); ctx.stroke(); }
       last = p; mark(); ev.preventDefault();
@@ -627,6 +631,7 @@
     else if (st.view === "p2") { a.innerHTML = p2HTML(); wireP2(); }
     else if (st.view === "p3") { st.msg = ""; a.innerHTML = p3HTML(); wireP3(); }
     else if (st.view === "done") { a.innerHTML = doneHTML(); wireDone(); }
+    try { document.documentElement.classList.toggle("ln-signing", st.view === "p3"); } catch (e) { /* 없음 */ }
     document.title = (st.info && st.info.title ? st.info.title + " — " : "") + "교육 이수 — H:drive";
   }
 

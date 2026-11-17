@@ -13720,9 +13720,14 @@ function makeServer(opts = {}) {
       const cv = $l(x, "#ln-canvas");
       ptr(x, cv, "pointerdown", 10, 10); for (let i = 0; i < 10; i++) ptr(x, cv, "pointermove", 12 + i, 12 + i); ptr(x, cv, "pointerup", 30, 30);
       ok(!$l(x, "#ln-submit").disabled, "서명 뒤 제출");
+      // v1.76.3 화면 고정 — 서명란 터치는 화면을 움직이지 않음 · 서명 쪽에서만 html.ln-signing
+      ok(x.w.document.documentElement.classList.contains("ln-signing"), "서명 쪽 고정 표시");
+      ["touchstart", "touchmove", "gesturestart"].forEach(tp => { const te = new x.w.Event(tp, { bubbles: true, cancelable: true }); cv.dispatchEvent(te); ok(te.defaultPrevented, tp + " 막음"); });
+      const outside = new x.w.Event("touchmove", { bubbles: true, cancelable: true }); $l(x, ".ln-agree").dispatchEvent(outside); ok(!outside.defaultPrevented, "서명란 밖은 그대로 스크롤");
       $l(x, "#ln-submit").click();
       await tick(80);
       eq(x.A.st.view, "done");
+      ok(!x.w.document.documentElement.classList.contains("ln-signing"), "완료 뒤 고정 풂");
       ok(/수고하셨습니다\./.test($l(x, ".ln-done h1").textContent) && /2026-11-12 10:30/.test($l(x, ".ln-done").textContent), "완료 화면");
       const sb = x.srv.submits[0];
       ok(sb.p.sign === PNG && /^lr1{18}$/.test(sb.p.rid) && /^[A-Za-z0-9-]{8,64}$/.test(sb.p.sid) && sb.p.secs >= 40, JSON.stringify(sb.p).slice(0, 120));
