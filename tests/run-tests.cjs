@@ -2976,8 +2976,9 @@ function makeServer(opts = {}) {
         parts: [{ part: "그래픽카드", qty: 1, isPaid: false }], cause: "그래픽카드 교체" },
       { id: "r-env", equipmentId: "x1", equipmentName: "RAP-638DV", symptom: "다운", reporter: "검색요원", reportedAtMs: NOW - 40 * DAY, resolvedAtMs: NOW - 40 * DAY + HOUR, status: "resolved", causeCategory: "environmental" }
     ];
+    const STEP = Math.min(60000, ((NOW + 9 * HOUR) % DAY) / 17);   // 오늘 점검 간격 1분 — 자정 직후엔 줄여서 모두 오늘(한국) 안에
     const INSP = EQUIPS.filter(e => e.id !== "x2").map((e, i) => ({ id: "i" + i, type: "daily", equipmentId: e.id, equipmentName: e.name, equipmentType: e.type,
-      inspector: "안라온", inspectedAtMs: NOW - 10 * 60000 - i * 60000, checklist: [{ itemId: "a", itemName: "동작", result: e.id === "e1" ? "bad" : "ok", note: "" }], remark: "" }));
+      inspector: "안라온", inspectedAtMs: NOW - (10 + i) * STEP, checklist: [{ itemId: "a", itemName: "동작", result: e.id === "e1" ? "bad" : "ok", note: "" }], remark: "" }));
     const PERIODIC = [{ id: "w1", type: "weekly", equipmentId: "x1", equipmentName: "RAP-638DV", equipmentType: "X-RAY", inspector: "최다솜", inspectedAtMs: NOW - 26 * DAY, remark: "" }];
     const TS = new Date(NOW - 60000).toISOString();
     const SENS = [
@@ -3007,7 +3008,7 @@ function makeServer(opts = {}) {
     };
     const LEDGER = [
       { id: "eq-1", type: "X-Ray", name: "RAP-638DV 1호기", serial: "6212421", location: "인천 화물터미널 B동", vendor: "라피스캔 / 인씨스", installed: "2021-08-29", mfgDate: "", lifeYears: null, replaceDue: "2031-08-29", price: 460000000, cert: "TSA", status: "정상", logs: [], note: "" },
-      { id: "eq-3", type: "ETD(폭발물흔적)", name: "IONAB 3호기", serial: "IONAB-N22-4023", location: "인천 화물터미널 B동", vendor: "뉴원에스엔티 / 프로에스콤", installed: "2023-01-01", mfgDate: "", lifeYears: null, replaceDue: "", price: 40000000, cert: "KIAST", status: "정상", logs: [], note: "" },
+      { id: "eq-3", type: "ETD(폭발물흔적)", name: "IONAB 3호기", serial: "IONAB-N22-4023", location: "인천 화물터미널 B동", vendor: "뉴원에스엔티 / 프로에스콤", installed: new Date(NOW - 2 * 365 * DAY).toISOString().slice(0, 10), mfgDate: "", lifeYears: null, replaceDue: "", price: 40000000, cert: "KIAST", status: "정상", logs: [], note: "" },
       { id: "eq-h", type: "HHMD(휴대용)", name: "CEIA PD240", serial: "HH-1", location: "인천 화물터미널 B동", vendor: "CEIA", installed: new Date(NOW - 3.8 * 365 * DAY).toISOString().slice(0, 10), mfgDate: "", lifeYears: null, replaceDue: "", price: 600000, cert: "", status: "정상", logs: [], note: "" },
       { id: "eq-w", type: "WTMD(문형)", name: "Metor 6E", serial: "W-1", location: "", vendor: "", installed: "2025-05-20", mfgDate: "", lifeYears: null, replaceDue: "", price: null, cert: "", status: "폐기", logs: [], note: "" }
     ];
@@ -3225,13 +3226,13 @@ function makeServer(opts = {}) {
       ok(now.getUTCFullYear() > 2000);
     });
     t("SC14 가동 분석: 가동률 = 정상 가동일 ÷ 기간 일수 · ETD 목표선 · 원인 분류 막대", () => {
-      const y = Number(K.todayKey().slice(0, 4));
+      const y = Number(K.dayKey(NOW - 20 * DAY).slice(0, 4));   // r-old 의 해(1월 초엔 작년)
       const st = K.yearStats(y);
       const x3 = st.find(s => s.unit.id === "x3");
       ok(x3.days > 0 && x3.downDays >= 1 && x3.downDays <= 2, "하루(또는 자정 걸침 이틀)");
       ok(Math.abs(x3.avail - (x3.days - x3.downDays) / x3.days) < 1e-9);
       eq(Math.round(x3.downMs / HOUR), 3);
-      eq(x3.count, K.dayKey(NOW - 20 * DAY).slice(0, 4) === String(y) ? 1 : 0);
+      eq(x3.count, 1);
       q(e, '[data-etab="analysis"]').click();
       eq(qa(e, ".av-row").length, 8);
       eq(qa(e, ".av-target").length, 5, "ETD 5대에만 목표선");
@@ -4853,7 +4854,9 @@ function makeServer(opts = {}) {
   {
     const e = makeEnv();
     const Fc = e.w.SemisFlightCore;
-    const NOW = Date.now();
+    /* '오늘 출발'(NOW − 4시간까지)이 자정 ~ 05시(한국)엔 어제가 되므로, 그때만 이 창의 시계를 05시로 옮긴다 */
+    const REAL = Date.now(), NOW = Math.max(REAL, Fc.kstDayStart(REAL) + 5 * 3600000);
+    if (NOW > REAL) { const now0 = e.w.Date.now; e.w.Date.now = () => now0.call(e.w.Date) + (NOW - REAL); }
     const iso = (ms) => new Date(ms).toISOString();
     t("FL01 기체 기본값 15대 · 등록부호→ICAO 주소 규칙(HL7Nyy · HL8xyz)", () => {
       eq(Fc.DEFAULT_FLEET.length, 15);
@@ -7414,7 +7417,7 @@ function makeServer(opts = {}) {
       ok(cell.classList.contains("today") && cell.classList.contains("sel"));
       const openEv = e.w.SemisCalendar.eventsOnDay(today).filter(x => !x.done);   // v1.35: 오늘 '매일 점검'(점검 일정 연동)도 남은 일정
       ok(openEv.some(x => x.ik === "sld:" + today) && !openEv.some(x => x.id === "cm2"), openEv.map(x => x.title).join(","));
-      eq(cell.querySelectorAll(".calm-dots i").length, openEv.length, "끝낸 일정은 점에서 뺌(남은 일정이 있으면)");
+      eq(cell.querySelectorAll(".calm-dots i").length, Math.min(3, openEv.length), "끝낸 일정은 점에서 뺌(남은 일정이 있으면 · 점은 3개까지)");
       ok(q(e, ".calm-agenda").textContent.includes("모바일 점검"));
       const other = qa(e, ".calm-day:not(.other)").find(b => b.dataset.mday !== today);
       other.click();
