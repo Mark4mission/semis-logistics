@@ -82,6 +82,11 @@ input, select { font-family: inherit; color: var(--text); }
 .ln-link { background: none; border: 0; color: var(--primary-dark); font-weight: 500; font-size: .92rem; padding: 8px 0; }
 .ln-msg { margin-top: 8px; font-size: .9rem; color: var(--danger); }
 .ln-msg.info { color: var(--text-3); }
+.ln-kakao h1 { font-size: 1.3rem; margin-bottom: 8px; letter-spacing: -.02em; }
+.ln-kakao > p { color: var(--text-2); margin-bottom: 16px; }
+.ln-khelp { margin: 16px 0 6px; padding: 12px 14px; border-radius: 12px; background: var(--surface-2); font-size: .9rem; color: var(--text-2); }
+.ln-khelp b { display: block; color: var(--text); margin-bottom: 4px; }
+.ln-khelp p + p { margin-top: 2px; }
 
 .ln-res { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .ln-pick { text-align: left; width: 100%; padding: 14px 16px; border-radius: 14px; border: 1.5px solid transparent; background: var(--surface-2);

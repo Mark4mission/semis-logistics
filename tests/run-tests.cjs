@@ -13678,6 +13678,7 @@ function makeServer(opts = {}) {
       const w = dom.window;
       w.scrollTo = () => {};
       try { const wc = require("crypto").webcrypto; Object.defineProperty(w, "crypto", { value: wc, configurable: true }); } catch (x) { /* 없음 */ }
+      if (o.ua) Object.defineProperty(w.navigator, "userAgent", { value: o.ua, configurable: true });
       const srv = learnServer(o);
       w.fetch = srv.fetch;
       if (o.draft) w.localStorage.setItem("semisl:learn:abcdefgh2345", JSON.stringify(o.draft));
@@ -13735,6 +13736,30 @@ function makeServer(opts = {}) {
       eq(x.srv.tickets, 1, "표 한 번");
       eq(x.w.localStorage.getItem("semisl:learn:abcdefgh2345"), null, "제출 뒤 작성 중 내용 지움");
       eq(x.errors.length, 0, x.errors.join("|")); x.w.close();
+    });
+
+    await ta("LN27 학습 화면(v1.77): 카카오톡 앱 안 브라우저면 처음 한 번 인터넷 브라우저로(kakaotalk://web/openExternal · 주소 그대로) · 안내 · '그대로 하기'는 이 탭에서 다시 안 물음 · 일반 브라우저는 그대로", async () => {
+      const KUA = "Mozilla/5.0 (Linux; Android 14; SM-S911N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36 KAKAOTALK/10.8.0";
+      const x = makeLearn({ ua: KUA });
+      const opened = []; x.A._open = (u) => opened.push(u);
+      await tick(40);
+      ok($l(x, ".ln-kakao") && /인터넷 브라우저/.test($l(x, ".ln-kakao h1").textContent), "안내 화면");
+      eq(opened.length, 1, "처음 한 번 자동으로 넘김");
+      eq(opened[0], "kakaotalk://web/openExternal?url=" + encodeURIComponent("https://logi.test/learn.html#abcdefgh2345"), "주소 · 교육 코드 그대로");
+      eq(x.srv.calls.length, 0, "넘기기 전에는 서버 안 부름");
+      $l(x, "#ln-kext").click(); eq(opened.length, 2, "단추로 다시");
+      ok(/다른 브라우저로 열기/.test($l(x, ".ln-khelp").textContent) && /Safari/.test($l(x, ".ln-khelp").textContent), "열리지 않을 때 안내");
+      $l(x, "#ln-kstay").click(); await tick(120);
+      eq(x.A.st.view, "p1", "그대로 하기 → 교육 시작"); ok(!$l(x, ".ln-kakao"));
+      eq(x.w.sessionStorage.getItem("semisl:learn:kakao-stay"), "1");
+      x.A.boot(); await tick(120);
+      eq(opened.length, 2, "같은 탭에서는 다시 넘기지 않음"); eq(x.A.st.view, "p1");
+      eq(x.errors.length, 0, x.errors.join("|")); x.w.close();
+      // 잘못된 주소는 넘기지 않고 오류부터 · 일반 브라우저는 안내 없음
+      const y = makeLearn({ ua: KUA, hash: "#bad" }); const op2 = []; y.A._open = (u) => op2.push(u); await tick(40);
+      ok(!$l(y, ".ln-kakao") && op2.length === 0, "잘못된 주소"); y.w.close();
+      const z = makeLearn({ ua: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1" });
+      await tick(80); ok(!$l(z, ".ln-kakao") && z.A.st.view === "p1", "사파리는 그대로"); eq(z.A.isKakao(), false); z.w.close();
     });
 
     await ta("LN21 학습 화면(v1.70): 집체 교육(내용 없음)은 이름 확인 뒤 바로 서명 · 2단계 · 동영상 교육은 시간 기다림 없이 다음 · 모자라면 조용히 다시 제출 · 이수증 저장은 공유만(휴대폰)", async () => {
