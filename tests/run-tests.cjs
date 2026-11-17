@@ -2976,8 +2976,9 @@ function makeServer(opts = {}) {
         parts: [{ part: "그래픽카드", qty: 1, isPaid: false }], cause: "그래픽카드 교체" },
       { id: "r-env", equipmentId: "x1", equipmentName: "RAP-638DV", symptom: "다운", reporter: "검색요원", reportedAtMs: NOW - 40 * DAY, resolvedAtMs: NOW - 40 * DAY + HOUR, status: "resolved", causeCategory: "environmental" }
     ];
+    const STEP = Math.min(60000, ((NOW + 9 * HOUR) % DAY) / 17);   // 오늘 점검 간격 1분 — 자정 직후엔 줄여서 모두 오늘(한국) 안에
     const INSP = EQUIPS.filter(e => e.id !== "x2").map((e, i) => ({ id: "i" + i, type: "daily", equipmentId: e.id, equipmentName: e.name, equipmentType: e.type,
-      inspector: "안라온", inspectedAtMs: NOW - 10 * 60000 - i * 60000, checklist: [{ itemId: "a", itemName: "동작", result: e.id === "e1" ? "bad" : "ok", note: "" }], remark: "" }));
+      inspector: "안라온", inspectedAtMs: NOW - (10 + i) * STEP, checklist: [{ itemId: "a", itemName: "동작", result: e.id === "e1" ? "bad" : "ok", note: "" }], remark: "" }));
     const PERIODIC = [{ id: "w1", type: "weekly", equipmentId: "x1", equipmentName: "RAP-638DV", equipmentType: "X-RAY", inspector: "최다솜", inspectedAtMs: NOW - 26 * DAY, remark: "" }];
     const TS = new Date(NOW - 60000).toISOString();
     const SENS = [
@@ -4853,7 +4854,9 @@ function makeServer(opts = {}) {
   {
     const e = makeEnv();
     const Fc = e.w.SemisFlightCore;
-    const NOW = Date.now();
+    /* '오늘 출발'(NOW − 4시간까지)이 자정 ~ 05시(한국)엔 어제가 되므로, 그때만 이 창의 시계를 05시로 옮긴다 */
+    const REAL = Date.now(), NOW = Math.max(REAL, Fc.kstDayStart(REAL) + 5 * 3600000);
+    if (NOW > REAL) { const now0 = e.w.Date.now; e.w.Date.now = () => now0.call(e.w.Date) + (NOW - REAL); }
     const iso = (ms) => new Date(ms).toISOString();
     t("FL01 기체 기본값 15대 · 등록부호→ICAO 주소 규칙(HL7Nyy · HL8xyz)", () => {
       eq(Fc.DEFAULT_FLEET.length, 15);
