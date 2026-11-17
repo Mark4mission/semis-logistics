@@ -1,6 +1,7 @@
 /* 교육 전파 · 서명 — 교육 자료를 올려 임직원 · 협력업체가 PC · 휴대폰(learn.html#코드)으로 이수하고 서명한다. 진행률 · 교육 실시 결과 기록부(A4 · 엑셀).
    SeMIS.data.learn = { courses[{ id, code, state(draft|open|closed), title, kind, overview, host, place, start, end, body, minSec, ssi,
-     items[{ id, type(doc|image|video), name, size, url, dur, shots[](동영상 장면 그림 주소) }], targets{ groups[], add[], except[] }, excuse{ pid: 사유 }, dissem, createdAt/By, updatedAt/By }] }
+     items[{ id, type(doc|image|video), name, size, url, dur, shots[](동영상 장면 그림 주소) }],
+     refs[같은 꼴 — AI 요약에만 쓰고 학습 화면 · 기록부에는 내보내지 않는 자료(v1.76, 서버는 items 만 읽음)], targets{ groups[], add[], except[] }, excuse{ pid: 사유 }, dissem, createdAt/By, updatedAt/By }] }
    명단은 인원 관리(js/roster.js — SeMIS.data.roster). 그룹 = 에어제타 직원은 파트, 그 밖은 소속. 대상 판정은 서버(semis_logi_private.learn_is_target)와 같다.
    이수 기록 · 서명 그림은 비공개 표 — RPC semis_logi_learn_stats(manager) · _signs(manager) · _admin(hq) */
 "use strict";
@@ -261,6 +262,7 @@
           ${c.overview ? `<p class="ln-ov">${esc(c.overview)}</p>` : ""}
           <div class="ln-sum">${md() ? md().html(RC(c).body || "") : esc(RC(c).body || "")}</div>
           ${arrOf(RC(c).items).length ? `<ul class="ln-items">${arrOf(RC(c).items).map(itemLine).join("")}</ul>` : ""}
+          ${arrOf(c.refs).length ? `<p class="ln-dim ln-note">요약에만 쓴 자료(첨부 배포 안 함) ${arrOf(c.refs).length}개</p><ul class="ln-items ln-refs">${arrOf(c.refs).filter(isObj).map(itemLine).join("")}</ul>` : ""}
           ${arrOf(c.photos).length ? `<p class="ln-dim">교육 장면 사진 ${arrOf(c.photos).length}장(기록부에 들어갑니다)</p>` : ""}
         </section>`;
     $("#ln-back", root).onclick = () => go("list");
@@ -287,6 +289,8 @@
     const r = m.row;
     const opts = [];
     if (m.pid && m.st !== "ok") opts.push(["note", m.note ? "미실시 사유 고치기" : "미실시 사유 적기"]);
+    if (m.pid && m.tgt) opts.push(["drop", "교육 대상에서 빼기"]);
+    if (m.pid && !m.tgt && people().some(p => p.id === m.pid && !p.left)) opts.push(["back", "교육 대상으로 되돌리기"]);
     if (r && r.state === "ok") opts.push(["void", "이수 무효(다시 받기)"]);
     if (r && !m.pid) opts.push(["link", "명단 사람과 연결"]);
     if (!opts.length) { toast("할 수 있는 작업이 없습니다."); return; }
@@ -299,7 +303,24 @@
       if (k === "note") return noteForm(c, m);
       if (k === "void") return confirmModal(m.name + "님의 이수를 무효로 할까요? 다시 학습 · 서명해야 완료됩니다.", () => adminAct({ act: "void", rid: r.rid }));
       if (k === "link") return linkPerson(c, m);
+      if (k === "drop") return confirmModal(m.name + "님을 이 교육 대상에서 뺄까요?" + (m.st === "ok" ? " 이수 기록은 남고 '대상 외'로 보입니다." : ""), () => setTarget(c, m.pid, false));
+      if (k === "back") return setTarget(c, m.pid, true);
     });
+  }
+  /* 대상에서 빼기 · 되돌리기 — 그룹으로 들어온 사람은 except, 개별 추가한 사람은 add 에서 뺀다 */
+  function setTarget(c, pid, on) {
+    if (!canW()) return;
+    const p = people().find(x => x.id === pid);
+    if (!p) return;
+    if (!isObj(c.targets)) c.targets = { groups: [], add: [], except: [] };
+    const t = c.targets;
+    t.groups = arrOf(t.groups); t.add = arrOf(t.add).filter(x => x !== pid); t.except = arrOf(t.except).filter(x => x !== pid);
+    const inG = t.groups.indexOf(groupOf(p)) >= 0;
+    if (on && !inG) t.add.push(pid);
+    if (!on && inG) t.except.push(pid);
+    if (!on && isObj(c.excuse)) delete c.excuse[pid];
+    c.updatedAt = new Date().toISOString(); c.updatedBy = who();
+    SeMIS.save(); closeModal(); toast(on ? p.name + "님을 대상에 넣었습니다." : p.name + "님을 대상에서 뺐습니다."); SeMIS.renderView();
   }
   function noteForm(c, m) {
     const ex = isObj(c.excuse) ? c.excuse : {};
@@ -435,13 +456,15 @@
     ["groups", "add", "except"].forEach(k => { edit.targets[k] = arrOf(edit.targets[k]).slice(); });
     if (edit.offline) { edit.body = edit.recBody || ""; edit.items = arrOf(edit.recItems); }
     delete edit.recBody; delete edit.recItems;
-    edit.items = arrOf(edit.items).slice();
+    edit.items = arrOf(edit.items).filter(isObj).map(i => Object.assign({}, i, { nosh: false }))
+      .concat(arrOf(edit.refs).filter(isObj).map(i => Object.assign({}, i, { nosh: true })));
+    delete edit.refs;
     edit.photos = arrOf(edit.photos).slice();
     edit._auto = !c || !c.minSec;
     go("edit", id || "");
   }
   const autoMin = (e) => {
-    const vid = arrOf(e.items).filter(i => i.type === "video").reduce((n, i) => n + (Number(i.dur) || 0), 0);
+    const vid = arrOf(e.items).filter(i => i.type === "video" && !i.nosh).reduce((n, i) => n + (Number(i.dur) || 0), 0);
     const rd = md() ? md().readSec(e.body || "") : 30;
     // 동영상은 1.2배속 시청을 허용하므로 길이의 80% 만 센다(서버는 최소 시간의 90% 를 확인)
     return Math.min(3600, Math.ceil((rd + vid * 0.8) / 10) * 10);
@@ -458,9 +481,21 @@
     if (!ps.length) return `<p class="ln-dim">찾는 사람이 없습니다.</p>`;
     return `<ul class="ln-tp">${ps.map(p => `<li><label><input type="checkbox" data-tp="${esc(p.id)}" ${isTarget(e, p) ? "checked" : ""}> <b>${esc(p.name)}</b> <span class="ln-dim">${esc(orgLabel(p))}${p.emp ? " · " + esc(p.emp) : ""}</span></label></li>`).join("")}</ul>`;
   }
+  /* 뺀 사람 — 다시 넣기 */
+  function tgtExcept(e) {
+    const ps = e.targets.except.map(id => people().find(p => p.id === id)).filter(p => p && !p.left);
+    if (!ps.length) return "";
+    return `<div class="ln-tx"><span class="ln-l">대상에서 뺀 사람</span>${ps.map(p => `<button type="button" class="ln-txb" data-tx="${esc(p.id)}" title="${esc(p.name)} 다시 넣기" aria-label="${esc(p.name)} 다시 넣기">${esc(p.name)} <small>${esc(orgLabel(p))}</small> ${icon("x", 12)}</button>`).join("")}</div>`;
+  }
+  function paintTx(root) {
+    const box = $("#le-tx", root); if (!box) return;
+    box.innerHTML = tgtExcept(edit);
+    $$("[data-tx]", box).forEach(b => b.onclick = () => { edit.targets.except = edit.targets.except.filter(x => x !== b.dataset.tx); $("#le-tsum", root).innerHTML = tgtSummary(edit); paintTx(root); paintTp(root); });
+  }
   function itemRow(it, i) {
     const tp = { doc: "문서", image: "사진", video: "동영상" }[it.type] || "파일";
-    return `<li><span class="ln-it-k">${tp}</span><span class="ln-it-n">${esc(it.name)}</span><span class="ln-dim mono">${kb(it.size)}${it.dur ? " · " + mmss(it.dur) : ""}</span>
+    return `<li${it.nosh ? ' class="ln-nosh"' : ""}><span class="ln-it-k">${tp}</span><span class="ln-it-n">${esc(it.name)}</span><span class="ln-dim mono">${kb(it.size)}${it.dur ? " · " + mmss(it.dur) : ""}</span>
+      <label class="ln-sh" title="끄면 AI 요약에만 쓰고 학습 화면 · 기록부 첨부에는 넣지 않습니다"><input type="checkbox" data-ish="${i}" ${it.nosh ? "" : "checked"}> 첨부 배포</label>
       <span class="ln-it-a">${i ? `<button type="button" class="mt-btn" data-iu="${i}" title="위로" aria-label="${esc(it.name)} 위로">${icon("chevup", 15)}</button>` : ""}<button type="button" class="mt-btn" data-ix="${i}" title="빼기" aria-label="${esc(it.name)} 빼기">${icon("x", 15)}</button></span></li>`;
   }
   const photoRow = (it, i) => `<li><span class="ln-it-k">사진</span><span class="ln-it-n">${esc(it.name)}</span><span class="ln-dim mono">${kb(it.size)}</span>
@@ -506,6 +541,7 @@
         <label class="ln-drop" id="le-drop"><input type="file" id="le-file" multiple hidden accept=".pdf,.hwp,.hwpx,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,image/*,video/mp4,video/webm,video/quicktime">
           ${icon("clip", 22)}<span><b>파일을 끌어다 놓거나 눌러서 고르기</b><small>${e.offline ? "공문 · 보고서 · 규정 등 문서를 올리면 AI 가 기록부에 들어갈 분량으로 정리합니다" : "문서 · 사진 · 동영상(50MB 이하) — 올리면 교육명 · 개요 · 교육 내용을 자동으로 채웁니다"}</small></span></label>
         <ul class="ln-items" id="le-items">${e.items.map(itemRow).join("")}</ul>
+        ${e.items.length ? `<p class="ln-dim ln-note">'첨부 배포'를 끈 자료는 AI 요약에만 쓰고 ${e.offline ? "기록부" : "학습 화면 · 기록부"}에는 넣지 않습니다.</p>` : ""}
         <div class="ln-sumbar"><b>교육 내용(한 쪽 요약)</b><span class="spacer"></span>
           ${e.ssi ? "" : `<button type="button" class="btn btn-ghost btn-sm" id="le-ai">${icon("star", 15)}<span>AI 요약 만들기</span></button>`}</div>
         <p class="ln-dim ln-note">문서(PDF · HWPX · DOCX · PPTX · XLSX) · 사진 · 동영상을 올리면 기록부 한 칸 분량으로 자동 정리해 왼쪽에 넣고, 오른쪽에 미리 보여 줍니다. 동영상은 화면 장면의 글 · 자막만 읽습니다(말소리 제외). 다시 만들려면 [AI 요약 만들기]. 표는 <span class="mono">| 칸 | 칸 |</span>, 흐름은 <span class="mono">[접수] -&gt; [보고]</span> 로 적습니다.</p>
@@ -521,6 +557,7 @@
         <div class="ln-gs">${gs.map(x => `<label class="ln-g${x.self ? "" : " v"}"><input type="checkbox" data-tg="${esc(x.g)}" ${e.targets.groups.indexOf(x.g) >= 0 ? "checked" : ""}> ${esc(x.g)} <small class="mono">${x.n}</small></label>`).join("") || `<p class="ln-dim">명단이 비어 있습니다. 비상 · 연락 › 인원 관리에서 먼저 등록하세요.</p>`}</div>
         <div class="ln-tq"><span class="ln-l" id="le-tql">개별 추가 · 제외</span>${ui.search("le-tq", "이름 · 사번으로 찾기", tq)}</div>
         <div id="le-tp">${tgtPeople(e)}</div>
+        <div id="le-tx">${tgtExcept(e)}</div>
       </section>`;
     wireEdit(root);
   }
@@ -558,11 +595,11 @@
       if (cb.checked) { if (gs.indexOf(g) < 0) gs.push(g); } else e.targets.groups = gs.filter(x => x !== g);
       const inG = new Set(active().filter(p => groupOf(p) === g).map(p => p.id));
       e.targets.add = e.targets.add.filter(id => !inG.has(id)); e.targets.except = e.targets.except.filter(id => !inG.has(id));
-      $("#le-tsum", root).innerHTML = tgtSummary(e); paintTp(root);
+      $("#le-tsum", root).innerHTML = tgtSummary(e); paintTp(root); paintTx(root);
     });
     const tqi = $("#le-tq", root);
     tqi.oninput = () => { const v = ui.searchValue(tqi.value); if (v === tq) return; tq = v; paintTp(root); };
-    paintTp(root);
+    paintTp(root); paintTx(root);
     const fi = $("#le-file", root), drop = $("#le-drop", root);
     fi.onchange = () => { addFiles(root, Array.from(fi.files || [])); fi.value = ""; };
     drop.addEventListener("dragover", (ev) => { ev.preventDefault(); drop.classList.add("on"); });
@@ -582,10 +619,11 @@
       e.targets.add = e.targets.add.filter(x => x !== p.id); e.targets.except = e.targets.except.filter(x => x !== p.id);
       if (cb.checked && !inG) e.targets.add.push(p.id);
       if (!cb.checked && inG) e.targets.except.push(p.id);
-      $("#le-tsum", root).innerHTML = tgtSummary(e);
+      $("#le-tsum", root).innerHTML = tgtSummary(e); paintTx(root);
     });
   }
   function wireItems(root) {
+    $$("[data-ish]", root).forEach(cb => cb.onchange = () => { const it = edit.items[Number(cb.dataset.ish)]; if (!it) return; it.nosh = !cb.checked; paintItems(root); });
     $$("[data-ix]", root).forEach(b => b.onclick = () => { edit.items.splice(Number(b.dataset.ix), 1); paintItems(root); });
     $$("[data-iu]", root).forEach(b => b.onclick = () => { const i = Number(b.dataset.iu); const x = edit.items.splice(i, 1)[0]; edit.items.splice(i - 1, 0, x); paintItems(root); });
   }
@@ -766,16 +804,17 @@
     const cur = String(e.body || "").trim();
     if (cur && !(auto && e.body === e._aiBody)) confirmModal(auto ? "새로 올린 자료로 교육 내용을 다시 정리할까요? 지금 적힌 내용이 바뀝니다." : "지금 적힌 교육 내용을 AI 요약으로 바꿀까요?", go2); else go2();
   }
+  const itemOut = (i) => Object.assign({ id: i.id, type: i.type, name: i.name, size: i.size, url: i.url }, i.dur ? { dur: i.dur } : {}, arrOf(i.shots).length ? { shots: arrOf(i.shots).slice(0, 4) } : {});
   function saveEdit(root) {
     pullForm(root);
     const e = edit;
     if (!e.title) { toast("교육명을 적으세요.", true); $("#le-title", root).focus(); return; }
     if (!isISO(e.start) || !isISO(e.end) || e.start > e.end) { toast("교육 기간을 확인하세요.", true); $("#le-start", root).focus(); return; }
-    if (!e.offline && !String(e.body || "").trim() && !e.items.length) { toast("교육 내용(요약)이나 자료를 넣으세요.", true); return; }
+    if (!e.offline && !String(e.body || "").trim() && !e.items.some(i => !i.nosh)) { toast(e.items.length ? "교육 내용(요약)을 넣거나 자료 하나는 '첨부 배포'로 두세요." : "교육 내용(요약)이나 자료를 넣으세요.", true); return; }
     const now = new Date().toISOString();
     const out = { id: e.id || uid("lc"), code: e.code || newCode(), state: e.state || "draft", title: e.title, kind: KINDS.indexOf(e.kind) >= 0 ? e.kind : "기타",
       overview: e.overview, host: e.host, place: e.place, start: e.start, end: e.end, body: e.body, minSec: e.minSec, ssi: !!e.ssi,
-      items: e.items.map(i => Object.assign({ id: i.id, type: i.type, name: i.name, size: i.size, url: i.url }, i.dur ? { dur: i.dur } : {}, arrOf(i.shots).length ? { shots: arrOf(i.shots).slice(0, 4) } : {})),
+      items: e.items.filter(i => !i.nosh).map(itemOut), refs: e.items.filter(i => i.nosh).map(itemOut),
       photos: arrOf(e.photos).slice(0, 4).map(i => ({ id: i.id, name: i.name, size: i.size, url: i.url })),
       targets: { groups: e.targets.groups.slice(), add: e.targets.add.slice(), except: e.targets.except.slice() },
       excuse: isObj(e.excuse) ? e.excuse : {}, dissem: e.dissem || "",
