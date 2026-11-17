@@ -13765,6 +13765,13 @@ function makeServer(opts = {}) {
       await tick(80); ok(!$l(z, ".ln-kakao") && z.A.st.view === "p1", "사파리는 그대로"); eq(z.A.isKakao(), false); z.w.close();
     });
 
+    t("LN28 학습 화면(v1.77.1) 다크 모드: 'only light' 선언(메타 · CSS) · 서명란은 그림 안에 흰 바탕 · 제출 그림은 바탕 없는 별도 캔버스", () => {
+      ok(/<meta name="color-scheme" content="only light">/.test(LHTML), "메타");
+      const LCSS = read("css/learn.css"), LJS = read("js/learn-app.js");
+      ok(/color-scheme: only light;/.test(LCSS) && /\.ln-pad canvas \{ display: block; background: #fff;/.test(LCSS), "CSS");
+      ok(/const paper = \(\) =>/.test(LJS) && /fillStyle = "#ffffff"/.test(LJS) && /drawImage\(pad\.ink \|\| pad\.cv/.test(LJS), "흰 바탕 · 투명 제출");
+    });
+
     await ta("LN21 학습 화면(v1.70): 집체 교육(내용 없음)은 이름 확인 뒤 바로 서명 · 2단계 · 동영상 교육은 시간 기다림 없이 다음 · 모자라면 조용히 다시 제출 · 이수증 저장은 공유만(휴대폰)", async () => {
       // ① 집체 — 내용 · 자료 없음
       const x = makeLearn({ items: [], start: () => ({ ok: true, rid: "lr" + "1".repeat(18), minSec: 0, elapsed: 0, body: "", items: [], person: { name: "가나다", org: "에어제타", part: "안전보안파트", emp: "900001" } }) });

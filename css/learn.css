@@ -1,5 +1,6 @@
 /* 교육 이수 화면(learn.html) — 휴대폰 우선. 군더더기 없는 밝은 화면: 옅은 회색 바탕 · 흰 카드 · 큰 글자 · 큰 단추(v1.69) */
 :root {
+  color-scheme: only light;
   --bg: #f2f2f7; --surface: #ffffff; --surface-2: #f6f6f9;
   --border: #e3e3e8; --border-strong: #c7c7cc;
   --text: #111114; --text-2: #48484d; --text-3: #6b6b72;
@@ -142,7 +143,7 @@ input, select { font-family: inherit; color: var(--text); }
 /* 서명 쪽 — 당겨서 새로고침 · 끝에서 튕김 막기 */
 html.ln-signing, html.ln-signing body { overscroll-behavior: none; }
 .ln-pad.inked { border-style: solid; background: #fff; }
-.ln-pad canvas { display: block; width: 100%; height: 240px; height: clamp(200px, 40svh, 320px); border-radius: 12px; cursor: crosshair; touch-action: none; }
+.ln-pad canvas { display: block; background: #fff; width: 100%; height: 240px; height: clamp(200px, 40svh, 320px); border-radius: 12px; cursor: crosshair; touch-action: none; }
 .ln-pad-ph { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-3); font-size: 1rem; pointer-events: none; }
 .ln-pad.inked .ln-pad-ph { display: none; }
 .ln-pad-acts { display: flex; justify-content: space-between; align-items: center; margin: 2px 0 6px; }

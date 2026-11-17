@@ -428,12 +428,19 @@
     const cv = $("#ln-canvas"), box = $("#ln-pad");
     st.ink = 0;
     const ctx = cv && cv.getContext ? cv.getContext("2d") : null;
+    /* 다크 모드(v1.77.1) — 브라우저가 화면을 강제로 어둡게 하면 서명란 바탕(CSS)만 검게 바뀌어 검은 글씨가 안 보인다.
+       보이는 서명란은 흰 바탕을 그림 안에 직접 칠하고(어둡게 뒤집혀도 바탕과 글씨가 함께 뒤집혀 늘 구분됨),
+       제출용은 흰 바탕 없는 투명 그림(ink)에 같은 획을 따로 그린다 */
+    const ink = ctx ? document.createElement("canvas") : null, ictx = ink && ink.getContext ? ink.getContext("2d") : null;
+    const ctxs = [ctx, ictx].filter(Boolean);
+    const paper = () => { if (!ctx) return; ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, cv.width, cv.height); ctx.restore(); };
     const fit = () => {
       if (!ctx) return;
       const r = cv.getBoundingClientRect(), dpr = Math.min(3, window.devicePixelRatio || 1);
       cv.width = Math.max(1, Math.round(r.width * dpr)); cv.height = Math.max(1, Math.round(r.height * dpr));
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.lineWidth = 2.6; ctx.strokeStyle = "#111827";
+      if (ink) { ink.width = cv.width; ink.height = cv.height; }
+      ctxs.forEach(x => { x.setTransform(dpr, 0, 0, dpr, 0, 0); x.lineCap = "round"; x.lineJoin = "round"; x.lineWidth = 2.6; x.strokeStyle = "#111827"; x.fillStyle = "#111827"; });
+      paper();
     };
     fit();
     let down = false, last = null;
@@ -447,17 +454,17 @@
        당겨서 새로고침 · 두 손가락 확대 · 길게 눌러 돋보기로 새지 않게 터치 이벤트 자체를 막는다(포인터 이벤트는 그대로 온다) */
     const hold = (ev) => { if (ev.cancelable) ev.preventDefault(); };
     if (box) ["touchstart", "touchmove", "touchend", "gesturestart", "gesturechange"].forEach(t => box.addEventListener(t, hold, { passive: false }));
-    cv.addEventListener("pointerdown", (ev) => { if (ev.isPrimary === false) return; down = true; last = pt(ev); try { cv.setPointerCapture(ev.pointerId); } catch (e) { /* 없음 */ } if (ctx) { ctx.beginPath(); ctx.arc(last.x, last.y, 1.2, 0, Math.PI * 2); ctx.fillStyle = "#111827"; ctx.fill(); } mark(); ev.preventDefault(); });
+    cv.addEventListener("pointerdown", (ev) => { if (ev.isPrimary === false) return; down = true; last = pt(ev); try { cv.setPointerCapture(ev.pointerId); } catch (e) { /* 없음 */ } ctxs.forEach(x => { x.beginPath(); x.arc(last.x, last.y, 1.2, 0, Math.PI * 2); x.fillStyle = "#111827"; x.fill(); }); mark(); ev.preventDefault(); });
     cv.addEventListener("pointermove", (ev) => {
       if (!down || ev.isPrimary === false) return;
       const p = pt(ev);
-      if (ctx) { ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(p.x, p.y); ctx.stroke(); }
+      ctxs.forEach(x => { x.beginPath(); x.moveTo(last.x, last.y); x.lineTo(p.x, p.y); x.stroke(); });
       last = p; mark(); ev.preventDefault();
     });
     const up = () => { down = false; };
     cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up); cv.addEventListener("pointerleave", up);
-    pad = { cv, ctx };
-    $("#ln-clear").onclick = () => { if (ctx) ctx.clearRect(0, 0, cv.width, cv.height); st.ink = 0; if (box) box.classList.remove("inked"); $("#ln-submit").disabled = true; };
+    pad = { cv, ctx, ink: ictx ? ink : null };
+    $("#ln-clear").onclick = () => { ctxs.forEach(x => { x.save(); x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, cv.width, cv.height); x.restore(); }); paper(); st.ink = 0; if (box) box.classList.remove("inked"); $("#ln-submit").disabled = true; };
     const bk = $("#ln-back"); if (bk) bk.onclick = () => { st.view = "p2"; render(); };
     $("#ln-submit").onclick = submit;
   }
@@ -468,7 +475,7 @@
     const c = document.createElement("canvas");
     c.width = W; c.height = H;
     const x = c.getContext("2d");
-    x.drawImage(pad.cv, 0, 0, W, H);
+    x.drawImage(pad.ink || pad.cv, 0, 0, W, H);
     return c.toDataURL("image/png");
   }
   async function submit() {
