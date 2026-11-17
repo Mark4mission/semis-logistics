@@ -231,7 +231,7 @@
     /* 보안교육 자격 — 만료·미이수(빨강) · DUE_DAYS 안 갱신(주황), 있을 때만 */
     if (window.SemisTraining && SemisTraining.alertSummary && menuOk("training")) {
       let a = null;
-      try { a = SemisTraining.alertSummary(t); } catch (e) { a = null; }
+      try { a = SemisTraining.alertSummary(); } catch (e) { a = null; }
       if (a && a.n) rows.push(todayRow({ go: "training", id: "td-train", icon: "shield", color: a.bad ? "rose" : "amber", title: "보안교육 자격",
         sub: [a.bad ? "<em>만료 · 미이수 " + a.bad + "</em>" : "", a.warn ? SemisTraining.DUE_DAYS + "일 안 " + a.warn : ""].filter(Boolean).join(" · "),
         val: `<b class="mono">${a.n}</b>`, tone: a.bad ? "bad" : "warn" }));
