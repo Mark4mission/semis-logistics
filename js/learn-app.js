@@ -443,9 +443,13 @@
       if (box) box.classList.add("inked");
       const sb = $("#ln-submit"); if (sb) sb.disabled = st.ink < 8;
     };
-    cv.addEventListener("pointerdown", (ev) => { down = true; last = pt(ev); try { cv.setPointerCapture(ev.pointerId); } catch (e) { /* 없음 */ } if (ctx) { ctx.beginPath(); ctx.arc(last.x, last.y, 1.2, 0, Math.PI * 2); ctx.fillStyle = "#111827"; ctx.fill(); } mark(); ev.preventDefault(); });
+    /* 화면 고정(v1.76.3) — 서명란 안 손가락 움직임이 화면을 끌어 올리거나(iOS · 카카오톡 등 앱 안 브라우저는 touch-action 을 무시하기도 함)
+       당겨서 새로고침 · 두 손가락 확대 · 길게 눌러 돋보기로 새지 않게 터치 이벤트 자체를 막는다(포인터 이벤트는 그대로 온다) */
+    const hold = (ev) => { if (ev.cancelable) ev.preventDefault(); };
+    if (box) ["touchstart", "touchmove", "touchend", "gesturestart", "gesturechange"].forEach(t => box.addEventListener(t, hold, { passive: false }));
+    cv.addEventListener("pointerdown", (ev) => { if (ev.isPrimary === false) return; down = true; last = pt(ev); try { cv.setPointerCapture(ev.pointerId); } catch (e) { /* 없음 */ } if (ctx) { ctx.beginPath(); ctx.arc(last.x, last.y, 1.2, 0, Math.PI * 2); ctx.fillStyle = "#111827"; ctx.fill(); } mark(); ev.preventDefault(); });
     cv.addEventListener("pointermove", (ev) => {
-      if (!down) return;
+      if (!down || ev.isPrimary === false) return;
       const p = pt(ev);
       if (ctx) { ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(p.x, p.y); ctx.stroke(); }
       last = p; mark(); ev.preventDefault();
@@ -627,6 +631,7 @@
     else if (st.view === "p2") { a.innerHTML = p2HTML(); wireP2(); }
     else if (st.view === "p3") { st.msg = ""; a.innerHTML = p3HTML(); wireP3(); }
     else if (st.view === "done") { a.innerHTML = doneHTML(); wireDone(); }
+    try { document.documentElement.classList.toggle("ln-signing", st.view === "p3"); } catch (e) { /* 없음 */ }
     document.title = (st.info && st.info.title ? st.info.title + " — " : "") + "교육 이수 — H:drive";
   }
 
@@ -641,11 +646,42 @@
       document.documentElement.style.setProperty("--vhpx", h + "px");
     } catch (e) { /* 없음 */ }
   }
+  /* 카카오톡 앱 안 브라우저(v1.77) — 화면을 올리고 내릴 때 주소창이 나타났다 사라지며 화면 전체가 위아래로 움직여 서명하기 어렵다.
+     처음 열 때 한 번 인터넷 브라우저로 넘기고(kakaotalk://web/openExternal — 카카오 공식 문서에는 없고 널리 쓰이는 방식),
+     안 열리면 여는 방법 안내 · '카카오톡에서 그대로 하기'(이 탭에서는 다시 묻지 않음) */
+  const isKakao = () => { try { return /KAKAOTALK/i.test(navigator.userAgent || ""); } catch (e) { return false; } };
+  const KSTAY = "semisl:learn:kakao-stay";
+  const extUrl = () => "kakaotalk://web/openExternal?url=" + encodeURIComponent(location.href);
+  function kakaoHTML() {
+    return `<section class="ln-card ln-kakao">
+      <h1>인터넷 브라우저에서 열어 주세요</h1>
+      <p>카카오톡 안에서는 화면이 위아래로 움직여 서명하기 어렵습니다. 인터넷 브라우저가 열리면 그 화면에서 교육을 받으세요.</p>
+      <button type="button" class="ln-btn pri wide" id="ln-kext">인터넷 브라우저로 열기</button>
+      <div class="ln-khelp"><b>열리지 않으면</b>
+        <p>안드로이드 — 화면 아래 ⋮(더보기) › 다른 브라우저로 열기</p>
+        <p>아이폰 — 화면 아래 공유 단추 › Safari 로 열기</p></div>
+      <button type="button" class="ln-link" id="ln-kstay">카카오톡에서 그대로 하기</button>
+    </section>`;
+  }
+  function kakaoGate() {
+    let stay = false;
+    try { stay = sessionStorage.getItem(KSTAY) === "1"; } catch (e) { /* 없음 */ }
+    if (stay || !isKakao()) return false;
+    const a = app(); if (!a) return false;
+    a.innerHTML = kakaoHTML();
+    const open = () => { try { api._open(extUrl()); } catch (e) { /* 안내 화면 그대로 */ } };
+    $("#ln-kext").onclick = open;
+    $("#ln-kstay").onclick = () => { try { sessionStorage.setItem(KSTAY, "1"); } catch (e) { /* 없음 */ } boot(); };
+    setTimeout(open, 0);
+    return true;
+  }
+  let vhOn = false;
   async function boot() {
     setVh(true);
-    try { window.addEventListener("resize", () => setVh(false)); window.addEventListener("orientationchange", () => setTimeout(() => setVh(true), 350)); } catch (e) { /* 없음 */ }
+    if (!vhOn) { vhOn = true; try { window.addEventListener("resize", () => setVh(false)); window.addEventListener("orientationchange", () => setTimeout(() => setVh(true), 350)); } catch (e) { /* 없음 */ } }
     st.code = String(location.hash || "").replace(/^#\/?/, "").trim().toLowerCase();
     if (!/^[a-z2-9]{12}$/.test(st.code)) { fail("invalid"); return; }
+    if (kakaoGate()) return;
     try {
       const d = await rpc("semis_logi_learn_info", { p_k: st.code });
       if (!d || !d.ok) { fail((d && d.error) || "network", d); return; }
@@ -660,6 +696,7 @@
   }
 
   const api = { st, boot, render, find, start, submit, exportSign, foot, complete, left, makeCert, certCanvas, saveCert, setVh,
+    _open(u) { location.href = u; }, isKakao, extUrl,
     _clock(fn) { now = fn; }, _seen() { st.seen = true; foot(); } };
   window.SemisLearnApp = api;
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => api.boot());
