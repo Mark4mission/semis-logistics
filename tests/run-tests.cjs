@@ -3007,7 +3007,7 @@ function makeServer(opts = {}) {
     };
     const LEDGER = [
       { id: "eq-1", type: "X-Ray", name: "RAP-638DV 1호기", serial: "6212421", location: "인천 화물터미널 B동", vendor: "라피스캔 / 인씨스", installed: "2021-08-29", mfgDate: "", lifeYears: null, replaceDue: "2031-08-29", price: 460000000, cert: "TSA", status: "정상", logs: [], note: "" },
-      { id: "eq-3", type: "ETD(폭발물흔적)", name: "IONAB 3호기", serial: "IONAB-N22-4023", location: "인천 화물터미널 B동", vendor: "뉴원에스엔티 / 프로에스콤", installed: "2023-01-01", mfgDate: "", lifeYears: null, replaceDue: "", price: 40000000, cert: "KIAST", status: "정상", logs: [], note: "" },
+      { id: "eq-3", type: "ETD(폭발물흔적)", name: "IONAB 3호기", serial: "IONAB-N22-4023", location: "인천 화물터미널 B동", vendor: "뉴원에스엔티 / 프로에스콤", installed: new Date(NOW - 2 * 365 * DAY).toISOString().slice(0, 10), mfgDate: "", lifeYears: null, replaceDue: "", price: 40000000, cert: "KIAST", status: "정상", logs: [], note: "" },
       { id: "eq-h", type: "HHMD(휴대용)", name: "CEIA PD240", serial: "HH-1", location: "인천 화물터미널 B동", vendor: "CEIA", installed: new Date(NOW - 3.8 * 365 * DAY).toISOString().slice(0, 10), mfgDate: "", lifeYears: null, replaceDue: "", price: 600000, cert: "", status: "정상", logs: [], note: "" },
       { id: "eq-w", type: "WTMD(문형)", name: "Metor 6E", serial: "W-1", location: "", vendor: "", installed: "2025-05-20", mfgDate: "", lifeYears: null, replaceDue: "", price: null, cert: "", status: "폐기", logs: [], note: "" }
     ];
@@ -3225,13 +3225,13 @@ function makeServer(opts = {}) {
       ok(now.getUTCFullYear() > 2000);
     });
     t("SC14 가동 분석: 가동률 = 정상 가동일 ÷ 기간 일수 · ETD 목표선 · 원인 분류 막대", () => {
-      const y = Number(K.todayKey().slice(0, 4));
+      const y = Number(K.dayKey(NOW - 20 * DAY).slice(0, 4));   // r-old 의 해(1월 초엔 작년)
       const st = K.yearStats(y);
       const x3 = st.find(s => s.unit.id === "x3");
       ok(x3.days > 0 && x3.downDays >= 1 && x3.downDays <= 2, "하루(또는 자정 걸침 이틀)");
       ok(Math.abs(x3.avail - (x3.days - x3.downDays) / x3.days) < 1e-9);
       eq(Math.round(x3.downMs / HOUR), 3);
-      eq(x3.count, K.dayKey(NOW - 20 * DAY).slice(0, 4) === String(y) ? 1 : 0);
+      eq(x3.count, 1);
       q(e, '[data-etab="analysis"]').click();
       eq(qa(e, ".av-row").length, 8);
       eq(qa(e, ".av-target").length, 5, "ETD 5대에만 목표선");
@@ -7414,7 +7414,7 @@ function makeServer(opts = {}) {
       ok(cell.classList.contains("today") && cell.classList.contains("sel"));
       const openEv = e.w.SemisCalendar.eventsOnDay(today).filter(x => !x.done);   // v1.35: 오늘 '매일 점검'(점검 일정 연동)도 남은 일정
       ok(openEv.some(x => x.ik === "sld:" + today) && !openEv.some(x => x.id === "cm2"), openEv.map(x => x.title).join(","));
-      eq(cell.querySelectorAll(".calm-dots i").length, openEv.length, "끝낸 일정은 점에서 뺌(남은 일정이 있으면)");
+      eq(cell.querySelectorAll(".calm-dots i").length, Math.min(3, openEv.length), "끝낸 일정은 점에서 뺌(남은 일정이 있으면 · 점은 3개까지)");
       ok(q(e, ".calm-agenda").textContent.includes("모바일 점검"));
       const other = qa(e, ".calm-day:not(.other)").find(b => b.dataset.mday !== today);
       other.click();
