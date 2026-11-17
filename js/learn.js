@@ -103,6 +103,14 @@
         group: groupOf(r), tgt: false, manual: !!r.manual, row: r, note: "" });
     });
     mem.forEach(m => { m.st = m.row && m.row.state === "ok" ? "ok" : m.note ? "excused" : m.row ? "start" : "todo"; });
+    /* 팀장(에어제타 · 직책 '팀장')은 모든 파트 총괄 — 자기 파트 서명지를 따로 만들지 않고 다른 에어제타 파트 첫 서명지의 맨 앞 칸에 올린다(없으면 제자리) */
+    const lead = mem.filter(m => m.pid && m.org === SELF && norm(m.title) === "팀장");
+    if (lead.length) {
+      const own = new Set(lead.map(m => m.group));
+      const host = Array.from(new Set(mem.filter(m => m.org === SELF && !own.has(m.group)).map(m => m.group))).sort((a, b) => a.localeCompare(b, "ko"))[0];
+      if (host) lead.forEach(m => { m.group = host; });
+      lead.forEach(m => { m.lead = true; });
+    }
     const by = new Map();
     mem.forEach(m => { if (!by.has(m.group)) by.set(m.group, { g: m.group, self: m.org === SELF, mem: [] }); by.get(m.group).mem.push(m); });
     const gl = Array.from(by.values()).sort((a, b) => (b.self - a.self) || a.g.localeCompare(b.g, "ko"));
@@ -843,7 +851,7 @@
       const cnt = (arr) => ({ n: arr.length, m: arr.filter(m => m.gender === "M").length, f: arr.filter(m => m.gender === "F").length });
       const done = x.mem.filter(m => m.st === "ok"), miss = x.mem.filter(m => m.st !== "ok");
       const why = {}; miss.forEach(m => { const k = m.note || "미이수"; why[k] = (why[k] || 0) + 1; });
-      const mem = x.mem.slice().sort((a, b) => a.name.localeCompare(b.name, "ko"));
+      const mem = x.mem.slice().sort((a, b) => (!!b.lead - !!a.lead) || a.name.localeCompare(b.name, "ko"));
       return { g: x.g, team: x.self ? (P().team || TEAM) : x.g, part: x.self ? x.g : "-", tgt: cnt(x.mem), done: cnt(done), miss: cnt(miss),
         why: Object.keys(why).map(k => k + (why[k] > 1 || Object.keys(why).length > 1 ? " " + why[k] : "")).join(", "), mem };
     });

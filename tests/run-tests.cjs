@@ -13927,6 +13927,28 @@ function makeServer(opts = {}) {
       ok(!q(e, "[data-lnm]"), "manager 는 ⋯ 없음");
       eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
     });
+    t("LN25 팀장(v1.76.1): 에어제타 직책 '팀장'은 자기 파트 서명지 없이 다른 에어제타 파트 첫 서명지의 맨 앞 칸 · 그 파트뿐이면 제자리 · 협력업체 팀장은 그대로", () => {
+      const R0 = ROSTER();
+      R0.people.push({ id: "p8", name: "하하하", org: "에어제타", part: "UCC", emp: "900008", gender: "M", title: "팀장" });
+      R0.people.push({ id: "p9", name: "거너더", org: "에어제타", part: "UCC", emp: "900009", gender: "F", title: "대리" });
+      R0.people.push({ id: "p10", name: "러머버", org: "AAP", part: "", emp: "", gender: "M", title: "팀장" });
+      const C = COURSE({ targets: { groups: ["안전보안파트", "AAP"], add: ["p4", "p8"], except: ["p3"] } });
+      const { e, L } = lnEnv("hq", { people: R0, courses: [C] });
+      let sd = L.sheetData(e.S.data.learn.courses[0]);
+      ok(!sd.some(x => x.g === "UCC"), "UCC 서명지 없음 " + sd.map(x => x.g).join(","));
+      const sp = sd.find(x => x.g === "수출파트"), sa = sd.find(x => x.g === "안전보안파트");
+      eq(sd[0].g, "수출파트", "첫 서명지 = 수출파트(가나다 순)");
+      eq(sp.mem[0].name, "하하하", "첫 칸 = 팀장"); eq(sp.tgt.n, 3, "대상 수에 포함(차카타 · 파하가 · 팀장)");
+      ok(!sa.mem.some(m => m.name === "하하하"));
+      const aap = sd.find(x => x.g === "AAP"); ok(aap && aap.mem.some(m => m.name === "러머버") && !aap.mem.find(m => m.name === "러머버").lead, "협력업체 팀장은 그대로");
+      const doc = new JSDOM(L.recordHTML(e.S.data.learn.courses[0], {}, null)).window.document;
+      ok(/하하하/.test(doc.querySelectorAll("section")[0].textContent), "기록부 첫 쪽에 팀장");
+      // UCC 만 대상이면 제자리(UCC 서명지 맨 앞)
+      e.S.data.learn.courses = [COURSE({ targets: { groups: ["UCC"], add: [], except: [] } })]; L._setRows([]);
+      sd = L.sheetData(e.S.data.learn.courses[0]);
+      eq(sd.map(x => x.g).join(","), "UCC"); eq(sd[0].mem[0].name, "하하하");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
     await ta("LN19 학습 화면: 명단에 없으면 소속 · (에어제타면 파트 · 사번 필수) 직접 입력 · 이미 이수 · 최소 시간 · 잘못된 주소 · 기간 끝", async () => {
       const x = makeLearn({ find: { ok: true, list: [] }, start: (b) => b.p.org === "AAP" ? { ok: true, done: "2026-11-11 09:00", person: { name: b.p.name, org: "AAP" } } : { ok: true, rid: "lr" + "2".repeat(18), minSec: 30, elapsed: 0, body: "본문", items: [], person: { name: b.p.name, org: b.p.org, part: b.p.part, emp: b.p.emp, manual: true } },
         submit: (b, n) => n === 1 ? { ok: false, error: "too_fast", wait: 12 } : { ok: true, at: "2026-11-12 11:00", name: "새사람" } });
