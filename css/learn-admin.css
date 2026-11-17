@@ -24,6 +24,9 @@
 .ln-it-k { flex: none; font-size: max(var(--fs-min), .76rem); font-weight: 700; padding: 1px 7px; border-radius: 999px; background: var(--tag); color: var(--tag-ink); }
 .ln-it-n, .ln-items li a { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ln-it-a { display: inline-flex; gap: 4px; flex: none; }
+.ln-sh { flex: none; display: inline-flex; align-items: center; gap: 4px; font-size: max(var(--fs-min), .8rem); color: var(--text-2); cursor: pointer; white-space: nowrap; }
+.ln-items li.ln-nosh { background: var(--surface-2); border-style: dashed; }
+.ln-items li.ln-nosh .ln-it-n, .ln-refs li a { color: var(--text-2); }
 
 .ln-acts { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
 .ln-warn { padding: 10px 12px; border-left: 3px solid var(--accent); background: var(--accent-soft); color: var(--accent-dark); font-size: .9rem; margin: 0 0 12px; }
@@ -58,6 +61,10 @@
 .ln-g:has(input:checked) { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-dark); font-weight: 600; }
 .ln-tp { list-style: none; margin: 6px 0 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 16px; }
 .ln-tp label { display: flex; align-items: center; gap: 6px; font-size: .9rem; }
+.ln-tx { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; }
+.ln-txb { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border: 1px dashed var(--border); border-radius: 999px; background: var(--surface-2); font-size: .86rem; color: var(--text); cursor: pointer; }
+.ln-txb small { color: var(--text-2); }
+.ln-txb:hover { border-color: var(--primary); }
 
 .ln-ros .ln-gh th { background: var(--tag); color: var(--tag-ink); text-align: left; font-size: .88rem; padding: 6px 10px; }
 .ln-gsel { height: 30px; padding: 0 6px; font-size: .86rem; }
@@ -81,7 +88,7 @@
   .ln-pg { width: 56px; }
 }
 @media print {
-  .ln-drop, .ln-sumbar button, .ln-it-a, .ln-gsel { display: none !important; }
+  .ln-drop, .ln-sumbar button, .ln-it-a, .ln-gsel, .ln-sh, .ln-tx { display: none !important; }
 }
 .ie-ln .sd-ph { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .ie-ln .sd-ph .spacer { flex: 1; }

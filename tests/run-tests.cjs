@@ -13866,6 +13866,67 @@ function makeServer(opts = {}) {
       e.w.SemisSync.uploadFile = up0; e.w.fetch = f0; e.w.SemisSync.auth.token = tk0;
       eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
     });
+    t("LN24 관리(v1.76): 자료마다 '첨부 배포' — 끈 자료는 refs(요약에만 · 학습 화면 · 기록부 첨부 아님) · 다시 열면 꺼진 채 · 진행 현황 ⋯ 에서 대상 빼기 · 되돌리기 · 수정 화면 뺀 사람 다시 넣기", () => {
+      const { e, L } = lnEnv("hq");
+      const PUBX = "https://x.supabase.co/storage/v1/object/public/semis-logi-files/learn/";
+      // ① 첨부 배포 끄기
+      L.openEdit("lc1");
+      const ed = L._edit();
+      ed.items.push({ id: "d1", type: "doc", name: "공문.pdf", size: 10, url: PUBX + "d1.pdf", nosh: false });
+      ed.items.push({ id: "v9", type: "video", name: "참고.mp4", size: 10, url: PUBX + "v9.mp4", dur: 600, nosh: false });
+      e.S.renderView();
+      eq(qa(e, "[data-ish]").length, 3, "자료마다 체크");
+      const mn0 = Number(q(e, "#le-min").value);
+      const off = (i) => { const cb = q(e, `[data-ish="${i}"]`); cb.checked = false; cb.dispatchEvent(new e.w.Event("change", { bubbles: true })); };
+      off(1); off(2);
+      ok(q(e, "#le-items li.ln-nosh") && qa(e, "#le-items li.ln-nosh").length === 2, "꺼진 줄 표시");
+      eq(q(e, "#le-min").value, String(mn0), "배포 안 하는 동영상은 최소 학습 시간에 안 셈");
+      q(e, "#ln-esave").click();
+      let c = e.S.data.learn.courses[0];
+      eq(c.items.map(i => i.id).join(","), "i1", "배포 자료만 items");
+      eq(c.refs.map(i => i.id).join(","), "d1,v9", "나머지는 refs");
+      ok(c.items.concat(c.refs).every(i => !("nosh" in i)), "저장에 nosh 칸 없음");
+      ok(/요약에만 쓴 자료/.test(q(e, ".ln-info").textContent) && qa(e, ".ln-info .ln-refs li").length === 2, "상세에 따로 표시");
+      // 다시 열면 꺼진 채 · 다시 켜면 items 로
+      L.openEdit("lc1");
+      eq(L._edit().items.map(i => i.id + ":" + i.nosh).join(","), "i1:false,d1:true,v9:true");
+      const cb = q(e, '[data-ish="1"]'); ok(!cb.checked); cb.checked = true; cb.dispatchEvent(new e.w.Event("change", { bubbles: true }));
+      q(e, "#ln-esave").click();
+      c = e.S.data.learn.courses[0];
+      eq(c.items.map(i => i.id).join(","), "i1,d1"); eq(c.refs.map(i => i.id).join(","), "v9");
+      // 집체 교육 — recItems 도 배포 자료만
+      L.openEdit("lc1"); q(e, '[data-lem="1"]').click(); q(e, "#ln-esave").click();
+      c = e.S.data.learn.courses[0];
+      eq(c.items.length, 0); eq(c.recItems.map(i => i.id).join(","), "i1,d1"); eq(c.refs.map(i => i.id).join(","), "v9");
+      // 모두 끄고 요약도 없으면 온라인 교육은 저장 안 됨
+      L.openEdit("lc1"); q(e, '[data-lem="0"]').click();
+      L._edit().items.forEach(i => { i.nosh = true; }); q(e, "#le-body").value = ""; e.S.data.learn.courses[0].updatedAt = "x";
+      q(e, "#ln-esave").click();
+      eq(e.S.data.learn.courses[0].updatedAt, "x", "배포 자료 · 요약 없으면 저장 안 함");
+      L.openEdit("lc1"); q(e, "#ln-ecancel").click();
+      // ② 진행 현황 ⋯ — 대상 빼기(그룹 사람 = except, 개별 추가 = add 에서 뺌) · 되돌리기
+      e.S.data.learn.courses = [COURSE()];
+      L.setState({ view: "detail", sel: "lc1" }); go(e, "learn");
+      const menu = (key, mk) => { q(e, `[data-lnm="${key}"]`).click(); const b = q(e, `#modal-box [data-mk="${mk}"]`); ok(b, key + " " + mk); b.click(); };
+      menu("p:p2", "drop"); q(e, "#modal-box [data-act=ok]").click();
+      c = e.S.data.learn.courses[0];
+      ok(c.targets.except.indexOf("p2") >= 0 && !c.excuse.p2, "그룹 사람 → except · 사유 지움");
+      ok(!q(e, '[data-lnm="p:p2"]'), "미이수자는 목록에서 빠짐");
+      menu("p:p4", "drop"); q(e, "#modal-box [data-act=ok]").click();
+      ok(e.S.data.learn.courses[0].targets.add.indexOf("p4") < 0 && e.S.data.learn.courses[0].targets.except.indexOf("p4") < 0, "개별 추가 → add 에서 뺌");
+      menu("p:p1", "drop"); ok(/이수 기록은 남고/.test(q(e, "#modal-box").textContent)); q(e, "#modal-box [data-act=ok]").click();
+      ok(/대상 외/.test(q(e, '[data-lnm="p:p1"]').closest("tr").textContent), "이수자는 대상 외로 남음");
+      menu("p:p1", "back");
+      ok(e.S.data.learn.courses[0].targets.except.indexOf("p1") < 0, "되돌리기");
+      // ③ 수정 화면 — 뺀 사람 칩을 누르면 다시 넣음
+      L.openEdit("lc1");
+      ok(q(e, '#le-tx [data-tx="p2"]') && q(e, '#le-tx [data-tx="p3"]'), "뺀 사람 칩");
+      q(e, '#le-tx [data-tx="p3"]').click();
+      ok(!q(e, '#le-tx [data-tx="p3"]') && L._edit().targets.except.indexOf("p3") < 0, "다시 넣기");
+      loginAs(e, "manager"); L.setState({ view: "detail", sel: "lc1" }); e.S.renderView();
+      ok(!q(e, "[data-lnm]"), "manager 는 ⋯ 없음");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
     await ta("LN19 학습 화면: 명단에 없으면 소속 · (에어제타면 파트 · 사번 필수) 직접 입력 · 이미 이수 · 최소 시간 · 잘못된 주소 · 기간 끝", async () => {
       const x = makeLearn({ find: { ok: true, list: [] }, start: (b) => b.p.org === "AAP" ? { ok: true, done: "2026-11-11 09:00", person: { name: b.p.name, org: "AAP" } } : { ok: true, rid: "lr" + "2".repeat(18), minSec: 30, elapsed: 0, body: "본문", items: [], person: { name: b.p.name, org: b.p.org, part: b.p.part, emp: b.p.emp, manual: true } },
         submit: (b, n) => n === 1 ? { ok: false, error: "too_fast", wait: 12 } : { ok: true, at: "2026-11-12 11:00", name: "새사람" } });
