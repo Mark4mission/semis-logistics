@@ -34,7 +34,7 @@
     edu: { label: "교육", ico: "book", color: "green" },
     meet: { label: "회의", ico: "users", color: "blue" },
     doc: { label: "보고 · 제출", ico: "doc", color: "brown" },
-    etc: { label: "기타", ico: "pin", color: "gray" }
+    etc: { label: "기타", ico: "tag", color: "gray" }   // 리본(pin)은 '중요' 단추 모양이라 쓰지 않는다
   };
   /* 업무 분야(장비 · 점검 · 교육 · 회의)를 동작(보고 · 제출)보다 먼저 본다 — 이 파트 일은 대부분 제출 · 보고로 끝나서
      동작을 먼저 보면 거의 모두 '보고 · 제출'이 되어 색 구분이 사라진다 */
@@ -66,7 +66,21 @@
   };
   /* 화면은 내용을 2줄까지 그리므로 줄바꿈은 하나만 남긴다 */
   const lines2 = (v) => { let n = 0; return cut(v, 1e5).replace(/\r\n?|\n/g, () => (n++ ? " " : "\n")).slice(0, 300).trim(); };
-  const KNOWN = ["id", "t", "memo", "due", "time", "place", "who", "teams", "cat", "star", "done", "doneAt", "doneBy", "at", "by", "upAt", "upBy", "src", "file"];
+  const KNOWN = ["id", "t", "memo", "due", "time", "place", "who", "teams", "cat", "star", "done", "doneAt", "doneBy", "at", "by", "upAt", "upBy", "src", "file", "notes"];
+  /* 진행 기록(댓글처럼 덧붙이는 글) — [{ id, x: 글, at: 적은 때(ISO), by: 적은 사람 }] 적은 순.
+     id 로 병합되므로(merge3 — 할 일 안 배열도 id 단위) 회의 중 두 사람이 같은 할 일에 덧붙여도 둘 다 남는다 */
+  const NOTE_MAX = 1000, NOTES_MAX = 200;
+  function notesOf(a) {
+    const out = [], seen = {};
+    (Array.isArray(a) ? a : []).forEach(x => {
+      if (!x || typeof x !== "object") return;
+      const id = cut(x.id, 40), tx = cut(typeof x.x === "string" ? x.x.replace(/\r\n?/g, "\n") : x.x, NOTE_MAX);
+      if (!id || !tx || seen[id]) return;
+      seen[id] = 1;
+      out.push({ id, x: tx, at: cut(x.at, 40), by: cut(x.by, 40) });
+    });
+    return out.slice(-NOTES_MAX);
+  }
   function norm(t) {
     const o = t && typeof t === "object" ? t : {};
     const due = isISO(o.due) ? o.due : "";
@@ -91,11 +105,24 @@
     };
     const f = o.file;
     if (f && typeof f === "object" && typeof f.url === "string") n.file = { name: typeof f.name === "string" ? f.name : "", url: f.url };
+    /* 기록이 없으면 칸을 두지 않는다 — 옛 할 일 모양이 그대로라 새 버전을 처음 열어도 모든 할 일을 다시 보내지 않는다 */
+    const nt = notesOf(o.notes);
+    if (nt.length) n.notes = nt;
     /* 모르는 칸은 그대로 둔다(아는 칸 뒤, 원래 순서 — 멱등) — 다음 버전이 더한 칸을 옛 탭이 지워 서버에 되돌려 보내지 않게 */
     Object.keys(o).forEach(k => { if (KNOWN.indexOf(k) < 0) n[k] = o[k]; });
     return n;
   }
   const rid = () => { let s = ""; while (s.length < 10) s += Math.random().toString(36).slice(2); return s.slice(0, 10); };
+  function makeNote(text) {
+    return { id: "nt_" + rid(), x: cut(String(text == null ? "" : text).replace(/\r\n?/g, "\n"), NOTE_MAX), at: new Date().toISOString(), by: me() };
+  }
+  /* 진행 기록 때 — 같은 해면 '11-18(수) 14:20', 다른 해면 연도까지 */
+  const stamp = (ts, td) => {
+    const n = Date.parse(ts || "");
+    if (isNaN(n)) return "";
+    const k = new Date(n + KST).toISOString();
+    return dayLabel(k.slice(0, 10), isISO(td) ? td : today()) + " " + k.slice(11, 16);
+  };
   function make(fields, src) {
     const now = new Date().toISOString(), by = me();
     return norm(Object.assign({}, fields, { id: "tk_" + rid(), at: now, upAt: now, by, upBy: by, done: false, src }));
@@ -198,12 +225,23 @@
   /* 화면의 협력업체 등급은 편집 허용 업체면 3 이 되므로 등급만 보지 않는다(서버는 협력업체에 이 행을 주지 않음) */
   const canUse = () => { const u = SeMIS.user; return !!u && u.role !== "vendor" && u.role !== "signer" && SeMIS.roleRank() >= 3; };
   const me = () => { const u = SeMIS.user; return (u && u.name) || ""; };
-  const partPeople = () => {
+  /* 인원 관리의 안전보안파트(떠난 사람 빼고 명단 순) */
+  const rosterPart = () => {
     const R = window.SemisRoster, out = [];
     if (!R) return out;
     R.active().forEach(p => { const n = String((p && p.name) || "").trim(); if (n && R.groupOf(p) === PART && out.indexOf(n) < 0) out.push(n); });
     return out;
   };
+  /* Task 담당자 명단(시스템관리자가 정함 — 공용 행 taskCfg.members, 코드에 이름 없음). 파트 전원이 아니라 실제로 쓰는 사람만 두려고 따로 둔다 */
+  const MEMBERS_MAX = 20;
+  const cfgMembers = () => {
+    const c = SeMIS.data && SeMIS.data.taskCfg, out = [];
+    (c && typeof c === "object" && Array.isArray(c.members) ? c.members : []).forEach(x => { const s = cut(x, 40); if (s && out.indexOf(s) < 0 && out.length < MEMBERS_MAX) out.push(s); });
+    return out;
+  };
+  /* 담당자 칩 · 회의 칸 · 글 속 이름 · '나' · 사람 색의 기준 — 명단을 정했으면 그 명단, 비었으면 인원 관리의 안전보안파트 */
+  const partPeople = () => { const m = cfgMembers(); return m.length ? m : rosterPart(); };
+  const canManage = () => canUse() && SeMIS.roleRank() >= 4;
   /* 계정 이름이 명단의 파트 사람과 같을 때만 '나'를 쓴다 — 여럿이 한 계정을 쓰면 엉뚱한 이름이 담당으로 쌓인다 */
   const meInPart = () => { const n = me(); return !!n && partPeople().indexOf(n) >= 0; };
   const teamNames = () => (window.SemisRoster ? window.SemisRoster.groups().map(x => x.g) : []);
@@ -215,8 +253,9 @@
   let pc = null;
   function partIndex() {
     const r = SeMIS.data && SeMIS.data.roster, ps = r && r.people, n = Array.isArray(ps) ? ps.length : -1;
-    if (!pc || pc.r !== r || pc.ps !== ps || pc.n !== n) {
-      pc = { r, ps, n, m: new Map(partPeople().map((x, i) => [x, i])) };
+    const c = SeMIS.data && SeMIS.data.taskCfg, cm = c && c.members, cn = Array.isArray(cm) ? cm.length : -1;
+    if (!pc || pc.r !== r || pc.ps !== ps || pc.n !== n || pc.c !== c || pc.cm !== cm || pc.cn !== cn) {
+      pc = { r, ps, n, c, cm, cn, m: new Map(partPeople().map((x, i) => [x, i])) };
       setTimeout(() => { pc = null; }, 0);
     }
     return pc.m;
@@ -232,8 +271,8 @@
   const splitNames = (s) => String(s == null ? "" : s).split(/\s*[,，、·]\s*/).map(x => x.trim()).filter(Boolean);
 
   window.SemisTasks = {
-    KEY, CATS, CAT_ORDER, BUCKETS, list, catOf, norm, make, parse, dueInfo,
-    canUse, me, meInPart, partPeople, teamNames, personColor, splitNames, today, weekStart, dayOf, dayLabel, addDays,
+    KEY, CFG: "taskCfg", CATS, CAT_ORDER, BUCKETS, NOTE_MAX, MEMBERS_MAX, list, catOf, norm, make, makeNote, stamp, parse, dueInfo,
+    canUse, canManage, me, meInPart, partPeople, rosterPart, cfgMembers, teamNames, personColor, splitNames, today, weekStart, dayOf, dayLabel, addDays,
     setToday(iso) { fixedToday = isISO(iso) ? iso : ""; }
   };
 })();

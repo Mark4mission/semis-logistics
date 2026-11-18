@@ -1652,7 +1652,7 @@ function makeServer(opts = {}) {
     const e = makeEnv({ fetch: server.fetch });
     const { Sync } = e;
     t("Y01 SYNC_KEYS 구성(계정 자료 제외)", () =>
-      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,vault,regulations,equipment,crisis,fleet,audits,phonebook,training,seclog,seclogCfg,serp,serpRuns,threat,threatRuns,threatChecks,patrol,patrolCfg,patrolPeople,secPost,secPostImg,selfChecks,selfCheckCfg,docs,partners,contracts,kcra,secCases,dissem,scrStats,desk,boards,usRescreen,learn,roster,tasks"));
+      eq(Sync.SYNC_KEYS.join(","), "menus,notices,schedules,assignees,assigneesSeeded,minutes,minuteFolders,levelHistory,safetyBoard,contacts,gcal,vault,regulations,equipment,crisis,fleet,audits,phonebook,training,seclog,seclogCfg,serp,serpRuns,threat,threatRuns,threatChecks,patrol,patrolCfg,patrolPeople,secPost,secPostImg,selfChecks,selfCheckCfg,docs,partners,contracts,kcra,secCases,dissem,scrStats,desk,boards,usRescreen,learn,roster,tasks,taskCfg"));
     t("Y02 SYNC_KEYS는 모두 freshData 컬렉션에 존재", () => Sync.SYNC_KEYS.forEach(k => ok(e.S.data[k] !== undefined, k)));
     await ta("Y03 로그인 전에는 서버를 부르지 않음 · 로그인 후 초기 pull + 쓰기 권한 있는 컬렉션만 시드", async () => {
       await Sync.start();
@@ -14084,6 +14084,8 @@ function makeServer(opts = {}) {
     if (TK.setToday) TK.setToday("2026-11-18");
     t("TK01 권한표 · 동기화 · 기본값 · 마이그레이션 파일", () => {
       eq((ACL.tasks || []).join(","), "3,3"); ok(e.w.SemisSync.SYNC_KEYS.indexOf("tasks") >= 0);
+      eq((ACL.taskCfg || []).join(","), "3,4", "담당자 명단 = 시스템관리자 편집"); ok(e.w.SemisSync.SYNC_KEYS.indexOf("taskCfg") >= 0);
+      ok(/\('taskCfg',3,4\)/.test(read("tools/sql/semis-logi-tasks.sql")), "마이그레이션 파일(semis_logi_tasks_2)");
       eq(wiped, "[]", "manager 로그인 → freshData 기본값 tasks: [] 로 비움");
       ok(/\('tasks',3,3\)/.test(read("tools/sql/semis-logi-tasks.sql")) && /on conflict \(key\) do update/.test(read("tools/sql/semis-logi-tasks.sql")));
     });
@@ -14198,6 +14200,7 @@ function makeServer(opts = {}) {
         { id: "tk_done", t: "마친 일", due: "2026-11-17", done: true, doneAt: "2026-11-17T01:00:00Z", doneBy: "가나다" },
         { id: "tk_star", t: "중요한 일", star: true }
       ].map(x => TK.norm(x));
+      e.S.data.taskCfg = {};   // 담당자 명단을 정하지 않음 = 인원 관리의 안전보안파트
       TK.setState({ reset: true, who: "*" });
       go(e, "tasks");
     };
@@ -14702,10 +14705,13 @@ function makeServer(opts = {}) {
       const css = read("css/main.css");
       ok(/@media print \{[^@]*#tk-meetbox \.tk-wklist \{ display: block !important; \}/.test(css), "인쇄 때 이번 주 마친 일 펼침");
       ok(/@media print \{[^@]*\.tk-cin[^{]*\{ display: none !important; \}/.test(css), "인쇄에는 칸 입력 없음");
-      ok(/#tk-meetbox \.tk-cols \{[^}]*grid-template-columns: repeat\(auto-fill, minmax\(300px, 1fr\)\)/.test(css), "PC 여러 칸");
+      ok(/#tk-meetbox \.tk-cols \{[^}]*grid-template-columns: repeat\(auto-fill, minmax\(320px, 1fr\)\)/.test(css), "PC 여러 칸");
       ok(/@media screen and \(max-width: 767px\) \{[^@]*#tk-meetbox \.tk-cols \{ grid-template-columns: 1fr; \}/.test(css), "모바일 한 줄로 쌓음");
-      ok(/#tk-meetbox \.tk-chk \{[^}]*width: 2\.29rem; height: 2\.29rem;/.test(css) && /#tk-meetbox \.tk-row \{ grid-template-columns: 2\.29rem /.test(css), "큰 체크박스 · 그 칸 너비는 rem(글자 크게 보기를 따름)");
-      ok(/#tk-meetbox \.tk-row\.tk-late \{ padding-left: 10px; \}/.test(css), "지난 일 빨간 띠와 체크박스 사이 띄움");
+      /* v1.78 — 한 화면에 많이(Mark 11-18): 작은 글자 · 촘촘한 줄 */
+      ok(/#tk-meetbox \.tk-chk \{ width: 20px; height: 20px;/.test(css) && /#tk-meetbox \.tk-row \{ grid-template-columns: 20px 16px minmax\(0, 1fr\) auto;/.test(css), "작은 체크박스 · 줄 끝 단추 칸");
+      ok(/#tk-meetbox \.tk-t \{[^}]*font-size: \.9rem;/.test(css) && /\.tk-ch \{[^}]*font-size: 1rem;/.test(css), "제목 · 칸 머리 글자 작게(rem — 글자 크게 보기를 따름)");
+      ok(!/#tk-meetbox \.tk-t \{[^}]*font-size: 1\.14rem/.test(css) && !/2\.29rem/.test(css), "예전 큰 글자 · 큰 체크 없음");
+      ok(/#tk-meetbox \.tk-row\.tk-late \{ padding-left: 7px; \}/.test(css), "지난 일 빨간 띠와 체크박스 사이 띄움");
       q(e, "#tk-meet").click();
       ok(q(e, "#tk-list") && !q(e, "#tk-meetbox"), "목록 보기 → 목록");
       eq(q(e, "#tk-meet").textContent.trim(), "회의 모드");
@@ -15190,6 +15196,212 @@ function makeServer(opts = {}) {
       setV("tk-f-who-x", "가나다 · 사아자"); setV("tk-f-teams-x", "수출파트、협력사");
       act("save").click();
       eq(byId("tk_none").who.join() + "|" + byId("tk_none").teams.join(), "라마바,가나다,사아자|수출파트,협력사");
+    });
+    /* ── v1.78 — 줄 끝 단추(진행 기록 · 중요 · 지우기) · 담당자 명단 · 회의 모드 작은 글자(Mark 11-18) ── */
+    t("TK60 진행 기록 정리 · 담당자 명단(taskCfg) · 관리 권한", () => {
+      const n = TK.norm({ id: "tk_n", t: "a", notes: [{ id: "nt_1", x: " 첫 기록\r\n둘째 줄 ", at: "2026-11-18T05:20:00Z", by: "가나다", zz: 1 }, { id: "nt_1", x: "같은 id" },
+        { id: "", x: "id 없음" }, { id: "nt_2", x: "  " }, "bad", { id: "nt_3", x: "y".repeat(1200) }] });
+      eq(n.notes.map(x => x.id).join(), "nt_1,nt_3", "같은 id · id 없음 · 빈 글 · 모양 틀림 빼기");
+      eq(n.notes[0].x, "첫 기록\n둘째 줄"); eq(Object.keys(n.notes[0]).join(), "id,x,at,by", "모르는 칸 버림"); eq(n.notes[1].x.length, 1000, "1000자까지");
+      eq(JSON.stringify(TK.norm(n)), JSON.stringify(n), "멱등");
+      ok(!("notes" in TK.norm({ id: "tk_z", t: "a", notes: [] })), "기록이 없으면 칸 없음(옛 할 일 모양 그대로 — 새 버전이 모든 할 일을 다시 보내지 않음)");
+      eq(Object.keys(TK.norm({ id: "tk_k", t: "a", zz: 1, notes: [{ id: "nt_a", x: "b" }], file: { url: "u" } })).slice(-3).join(), "file,notes,zz", "아는 칸(file · notes) 다음 모르는 칸");
+      const many = TK.norm({ id: "tk_m", t: "a", notes: Array.from({ length: 205 }, (_, i) => ({ id: "nt_" + i, x: "x" + i })) });
+      eq(many.notes.length + "|" + many.notes[0].id, "200|nt_5", "최근 200건");
+      const mk = TK.makeNote(" 진행\r\n중 "); ok(/^nt_[a-z0-9]{10}$/.test(mk.id), mk.id); eq(mk.x + "|" + mk.by, "진행\n중|Thq"); ok(mk.at, "적은 때");
+      eq(TK.stamp("2026-11-18T05:20:00Z", "2026-11-18"), "11-18(수) 14:20", "한국 시각"); eq(TK.stamp("2025-06-01T00:00:00Z", "2026-11-18"), "2025-06-01(일) 09:00", "다른 해 = 연도까지"); eq(TK.stamp("", "2026-11-18"), "");
+      const local = [TK.norm({ id: "tk_a", t: "A", notes: [{ id: "nt_b", x: "처음" }] })], base = JSON.parse(JSON.stringify(local));
+      const mine = JSON.parse(JSON.stringify(base)); mine[0].notes.push({ id: "nt_m", x: "내 기록" });
+      const theirs = JSON.parse(JSON.stringify(base)); theirs[0].notes.push({ id: "nt_t", x: "동료 기록" });
+      eq(e.w.SemisSync.merge3(base, mine, theirs)[0].notes.map(x => x.id).sort().join(), "nt_b,nt_m,nt_t", "회의 중 두 사람이 덧붙여도 둘 다 남음(id 병합)");
+      const R = e.w.SemisRoster;
+      e.S.data.roster = { team: "", orgs: [], people: [{ id: "p1", name: "가나다", org: R.SELF, part: "안전보안파트" }, { id: "p2", name: "Thq", org: R.SELF, part: "안전보안파트" },
+        { id: "p3", name: "라마바", org: R.SELF, part: "안전보안파트" }] };
+      try {
+        e.S.data.taskCfg = {};
+        eq(TK.partPeople().join(), "가나다,Thq,라마바", "명단을 정하지 않으면 안전보안파트 전원"); ok(TK.meInPart());
+        e.S.data.taskCfg = { members: ["라마바", " 가나다 ", "라마바", "", {}, "사아자"] };
+        eq(TK.cfgMembers().join() + "|" + TK.partPeople().join(), "라마바,가나다,사아자|라마바,가나다,사아자", "정한 명단 = 그 순서(명단 밖 이름도) · 빈 값 · 같은 이름 빼기");
+        eq(TK.rosterPart().join(), "가나다,Thq,라마바"); ok(!TK.meInPart(), "계정 이름이 담당자 명단 밖이면 '나' 없음");
+        eq(TK.personColor("라마바") + "|" + TK.personColor("가나다"), "blue|green", "사람 색 = 명단 순서");
+        e.S.data.taskCfg.members.push("Thq"); ok(TK.meInPart(), "제자리에서 고친 명단도 바로");
+        eq(TK.personColor("Thq"), "purple", "명단 넷째");
+        ok(!TK.canManage(), "안전보안파트 계정은 명단을 못 고침");
+        loginAs(e, "admin"); ok(TK.canManage(), "시스템관리자");
+        loginAs(e, "manager"); ok(!TK.canManage(), "manager");
+      } finally { loginAs(e, "hq"); e.S.data.taskCfg = {}; }
+      const e2 = makeEnv(); loginAs(e2, "manager", { fresh: true }); eq(JSON.stringify(e2.S.data.taskCfg), "{}", "기본값"); e2.w.close();
+    });
+    t("TK61 줄 끝 단추(진행 기록 · 중요 · 지우기) · 리본 = 중요(칠한 리본 · 제목 색, 뒤 별표 없음) · 분류 · 장소 아이콘은 리본 아님", () => {
+      tkSeed();
+      const row = (id) => q(e, '#tk-list .tk-row[data-id="' + id + '"]');
+      const RIB = "M7 4h10v16";
+      ok(qa(e, "#tk-list .tk-row").every(r => { const b = r.querySelectorAll(".tk-ra > button");
+        return b.length === 3 && b[0].classList.contains("tk-nb") && b[1].classList.contains("tk-imp") && b[2].classList.contains("tk-del") && r.lastElementChild.classList.contains("tk-ra"); }),
+        "모든 줄 오른쪽 끝 = 진행 기록 · 중요 · 지우기");
+      ok(qa(e, "#tk-list .tk-ab").every(b => b.type === "button" && b.getAttribute("aria-describedby") === b.closest(".tk-row").querySelector(".tk-t").id), "단추마다 어느 할 일인지(제목 단추)");
+      eq(qa(e, "#tk-list .tk-row")[0].querySelectorAll(".tk-ab .sr-only")[1].textContent + "|" + qa(e, "#tk-list .tk-row")[0].querySelectorAll(".tk-ab .sr-only")[2].textContent, "중요|지우기");
+      const s0 = row("tk_star");
+      ok(s0.classList.contains("tk-star-on") && s0.querySelector(".tk-imp").getAttribute("aria-pressed") === "true", "중요 = 눌린 리본 · 줄 표시");
+      ok(!q(e, "#tk-list .tk-meta .tk-star") && !qa(e, "#tk-list .tk-meta").some(m => /중요/.test(m.textContent)), "뒤에 붙던 별표 없음");
+      ok(s0.querySelector(".tk-imp").innerHTML.includes(RIB), "리본 모양");
+      const im = row("tk_none").querySelector(".tk-imp");
+      eq(im.getAttribute("aria-pressed"), "false");
+      im.focus(); im.click();
+      const x = byId("tk_none");
+      eq(x.star + "|" + x.upBy, "true|Thq"); ok(!x.done && !mOpen(), "체크 · 고치기 창과 따로");
+      ok(row("tk_none").classList.contains("tk-star-on") && row("tk_none").querySelector(".tk-imp").getAttribute("aria-pressed") === "true");
+      eq(ids('#tk-list .tk-grp[data-b="none"] .tk-row'), "tk_none,tk_star", "중요가 묶음 위(둘 다 중요면 만든 순)");
+      ok(e.w.document.activeElement === row("tk_none").querySelector(".tk-imp"), "다시 그린 뒤에도 그 리본에 포커스");
+      row("tk_none").querySelector(".tk-imp").click();
+      eq(byId("tk_none").star + "|" + ids('#tk-list .tk-grp[data-b="none"] .tk-row'), "false|tk_star,tk_none", "다시 누르면 풂");
+      eq(TK.CATS.etc.ico, "tag"); ok(!Object.keys(TK.CATS).some(k => TK.CATS[k].ico === "pin"), "분류 아이콘에 리본 모양 없음");
+      ok(!row("tk_none").querySelector(".tk-cat").innerHTML.includes(RIB) && !row("tk_today").querySelector(".tk-meta").innerHTML.includes(RIB), "기타 분류 · 장소 아이콘도 리본 아님");
+      const css = read("css/main.css");
+      ok(/\.tk-imp\[aria-pressed="true"\] \.ico path \{ fill: currentColor; \}/.test(css) && /\.tk-row\.tk-star-on:not\(\.tk-done\) \.tk-t \{ color: var\(--tk-imp\);/.test(css), "칠한 리본 · 제목 색");
+      q(e, "#tk-meet").click();
+      ok(qa(e, "#tk-meetbox .tk-row").every(r => r.querySelectorAll(".tk-ra > button").length === 3), "회의 모드 줄도 같은 단추");
+      colEl("라마바").querySelector('[data-id="tk_none"] .tk-imp').click(); eq(byId("tk_none").star, true, "회의 모드에서도 중요");
+      ok(colEl("라마바").querySelector('[data-id="tk_none"]').classList.contains("tk-star-on"));
+      q(e, "#tk-meet").click();
+      openRow("tk_star"); ok(q(e, "#modal-box .tk-fchk").innerHTML.includes(RIB) && q(e, "#tk-f-star").checked, "고치기 창 '중요'도 리본"); act("cancel").click();
+    });
+    t("TK62 휴지통: 확인 창 없이 바로 지움 · 되돌리기 = 같은 자리 · 마친 일 · 회의 모드 · 키보드 포커스 · 마지막 한 건 = confirmWipe", () => {
+      const Sy = e.w.SemisSync, cw0 = Sy.confirmWipe, wiped = [];
+      try {
+        Sy.confirmWipe = (k) => wiped.push(k);
+        tkSeed();
+        const n0 = e.S.data.tasks.length, i0 = e.S.data.tasks.findIndex(x => x.id === "tk_today");
+        const del = q(e, '#tk-list .tk-row[data-id="tk_today"] .tk-del');
+        del.focus(); del.click();
+        ok(!mOpen(), "확인 창 없음"); ok(!byId("tk_today") && e.S.data.tasks.length === n0 - 1, "배열에서 빠짐"); ok(!q(e, '#tk-list [data-id="tk_today"]'), "목록에서 빠짐");
+        eq(q(e, '[data-ct-tab="todo"]').textContent + "|" + sv("오늘"), "할 일 3|0");
+        const fa = e.w.document.activeElement;
+        ok(fa && fa.classList.contains("tk-del") && fa.closest(".tk-row").dataset.id === "tk_star", "같은 자리의 다음 휴지통으로 포커스");
+        const a = qa(e, "#toast-wrap .toast-act").pop();
+        ok(a && a.textContent === "되돌리기" && /지웠습니다/.test(lastToast()), "알림 되돌리기"); a.click();
+        eq(e.S.data.tasks.findIndex(x => x.id === "tk_today"), i0, "같은 자리로"); ok(q(e, '#tk-list [data-id="tk_today"]'), "다시 보임");
+        eq(wiped.length, 0, "남는 목록이면 confirmWipe 없음");
+        q(e, '[data-ct-tab="done"]').click();
+        q(e, '#tk-list .tk-row[data-id="tk_done"] .tk-del').click(); ok(!byId("tk_done"), "마친 일도 지움");
+        q(e, '[data-ct-tab="todo"]').click();
+        q(e, "#tk-meet").click();
+        colEl("라마바").querySelector('[data-id="tk_none"] .tk-del').click();
+        ok(!byId("tk_none") && !q(e, '#tk-meetbox [data-id="tk_none"]') && !mOpen(), "회의 모드에서도 바로");
+        qa(e, "#toast-wrap .toast-act").pop().click(); ok(colEl("라마바").querySelector('[data-id="tk_none"]'), "회의 모드 되돌리기");
+        q(e, "#tk-meet").click();
+        e.S.data.tasks = [TK.norm({ id: "tk_only", t: "하나" })]; go(e, "tasks");
+        q(e, '#tk-list .tk-row[data-id="tk_only"] .tk-del').click();
+        eq(e.S.data.tasks.length + "|" + wiped.join(), "0|tasks", "마지막 한 건 = 사람이 한 지우기(대량 삭제 방어가 되살리지 않게)");
+        qa(e, "#toast-wrap .toast-act").pop().click(); eq(e.S.data.tasks.length + "|" + e.S.data.tasks[0].id, "1|tk_only", "되돌리기");
+      } finally { Sy.confirmWipe = cw0; }
+    });
+    t("TK63 진행 기록: 펼침 · Enter 덧붙이기(적은 사람 · 때) · Shift+Enter · 한글 조합 · 접힌 줄 = 마지막 기록 · 건수 · 지우기 · 되돌리기 · Esc · 다시 그려도 쓰던 글 · 검색", () => {
+      tkSeed();
+      const row = () => q(e, '#tk-list .tk-row[data-id="tk_none"]'), nb = () => row().querySelector(".tk-nb");
+      eq(nb().getAttribute("aria-expanded"), "false"); ok(!row().querySelector(".tk-thread, .tk-nlast"), "기록이 없으면 접힘 · 한 줄 없음");
+      nb().click();
+      const th = row().querySelector(".tk-thread"), ta = row().querySelector("textarea.tk-nin");
+      ok(th && ta && nb().getAttribute("aria-expanded") === "true" && nb().getAttribute("aria-controls") === th.id, "펼침 · 단추가 가리키는 칸");
+      ok(e.w.document.activeElement === ta && !mOpen(), "기록 없는 할 일 → 바로 적는 칸(고치기 창 아님)");
+      const kd = (el, key) => { const ev = new e.w.KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }); el.dispatchEvent(ev); return ev.defaultPrevented; };
+      ok(!kd(ta, "a") && !kd(ta, " ") && !kd(ta, "1"), "글자 · 띄어쓰기 · 숫자 키는 막지 않음(on* 처리기가 false 를 돌려주면 입력이 막힘)");
+      ta.value = "업체 회신 대기"; fire(ta, "input");
+      enter(ta, { isComposing: true }); ok(!byId("tk_none").notes, "한글 조합 중 Enter 넘김");
+      enter(ta, { shiftKey: true }); ok(!byId("tk_none").notes, "Shift+Enter = 줄바꿈");
+      enter(ta);
+      const x = byId("tk_none");
+      eq(x.notes.length + "|" + x.notes[0].x + "|" + x.notes[0].by + "|" + x.upBy, "1|업체 회신 대기|Thq|Thq"); ok(x.notes[0].at, "적은 때");
+      const ta2 = row().querySelector(".tk-nin");
+      ok(ta2.value === "" && e.w.document.activeElement === ta2, "비우고 이어서 적게 포커스");
+      ok(row().querySelector(".tk-note .tk-nx").textContent === "업체 회신 대기" && row().querySelector(".tk-note .tk-nw").textContent.includes("Thq")
+        && /^\d{2}-\d{2}\(.\) \d{2}:\d{2}$/.test(row().querySelector(".tk-note .tk-nd").textContent), "기록 줄 = 적은 사람 · 때 · 글");
+      ta2.value = "회신 받음"; fire(ta2, "input"); row().querySelector(".tk-nsend").click();
+      eq(x.notes.map(n2 => n2.x).join("|"), "업체 회신 대기|회신 받음", "적은 순 · 덧붙이기 단추");
+      eq(nb().querySelector(".tk-nn").textContent + "|" + nb().querySelector(".sr-only").textContent, "2|진행 기록 2건");
+      const ta3 = row().querySelector(".tk-nin"); ta3.focus();
+      ta3.dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+      ok(!row().querySelector(".tk-thread") && e.w.document.activeElement === nb(), "Esc = 접고 단추로");
+      const nl = row().querySelector(".tk-nlast");
+      ok(nl && nl.querySelector(".tk-nlx").textContent === "회신 받음" && nl.querySelector(".tk-nlm").textContent.startsWith("Thq · "), "접힌 줄 = 마지막 기록 한 줄(회의 때 펼치지 않고 지금 상태)");
+      nl.click();
+      ok(row().querySelector(".tk-thread") && !row().querySelector(".tk-nlast") && e.w.document.activeElement === nb(), "한 줄을 누르면 펼침 · 기록이 있으면 단추에 포커스(자판 안 뜸)");
+      row().querySelectorAll(".tk-ndel")[0].click();
+      eq(x.notes.map(n2 => n2.x).join(), "회신 받음", "기록 지우기");
+      qa(e, "#toast-wrap .toast-act").pop().click();
+      eq(x.notes.map(n2 => n2.x).join("|"), "업체 회신 대기|회신 받음", "되돌리기 = 같은 자리");
+      row().querySelectorAll(".tk-ndel")[1].click(); row().querySelectorAll(".tk-ndel")[0].click();
+      ok(!("notes" in x) && !row().querySelector(".tk-note") && row().querySelector(".tk-nin"), "다 지우면 칸 없음 · 적는 칸은 그대로");
+      qa(e, "#toast-wrap .toast-act").pop().click(); eq(x.notes.map(n2 => n2.x).join(), "업체 회신 대기");
+      const ta4 = row().querySelector(".tk-nin"); ta4.focus(); ta4.value = "적는 중"; fire(ta4, "input");
+      e.S.data.tasks.push(TK.norm({ id: "tk_r2", t: "동료 일" })); e.S.renderView();
+      const ta5 = row().querySelector(".tk-nin");
+      ok(ta5 !== ta4 && ta5.value === "적는 중" && e.w.document.activeElement === ta5 && ta5.selectionStart === 4, "원격 변경으로 다시 그려도 쓰던 글 · 포커스");
+      ok(!mOpen(), "기록 칸 누름은 고치기 창을 열지 않음"); row().querySelector(".tk-thread").click(); ok(!mOpen());
+      const qs = q(e, "#tk-q"); qs.value = "업체 회신"; fire(qs, "input");
+      eq(ids("#tk-list .tk-row"), "tk_none", "화면 검색이 진행 기록도 찾음"); qs.value = ""; fire(qs, "input");
+      ok(SS.search("업체 회신").some(h => h.group === "Task 관리" && h.title === "날짜 없는 일"), "통합 검색도");
+      ok(e.S.data.tasks.every(t2 => JSON.stringify(TK.norm(t2)) === JSON.stringify(t2)), "저장 모양 = 정규화 모양");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    t("TK64 회의 모드 진행 기록: 칸마다 따로 펼침(같은 할 일이 두 칸) · 칸에서 덧붙이기 · 다른 칸은 마지막 한 줄 · 인쇄에는 단추 · 적는 칸 없음", () => {
+      tkSeed();
+      e.S.data.tasks.push(TK.norm({ id: "tk_two", t: "함께 하는 일", who: ["가나다", "라마바"] }));
+      TK.setState({ meet: true }); go(e, "tasks");
+      const r1 = () => colEl("가나다").querySelector('[data-id="tk_two"]'), r2 = () => colEl("라마바").querySelector('[data-id="tk_two"]');
+      r1().querySelector(".tk-nb").click();
+      ok(r1().querySelector(".tk-thread") && !r2().querySelector(".tk-thread"), "누른 칸만 펼침");
+      const ta = r1().querySelector(".tk-nin"); ok(e.w.document.activeElement === ta);
+      const kev = new e.w.KeyboardEvent("keydown", { key: "a", bubbles: true, cancelable: true }); ta.dispatchEvent(kev); ok(!kev.defaultPrevented, "글자 키는 막지 않음");
+      ta.value = "자료 받음"; fire(ta, "input"); enter(ta);
+      eq(byId("tk_two").notes.map(n2 => n2.x).join(), "자료 받음");
+      ok(r2().querySelector(".tk-nlast").textContent.includes("자료 받음"), "다른 칸은 마지막 기록 한 줄");
+      ok(e.w.document.activeElement === r1().querySelector(".tk-nin"), "그 칸 적는 칸에 포커스");
+      const all = qa(e, "#tk-meetbox [id]").map(y => y.id); eq(new Set(all).size, all.length, "id 겹침 없음");
+      const css = read("css/main.css");
+      ok(/@media print \{[^@]*\.tk-ra, \.tk-nadd, \.tk-ndel \{ display: none !important; \}/.test(css), "인쇄 = 줄 끝 단추 · 적는 칸 · 지우기 없음(기록 · 마지막 한 줄은 남음)");
+      TK.setState({ meet: false }); go(e, "tasks");
+    });
+    t("TK65 담당자 관리(시스템관리자 ⋯): 지금 명단 · 추가(쉼표 · 같은 이름) · 빼기 · 순서 · 저장 = taskCfg → 담당자 칩 · 회의 칸 · 모두 빼면 안전보안파트 · 취소", () => {
+      tkSeed();
+      ok(!q(e, "#tk-members"), "안전보안파트 계정에는 없음");
+      loginAs(e, "admin");
+      try {
+        go(e, "tasks");
+        const mb = q(e, "#view .page-head #tk-members");
+        ok(mb && mb.classList.contains("ph-rare") && mb.textContent.trim() === "담당자 관리", "드문 기능(⋯)");
+        mb.click();
+        ok(mOpen() && q(e, "#tk-mlist"));
+        const names = () => qa(e, "#tk-mlist .tk-mname").map(y => y.textContent).join();
+        const rowOf = (n) => qa(e, "#tk-mlist .tk-mrow").find(r => r.querySelector(".tk-mname").textContent === n);
+        eq(names(), "Thq,가나다,라마바", "정하지 않았으면 안전보안파트 명단");
+        rowOf("Thq").querySelector("[data-rm]").click(); eq(names(), "가나다,라마바");
+        ok(e.w.document.activeElement === rowOf("가나다").querySelector("[data-rm]"), "뺀 뒤 같은 자리 '빼기'로 포커스");
+        const inp = q(e, "#tk-m-in"); inp.value = "사아자, 가나다 · 차카타"; enter(inp);
+        eq(names() + "|" + inp.value, "가나다,라마바,사아자,차카타|", "쉼표로 여럿 · 있는 이름은 건너뜀");
+        ok(mOpen(), "Enter 로 창이 닫히지 않음");
+        rowOf("라마바").querySelector('[data-mv="-1"]').click(); eq(names(), "라마바,가나다,사아자,차카타", "위로");
+        ok(qa(e, "#tk-mlist .tk-mrow")[0].querySelector('[data-mv="-1"]').disabled && qa(e, "#tk-mlist .tk-mrow")[3].querySelector('[data-mv="1"]').disabled, "끝 단추 막힘");
+        rowOf("차카타").querySelector("[data-rm]").click();
+        inp.value = "아무개";
+        act("save").click();
+        ok(!mOpen()); eq(JSON.stringify(e.S.data.taskCfg), JSON.stringify({ members: ["라마바", "가나다", "사아자", "아무개"] }), "칸에 적어 두고 '추가'를 안 눌러도 넣어 저장");
+        eq(qa(e, "#tk-who [data-who]").map(b => b.dataset.who).join(), "*,라마바,가나다,사아자,아무개,Thq", "담당자 칩 = 명단 순 + 할 일에만 적힌 이름");
+        q(e, "#tk-meet").click();
+        eq(cols().join("|"), "라마바|가나다|사아자|아무개|Thq|", "회의 칸 = 명단 순 + 명단 밖 담당 + 담당 없음");
+        q(e, "#tk-meet").click();
+        const qi = q(e, "#tk-quick"); qi.value = "아무개 내일 보고"; fire(qi, "input");
+        ok(qa(e, "#tk-qprev [data-qwho]").some(b => b.dataset.qwho === "아무개" && b.getAttribute("aria-pressed") === "true"), "빠른 입력도 명단 이름을 알아들음");
+        qi.value = ""; fire(qi, "input");
+        q(e, "#tk-members").click();
+        while (q(e, "#tk-mlist [data-rm]")) q(e, "#tk-mlist [data-rm]").click();
+        ok(q(e, "#tk-mlist .tk-mempty").textContent.includes("3명"), "비면 안전보안파트 명단 안내");
+        act("save").click();
+        ok(!("members" in e.S.data.taskCfg), "모두 빼면 칸을 지움"); eq(TK.partPeople().join(), "Thq,가나다,라마바", "→ 안전보안파트");
+        q(e, "#tk-members").click(); rowOf("가나다").querySelector("[data-rm]").click(); act("cancel").click();
+        eq(TK.partPeople().join() + "|" + JSON.stringify(e.S.data.taskCfg), "Thq,가나다,라마바|{}", "취소 = 그대로");
+        q(e, "#tk-members").click(); act("save").click(); eq(JSON.stringify(e.S.data.taskCfg), "{}", "바꾼 것 없이 저장 = 쓰지 않음");
+      } finally { loginAs(e, "hq"); e.S.data.taskCfg = {}; }
     });
     e.w.close();
   }

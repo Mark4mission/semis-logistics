@@ -7114,7 +7114,8 @@ button.chip-title:focus-visible, button.calm-body:focus-visible { outline: 2px s
 .tk-grp[data-b="today"] .tk-bh { color: var(--accent-dark); }
 .tk-bn { font-weight: 600; color: var(--text-3); }
 .tk-rows { list-style: none; margin: 0; padding: 0; }
-.tk-row { display: grid; grid-template-columns: 28px 22px minmax(0, 1fr); align-items: start; gap: 0 10px; padding: 10px 8px; border-bottom: 1px solid var(--hair); cursor: pointer; }
+.tk-card { --tk-imp: #c2410c; }   /* 중요(리본) — 지난 일 빨강 · 오늘 주황 칩과 다른 짙은 주황 */
+.tk-row { display: grid; grid-template-columns: 28px 22px minmax(0, 1fr) auto; align-items: start; gap: 0 10px; padding: 10px 8px; border-bottom: 1px solid var(--hair); cursor: pointer; }
 .tk-row.tk-late { box-shadow: inset 3px 0 0 var(--danger); }
 .tk-chk { width: 28px; height: 28px; margin: 0; accent-color: var(--primary); cursor: pointer; }
 .tk-row .tk-cat { display: inline-flex; align-items: center; justify-content: center; height: 28px; background: none; box-shadow: none; color: var(--evc); }
@@ -7122,6 +7123,7 @@ button.chip-title:focus-visible, button.calm-body:focus-visible { outline: 2px s
 .tk-t { display: block; max-width: 100%; padding: 2px 0; border: 0; background: none; color: var(--text); font-size: 1rem; font-weight: 600; line-height: 1.5; text-align: left; cursor: pointer; }
 .tk-tt { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; white-space: pre-line; overflow-wrap: break-word; }
 .tk-row.tk-done .tk-t { color: var(--text-3); text-decoration: line-through; }
+.tk-row.tk-star-on:not(.tk-done) .tk-t { color: var(--tk-imp); font-weight: 700; }
 .tk-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 3px; font-size: .86rem; color: var(--text-2); }
 .tk-due { padding: 1px 8px; border-radius: 4px; background: var(--surface-2); font-weight: 600; white-space: nowrap; }
 .tk-d-late { background: var(--danger-soft); color: var(--danger); }
@@ -7131,8 +7133,53 @@ button.chip-title:focus-visible, button.calm-body:focus-visible { outline: 2px s
 .tk-p { display: inline-flex; align-items: center; white-space: nowrap; }
 .tk-ic { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
 .tk-ic .ico { color: var(--text-3); }
-.tk-star .ico { color: var(--accent-dark); }
 .tk-showmore { margin-top: 12px; }
+/* 줄 오른쪽 끝 단추 — 진행 기록 · 중요(리본) · 지우기. 평소 옅게, 켜진 것만 색 */
+.tk-ra { display: flex; align-items: center; gap: 2px; margin: -2px -4px 0 2px; }
+.tk-ab { display: inline-flex; align-items: center; justify-content: center; gap: 2px; min-width: 32px; height: 32px; padding: 0 5px; border: 0; border-radius: 6px; background: none; color: #8a979c; cursor: pointer; transition: color .12s, background-color .12s; }
+.tk-ab:focus-visible { outline: 2px solid var(--primary); outline-offset: 0; }
+.tk-nn { font-size: max(var(--fs-min), .78rem); font-weight: 700; line-height: 1; }
+.tk-nb.has-n, .tk-nb[aria-expanded="true"] { color: var(--primary-dark); }
+.tk-imp[aria-pressed="true"] { color: var(--tk-imp); }
+.tk-imp[aria-pressed="true"] .ico path { fill: currentColor; }
+@media (hover: hover) and (pointer: fine) {
+  .tk-ab:hover { color: var(--text); background: rgba(14, 26, 31, .07); }
+  .tk-imp:hover { color: var(--tk-imp); }
+  .tk-del:hover { color: var(--danger); background: var(--danger-soft); }
+}
+/* 접힌 줄의 마지막 진행 기록 한 줄 — 누르면 펼침 */
+/* 좁은 칸(회의 모드 · 모바일)에서는 적은 사람 · 때가 다음 줄로 — 기록 글이 먼저 보이게 */
+.tk-nlast { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; max-width: 100%; margin-top: 5px; padding: 3px 8px; border: 0; border-left: 2px solid var(--primary); border-radius: 0 4px 4px 0; background: var(--primary-soft); color: var(--text-2); font-size: max(var(--fs-min), .84rem); line-height: 1.45; text-align: left; cursor: pointer; }
+.tk-nlx { flex: 1 1 14em; min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+.tk-nlm { flex: 0 1 auto; min-width: 0; font-size: max(var(--fs-min), .78rem); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tk-nlast:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+/* 진행 기록(펼침) — 적은 순 타임라인 + 덧붙이기 칸 */
+.tk-row.tk-open { background: var(--surface-2); }
+.tk-thread { grid-column: 2 / -1; margin-top: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); cursor: default; }
+.tk-notes { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.tk-note { padding-left: 10px; border-left: 2px solid var(--border-strong); }
+.tk-nh { display: flex; align-items: center; gap: 8px; min-height: 24px; font-size: max(var(--fs-min), .8rem); color: var(--text-3); }
+.tk-nw { display: inline-flex; align-items: center; font-weight: 700; color: var(--text-2); white-space: nowrap; }
+.tk-nd { white-space: nowrap; }
+.tk-ndel { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; margin-left: auto; padding: 0; border: 0; border-radius: 5px; background: none; color: #8a979c; cursor: pointer; }
+.tk-ndel:focus-visible { outline: 2px solid var(--primary); outline-offset: 0; }
+@media (hover: hover) and (pointer: fine) { .tk-ndel:hover { color: var(--danger); background: var(--danger-soft); } }
+.tk-nx { margin: 1px 0 0; font-size: .92rem; line-height: 1.55; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+.tk-nadd { display: flex; align-items: flex-end; gap: 6px; }
+.tk-nin { flex: 1; min-width: 0; min-height: 36px; max-height: 10em; padding: 7px 10px; resize: none; overflow-y: auto; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); font: inherit; font-size: .92rem; line-height: 1.45; }
+.tk-nin:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+.tk-nadd .btn { flex: none; min-height: 36px; }
+/* Task 담당자 관리 창 */
+.tk-mlist { list-style: none; margin: 0 0 10px; padding: 0; border-top: 1px solid var(--hair); }
+.tk-mrow { display: flex; align-items: center; gap: 4px; min-height: 42px; padding: 2px 0; border-bottom: 1px solid var(--hair); }
+.tk-mno { width: 26px; flex: none; color: var(--text-3); text-align: center; }
+.tk-mname { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tk-mrow .icon-btn[disabled] { opacity: .3; cursor: default; }
+.tk-mempty { padding: 12px 4px; color: var(--text-3); border-bottom: 1px solid var(--hair); }
+.tk-madd { display: flex; gap: 8px; }
+.tk-madd input { flex: 1; min-width: 0; min-height: 40px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); font: inherit; }
+.tk-madd input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+.tk-mnote { margin: 10px 0 0; font-size: max(var(--fs-min), .84rem); color: var(--text-3); }
 /* 고치기 창 — 칩은 빠른 입력 담당 칩(.tk-qw)과 같은 모양. 단추 4개('다시 열기' · 큰 글자)가 좁은 폭에서 넘치지 않게 줄바꿈 */
 .tk-form #tk-f-t { min-height: 0; }
 .tk-fdues, .tk-fchips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -7153,25 +7200,37 @@ button.chip-title:focus-visible, button.calm-body:focus-visible { outline: 2px s
   .tk-row { gap: 0 8px; padding: 10px 2px; }
   .tk-row.tk-late { padding-left: 8px; }
   .tk-meta { gap: 4px 10px; }
+  .tk-ra { gap: 0; margin-right: -2px; }
+  .tk-ab { min-width: 30px; padding: 0 3px; }
+  .tk-thread { grid-column: 1 / -1; padding: 8px 10px; }
 }
-/* 회의 모드 — 사람별 칸(PC 여러 칸 · 모바일 한 줄로 쌓음) · 큰 체크(2.29rem = 본문 14px 에서 32px) · 큰 글자 — rem 이라 글자 크게 보기를 따름 */
-#tk-meetbox .tk-cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; align-items: start; }
-.tk-col { min-width: 0; padding: 10px 12px 12px; border: 1px solid var(--line); border-radius: 4px; }
-.tk-ch { display: flex; align-items: center; margin: 0 0 2px; padding-bottom: 6px; border-bottom: 2px solid var(--rule); font-size: 1.2rem; font-weight: 700; white-space: nowrap; }
-.tk-ch .tk-dot { width: 12px; height: 12px; }
+/* 회의 모드 — 사람별 칸(PC 여러 칸 · 모바일 한 줄로 쌓음) · 작은 글자 · 촘촘한 줄(한 화면에 많이 — Mark 11-18). 글자는 rem 이라 글자 크게 보기를 따름 */
+#tk-meetbox .tk-cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; align-items: start; }
+.tk-col { min-width: 0; padding: 8px 10px 10px; border: 1px solid var(--line); border-radius: 4px; }
+.tk-ch { display: flex; align-items: center; margin: 0 0 2px; padding-bottom: 5px; border-bottom: 2px solid var(--rule); font-size: 1rem; font-weight: 700; white-space: nowrap; }
+.tk-ch .tk-dot { width: 10px; height: 10px; }
 .tk-cname { overflow: hidden; text-overflow: ellipsis; }
 .tk-cnum { margin-left: 8px; font-weight: 600; color: var(--text-3); }
-#tk-meetbox .tk-row { grid-template-columns: 2.29rem 22px minmax(0, 1fr); padding: 10px 4px; }
-#tk-meetbox .tk-row.tk-late { padding-left: 10px; }
-#tk-meetbox .tk-chk { width: 2.29rem; height: 2.29rem; }
-#tk-meetbox .tk-row .tk-cat { height: 2.29rem; }
-#tk-meetbox .tk-t { font-size: 1.14rem; }
-#tk-meetbox .tk-meta { font-size: .92rem; }
+#tk-meetbox .tk-row { grid-template-columns: 20px 16px minmax(0, 1fr) auto; gap: 0 7px; padding: 5px 2px; }
+#tk-meetbox .tk-row.tk-late { padding-left: 7px; }
+#tk-meetbox .tk-chk { width: 20px; height: 20px; margin-top: 1px; }
+#tk-meetbox .tk-row .tk-cat { height: 22px; }
+#tk-meetbox .tk-cat .ico { width: 15px; height: 15px; }
+#tk-meetbox .tk-t { padding: 1px 0; font-size: .9rem; line-height: 1.4; }
+#tk-meetbox .tk-meta { gap: 2px 8px; margin-top: 1px; font-size: max(var(--fs-min), .78rem); }
+#tk-meetbox .tk-meta .ico { width: 12px; height: 12px; }
+#tk-meetbox .tk-due { padding: 0 6px; }
+#tk-meetbox .tk-ra { margin: -3px -3px 0 0; }
+#tk-meetbox .tk-ab { min-width: 26px; height: 26px; padding: 0 3px; }
+#tk-meetbox .tk-ab .ico { width: 15px; height: 15px; }
+#tk-meetbox .tk-nlast { margin-top: 3px; padding: 2px 6px; }
+#tk-meetbox .tk-thread { margin-top: 5px; padding: 8px; }
+#tk-meetbox .tk-nx, #tk-meetbox .tk-nin { font-size: .86rem; }
 .tk-with { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
-.tk-cin { width: 100%; min-height: 44px; margin-top: 8px; padding: 0 12px; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); font-size: 1rem; }
+.tk-cin { width: 100%; min-height: 36px; margin-top: 6px; padding: 0 10px; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); font-size: .9rem; }
 .tk-cin:focus { outline: none; border-style: solid; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
-.tk-wkdone { margin-top: 8px; }
-.tk-wkb { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 0 4px; border: 0; background: none; color: var(--text-2); font-size: .92rem; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.tk-wkdone { margin-top: 4px; }
+.tk-wkb { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; padding: 0 4px; border: 0; background: none; color: var(--text-2); font-size: max(var(--fs-min), .82rem); font-weight: 700; cursor: pointer; white-space: nowrap; }
 .tk-wkb:disabled { color: var(--text-3); cursor: default; }
 .tk-wkb:disabled .ico { display: none; }
 .tk-wkb[aria-expanded="true"] .ico { transform: rotate(180deg); }
@@ -7182,7 +7241,11 @@ button.chip-title:focus-visible, button.calm-body:focus-visible { outline: 2px s
 }
 /* 인쇄(A4 회의 자료) = 사람별 할 일 + 이번 주 마친 일(펼쳐서) — 입력칸은 종이에 쓸모없음 */
 @media print {
-  .tk-meeting .tk-qbox, .tk-cin, .tk-wkb .ico { display: none !important; }
+  .tk-meeting .tk-qbox, .tk-cin, .tk-wkb .ico, .tk-ra, .tk-nadd, .tk-ndel { display: none !important; }
+  .tk-row { grid-template-columns: 28px 22px minmax(0, 1fr); }
+  #tk-meetbox .tk-row { grid-template-columns: 20px 16px minmax(0, 1fr); }
+  .tk-row.tk-open { background: none; }
+  .tk-nlast, .tk-thread { border-color: #c9d4d4; background: none; }
   #tk-meetbox .tk-wklist { display: block !important; }
   #tk-meetbox .tk-row { break-inside: avoid; cursor: default; }
   .tk-mdate { margin: 0 0 3mm; font-weight: 700; }

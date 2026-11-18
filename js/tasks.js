@@ -9,8 +9,9 @@
   const TITLE = "Task 관리";
   const PAGE = 100;   // 마친 일은 지우지 않고 쌓이므로 최근 것부터 끊어 그린다
   /* drafts · fk = 입력칸(빠른 입력 "q" · 회의 칸 "c"+이름)에 치던 글 · 포커스 — 원격 변경이 화면을 통째로 다시 그려도 남게.
-     wk = 회의 칸 '이번 주 마친 일'을 펼친 칸 이름. 모두 모듈 상태에만(새로고침하면 목록 · 빈 칸) */
-  const st = { tab: "todo", who: null, q: "", meet: false, doneN: PAGE, qSel: null, open: "", drafts: {}, fk: "", wk: [] };
+     wk = 회의 칸 '이번 주 마친 일'을 펼친 칸 이름. th = 진행 기록을 펼친 줄(칸 표지 k — 회의 모드는 같은 할 일이 여러 칸에 있다).
+     모두 모듈 상태에만(새로고침하면 목록 · 빈 칸) */
+  const st = { tab: "todo", who: null, q: "", meet: false, doneN: PAGE, qSel: null, open: "", drafts: {}, fk: "", wk: [], th: [] };
   let root = null;
 
   const live = () => !!root && root.isConnected && !!$("#tk-list, #tk-meetbox", root);
@@ -37,7 +38,7 @@
   const byWho = (t, w) => w === "*" || t.who.indexOf(w === "me" ? T.me() : w) >= 0;
   function byQuery(t) {
     if (!st.q) return true;
-    const hay = [t.t, t.memo, t.place, t.who.join(" "), t.teams.join(" ")].join(" ").toLowerCase();
+    const hay = [t.t, t.memo, t.place, t.who.join(" "), t.teams.join(" "), (t.notes || []).map(n => n.x).join(" ")].join(" ").toLowerCase();
     return st.q.toLowerCase().split(/\s+/).every(w => hay.indexOf(w) >= 0);
   }
   function whoHTML(w) {
@@ -75,26 +76,46 @@
   /* 탭 건수는 담당자 칩만 따른다 — 검색 글자를 칠 때는 목록만 다시 그리므로 */
   const todoCount = () => { const w = curWho(); return T.list().filter(t => !t.done && byWho(t, w)).length; };
 
-  /* m = 회의 칸({ col: 칸 이름, k: 칸 표지 }) — 같은 할 일이 여러 칸에 그려지므로 id 에 칸 표지를 붙이고, 담당은 칸 사람을 빼고 '함께'로 */
+  /* 진행 기록(펼침) — 적은 순 · 적은 사람(사람 색) · 때 · 지우기, 아래에 덧붙이기 칸(치던 글은 st.drafts "n"+k).
+     Enter = 덧붙이기 · Shift+Enter = 줄바꿈 · Esc = 접기 */
+  function threadHTML(t, k, td) {
+    const ns = t.notes || [];
+    return `<div class="tk-thread" id="tk-th-${esc(k)}">${ns.length ? `<ol class="tk-notes">${ns.map(n => `<li class="tk-note" data-nid="${esc(n.id)}">
+        <div class="tk-nh"><span class="tk-nw">${n.by ? dot(n.by) + esc(n.by) : "-"}</span><span class="tk-nd">${esc(T.stamp(n.at, td))}</span>
+          <button type="button" class="tk-ndel" title="이 기록 지우기">${icon("x", 14)}<span class="sr-only">이 기록 지우기</span></button></div>
+        <p class="tk-nx">${esc(n.x)}</p></li>`).join("")}</ol>` : ""}
+      <div class="tk-nadd"><textarea class="tk-nin" rows="1" maxlength="${T.NOTE_MAX}" data-k="${esc(k)}" aria-label="진행 기록 덧붙이기" placeholder="진행 내용을 적고 Enter">${esc(st.drafts["n" + k] || "")}</textarea>
+        <button type="button" class="btn btn-ghost btn-sm tk-nsend">덧붙이기</button></div></div>`;
+  }
+  /* m = 회의 칸({ col: 칸 이름, k: 칸 표지 }) — 같은 할 일이 여러 칸에 그려지므로 id 에 칸 표지를 붙이고, 담당은 칸 사람을 빼고 '함께'로.
+     줄 오른쪽 끝 = [진행 기록][중요(리본 — 켜면 칠한 리본 · 제목 색)][지우기] */
   function rowHTML(t, td, m) {
-    const id = esc(t.id), tid = esc("tk-t-" + (m ? m.k + "-" : "") + t.id), c = T.CATS[T.catOf(t)];
+    const k = (m ? m.k + "-" : "") + t.id, id = esc(t.id), tid = esc("tk-t-" + k), c = T.CATS[T.catOf(t)];
     const d = t.done ? null : T.dueInfo(t, td);
     const dd = t.done ? T.dayOf(t.doneAt) : "";
+    const ns = t.notes || [], open = st.th.indexOf(k) >= 0, ln = ns[ns.length - 1];
     const who = (m ? t.who.filter(n => n !== m.col) : t.who).map(n => `<span class="tk-p">${dot(n)}${esc(n)}</span>`).join("");
     const meta = [
       t.done ? `<span class="tk-due tk-d-done">${esc((dd ? T.dayLabel(dd, td) + " " : "") + "마침" + (t.doneBy ? " · " + t.doneBy : ""))}</span>`
         : d.label ? `<span class="tk-due tk-d-${d.b}">${esc(d.label)}</span>` : "",
-      t.place ? `<span class="tk-ic">${icon("pin", 14)}${esc(t.place)}</span>` : "",
+      t.place ? `<span class="tk-ic">${icon("map", 14)}${esc(t.place)}</span>` : "",
       m && who ? `<span class="tk-with">함께:${who}</span>` : who,
       t.teams.map(g => `<span class="tk-ic">${icon("building", 14)}${esc(g)}</span>`).join(""),
       t.memo ? `<span class="tk-ic" title="메모 있음">${icon("notes", 14)}<span class="sr-only">메모 있음</span></span>` : "",
-      t.star ? `<span class="tk-ic tk-star" title="중요">${icon("star", 14)}<span class="sr-only">중요</span></span>` : "",
       t.src === "desk" ? `<span class="tk-ic">${icon("forward", 14)}접수</span>` : ""
     ].join("");
-    return `<li class="tk-row${d && d.b === "late" ? " tk-late" : ""}${t.done ? " tk-done" : ""}" data-id="${id}">
+    /* 접힌 줄에는 마지막 진행 기록 한 줄 — 회의 때 펼치지 않고도 지금 상태가 보이게(누르면 펼침) */
+    const last = ln && !open ? `<button type="button" class="tk-nlast" data-th="${esc(k)}" aria-expanded="false"><span class="tk-nlx">${esc(ln.x.split("\n")[0])}</span><span class="tk-nlm">${esc([ln.by, T.stamp(ln.at, td)].filter(Boolean).join(" · "))}</span></button>` : "";
+    const nb = `${icon("comment", 17)}${ns.length ? `<span class="tk-nn" aria-hidden="true">${ns.length}</span>` : ""}<span class="sr-only">진행 기록${ns.length ? " " + ns.length + "건" : ""}</span>`;
+    return `<li class="tk-row${d && d.b === "late" ? " tk-late" : ""}${t.done ? " tk-done" : ""}${t.star ? " tk-star-on" : ""}${open ? " tk-open" : ""}" data-id="${id}" data-k="${esc(k)}">
       <input type="checkbox" class="tk-chk" aria-labelledby="${tid}"${t.done ? " checked" : ""}>
       <span class="tk-cat ev-${esc(c.color)}" title="${esc(c.label)}">${icon(c.ico, 18)}</span>
-      <div class="tk-body"><button type="button" class="tk-t" id="${tid}"><span class="tk-tt">${esc(t.t)}</span></button>${meta ? `<div class="tk-meta">${meta}</div>` : ""}</div>
+      <div class="tk-body"><button type="button" class="tk-t" id="${tid}"><span class="tk-tt">${esc(t.t)}</span></button>${meta ? `<div class="tk-meta">${meta}</div>` : ""}${last}</div>
+      <div class="tk-ra">
+        <button type="button" class="tk-ab tk-nb${ns.length ? " has-n" : ""}" data-th="${esc(k)}" aria-expanded="${open}"${open ? ` aria-controls="tk-th-${esc(k)}"` : ""} aria-describedby="${tid}" title="진행 기록">${nb}</button>
+        <button type="button" class="tk-ab tk-imp" aria-pressed="${t.star}" aria-describedby="${tid}" title="중요">${icon("pin", 17)}<span class="sr-only">중요</span></button>
+        <button type="button" class="tk-ab tk-del" aria-describedby="${tid}" title="지우기">${icon("trash", 17)}<span class="sr-only">지우기</span></button>
+      </div>${open ? threadHTML(t, k, td) : ""}
     </li>`;
   }
   const grpHTML = (b, lb, rows, td) => `<div class="tk-grp" data-b="${b}"><h3 class="tk-bh"><span class="tk-bl">${esc(lb)}</span><span class="tk-bn mono">${rows.length}</span></h3>
@@ -136,10 +157,19 @@
   function refresh() {
     if (!live()) return;
     $("#tk-stats", root).innerHTML = statsHTML();
-    if ($("#tk-meetbox", root)) { paintMeet(); return; }
-    const tb = $('[data-ct-tab="todo"]', root);
-    if (tb) tb.textContent = "할 일 " + todoCount();
-    paintList();
+    if ($("#tk-meetbox", root)) paintMeet();
+    else {
+      const tb = $('[data-ct-tab="todo"]', root);
+      if (tb) tb.textContent = "할 일 " + todoCount();
+      paintList();
+    }
+    $$(".tk-nin", root).forEach(fit);
+  }
+  /* 진행 기록 칸은 글 줄만큼 늘어난다(최대 높이는 CSS) */
+  function fit(el) {
+    if (!el || !el.value) { if (el) el.style.height = ""; return; }
+    el.style.height = "auto";
+    el.style.height = el.scrollHeight + 2 + "px";
   }
 
   /* ── 회의 모드 — 사람별 칸 ── */
@@ -209,8 +239,9 @@
   }
 
   /* 입력칸 글 · 포커스 기억(st.drafts · st.fk). 검색칸("s")은 포커스만 — 글은 st.q 가 들고 있다 */
-  const dkey = (el) => (el.id === "tk-quick" ? "q" : el.id === "tk-q" ? "s" : el.classList.contains("tk-cin") ? "c" + el.dataset.col : "");
-  const inputOf = (k) => $$("#tk-quick, #tk-q, .tk-cin", root).find(x => dkey(x) === k);
+  const dkey = (el) => (el.id === "tk-quick" ? "q" : el.id === "tk-q" ? "s" : el.classList.contains("tk-cin") ? "c" + el.dataset.col
+    : el.classList.contains("tk-nin") ? "n" + el.dataset.k : "");
+  const inputOf = (k) => $$("#tk-quick, #tk-q, .tk-cin, .tk-nin", root).find(x => dkey(x) === k);
   function keepDraft(el) {
     const k = dkey(el);
     if (!k || k === "s") return;
@@ -280,9 +311,197 @@
     refresh();
     return true;
   }
+  const findT = (id) => T.list().find(x => x.id === id);
+  const touch = (t) => { t.upAt = new Date().toISOString(); t.upBy = T.me(); };
+  /* 다시 그린 뒤 같은 줄(칸 표지 k)의 같은 단추 · 칸으로 — 줄이 옮겨 가도(중요 → 묶음 위로) 포커스를 잃지 않게 */
+  function refocus(k, sel) {
+    const row = live() ? $$(".tk-row", root).find(r => r.dataset.k === k) : null, el = row && $(sel, row);
+    if (el) el.focus();
+    return !!el;
+  }
+
+  /* 지우기(줄 끝 휴지통 · 고치기 창) — 지운 할 일과 자리를 돌려준다(되돌리기용).
+     마지막 한 건을 지우면 목록이 빈다 — 사람이 한 지우기이므로 대량 삭제 방어(2건 이상 → 0건)가 되살리지 않게 */
+  function removeTask(id) {
+    const arr = SeMIS.data[T.KEY], i = Array.isArray(arr) ? arr.findIndex(t => t.id === id) : -1;
+    if (i < 0) return null;
+    const x = arr.splice(i, 1)[0];
+    if (!arr.length && window.SemisSync && SemisSync.confirmWipe) SemisSync.confirmWipe(T.KEY);
+    persist();
+    return { x, i };
+  }
+  /* 되돌리기 — 그 사이 같은 id 가 다시 생겼으면(다른 탭 되돌리기) 두 번 넣지 않는다 */
+  function restoreTask(r) {
+    const arr = SeMIS.data[T.KEY];
+    if (!r || !Array.isArray(arr) || arr.some(t => t.id === r.x.id)) return false;
+    arr.splice(Math.min(r.i, arr.length), 0, r.x);
+    persist();
+    refresh();
+    return true;
+  }
+  /* 휴지통 = 확인 창 없이 바로 지우고 알림의 '되돌리기'로 살린다 — 키보드로 지웠으면 같은 자리의 다음 휴지통으로 */
+  function delTask(id, b) {
+    const box = b.closest("#tk-list, #tk-meetbox") || root, had = document.activeElement === b, at = $$(".tk-del", box).indexOf(b);
+    const r = removeTask(id);
+    refresh();
+    if (!r) { toast("그 사이 지워진 할 일입니다.", true); return; }
+    toast("할 일을 지웠습니다.", false, { label: "되돌리기", run: () => restoreTask(r) });
+    if (had) { const ds = $$(".tk-del", box.isConnected ? box : root); (ds[Math.min(at, ds.length - 1)] || $("#tk-q, .tk-cin", root) || $("#tk-quick", root)).focus(); }
+  }
+  /* 중요 = 줄 끝 리본 — 켜면 칠한 리본 · 제목 색(별도 표시 없음). 묶음 안 순서는 중요가 위 */
+  function toggleStar(id, k, b) {
+    const t = findT(id), had = document.activeElement === b;
+    if (!t) return;
+    t.star = !t.star;
+    touch(t);
+    persist();
+    refresh();
+    if (had) refocus(k, ".tk-imp");
+  }
+  function toggleThread(k, b) {
+    const i = st.th.indexOf(k), row = b.closest(".tk-row"), t = row && findT(row.dataset.id);
+    if (i >= 0) st.th.splice(i, 1); else st.th.push(k);
+    refresh();
+    /* 기록이 없는 할 일을 펼쳤으면 바로 적게 덧붙이기 칸으로, 기록이 있으면(읽으려고 펼침) 단추에 둔다 — 모바일에서 자판이 저절로 뜨지 않게 */
+    if (i < 0 && t && !(t.notes || []).length) refocus(k, ".tk-nin"); else refocus(k, ".tk-nb");
+  }
+  function addNote(inp) {
+    if (!inp) return;
+    const text = inp.value.trim(), k = inp.dataset.k, row = inp.closest(".tk-row"), t = row && findT(row.dataset.id);
+    if (!text) { inp.focus(); return; }
+    if (!t) { toast("그 사이 지워진 할 일입니다.", true); return; }
+    inp.value = "";   // 저장 중 다시 그려져도 넣은 글이 되살아나지 않게(colAdd 와 같은 까닭)
+    delete st.drafts["n" + k];
+    t.notes = T.norm({ notes: (t.notes || []).concat(T.makeNote(text)) }).notes || [];
+    touch(t);
+    persist();
+    refresh();
+    st.fk = "n" + k;
+    refocus(k, ".tk-nin");
+  }
+  function delNote(id, nid, k) {
+    const t = findT(id), a = t && Array.isArray(t.notes) ? t.notes : [], i = a.findIndex(n => n.id === nid);
+    if (i < 0) { refresh(); return; }
+    const n = a.splice(i, 1)[0];
+    if (!a.length) delete t.notes;
+    touch(t);
+    persist();
+    refresh();
+    refocus(k, ".tk-nin");
+    toast("진행 기록을 지웠습니다.", false, { label: "되돌리기", run: () => {
+      const x = findT(id);
+      if (!x) return;
+      const b = Array.isArray(x.notes) ? x.notes : [];
+      if (b.some(y => y.id === n.id)) return;
+      b.splice(Math.min(i, b.length), 0, n);
+      x.notes = b;
+      touch(x);
+      persist();
+      refresh();
+    } });
+  }
+  /* 줄 끝 단추 · 진행 기록 칸의 누름 — 처리했으면 true(줄 상자 누름 = 고치기 창으로 넘기지 않음) */
+  function rowAct(ev) {
+    const b = ev.target.closest("[data-th], .tk-imp, .tk-del, .tk-ndel, .tk-nsend"), row = b && b.closest(".tk-row");
+    if (!row) return false;
+    const id = row.dataset.id, k = row.dataset.k;
+    if (b.hasAttribute("data-th")) toggleThread(k, b);
+    else if (b.classList.contains("tk-imp")) toggleStar(id, k, b);
+    else if (b.classList.contains("tk-del")) delTask(id, b);
+    else if (b.classList.contains("tk-ndel")) delNote(id, b.closest(".tk-note").dataset.nid, k);
+    else addNote($(".tk-nin", row));
+    return true;
+  }
+  /* 진행 기록 칸 Enter = 덧붙이기(한글 조합 중 Enter 는 넘김) · Shift+Enter = 줄바꿈 · Esc = 접고 단추로 */
+  function noteKey(ev) {
+    const inp = ev.target.closest(".tk-nin");
+    if (!inp) return false;
+    if (ev.key === "Escape") {
+      ev.preventDefault();
+      const k = inp.dataset.k, i = st.th.indexOf(k);
+      if (i >= 0) st.th.splice(i, 1);
+      refresh();
+      refocus(k, ".tk-nb");
+      return true;
+    }
+    if (ev.key !== "Enter" || ev.shiftKey || ev.isComposing || ev.keyCode === 229) return false;
+    ev.preventDefault();
+    addNote(inp);
+    return true;
+  }
+
+  /* Task 담당자 명단(시스템관리자) — 담당자 칩 · 회의 칸 · 글 속 이름 · '나'의 기준. 비우면 인원 관리의 안전보안파트 */
+  function editMembers() {
+    if (!T.canManage()) return;
+    /* 연 때 명단(정하지 않았으면 안전보안파트)과 같으면 쓰지 않는다 — '저장'만 눌러 파트 명단이 고정되지 않게 */
+    const list = T.partPeople().slice(), was = JSON.stringify(list), pool = [];
+    const R = window.SemisRoster;
+    if (R) R.active().forEach(p => { const n = String((p && p.name) || "").trim(); if (n && pool.indexOf(n) < 0) pool.push(n); });
+    openModal(`<h3>Task 담당자 관리</h3>
+      <div class="tk-mform">
+        <ol class="tk-mlist" id="tk-mlist" aria-label="담당자 명단"></ol>
+        <div class="tk-madd"><input id="tk-m-in" type="text" list="tk-m-pool" autocomplete="off" maxlength="200" aria-label="담당자 추가" placeholder="이름 — 여럿이면 쉼표로">
+          <button type="button" class="btn btn-ghost" id="tk-m-add">${icon("plus", 16)}<span>추가</span></button></div>
+        <datalist id="tk-m-pool">${pool.map(n => `<option value="${esc(n)}">`).join("")}</datalist>
+        <p class="tk-mnote">담당자 칩 · 회의 모드 칸에 이 순서로 보입니다(비우면 안전보안파트 전원).</p>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" data-act="cancel">취소</button>
+        <button type="button" class="btn btn-primary" data-act="save">저장</button>
+      </div>`, { sticky: true });
+    const ul = $("#tk-mlist"), inp = $("#tk-m-in");
+    const paint = (fi, sel) => {
+      ul.innerHTML = list.length ? list.map((n, i) => `<li class="tk-mrow" data-i="${i}"><span class="tk-mno mono">${i + 1}</span><span class="tk-mname">${esc(n)}</span>
+          <button type="button" class="icon-btn" data-mv="-1"${i ? "" : " disabled"} title="위로" aria-label="${esc(n)} 위로">${icon("chevup", 16)}</button>
+          <button type="button" class="icon-btn" data-mv="1"${i < list.length - 1 ? "" : " disabled"} title="아래로" aria-label="${esc(n)} 아래로">${icon("chevdown", 16)}</button>
+          <button type="button" class="icon-btn" data-rm title="빼기" aria-label="${esc(n)} 빼기">${icon("x", 16)}</button></li>`).join("")
+        : `<li class="tk-mempty">비어 있음 — 저장하면 안전보안파트 명단(${T.rosterPart().length}명)</li>`;
+      const r = fi != null ? $$(".tk-mrow", ul)[Math.min(fi, list.length - 1)] : null, f = r && ($(sel, r) || $("[data-rm]", r));
+      if (f && !f.disabled) f.focus(); else if (fi != null) inp.focus();
+    };
+    const addIn = () => {
+      const ns = T.splitNames(inp.value).map(x => x.slice(0, 40).trim()).filter(Boolean);
+      let over = false;
+      ns.forEach(n => { if (list.indexOf(n) >= 0) return; if (list.length >= T.MEMBERS_MAX) { over = true; return; } list.push(n); });
+      inp.value = "";
+      paint();
+      if (over) toast("담당자는 " + T.MEMBERS_MAX + "명까지입니다.", true);
+    };
+    paint();
+    $("#tk-m-add").onclick = () => { addIn(); inp.focus(); };
+    inp.onkeydown = (ev) => {
+      if (ev.key !== "Enter" || ev.isComposing || ev.keyCode === 229) return;
+      ev.preventDefault();
+      addIn();
+    };
+    ul.onclick = (ev) => {
+      const b = ev.target.closest("button"), r = b && b.closest(".tk-mrow");
+      if (!r || b.disabled) return;
+      const i = +r.dataset.i;
+      if (b.hasAttribute("data-rm")) { list.splice(i, 1); paint(i, "[data-rm]"); return; }
+      const j = i + Number(b.dataset.mv);
+      if (j < 0 || j >= list.length) return;
+      [list[i], list[j]] = [list[j], list[i]];
+      paint(j, b.dataset.mv === "-1" ? '[data-mv="-1"]' : '[data-mv="1"]');
+    };
+    $('#modal-box [data-act="cancel"]').onclick = closeModal;
+    /* 칸에 적어 두고 '추가'를 누르지 않은 이름도 넣는다 */
+    $('#modal-box [data-act="save"]').onclick = () => {
+      if (inp.value.trim()) addIn();
+      closeModal();
+      if (JSON.stringify(list) === was) return;
+      const c = SeMIS.data[T.CFG], next = Object.assign({}, c && typeof c === "object" && !Array.isArray(c) ? c : {});
+      if (list.length) next.members = list.slice(); else delete next.members;
+      SeMIS.data[T.CFG] = next;
+      persist();
+      SeMIS.renderView();
+      toast("담당자 명단을 저장했습니다.");
+    };
+  }
+
   function setState(o) {
     o = o || {};
-    if (o.reset) Object.assign(st, { tab: "todo", who: null, q: "", meet: false, doneN: PAGE, qSel: null, open: "", drafts: {}, fk: "", wk: [] });
+    if (o.reset) Object.assign(st, { tab: "todo", who: null, q: "", meet: false, doneN: PAGE, qSel: null, open: "", drafts: {}, fk: "", wk: [], th: [] });
     if (o.tab === "todo" || o.tab === "done") st.tab = o.tab;
     if (typeof o.who === "string") pickWho(o.who);
     if (typeof o.q === "string") st.q = ui.searchValue(o.q);
@@ -336,7 +555,7 @@
         ${chipsHTML("tk-f-teams", "관련 팀", union(T.teamNames(), v.teams), v.teams, false)}
         <div class="form-row"><label for="tk-f-cat">분류</label><select id="tk-f-cat"><option value="">${esc(autoLb(v))}</option>${T.CAT_ORDER.map(k =>
           `<option value="${k}"${v.cat === k ? " selected" : ""}>${esc(T.CATS[k].label)}</option>`).join("")}</select></div>
-        <label class="tk-fchk"><input type="checkbox" id="tk-f-star"${v.star ? " checked" : ""}>${icon("star", 16)}<span>중요</span></label>
+        <label class="tk-fchk"><input type="checkbox" id="tk-f-star"${v.star ? " checked" : ""}>${icon("pin", 16)}<span>중요</span></label>
         <div class="form-row"><label for="tk-f-memo">메모</label><textarea id="tk-f-memo" rows="3" maxlength="2000">${esc(v.memo)}</textarea></div>
         ${file ? `<div class="form-row"><button type="button" class="btn btn-ghost btn-sm" id="tk-f-file">${icon("doc", 15)}<span>접수 카운터 원본</span></button></div>` : ""}
       </div>
@@ -408,11 +627,9 @@
       else toast(doneOn ? "이미 마친 할 일입니다." : "다시 할 일로 옮겼습니다.");
     };
     $('#modal-box [data-act="del"]').onclick = () => confirmModal(`할 일 "${v.t}"을(를) 지웁니다.`, () => {
-      const arr = SeMIS.data[T.KEY], i = Array.isArray(arr) ? arr.findIndex(t => t.id === v.id) : -1;
-      /* 마지막 한 건을 지우면 목록이 빈다 — 사람이 확인한 지우기이므로 대량 삭제 방어(2건 이상 → 0건)가 되살리지 않게 */
-      if (i >= 0) { arr.splice(i, 1); if (!arr.length && window.SemisSync && SemisSync.confirmWipe) SemisSync.confirmWipe(T.KEY); persist(); }
+      const r = removeTask(v.id);
       refresh();
-      if (i >= 0) toast("지웠습니다."); else toast("그 사이 지워진 할 일입니다.", true);
+      if (r) toast("지웠습니다."); else toast("그 사이 지워진 할 일입니다.", true);
     });
   }
   const onHere = () => (location.hash.replace(/^#\//, "") || "dashboard") === MOD;
@@ -457,7 +674,7 @@
   }
   /* 줄 상자 누름은 마우스 편의 — 키보드 · 화면 읽기 프로그램은 제목 단추로 같은 창(줄 상자에는 role · tabindex 없음) */
   function rowClick(ev) {
-    const row = ev.target.closest(".tk-row"), hit = ev.target.closest("input, button, a");
+    const row = ev.target.closest(".tk-row"), hit = ev.target.closest("input, button, a, textarea, .tk-thread");
     if (!row || (hit && !hit.classList.contains("tk-t"))) return;
     if (typeof T.edit === "function") T.edit(row.dataset.id);
   }
@@ -498,13 +715,15 @@
         if (c) c.focus();
         return;
       }
-      rowClick(ev);
+      if (!rowAct(ev)) rowClick(ev);
     };
+    box.onkeydown = (ev) => { noteKey(ev); };   // on* 처리기가 false 를 돌려주면 기본 동작(글자 입력)이 막힌다
   }
   function wireMeet(el) {
     const mb = $("#tk-meetbox", el);
     paintMeet();
     mb.onkeydown = (ev) => {
+      if (noteKey(ev)) return;
       const inp = ev.target.closest(".tk-cin");
       if (!inp || ev.key !== "Enter" || ev.isComposing || ev.keyCode === 229) return;
       ev.preventDefault();
@@ -525,7 +744,7 @@
     };
     mb.onclick = (ev) => {
       const b = ev.target.closest("[data-wk]");
-      if (!b) { rowClick(ev); return; }
+      if (!b) { if (!rowAct(ev)) rowClick(ev); return; }
       const n = b.dataset.wk, i = st.wk.indexOf(n);
       if (i >= 0) st.wk.splice(i, 1); else st.wk.push(n);
       b.setAttribute("aria-expanded", String(i < 0));
@@ -545,7 +764,8 @@
       ui.head({
         title: TITLE,
         actions: `<button type="button" class="btn btn-primary" id="tk-add">${icon("plus", 17)}<span>할 일 추가</span></button>` +
-          `<button type="button" class="btn btn-ghost" id="tk-meet">${icon("users", 17)}<span>${st.meet ? "목록 보기" : "회의 모드"}</span></button>`
+          `<button type="button" class="btn btn-ghost" id="tk-meet">${icon("users", 17)}<span>${st.meet ? "목록 보기" : "회의 모드"}</span></button>` +
+          (T.canManage() ? `<button type="button" class="btn btn-ghost btn-sm ph-rare" id="tk-members">${icon("sliders", 16)}<span>담당자 관리</span></button>` : "")
       }) +
       `<div id="tk-stats">${statsHTML()}</div>
       <section class="card tk-card${st.meet ? " tk-meeting" : ""}">
@@ -584,10 +804,13 @@
       b.setAttribute("aria-pressed", String(i < 0));
     };
     if (st.meet) wireMeet(el); else wireList(el, qi, qp);
-    card.addEventListener("input", (ev) => keepDraft(ev.target));
+    card.addEventListener("input", (ev) => { keepDraft(ev.target); if (ev.target.classList.contains("tk-nin")) fit(ev.target); });
+    $$(".tk-nin", el).forEach(fit);
     card.addEventListener("focusin", (ev) => { const k = dkey(ev.target); if (k) st.fk = k; });
     card.addEventListener("focusout", (ev) => { const x = ev.target, k = dkey(x); if (k) setTimeout(() => dropFocus(x, k), 0); });
     $("#tk-add", el).onclick = () => { if (typeof T.edit === "function") T.edit(null); };
+    const mg = $("#tk-members", el);
+    if (mg) mg.onclick = editMembers;
     /* 코어 다시 그리기로 — 머리말 인쇄 단추는 코어가 붙인다 */
     $("#tk-meet", el).onclick = () => {
       st.meet = !st.meet;
@@ -602,7 +825,7 @@
     if (want) { if (T.list().some(t => t.id === want)) edit(want); else toast("찾지 못한 할 일입니다 — 지워졌을 수 있습니다.", true); }
   }
 
-  Object.assign(T, { add, setDone, setState, edit, open, calItems, todayData, todaySub });
+  Object.assign(T, { add, setDone, setState, edit, open, calItems, todayData, todaySub, editMembers });
 
   SeMIS.registerModule(MOD, {
     title: TITLE,
@@ -618,7 +841,7 @@
       const td = T.today();
       return T.list().map(t => ({ title: t.t,
         sub: [t.done ? "마침" : "", t.due ? T.dayLabel(t.due, td) : "", t.who.join(", ")].filter(Boolean).join(" · "),
-        text: [t.t, t.who, t.memo, t.place, t.teams], route: MOD, pick: () => hold(t.id) }));
+        text: [t.t, t.who, t.memo, t.place, t.teams, (t.notes || []).map(n => n.x)], route: MOD, pick: () => hold(t.id) }));
     }
   });
 })();

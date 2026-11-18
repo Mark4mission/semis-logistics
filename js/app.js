@@ -3,7 +3,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.77.1";
+  const VERSION = "1.78.0";
   const APP_NAME = "H:drive";
   const APP_ALIAS = "ARGOS (Air-cargo Risk & Guard Operations System)";
   /* 데이터 캐시는 탭 sessionStorage 에만(탭 닫기·로그아웃 시 소멸). 화면 설정(LS_UI)만 localStorage */
@@ -88,6 +88,8 @@ const SeMIS = (() => {
     grid: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/>',
     x: '<path d="M6 6l12 12M18 6 6 18"/>',
     pin: '<path d="M7 4h10v16l-5-3.6L7 20z"/>',
+    tag: '<path d="M3.5 12.3V4.5a1 1 0 0 1 1-1h7.8l8.2 8.2a1 1 0 0 1 0 1.4l-7.4 7.4a1 1 0 0 1-1.4 0z"/><circle cx="8.2" cy="8.2" r="1.4"/>',
+    comment: '<path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2h-7.5L6 20v-3.5A2 2 0 0 1 4 14.5z"/>',
     logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
     check: '<path d="m5 12 5 5 9-10"/>',
@@ -435,6 +437,7 @@ const SeMIS = (() => {
       roster: { team: "", people: [], orgs: [] }, // 인원 관리 — 임직원 · 협력업체 통합 명단 (명단 · 사번은 공용 DB만, js/roster.js)
       desk: { cfg: {}, log: [] },  // 접수 카운터 — 분야별 담당 · 올린 문서 기록 (js/desk.js)
       tasks: [],                   // Task 관리 — 안전보안파트 할 일 (js/tasks-core.js)
+      taskCfg: {},                 // Task 관리 담당자 명단 { members: [이름] } — 비면 인원 관리의 안전보안파트 (명단은 공용 DB만)
       boards: defaultBoards()      // 게시판 정의 (글은 서버 비공개 표 — js/board.js)
     };
   }
@@ -593,7 +596,7 @@ const SeMIS = (() => {
     arr(obj("seclogCfg", { since: "", templates: [] }), "templates");
     const sc = obj("selfCheckCfg", {});
     if (!isObj(sc.forms)) sc.forms = {};
-    ["serp", "threat", "secPost", "secPostImg", "patrolCfg", "partners", "kcra", "dissem", "scrStats", "usRescreen"].forEach(k => obj(k, {}));
+    ["serp", "threat", "secPost", "secPostImg", "patrolCfg", "partners", "kcra", "dissem", "scrStats", "usRescreen", "taskCfg"].forEach(k => obj(k, {}));
     arr(obj("learn", { courses: [] }), "courses");
     const lpp = obj("roster", { team: "", people: [], orgs: [] });
     arr(lpp, "people"); arr(lpp, "orgs");

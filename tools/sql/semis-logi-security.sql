@@ -87,6 +87,7 @@ insert into semis_logi_private.key_acl(key, read_rank, write_rank) values
   ('boards',1,4),        -- 게시판 정의(이름 · 권한 · 기능 토글): 내부 전 계정 열람 · 시스템관리자 편집, 글은 비공개 표(tools/sql/semis-logi-bbs.sql, 마이그레이션 semis_logi_security_28_bbs)
   ('desk',3,3),          -- 메인 데스크 (v1.47): 접수 대장 · 담당 배정 — hq 열람 · 편집 (마이그레이션 semis_logi_security_26_desk)
   ('tasks',3,3),    -- Task 관리 — 안전보안파트 할 일(마이그레이션 semis_logi_tasks_1)
+  ('taskCfg',3,4),  -- Task 관리 담당자 명단: 안전보안파트 열람 · 시스템관리자 편집(마이그레이션 semis_logi_tasks_2)
   ('auditMaster',3,9),   -- 수검 체크리스트 원본(민감보안정보): hq 열람 · 등록은 SQL(서비스 권한)로만 (마이그레이션 semis_logi_security_9_audit_master)
   ('pwOverrides',9,9), ('userOverrides',9,9), ('customUsers',9,9), ('__hist_probe',9,9)
 on conflict (key) do update set read_rank = excluded.read_rank, write_rank = excluded.write_rank;
