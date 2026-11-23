@@ -6,7 +6,9 @@
    v1.81 제자리 갱신: 지도는 지우고 다시 그리지 않고 표지 · 선 · 정보창을 제자리에서 고친다(열어 둔 정보창 · 보던 자리 유지, 지도가 저절로 움직이지 않음).
    v1.81 실시간(현장 웹앱만 — setLive): 서버가 5초마다 이어 보내는 위치(바뀐 기체만)를 받아 표지를 옮기고, 그 사이는 속도 · 방위로 이어 그린다.
      이어 받기를 못 쓰는 망에서는 15초마다 묻는다. 탭이 가려지면 멈춤. 기록 · 입출항은 기존 갱신(실시간 중에는 2분마다)이 맡는다.
-   v1.81 처음 화면(setView): 정한 중심 · 반경이 한 화면에 들어오게(현장 웹앱 = 인천 활주로 4개의 가운데 · 반경 5NM). */
+   v1.81 처음 화면(setView): 정한 중심 · 반경이 한 화면에 들어오게(현장 웹앱 = 인천 활주로 4개의 가운데 · 반경 5NM).
+   v1.83 지상 이동(실시간 지도만 · 10단계부터): 지상에서 움직이는(3kt 이상) 기체는 공항 묶음에 넣지 않고 제자리에 따로 그려 활주 · 유도 움직임을 보여 준다.
+     멈춘 뒤 1분이 지나면 묶음(ICN n)으로 들어간다. 착륙 · 이륙 때 표지는 같은 것이 이어진다(색만 바뀜). */
 "use strict";
 
 (() => {
@@ -32,6 +34,12 @@
   const DR_BLEND = 900;       // 새 위치를 받았을 때 그려진 자리와의 차이를 푸는 시간
   const DR_MIN_GS = 30;       // 이 속도(kt) 아래는 이어 그리지 않음
   const ANIM_MS = 66;
+  /* 지상 이동(v1.83) */
+  const GND_MOVE_KT = 3;      // 이 속도부터 '움직임'(주기 중 떨림은 0~1kt)
+  const GND_LINGER = 60000;   // 마지막으로 움직인 뒤 이만큼은 따로 그림 — 지나면 공항 묶음으로
+  const GND_SEEN = 15000;     // 이 안에 받은 위치만 '지금 움직임'으로 침
+  const GND_Z = 10;           // 이 단계부터 따로 그림(멀리서 보면 묶음과 겹쳐 지저분함)
+  const DR_HOLD_GND = 7000;   // 지상은 이어 그리기를 짧게(자주 서고 꺾으므로)
 
   const state = { ts: 0, err: "", ac: [], events: null, trail: false, fetchedAt: 0, srcErr: "", ver: 0, busy: null, me: null, fleet: null, auth: true };
 
@@ -133,7 +141,8 @@
      이어 그리기용 시각(_pl)만 이 기기 시계로 따로 둔다: 위치 시각 + skew(= 받은 때 − (t + a), 기기 시계와 서버 시계의 차이).
      기기 시계가 틀려도 움직임은 맞고, 기본 갱신으로 온 서버 기록에도 같은 식을 써서 두 자료가 번갈아 와도 표지가 끊기지 않는다. */
   const live = { kinds: {}, rows: {}, t: 0, rx: 0, age: 0, skew: null, err: false, on: false, gen: 0, ctrl: null, wake: null,
-    mode: "stream", fails: 0, pollUntil: 0, offUntil: 0, got: 0, bytes: 0, msgs: 0, conns: 0 };
+    mode: "stream", fails: 0, pollUntil: 0, offUntil: 0, got: 0, bytes: 0, msgs: 0, conns: 0,
+    move: {} };                  // 기체별 마지막으로 지상에서 움직인 때(이 기기 시계) — v1.83
   const fnum = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
   const liveFresh = () => !!live.t && Date.now() - live.rx < LIVE_FRESH && live.age < LIVE_FRESH;
   /* 서버 기록 줄에 이어 그리기용 시각을 붙임 — 실시간을 한 번이라도 받은 뒤에만(H:drive 에서는 그대로) */
@@ -349,9 +358,12 @@
         }).addTo(map);
         map.setView([37.46, 126.44], 4);
         m = maps[kind] = { L, map, el, layer: L.layerGroup().addTo(map), meLayer: L.layerGroup().addTo(map), marks: {}, items: {}, home: null,
-          fitted: false, dirty: false, lbl: [], boxing: false };
+          fitted: false, dirty: false, painting: false, sepGnd: false, lbl: [], boxing: false };
         map.on("zoomend moveend resize", () => declutter(kind));
-        map.on("zoomend", () => { if (m.dirty) paintMap(kind); });      // 확대 애니메이션 중에 미뤄 둔 그리기
+        map.on("zoomend", () => {                                        // 확대 애니메이션 중에 미뤄 둔 그리기 · 지상 이동 표시 단계(GND_Z)를 넘나든 때
+          if (m.painting) return;
+          if (m.dirty || (live.kinds[kind] && (map.getZoom() >= GND_Z) !== m.sepGnd)) paintMap(kind);
+        });
         map.on("resize", () => { if (!m.fitted && view[kind]) homeView(kind); });
         anchorZoom(m);
         if (kind !== "full") wheelGate(m);
@@ -391,8 +403,8 @@
     if (!(sz.x >= 80 && sz.y >= 80)) return false;                 // 지도 칸이 아직 안 잡힘 — 다음 그리기 · 크기 변화 때 다시
     const c = m.L.latLng(v.lat, lonN(v.lon));
     const z = m.map.getBoundsZoom(c.toBounds(v.nm * 1852 * 2));
-    m.map.setView(c, Math.max(3, Math.min(MAX_Z, Math.floor(z + 1e-6))), { animate: false });
     m.fitted = true;
+    m.map.setView(c, Math.max(3, Math.min(MAX_Z, Math.floor(z + 1e-6))), { animate: false });
     return true;
   }
   /* 내 위치가 지금 화면 안에 있으면 그 자리(지도 좌표 — 태평양 중심 경도) */
@@ -517,11 +529,12 @@
   }
   function popHTML(it) {
     const st = it.st, r = it.row || {};
+    const mv = st.code === "gnd" && (Number(r.gs) || 0) >= GND_MOVE_KT;       // 지상 이동 중(따로 그린 표지에서만 이 창을 씀)
     const rows = [
-      ["상태", esc(st.label) + (st.code === "lost" ? " · " + esc(F.ago(st.seen)) : "")],
+      ["상태", esc(st.label) + (mv ? " · 이동 중" : "") + (st.code === "lost" ? " · " + esc(F.ago(st.seen)) : "")],
       it.dep ? ["출발", esc((F.aptName(it.dep.apt) || "공항 미상") + " " + F.kstWhen(Date.parse(it.dep.at))) + (it.dep.inferred ? " (추정)" : "")] : null,
       st.code !== "gnd" && r.alt != null ? ["고도", esc(altTxt(r)) + (r.vr != null && Math.abs(r.vr) >= 300 ? ` <small>${r.vr > 0 ? "상승" : "강하"} ${esc(nf(Math.abs(Math.round(r.vr))))} ft/분</small>` : "")] : null,
-      st.code !== "gnd" && r.gs != null ? ["속도", esc(gsTxt(r))] : null,
+      (st.code !== "gnd" || mv) && r.gs != null ? ["속도", esc(gsTxt(r))] : null,
       st.code === "appr" ? ["인천까지", esc(nf(Math.round(st.dHome)) + " km · 도착 예상 " + F.kstHM(st.eta))] : null,
       st.code === "gnd" && st.since ? ["도착", esc(F.kstWhen(st.since) + " · " + F.dur(Date.now() - st.since) + " 지상")] : null,
       r.sqk ? ["스쿽", esc(r.sqk)] : null,
@@ -567,12 +580,13 @@
   /* 이어 그리기(v1.81 · 실시간 지도만) — 마지막 위치에서 속도 · 방위로 지금 있을 자리. DR_HOLD 를 넘으면 그 자리에 멈춘다.
      새 위치를 받으면 그려진 자리와의 차이(oLat · oLon)를 DR_BLEND 동안 풀어 표지가 튀지 않게 한다 */
   function drOf(it, now) {
-    const r = it.row, c = it.st.code;
-    if (!r || !(c === "air" || c === "appr" || c === "emg") || !Number.isFinite(r._pl) || !(r.gs >= DR_MIN_GS) || r.trk == null) return null;
-    return { lat: r.lat, lon: r.lon, t: r._pl, gs: r.gs, trk: r.trk, fresh: now - r._pl <= DR_NEW, oLat: 0, oLon: 0, ot: 0 };
+    const r = it.row, c = it.st.code, gnd = c === "gnd";
+    if (!r || !(gnd || c === "air" || c === "appr" || c === "emg") || !Number.isFinite(r._pl) || r.trk == null) return null;
+    if (!(r.gs >= (gnd ? GND_MOVE_KT : DR_MIN_GS))) return null;
+    return { lat: r.lat, lon: r.lon, t: r._pl, gs: r.gs, trk: r.trk, hold: gnd ? DR_HOLD_GND : DR_HOLD, fresh: now - r._pl <= DR_NEW, oLat: 0, oLon: 0, ot: 0 };
   }
   function drPos(dr, now) {
-    const dt = Math.max(0, Math.min(now - dr.t, DR_HOLD));
+    const dt = Math.max(0, Math.min(now - dr.t, dr.hold || DR_HOLD));
     const p = dt ? F.destPoint(dr, dr.trk, dr.gs * 1.852 * dt / 3600000) : dr;
     const k = dr.ot ? Math.max(0, 1 - (now - dr.ot) / DR_BLEND) : 0;
     return [p.lat + dr.oLat * k, near(lonN(p.lon), lonN(dr.lon)) + dr.oLon * k];
@@ -670,6 +684,11 @@
     const m = maps[kind];
     if (!m || !m.el.isConnected) return;
     if (m.map._animatingZoom) { m.dirty = true; return; }       // 확대 애니메이션 중에 옮기면 표지가 튐 — 끝난 뒤(zoomend)에
+    if (m.painting) return;
+    m.painting = true;
+    try { paintMapNow(kind, m); } finally { m.painting = false; }
+  }
+  function paintMapNow(kind, m) {
     m.dirty = false;
     const { L, layer } = m;
     const now = Date.now();
@@ -677,19 +696,34 @@
     const md = model(now);
     const pts = [], want = {}, groups = {};
     const full = kind === "full", liveOn = !!live.kinds[kind];
+    if (!m.fitted && view[kind]) homeView(kind);                    // 처음 화면이 정해진 지도 — 그리기 전에 맞춤(아래 단계 판단이 그 화면 기준이 되게)
+    const sepGnd = m.sepGnd = liveOn && m.map.getZoom() >= GND_Z;   // 지상 이동 기체를 따로 그릴지
     const home = F.apt(F.HOME);
     if (!m.home) m.home = L.circleMarker([home.lat, home.lon], { radius: 5, weight: 2, color: "#0b1f26", fillColor: "#fff", fillOpacity: 1, interactive: false }).addTo(layer);
 
     md.items.forEach(it => {
       const st = it.st;
       if (!st.pos) return;
+      const trk = it.row && it.row.trk != null ? Number(it.row.trk) : null;
       if (st.code === "gnd") {
-        const k = st.at || "@" + it.f.hex;
-        (groups[k] = groups[k] || { at: st.at, pos: st.at ? F.apt(st.at) : st.pos, list: [] }).list.push(it);
+        /* 지상 이동(v1.83): 방금 받은 위치에서 3kt 이상이면 '움직임'으로 적어 두고, 마지막 움직임 뒤 1분까지는 묶음에 넣지 않고 제자리에 따로 그린다 */
+        if (liveOn) {
+          const r = it.row;
+          if (r && Number.isFinite(r._pl) && now - r._pl <= GND_SEEN && (Number(r.gs) || 0) >= GND_MOVE_KT) live.move[it.f.hex] = now;
+        }
+        if (!(sepGnd && live.move[it.f.hex] && now - live.move[it.f.hex] < GND_LINGER)) {
+          const k = st.at || "@" + it.f.hex;
+          (groups[k] = groups[k] || { at: st.at, pos: st.at ? F.apt(st.at) : st.pos, list: [] }).list.push(it);
+          return;
+        }
+        const gat = [st.pos.lat, lonN(st.pos.lon)];
+        const gtitle = (it.fno || it.f.reg) + " " + st.label + ((Number(it.row.gs) || 0) >= GND_MOVE_KT ? " · 이동 중" : "");
+        want["ac:" + it.f.hex] = { type: "ac", it, at: gat, trail: null, trk, pr: 2, z: 100, title: gtitle, pop: popHTML(it),
+          sig: ["gnd", it.fno, it.f.reg, gtitle].join("|"), dr: drOf(it, now) };
+        pts.push(gat);
         return;
       }
       const lon = lonN(st.pos.lon);
-      const trk = it.row && it.row.trk != null ? Number(it.row.trk) : null;
       if (st.code === "lost") {
         const last = [st.pos.lat, lon];
         const at = st.est ? [st.est.lat, near(st.est.lon, lon)] : last;
@@ -737,7 +771,7 @@
       if (w.type === "apt") w.g.list.forEach(it => { m.marks[it.f.hex] = x.mk; });
       else { m.marks[w.it.f.hex] = x.mk; m.lbl.push({ mk: x.mk, pr: w.pr }); }
     });
-    if (!m.fitted) { if (view[kind]) homeView(kind); else fitMap(kind, pts); }
+    if (!m.fitted && !view[kind]) fitMap(kind, pts);
     declutter(kind);
     const leg = m.el.parentNode && m.el.parentNode.querySelector(".fo-legend");
     const lh = legendHTML(md);
@@ -747,7 +781,7 @@
   /* 이어 그리기 — 실시간 지도에서 움직이는 표지만, 1초에 15번쯤. 움직일 것이 없으면 멈추고 다음 그리기 때 다시 돈다 */
   let animId = 0, animLast = 0;
   const raf = (f) => (typeof requestAnimationFrame === "function" ? requestAnimationFrame(f) : setTimeout(f, ANIM_MS));
-  const drMoving = (dr, now) => now - dr.t < DR_HOLD || (dr.ot && now - dr.ot < DR_BLEND);
+  const drMoving = (dr, now) => now - dr.t < (dr.hold || DR_HOLD) || (dr.ot && now - dr.ot < DR_BLEND);
   function animKick() {
     if (animId) return;
     const now = Date.now();

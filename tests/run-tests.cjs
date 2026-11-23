@@ -3,7 +3,7 @@
    실행: npm test  (jsdom 필요: npm install)
    구성: [C] 코어(해시·계정·메뉴·정규화·권한·라우터·예정 모듈)
          [D] 대시보드·공지·현황판  [S] 시스템 설정  [M] 이식 모듈 스모크(일정·회의록·연락망·검색)
-         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [IM] 한글 입력 보호  [FL] 운항 현황  [AU] 수검 대응 센터  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [SEC] 서버 보안(비공개 파일·살균·CSP)  [PT] 순찰일지  [SK] 자체 보안점검(수준관리지침 별표 · HWPX)  [UP] 점검 표시 · 다가오는 점검  [CM] v1.29 화면 정돈  [CN] v1.30 편집 모드 · 모바일 접기  [ED] v1.39 보안교육 이수 등록(배포용)  [TA] v1.41 점검교육 · 수검 자료  [DK] v1.47 메인 데스크  [UI] v1.48 지원 카드 · 공통 패널 · 부엉이  [AR] v1.49 아르고 AI 도우미  [DS] v1.55 문서 · 규정 검색  [PV] v1.56–1.57 첨부 미리보기(암호 · XLS · HWP)  [FR] v1.81 운항 실시간 · 지도 제자리 갱신 · 처음 화면  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
+         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [IM] 한글 입력 보호  [FL] 운항 현황  [AU] 수검 대응 센터  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [SEC] 서버 보안(비공개 파일·살균·CSP)  [PT] 순찰일지  [SK] 자체 보안점검(수준관리지침 별표 · HWPX)  [UP] 점검 표시 · 다가오는 점검  [CM] v1.29 화면 정돈  [CN] v1.30 편집 모드 · 모바일 접기  [ED] v1.39 보안교육 이수 등록(배포용)  [TA] v1.41 점검교육 · 수검 자료  [DK] v1.47 메인 데스크  [UI] v1.48 지원 카드 · 공통 패널 · 부엉이  [AR] v1.49 아르고 AI 도우미  [DS] v1.55 문서 · 규정 검색  [PV] v1.56–1.57 첨부 미리보기(암호 · XLS · HWP)  [FR] v1.81 운항 실시간 · 지도 제자리 갱신 · 처음 화면 · v1.82 지상 이동  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
    ═══════════════════════════════════════════════════════ */
 "use strict";
 const fs = require("fs");
@@ -5635,7 +5635,7 @@ function makeServer(opts = {}) {
       ok(SF.liveTake({ t: t1, a: 0, ac: [row(37.33, 126.52, { g: null, alt: 600, gs: 140 })] }, t1));
       ok(it().row.lat === 37.33 && it().row.gnd === false && it().row.alt === 600, "모름 → 비행 상태 유지");
       ok(Number.isFinite(it().row._pl), "이어 그리기용 시각");
-      SF.liveTake({ t: t1 + 5000, a: 0, ac: [row(37.4611, 126.4412, { g: 1, alt: null, gs: 90 })] }, t1 + 5000);
+      SF.liveTake({ t: t1 + 5000, a: 0, ac: [row(37.4611, 126.4412, { g: 1, alt: null, gs: 0 })] }, t1 + 5000);
       const g = it();
       ok(g.row.gnd === true && g.row.alt === null && g.st.code === "gnd" && g.st.at === "ICN", "지상 → 인천 지상");
       SF.paintDash();
@@ -5712,6 +5712,51 @@ function makeServer(opts = {}) {
       eq(e.liveCalls().length, n, "돌아와 0.8초 머물기 전에는 잇지 않음(깜빡이는 동안 연결 0건)");
       await tick(700);
       eq(e.liveCalls().length, n + 1, "머문 뒤 한 번만 다시 연결"); ok(L.on && e.stream() !== s1 && !e.stream().aborted);
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+
+    await ta("FR11 지상 이동(v1.83): 움직이는 지상 기체는 묶음 밖에 따로(이어 그림) · 멈춘 뒤 1분이 지나면 묶음으로 · 착륙해도 같은 표지 · 10단계 아래에서는 묶음", async () => {
+      ok(/\.fo-ac\[data-tone="gnd"\] \{ color: var\(--sidebar-bg\); \}/.test(read("css/main.css")), "지상 이동 표지 색 = 범례 '지상'");
+      const e = mk();
+      await up();
+      const m = e.map(), SF = e.SF(), L = SF.live;
+      const bd = m.marks["71bd07"], mk1 = m.marks["71bc21"];          // 71bd07 = 인천 지상(묶음 1대) · 71bc21 = 접근 중
+      eq(bd.getElement().querySelector(".fo-apt i").textContent, "1");
+      // ① 주기 중이던 기체가 움직이기 시작(유도 12kt)
+      let t = Date.now();
+      const gnd = (lat, lon, gs) => ["71bd07", lat, lon, null, gs, 144, null, 1, null, 0, "AIH281", 0.3, 0.2];
+      SF.liveTake({ t, a: 0, ac: [gnd(37.4605, 126.441, 12)] }, t); SF.paintDash();
+      const gm = m.marks["71bd07"];
+      ok(gm && gm !== bd && m.map.hasLayer(gm) && !m.map.hasLayer(bd), "따로 그림 · 묶음은 없어짐(1대뿐이었으므로)");
+      eq(gm.getElement().querySelector(".fo-ac").dataset.tone, "gnd", "지상 색");
+      const ll = gm.getLatLng();
+      ok(Math.abs(ll.lat - 37.4605) < 3e-4 && Math.abs(ll.lng - 126.441) < 3e-4, "실제 자리 " + ll.lat + "," + ll.lng);
+      ok(m.items["ac:71bd07"].dr && m.items["ac:71bd07"].dr.hold === 7000, "지상도 이어 그림(7초까지)");
+      ok(gm.getPopup().getContent().includes("이동 중") && gm.getPopup().getContent().includes("12 kt"), "정보창: 이동 중 · 속도");
+      // ② 멈춤 — 1분 동안은 그대로 따로, 지나면 묶음으로
+      t += 5000; SF.liveTake({ t, a: 0, ac: [gnd(37.4601, 126.4414, 0)] }, t); SF.paintDash();
+      ok(m.marks["71bd07"] === gm && m.map.hasLayer(gm), "멈춘 직후에는 그대로(같은 표지)");
+      ok(!m.items["ac:71bd07"].dr, "멈추면 이어 그리지 않음");
+      ok(!gm.getPopup().getContent().includes("이동 중"), "정보창: 이동 중 빠짐");
+      L.move["71bd07"] -= 58000; SF.paintDash();
+      ok(m.map.hasLayer(gm), "58초 — 아직 따로");
+      L.move["71bd07"] -= 3000; SF.paintDash();
+      const bd2 = m.marks["71bd07"];
+      ok(!m.map.hasLayer(gm) && bd2 && bd2 !== gm && bd2.getElement().querySelector(".fo-apt"), "1분 지나면 인천 묶음으로");
+      eq(bd2.getElement().querySelector(".fo-apt i").textContent, "1");
+      // ③ 착륙 — 접근 중이던 표지가 그대로 지상 이동 표지로(다시 만들지 않음), 활주 중에는 묶음에 안 셈
+      t += 5000; SF.liveTake({ t, a: 0, ac: [["71bc21", 37.4689, 126.453, null, 118, 324.6, null, 1, "2041", 0, "AIH970", 0.3, 0.1]] }, t); SF.paintDash();
+      ok(m.marks["71bc21"] === mk1 && m.map.hasLayer(mk1), "같은 표지");
+      eq(mk1.getElement().querySelector(".fo-ac").dataset.tone, "gnd");
+      eq(e.qa("#dflt-appr .appr-row").length, 0, "접근 목록에서는 빠짐");
+      eq(m.marks["71bd07"].getElement().querySelector(".fo-apt i").textContent, "1", "활주 중인 기체는 묶음에 안 셈");
+      // ④ 멀리서 보면(10단계 아래) 묶음에 — 다시 확대하면 따로
+      m.map.setView([37.46, 126.44], 8, { animate: false });
+      ok(!m.map.hasLayer(mk1) && m.marks["71bc21"] === m.marks["71bd07"], "8단계 = 묶음");
+      eq(m.marks["71bd07"].getElement().querySelector(".fo-apt i").textContent, "2");
+      m.map.setView([37.46, 126.44], 12, { animate: false });
+      ok(m.marks["71bc21"] !== m.marks["71bd07"] && m.marks["71bc21"].getElement().querySelector('.fo-ac[data-tone="gnd"]'), "12단계 = 다시 따로");
+      eq(m.marks["71bd07"].getElement().querySelector(".fo-apt i").textContent, "1");
       eq(e.errors.length, 0, e.errors.join(" | "));
     });
 

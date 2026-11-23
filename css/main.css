@@ -2925,6 +2925,7 @@ a.nb-file, .nb-file > a, .nb-editor img, .notice-html img, .ag-memo img, .cn-ric
   transform: rotate(var(--r, 0deg)); filter: drop-shadow(0 1px 1.5px rgba(11,31,38,.35)); transition: transform .6s var(--ease-out); }
 .fo-ac[data-tone="appr"] { color: #d97706; }
 .fo-ac[data-tone="emg"] { color: var(--danger); }
+.fo-ac[data-tone="gnd"] { color: var(--sidebar-bg); }   /* 지상 이동 중(v1.83 — 실시간 지도) — 범례 '지상'과 같은 색 */
 .fo-ac[data-tone="emg"]::after { content: ""; position: absolute; inset: -6px; border-radius: 50%; box-shadow: 0 0 0 2px var(--danger); animation: fo-pulse 1.4s ease-out infinite; }
 @keyframes fo-pulse { from { opacity: .9; transform: scale(.7); } to { opacity: 0; transform: scale(1.5); } }
 .fo-ac.is-est svg { fill: #fff; stroke: #6b7b81; stroke-width: 1.6px; }
