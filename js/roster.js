@@ -23,12 +23,21 @@
   const uid = (p) => (p || "x") + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   const arrOf = (v) => (Array.isArray(v) ? v : []);
   const canW = () => SeMIS.canEdit();
-  const groupOf = (p) => (p && p.org === SELF && norm(p.part) ? norm(p.part) : norm((p && p.org) || "") || "기타");
+  /* 같은 집단을 달리 적은 이름 → 한 이름(앞의 것). 교육 전파 · 서명의 그룹, 전파교육 표의 칸이 이 이름으로 모인다(Mark 11-23) */
+  const SAME = [
+    ["UCC", "운영(직속)", "운영직속", "운영", "일반지원", "지원파트", "지원담당"],
+    ["AAP", "아시아나에어포트", "아시아나에어포트(주)", "Asiana Airport"],
+    ["프로에스콤", "ProScom", "Pro-Scom", "프로에스콤(주)"]
+  ];
+  const ckey = (s) => String(s == null ? "" : s).replace(/㈜|\(주\)|주식회사/g, "").replace(/[\s·.\-_()]/g, "").toLowerCase();
+  const CANON = (() => { const m = {}; SAME.forEach(a => a.forEach(n => { m[ckey(n)] = a[0]; })); return m; })();
+  const canon = (g) => { g = norm(g); return CANON[ckey(g)] || g; };
+  const groupOf = (p) => canon(p && p.org === SELF && norm(p.part) ? norm(p.part) : norm((p && p.org) || "") || "기타");
   const orgLabel = (p) => [p.org, p.org === SELF ? p.part : ""].filter(Boolean).join(" · ");
   function groups() {
     const m = new Map();
     active().forEach(p => { const g = groupOf(p); if (!m.has(g)) m.set(g, { g, self: p.org === SELF, n: 0 }); m.get(g).n++; });
-    arrOf(P().orgs).forEach(o => { o = norm(o); if (o && !m.has(o)) m.set(o, { g: o, self: false, n: 0 }); });
+    arrOf(P().orgs).forEach(o => { o = canon(o); if (o && !m.has(o)) m.set(o, { g: o, self: false, n: 0 }); });
     return Array.from(m.values()).sort((a, b) => (b.self - a.self) || a.g.localeCompare(b.g, "ko"));
   }
   let rq = "", rgrp = "", rnog = false;
@@ -303,7 +312,7 @@
     items: () => active().map(p => ({ title: p.name, sub: [groupOf(p), p.emp, p.title].filter(Boolean).join(" · "), text: [p.name, p.emp, groupOf(p)], route: MOD, pick: () => { rq = p.name; rgrp = ""; rnog = false; } }))
   });
   window.SemisRoster = {
-    SELF, TEAM, TITLE, data: P, people, active, groupOf, orgLabel, groups,
+    SELF, TEAM, TITLE, SAME, canon, data: P, people, active, groupOf, orgLabel, groups,
     parseRoster, rosterDiff, gridOf, readRosterFile, personForm,
     setToday(t) { fixedToday = isISO(t) ? t : ""; },
     setState(o) { o = o || {}; if (o.q !== undefined) rq = o.q; if (o.grp !== undefined) rgrp = o.grp; if (o.nog !== undefined) rnog = !!o.nog; if (o.reset) { rq = ""; rgrp = ""; rnog = false; } }

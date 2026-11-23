@@ -13613,6 +13613,29 @@ function makeServer(opts = {}) {
       eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
     });
 
+    t("LN13b 전파교육(v1.78.2): 같은 집단의 다른 이름은 한 칸 — 운영(직속) = UCC · 아시아나에어포트 = AAP · ProScom = 프로에스콤", () => {
+      const { e, L } = lnEnv("hq", { courses: [COURSE()] });
+      const R = e.w.SemisRoster, DV = e.w.SemisDissem;
+      eq(R.canon("운영(직속)"), "UCC"); eq(R.canon("일반지원"), "UCC"); eq(R.canon(" 아시아나 에어포트 "), "AAP"); eq(R.canon("아시아나에어포트㈜"), "AAP");
+      eq(R.canon("ProScom"), "프로에스콤"); eq(R.canon("PROSCOM"), "프로에스콤"); eq(R.canon("(주)프로에스콤"), "프로에스콤"); eq(R.canon("수출파트"), "수출파트"); eq(R.canon("다른업체"), "다른업체");
+      eq(R.groupOf({ org: "아시아나에어포트", part: "" }), "AAP"); eq(R.groupOf({ org: "ProScom" }), "프로에스콤"); eq(L.groupOf({ org: "에어제타", part: "지원파트" }), "UCC");
+      R.data().people.push({ id: "px1", name: "하하하", org: "ProScom", part: "", emp: "", gender: "M" }, { id: "px2", name: "허허허", org: "프로에스콤", part: "", emp: "", gender: "M" }, { id: "px3", name: "호호호", org: "에어제타", part: "UCC", emp: "", gender: "F" });
+      eq(R.groups().filter(x => x.g === "프로에스콤").length, 1); eq(R.groups().find(x => x.g === "프로에스콤").n, 2, "ProScom + 프로에스콤 한 그룹");
+      ok(!R.groups().some(x => x.g === "ProScom"));
+      e.S.data.dissem = { events: [{ id: "dv2", date: "2026-09-14", title: "보안선 지침", kind: "지침 · 강화", targets: ["ops", "gen", "aap", "psc"],
+        res: { ops: { date: "2026-09-15", files: [] }, gen: { date: "2026-09-16", files: [] }, aap: { date: "2026-09-15", files: [] }, "아시아나에어포트": { date: "2026-09-17", files: [] }, ProScom: { date: "2026-09-18", files: [] } } }] };
+      go(e, "dissem");
+      const heads = qa(e, ".dv-tbl thead th").map(th => th.textContent.trim());
+      ok(heads.indexOf("UCC") >= 0 && heads.indexOf("AAP") >= 0 && heads.indexOf("프로에스콤") >= 0, heads.join(","));
+      ok(heads.indexOf("운영(직속)") < 0 && heads.indexOf("아시아나에어포트") < 0 && heads.indexOf("ProScom") < 0 && heads.indexOf("일반지원") < 0, "다른 이름 칸 없음 " + heads.join(","));
+      eq(heads.filter(h => h === "UCC").length, 1); eq(heads.filter(h => h === "AAP").length, 1); eq(heads.filter(h => h === "프로에스콤").length, 1);
+      const old = DV.events().find(x => x.id === "dv2");
+      eq(DV.targets(old).join(","), "UCC,AAP,프로에스콤");
+      eq(DV.resN(old).UCC.date, "2026-09-16"); eq(DV.resN(old).AAP.date, "2026-09-17"); eq(DV.resN(old)["프로에스콤"].date, "2026-09-18");
+      ok(DV.done(old, "ops") && DV.done(old, "운영(직속)") && DV.done(old, "UCC") && DV.done(old, "아시아나에어포트") && DV.done(old, "ProScom"), "어느 이름으로도 읽힘");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+
     t("LN14 요약 글 서식: 이스케이프 · 소제목 · 목록 · 번호 · 굵게 · 읽는 시간", () => {
       const { e } = lnEnv("hq");
       const M = e.w.SemisLearnMd;
