@@ -5198,6 +5198,211 @@ function makeServer(opts = {}) {
     });
   }
 
+  /* ══════════ [FA] 현장용 운항 현황(flight.html · v1.80) — PIN · 표 · 지도 + 인천 접근 · 401 · H:drive 출입 머리글 · PIN 관리 창 ══════════ */
+  {
+    const FH = read("flight.html");
+    const SRC = ["js/flight-shim.js", "js/flightcore.js", "js/flightops.js", "js/flight-app.js"];
+    const NOW = Date.now(), iso = (ms) => new Date(ms).toISOString();
+    const EXP = Math.floor(NOW / 1000) + 43200;
+    const TOK = (exp) => exp + ".2." + "a".repeat(64);
+    const ANON = /const SUPA_KEY = "([^"]+)"/.exec(read("js/sync.js"))[1];
+    const mk = (o) => {
+      o = o || {};
+      const vc = new VirtualConsole(); const errors = [];
+      vc.on("jsdomError", (er) => { const m = String(er && er.message || er); if (m.indexOf("Not implemented") < 0) errors.push(m); });
+      const dom = new JSDOM(FH.replace(/<script[\s\S]*?<\/script>/g, ""), { url: "https://logi.test/flight.html", runScripts: "outside-only", pretendToBeVisual: true, virtualConsole: vc });
+      const w = dom.window;
+      const calls = [];
+      const srv = Object.assign({ pin: "482913", adsb: 200, err: null, net: false,
+        fleet: [{ reg: "HL7421", hex: "71bc21", type: "B744", model: "747-400F" }, { reg: "HL7507", hex: "71bd07", type: "B763", model: "767-300F" }] }, o.srv || {});
+      w.fetch = (url, init) => {
+        const u = String(url), h = (init && init.headers) || {};
+        calls.push({ url: u, h, body: init && init.body ? JSON.parse(init.body) : null });
+        if (u.endsWith("/rpc/semis_logi_flight_pin")) {
+          if (srv.net) return Promise.reject(new Error("net"));
+          const b = JSON.parse(init.body);
+          const d = srv.err ? { ok: false, error: srv.err } : b.p_pin === srv.pin ? { ok: true, token: TOK(EXP), exp: EXP } : { ok: false, error: "pin" };
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(d) });
+        }
+        if (u.indexOf("semis-logi-adsb") >= 0) {
+          if (srv.adsb === 401) return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({ error: "auth" }) });
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ fetched_at: iso(NOW), events: [], fleet: srv.fleet,
+            ac: [{ hex: "71bc21", reg: "HL7421", type: "B744", flight: "AIH970", lat: 37.2, lon: 126.6, alt: 8000, gnd: false, gs: 250, trk: 320, vr: -1200, seen_at: iso(NOW - 10000) }] }) });
+        }
+        return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
+      };
+      if (o.tok) w.localStorage.setItem("hdflight:tok", JSON.stringify(o.tok));
+      SRC.forEach(f => w.eval(read(f)));
+      return { w, calls, srv, errors, q: (s) => w.document.querySelector(s), qa: (s) => Array.from(w.document.querySelectorAll(s)) };
+    };
+    const submitPin = async (e, v) => { e.q("#fa-pin").value = v; e.q("#fa-form").dispatchEvent(new e.w.Event("submit", { cancelable: true })); await tick(30); };
+    const deq = (a, b, m) => eq(JSON.stringify(a), JSON.stringify(b), m);
+    const adsbCalls = (e) => e.calls.filter(c => c.url.indexOf("semis-logi-adsb") >= 0);
+
+    t("FA01 flight.html: CSP(스크립트 self · 연결 = 공용 DB · 그림 = OSM 타일) · 리퍼러(OSM 타일 정책) · 홈 화면 앱 · 스크립트 순서 · 스탬프 · 인쇄 단추 없음", () => {
+      const csp = /http-equiv="Content-Security-Policy" content="([^"]+)"/.exec(FH)[1];
+      ok(/script-src 'self';/.test(csp) && /connect-src https:\/\/mzyuzrxkdcpzxojenwat\.supabase\.co;/.test(csp) && /img-src 'self' data: https:\/\/tile\.openstreetmap\.org;/.test(csp), csp);
+      ok(/object-src 'none'/.test(csp) && /form-action 'none'/.test(csp) && /base-uri 'self'/.test(csp) && /default-src 'self'/.test(csp), "막는 칸");
+      ok(/name="referrer" content="strict-origin-when-cross-origin"/.test(FH), "리퍼러 = 출처(OSM 타일 이용 정책)");
+      ok(/rel="manifest" href="flight\.webmanifest"/.test(FH) && /apple-mobile-web-app-capable" content="yes"/.test(FH) && /apple-mobile-web-app-title" content="운항 현황"/.test(FH), "홈 화면 앱");
+      ok(/viewport-fit=cover/.test(FH) && /name="robots" content="noindex"/.test(FH), "안전 영역 · 검색 제외");
+      const sc = (FH.match(/<script src="([^"]+)" defer><\/script>/g) || []).map(x => /src="([^"?]+)/.exec(x)[1]);
+      eq(sc.join(","), SRC.join(","), "스크립트 순서(흉내 → 계산 → 운항 → 화면)");
+      const ver = /const VERSION = "([\d.]+)"/.exec(read("js/app.js"))[1];
+      ok((FH.match(/\?v=([\d.]+)"/g) || []).every(x => x.indexOf("?v=" + ver + '"') >= 0) && (FH.match(/\?v=/g) || []).length === 6, "스탬프 = 앱 버전");
+      ok(/\["edu\.html", "learn\.html", "flight\.html"\]/.test(read("tools/bump-version.cjs")), "bump 도구가 flight.html 도");
+      ok(!/인쇄|print/i.test(FH + read("js/flight-app.js")), "인쇄 단추 없음(현장용 예외 — Mark 결정)");
+    });
+    t("FA02 홈 화면 앱 설명서 · 아이콘(192 · 512, 모서리까지 채움)", () => {
+      const m = JSON.parse(read("flight.webmanifest"));
+      deq([m.start_url, m.scope, m.display, m.short_name], ["flight.html", "flight", "standalone", "운항 현황"]);
+      eq(m.icons.map(i => i.sizes).join(","), "192x192,512x512");
+      m.icons.forEach(i => {
+        const b = fs.readFileSync(path.join(ROOT, i.src));
+        eq(b.slice(1, 4).toString(), "PNG", i.src);
+        const n = Number(i.sizes.split("x")[0]);
+        deq([b.readUInt32BE(16), b.readUInt32BE(20)], [n, n], i.src + " 크기");
+      });
+    });
+    t("FA03 흉내(shim): 아이콘 글자 = app.js · 공개 키 = sync.js · 비밀 없음", () => {
+      const sh = read("js/flight-shim.js"), app = read("js/app.js");
+      ["grid", "locate", "zoombox", "down", "refresh"].forEach(n => {
+        const a = new RegExp("^    " + n + ": ('[^\\n]*?'),?$", "m").exec(app)[1], b = new RegExp("^    " + n + ": ('[^\\n]*?'),?$", "m").exec(sh)[1];
+        eq(b, a, n);
+      });
+      ok(sh.indexOf(ANON) >= 0, "공개(anon) 키 같음");
+      ok(!/service_role/.test(sh + read("js/flight-app.js")), "서비스 키 없음");
+      ok(!/[0-9]{6,10}/.test(read("js/flight-app.js").replace(/\{6,10\}|6~10|[0-9]{10}\\\.|30000|1000/g, "")), "코드에 PIN 숫자 없음");
+    });
+    await ta("FA04 처음(표 없음) → PIN 화면 · 형식 틀림은 서버로 안 보냄 · 틀린 PIN · 맞는 PIN → 표 저장 · 지도 + 접근 목록", async () => {
+      const e = mk();
+      ok(e.q("#fa-pin") && e.w.document.body.classList.contains("fa-locked") && !e.q("#dash-flt"), "PIN 화면");
+      eq(adsbCalls(e).length, 0, "PIN 전에는 위치 요청 없음");
+      await submitPin(e, "12345");
+      eq(e.q("#fa-err").textContent, "숫자 6~10자리를 넣어 주세요."); eq(e.calls.length, 0, "서버로 안 보냄");
+      await submitPin(e, "000000");
+      eq(e.q("#fa-err").textContent, "PIN 이 맞지 않습니다."); eq(e.q("#fa-pin").value, "", "입력 비움");
+      const c0 = e.calls[0];
+      deq(c0.body, { p_pin: "000000" }); eq(c0.h.apikey, ANON); ok(!c0.h["x-flight-token"] && !c0.h["x-semis-token"]);
+      eq(e.w.localStorage.getItem("hdflight:tok"), null, "틀리면 표 없음");
+      await submitPin(e, "482913");
+      const st = JSON.parse(e.w.localStorage.getItem("hdflight:tok"));
+      deq([st.t, st.exp], [TOK(EXP), EXP], "표 저장(PIN 은 저장 안 함)");
+      ok(e.w.localStorage.getItem("hdflight:tok").indexOf("482913") < 0);
+      ok(e.q("#dash-flt") && !e.w.document.body.classList.contains("fa-locked"), "지도 화면");
+      eq(e.qa("#dash-flt .fo-tools .fo-tool").length, 3, "지도 도구 3개");
+      await tick(40);
+      const a = adsbCalls(e);
+      ok(a.length >= 1, "위치 요청");
+      eq(a[a.length - 1].h["x-flight-token"], TOK(EXP), "PIN 표 머리글"); ok(!a[a.length - 1].h["x-semis-token"], "로그인 세션 머리글 없음");
+      eq(e.qa("#dflt-appr .appr-row").length, 1, "인천 접근 1");
+      ok(e.q("#dflt-appr").textContent.includes("KJ970"));
+      eq(e.w.SemisFlight.fleet().map(f => f.reg).join(","), "HL7421,HL7507", "기체 목록 = 서버 응답(공용 DB)");
+      ok(e.q("#fa-upd").textContent.includes("기준"), "기준 시각 " + e.q("#fa-upd").textContent);
+      ok(e.q("#fa-ref") && !e.q("[data-print], .print-btn"), "새로고침만");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    await ta("FA05 저장된 표 — 유효하면 바로 지도 · 만료(또는 30초 안 만료) · 형식 틀림 → PIN 화면", async () => {
+      let e = mk({ tok: { t: TOK(EXP), exp: EXP } });
+      ok(e.q("#dash-flt") && !e.q("#fa-pin"), "바로 지도");
+      e = mk({ tok: { t: TOK(Math.floor(NOW / 1000) - 5), exp: Math.floor(NOW / 1000) - 5 } });
+      ok(e.q("#fa-pin"), "만료 → PIN");
+      e = mk({ tok: { t: TOK(Math.floor(NOW / 1000) + 10), exp: Math.floor(NOW / 1000) + 10 } });
+      ok(e.q("#fa-pin"), "곧 만료 → PIN");
+      e = mk({ tok: { t: "x", exp: EXP } });
+      ok(e.q("#fa-pin"), "형식 틀림 → PIN");
+    });
+    await ta("FA06 위치 서버가 거절(401 — 끊기 · PIN 변경 · 만료) → 표 지우고 PIN 화면 + 안내", async () => {
+      const e = mk({ tok: { t: TOK(EXP), exp: EXP }, srv: { adsb: 401 } });
+      await tick(40);
+      ok(e.q("#fa-pin") && !e.q("#dash-flt"), "PIN 화면으로");
+      eq(e.q("#fa-err").textContent, "다시 PIN 을 넣어 주세요.");
+      eq(e.w.localStorage.getItem("hdflight:tok"), null, "표 지움");
+      eq(e.w.SemisFlight.state.auth, false);
+      e.srv.adsb = 200;
+      await submitPin(e, "482913");
+      await tick(40);
+      ok(e.q("#dash-flt") && e.w.SemisFlight.state.auth === true, "다시 PIN → 지도");
+    });
+    await ta("FA07 서버 안내: 잠김 · 멈춤 · 미설정 · 연결 실패", async () => {
+      const e = mk();
+      for (const [k, m] of [["locked", "틀린 횟수가 많아 15분 뒤에 다시 할 수 있습니다."], ["paused", "잠시 후 다시 시도해 주세요."], ["off", "현장용 PIN 이 아직 정해지지 않았습니다."]]) {
+        e.srv.err = k; await submitPin(e, "482913"); eq(e.q("#fa-err").textContent, m, k);
+      }
+      e.srv.err = null; e.srv.net = true; await submitPin(e, "482913");
+      eq(e.q("#fa-err").textContent, "서버에 연결하지 못했습니다.");
+      ok(!e.q("#fa-go").disabled, "단추 다시 켬");
+    });
+    t("FA08 화면 모양(flight.css): 머리말 · 전체 보기 · 최근 도착 숨김 · 태블릿 가로 = 지도 화면 높이 · 안전 영역 · 인쇄 규칙 없음", () => {
+      const c = read("css/flight.css");
+      ok(/\.fa-main \.dash-flt > \.dc-head, \.fa-main \[data-fo-go\], \.fa-main #dflt-arr \{ display: none; \}/.test(c), "숨김");
+      ok(/@container \(min-width: 860px\)/.test(c) && /100svh - var\(--fa-bar\) - var\(--fa-top\)/.test(c), "태블릿 가로 화면 높이");
+      ok(/env\(safe-area-inset-top/.test(c) && /env\(safe-area-inset-bottom\)/.test(c), "안전 영역");
+      ok(!/@media print/.test(c));
+    });
+
+    /* H:drive 쪽 — 위치 서버 출입 머리글 · 기체 목록 · PIN 관리 창 */
+    const hcalls = [];
+    let hstatus = 200;
+    const eh = makeEnv({ fetch: (url, init) => {
+      const u = String(url);
+      hcalls.push({ url: u, h: (init && init.headers) || {} });
+      if (u.indexOf("semis-logi-adsb") >= 0) {
+        if (hstatus === 401) return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({ error: "auth" }) });
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ fetched_at: iso(NOW), ac: [], events: [], fleet: [{ reg: "HL9999", hex: "71c999", type: "B744", model: "" }, { reg: "bad", hex: "zz" }] }) });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) });
+    } });
+    eh.w.print = () => {};
+    await ta("FA09 H:drive: 위치 요청에 로그인 세션 머리글(x-semis-token) · 현장 표 머리글 없음 · 401 표시 · 기체 목록은 공용 DB 가 먼저", async () => {
+      loginAs(eh, "user");
+      await eh.w.SemisFlight.load({ force: true });
+      const a = hcalls.filter(c => c.url.indexOf("semis-logi-adsb") >= 0).pop();
+      eq(a.h["x-semis-token"], "t".repeat(64)); ok(!a.h["x-flight-token"]); eq(a.h.apikey, ANON);
+      eh.S.data.fleet = [{ reg: "HL7421", hex: "71bc21", type: "B744", model: "" }];
+      eq(eh.w.SemisFlight.fleet().map(f => f.reg).join(","), "HL7421", "공용 DB 기체 목록 우선");
+      eh.S.data.fleet = [];
+      eq(eh.w.SemisFlight.fleet().map(f => f.reg).join(","), "HL9999", "비면 서버 응답(형식 틀린 줄 뺌)");
+      hstatus = 401;
+      await eh.w.SemisFlight.load({ force: true });
+      deq([eh.w.SemisFlight.state.auth, eh.w.SemisFlight.state.err], [false, "auth"]);
+      hstatus = 200;
+      await eh.w.SemisFlight.load({ force: true });
+      eq(eh.w.SemisFlight.state.auth, true);
+    });
+    await ta("FA10 현장용 화면 · PIN 창(시스템관리자 · ⋯): 주소 · QR · 상태 · 형식/확인 검사 · 저장 · 모두 끊기", async () => {
+      loginAs(eh, "hq"); go(eh, "flight");
+      ok(!q(eh, "#fo-field"), "hq — 없음");
+      loginAs(eh, "admin"); go(eh, "flight");
+      ok(q(eh, "#fo-field.ph-rare"), "시스템관리자 — ⋯ 안");
+      const rc = [];
+      let info = { ok: true, set: false, strict: false, fails: 0 };
+      const rpc0 = eh.w.SemisSync.rpc;
+      eh.w.SemisSync.rpc = async (n, a) => { if (n !== "semis_logi_flight_admin") return rpc0(n, a); rc.push([n, a]); if (a.p.act === "info") return info; return { ok: true }; };
+      q(eh, "#fo-field").click();
+      await tick(10);
+      eq(q(eh, "#fp-url").textContent, "https://logi.test/flight.html", "주소");
+      ok(q(eh, ".fp-qr svg"), "QR");
+      ok(q(eh, "#fp-st").textContent.includes("PIN 미설정") && q(eh, "#fp-cut").hidden, "미설정 · 끊기 숨김");
+      q(eh, "#fp-a").value = "12345"; q(eh, "#fp-b").value = "12345"; q(eh, "#fp-save").click(); await tick(5);
+      ok(q(eh, "#toast-wrap").textContent.includes("숫자 6~10자리"), "형식");
+      q(eh, "#fp-a").value = "482913"; q(eh, "#fp-b").value = "482914"; q(eh, "#fp-save").click(); await tick(5);
+      ok(q(eh, "#toast-wrap").textContent.includes("두 번 넣은 PIN 이 다릅니다"), "확인");
+      eq(rc.filter(r => r[1].p.act === "pin").length, 0, "검사에 걸리면 안 보냄");
+      info = { ok: true, set: true, strict: true, fails: 2, at: iso(NOW), by: "T관리자", last: iso(NOW) };
+      q(eh, "#fp-b").value = "482913"; q(eh, "#fp-save").click(); await tick(10);
+      deq(rc.find(r => r[1].p.act === "pin"), ["semis_logi_flight_admin", { p: { act: "pin", pin: "482913" } }]);
+      deq([q(eh, "#fp-a").value, q(eh, "#fp-b").value], ["", ""], "입력 비움");
+      ok(q(eh, "#fp-st").textContent.includes("PIN 설정됨") && q(eh, "#fp-st").textContent.includes("T관리자") && q(eh, "#fp-st").textContent.includes("하루 틀린 시도 2회"), q(eh, "#fp-st").textContent);
+      ok(!q(eh, "#fp-st").textContent.includes("준비 중"), "strict 켜짐 → 준비 중 표시 없음");
+      ok(!q(eh, "#fp-cut").hidden, "끊기 보임");
+      q(eh, "#fp-cut").click(); clickOk(eh); await tick(10);
+      ok(rc.some(r => r[1].p.act === "cut"), "모두 끊기");
+      ok(q(eh, "#toast-wrap").textContent.includes("현장 접속을 모두 끊었습니다"));
+      eq(eh.errors.length, 0, eh.errors.join(" | "));
+    });
+  }
+
   /* ══════════ [SEC] v1.15 서버 보안 — 비공개 파일 · 살균 · CSP · 저장소 위생 ══════════ */
   {
     const PUBU = "https://mzyuzrxkdcpzxojenwat.supabase.co/storage/v1/object/public/semis-logi-files/";

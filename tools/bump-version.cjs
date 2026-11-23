@@ -29,9 +29,9 @@ html = html.replace(/(href|src)="((?:css|js)\/[\w.-]+\.(?:css|js))(?:\?v=[\d.]+)
   return `${attr}="${file}?v=${ver}"`;
 });
 fs.writeFileSync(htmlPath, html);
-/* 로그인 없는 공개 화면(edu.html 이수 등록 · learn.html 교육 이수)도 같은 스탬프 */
+/* 로그인 없는 공개 화면(edu.html 이수 등록 · learn.html 교육 이수 · flight.html 현장용 운항 현황)도 같은 스탬프 */
 const stamped = [];
-["edu.html", "learn.html"].forEach((name) => {
+["edu.html", "learn.html", "flight.html"].forEach((name) => {
   const p = path.join(ROOT, name);
   if (!fs.existsSync(p)) return;
   let k = 0;

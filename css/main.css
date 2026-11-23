@@ -2885,6 +2885,22 @@ a.nb-file, .nb-file > a, .nb-editor img, .notice-html img, .ag-memo img, .cn-ric
 .fo-map.is-boxing, .fo-map.is-boxing .leaflet-interactive, .fo-map.is-boxing .fo-ac, .fo-map.is-boxing .fo-apt { cursor: crosshair; }
 .fo-map.leaflet-container.is-boxing { touch-action: none; }   /* leaflet.css(.leaflet-container.leaflet-touch-zoom = pan-x pan-y)가 뒤에 붙으므로 한 단계 더 구체적으로 */
 .fo-map .leaflet-zoom-box.fo-zbox { border: 2px solid var(--primary); background: rgba(15,118,110,.12); border-radius: 2px; }
+/* 현장용 화면 · PIN(시스템관리자 창) */
+.fp-link { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px; align-items: start; margin: 4px 0 14px; }
+.fp-qr svg { display: block; width: 148px; height: 148px; }
+.fp-url { display: block; padding: 8px 10px; border-radius: 6px; background: var(--surface-2); font-size: max(var(--fs-min), .86rem); overflow-wrap: anywhere; }
+.fp-acts { margin: 8px 0; }
+.fp-st { margin: 0; font-size: max(var(--fs-min), .86rem); color: var(--text-2); line-height: 1.8; }
+.fp-dim { color: var(--text-3); }
+.fp-form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.fp-f { display: grid; gap: 4px; font-size: max(var(--fs-min), .86rem); font-weight: 600; color: var(--text-2); }
+.fp-f input { height: 40px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: 8px; font-family: var(--mono); letter-spacing: .2em; }
+.fp-f input::placeholder { font-family: var(--font); letter-spacing: normal; }
+.fp-cut { color: #b91c1c; }
+@media screen and (max-width: 767px) {
+  .fp-link { grid-template-columns: 1fr; justify-items: center; }
+  .fp-form { grid-template-columns: 1fr; }
+}
 /* 내 위치 — 파란 점(흰 테두리) */
 .fo-me { position: absolute; inset: 2px; border-radius: 50%; background: #2563eb; box-shadow: 0 0 0 3px #fff, 0 1px 5px rgba(14,26,31,.45); }
 .fo-legend { position: absolute; left: 10px; bottom: 10px; z-index: 450; display: flex; flex-wrap: wrap; gap: 4px 12px; max-width: calc(100% - 20px);

@@ -6,7 +6,7 @@
 "use strict";
 
 (() => {
-  const { $, $$, esc, toast, openModal, closeModal, ui, icon } = SeMIS;
+  const { $, $$, esc, toast, openModal, closeModal, confirmModal, ui, icon } = SeMIS;
   const F = window.SemisFlightCore;
   const MOD = "flight";
   const TITLE = "운항 현황";
@@ -18,12 +18,19 @@
   const ME_Z = 15;        // 내 위치로 갈 때 가장 깊은 단계
   const ME_SPAN = 3000;   // 내 위치 둘레로 적어도 3 km 를 보여 줌(오차가 크면 오차 원이 다 들어오게)
 
-  const state = { ts: 0, err: "", ac: [], events: null, trail: false, fetchedAt: 0, srcErr: "", ver: 0, busy: null, me: null };
+  const state = { ts: 0, err: "", ac: [], events: null, trail: false, fetchedAt: 0, srcErr: "", ver: 0, busy: null, me: null, fleet: null, auth: true };
 
   /* ── 데이터 ── */
   function fleet() {
-    const f = SeMIS.data.fleet;
-    return Array.isArray(f) && f.length ? f : F.DEFAULT_FLEET;
+    const f = SeMIS.data && SeMIS.data.fleet;
+    if (Array.isArray(f) && f.length) return f;
+    return Array.isArray(state.fleet) && state.fleet.length ? state.fleet : F.DEFAULT_FLEET;
+  }
+  /* 위치 서버 출입 — H:drive 는 로그인 세션, 현장 웹앱(flight.html)은 SeMIS.flightAuth() 가 PIN 표를 줌 */
+  function authHdr() {
+    if (typeof SeMIS.flightAuth === "function") return SeMIS.flightAuth() || {};
+    const t = window.SemisSync && SemisSync.auth && typeof SemisSync.auth.token === "function" ? SemisSync.auth.token() : "";
+    return t ? { "x-semis-token": t } : {};
   }
   function load(opts) {
     const o = opts || {};
@@ -36,11 +43,18 @@
         const key = window.SemisSync && SemisSync.ANON;
         const qs = [wantTrail ? "trail=1" : "", wantEvents ? "events=1" : ""].filter(Boolean).join("&");
         const r = await fetch(FN_URL + (qs ? "?" + qs : ""), {
-          cache: "no-store", headers: key ? { apikey: key, Authorization: "Bearer " + key } : {} });
+          cache: "no-store", headers: Object.assign(key ? { apikey: key, Authorization: "Bearer " + key } : {}, authHdr()) });
+        if (r && r.status === 401) {
+          state.auth = false;
+          if (typeof SeMIS.onFlightAuth === "function") SeMIS.onFlightAuth();
+          throw new Error("auth");
+        }
         if (!r || !r.ok) throw new Error("HTTP " + (r ? r.status : "-"));
         const j = await r.json();
         if (!j || Array.isArray(j) || !Array.isArray(j.ac)) throw new Error("응답 형식");
+        state.auth = true;
         state.ac = j.ac;
+        if (Array.isArray(j.fleet)) state.fleet = j.fleet.filter(f => f && /^[0-9a-f]{6}$/.test(String(f.hex)) && typeof f.reg === "string");
         state.fetchedAt = j.fetched_at ? Date.parse(j.fetched_at) : Date.now();
         state.srcErr = j.err || "";
         if (wantEvents) state.events = Array.isArray(j.events) ? j.events : [];
@@ -692,7 +706,8 @@
       meta: "에어제타 화물기 " + fleet().length + "대 · ADS-B 실시간",
       actions: `<span class="fo-upd" id="fo-upd">${esc(updText())}</span>
         <button type="button" class="btn btn-ghost btn-sm ph-rare" id="fo-refresh" title="위치 새로고침">${icon("refresh", 16)}<span>새로고침</span></button>
-        ${SeMIS.isAdmin() ? `<button type="button" class="btn btn-ghost btn-sm ph-rare" id="fo-fleet-edit">${icon("sliders", 16)}<span>기체 목록</span></button>` : ""}`
+        ${SeMIS.isAdmin() ? `<button type="button" class="btn btn-ghost btn-sm ph-rare" id="fo-fleet-edit">${icon("sliders", 16)}<span>기체 목록</span></button>
+          <button type="button" class="btn btn-ghost btn-sm ph-rare" id="fo-field">${icon("lock", 16)}<span>현장용 화면 · PIN</span></button>` : ""}`
     }) + `<div id="fo-page">
       <div id="fo-alertbox"></div>
       <div id="fo-stats"></div>
@@ -710,6 +725,8 @@
     $("#fo-refresh", root).onclick = () => refresh(true);
     const fe = $("#fo-fleet-edit", root);
     if (fe) fe.onclick = fleetModal;
+    const ff = $("#fo-field", root);
+    if (ff) ff.onclick = fieldModal;
     paintPage();
     mountMap($("#fo-map", root), "full");
     load({ trail: true, events: true }).then(() => { paintPage(); });
@@ -785,6 +802,75 @@
     };
   }
 
+  /* ── 현장용 화면(flight.html) PIN (시스템관리자) — PIN 은 서버(bcrypt)에만, 화면은 상태만 받음 ── */
+  const FIELD_PAGE = "flight.html";
+  const fieldUrl = () => { try { return new URL(FIELD_PAGE, location.href).href.replace(/[?#].*$/, ""); } catch (e) { return FIELD_PAGE; } };
+  const PIN_RE = /^[0-9]{6,10}$/;
+  async function fieldCall(p) {
+    if (!window.SemisSync || !SemisSync.rpc) throw new Error("offline");
+    return SemisSync.rpc("semis_logi_flight_admin", { p });
+  }
+  function fieldModal() {
+    if (!SeMIS.isAdmin()) return;
+    const url = fieldUrl(), Q = window.SemisQR;
+    openModal(`<h3>현장용 운항 현황</h3>
+      <div class="fp-link"><div class="fp-qr">${Q ? Q.svg(url, { ecc: "M", size: 148, margin: 2 }) : ""}</div>
+        <div class="fp-link-r"><code class="mono fp-url" id="fp-url">${esc(url)}</code>
+          <div class="fp-acts"><button type="button" class="btn btn-ghost btn-sm" id="fp-copy">${icon("copy", 15)}<span>주소 복사</span></button></div>
+          <p class="fp-st" id="fp-st" aria-live="polite">불러오는 중</p></div></div>
+      <div class="fp-form">
+        <label class="fp-f"><span>새 PIN</span><input type="password" id="fp-a" inputmode="numeric" autocomplete="new-password" maxlength="10" placeholder="숫자 6~10자리"></label>
+        <label class="fp-f"><span>한 번 더</span><input type="password" id="fp-b" inputmode="numeric" autocomplete="new-password" maxlength="10"></label>
+      </div>
+      <div class="modal-actions"><button type="button" class="btn btn-ghost fp-cut" id="fp-cut" hidden>현장 접속 모두 끊기</button><span class="spacer"></span>
+        <button type="button" class="btn btn-ghost" data-act="cancel">닫기</button><button type="button" class="btn btn-primary" id="fp-save">PIN 저장</button></div>`);
+    $("#modal-box [data-act=cancel]").onclick = closeModal;
+    $("#fp-copy").onclick = async () => { try { await navigator.clipboard.writeText(url); toast("주소를 복사했습니다."); } catch (e) { toast("복사하지 못했습니다. 주소를 직접 선택해 복사하세요.", true); } };
+    const paintSt = async () => {
+      const st = $("#fp-st");
+      if (!st) return;
+      try {
+        const d = await fieldCall({ act: "info" });
+        if (!$("#fp-st")) return;
+        const when = (v) => (v ? F.kstISO(Date.parse(v)).replace(/-/g, ".") + " " + F.kstHM(Date.parse(v)) : "");
+        st.innerHTML = d && d.set
+          ? `${ui.chip("PIN 설정됨", "green")} <span>${esc(when(d.at))}${d.by ? " · " + esc(d.by) : ""}</span>` +
+            (d.last ? `<br><span class="fp-dim">마지막 접속 ${esc(when(d.last))}</span>` : "") +
+            (d.fails ? `<br><span class="fp-dim">하루 틀린 시도 ${esc(String(d.fails))}회</span>` : "") +
+            (d.strict ? "" : `<br>${ui.chip("서버 확인 준비 중", "amber")}`)
+          : `${ui.chip("PIN 미설정", "gray")}`;
+        const cut = $("#fp-cut");
+        if (cut) cut.hidden = !(d && d.set);
+      } catch (e) {
+        st.textContent = e && e.status === 403 ? "권한이 없습니다." : "서버에서 상태를 받지 못했습니다.";
+      }
+    };
+    paintSt();
+    $("#fp-save").onclick = async () => {
+      const a = $("#fp-a").value.trim(), b = $("#fp-b").value.trim();
+      if (!PIN_RE.test(a)) { toast("PIN 은 숫자 6~10자리입니다.", true); $("#fp-a").focus(); return; }
+      if (a !== b) { toast("두 번 넣은 PIN 이 다릅니다.", true); $("#fp-b").focus(); return; }
+      const btn = $("#fp-save");
+      btn.disabled = true;
+      try {
+        const d = await fieldCall({ act: "pin", pin: a });
+        if (!d || !d.ok) throw new Error((d && d.error) || "fail");
+        $("#fp-a").value = ""; $("#fp-b").value = "";
+        toast("현장용 PIN 을 저장했습니다. 현장 기기는 새 PIN 으로 다시 들어옵니다.");
+        paintSt();
+      } catch (e) {
+        toast("PIN 을 저장하지 못했습니다.", true);
+      } finally { if ($("#fp-save")) $("#fp-save").disabled = false; }
+    };
+    $("#fp-cut").onclick = () => confirmModal("현장 기기의 접속을 모두 끊습니다. 다시 들어오려면 PIN 을 넣어야 합니다.", async () => {
+      try {
+        const d = await fieldCall({ act: "cut" });
+        if (!d || !d.ok) throw new Error("fail");
+        toast("현장 접속을 모두 끊었습니다.");
+      } catch (e) { toast("끊지 못했습니다.", true); }
+    });
+  }
+
   SeMIS.registerModule(MOD, {
     title: TITLE,
     navBadge() { const n = model().appr.length; return n || ""; },
@@ -796,5 +882,5 @@
     items: () => fleet().map(f => ({ title: f.reg, sub: (F.AC_TYPES[f.type] || f.type) + " · " + (f.model || ""), route: MOD }))
   });
 
-  window.SemisFlight = { dashHTML, mountDash, paintDash, load, model, state, refresh, fleet, aptPopHTML, gndState, maps, MAX_Z };
+  window.SemisFlight = { dashHTML, mountDash, paintDash, load, model, state, refresh, fleet, aptPopHTML, gndState, maps, MAX_Z, fieldUrl };
 })();

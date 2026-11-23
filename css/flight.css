@@ -1,0 +1,58 @@
+/* 현장용 운항 현황(flight.html) — 지도 · 목록 모양은 main.css(.dash-flt · .fo-*)를 그대로 쓰고, 화면 틀 · PIN 화면만 여기에.
+   태블릿 가로(860px 이상)는 지도 왼쪽 · 접근 목록 오른쪽으로 화면 높이를 꽉 채우고, 좁은 화면은 지도 아래 목록. 인쇄 단추 없음(현장용). */
+html, body.fa-body { height: 100%; }
+body.fa-body { margin: 0; background: var(--bg); overscroll-behavior-y: none; }
+body.fa-locked { background: var(--sidebar-bg); }
+.fa-app { min-height: 100%; }
+:root { --fa-bar: 52px; --fa-top: env(safe-area-inset-top, 0px); }
+
+/* PIN 화면 */
+.fa-gate { min-height: 100vh; min-height: 100svh; display: grid; place-items: center; box-sizing: border-box;
+  padding: calc(24px + var(--fa-top)) max(20px, env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); }
+.fa-card { width: min(100%, 340px); display: flex; flex-direction: column; align-items: center; gap: 6px; box-sizing: border-box;
+  padding: 28px 24px 24px; border-radius: 14px; background: #fff; box-shadow: 0 18px 40px rgba(0, 0, 0, .28); }
+.fa-mark img { display: block; }
+.fa-card h1 { margin: 6px 0 0; font-size: 1.43rem; font-weight: 700; color: var(--text); }
+.fa-sub { margin: 0 0 14px; font-size: .93rem; color: var(--text-3); }
+.fa-sub b { color: var(--primary); }
+.fa-lbl { align-self: flex-start; font-size: .86rem; font-weight: 600; color: var(--text-2); }
+.fa-pin { width: 100%; box-sizing: border-box; height: 52px; padding: 0 14px; border: 1px solid var(--border-strong); border-radius: 10px;
+  font-size: 1.6rem; letter-spacing: .35em; text-align: center; background: #fff; color: var(--text); }
+.fa-pin:focus { outline: 2px solid var(--primary); outline-offset: 1px; border-color: var(--primary); }
+.fa-err { min-height: 1.4em; margin: 2px 0 4px; font-size: .86rem; color: #b91c1c; text-align: center; }
+.fa-go { width: 100%; height: 48px; border: 0; border-radius: 10px; background: var(--primary); color: #fff; font-size: 1.07rem; font-weight: 600; cursor: pointer; }
+.fa-go:disabled { opacity: .6; cursor: progress; }
+
+/* 머리 띠 */
+.fa-bar { position: sticky; top: 0; z-index: 700; display: flex; align-items: center; gap: 10px; box-sizing: content-box; height: var(--fa-bar);
+  padding: var(--fa-top) max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left)); background: var(--sidebar-bg); color: #fff; }
+.fa-brand { display: inline-flex; align-items: center; gap: 6px; font-size: .93rem; font-weight: 600; color: rgba(255, 255, 255, .86); }
+.fa-brand b { color: #5eead4; }
+.fa-t { margin: 0; font-size: 1.07rem; font-weight: 700; white-space: nowrap; }
+.fa-sp { flex: 1; }
+.fa-upd { font-size: max(var(--fs-min), .86rem); color: rgba(255, 255, 255, .72); white-space: nowrap; }
+.fa-ref { flex: none; width: 40px; height: 40px; display: grid; place-items: center; border: 0; border-radius: 8px; background: rgba(255, 255, 255, .1); color: #fff; cursor: pointer; }
+.fa-ref:active { transform: scale(.94); }
+.fa-ref.is-busy .ico { animation: cfe-spin .9s linear infinite; }
+
+/* 지도 + 접근 목록 */
+.fa-main { padding-bottom: env(safe-area-inset-bottom); }
+.fa-main .dash-flt { margin: 0; }
+.fa-main .dash-flt > .dc-head, .fa-main [data-fo-go], .fa-main #dflt-arr { display: none; }
+.fa-main .dflt-body { border: 0; border-radius: 0; }
+.fa-main .dash-flt .dflt-mapwrap .fo-map { height: 58vh; height: 58svh; min-height: 300px; }
+.fa-main .dflt-side { padding: 14px max(16px, env(safe-area-inset-right)) 14px max(16px, env(safe-area-inset-left)); }
+@container (min-width: 860px) {
+  .fa-main .dash-flt .dflt-mapwrap .fo-map { height: calc(100vh - var(--fa-bar) - var(--fa-top)); height: calc(100svh - var(--fa-bar) - var(--fa-top)); min-height: 360px; }
+  .fa-main .dash-flt .dflt-side { max-height: calc(100vh - var(--fa-bar) - var(--fa-top)); max-height: calc(100svh - var(--fa-bar) - var(--fa-top)); }
+}
+@media screen and (max-width: 420px) {
+  .fa-brand span { display: none; }
+}
+
+/* 알림 */
+.fa-toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom)); z-index: 900; max-width: calc(100% - 32px); transform: translate(-50%, 12px);
+  padding: 10px 16px; border-radius: 10px; background: #102a33; color: #fff; font-size: .93rem; box-shadow: 0 8px 24px rgba(0, 0, 0, .25);
+  opacity: 0; pointer-events: none; transition: opacity .18s ease, transform .18s ease; }
+.fa-toast.is-on { opacity: 1; transform: translate(-50%, 0); }
+.fa-toast.is-err { background: #7f1d1d; }

@@ -4,16 +4,20 @@
    - adsb.lol 은 브라우저 직접 호출(CORS)을 막아 두어 이 함수가 중계한다.
    - adsb.lol 조회는 50초에 한 번(_meta 행 조건부 갱신으로 잠금). pg_cron 이 2분마다 ?cron=1 로 호출해 끊김 없이 기록.
    - 기체 목록: semis_logi_store.fleet[].hex (없으면 기본 15대)
-   - GET ?trail=1 → 비행 경로 포함 · ?events=1 → 최근 48시간 입출항 기록 포함
+   - GET ?trail=1 → 비행 경로 포함 · ?events=1 → 최근 48시간 입출항 기록 포함 · 응답에 기체 목록 fleet(공용 DB 에 있을 때)
+   - 출입(v1.80): H:drive 로그인 세션(x-semis-token) 또는 현장 웹앱 PIN 표(x-flight-token) — 판정은 SQL semis_logi_flight_gate
+     (tools/sql/semis-logi-flight.sql, strict 가 꺼져 있으면 모두 통과). ?cron=1 은 기록만 하고 위치를 돌려주지 않으므로 확인하지 않음
    - 배포: Supabase MCP deploy_edge_function (verify_jwt true, anon 키로 호출). 이 파일이 원본. */
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
-const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
+const SB_URL = Deno.env.get("SUPABASE_URL")!;
+const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+const db = createClient(SB_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
   auth: { persistSession: false }
 });
 const CORS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info",
+  "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info, x-semis-token, x-flight-token",
   "Access-Control-Allow-Methods": "GET, OPTIONS"
 };
 const MIN_GAP = 50_000;            // adsb.lol 조회 최소 간격
@@ -54,14 +58,33 @@ function nearestApt(lat: unknown, lon: unknown, maxKm = 12): string | null {
   return bd <= maxKm ? best : null;
 }
 
-async function fleetHex(): Promise<string[]> {
+type Fleet = { reg: string; hex: string; type: string; model: string };
+const str = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
+/* 공용 DB 기체 목록 — 없거나 읽지 못하면 null(화면 · 조회는 기본 15대) */
+async function fleetList(): Promise<Fleet[] | null> {
   try {
     const { data } = await db.from("semis_logi_store").select("value").eq("key", "fleet").maybeSingle();
-    const list = (Array.isArray(data?.value) ? data!.value : []).map((f: { hex?: string }) => String(f.hex || "").toLowerCase())
-      .filter((h: string) => /^[0-9a-f]{6}$/.test(h));
-    if (list.length) return Array.from(new Set(list)) as string[];
-  } catch (_) { /* 기본값 */ }
-  return DEFAULT_HEX;
+    const seen = new Set<string>();
+    const list = (Array.isArray(data?.value) ? data!.value : []).map((f: Record<string, unknown>) => ({
+      reg: str(f && f.reg, 12), hex: str(f && f.hex, 6).toLowerCase(), type: str(f && f.type, 8), model: str(f && f.model, 40)
+    })).filter((f: Fleet) => /^[0-9a-f]{6}$/.test(f.hex) && !seen.has(f.hex) && !!seen.add(f.hex));
+    return list.length ? list as Fleet[] : null;
+  } catch (_) { return null; }
+}
+async function fleetHex(): Promise<string[]> {
+  const fl = await fleetList();
+  return fl ? fl.map(f => f.hex) : DEFAULT_HEX;
+}
+/* 출입 — 로그인 세션 토큰을 그대로 넘겨 SQL 이 판정. 오류 · 시간 초과는 막음 */
+async function allowed(req: Request): Promise<boolean> {
+  const st = (req.headers.get("x-semis-token") || "").trim();
+  const ft = (req.headers.get("x-flight-token") || "").trim();
+  if (st.length > 100 || ft.length > 100) return false;
+  try {
+    const c = createClient(SB_URL, ANON_KEY, { auth: { persistSession: false }, global: { headers: st ? { "x-semis-token": st } : {} } });
+    const { data, error } = await c.rpc("semis_logi_flight_gate", { p_ftok: ft || null });
+    return !error && data === true;
+  } catch (_) { return false; }
 }
 
 async function refresh(): Promise<string> {
@@ -196,9 +219,11 @@ async function refresh(): Promise<string> {
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   const u = new URL(req.url);
+  const cron = u.searchParams.get("cron") === "1";
+  if (!cron && !(await allowed(req))) return json({ error: "auth" }, 401);
   let note = "";
   try { note = await refresh(); } catch (e) { note = "error " + (e as Error).message; }
-  if (u.searchParams.get("cron") === "1") return json({ ok: true, note });
+  if (cron) return json({ ok: true, note });
   const cols = COLS + (u.searchParams.get("trail") === "1" ? ",trail" : "") + ",fetched_at,err";
   const { data, error } = await db.from("semis_logi_adsb").select(cols);
   if (error) return json({ error: error.message }, 500);
@@ -208,6 +233,8 @@ Deno.serve(async (req: Request) => {
     now: iso(Date.now()), note, fetched_at: meta.fetched_at || null, err: meta.err || null, src: "adsb.lol (ODbL)",
     ac: rows.filter(r => r.hex !== "_meta").map(r => { delete r.fetched_at; delete r.err; return r; })
   };
+  const fl = await fleetList();
+  if (fl) out.fleet = fl;
   if (u.searchParams.get("events") === "1") {
     const { data: ev } = await db.from("semis_logi_adsb_events").select("hex,reg,flight,kind,apt,at,inferred")
       .gte("at", iso(Date.now() - 48 * 3600_000)).order("at", { ascending: false }).limit(300);
