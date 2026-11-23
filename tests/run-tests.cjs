@@ -13457,6 +13457,13 @@ function makeServer(opts = {}) {
       ok(tds.some(r => /안전보안파트\|온라인\|'26\. 11\. 10 ~ 11\. 20/.test(r)), "주관 · 장소 · 일시");
       eq(pg.querySelectorAll("td.sg img").length, 1, "서명 1");
       ok(/병가/.test(pg.querySelector("td.sg .nt").textContent), "서명 칸 사유");
+      // v1.78.1 — 대상자명 · 사번 · 서명 × 2, 여섯 칸 같은 너비
+      const mt = pg.querySelector("table.mem");
+      eq(Array.from(mt.querySelectorAll("tr")[0].children).map(x => x.textContent).join("|"), "대상자명|사번|서명|대상자명|사번|서명");
+      eq(Array.from(mt.querySelectorAll("col")).map(x => x.style.width).join(","), Array(6).fill("16.666%").join(","));
+      ok(Array.from(mt.querySelectorAll("tr")).slice(1).every(tr => tr.children.length === 6), "줄마다 여섯 칸");
+      const r1 = Array.from(mt.querySelectorAll("tr")[1].children).map(x => x.textContent.trim());
+      ok(/^\d+$/.test(r1[1]) && /^\d+$/.test(r1[4]), "사번 " + r1.join("|"));
       ok(/지게차 통로/.test(pg.querySelector("td.bd").textContent), "교육 내용");
       eq(L.period(c), "'26. 11. 10 ~ 11. 20");
       const many = ROSTER(); for (let i = 0; i < 30; i++) many.people.push({ id: "m" + i, name: "사람" + i, org: "에어제타", part: "수출파트", emp: "8000" + i, gender: i % 2 ? "M" : "F" });

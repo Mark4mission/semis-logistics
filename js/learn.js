@@ -889,16 +889,19 @@
   .bd p { margin: .8mm 0; } .bd ul, .bd ol { margin: .5mm 0 1mm 5mm; padding: 0; } .bd li { margin: .3mm 0; }
   .sg { height: 9mm; padding: .5mm; } .sg img { max-height: 8mm; max-width: 100%; display: block; margin: 0 auto; }
   .nt { font-size: 9pt; color: #333; }
+  td.mt { padding: 0; height: auto; } table.mem { border-style: hidden; } .mono { font-family: Consolas, "D2Coding", monospace; font-size: 9.5pt; }
   .cont { font-size: 9pt; color: #333; margin: 0 0 2mm; }`;
+  /* 교육 대상자 칸(v1.78.1) — 대상자명 · 사번 · 서명 × 2, 여섯 칸 같은 너비. 위쪽 표와 칸 경계가 달라 한 칸(colspan 7) 안의 표로 그린다 */
   function memRowsHTML(list, signs) {
     let h = "";
     for (let i = 0; i < list.length; i += 2) {
-      const a = list[i], b = list[i + 1];
-      const cell = (m, w) => `<td${w > 1 ? ` colspan="${w}"` : ""}>${m ? esc(m.name) : ""}</td><td colspan="2" class="sg">${m && signOf(m, signs) ? `<img src="${esc(signOf(m, signs))}" alt="">` : m && m.st !== "ok" && m.note ? `<span class="nt">${esc(m.note)}</span>` : ""}</td>`;
-      h += `<tr>${cell(a, 1)}${cell(b, 2)}</tr>`;
+      const cell = (m) => `<td>${m ? esc(m.name) : ""}</td><td class="mono">${m ? esc(m.emp || "") : ""}</td><td class="sg">${m && signOf(m, signs) ? `<img src="${esc(signOf(m, signs))}" alt="">` : m && m.st !== "ok" && m.note ? `<span class="nt">${esc(m.note)}</span>` : ""}</td>`;
+      h += `<tr>${cell(list[i])}${cell(list[i + 1])}</tr>`;
     }
     return h;
   }
+  const memTable = (part, signs) => `<tr><th>교육 대상자</th><td colspan="7" class="mt"><table class="mem"><colgroup>${'<col style="width:16.666%">'.repeat(6)}</colgroup>
+        <tr><th>대상자명</th><th>사번</th><th>서명</th><th>대상자명</th><th>사번</th><th>서명</th></tr>${memRowsHTML(part, signs)}</table></td></tr>`;
   /* 교육 내용 칸 — 요약 글 + 사진(칸에 맞춤) + 동영상 주요 장면(나란히) */
   function contentHTML(c0, media) {
     const c = RC(c0);
@@ -915,9 +918,8 @@
     const cols = `<colgroup><col style="width:13%"><col style="width:17%"><col style="width:11%"><col style="width:11%"><col style="width:11%"><col style="width:12%"><col style="width:10%"><col style="width:15%"></colgroup>`;
     const body = contentHTML(c, media);
     const pages = sh.map(s => chunks(s.mem).map((part, pi, all) => {
-      const n = Math.max(1, Math.ceil(part.length / 2));
       if (pi > 0) return `<section class="pg"><p class="cont">교육 실시 결과 기록부 — ${esc(s.part !== "-" ? s.part : s.team)} · ${esc(c.title)} (${pi + 1}/${all.length})</p><table>${cols}
-        <tr><th rowspan="${n + 1}">교육 대상자</th><th>대상자명</th><th colspan="2">서명</th><th colspan="2">대상자명</th><th colspan="2">서명</th></tr>${memRowsHTML(part, signs)}</table></section>`;
+        ${memTable(part, signs)}</table></section>`;
       return `<section class="pg"><h1>교육 실시 결과 기록부</h1><table>${cols}
         <tr><th>팀명</th><td colspan="2">${esc(s.team)}</td><td colspan="5" style="border:0"></td></tr>
         <tr><th>파트명·소속</th><td colspan="2">${esc(s.part)}</td><td colspan="5" style="border:0"></td></tr>
@@ -930,7 +932,7 @@
         <tr><th rowspan="2">교육 진행</th><th>교육 주관</th><th colspan="3">교육 장소</th><th colspan="3">교육 일시</th></tr>
         <tr><td>${esc(c.host || "")}</td><td colspan="3">${esc(c.place || "")}</td><td colspan="3">${esc(period(c))}</td></tr>
         <tr><th>교육 내용</th><td colspan="7" class="bd">${body}</td></tr>
-        <tr><th rowspan="${n + 1}">교육 대상자</th><th>대상자명</th><th colspan="2">서명</th><th colspan="2">대상자명</th><th colspan="2">서명</th></tr>${memRowsHTML(part, signs)}
+        ${memTable(part, signs)}
       </table></section>`;
     }).join("")).join("");
     return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>교육 실시 결과 기록부 — ${esc(c.title)}</title><style>${PRINT_CSS}</style></head><body><div class="lgf">${LOGO_SVG}</div>${pages || "<p>대상이 없습니다.</p>"}</body></html>`;
