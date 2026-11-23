@@ -56,8 +56,10 @@
       try {
         const key = window.SemisSync && SemisSync.ANON;
         const qs = [wantTrail ? "trail=1" : "", wantEvents ? "events=1" : ""].filter(Boolean).join("&");
+        /* fetch 에 cache: "no-store" 를 주지 않는다(v1.81.1) — 주면 브라우저가 사전 확인(OPTIONS) 기억도 건너뛰어 요청마다 서버 호출이 2건.
+           응답이 Cache-Control: no-store 라 보관되지는 않는다(아래 실시간 요청도 같음) */
         const r = await fetch(FN_URL + (qs ? "?" + qs : ""), {
-          cache: "no-store", headers: Object.assign(key ? { apikey: key, Authorization: "Bearer " + key } : {}, authHdr()) });
+          headers: Object.assign(key ? { apikey: key, Authorization: "Bearer " + key } : {}, authHdr()) });
         if (r && r.status === 401) {
           state.auth = false;
           if (typeof SeMIS.onFlightAuth === "function") SeMIS.onFlightAuth();
@@ -201,7 +203,7 @@
     const arm = () => { clearTimeout(wd); wd = setTimeout(() => { if (ctrl) ctrl.abort(); }, LIVE_WATCH); };
     try {
       arm();
-      const r = await fetch(FN_URL + "?live=1&stream=1", { cache: "no-store", headers: reqHdr(), signal: ctrl ? ctrl.signal : undefined });
+      const r = await fetch(FN_URL + "?live=1&stream=1", { headers: reqHdr(), signal: ctrl ? ctrl.signal : undefined });
       if (r && r.status === 401) { authLost(); throw new Error("auth"); }
       if (!r || !r.ok) throw new Error("HTTP " + (r ? r.status : "-"));
       const ct = (r.headers && r.headers.get && r.headers.get("content-type")) || "";
@@ -237,7 +239,7 @@
     live.ctrl = ctrl;
     const wd = setTimeout(() => { if (ctrl) ctrl.abort(); }, 10000);
     try {
-      const r = await fetch(FN_URL + "?live=1", { cache: "no-store", headers: reqHdr(), signal: ctrl ? ctrl.signal : undefined });
+      const r = await fetch(FN_URL + "?live=1", { headers: reqHdr(), signal: ctrl ? ctrl.signal : undefined });
       if (r && r.status === 401) { authLost(); throw new Error("auth"); }
       if (!r || !r.ok) throw new Error("HTTP " + (r ? r.status : "-"));
       const j = await r.json();

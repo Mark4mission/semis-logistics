@@ -5485,6 +5485,8 @@ function makeServer(opts = {}) {
       ok(/\.appr-row > \* \{ pointer-events: none; \}/.test(read("css/main.css")), "줄 안쪽은 누름을 받지 않음");
       ok(!/layer\.clearLayers\(\)/.test(ops.replace(/meLayer\.clearLayers\(\)/g, "")), "지도 전체를 지우고 다시 그리지 않음");
       ok(/LIVE_BASE - 5000\) return;/.test(ops), "실시간 수신 중 기본 갱신은 2분마다");
+      ok(!/fetch\([^;]*cache: "no-store"/.test(ops.replace(/\/\*[\s\S]*?\*\//g, "")), "위치 요청에 cache: no-store 없음(사전 확인 기억을 건너뛰지 않게 — 운영 기록으로 확인 11-23)");
+      ok(/"Access-Control-Max-Age": "7200"/.test(edge) && /status, headers: \{ \.\.\.CORS, "Content-Type": "application\/json", "Cache-Control": "no-store" \}/.test(edge), "서버: 사전 확인 2시간 기억 · 응답은 보관 금지");
     });
 
     await ta("FR02 처음 화면: 활주로 가운데가 중심 · 반경 5NM 이 한 화면에(정수 단계 · 한 단계 깊으면 넘침) · 인천공항 단추로 되돌아옴", async () => {
