@@ -1,6 +1,7 @@
 /* 전파교육 — 본사 통보(규정 개정 · 보안등급 · 보고체계 · TSA 등)를 파트 · 협력사에 전파 · 회람교육한 기록. 건 × 파트 이행 표.
    v1.71: ① '교육 전파 · 서명'(js/learn.js)으로 받은 교육(보안 · 안전 · 위험물)은 등록 없이 자동으로 한 줄(서명 수로 이행 계산, 누르면 그 교육)
           ② 칸 = 인원 관리의 파트 · 협력업체(UCC · 안전보안파트 · 수입통과파트 · 수출파트 · 협력업체…). 옛 칸 이름(ss · exp · imp …)은 ALIAS 로 읽는다
+   v1.78.2: 같은 집단의 다른 이름은 한 칸(SemisRoster.canon — 운영(직속) → UCC · 아시아나에어포트 → AAP · ProScom → 프로에스콤)
           ③ 손으로 등록하는 것은 종이 회람처럼 서명 기능을 쓰지 않은 전파만
    SeMIS.data.dissem = { depts[{ id, label, vendor }], events[{ id, date, title, kind, src, notice[](통보 원문),
      docs[](회람지 등), targets[], res{ 파트id: { date, files[], note } }, note, chk }] } — 공용 DB 에만 */
@@ -18,9 +19,11 @@
   ];
   const KINDS = ["규정 개정", "보안등급 · 경보", "보고체계", "TSA · 해외 당국", "지침 · 강화", "기타"];
   /* 옛 칸 id → 지금 칸(인원 관리의 그룹 이름) */
-  const ALIAS = { ss: "안전보안파트", exp: "수출파트", imp: "수입통과파트", tra: "수입통과파트", gen: "UCC", ops: "운영(직속)", gmp: "김포", aap: "AAP", psc: "프로에스콤" };
-  const SELF_EXTRA = ["운영(직속)", "김포"];
-  const colKey = (k) => { const c = (Array.isArray(V().depts) ? V().depts : []).find(d => d && d.id === k); return c ? c.label : (ALIAS[k] || String(k || "")); };
+  const ALIAS = { ss: "안전보안파트", exp: "수출파트", imp: "수입통과파트", tra: "수입통과파트", gen: "UCC", ops: "UCC", gmp: "김포", aap: "AAP", psc: "프로에스콤" };
+  const SELF_EXTRA = ["UCC", "김포"];
+  /* 같은 집단의 다른 이름(운영(직속) = UCC · 아시아나에어포트 = AAP · ProScom = 프로에스콤)은 인원 관리의 한 이름으로 */
+  const canon = (g) => { const R = window.SemisRoster; return R && R.canon ? R.canon(g) : String(g || ""); };
+  const colKey = (k) => { const c = (Array.isArray(V().depts) ? V().depts : []).find(d => d && d.id === k); return canon(c ? c.label : (ALIAS[k] || String(k || ""))); };
   const stored = () => (Array.isArray(V().events) ? V().events : []).filter(Boolean);
   const LN = () => window.SemisLearn;
   /* 교육 전파 · 서명에서 온 줄 — 저장하지 않고 그때그때 만든다 */
@@ -42,7 +45,7 @@
     stored().forEach(e => Object.keys(resOf(e)).concat(Array.isArray(e.targets) ? e.targets : []).forEach(k => rest.push(colKey(k))));
     rest.filter(g => SELF_EXTRA.indexOf(g) >= 0).forEach(g => add(g, false));
     gs.filter(x => !x.self).forEach(x => add(x.g, true));
-    learnEvents().forEach(e => e.learn.groups.forEach(x => add(x.g, !x.self)));
+    learnEvents().forEach(e => e.learn.groups.forEach(x => add(canon(x.g), !x.self)));
     rest.forEach(g => add(g, SELF_EXTRA.indexOf(g) < 0 && !gs.some(x => x.self && x.g === g)));
     return out.length ? out : DEF_DEPTS.map(d => ({ id: colKey(d.id), label: colKey(d.id), vendor: !!d.vendor })).filter((d, i, a) => a.findIndex(x => x.id === d.id) === i);
   }
@@ -71,7 +74,7 @@
     });
     return out;
   }
-  const lg = (e, d) => (e.learn ? e.learn.groups.find(x => x.g === colKey(d)) : null);
+  const lg = (e, d) => (e.learn ? e.learn.groups.find(x => canon(x.g) === colKey(d)) : null);
   const done = (e, d) => {
     if (e && e.learn) { const x = lg(e, d); return !!(x && x.n > 0 && x.ok >= x.n); }
     const r = resN(e)[colKey(d)]; return !!(r && (isISO(r.date) || r.files.length || r.ok));
