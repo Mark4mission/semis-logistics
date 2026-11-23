@@ -53,11 +53,12 @@ const get = async (qs = "", h: Record<string, string> = {}) => {
 const gateCalls = () => calls.filter(c => c.url.endsWith("/rpc/semis_logi_flight_gate"));
 const lockCalls = () => calls.filter(c => c.method === "PATCH");
 
-Deno.test("OPTIONS — 출입 머리글 두 개 허용", async () => {
+Deno.test("OPTIONS — 출입 머리글 두 개 허용 · 사전 확인 기억 2시간", async () => {
   const r = await realFetch("http://localhost:8000/", { method: "OPTIONS" });
   await r.text();
   const ah = r.headers.get("access-control-allow-headers") || "";
   assertEquals(ah.includes("x-semis-token") && ah.includes("x-flight-token"), true);
+  assertEquals(r.headers.get("access-control-max-age"), "7200");      // 사전 확인을 2시간 기억 — 요청마다 호출이 두 배가 되지 않게
 });
 
 Deno.test("출입 없음 → 401 · 위치 · 조회 안 함", async () => {

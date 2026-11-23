@@ -328,7 +328,8 @@ async function refresh(): Promise<string> {
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+  /* 사전 확인(preflight)도 호출 1건으로 잡힌다 — 브라우저가 주소별로 2시간(크롬 상한)까지 기억하게 해 요청마다 한 번씩 더 부르지 않게 */
+  if (req.method === "OPTIONS") return new Response("ok", { headers: { ...CORS, "Access-Control-Max-Age": "7200" } });
   const u = new URL(req.url);
   const live = u.searchParams.get("live") === "1";
   const cron = !live && u.searchParams.get("cron") === "1";        // 실시간은 위치를 돌려주므로 cron 과 함께 와도 출입 확인
