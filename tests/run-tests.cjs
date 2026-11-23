@@ -5482,6 +5482,7 @@ function makeServer(opts = {}) {
       ok(/const live = u\.searchParams\.get\("live"\) === "1";\s*\n\s*const cron = !live && /.test(edge), "실시간은 cron 과 함께 와도 출입 확인");
       ok(/if \(!cron && !\(await allowed\(req\)\)\) return json\(\{ error: "auth" \}, 401\);\s*\n\s*if \(live\) \{/.test(edge), "출입 확인 뒤에만 실시간");
       ok(/"Content-Type": "text\/event-stream; charset=utf-8"/.test(edge) && /LIVE_GAP = 4_500/.test(edge) && /LIVE_TICK = 5_000/.test(edge), "5초 간격 · 이어 보내기");
+      ok(/LIVE_TIMEOUT = 9_000/.test(edge) && /LIVE_TICK \* 2 \*\* Math\.min\(liveFail - 1, 4\)/.test(edge), "원본이 느리면 9초까지 기다림 · 한 번 실패는 5초 뒤 다시(운영 11-23: 4초 제한 + 10초 물러남으로 40초 묵음)");
       ok(/\.appr-row > \* \{ pointer-events: none; \}/.test(read("css/main.css")), "줄 안쪽은 누름을 받지 않음");
       ok(!/layer\.clearLayers\(\)/.test(ops.replace(/meLayer\.clearLayers\(\)/g, "")), "지도 전체를 지우고 다시 그리지 않음");
       ok(/LIVE_BASE - 5000\) return;/.test(ops), "실시간 수신 중 기본 갱신은 2분마다");
@@ -5694,7 +5695,7 @@ function makeServer(opts = {}) {
       eq(e.liveCalls().length, n, "더 연결하지 않음"); ok(!e.SF().live.on);
     });
 
-    await ta("FR09 탭이 가려지면 연결을 끊고 돌아오면 다시 잇는다", async () => {
+    await ta("FR09 탭이 가려지면 연결을 바로 끊고 · 돌아와 0.8초 머물면 한 번만 다시 잇는다(창이 깜빡여도 연결을 여러 번 열지 않음)", async () => {
       const e = mk();
       await up();
       const L = e.SF().live, s1 = e.stream();
@@ -5705,10 +5706,12 @@ function makeServer(opts = {}) {
       ok(s1.aborted && !L.on, "끊음");
       const n = e.liveCalls().length; await tick(350);
       eq(e.liveCalls().length, n, "가려진 동안 연결 없음");
-      hidden = false;
-      e.w.document.dispatchEvent(new e.w.Event("visibilitychange"));
-      await tick(40);
-      eq(e.liveCalls().length, n + 1, "다시 연결"); ok(L.on && e.stream() !== s1 && !e.stream().aborted);
+      const flip = (v) => { hidden = v; e.w.document.dispatchEvent(new e.w.Event("visibilitychange")); };
+      flip(false); await tick(60); flip(true); await tick(60); flip(false); await tick(60); flip(true); await tick(60); flip(false);   // 창이 깜빡임
+      await tick(300);
+      eq(e.liveCalls().length, n, "돌아와 0.8초 머물기 전에는 잇지 않음(깜빡이는 동안 연결 0건)");
+      await tick(700);
+      eq(e.liveCalls().length, n + 1, "머문 뒤 한 번만 다시 연결"); ok(L.on && e.stream() !== s1 && !e.stream().aborted);
       eq(e.errors.length, 0, e.errors.join(" | "));
     });
 

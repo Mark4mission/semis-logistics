@@ -9,7 +9,7 @@
      (tools/sql/semis-logi-flight.sql, strict 가 꺼져 있으면 모두 통과). ?cron=1 은 기록만 하고 위치를 돌려주지 않으므로 확인하지 않음
    - 실시간(v1.81 · 현장 웹앱): GET ?live=1 → adsb.lol 을 5초 간격으로 받아 DB 를 거치지 않고 그대로 돌려준다(기록 · 입출항 판정은 위 경로만).
      ?live=1&stream=1 → 한 번 연결로 5초마다 이어 보냄(text/event-stream, 처음엔 전체 · 그 뒤엔 바뀐 기체만). 연결 하나 = 호출 1건.
-     조회는 이 함수 인스턴스 안에서 화면 여럿이 함께 쓰고(4.5초 안이면 다시 묻지 않음), 실패하면 10초 → 60초로 물러난다. 출입 확인은 같음.
+     조회는 이 함수 인스턴스 안에서 화면 여럿이 함께 쓰고(4.5초 안이면 다시 묻지 않음), 실패하면 5초 → 60초로 물러난다. 출입 확인은 같음.
    - 배포: Supabase MCP deploy_edge_function (verify_jwt true, anon 키로 호출). 이 파일이 원본. */
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -96,6 +96,7 @@ const LIVE_GAP = 4_500;            // adsb.lol 실시간 조회 최소 간격
 const LIVE_TICK = 5_000;           // 이어 보내는 간격
 const LIVE_STREAM_MS = 105_000;    // 한 번 연결로 보내는 시간 — 실행 한도(무료 150초) 안쪽. 그 전에 끊겨도 화면이 바로 다시 잇는다
 const LIVE_HEX_KEEP = 300_000;
+const LIVE_TIMEOUT = 9_000;        // 원본이 느릴 때(운영 11-23: 5~6초) 끊지 않고 기다림 — 늦게 온 자료는 나이(a)를 붙여 보내고 화면이 그만큼 이어 그린다
 /* 한 줄 = [hex, lat, lon, alt, gs, trk, vr, 지상(1 · 0 · null=모름), sqk, 비상(1 · 0), 편명, 위치 나이(초), 수신 나이(초)] */
 type LRow = (string | number | null)[];
 type Snap = { t: number; at: number; rows: LRow[]; err: boolean };
@@ -126,7 +127,7 @@ async function liveFetch(): Promise<void> {
     if (!liveHex || Date.now() - liveHexAt > LIVE_HEX_KEEP) { liveHex = await fleetHex(); liveHexAt = Date.now(); }
     const hexes = liveHex;
     const res = await fetch("https://api.adsb.lol/v2/hex/" + hexes.join(","), {
-      headers: { "User-Agent": LIVE_UA }, signal: AbortSignal.timeout(4_000)
+      headers: { "User-Agent": LIVE_UA }, signal: AbortSignal.timeout(LIVE_TIMEOUT)
     });
     if (!res.ok) throw new Error("adsb.lol HTTP " + res.status);
     const j = await res.json();
@@ -137,10 +138,11 @@ async function liveFetch(): Promise<void> {
     for (const a of (Array.isArray(j.ac) ? j.ac : [])) { const r = liveRow(a, hexes); if (r) rows.push(r); }
     liveSnap = { t: t0, at, rows, err: false };
     liveFail = 0;
-  } catch (_) {
+  } catch (e) {
     liveFail++;
-    liveHold = Date.now() + Math.min(60_000, LIVE_TICK * 2 ** Math.min(liveFail, 4));
+    liveHold = Date.now() + Math.min(60_000, LIVE_TICK * 2 ** Math.min(liveFail - 1, 4));   // 5 · 10 · 20 · 40 · 60초 — 한 번 실패는 다음 차례에 바로 다시
     liveSnap = { ...liveSnap, err: true };
+    console.warn("live adsb.lol", liveFail, String((e as Error)?.message || e).slice(0, 120));
   }
 }
 async function liveGet(): Promise<Snap> {

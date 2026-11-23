@@ -26,6 +26,7 @@
   const LIVE_WATCH = 16000;   // 이어 받는 중 이만큼 아무것도 안 오면 끊고 다시 연결
   const LIVE_POLL = 15000;    // 이어 받기를 못 쓰는 망 — 묻는 간격
   const LIVE_BASE = 120000;   // 실시간 수신 중 기본 갱신(입출항 기록 · 기체 목록) 간격
+  const LIVE_SHOW = 800;      // 탭이 다시 보인 뒤 이만큼 머물러야 실시간을 이음(창이 깜빡일 때 연결을 여러 번 열지 않게)
   const DR_HOLD = 18000;      // 마지막 위치에서 속도 · 방위로 이어 그리는 한도 — 넘으면 그 자리에 멈춤
   const DR_NEW = 20000;       // 이보다 묵은 위치로는 이어 그리기를 시작하지 않음
   const DR_BLEND = 900;       // 새 위치를 받았을 때 그려진 자리와의 차이를 푸는 시간
@@ -1140,8 +1141,10 @@
     }, REFRESH_MS);
   }
   /* 다른 탭에 있다 돌아오면 바로 갱신 */
+  let showT = 0;
   if (typeof document !== "undefined") document.addEventListener("visibilitychange", () => {
-    liveSync();                                                       // 가려지면 실시간 연결을 끊고, 돌아오면 다시 잇는다
+    clearTimeout(showT);                                              // 가려지면 실시간 연결을 바로 끊고, 돌아오면 잠깐 머문 뒤 다시 잇는다
+    if (document.hidden) liveSync(); else showT = setTimeout(liveSync, LIVE_SHOW);
     if (document.hidden) return;
     if (!document.getElementById("fo-page") && !document.getElementById("dash-flt")) return;
     if (Date.now() - state.ts > REFRESH_MS) refresh(false);
