@@ -4,7 +4,7 @@
      courses[{ id, fam, name, kind(초기|직무|인증|정기|1회), cycle(개월, 0 = 영구), rule(kr|dg|""), step(자격을 주지 않는 단계),
                hours, legal(law|intl|own), basis, org, roles[], all, vendor, who(협력사 과정 대상), same[](같은 교육으로 인정하는 과정 id) }] — 비면 코드 기본 과정
      people[{ id, name, emp(사번), dept, roles[], apt{직무: 임명일}, left(퇴직일), pledge(SSI 서약일), pledgeFiles[], note, src, selfAt }]
-     records[{ id, pid, cid, date, expire(비면 규칙으로 계산), hours, score, org, certNo, files[], sessionId, note, src, selfAt, chkAt, chkBy }]
+     records[{ id, pid, cid, date, expire(비면 규칙으로 계산), hours, score, org, certNo, files[], noCert(이수증 발급 안 됨), sessionId, note, src, selfAt, chkAt, chkBy }]
      sessions[{ id, type(own|vendor), cid, title, date, time, hours, place, instructor, evalText, pids[],
                 files{ tt[], roster[], eval[] }, vendor, target, done, note, createdAt/By, updatedAt/By }] }
    본인 등록(edu.html): 서버 semis_logi_edu_submit 이 병합 — 사람 apt · selfAt, 기록 src "self" · selfAt. 안전보안파트가 확인하면 chkAt · chkBy.
@@ -191,6 +191,9 @@
   const vendorCourses = () => courses().filter(c => c.vendor);
   const filesOf = (x) => (x && Array.isArray(x) ? x : []);
   const sfiles = (s, k) => filesOf(s && s.files && s.files[k]);
+  /* 이수증 미제출 — 수료일만으로 이수 처리하고 표기만 남긴다. 당사 교육 기록(명단 · 서명이 증빙)과 '발급 안 됨' 기록은 제외 */
+  const certDue = (r) => !!r && !r.sessionId && !r.noCert && !filesOf(r.files).length;
+  const CERT_TAG = '<small class="tr-cert">이수증 미제출</small>';
   const isPerm = (c) => !!c && !c.step && !(Number(c.cycle) > 0);
   const legalOf = (c) => (c && LEGAL[c.legal] ? c.legal : "law");
   function allRoles() {
@@ -938,7 +941,7 @@
       const files = c.r ? filesOf(c.r.files) : [];
       const tag = canW ? "button" : "div";
       return `<${tag}${tag === "button" ? ' type="button"' : ""} class="tr-qual" data-st="${c.st}"${canW ? ` data-tqual="${esc(c.g.fam)}"` : ""}>
-        <span class="tr-qh"><b>${esc(famShort(c.g))}</b>${stChip(c)}${c.req ? "" : '<small class="tr-src">보유</small>'}</span>
+        <span class="tr-qh"><b>${esc(famShort(c.g))}</b>${stChip(c)}${c.req ? "" : '<small class="tr-src">보유</small>'}${certDue(c.r) ? CERT_TAG : ""}</span>
         <span class="tr-qd">${esc(stText(c))}</span>
         ${c.r ? `<span class="tr-qm"><span class="mono">${esc(dot(c.r.date))}</span> ${esc(lastC ? lastC.name : "")}${c.r.org ? " · " + esc(c.r.org) : ""}</span>` : ""}
         ${files.length ? `<span class="au-files">${fileChips(files)}</span>` : ""}
@@ -964,7 +967,7 @@
           const expTxt = c && c.step ? "단계" : exp ? "~" + esc(ymd2(exp)) : "영구";
           return `<li class="${q ? "is-cur tone-" + esc(tone) : past ? "is-past" : ""}"><${tag}${tag === "button" ? ` type="button" data-rid="${esc(r.id)}"` : ""} class="tr-hrow">
             <span class="tr-hd mono">${esc(dot(r.date))}</span>
-            <span class="tr-hn"><b>${esc(c ? c.name : "과정 없음")}${selfOpen(r) ? ' <small class="tr-self">본인 등록</small>' : r.selfAt ? ' <small class="tr-self is-ok" title="' + esc("본인 등록 · 확인 " + (r.chkBy || "")) + '">본인 등록 · 확인</small>' : ""}</b><small>${esc([c ? c.kind : "", r.hours != null && r.hours !== "" ? r.hours + "시간" : "", r.org, r.certNo ? "No. " + r.certNo : "", r.sessionId ? "당사 교육 기록" : ""].filter(Boolean).join(" · "))}</small></span>
+            <span class="tr-hn"><b>${esc(c ? c.name : "과정 없음")}${selfOpen(r) ? ' <small class="tr-self">본인 등록</small>' : r.selfAt ? ' <small class="tr-self is-ok" title="' + esc("본인 등록 · 확인 " + (r.chkBy || "")) + '">본인 등록 · 확인</small>' : ""}${certDue(r) ? " " + CERT_TAG : ""}</b><small>${esc([c ? c.kind : "", r.hours != null && r.hours !== "" ? r.hours + "시간" : "", r.org, r.certNo ? "No. " + r.certNo : "", r.sessionId ? "당사 교육 기록" : ""].filter(Boolean).join(" · "))}</small></span>
             <span class="tr-he mono">${q && q.st !== "ok" && q.st !== "perm" ? `${stChip(q)}<b class="tr-hdd">${esc(ddLabel(q, t))}</b>` : past ? `<small class="tr-past">이력</small>${expTxt}` : expTxt}</span>
           </${tag}>${filesOf(r.files).length ? `<div class="au-files">${fileChips(r.files)}</div>` : ""}</li>`;
         }).join("")}</ul>` : ui.empty("등록된 이수 기록이 없습니다.")}
@@ -1455,6 +1458,7 @@
         ${fld("tr-n", "이수증 번호", `<input id="tr-n" value="${esc(v.certNo)}" maxlength="40" autocomplete="off">`)}
       </div>
       ${fileBox("trf", "이수증")}
+      <label class="ck-rc tr-nocert"><input type="checkbox" id="tr-nc" ${v.noCert ? "checked" : ""}><span>이수증이 발급되지 않는 교육</span></label>
       ${fld("tr-m", "메모", `<input id="tr-m" value="${esc(v.note)}" maxlength="200">`)}
       ${x && x.selfAt ? `<label class="ck-rc tr-chk"><input type="checkbox" id="tr-chk" checked><span>본인 등록 이수증 확인${x.chkAt ? ` <small class="mono">${esc(dot(String(x.chkAt).slice(0, 10)))} ${esc(x.chkBy || "")}</small>` : ""}</span></label>` : ""}
       ${dl("tr-dl-org", orgs)}
@@ -1485,9 +1489,11 @@
       const calc = calcNow(), e = $("#tr-e").value || "";
       const rec = { pid: p.id, cid, date, expire: isISO(e) && e !== calc ? e : "", hours: num($("#tr-h").value), score: num($("#tr-s").value),
         org: norm($("#tr-o").value), certNo: norm($("#tr-n").value), note: norm($("#tr-m").value), files: uniqFiles(files) };
+      if ($("#tr-nc").checked) rec.noCert = true;
       const t = T();
       if (x) {
         Object.assign(x, rec);
+        if (!rec.noCert) delete x.noCert;
         const ck = $("#tr-chk");
         if (ck && ck.checked && !x.chkAt) { x.chkAt = new Date().toISOString(); x.chkBy = me(); }
         else if (ck && !ck.checked) { delete x.chkAt; delete x.chkBy; }
@@ -1947,7 +1953,7 @@
     migrate, rolesOf, needAct, loadPledges, pledgeMatch, pledgeInfo, pledgesState: PL,
     syncSessionRecords, personForm, pledgeForm, recordForm, sessionForm, coursesForm, keepOver, leftOver, openPerson, openSession,
     eduLinks, eduUrl, needList, needText, selfPending, selfRecs, aptOf, eduState: EDU,
-    uniqFiles, ddLabel, ddDate, alertSummary, dueSheet, xlsxParts, xlsxBytes, exportDue, DUE_DAYS,
+    uniqFiles, certDue, ddLabel, ddDate, alertSummary, dueSheet, xlsxParts, xlsxBytes, exportDue, DUE_DAYS,
     setToday(t) { fixedToday = isISO(t) ? t : ""; },
     getState() { return { tab, q, roleF, rgF, onlyAct, onlySelf, year, sType, pState, pView, pid, sid, plScope, plState }; },
     setState(o) {

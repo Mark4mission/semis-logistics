@@ -6536,6 +6536,38 @@ function makeServer(opts = {}) {
       TR.setToday("");
       Object.assign(data(), JSON.parse(keep));
     });
+    t("TR27 이수증 미제출: 수료일만으로 이수(유효) · 자격 현황 · 이수 이력에 '이수증 미제출' · 첨부하면 사라짐 · '발급되지 않는 교육' 체크는 표기 없음 · 당사 교육 기록 제외", () => {
+      loginAs(e, "hq"); TR.setToday("2026-10-01");
+      const keep = JSON.stringify({ people: data().people, records: data().records });
+      data().people = data().people.concat([{ id: "eqp", name: "장비일", dept: "인천화물팀", roles: ["항공보안장비 유지보수요원"] }]);
+      const P = () => data().people.find(x => x.id === "eqp");
+      eq(st(P(), "equip").st, "none", "기록 없음 = 미이수");
+      TR.openPerson("eqp"); go(e, "training");
+      q(e, "#tr-prec").click();
+      chg(setv("#tr-c", "c-equip")); chg(setv("#tr-d", "2026-09-10"));
+      ok(!q(e, "#tr-nc").checked, "기본 = 이수증 필요"); clickOk(e);
+      const r = data().records.find(x => x.pid === "eqp" && x.cid === "c-equip");
+      ok(r && !r.files.length && !("noCert" in r), "파일 없이 저장");
+      eq(st(P(), "equip").st, "ok", "수료일만으로 유효");
+      ok(TR.certDue(r), "미제출");
+      const qual = q(e, '.tr-qual[data-tqual="equip"]');
+      ok(qual && qual.getAttribute("data-st") === "ok" && /이수증 미제출/.test(qual.textContent), "자격 현황 카드 표기");
+      ok(/이수증 미제출/.test(q(e, ".tr-hist").textContent), "이수 이력 표기");
+      ok(!TR.alertSummary().list.some(c => c.p.id === "eqp"), "알림판에 미이수로 안 뜸");
+      /* 수정 화면에서 '발급되지 않는 교육' → 표기 없음, 다시 끄면 칸이 지워짐 */
+      q(e, `.tr-hist [data-rid="${r.id}"]`).click();
+      q(e, "#tr-nc").checked = true; clickOk(e);
+      ok(r.noCert === true && !TR.certDue(r) && !/이수증 미제출/.test(q(e, ".tr-pgrid").textContent), "발급 안 됨 = 표기 없음");
+      q(e, `.tr-hist [data-rid="${r.id}"]`).click();
+      q(e, "#tr-nc").checked = false; clickOk(e);
+      ok(!("noCert" in r) && TR.certDue(r), "체크 끄면 다시 미제출");
+      r.files = [{ name: "cert.pdf", url: "https://x.test/cert.pdf" }];
+      ok(!TR.certDue(r), "이수증 첨부하면 사라짐");
+      ok(!TR.certDue({ sessionId: "s1", files: [] }), "당사 교육 기록 제외");
+      ok(/\.tr-cert\s*\{[^}]*var\(--warning\)/.test(read("css/main.css")), "주황 표기 CSS");
+      Object.assign(data(), JSON.parse(keep));
+      TR.setState({ pid: "" });
+    });
     e.w.close();
   }
 

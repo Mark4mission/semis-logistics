@@ -5880,6 +5880,10 @@ button.hc-d:focus-visible { outline: 2px solid var(--primary); outline-offset: 1
 /* ── 보안교육 이수 등록 — 본인 등록 · 임명일 · 링크 관리 ── */
 .tr-self { display: inline-block; margin-left: 4px; padding: 0 7px; border-radius: 999px; background: var(--info-soft); color: var(--info); font-size: max(var(--fs-min), .76rem); font-weight: 700; vertical-align: middle; white-space: nowrap; }
 .tr-self.is-ok { background: #eef4f3; color: var(--text-3); font-weight: 600; }
+.tr-cert { display: inline-block; margin-left: 4px; padding: 0 7px; border-radius: 999px; background: #fdf3e2; color: var(--warning); font-size: max(var(--fs-min), .76rem); font-weight: 700; vertical-align: middle; white-space: nowrap; }
+.tr-qh .tr-cert { margin-left: 0; }
+.tr-nocert { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 12px; color: var(--text-2); }
+.tr-nocert input { flex: none; width: 15px; height: 15px; margin: 0; accent-color: var(--primary); }
 .tr-ms .tr-self { margin: 0 4px 0 0; }
 .tr-apt { margin-left: 4px; padding: 0 6px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2); font-size: max(var(--fs-min), .76rem); font-weight: 500; }
 .tr-apts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
