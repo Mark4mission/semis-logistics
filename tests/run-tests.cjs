@@ -16184,6 +16184,76 @@ function makeServer(opts = {}) {
         q(e, "#tk-members").click(); act("save").click(); eq(JSON.stringify(e.S.data.taskCfg), "{}", "바꾼 것 없이 저장 = 쓰지 않음");
       } finally { loginAs(e, "hq"); e.S.data.taskCfg = {}; }
     });
+    /* ── v1.82 — 기호 풀이 이름표(Mark 11-23: 눌러 보지 않고는 기호 뜻을 모름 → 마우스를 올리면 '메모' · '중요' 같은 풀이) ── */
+    t("TK66 Task 기호마다 풀이(data-hint) — 지금 상태에 맞는 말 · 늦게 뜨는 title 없음 · 분류는 그림 이름", () => {
+      tkSeed();
+      e.S.data.tasks.find(x => x.id === "tk_none").notes = [{ id: "nt_a", x: "업체 회신 대기", at: "2026-11-18T05:20:00Z", by: "가나다" }, { id: "nt_b", x: "회신 받음", at: "2026-11-18T06:20:00Z", by: "Thq" }];
+      Object.assign(e.S.data.tasks.find(x => x.id === "tk_today"), { src: "desk", teams: ["수출파트"], memo: "출력본" });
+      go(e, "tasks");
+      const row = (id) => q(e, '#tk-list .tk-row[data-id="' + id + '"]'), tt = (el) => el && el.getAttribute("data-hint");
+      eq(qa(e, "#tk-list [title]").length, 0, "목록 안에 title 없음(브라우저 풀이는 1초쯤 늦고 이름표와 겹침)");
+      ok(qa(e, "#tk-list .tk-row").every(r => [".tk-chk", ".tk-cat", ".tk-nb", ".tk-imp", ".tk-del"].every(s2 => tt(r.querySelector(s2)))), "모든 줄의 체크 · 분류 · 줄 끝 단추에 풀이");
+      eq(tt(row("tk_none").querySelector(".tk-chk")), "완료 — 마친 일로");
+      eq(tt(row("tk_none").querySelector(".tk-imp")) + "|" + tt(row("tk_star").querySelector(".tk-imp")), "중요 표시|중요 — 누르면 해제", "중요 = 지금 상태에 맞는 동작");
+      eq(tt(row("tk_none").querySelector(".tk-nb")) + "|" + tt(row("tk_late").querySelector(".tk-nb")), "진행 기록 2건 보기 · 덧붙이기|진행 기록 덧붙이기");
+      eq(tt(row("tk_none").querySelector(".tk-del")), "지우기(알림에서 되돌리기)");
+      eq(tt(row("tk_none").querySelector(".tk-nlast")), "최근 진행 기록 — 누르면 모두 보기");
+      const cat = row("tk_none").querySelector(".tk-cat");
+      eq(cat.getAttribute("role") + "|" + cat.getAttribute("aria-label") + "|" + tt(cat), "img|분류: 기타|분류: 기타", "분류 그림 = 이름 · 풀이");
+      const meta = row("tk_today").querySelector(".tk-meta");
+      eq(qa(e, '#tk-list .tk-row[data-id="tk_today"] .tk-meta [data-hint]').map(tt).join("|"), "기한 " + TK.dayLabel("2026-11-18", TK.today()) + " 15:00|장소|담당|관련 팀|메모 있음 — 누르면 고치기 창|접수 카운터에서 등록",
+        "기한(오늘 → 날짜) · 장소 · 담당 · 관련 팀 · 메모 · 접수");
+      ok(meta.querySelector(".tk-whos .tk-p"), "담당 칩 묶음");
+      row("tk_none").querySelector(".tk-imp").click(); eq(tt(row("tk_none").querySelector(".tk-imp")), "중요 — 누르면 해제", "누른 뒤 말이 바뀜");
+      row("tk_none").querySelector(".tk-nb").click(); eq(tt(row("tk_none").querySelector(".tk-nb")), "진행 기록 접기");
+      ok(tt(row("tk_none").querySelector(".tk-ndel")) === "이 기록 지우기" && !row("tk_none").querySelector(".tk-ndel").hasAttribute("title"));
+      q(e, '[data-ct-tab="done"]').click(); eq(tt(row("tk_done").querySelector(".tk-chk")), "다시 열기(할 일로)");
+      q(e, '[data-ct-tab="todo"]').click();
+      q(e, "#tk-meet").click();
+      ok(qa(e, "#tk-meetbox .tk-row").every(r => tt(r.querySelector(".tk-imp")) && tt(r.querySelector(".tk-del"))) && qa(e, "#tk-meetbox [title]").length === 0, "회의 모드도 같은 풀이");
+      q(e, "#tk-meet").click();
+      const css = read("css/main.css");
+      ok(/\.hover-tip \{[^}]*position: fixed;/.test(css) && /@media print \{ \.tour, \.hover-tip \{ display: none !important; \} \}/.test(css), "이름표 = 화면에만(인쇄 안 함)");
+      ok(/\.tk-with, \.tk-whos \{/.test(css), "담당 묶음 간격");
+      e.S.data.tasks = e.S.data.tasks.map(x => TK.norm(x));
+    });
+    await ta("TK67 기호 풀이 이름표(코어 data-hint): 마우스 0.25초 · 떠 있으면 바로 · 위에 · 이름표 위로 옮겨도 유지 · 누르면 · Esc · 터치는 안 뜸", async () => {
+      tkSeed(); go(e, "tasks");
+      ok(!(e.w.document.getElementById("hover-tip") || { classList: { contains: () => false } }).classList.contains("on"), "다시 그리면 이름표 닫힘");
+      const W = e.w, mm0 = W.matchMedia;
+      let fine = true;
+      W.matchMedia = (qq) => ({ matches: /hover: hover/.test(qq) ? fine : false, addListener() {}, removeListener() {} });
+      try {
+        const box = () => W.document.getElementById("hover-tip");
+        const on = () => !!(box() && box().classList.contains("on"));
+        const over = (el, from) => el.dispatchEvent(new W.MouseEvent("mouseover", { bubbles: true, relatedTarget: from || null }));
+        const out = (el, to) => el.dispatchEvent(new W.MouseEvent("mouseout", { bubbles: true, relatedTarget: to || null }));
+        const imp = q(e, '#tk-list .tk-row[data-id="tk_none"] .tk-imp'), del = q(e, '#tk-list .tk-row[data-id="tk_none"] .tk-del');
+        over(imp); await tick(100); ok(!on(), "바로 뜨지 않음(지나가는 마우스)");
+        await tick(250); ok(on() && box().textContent === "중요 표시" && box().getAttribute("role") === "tooltip", "0.25초 뒤 풀이");
+        ok(/^-?\d+(\.\d+)?px$/.test(box().style.left) && /^-?\d+(\.\d+)?px$/.test(box().style.top), "자리 계산");
+        out(imp, del); over(del, imp); await tick(20); eq(box().textContent, "지우기(알림에서 되돌리기)", "떠 있으면 옆 기호로 바로");
+        out(del, box()); box().dispatchEvent(new W.MouseEvent("mouseenter")); await tick(200); ok(on(), "이름표 위로 옮겨도 닫히지 않음(WCAG 1.4.13)");
+        box().dispatchEvent(new W.MouseEvent("mouseleave")); await tick(200); ok(!on(), "이름표에서 벗어나면 닫힘");
+        over(imp); await tick(300); ok(on());
+        const kd = new W.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }); W.document.dispatchEvent(kd);
+        ok(!on() && !kd.defaultPrevented, "Esc = 닫기(마우스로 띄운 것 — 창 닫기 등 Esc 는 그대로)");
+        imp.focus(); e.S.ui.ttShow(imp); ok(on());
+        const kd2 = new W.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }); imp.dispatchEvent(kd2);
+        ok(!on() && kd2.defaultPrevented, "포커스한 기호의 이름표 = Esc 가 먼저 닫음");
+        imp.blur();
+        over(imp); await tick(300); ok(on());
+        imp.dispatchEvent(new W.Event("pointerdown", { bubbles: true })); ok(!on(), "누르면 닫힘(화면을 다시 그림)");
+        out(imp); await tick(150);
+        fine = false; over(del); await tick(300); ok(!on(), "터치 기기는 안 뜸(누르면 바로 동작)");
+        fine = true;
+        e.S.ui.ttShow(q(e, '#tk-list .tk-row[data-id="tk_late"] .tk-chk')); eq(box().textContent, "완료 — 마친 일로", "키보드 포커스와 같은 길");
+        e.S.ui.ttShow(q(e, "#tk-list .tk-t")); ok(!on(), "풀이 없는 곳 = 닫음");
+        const g = W.document.createElement("div"); g.setAttribute("data-tt", "그래프 칸"); W.document.body.appendChild(g);
+        over(g); await tick(300); ok(!on(), "대시보드 그래프 칸(data-tt — 자기 말풍선)에는 코어 이름표가 겹쳐 뜨지 않음"); g.remove();
+        eq(e.errors.length, 0, e.errors.join(" | "));
+      } finally { W.matchMedia = mm0; e.S.ui.ttHide(); }
+    });
     e.w.close();
   }
 

@@ -3,7 +3,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.81.2";
+  const VERSION = "1.82.0";
   const APP_NAME = "H:drive";
   const APP_ALIAS = "ARGOS (Air-cargo Risk & Guard Operations System)";
   /* 데이터 캐시는 탭 sessionStorage 에만(탭 닫기·로그아웃 시 소멸). 화면 설정(LS_UI)만 localStorage */
@@ -1250,6 +1250,7 @@ const SeMIS = (() => {
   const viewHooks = [];
   function onRerender(fn) { if (typeof fn === "function") viewHooks.push(fn); }
   function renderView() {
+    hideTT();   // 다시 그리면 이름표의 대상이 사라진다
     renderViewNow();
     viewHooks.forEach(fn => { try { fn(); } catch (e) { /* 패널 다시 그리기 실패는 화면을 막지 않는다 */ } });
   }
@@ -2287,6 +2288,79 @@ const SeMIS = (() => {
     document.addEventListener("focusout", (ev) => { if (ev.target.closest && ev.target.closest(".help-tip")) hideTip(120); });
     document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && tipEl && tipEl.classList.contains("on")) { ev.stopPropagation(); ev.preventDefault(); hideTip(); } }, true);
     window.addEventListener("scroll", () => { if (tipFor) hideTip(); }, true);
+  }
+
+  /* 기호 풀이 이름표(data-hint) — 아이콘만 있는 단추 · 기호에 마우스를 올리거나(0.25초 — 이름표가 떠 있으면 바로) 키보드로 가면
+     짧은 이름표. 브라우저 title 은 1초쯤 늦게 떠서 쓰지 않는다. 이름표 위로 마우스를 옮겨도 닫히지 않고 Esc 로 닫힌다(WCAG 1.4.13).
+     누르면 닫는다(화면을 다시 그리면 대상이 사라짐). 터치 기기는 누르면 바로 동작하므로 띄우지 않는다.
+     이름표는 보이는 풀이일 뿐 — 단추 이름(보이는 글자 · .sr-only)은 따로 둔다.
+     data-tt 는 대시보드 그래프 칸이 자기 말풍선으로 쓰므로(auddash · secdash · hazfind) 겹치지 않게 data-hint */
+  let ttEl = null, ttFor = null, ttTimer = 0;
+  function ttBox() {
+    if (ttEl) return ttEl;
+    ttEl = document.createElement("div");
+    ttEl.id = "hover-tip"; ttEl.className = "hover-tip"; ttEl.setAttribute("role", "tooltip");
+    ttEl.addEventListener("mouseenter", () => clearTimeout(ttTimer));
+    ttEl.addEventListener("mouseleave", () => hideTT(120));
+    document.body.appendChild(ttEl);
+    return ttEl;
+  }
+  function showTT(el) {
+    const txt = el && el.isConnected ? String(el.getAttribute("data-hint") || "").trim() : "";
+    clearTimeout(ttTimer);
+    if (!txt) { hideTT(); return; }
+    const box = ttBox(), h = layerHost();
+    if (h && box.parentNode !== h) h.appendChild(box);
+    ttFor = el;
+    box.textContent = txt;
+    box.classList.add("on");
+    const r = el.getBoundingClientRect(), vw = window.innerWidth || 1024, vh = window.innerHeight || 768;
+    const bw = box.offsetWidth || 80, bh = box.offsetHeight || 26;
+    const left = Math.max(8, Math.min(r.left + r.width / 2 - bw / 2, vw - bw - 8));
+    let top = r.top - bh - 6;   // 위에 — 아래 줄 단추를 가리지 않게. 자리가 없으면 아래
+    if (top < 8) top = Math.min(r.bottom + 6, vh - bh - 8);
+    box.style.left = left + "px"; box.style.top = top + "px";
+  }
+  function hideTT(delay) {
+    clearTimeout(ttTimer);
+    const off = () => { if (ttEl) ttEl.classList.remove("on"); ttFor = null; };
+    if (delay) ttTimer = setTimeout(off, delay); else off();
+  }
+  ui.ttShow = showTT;
+  ui.ttHide = hideTT;
+  if (typeof document !== "undefined") {
+    const fine = () => !!(window.matchMedia && window.matchMedia("(hover: hover) and (pointer: fine)").matches);
+    const ttOn = () => !!(ttEl && ttEl.classList.contains("on"));
+    document.addEventListener("mouseover", (ev) => {
+      if (!fine() || !ev.target.closest) return;
+      const el = ev.target.closest("[data-hint]");
+      if (!el) { if (ttOn() && !(ttEl && ttEl.contains(ev.target))) hideTT(120); return; }
+      if (el === ttFor && ttOn()) { clearTimeout(ttTimer); return; }
+      clearTimeout(ttTimer);
+      ttTimer = setTimeout(() => showTT(el), ttOn() ? 0 : 250);
+    });
+    document.addEventListener("mouseout", (ev) => {
+      const el = ev.target.closest && ev.target.closest("[data-hint]"), to = ev.relatedTarget;
+      if (!el || (to && (el.contains(to) || (ttEl && ttEl.contains(to))))) return;
+      hideTT(120);
+    });
+    document.addEventListener("focusin", (ev) => {
+      const el = ev.target.closest && ev.target.closest("[data-hint]");
+      let kb = false;
+      try { kb = ev.target.matches(":focus-visible"); } catch (err) { kb = false; }
+      if (el && kb) showTT(el);
+    });
+    document.addEventListener("focusout", (ev) => { if (ev.target.closest && ev.target.closest("[data-hint]") && ttFor === ev.target.closest("[data-hint]")) hideTT(); });
+    document.addEventListener("pointerdown", () => hideTT(), true);
+    /* Esc: 이름표를 닫는다. 포커스가 그 기호에 있을 때만 Esc 를 여기서 멈춘다(입력칸의 Esc · 창 닫기는 그대로) */
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Escape" || !ttOn()) return;
+      const mine = ttFor && document.activeElement === ttFor;
+      hideTT();
+      if (mine) { ev.stopPropagation(); ev.preventDefault(); }
+    }, true);
+    window.addEventListener("scroll", () => { if (ttOn()) hideTT(); }, true);
+    window.addEventListener("hashchange", () => hideTT());
   }
 
   /* ── 화면 정돈 ──

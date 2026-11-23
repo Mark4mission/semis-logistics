@@ -82,39 +82,41 @@
     const ns = t.notes || [];
     return `<div class="tk-thread" id="tk-th-${esc(k)}">${ns.length ? `<ol class="tk-notes">${ns.map(n => `<li class="tk-note" data-nid="${esc(n.id)}">
         <div class="tk-nh"><span class="tk-nw">${n.by ? dot(n.by) + esc(n.by) : "-"}</span><span class="tk-nd">${esc(T.stamp(n.at, td))}</span>
-          <button type="button" class="tk-ndel" title="이 기록 지우기">${icon("x", 14)}<span class="sr-only">이 기록 지우기</span></button></div>
+          <button type="button" class="tk-ndel" data-hint="이 기록 지우기">${icon("x", 14)}<span class="sr-only">이 기록 지우기</span></button></div>
         <p class="tk-nx">${esc(n.x)}</p></li>`).join("")}</ol>` : ""}
       <div class="tk-nadd"><textarea class="tk-nin" rows="1" maxlength="${T.NOTE_MAX}" data-k="${esc(k)}" aria-label="진행 기록 덧붙이기" placeholder="진행 내용을 적고 Enter">${esc(st.drafts["n" + k] || "")}</textarea>
         <button type="button" class="btn btn-ghost btn-sm tk-nsend">덧붙이기</button></div></div>`;
   }
   /* m = 회의 칸({ col: 칸 이름, k: 칸 표지 }) — 같은 할 일이 여러 칸에 그려지므로 id 에 칸 표지를 붙이고, 담당은 칸 사람을 빼고 '함께'로.
-     줄 오른쪽 끝 = [진행 기록][중요(리본 — 켜면 칠한 리본 · 제목 색)][지우기] */
+     줄 오른쪽 끝 = [진행 기록][중요(리본 — 켜면 칠한 리본 · 제목 색)][지우기].
+     기호마다 data-hint = 마우스를 올리면 뜨는 풀이(코어 이름표 — 누르기 전에 뜻을 알게, 지금 상태에 맞는 동작 말) */
   function rowHTML(t, td, m) {
     const k = (m ? m.k + "-" : "") + t.id, id = esc(t.id), tid = esc("tk-t-" + k), c = T.CATS[T.catOf(t)];
     const d = t.done ? null : T.dueInfo(t, td);
+    const dueTT = t.due ? "기한 " + T.dayLabel(t.due, td) + (t.time ? " " + t.time : "") : "";
     const dd = t.done ? T.dayOf(t.doneAt) : "";
     const ns = t.notes || [], open = st.th.indexOf(k) >= 0, ln = ns[ns.length - 1];
     const who = (m ? t.who.filter(n => n !== m.col) : t.who).map(n => `<span class="tk-p">${dot(n)}${esc(n)}</span>`).join("");
     const meta = [
       t.done ? `<span class="tk-due tk-d-done">${esc((dd ? T.dayLabel(dd, td) + " " : "") + "마침" + (t.doneBy ? " · " + t.doneBy : ""))}</span>`
-        : d.label ? `<span class="tk-due tk-d-${d.b}">${esc(d.label)}</span>` : "",
-      t.place ? `<span class="tk-ic">${icon("map", 14)}${esc(t.place)}</span>` : "",
-      m && who ? `<span class="tk-with">함께:${who}</span>` : who,
-      t.teams.map(g => `<span class="tk-ic">${icon("building", 14)}${esc(g)}</span>`).join(""),
-      t.memo ? `<span class="tk-ic" title="메모 있음">${icon("notes", 14)}<span class="sr-only">메모 있음</span></span>` : "",
-      t.src === "desk" ? `<span class="tk-ic">${icon("forward", 14)}접수</span>` : ""
+        : d.label ? `<span class="tk-due tk-d-${d.b}"${dueTT && dueTT.indexOf(d.label) < 0 ? ` data-hint="${esc(dueTT)}"` : ""}>${esc(d.label)}</span>` : "",
+      t.place ? `<span class="tk-ic" data-hint="장소">${icon("map", 14)}${esc(t.place)}</span>` : "",
+      m && who ? `<span class="tk-with">함께:${who}</span>` : who ? `<span class="tk-whos" data-hint="담당">${who}</span>` : "",
+      t.teams.map(g => `<span class="tk-ic" data-hint="관련 팀">${icon("building", 14)}${esc(g)}</span>`).join(""),
+      t.memo ? `<span class="tk-ic" data-hint="메모 있음 — 누르면 고치기 창">${icon("notes", 14)}<span class="sr-only">메모 있음</span></span>` : "",
+      t.src === "desk" ? `<span class="tk-ic" data-hint="접수 카운터에서 등록">${icon("forward", 14)}접수</span>` : ""
     ].join("");
     /* 접힌 줄에는 마지막 진행 기록 한 줄 — 회의 때 펼치지 않고도 지금 상태가 보이게(누르면 펼침) */
-    const last = ln && !open ? `<button type="button" class="tk-nlast" data-th="${esc(k)}" aria-expanded="false"><span class="tk-nlx">${esc(ln.x.split("\n")[0])}</span><span class="tk-nlm">${esc([ln.by, T.stamp(ln.at, td)].filter(Boolean).join(" · "))}</span></button>` : "";
+    const last = ln && !open ? `<button type="button" class="tk-nlast" data-th="${esc(k)}" aria-expanded="false" data-hint="최근 진행 기록 — 누르면 모두 보기"><span class="tk-nlx">${esc(ln.x.split("\n")[0])}</span><span class="tk-nlm">${esc([ln.by, T.stamp(ln.at, td)].filter(Boolean).join(" · "))}</span></button>` : "";
     const nb = `${icon("comment", 17)}${ns.length ? `<span class="tk-nn" aria-hidden="true">${ns.length}</span>` : ""}<span class="sr-only">진행 기록${ns.length ? " " + ns.length + "건" : ""}</span>`;
     return `<li class="tk-row${d && d.b === "late" ? " tk-late" : ""}${t.done ? " tk-done" : ""}${t.star ? " tk-star-on" : ""}${open ? " tk-open" : ""}" data-id="${id}" data-k="${esc(k)}">
-      <input type="checkbox" class="tk-chk" aria-labelledby="${tid}"${t.done ? " checked" : ""}>
-      <span class="tk-cat ev-${esc(c.color)}" title="${esc(c.label)}">${icon(c.ico, 18)}</span>
+      <input type="checkbox" class="tk-chk" aria-labelledby="${tid}"${t.done ? " checked" : ""} data-hint="${t.done ? "다시 열기(할 일로)" : "완료 — 마친 일로"}">
+      <span class="tk-cat ev-${esc(c.color)}" role="img" aria-label="분류: ${esc(c.label)}" data-hint="분류: ${esc(c.label)}">${icon(c.ico, 18)}</span>
       <div class="tk-body"><button type="button" class="tk-t" id="${tid}"><span class="tk-tt">${esc(t.t)}</span></button>${meta ? `<div class="tk-meta">${meta}</div>` : ""}${last}</div>
       <div class="tk-ra">
-        <button type="button" class="tk-ab tk-nb${ns.length ? " has-n" : ""}" data-th="${esc(k)}" aria-expanded="${open}"${open ? ` aria-controls="tk-th-${esc(k)}"` : ""} aria-describedby="${tid}" title="진행 기록">${nb}</button>
-        <button type="button" class="tk-ab tk-imp" aria-pressed="${t.star}" aria-describedby="${tid}" title="중요">${icon("pin", 17)}<span class="sr-only">중요</span></button>
-        <button type="button" class="tk-ab tk-del" aria-describedby="${tid}" title="지우기">${icon("trash", 17)}<span class="sr-only">지우기</span></button>
+        <button type="button" class="tk-ab tk-nb${ns.length ? " has-n" : ""}" data-th="${esc(k)}" aria-expanded="${open}"${open ? ` aria-controls="tk-th-${esc(k)}"` : ""} aria-describedby="${tid}" data-hint="${open ? "진행 기록 접기" : ns.length ? "진행 기록 " + ns.length + "건 보기 · 덧붙이기" : "진행 기록 덧붙이기"}">${nb}</button>
+        <button type="button" class="tk-ab tk-imp" aria-pressed="${t.star}" aria-describedby="${tid}" data-hint="${t.star ? "중요 — 누르면 해제" : "중요 표시"}">${icon("pin", 17)}<span class="sr-only">중요</span></button>
+        <button type="button" class="tk-ab tk-del" aria-describedby="${tid}" data-hint="지우기(알림에서 되돌리기)">${icon("trash", 17)}<span class="sr-only">지우기</span></button>
       </div>${open ? threadHTML(t, k, td) : ""}
     </li>`;
   }
@@ -452,9 +454,9 @@
     const ul = $("#tk-mlist"), inp = $("#tk-m-in");
     const paint = (fi, sel) => {
       ul.innerHTML = list.length ? list.map((n, i) => `<li class="tk-mrow" data-i="${i}"><span class="tk-mno mono">${i + 1}</span><span class="tk-mname">${esc(n)}</span>
-          <button type="button" class="icon-btn" data-mv="-1"${i ? "" : " disabled"} title="위로" aria-label="${esc(n)} 위로">${icon("chevup", 16)}</button>
-          <button type="button" class="icon-btn" data-mv="1"${i < list.length - 1 ? "" : " disabled"} title="아래로" aria-label="${esc(n)} 아래로">${icon("chevdown", 16)}</button>
-          <button type="button" class="icon-btn" data-rm title="빼기" aria-label="${esc(n)} 빼기">${icon("x", 16)}</button></li>`).join("")
+          <button type="button" class="icon-btn" data-mv="-1"${i ? "" : " disabled"} data-hint="위로" aria-label="${esc(n)} 위로">${icon("chevup", 16)}</button>
+          <button type="button" class="icon-btn" data-mv="1"${i < list.length - 1 ? "" : " disabled"} data-hint="아래로" aria-label="${esc(n)} 아래로">${icon("chevdown", 16)}</button>
+          <button type="button" class="icon-btn" data-rm data-hint="빼기" aria-label="${esc(n)} 빼기">${icon("x", 16)}</button></li>`).join("")
         : `<li class="tk-mempty">비어 있음 — 저장하면 안전보안파트 명단(${T.rosterPart().length}명)</li>`;
       const r = fi != null ? $$(".tk-mrow", ul)[Math.min(fi, list.length - 1)] : null, f = r && ($(sel, r) || $("[data-rm]", r));
       if (f && !f.disabled) f.focus(); else if (fi != null) inp.focus();

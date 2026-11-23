@@ -651,7 +651,7 @@ dialog.pnl[open]:not([data-closing])::backdrop { background: rgba(11,31,38,.5); 
 .tour-x { margin: 0; font-size: .95rem; line-height: 1.6; color: var(--text); }
 .tour-acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 .tour-acts .btn { min-height: 44px; padding: 0 18px; }
-@media print { .tour { display: none !important; } }
+@media print { .tour, .hover-tip { display: none !important; } }
 
 /* 설정 탭 */
 .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 18px; flex-wrap: wrap; }
@@ -1937,6 +1937,11 @@ a.ct-tel:hover { color: var(--primary); }
   background: #0e1a1f; color: #eef4f3; font-size: max(var(--fs-min), .84rem); line-height: 1.55; box-shadow: 0 10px 28px rgba(11,31,38,.28);
   opacity: 0; visibility: hidden; transform: translateY(-3px); transition: opacity .14s var(--ease-out), transform .14s var(--ease-out), visibility 0s linear .14s; }
 .help-tipbox.on { opacity: 1; visibility: visible; transform: none; transition: opacity .14s var(--ease-out), transform .14s var(--ease-out); }
+/* 기호 풀이 이름표(data-hint) — 아이콘 단추 · 기호에 마우스를 올리면 짧게 */
+.hover-tip { position: fixed; z-index: 1600; left: 0; top: 0; width: max-content; max-width: min(260px, calc(100vw - 16px)); padding: 5px 9px; border-radius: 5px;
+  background: #0e1a1f; color: #eef4f3; font-size: max(var(--fs-min), .8rem); font-weight: 500; line-height: 1.4; box-shadow: 0 6px 18px rgba(11,31,38,.24);
+  opacity: 0; visibility: hidden; transition: opacity .1s var(--ease-out), visibility 0s linear .1s; }
+.hover-tip.on { opacity: 1; visibility: visible; transition: opacity .1s var(--ease-out); }
 
 @media (max-width: 860px) {
   .modal-box:has(.evf) { max-width: 560px; }
@@ -1951,7 +1956,7 @@ a.ct-tel:hover { color: var(--primary); }
   .evf .color-swatch { width: 100%; aspect-ratio: 1; height: auto; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .help-tipbox, .evf-check, .evf .color-swatch { transition: none; }
+  .help-tipbox, .hover-tip, .evf-check, .evf .color-swatch { transition: none; }
 }
 
 /* ── 로그인 — 실사 사진(해 질 녘 이륙하는 화물기) ── */
@@ -7258,7 +7263,7 @@ button.chip-title:focus-visible, button.calm-body:focus-visible { outline: 2px s
 #tk-meetbox .tk-nlast { margin-top: 3px; padding: 2px 6px; }
 #tk-meetbox .tk-thread { margin-top: 5px; padding: 8px; }
 #tk-meetbox .tk-nx, #tk-meetbox .tk-nin { font-size: .86rem; }
-.tk-with { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
+.tk-with, .tk-whos { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
 .tk-cin { width: 100%; min-height: 36px; margin-top: 6px; padding: 0 10px; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); font-size: .9rem; }
 .tk-cin:focus { outline: none; border-style: solid; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
 .tk-wkdone { margin-top: 4px; }
