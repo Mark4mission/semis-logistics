@@ -1,6 +1,8 @@
 /* 운항 현황(#/flight) · 대시보드 지도 — 에어제타 화물기 실시간 위치(ADS-B) · 인천 접근 · 입출항 기록.
    데이터: Supabase Edge Function semis-logi-adsb(adsb.lol 중계, 2분마다 서버가 기록) — 해석은 js/flightcore.js.
-   지도: Leaflet 1.9.4(assets/vendor/leaflet, 필요할 때만 로드) + OpenStreetMap 타일. 관리 항목은 기체 목록(공용 DB fleet)뿐. */
+   지도: Leaflet 1.9.4(assets/vendor/leaflet, 필요할 때만 로드) + OpenStreetMap 타일. 관리 항목은 기체 목록(공용 DB fleet)뿐.
+   v1.79 지도 도구: 확대 18단계(활주로 · 유도로 구분) · 휠 · 더블클릭 · 손가락은 가리킨 곳 기준(대시보드는 Ctrl/⌘ + 휠 · 트랙패드 벌리기) ·
+   내 위치(브라우저 위치 — 화면 안에서만, 저장 · 전송 없음, +/− 는 내 위치가 보이면 그 자리 기준) · 영역 확대(사각형 → 그 영역, Shift + 끌기도). */
 "use strict";
 
 (() => {
@@ -12,8 +14,11 @@
   const FN_URL = "https://mzyuzrxkdcpzxojenwat.supabase.co/functions/v1/semis-logi-adsb";
   const REFRESH_MS = 60000;
   const TYPES = ["B744", "B763", "B738"];
+  const MAX_Z = 18;       // OSM 타일은 19까지 — 18이면 인천 활주로 4개 · 유도로가 또렷이 갈림
+  const ME_Z = 15;        // 내 위치로 갈 때 가장 깊은 단계
+  const ME_SPAN = 3000;   // 내 위치 둘레로 적어도 3 km 를 보여 줌(오차가 크면 오차 원이 다 들어오게)
 
-  const state = { ts: 0, err: "", ac: [], events: null, trail: false, fetchedAt: 0, srcErr: "", ver: 0, busy: null };
+  const state = { ts: 0, err: "", ac: [], events: null, trail: false, fetchedAt: 0, srcErr: "", ver: 0, busy: null, me: null };
 
   /* ── 데이터 ── */
   function fleet() {
@@ -120,25 +125,157 @@
       let m = maps[kind];
       if (m && m.el !== el) { try { m.map.remove(); } catch (e) { /* 이미 떨어진 지도 */ } m = null; }
       if (!m) {
-        const map = L.map(el, { zoomSnap: 0.25, minZoom: 1.5, maxZoom: 11, worldCopyJump: false,
-          scrollWheelZoom: kind === "full", attributionControl: true });
+        const map = L.map(el, { zoomSnap: 0.25, minZoom: 1.5, maxZoom: MAX_Z, worldCopyJump: false,
+          scrollWheelZoom: true, attributionControl: true });
         map.attributionControl.setPrefix(false);
         L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-          maxZoom: 11, className: "fo-tiles",
+          maxZoom: MAX_Z, maxNativeZoom: 19, className: "fo-tiles",
           attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> · 위치 <a href="https://adsb.lol" target="_blank" rel="noopener">adsb.lol</a>'
         }).addTo(map);
         map.setView([37.46, 126.44], 4);
-        m = maps[kind] = { L, map, el, layer: L.layerGroup().addTo(map), marks: {}, fitted: false, lbl: [] };
+        m = maps[kind] = { L, map, el, layer: L.layerGroup().addTo(map), meLayer: L.layerGroup().addTo(map), marks: {}, fitted: false, lbl: [], boxing: false };
         map.on("zoomend moveend resize", () => declutter(kind));
+        anchorZoom(m);
+        if (kind !== "full") wheelGate(m);
+        boxTool(m);
         el.classList.add("is-ready");
       }
       paintMap(kind);
+      paintMe(kind);
       setTimeout(() => { if (maps[kind] === m) m.map.invalidateSize(); }, 60);
     }).catch(() => {
       if (!el.isConnected) return;
       el.classList.add("is-failed");
       el.innerHTML = '<div class="fo-map-msg">지도를 불러오지 못했습니다.</div>';
     });
+  }
+
+  /* ── 지도 도구 (v1.79) ── */
+  const toolsHTML = (kind) => `<div class="fo-tools" role="group" aria-label="지도 도구">
+      <button type="button" class="fo-tool" data-fo-fit="${kind}" title="전체 항공기 보기" aria-label="전체 항공기 보기">${icon("grid", 16)}</button>
+      <button type="button" class="fo-tool" data-fo-loc="${kind}" title="내 위치" aria-label="내 위치로 이동">${icon("locate", 17)}</button>
+      <button type="button" class="fo-tool" data-fo-box="${kind}" aria-pressed="false" title="영역 확대 — 지도에 사각형을 그리면 그 영역으로 확대 (Shift + 끌기도 됨)" aria-label="영역 확대">${icon("zoombox", 17)}</button>
+    </div>`;
+
+  /* 내 위치가 지금 화면 안에 있으면 그 자리(지도 좌표 — 태평양 중심 경도) */
+  function meAnchor(m) {
+    if (!state.me) return null;
+    const ll = m.L.latLng(state.me.lat, lonN(state.me.lon));
+    return m.map.getBounds().contains(ll) ? ll : null;
+  }
+  /* +/− 단추(zoomIn · zoomOut) — 내 위치가 화면에 보이면 그 자리를 붙잡고, 아니면 화면 가운데(Leaflet 기본) */
+  function anchorZoom(m) {
+    const { L, map } = m;
+    const step = (d, o, sign) => {
+      const z = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), map.getZoom() + sign * (d || map.options.zoomDelta || 1)));
+      if (z === map.getZoom()) return map;
+      const a = meAnchor(m);
+      return a ? map.setZoomAround(a, z, o) : L.Map.prototype.setZoom.call(map, z, o);
+    };
+    map.zoomIn = (d, o) => step(d, o, 1);
+    map.zoomOut = (d, o) => step(d, o, -1);
+  }
+  /* 대시보드 지도: 그냥 휠은 화면 스크롤, Ctrl/⌘ + 휠(맥 트랙패드 벌리기 포함)만 가리킨 곳 기준 확대 */
+  function wheelGate(m) {
+    m.map.getContainer().addEventListener("wheel", (e) => {
+      if (!(e.ctrlKey || e.metaKey)) e.stopImmediatePropagation();
+    }, { capture: true, passive: true });
+  }
+  /* 영역 확대: 단추로 켜고 지도 위에 사각형을 끌면 그 영역으로 — 마우스 · 손가락 모두. 끝나면 꺼짐, Esc · 단추 다시 = 끔 */
+  function boxTool(m) {
+    const { L, map } = m;
+    const c = map.getContainer();
+    let st = null;
+    const drop = () => { if (st && st.box) L.DomUtil.remove(st.box); st = null; };
+    m.setBoxing = (v) => {
+      m.boxing = !!v;
+      drop();
+      c.classList.toggle("is-boxing", m.boxing);
+      if (m.boxing) map.dragging.disable(); else map.dragging.enable();
+      const b = c.parentNode && c.parentNode.querySelector("[data-fo-box]");
+      if (b) b.setAttribute("aria-pressed", m.boxing ? "true" : "false");
+    };
+    const inCtl = (e) => e.target && e.target.closest && e.target.closest(".leaflet-control, .leaflet-popup");
+    c.addEventListener("pointerdown", (e) => {
+      if (!m.boxing || st || inCtl(e) || (e.pointerType === "mouse" && e.button !== 0)) return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      st = { id: e.pointerId, p0: map.mouseEventToContainerPoint(e), box: null };
+      try { c.setPointerCapture(e.pointerId); } catch (x) { /* 캡처 못 해도 이동은 받음 */ }
+    }, true);
+    c.addEventListener("pointermove", (e) => {
+      if (!st || e.pointerId !== st.id) return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      const p = map.mouseEventToContainerPoint(e);
+      if (!st.box) { if (p.distanceTo(st.p0) < 4) return; st.box = L.DomUtil.create("div", "leaflet-zoom-box fo-zbox", c); }
+      const b = L.bounds(st.p0, p), sz = b.getSize();
+      L.DomUtil.setPosition(st.box, b.min);
+      st.box.style.width = sz.x + "px"; st.box.style.height = sz.y + "px";
+    }, true);
+    const end = (e) => {
+      if (!st || e.pointerId !== st.id) return;
+      e.stopImmediatePropagation();
+      const p0 = st.p0, p = map.mouseEventToContainerPoint(e), drew = !!st.box;
+      drop();
+      if (e.type === "pointercancel" || !drew) return;
+      const sz = L.bounds(p0, p).getSize();
+      if (sz.x < 12 || sz.y < 12) return;                       // 너무 작은 사각형 = 다시 그리기
+      map.fitBounds(L.latLngBounds(map.containerPointToLatLng(p0), map.containerPointToLatLng(p)), { maxZoom: MAX_Z });
+      m.fitted = true;
+      m.setBoxing(false);
+      m.swallow = true;                                          // 바로 뒤따르는 click 이 표지 정보창을 열지 않게
+      setTimeout(() => { m.swallow = false; }, 0);
+    };
+    c.addEventListener("pointerup", end, true);
+    c.addEventListener("pointercancel", end, true);
+    c.addEventListener("click", (e) => {
+      if ((m.boxing || m.swallow) && !inCtl(e)) { e.stopImmediatePropagation(); e.preventDefault(); }
+    }, true);
+  }
+  if (typeof document !== "undefined") document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    Object.keys(maps).forEach(k => { const m = maps[k]; if (m && m.boxing) m.setBoxing(false); });
+  });
+  function toggleBox(kind) {
+    const m = maps[kind];
+    if (m && m.setBoxing) m.setBoxing(!m.boxing);
+  }
+  /* 내 위치 표시(파란 점 + 오차 원) — 두 지도에 함께. 서버로 보내거나 저장하지 않음 */
+  function paintMe(kind) {
+    const m = maps[kind];
+    if (!m || !m.meLayer || !m.el.isConnected) return;
+    const { L } = m;
+    m.meLayer.clearLayers();
+    const me = state.me;
+    if (!me) return;
+    const ll = [me.lat, lonN(me.lon)];
+    if (me.acc > 25) L.circle(ll, { radius: me.acc, weight: 1, color: "#2563eb", opacity: .45, fillColor: "#3b82f6", fillOpacity: .08, interactive: false }).addTo(m.meLayer);
+    L.marker(ll, { icon: L.divIcon({ className: "fo-mk", iconSize: [18, 18], iconAnchor: [9, 9], html: '<span class="fo-me"></span>' }),
+      keyboard: false, zIndexOffset: -200, title: "내 위치" })
+      .bindPopup(`<div class="fo-pop"><div class="fo-pop-h"><b>내 위치</b></div><dl>${me.acc ? `<dt>오차</dt><dd>약 ${esc(nf(me.acc))} m</dd>` : ""}<dt>확인</dt><dd>${esc(F.kstHM(me.at))}</dd></dl></div>`,
+        { className: "fo-popup", maxWidth: 220 })
+      .addTo(m.meLayer);
+  }
+  function locate(kind, btn) {
+    const geo = typeof navigator !== "undefined" && navigator.geolocation;
+    if (!geo) { toast("이 브라우저에서는 위치를 확인할 수 없습니다."); return; }
+    if (btn) { btn.disabled = true; btn.classList.add("is-busy"); }
+    const done = () => { if (btn) { btn.disabled = false; btn.classList.remove("is-busy"); } };
+    geo.getCurrentPosition((p) => {
+      done();
+      const c = p && p.coords;
+      if (!c || !isFinite(c.latitude) || !isFinite(c.longitude)) { toast("현재 위치를 확인하지 못했습니다."); return; }
+      state.me = { lat: c.latitude, lon: c.longitude, acc: Math.max(0, Math.round(Number(c.accuracy) || 0)), at: Date.now() };
+      Object.keys(maps).forEach(paintMe);
+      const m = maps[kind];
+      if (!m || !m.el.isConnected) return;
+      const ll = m.L.latLng(state.me.lat, lonN(state.me.lon));
+      const z = m.map.getBoundsZoom(ll.toBounds(Math.max(ME_SPAN, Math.min(state.me.acc * 2.4, 400000))));
+      m.map.setView(ll, Math.max(3, Math.min(ME_Z, Math.floor(z))));   // 정수 단계 — 타일이 또렷하고 이음매가 없음
+      m.fitted = true;
+    }, (err) => {
+      done();
+      toast(err && err.code === 1 ? "위치 권한이 꺼져 있습니다. 주소창의 위치 권한을 허용한 뒤 다시 누르세요." : "현재 위치를 확인하지 못했습니다.");
+    }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
   }
   function popHTML(it) {
     const st = it.st, r = it.row || {};
@@ -341,7 +478,7 @@
         <div class="fo-mapwrap dflt-mapwrap">
           <div class="fo-map" id="dflt-map" role="region" aria-label="에어제타 항공기 위치 지도"><div class="fo-map-msg">지도 불러오는 중</div></div>
           <div class="fo-legend" aria-hidden="true">${legendHTML(md)}</div>
-          <button type="button" class="fo-fit" data-fo-fit="dash" title="전체 항공기 보기" aria-label="전체 항공기 보기">${icon("grid", 16)}</button>
+          ${toolsHTML("dash")}
         </div>
         <aside class="dflt-side" aria-label="인천 접근 중">
           <div class="dflt-h"><h3>인천 접근 중</h3><b class="mono" id="dflt-n">${md.appr.length}</b></div>
@@ -354,6 +491,8 @@
   function wireCommon(box, kind) {
     $$("[data-fo-focus]", box).forEach(b => b.onclick = () => focusAc(kind, b.dataset.foFocus));
     $$("[data-fo-fit]", box).forEach(b => b.onclick = () => fitMap(b.dataset.foFit));
+    $$("[data-fo-loc]", box).forEach(b => b.onclick = () => locate(b.dataset.foLoc, b));
+    $$("[data-fo-box]", box).forEach(b => b.onclick = () => toggleBox(b.dataset.foBox));
     $$("[data-fo-go]", box).forEach(b => b.onclick = () => SeMIS.navigate(MOD));
   }
   function paintDash() {
@@ -561,7 +700,7 @@
         <div class="fo-mapwrap">
           <div class="fo-map fo-map-full" id="fo-map" role="region" aria-label="에어제타 항공기 위치 지도"><div class="fo-map-msg">지도 불러오는 중</div></div>
           <div class="fo-legend" aria-hidden="true"></div>
-          <button type="button" class="fo-fit" data-fo-fit="full" title="전체 항공기 보기" aria-label="전체 항공기 보기">${icon("grid", 16)}</button>
+          ${toolsHTML("full")}
         </div>
       </section>
       <div id="fo-boardbox"></div>
@@ -657,5 +796,5 @@
     items: () => fleet().map(f => ({ title: f.reg, sub: (F.AC_TYPES[f.type] || f.type) + " · " + (f.model || ""), route: MOD }))
   });
 
-  window.SemisFlight = { dashHTML, mountDash, paintDash, load, model, state, refresh, fleet, aptPopHTML, gndState };
+  window.SemisFlight = { dashHTML, mountDash, paintDash, load, model, state, refresh, fleet, aptPopHTML, gndState, maps, MAX_Z };
 })();

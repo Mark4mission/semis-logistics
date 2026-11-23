@@ -5027,6 +5027,177 @@ function makeServer(opts = {}) {
     });
   }
 
+  /* ══════════ [FM] 운항 지도 도구 (v1.79) — 확대 18 · 내 위치 · +/− 내 위치 기준 · 영역 확대 · 대시보드 Ctrl 휠 ══════════ */
+  {
+    const e = makeEnv({ fetch: (url) => Promise.resolve({ ok: true, status: 200,
+      json: () => Promise.resolve(String(url).indexOf("semis-logi-adsb") >= 0 ? { fetched_at: new Date().toISOString(), ac: [], events: [] } : []) }) });
+    e.w.print = () => {};
+    e.w.eval(read("assets/vendor/leaflet/leaflet.js"));               // jsdom 은 script 태그를 받지 않음 — 미리 넣으면 loadLeaflet 이 바로 씀
+    const W = 800, H = 400;                                            // jsdom 은 배치를 안 함 — 지도 칸 크기만 정해 줌
+    Object.defineProperty(e.w.HTMLElement.prototype, "clientWidth", { configurable: true, get() { return this.classList && this.classList.contains("fo-map") ? W : 0; } });
+    Object.defineProperty(e.w.HTMLElement.prototype, "clientHeight", { configurable: true, get() { return this.classList && this.classList.contains("fo-map") ? H : 0; } });
+    const geo = { mode: "ok", pos: { coords: { latitude: 37.4489, longitude: 126.4505, accuracy: 40 } }, calls: 0 };
+    Object.defineProperty(e.w.navigator, "geolocation", { configurable: true, value: {
+      getCurrentPosition(okf, bad) { geo.calls++; if (geo.mode === "ok") okf(geo.pos); else bad({ code: geo.mode === "deny" ? 1 : 2 }); } } });
+    const SF = () => e.w.SemisFlight;
+    const pane = (m) => m.map.getContainer().querySelector(".leaflet-map-pane");
+    const pev = (type, x, y, extra) => {
+      const ev = new (e.w.PointerEvent || e.w.MouseEvent)(type, Object.assign({ bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0 }, extra || {}));
+      if (ev.pointerId == null || !ev.pointerId) Object.defineProperty(ev, "pointerId", { value: 1 });
+      if (!ev.pointerType) Object.defineProperty(ev, "pointerType", { value: "mouse" });
+      return ev;
+    };
+    const drag = (m, a, b) => { const t0 = pane(m); t0.dispatchEvent(pev("pointerdown", a[0], a[1])); t0.dispatchEvent(pev("pointermove", (a[0] + b[0]) / 2, (a[1] + b[1]) / 2)); t0.dispatchEvent(pev("pointermove", b[0], b[1])); t0.dispatchEvent(pev("pointerup", b[0], b[1])); };
+    const near2 = (p, q2, d) => Math.abs(p.x - q2.x) <= d && Math.abs(p.y - q2.y) <= d;
+    loginAs(e, "hq");
+    t("FM01 지도 도구 3개(전체 보기 · 내 위치 · 영역 확대) — 대시보드 · 운항 현황 모두 · 인쇄 때 숨김 · 아이콘", () => {
+      go(e, "flight");
+      const tl = qa(e, "#fo-page .fo-mapwrap .fo-tools .fo-tool");
+      eq(tl.length, 3);
+      eq([tl[0].dataset.foFit, tl[1].dataset.foLoc, tl[2].dataset.foBox].join(","), "full,full,full");
+      eq(tl[2].getAttribute("aria-pressed"), "false");
+      ok(e.S.icon("locate") !== e.S.icon("없는 아이콘") && e.S.icon("zoombox") !== e.S.icon("없는 아이콘"), "아이콘 등록");
+      go(e, "dashboard");
+      eq(qa(e, "#dash-flt .fo-tools .fo-tool").length, 3);
+      ok(q(e, '#dash-flt [data-fo-loc="dash"]') && q(e, '#dash-flt [data-fo-box="dash"]'));
+      const css = read("css/main.css");
+      ok(/@media print \{\s*\.fo-tools, /.test(css), "인쇄 때 도구 숨김");
+      ok(/\.fo-map\.leaflet-container\.is-boxing \{ touch-action: none; \}/.test(css), "영역 확대 중 손가락 = 그리기(leaflet.css 보다 구체적)");
+    });
+    await ta("FM02 확대 한도 18단계(OSM 타일 19까지) · 휠 확대 켬", async () => {
+      go(e, "flight");
+      await tick(30);
+      const m = SF().maps.full;
+      ok(m && m.map, "운항 현황 지도");
+      eq(m.map.getMaxZoom(), 18);
+      let tl = null; m.map.eachLayer(l => { if (l.options && l.options.className === "fo-tiles") tl = l; });
+      ok(tl && tl.options.maxZoom === 18 && tl.options.maxNativeZoom === 19, "타일 18 · 원본 19");
+      ok(m.map.scrollWheelZoom.enabled() && m.map.doubleClickZoom.enabled(), "휠 · 더블클릭 = 가리킨 곳 기준(Leaflet 기본)");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    await ta("FM03 내 위치: 단추 → 파란 점 + 오차 원 · 그 자리로 이동(15단계 이하) · 대시보드 지도에도 점", async () => {
+      go(e, "flight");
+      await tick(30);
+      const m = SF().maps.full;
+      q(e, '[data-fo-loc="full"]').click();
+      eq(geo.calls, 1);
+      const me = SF().state.me;
+      ok(me && Math.abs(me.lat - 37.4489) < 1e-6 && me.acc === 40, "위치 기억(화면 안)");
+      ok(m.map.getContainer().querySelector(".fo-me"), "파란 점");
+      let circ = 0; m.meLayer.eachLayer(l => { if (l.getRadius) circ = l.getRadius(); });
+      eq(circ, 40, "오차 원");
+      const z = m.map.getZoom(), c = m.map.getCenter();
+      ok(z >= 12 && z <= 15, "단계 " + z);
+      ok(Math.abs(c.lat - 37.4489) < 0.002 && Math.abs(c.lng - 126.4505) < 0.002, "가운데 = 내 위치 " + c.lat + "," + c.lng);
+      ok(!q(e, '[data-fo-loc="full"]').disabled, "단추 다시 켬");
+      go(e, "dashboard");
+      await tick(30);
+      ok(SF().maps.dash.map.getContainer().querySelector(".fo-me"), "대시보드 지도에도 점");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    await ta("FM04 +/− : 내 위치가 보이면 그 자리를 붙잡고 확대 · 안 보이면 화면 가운데 · 끝 단계에서는 움직이지 않음", async () => {
+      go(e, "flight");
+      await tick(30);
+      const m = SF().maps.full, map = m.map, L = m.L;
+      const meLL = L.latLng(37.4489, 126.4505);
+      map.setView(meLL, 12, { animate: false });
+      map.panBy([180, -90], { animate: false });                         // 내 위치를 가운데에서 비켜 둠(아직 화면 안)
+      const p0 = map.latLngToContainerPoint(meLL);
+      ok(p0.x > 0 && p0.x < W && p0.y > 0 && p0.y < H, "화면 안");
+      map.zoomIn();
+      eq(map.getZoom(), 13);
+      ok(near2(map.latLngToContainerPoint(meLL), p0, 1.5), "내 위치 자리 그대로 " + JSON.stringify(map.latLngToContainerPoint(meLL)) + " / " + JSON.stringify(p0));
+      map.zoomOut();
+      eq(map.getZoom(), 12);
+      ok(near2(map.latLngToContainerPoint(meLL), p0, 1.5), "축소도 내 위치 기준");
+      map.setView([35.1, 129.0], 12, { animate: false });                 // 내 위치가 화면 밖
+      const c0 = map.getCenter();
+      map.zoomIn();
+      eq(map.getZoom(), 13);
+      ok(Math.abs(map.getCenter().lat - c0.lat) < 1e-6 && Math.abs(map.getCenter().lng - c0.lng) < 1e-6, "화면 가운데 기준");
+      map.setView(meLL, 18, { animate: false }); map.panBy([150, 60], { animate: false });
+      const c1 = map.getCenter();
+      map.zoomIn();
+      ok(map.getZoom() === 18 && Math.abs(map.getCenter().lat - c1.lat) < 1e-9, "18단계에서 + = 그대로");
+    });
+    await ta("FM05 영역 확대: 단추 → 끌어서 사각형 → 그 영역으로(가운데 · 단계) · 끝나면 꺼짐 · 작은 사각형 무시 · Esc · 정보창 안 열림", async () => {
+      go(e, "flight");
+      await tick(30);
+      const m = SF().maps.full, map = m.map, el = map.getContainer();
+      map.setView([37.46, 126.44], 9, { animate: false });
+      const btn = q(e, '[data-fo-box="full"]');
+      btn.click();
+      eq(btn.getAttribute("aria-pressed"), "true");
+      ok(el.classList.contains("is-boxing") && !map.dragging.enabled(), "그리기 모드 · 지도 끌기 꺼짐");
+      let clicked = 0; map.on("click", () => clicked++);
+      pane(m).dispatchEvent(new e.w.MouseEvent("click", { bubbles: true, cancelable: true, clientX: 50, clientY: 50 }));
+      eq(clicked, 0, "그리는 중 click 은 지도로 안 감");
+      const want = map.containerPointToLatLng([200, 100]);
+      drag(m, [100, 50], [300, 150]);                                      // 200 × 100 → 4배 = 2단계
+      ok(map.getZoom() >= 10.75 && map.getZoom() <= 11, "단계 " + map.getZoom());
+      ok(Math.abs(map.getCenter().lat - want.lat) < 1e-3 && Math.abs(map.getCenter().lng - want.lng) < 1e-3, "사각형 가운데로");
+      eq(btn.getAttribute("aria-pressed"), "false");
+      ok(!el.classList.contains("is-boxing") && map.dragging.enabled(), "끝나면 꺼짐 · 끌기 다시 켬");
+      ok(!el.querySelector(".fo-zbox"), "사각형 지움");
+      btn.click();
+      const z = map.getZoom();
+      drag(m, [100, 100], [106, 105]);
+      eq(map.getZoom(), z, "작은 사각형 = 무시");
+      ok(m.boxing, "모드 유지");
+      e.w.document.dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      ok(!m.boxing && btn.getAttribute("aria-pressed") === "false", "Esc = 끔");
+      btn.click(); btn.click();
+      ok(!m.boxing, "단추 다시 = 끔");
+      map.setView([37.46, 126.44], 17.5, { animate: false });
+      btn.click();
+      drag(m, [380, 190], [420, 210]);
+      eq(map.getZoom(), 18, "18단계까지만");
+      clicked = 0;
+      pane(m).dispatchEvent(new e.w.MouseEvent("click", { bubbles: true, cancelable: true, clientX: 50, clientY: 50 }));
+      eq(clicked, 0, "그린 직후 따라오는 click 은 삼킴(표지 정보창 안 열림)");
+      await tick(5);
+      pane(m).dispatchEvent(new e.w.MouseEvent("click", { bubbles: true, cancelable: true, clientX: 50, clientY: 50 }));
+      eq(clicked, 1, "모드가 꺼지면 click 다시 통과");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    await ta("FM06 대시보드 지도: 그냥 휠 = 화면 스크롤(지도 그대로) · Ctrl/⌘ + 휠 = 가리킨 곳 기준 확대", async () => {
+      go(e, "dashboard");
+      await tick(30);
+      const m = SF().maps.dash, map = m.map;
+      map.setView([37.46, 126.44], 8, { animate: false });
+      const z0 = map.getZoom();
+      const wheel = (mods) => pane(m).dispatchEvent(new e.w.WheelEvent("wheel", Object.assign({ bubbles: true, cancelable: true, clientX: 600, clientY: 100, deltaY: -120, deltaMode: 0 }, mods)));
+      wheel({});
+      await tick(90);
+      eq(map.getZoom(), z0, "그냥 휠은 지도 확대 안 함");
+      const at = map.containerPointToLatLng([600, 100]);
+      wheel({ ctrlKey: true });
+      await tick(90);
+      ok(map.getZoom() > z0, "Ctrl + 휠 확대 " + map.getZoom());
+      const p = map.latLngToContainerPoint(at);
+      ok(Math.abs(p.x - 600) < 2 && Math.abs(p.y - 100) < 2, "가리킨 곳 기준 " + JSON.stringify(p));
+      const z1 = map.getZoom();
+      wheel({ metaKey: true });
+      await tick(90);
+      ok(map.getZoom() > z1, "⌘ + 휠도");
+    });
+    await ta("FM07 내 위치 실패: 권한 거부 · 확인 실패 · 위치 기능 없음 → 알림, 단추 다시 켬", async () => {
+      go(e, "flight");
+      await tick(30);
+      const b = q(e, '[data-fo-loc="full"]');
+      geo.mode = "deny"; b.click();
+      ok(q(e, "#toast-wrap").textContent.includes("위치 권한"), "권한 알림");
+      ok(!b.disabled && !b.classList.contains("is-busy"));
+      geo.mode = "fail"; b.click();
+      ok(q(e, "#toast-wrap").textContent.includes("현재 위치를 확인하지 못했습니다"), "실패 알림");
+      geo.mode = "ok";
+      Object.defineProperty(e.w.navigator, "geolocation", { configurable: true, value: undefined });
+      b.click();
+      ok(q(e, "#toast-wrap").textContent.includes("이 브라우저에서는 위치를"), "기능 없음 알림");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+  }
+
   /* ══════════ [SEC] v1.15 서버 보안 — 비공개 파일 · 살균 · CSP · 저장소 위생 ══════════ */
   {
     const PUBU = "https://mzyuzrxkdcpzxojenwat.supabase.co/storage/v1/object/public/semis-logi-files/";
