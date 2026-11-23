@@ -2,7 +2,11 @@
    데이터: Supabase Edge Function semis-logi-adsb(adsb.lol 중계, 2분마다 서버가 기록) — 해석은 js/flightcore.js.
    지도: Leaflet 1.9.4(assets/vendor/leaflet, 필요할 때만 로드) + OpenStreetMap 타일. 관리 항목은 기체 목록(공용 DB fleet)뿐.
    v1.79 지도 도구: 확대 18단계(활주로 · 유도로 구분) · 휠 · 더블클릭 · 손가락은 가리킨 곳 기준(대시보드는 Ctrl/⌘ + 휠 · 트랙패드 벌리기) ·
-   내 위치(브라우저 위치 — 화면 안에서만, 저장 · 전송 없음, +/− 는 내 위치가 보이면 그 자리 기준) · 영역 확대(사각형 → 그 영역, Shift + 끌기도). */
+   내 위치(브라우저 위치 — 화면 안에서만, 저장 · 전송 없음, +/− 는 내 위치가 보이면 그 자리 기준) · 영역 확대(사각형 → 그 영역, Shift + 끌기도).
+   v1.81 제자리 갱신: 지도는 지우고 다시 그리지 않고 표지 · 선 · 정보창을 제자리에서 고친다(열어 둔 정보창 · 보던 자리 유지, 지도가 저절로 움직이지 않음).
+   v1.81 실시간(현장 웹앱만 — setLive): 서버가 5초마다 이어 보내는 위치(바뀐 기체만)를 받아 표지를 옮기고, 그 사이는 속도 · 방위로 이어 그린다.
+     이어 받기를 못 쓰는 망에서는 15초마다 묻는다. 탭이 가려지면 멈춤. 기록 · 입출항은 기존 갱신(실시간 중에는 2분마다)이 맡는다.
+   v1.81 처음 화면(setView): 정한 중심 · 반경이 한 화면에 들어오게(현장 웹앱 = 인천 활주로 4개의 가운데 · 반경 5NM). */
 "use strict";
 
 (() => {
@@ -17,6 +21,16 @@
   const MAX_Z = 18;       // OSM 타일은 19까지 — 18이면 인천 활주로 4개 · 유도로가 또렷이 갈림
   const ME_Z = 15;        // 내 위치로 갈 때 가장 깊은 단계
   const ME_SPAN = 3000;   // 내 위치 둘레로 적어도 3 km 를 보여 줌(오차가 크면 오차 원이 다 들어오게)
+  /* 실시간(v1.81) */
+  const LIVE_FRESH = 20000;   // 받은 지 · 자료 나이가 이 안이면 '실시간'
+  const LIVE_WATCH = 16000;   // 이어 받는 중 이만큼 아무것도 안 오면 끊고 다시 연결
+  const LIVE_POLL = 15000;    // 이어 받기를 못 쓰는 망 — 묻는 간격
+  const LIVE_BASE = 120000;   // 실시간 수신 중 기본 갱신(입출항 기록 · 기체 목록) 간격
+  const DR_HOLD = 18000;      // 마지막 위치에서 속도 · 방위로 이어 그리는 한도 — 넘으면 그 자리에 멈춤
+  const DR_NEW = 20000;       // 이보다 묵은 위치로는 이어 그리기를 시작하지 않음
+  const DR_BLEND = 900;       // 새 위치를 받았을 때 그려진 자리와의 차이를 푸는 시간
+  const DR_MIN_GS = 30;       // 이 속도(kt) 아래는 이어 그리지 않음
+  const ANIM_MS = 66;
 
   const state = { ts: 0, err: "", ac: [], events: null, trail: false, fetchedAt: 0, srcErr: "", ver: 0, busy: null, me: null, fleet: null, auth: true };
 
@@ -60,6 +74,7 @@
         if (wantEvents) state.events = Array.isArray(j.events) ? j.events : [];
         state.trail = wantTrail;
         state.err = "";
+        liveSync();
       } catch (e) {
         state.err = String((e && e.message) || e);
       } finally {
@@ -77,7 +92,7 @@
     const by = {};
     (state.ac || []).forEach(r => { by[F.normHex(r.hex)] = r; });
     const items = fleet().map(f => {
-      const row = by[F.normHex(f.hex)] || null;
+      const row = mergeLive(by[F.normHex(f.hex)] || null, live.rows[F.normHex(f.hex)]);
       const st = F.status(row, now);
       return { f, row, st, fno: row && row.flight ? F.fnoOf(row.flight) : "", dep: F.lastDep(state.events, F.normHex(f.hex)) };
     });
@@ -103,10 +118,193 @@
     return "인천 " + F.dir8(F.bearing(home, st.pos)) + "쪽 " + nf(Math.round(st.dHome)) + " km";
   }
   function updText() {
+    if (liveFresh()) return "실시간 " + F.kstHM(live.t) + ":" + String(new Date(live.t).getUTCSeconds()).padStart(2, "0");
     if (!state.ts) return "불러오는 중";
     if (state.err && !state.ac.length) return "연결 실패";
     return F.kstHM(state.fetchedAt || state.ts) + " 기준" + (state.err ? " · 갱신 실패" : "");
   }
+
+  /* ── 실시간(v1.81) ──
+     서버 한 줄 = [hex, lat, lon, alt, gs, trk, vr, 지상(1 · 0 · null), sqk, 비상, 편명, 위치 나이(초), 수신 나이(초)], 묶음 = { t 기준 시각(ms), a 그 뒤 지난 ms, ac }.
+     받은 줄은 기체별로 들고 있다가 model() 이 서버 기록(DB)보다 새로울 때만 덮어쓴다. 시각은 서버 기준(t) 그대로 —
+     이어 그리기용 시각(_pl)만 이 기기 시계로 따로 둔다: 위치 시각 + skew(= 받은 때 − (t + a), 기기 시계와 서버 시계의 차이).
+     기기 시계가 틀려도 움직임은 맞고, 기본 갱신으로 온 서버 기록에도 같은 식을 써서 두 자료가 번갈아 와도 표지가 끊기지 않는다. */
+  const live = { kinds: {}, rows: {}, t: 0, rx: 0, age: 0, skew: null, err: false, on: false, gen: 0, ctrl: null, wake: null,
+    mode: "stream", fails: 0, pollUntil: 0, offUntil: 0, got: 0, bytes: 0, msgs: 0, conns: 0 };
+  const fnum = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  const liveFresh = () => !!live.t && Date.now() - live.rx < LIVE_FRESH && live.age < LIVE_FRESH;
+  /* 서버 기록 줄에 이어 그리기용 시각을 붙임 — 실시간을 한 번이라도 받은 뒤에만(H:drive 에서는 그대로) */
+  function withPl(row) {
+    if (!row || live.skew == null || !row.pos_at) return row;
+    const t = Date.parse(row.pos_at);
+    return Number.isFinite(t) ? Object.assign({}, row, { _pl: t + live.skew }) : row;
+  }
+  function mergeLive(row, lv) {
+    if (!lv) return withPl(row);
+    if (row && row.seen_at && !(Date.parse(lv.seen_at) > Date.parse(row.seen_at))) return withPl(row);   // 서버 기록이 더 새로움
+    const o = Object.assign({ hex: lv.hex }, row || {});
+    if (lv.lat != null && lv.lon != null) { o.lat = lv.lat; o.lon = lv.lon; o.pos_at = lv.pos_at; o._pl = lv._pl; }
+    o.gnd = lv.g === 1 ? true : lv.g === 0 ? false : !!(row && row.gnd);                          // 모름 = 직전 상태 유지(서버 기록과 같은 규칙)
+    if (o.gnd) o.alt = null; else if (lv.alt != null) o.alt = lv.alt;
+    if (lv.gs != null) o.gs = lv.gs;
+    if (lv.trk != null) o.trk = lv.trk;
+    if (lv.vr != null) o.vr = lv.vr;
+    o.sqk = lv.sqk; o.emg = lv.emg;
+    if (lv.flight) o.flight = lv.flight;
+    o.seen_at = lv.seen_at;
+    return o;
+  }
+  function liveTake(j, rx) {
+    if (!j || typeof j.t !== "number" || !Array.isArray(j.ac)) return false;
+    if (!(j.t > 0)) return true;                                   // 서버가 아직 원본을 못 받음 — 연결은 살아 있음
+    const a = Math.max(0, Number(j.a) || 0);
+    j.ac.forEach(r => {
+      if (!Array.isArray(r) || typeof r[0] !== "string") return;
+      const hex = F.normHex(r[0]);
+      if (!/^[0-9a-f]{6}$/.test(hex)) return;
+      const sp = fnum(r[11]) == null ? null : r[11] * 1000, sn = (fnum(r[12]) || 0) * 1000;
+      const has = fnum(r[1]) != null && fnum(r[2]) != null && sp != null;
+      const was = live.rows[hex];
+      live.rows[hex] = { hex, lat: has ? r[1] : null, lon: has ? r[2] : null, alt: fnum(r[3]), gs: fnum(r[4]), trk: fnum(r[5]), vr: fnum(r[6]),
+        g: r[7] === 1 ? 1 : r[7] === 0 ? 0 : (was ? was.g : null),      // 모름 = 직전에 받은 상태(활주 중 값이 흔들려도 표지가 오락가락하지 않게)
+        sqk: r[8] ? String(r[8]).slice(0, 4) : null, emg: r[9] === 1,
+        flight: typeof r[10] === "string" && /^[A-Z0-9]{2,8}$/.test(r[10]) ? r[10] : null,
+        pos_at: has ? new Date(j.t - sp).toISOString() : null, seen_at: new Date(j.t - sn).toISOString(), _pl: has ? rx - a - sp : null };
+    });
+    live.t = j.t; live.rx = rx; live.age = a; live.skew = rx - (j.t + a); live.err = !!j.e;
+    return true;
+  }
+  /* 한 묶음에 여러 건이 와도 화면은 한 번만 — 지도 표지 · 접근 목록 글자만 제자리에서 고침 */
+  let applyT = 0;
+  function liveApply() {
+    if (applyT) return;
+    applyT = setTimeout(() => { applyT = 0; state.ver++; paintDash(); }, 0);
+  }
+  const reqHdr = () => {
+    const key = window.SemisSync && SemisSync.ANON;
+    return Object.assign(key ? { apikey: key, Authorization: "Bearer " + key } : {}, authHdr());
+  };
+  function authLost() {
+    state.auth = false;
+    if (typeof SeMIS.onFlightAuth === "function") SeMIS.onFlightAuth();
+  }
+  const sseData = (blk) => {
+    const d = blk.split("\n").filter(l => l.indexOf("data:") === 0).map(l => l.slice(5).trim()).join("");
+    if (!d) return null;
+    try { return JSON.parse(d); } catch (e) { return null; }
+  };
+  /* 이어 받기 — 연결 하나로 서버가 끝낼 때(100초 남짓)까지. 돌려주는 값 대신 live.got(받은 건수)으로 성공을 판단 */
+  async function liveStream(gen) {
+    const ctrl = typeof AbortController === "function" ? new AbortController() : null;
+    live.ctrl = ctrl;
+    let wd = 0;
+    const arm = () => { clearTimeout(wd); wd = setTimeout(() => { if (ctrl) ctrl.abort(); }, LIVE_WATCH); };
+    try {
+      arm();
+      const r = await fetch(FN_URL + "?live=1&stream=1", { cache: "no-store", headers: reqHdr(), signal: ctrl ? ctrl.signal : undefined });
+      if (r && r.status === 401) { authLost(); throw new Error("auth"); }
+      if (!r || !r.ok) throw new Error("HTTP " + (r ? r.status : "-"));
+      const ct = (r.headers && r.headers.get && r.headers.get("content-type")) || "";
+      if (ct.indexOf("text/event-stream") < 0) throw new Error("nolive");           // 서버가 실시간을 모름(이전 판)
+      if (!r.body || !r.body.getReader || typeof TextDecoder !== "function") throw new Error("nostream");
+      live.conns++;
+      const rd = r.body.getReader(), dec = new TextDecoder();
+      let buf = "";
+      for (;;) {
+        const c = await rd.read();
+        if (gen !== live.gen) { try { rd.cancel(); } catch (e) { /* 이미 끊김 */ } return; }
+        if (c.done) return;
+        arm();
+        live.bytes += c.value ? c.value.length : 0;
+        buf += dec.decode(c.value, { stream: true });
+        let i;
+        while ((i = buf.indexOf("\n\n")) >= 0) {
+          const j = sseData(buf.slice(0, i));
+          buf = buf.slice(i + 2);
+          if (!j) continue;
+          if (j.end) { try { rd.cancel(); } catch (e) { /* 이미 끝남 */ } return; }
+          if (liveTake(j, Date.now())) { live.got++; live.msgs++; liveApply(); }
+        }
+        if (buf.length > 65536) throw new Error("big");
+      }
+    } finally {
+      clearTimeout(wd);
+      if (live.ctrl === ctrl) live.ctrl = null;
+    }
+  }
+  async function livePoll(gen) {
+    const ctrl = typeof AbortController === "function" ? new AbortController() : null;
+    live.ctrl = ctrl;
+    const wd = setTimeout(() => { if (ctrl) ctrl.abort(); }, 10000);
+    try {
+      const r = await fetch(FN_URL + "?live=1", { cache: "no-store", headers: reqHdr(), signal: ctrl ? ctrl.signal : undefined });
+      if (r && r.status === 401) { authLost(); throw new Error("auth"); }
+      if (!r || !r.ok) throw new Error("HTTP " + (r ? r.status : "-"));
+      const j = await r.json();
+      if (!j || typeof j.t !== "number" || !Array.isArray(j.ac) || (j.ac.length && !Array.isArray(j.ac[0]))) throw new Error("nolive");
+      if (gen !== live.gen) return;
+      live.conns++;
+      if (liveTake(j, Date.now())) { live.got++; live.msgs++; liveApply(); }
+    } finally {
+      clearTimeout(wd);
+      if (live.ctrl === ctrl) live.ctrl = null;
+    }
+  }
+  function liveWanted() {
+    if (typeof document === "undefined" || !document || document.hidden || state.auth === false || typeof fetch !== "function") return false;
+    return Object.keys(live.kinds).some(k => live.kinds[k] && maps[k] && maps[k].el.isConnected);
+  }
+  const liveSleep = (ms) => new Promise(res => {
+    const done = () => { clearTimeout(id); if (live.wake === done) live.wake = null; res(); };
+    const id = setTimeout(done, ms);
+    live.wake = done;
+  });
+  async function liveLoop() {
+    const gen = ++live.gen;
+    live.on = true;
+    while (gen === live.gen && liveWanted()) {
+      const now = Date.now();
+      if (now < live.offUntil) { await liveSleep(Math.min(live.offUntil - now, 60000)); continue; }
+      const stream = live.mode === "stream" || now >= live.pollUntil;
+      let res = "";
+      live.got = 0;
+      try { await (stream ? liveStream(gen) : livePoll(gen)); } catch (e) { res = String((e && e.message) || e); }
+      if (gen !== live.gen) return;
+      if (res === "auth") break;
+      if (res === "nolive") { live.offUntil = Date.now() + 600000; continue; }      // 10분 뒤 다시 확인 — 그동안은 기본 갱신만
+      if (live.got) {
+        live.fails = 0;
+        live.mode = stream ? "stream" : "poll";
+        await liveSleep(stream ? 250 : LIVE_POLL);
+        continue;
+      }
+      live.fails++;
+      if (stream && (res === "nostream" || live.fails >= (live.mode === "poll" ? 1 : 2))) {   // 이어 받기가 안 되는 망 — 한동안 묻는 방식으로
+        live.mode = "poll";
+        live.pollUntil = res === "nostream" ? Infinity : Date.now() + (live.pollUntil ? 1800000 : 600000);
+        live.fails = 0;
+        continue;
+      }
+      await liveSleep(Math.min(60000, 2000 * Math.pow(2, Math.min(live.fails, 5))));
+    }
+    if (gen === live.gen) live.on = false;
+  }
+  function liveStop() {
+    live.gen++;
+    live.on = false;
+    if (live.ctrl) { try { live.ctrl.abort(); } catch (e) { /* 이미 끝남 */ } live.ctrl = null; }
+    if (live.wake) live.wake();
+  }
+  function liveSync() {
+    if (liveWanted()) { if (!live.on) liveLoop(); } else if (live.on) liveStop();
+  }
+  /* 실시간을 쓸 지도 — 지금은 대시보드 지도("dash")만(현장 웹앱이 켬). H:drive 는 켜지 않는다 */
+  function setLive(kind, on) {
+    if (kind !== "dash") return;
+    live.kinds[kind] = !!on;
+    liveSync();
+  }
+  if (typeof window !== "undefined" && window.addEventListener) window.addEventListener("online", () => { live.fails = 0; if (live.wake) live.wake(); liveSync(); });
 
   /* ── 지도 (Leaflet) ── */
   let leafletP = null;
@@ -147,8 +345,11 @@
           attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> · 위치 <a href="https://adsb.lol" target="_blank" rel="noopener">adsb.lol</a>'
         }).addTo(map);
         map.setView([37.46, 126.44], 4);
-        m = maps[kind] = { L, map, el, layer: L.layerGroup().addTo(map), meLayer: L.layerGroup().addTo(map), marks: {}, fitted: false, lbl: [], boxing: false };
+        m = maps[kind] = { L, map, el, layer: L.layerGroup().addTo(map), meLayer: L.layerGroup().addTo(map), marks: {}, items: {}, home: null,
+          fitted: false, dirty: false, lbl: [], boxing: false };
         map.on("zoomend moveend resize", () => declutter(kind));
+        map.on("zoomend", () => { if (m.dirty) paintMap(kind); });      // 확대 애니메이션 중에 미뤄 둔 그리기
+        map.on("resize", () => { if (!m.fitted && view[kind]) homeView(kind); });
         anchorZoom(m);
         if (kind !== "full") wheelGate(m);
         boxTool(m);
@@ -156,6 +357,7 @@
       }
       paintMap(kind);
       paintMe(kind);
+      liveSync();
       setTimeout(() => { if (maps[kind] === m) m.map.invalidateSize(); }, 60);
     }).catch(() => {
       if (!el.isConnected) return;
@@ -166,11 +368,30 @@
 
   /* ── 지도 도구 (v1.79) ── */
   const toolsHTML = (kind) => `<div class="fo-tools" role="group" aria-label="지도 도구">
+      ${view[kind] ? `<button type="button" class="fo-tool" data-fo-home="${kind}" title="${esc(view[kind].label)}" aria-label="${esc(view[kind].label)}">${icon("home", 17)}</button>` : ""}
       <button type="button" class="fo-tool" data-fo-fit="${kind}" title="전체 항공기 보기" aria-label="전체 항공기 보기">${icon("grid", 16)}</button>
       <button type="button" class="fo-tool" data-fo-loc="${kind}" title="내 위치" aria-label="내 위치로 이동">${icon("locate", 17)}</button>
       <button type="button" class="fo-tool" data-fo-box="${kind}" aria-pressed="false" title="영역 확대 — 지도에 사각형을 그리면 그 영역으로 확대 (Shift + 끌기도 됨)" aria-label="영역 확대">${icon("zoombox", 17)}</button>
     </div>`;
 
+  /* 처음 화면(v1.81) — 정한 중심에서 반경 nm 해리가 한 화면에 다 들어오는 가장 깊은 정수 단계(타일이 또렷하고 이음매가 없음).
+     정해 두면 지도는 전체 항공기 대신 이 화면으로 열리고, 도구에 이 화면으로 돌아오는 단추가 생긴다 */
+  const view = {};
+  function setView(kind, o) {
+    const ok = o && Number.isFinite(o.lat) && Number.isFinite(o.lon) && o.nm > 0;
+    view[kind] = ok ? { lat: o.lat, lon: o.lon, nm: Number(o.nm), label: String(o.label || "처음 화면") } : null;
+  }
+  function homeView(kind) {
+    const m = maps[kind], v = view[kind];
+    if (!m || !v) return false;
+    const sz = m.map.getSize();
+    if (!(sz.x >= 80 && sz.y >= 80)) return false;                 // 지도 칸이 아직 안 잡힘 — 다음 그리기 · 크기 변화 때 다시
+    const c = m.L.latLng(v.lat, lonN(v.lon));
+    const z = m.map.getBoundsZoom(c.toBounds(v.nm * 1852 * 2));
+    m.map.setView(c, Math.max(3, Math.min(MAX_Z, Math.floor(z + 1e-6))), { animate: false });
+    m.fitted = true;
+    return true;
+  }
   /* 내 위치가 지금 화면 안에 있으면 그 자리(지도 좌표 — 태평양 중심 경도) */
   function meAnchor(m) {
     if (!state.me) return null;
@@ -327,30 +548,135 @@
     return `<div class="fo-pop fo-pop-apt"><div class="fo-pop-h"><b>${esc(g.at ? F.aptName(g.at) : "지상")}</b><span>지상 ${g.list.length}대</span></div>
       <ul class="fo-pop-list">${rows}</ul></div>`;
   }
-  function acIcon(L, it, pos, opts) {
-    const st = it.st, r = it.row || {};
-    const trk = r.trk != null ? Math.round(r.trk) : 0;
+  function acIcon(L, it, opts) {
     const lbl = opts.label ? `<span class="fo-lb"><b>${esc(it.fno || it.f.reg)}</b>${it.fno ? esc(it.f.reg) : ""}</span>` : "";
     return L.divIcon({
       className: "fo-mk", iconSize: [30, 30], iconAnchor: [15, 15],
-      html: `<span class="fo-ac${opts.est ? " is-est" : ""}" data-tone="${esc(st.code)}" style="--r:${trk}deg">${PLANE}</span>${lbl}`
+      html: `<span class="fo-ac${opts.est ? " is-est" : ""}" data-tone="${esc(it.st.code)}" style="--r:${Math.round(opts.rot || 0)}deg">${PLANE}</span>${lbl}`
     });
   }
+  const aptIcon = (L, w) => L.divIcon({ className: "fo-mk", iconSize: [54, 26], iconAnchor: [27, 13],
+    html: `<span class="fo-apt${w.home ? " is-home" : ""}"><b>${esc(w.g.at || "지상")}</b><i>${w.g.list.length}</i></span>` });
+  const POP_AC = { className: "fo-popup", maxWidth: 280 }, POP_APT = { className: "fo-popup", minWidth: 250, maxWidth: 320 };
+  const TRAIL_COL = { appr: "#b45309" };
+  const sameLL = (p, q2) => Math.abs(p[0] - q2[0]) < 1e-7 && Math.abs(p[1] - q2[1]) < 1e-7;
+
+  /* 이어 그리기(v1.81 · 실시간 지도만) — 마지막 위치에서 속도 · 방위로 지금 있을 자리. DR_HOLD 를 넘으면 그 자리에 멈춘다.
+     새 위치를 받으면 그려진 자리와의 차이(oLat · oLon)를 DR_BLEND 동안 풀어 표지가 튀지 않게 한다 */
+  function drOf(it, now) {
+    const r = it.row, c = it.st.code;
+    if (!r || !(c === "air" || c === "appr" || c === "emg") || !Number.isFinite(r._pl) || !(r.gs >= DR_MIN_GS) || r.trk == null) return null;
+    return { lat: r.lat, lon: r.lon, t: r._pl, gs: r.gs, trk: r.trk, fresh: now - r._pl <= DR_NEW, oLat: 0, oLon: 0, ot: 0 };
+  }
+  function drPos(dr, now) {
+    const dt = Math.max(0, Math.min(now - dr.t, DR_HOLD));
+    const p = dt ? F.destPoint(dr, dr.trk, dr.gs * 1.852 * dt / 3600000) : dr;
+    const k = dr.ot ? Math.max(0, 1 - (now - dr.ot) / DR_BLEND) : 0;
+    return [p.lat + dr.oLat * k, near(lonN(p.lon), lonN(dr.lon)) + dr.oLon * k];
+  }
+  const drSame = (a, b) => a.t === b.t && a.lat === b.lat && a.lon === b.lon && a.gs === b.gs && a.trk === b.trk;
+  /* 표지를 옮김 — 열린 정보창은 자리만 따라가게(Leaflet 기본은 옮길 때마다 내용을 다시 그리고 지도를 정보창 쪽으로 끌어감) */
+  function moveMk(x, ll) {
+    x.mk.setLatLng(ll);
+    const p = x.mk.getPopup && x.mk.getPopup();
+    if (p && p.isOpen && p.isOpen()) {
+      p._latlng = x.mk.getLatLng();
+      if (typeof p._updatePosition === "function") p._updatePosition();
+    }
+  }
+  /* 정보창 내용 — 바뀐 때만. 열려 있어도 지도를 끌어가지 않게 그 순간만 자동 이동을 끔 */
+  function setPop(x, html) {
+    if (x.pop === html) return;
+    x.pop = html;
+    const p = x.mk.getPopup && x.mk.getPopup();
+    if (!p) return;
+    const ap = p.options.autoPan;
+    p.options.autoPan = false;
+    try { p.setContent(html); } finally { p.options.autoPan = ap; }
+  }
+  const setRot = (x) => {
+    const el = x.mk.getElement && x.mk.getElement(), ac = el && el.querySelector(".fo-ac");
+    if (ac) ac.style.setProperty("--r", Math.round(x.rot) + "deg");
+  };
+  function makeItem(m, w, now) {
+    const { L, layer } = m;
+    const x = { type: w.type, icon: w.sig, z: w.z, at: w.at, pop: w.pop, dr: null, rot: w.trk == null ? 0 : w.trk };
+    let at = w.at;
+    if (w.type === "apt") {
+      x.mk = L.marker(at, { icon: aptIcon(L, w), keyboard: true, title: w.title, zIndexOffset: w.z });
+    } else {
+      if (w.type === "lost") {
+        x.dot = L.circleMarker(w.last, { radius: 3, weight: 1.5, color: "#5b6b71", fillColor: "#fff", fillOpacity: 1, interactive: false }).addTo(layer);
+        if (w.est) x.line = L.polyline([w.last, w.at], { color: "#5b6b71", weight: 1.5, dashArray: "4 5", interactive: false }).addTo(layer);
+      } else if (w.trail) {
+        x.trail = L.polyline(w.trail, { color: TRAIL_COL[w.it.st.code] || "#0f766e", weight: 2, opacity: .55, interactive: false }).addTo(layer);
+        x.tcol = w.it.st.code;
+      }
+      if (w.dr && w.dr.fresh) { x.dr = w.dr; at = drPos(x.dr, now); }
+      x.mk = L.marker(at, { icon: acIcon(L, w.it, { label: true, est: w.type === "lost", rot: x.rot }), keyboard: true, title: w.title, zIndexOffset: w.z });
+    }
+    x.mk.bindPopup(w.pop, w.type === "apt" ? POP_APT : POP_AC).addTo(layer);
+    if (typeof x.mk._movePopup === "function") x.mk.off("move", x.mk._movePopup);     // 정보창은 moveMk 가 직접 옮김
+    return x;
+  }
+  function syncItem(m, x, w, now) {
+    const { L, layer } = m;
+    const redraw = x.icon !== w.sig;                                                  // 상태 · 편명 · 대수가 바뀐 때만 표지를 새로 그림
+    if (redraw) { x.icon = w.sig; x.mk.options.title = w.title; }
+    if (w.type === "apt") {
+      if (redraw) x.mk.setIcon(aptIcon(L, w));
+      if (!sameLL(x.at, w.at)) moveMk(x, w.at);
+    } else {
+      if (w.trk != null) x.rot += ((w.trk - x.rot) % 360 + 540) % 360 - 180;         // 가까운 쪽으로 돌림(359° → 1° 가 한 바퀴 돌지 않게)
+      if (redraw) x.mk.setIcon(acIcon(L, w.it, { label: true, est: w.type === "lost", rot: x.rot }));
+      else setRot(x);
+      if (x.z !== w.z) { x.z = w.z; x.mk.setZIndexOffset(w.z); }
+      if (w.type === "lost") {
+        x.dot.setLatLng(w.last);
+        if (w.est && !x.line) x.line = L.polyline([w.last, w.at], { color: "#5b6b71", weight: 1.5, dashArray: "4 5", interactive: false }).addTo(layer);
+        else if (w.est) x.line.setLatLngs([w.last, w.at]);
+        else if (x.line) { layer.removeLayer(x.line); x.line = null; }
+        if (!sameLL(x.at, w.at)) moveMk(x, w.at);
+      } else {
+        if (w.trail && !x.trail) x.trail = L.polyline(w.trail, { color: TRAIL_COL[w.it.st.code] || "#0f766e", weight: 2, opacity: .55, interactive: false }).addTo(layer);
+        else if (w.trail) x.trail.setLatLngs(w.trail);
+        else if (x.trail) { layer.removeLayer(x.trail); x.trail = null; }
+        if (x.trail && x.tcol !== w.it.st.code) { x.tcol = w.it.st.code; x.trail.setStyle({ color: TRAIL_COL[x.tcol] || "#0f766e" }); }
+        if (w.dr && x.dr && drSame(w.dr, x.dr)) moveMk(x, drPos(x.dr, now));          // 같은 위치 — 이어 그리던 대로
+        else if (w.dr && w.dr.fresh) {
+          const cur = x.mk.getLatLng(), nw = drPos(w.dr, now);
+          const dLat = cur.lat - nw[0], dLon = cur.lng - nw[1];
+          if (Math.abs(dLat) < 0.05 && Math.abs(dLon) < 0.08) { w.dr.oLat = dLat; w.dr.oLon = dLon; w.dr.ot = now; }   // 멀면(5 km 남짓) 그냥 옮김
+          x.dr = w.dr;
+          moveMk(x, drPos(x.dr, now));
+        } else {
+          x.dr = null;
+          const cur = x.mk.getLatLng();
+          if (!sameLL([cur.lat, cur.lng], w.at)) moveMk(x, w.at);
+        }
+      }
+    }
+    x.at = w.at;
+    setPop(x, w.pop);
+  }
+  function dropItem(m, x) {
+    [x.mk, x.dot, x.line, x.trail].forEach(l => { if (l) m.layer.removeLayer(l); });
+  }
+  /* 지도 그리기 — 기체 · 공항 묶음마다 표지를 하나씩 두고 제자리에서 고친다(없어진 것만 지움). 보던 자리 · 열어 둔 정보창은 그대로 */
   function paintMap(kind) {
     const m = maps[kind];
     if (!m || !m.el.isConnected) return;
+    if (m.map._animatingZoom) { m.dirty = true; return; }       // 확대 애니메이션 중에 옮기면 표지가 튐 — 끝난 뒤(zoomend)에
+    m.dirty = false;
     const { L, layer } = m;
-    layer.clearLayers();
-    m.marks = {};
-    m.lbl = [];
+    const now = Date.now();
     const PR = { emg: 0, appr: 1, air: 2, lost: 3 };
-    const md = model();
-    const pts = [];
-    const full = kind === "full";
+    const md = model(now);
+    const pts = [], want = {}, groups = {};
+    const full = kind === "full", liveOn = !!live.kinds[kind];
     const home = F.apt(F.HOME);
-    L.circleMarker([home.lat, home.lon], { radius: 5, weight: 2, color: "#0b1f26", fillColor: "#fff", fillOpacity: 1, interactive: false }).addTo(layer);
+    if (!m.home) m.home = L.circleMarker([home.lat, home.lon], { radius: 5, weight: 2, color: "#0b1f26", fillColor: "#fff", fillOpacity: 1, interactive: false }).addTo(layer);
 
-    const groups = {};
     md.items.forEach(it => {
       const st = it.st;
       if (!st.pos) return;
@@ -360,51 +686,92 @@
         return;
       }
       const lon = lonN(st.pos.lon);
+      const trk = it.row && it.row.trk != null ? Number(it.row.trk) : null;
       if (st.code === "lost") {
         const last = [st.pos.lat, lon];
-        L.circleMarker(last, { radius: 3, weight: 1.5, color: "#5b6b71", fillColor: "#fff", fillOpacity: 1, interactive: false }).addTo(layer);
-        let at = last;
-        if (st.est) {
-          at = [st.est.lat, near(st.est.lon, lon)];
-          L.polyline([last, at], { color: "#5b6b71", weight: 1.5, dashArray: "4 5", interactive: false }).addTo(layer);
-        }
-        const mk = L.marker(at, { icon: acIcon(L, it, at, { label: true, est: true }), keyboard: true, title: it.f.reg + " " + st.label })
-          .bindPopup(popHTML(it), { className: "fo-popup", maxWidth: 280 }).addTo(layer);
-        m.marks[it.f.hex] = mk;
-        m.lbl.push({ mk, pr: PR.lost });
+        const at = st.est ? [st.est.lat, near(st.est.lon, lon)] : last;
+        const title = it.f.reg + " " + st.label;
+        want["ac:" + it.f.hex] = { type: "lost", it, at, last, est: !!st.est, trk, pr: PR.lost, z: 0, title, pop: popHTML(it),
+          sig: ["lost", it.fno, it.f.reg, title].join("|") };
         pts.push(at);
         return;
       }
       const at = [st.pos.lat, lon];
+      let trail = null;
       if (full && it.row && Array.isArray(it.row.trail) && it.row.trail.length > 1) {
-        const tr = it.row.trail.slice();
-        const line = [];
+        const tr = it.row.trail;
+        trail = [];
         let ref = lon;
-        for (let i = tr.length - 1; i >= 0; i--) { const lo = near(tr[i][2], ref); line.unshift([tr[i][1], lo]); ref = lo; }
-        line.push(at);
-        L.polyline(line, { color: st.code === "appr" ? "#b45309" : "#0f766e", weight: 2, opacity: .55, interactive: false }).addTo(layer);
+        for (let i = tr.length - 1; i >= 0; i--) { const lo = near(tr[i][2], ref); trail.unshift([tr[i][1], lo]); ref = lo; }
+        trail.push(at);
       }
-      const mk = L.marker(at, { icon: acIcon(L, it, at, { label: true }), keyboard: true, title: (it.fno || it.f.reg) + " " + st.label, zIndexOffset: st.code === "appr" || st.code === "emg" ? 500 : 0 })
-        .bindPopup(popHTML(it), { className: "fo-popup", maxWidth: 280 }).addTo(layer);
-      m.marks[it.f.hex] = mk;
-      m.lbl.push({ mk, pr: PR[st.code] == null ? 3 : PR[st.code] });
+      const title = (it.fno || it.f.reg) + " " + st.label;
+      want["ac:" + it.f.hex] = { type: "ac", it, at, trail, trk, pr: PR[st.code] == null ? 3 : PR[st.code], z: st.code === "appr" || st.code === "emg" ? 500 : 0,
+        title, pop: popHTML(it), sig: [st.code, it.fno, it.f.reg, title].join("|"), dr: liveOn ? drOf(it, now) : null };
       pts.push(at);
     });
     Object.keys(groups).forEach(k => {
       const g = groups[k];
       const at = [g.pos.lat, lonN(g.pos.lon)];
       const isHome = g.at === F.HOME;
-      const html = `<span class="fo-apt${isHome ? " is-home" : ""}"><b>${esc(g.at || "지상")}</b><i>${g.list.length}</i></span>`;
-      const mk = L.marker(at, { icon: L.divIcon({ className: "fo-mk", iconSize: [54, 26], iconAnchor: [27, 13], html }), keyboard: true,
-        title: (g.at ? F.aptName(g.at) : "지상") + " " + g.list.length + "대", zIndexOffset: -100 })
-        .bindPopup(aptPopHTML(g), { className: "fo-popup", minWidth: 250, maxWidth: 320 }).addTo(layer);
-      g.list.forEach(it => { m.marks[it.f.hex] = mk; });
+      const title = (g.at ? F.aptName(g.at) : "지상") + " " + g.list.length + "대";
+      want["apt:" + k] = { type: "apt", g, at, home: isHome, z: -100, title, pop: aptPopHTML(g), sig: [g.at, isHome ? 1 : 0, g.list.length].join("|") };
       pts.push(at);
     });
-    if (!m.fitted) fitMap(kind, pts);
+
+    Object.keys(m.items).forEach(k => {
+      if (want[k] && want[k].type === m.items[k].type) return;
+      dropItem(m, m.items[k]);
+      delete m.items[k];
+    });
+    m.marks = {};
+    m.lbl = [];
+    Object.keys(want).forEach(k => {
+      const w = want[k];
+      let x = m.items[k];
+      if (x) syncItem(m, x, w, now);
+      else x = m.items[k] = makeItem(m, w, now);
+      if (w.type === "apt") w.g.list.forEach(it => { m.marks[it.f.hex] = x.mk; });
+      else { m.marks[w.it.f.hex] = x.mk; m.lbl.push({ mk: x.mk, pr: w.pr }); }
+    });
+    if (!m.fitted) { if (view[kind]) homeView(kind); else fitMap(kind, pts); }
     declutter(kind);
     const leg = m.el.parentNode && m.el.parentNode.querySelector(".fo-legend");
-    if (leg) leg.innerHTML = legendHTML(md);
+    const lh = legendHTML(md);
+    if (leg && leg._h !== lh) { leg.innerHTML = lh; leg._h = lh; }
+    animKick();
+  }
+  /* 이어 그리기 — 실시간 지도에서 움직이는 표지만, 1초에 15번쯤. 움직일 것이 없으면 멈추고 다음 그리기 때 다시 돈다 */
+  let animId = 0, animLast = 0;
+  const raf = (f) => (typeof requestAnimationFrame === "function" ? requestAnimationFrame(f) : setTimeout(f, ANIM_MS));
+  const drMoving = (dr, now) => now - dr.t < DR_HOLD || (dr.ot && now - dr.ot < DR_BLEND);
+  function animKick() {
+    if (animId) return;
+    const now = Date.now();
+    const any = Object.keys(live.kinds).some(k => live.kinds[k] && maps[k] && maps[k].el.isConnected &&
+      Object.keys(maps[k].items).some(i => maps[k].items[i].dr && drMoving(maps[k].items[i].dr, now)));
+    if (any) animId = raf(animStep);
+  }
+  function animStep() {
+    animId = 0;
+    if (typeof document === "undefined" || !document) return;
+    const now = Date.now();
+    if (now - animLast >= ANIM_MS) {
+      animLast = now;
+      let any = false;
+      Object.keys(live.kinds).forEach(kind => {
+        const m = maps[kind];
+        if (!live.kinds[kind] || !m || !m.el.isConnected) return;
+        Object.keys(m.items).forEach(k => {
+          const x = m.items[k];
+          if (!x.dr || !drMoving(x.dr, now)) return;
+          any = true;
+          if (!m.map._animatingZoom) moveMk(x, drPos(x.dr, now));
+        });
+      });
+      if (!any) return;
+    }
+    animId = raf(animStep);
   }
   /* 이름표 겹침 정리 — 비상 · 접근 · 비행 · 신호 없음 순으로 오른쪽 → 왼쪽 → 숨김(누르면 팝업으로 확인) */
   function declutter(kind) {
@@ -505,6 +872,7 @@
   function wireCommon(box, kind) {
     $$("[data-fo-focus]", box).forEach(b => b.onclick = () => focusAc(kind, b.dataset.foFocus));
     $$("[data-fo-fit]", box).forEach(b => b.onclick = () => fitMap(b.dataset.foFit));
+    $$("[data-fo-home]", box).forEach(b => b.onclick = () => homeView(b.dataset.foHome));
     $$("[data-fo-loc]", box).forEach(b => b.onclick = () => locate(b.dataset.foLoc, b));
     $$("[data-fo-box]", box).forEach(b => b.onclick = () => toggleBox(b.dataset.foBox));
     $$("[data-fo-go]", box).forEach(b => b.onclick = () => SeMIS.navigate(MOD));
@@ -513,16 +881,40 @@
     const box = typeof document !== "undefined" && document ? document.getElementById("dash-flt") : null;   // 창이 닫힌 뒤 늦은 응답
     if (!box) return;
     const md = model();
-    $("#dflt-meta", box).textContent = updText();
-    $("#dflt-n", box).textContent = md.appr.length;
-    $("#dflt-appr", box).innerHTML = apprListHTML(md);
-    $("#dflt-arr", box).innerHTML = recentArrHTML(md);
-    wireCommon(box, "dash");
+    setText($("#dflt-meta", box), updText());
+    setText($("#dflt-n", box), md.appr.length);
+    const a = paintAppr($("#dflt-appr", box), md), b = setHTML($("#dflt-arr", box), recentArrHTML(md));
+    if (a || b || !box._wired) { box._wired = true; wireCommon(box, "dash"); }
     paintMap("dash");
+  }
+  /* 바뀐 것만 고침(v1.81) — 글자가 같으면 손대지 않고, 접근 목록은 기체 구성이 같으면 줄 단추를 그대로 둔 채 안의 글자만 바꾼다
+     (갱신 순간에 누르고 있던 줄 · 초점이 사라지지 않음 — 줄 안쪽은 CSS 로 누름을 받지 않게 해 단추가 늘 대상) */
+  function setText(el, v) { v = String(v); if (el && el.textContent !== v) el.textContent = v; }
+  function setHTML(el, html) {
+    if (!el || el._h === html) return false;
+    el.innerHTML = html; el._h = html;
+    return true;
+  }
+  function paintAppr(host, md) {
+    if (!host) return false;
+    const html = apprListHTML(md);
+    if (host._h === html) return false;
+    const keys = md.appr.map(it => it.f.hex).join(",");
+    const rows = $$(".appr-row", host);
+    if (keys && host._k === keys && rows.length === md.appr.length) {
+      const tmp = document.createElement("div");
+      tmp.innerHTML = html;
+      $$(".appr-row", tmp).forEach((nw, i) => { if (rows[i].innerHTML !== nw.innerHTML) rows[i].innerHTML = nw.innerHTML; });
+      host._h = html;
+      return false;
+    }
+    host.innerHTML = html; host._h = html; host._k = keys;
+    return true;
   }
   function mountDash() {
     const box = document.getElementById("dash-flt");
     if (!box) return;
+    box._wired = true;
     wireCommon(box, "dash");
     mountMap($("#dflt-map", box), "dash");
     load({ events: true }).then(() => paintDash());
@@ -741,11 +1133,13 @@
       if (typeof document !== "undefined" && document.hidden) return;
       const onPage = !!document.getElementById("fo-page"), onDash = !!document.getElementById("dash-flt");
       if (!onPage && !onDash) return;
+      if (!onPage && liveFresh() && Date.now() - state.ts < LIVE_BASE - 5000) return;   // 실시간 수신 중 — 기록 · 기체 목록은 2분마다
       load({ trail: onPage, events: true, force: true }).then(() => { paintPage(); paintDash(); });
     }, REFRESH_MS);
   }
   /* 다른 탭에 있다 돌아오면 바로 갱신 */
   if (typeof document !== "undefined") document.addEventListener("visibilitychange", () => {
+    liveSync();                                                       // 가려지면 실시간 연결을 끊고, 돌아오면 다시 잇는다
     if (document.hidden) return;
     if (!document.getElementById("fo-page") && !document.getElementById("dash-flt")) return;
     if (Date.now() - state.ts > REFRESH_MS) refresh(false);
@@ -882,5 +1276,6 @@
     items: () => fleet().map(f => ({ title: f.reg, sub: (F.AC_TYPES[f.type] || f.type) + " · " + (f.model || ""), route: MOD }))
   });
 
-  window.SemisFlight = { dashHTML, mountDash, paintDash, load, model, state, refresh, fleet, aptPopHTML, gndState, maps, MAX_Z, fieldUrl };
+  window.SemisFlight = { dashHTML, mountDash, paintDash, load, model, state, refresh, fleet, aptPopHTML, gndState, maps, MAX_Z, fieldUrl,
+    setLive, setView, homeView, live, liveTake, drPos };
 })();

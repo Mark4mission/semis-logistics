@@ -7,6 +7,9 @@
    - GET ?trail=1 → 비행 경로 포함 · ?events=1 → 최근 48시간 입출항 기록 포함 · 응답에 기체 목록 fleet(공용 DB 에 있을 때)
    - 출입(v1.80): H:drive 로그인 세션(x-semis-token) 또는 현장 웹앱 PIN 표(x-flight-token) — 판정은 SQL semis_logi_flight_gate
      (tools/sql/semis-logi-flight.sql, strict 가 꺼져 있으면 모두 통과). ?cron=1 은 기록만 하고 위치를 돌려주지 않으므로 확인하지 않음
+   - 실시간(v1.81 · 현장 웹앱): GET ?live=1 → adsb.lol 을 5초 간격으로 받아 DB 를 거치지 않고 그대로 돌려준다(기록 · 입출항 판정은 위 경로만).
+     ?live=1&stream=1 → 한 번 연결로 5초마다 이어 보냄(text/event-stream, 처음엔 전체 · 그 뒤엔 바뀐 기체만). 연결 하나 = 호출 1건.
+     조회는 이 함수 인스턴스 안에서 화면 여럿이 함께 쓰고(4.5초 안이면 다시 묻지 않음), 실패하면 10초 → 60초로 물러난다. 출입 확인은 같음.
    - 배포: Supabase MCP deploy_edge_function (verify_jwt true, anon 키로 호출). 이 파일이 원본. */
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -85,6 +88,114 @@ async function allowed(req: Request): Promise<boolean> {
     const { data, error } = await c.rpc("semis_logi_flight_gate", { p_ftok: ft || null });
     return !error && data === true;
   } catch (_) { return false; }
+}
+
+/* ── 실시간 중계(v1.81) — DB 를 읽지도 쓰지도 않는다(기체 목록만 5분에 한 번) ── */
+const LIVE_UA = "H-drive/1.81 (AirZeta ICN cargo team field map; live)";
+const LIVE_GAP = 4_500;            // adsb.lol 실시간 조회 최소 간격
+const LIVE_TICK = 5_000;           // 이어 보내는 간격
+const LIVE_STREAM_MS = 105_000;    // 한 번 연결로 보내는 시간 — 실행 한도(무료 150초) 안쪽. 그 전에 끊겨도 화면이 바로 다시 잇는다
+const LIVE_HEX_KEEP = 300_000;
+/* 한 줄 = [hex, lat, lon, alt, gs, trk, vr, 지상(1 · 0 · null=모름), sqk, 비상(1 · 0), 편명, 위치 나이(초), 수신 나이(초)] */
+type LRow = (string | number | null)[];
+type Snap = { t: number; at: number; rows: LRow[]; err: boolean };
+let liveSnap: Snap = { t: 0, at: 0, rows: [], err: false };
+let liveBusy: Promise<void> | null = null;
+let liveFail = 0, liveHold = 0;
+let liveHex: string[] | null = null, liveHexAt = 0;
+const fin = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+const rd = (v: unknown, m: number) => (fin(v) ? Math.round(v * m) / m : null);
+function liveRow(a: Record<string, unknown>, hexes: string[]): LRow | null {
+  const hex = String(a.hex || "").toLowerCase().replace(/^~/, "");
+  if (hexes.indexOf(hex) < 0) return null;
+  const lp = a.lastPosition as Record<string, unknown> | undefined;
+  const pos = fin(a.lat) && fin(a.lon) ? { lat: a.lat, lon: a.lon, sp: Number(a.seen_pos) || 0 }
+    : lp && fin(lp.lat) && fin(lp.lon) ? { lat: lp.lat, lon: lp.lon, sp: Number(lp.seen_pos) || 0 } : null;
+  const alt = fin(a.alt_baro) ? a.alt_baro : (fin(a.alt_geom) ? a.alt_geom : null);
+  // 지상/공중 — 기록 경로(refresh)와 같은 기준. 확정 못 하면 null(화면이 직전 상태를 유지)
+  const airSure = a.alt_baro !== "ground" && ((alt ?? 0) >= 800 || (Number(a.gs) || 0) >= 150);
+  const g = a.alt_baro === "ground" ? 1 : airSure ? 0 : null;
+  const sqk = a.squawk ? String(a.squawk).slice(0, 4) : null;
+  const emg = (a.emergency && a.emergency !== "none") || (sqk ? EMG_SQK.indexOf(sqk) >= 0 : false);
+  return [hex, pos ? rd(pos.lat, 1e5) : null, pos ? rd(pos.lon, 1e5) : null, g === 1 ? null : rd(alt, 1), rd(a.gs, 10),
+    rd(a.track ?? a.true_heading, 10), rd(a.baro_rate ?? a.geom_rate, 1), g, sqk, emg ? 1 : 0,
+    flOk(a.flight) ? String(a.flight).trim().toUpperCase() : null, pos ? rd(pos.sp, 10) : null, rd(Number(a.seen) || 0, 10)];
+}
+async function liveFetch(): Promise<void> {
+  try {
+    if (!liveHex || Date.now() - liveHexAt > LIVE_HEX_KEEP) { liveHex = await fleetHex(); liveHexAt = Date.now(); }
+    const hexes = liveHex;
+    const res = await fetch("https://api.adsb.lol/v2/hex/" + hexes.join(","), {
+      headers: { "User-Agent": LIVE_UA }, signal: AbortSignal.timeout(4_000)
+    });
+    if (!res.ok) throw new Error("adsb.lol HTTP " + res.status);
+    const j = await res.json();
+    const at = Date.now();
+    let t0 = Number(j.now) || at;
+    if (Math.abs(at - t0) > 120_000) t0 = at;                     // 원본 시계가 크게 다르면 이쪽 시계로
+    const rows: LRow[] = [];
+    for (const a of (Array.isArray(j.ac) ? j.ac : [])) { const r = liveRow(a, hexes); if (r) rows.push(r); }
+    liveSnap = { t: t0, at, rows, err: false };
+    liveFail = 0;
+  } catch (_) {
+    liveFail++;
+    liveHold = Date.now() + Math.min(60_000, LIVE_TICK * 2 ** Math.min(liveFail, 4));
+    liveSnap = { ...liveSnap, err: true };
+  }
+}
+async function liveGet(): Promise<Snap> {
+  const now = Date.now();
+  if (now - liveSnap.at < LIVE_GAP || now < liveHold) return liveSnap;
+  if (!liveBusy) liveBusy = liveFetch().finally(() => { liveBusy = null; });
+  await liveBusy;
+  return liveSnap;
+}
+/* t = 자료 기준 시각(ms) · a = 그 뒤 지난 시간(ms) · ac = 줄 · e = 원본 조회 실패(직전 자료) */
+function liveMsg(s: Snap, rows: LRow[]): Row {
+  const o: Row = { t: s.t, a: Math.max(0, Date.now() - s.t), ac: rows };
+  if (s.err) o.e = 1;
+  return o;
+}
+function liveStream(req: Request): Response {
+  const enc = new TextEncoder();
+  const until = Date.now() + LIVE_STREAM_MS;
+  const sent = new Map<string, string>();
+  let timer: ReturnType<typeof setTimeout> | undefined, closed = false, stop = () => { closed = true; };
+  /* 보내는 동안 이 인스턴스가 먼저 정리되지 않게 붙잡아 둠(Supabase EdgeRuntime.waitUntil — 로컬 시험에는 없음) */
+  let release = () => {};
+  const held = new Promise<void>((r) => { release = r; });
+  try { (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime?.waitUntil?.(held); } catch (_) { /* 없으면 그대로 */ }
+  const body = new ReadableStream<Uint8Array>({
+    start(ctrl) {
+      stop = () => {
+        if (closed) return;
+        closed = true;
+        clearTimeout(timer);
+        release();
+        try { ctrl.close(); } catch (_) { /* 이미 닫힘 */ }
+      };
+      const push = (o: unknown) => { try { ctrl.enqueue(enc.encode("data: " + JSON.stringify(o) + "\n\n")); } catch (_) { stop(); } };
+      const tick = async () => {
+        if (closed) return;
+        const began = Date.now();
+        const s = await liveGet();
+        if (closed) return;
+        const rows: LRow[] = [];
+        for (const r of s.rows) {
+          const k = JSON.stringify(r.slice(0, 11));
+          if (sent.get(r[0] as string) !== k) { sent.set(r[0] as string, k); rows.push(r); }
+        }
+        push(liveMsg(s, rows));
+        if (Date.now() >= until) { push({ end: 1 }); stop(); return; }
+        timer = setTimeout(tick, Math.max(1_000, LIVE_TICK - (Date.now() - began)));
+      };
+      req.signal.addEventListener("abort", () => stop());
+      tick();
+    },
+    cancel() { closed = true; clearTimeout(timer); release(); }
+  });
+  return new Response(body, { headers: { ...CORS, "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-store, no-transform", "X-Accel-Buffering": "no" } });
 }
 
 async function refresh(): Promise<string> {
@@ -219,8 +330,14 @@ async function refresh(): Promise<string> {
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   const u = new URL(req.url);
-  const cron = u.searchParams.get("cron") === "1";
+  const live = u.searchParams.get("live") === "1";
+  const cron = !live && u.searchParams.get("cron") === "1";        // 실시간은 위치를 돌려주므로 cron 과 함께 와도 출입 확인
   if (!cron && !(await allowed(req))) return json({ error: "auth" }, 401);
+  if (live) {
+    if (u.searchParams.get("stream") === "1") return liveStream(req);
+    const s = await liveGet();
+    return json(liveMsg(s, s.rows));
+  }
   let note = "";
   try { note = await refresh(); } catch (e) { note = "error " + (e as Error).message; }
   if (cron) return json({ ok: true, note });

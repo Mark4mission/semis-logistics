@@ -3,7 +3,7 @@
    실행: npm test  (jsdom 필요: npm install)
    구성: [C] 코어(해시·계정·메뉴·정규화·권한·라우터·예정 모듈)
          [D] 대시보드·공지·현황판  [S] 시스템 설정  [M] 이식 모듈 스모크(일정·회의록·연락망·검색)
-         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [IM] 한글 입력 보호  [FL] 운항 현황  [AU] 수검 대응 센터  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [SEC] 서버 보안(비공개 파일·살균·CSP)  [PT] 순찰일지  [SK] 자체 보안점검(수준관리지침 별표 · HWPX)  [UP] 점검 표시 · 다가오는 점검  [CM] v1.29 화면 정돈  [CN] v1.30 편집 모드 · 모바일 접기  [ED] v1.39 보안교육 이수 등록(배포용)  [TA] v1.41 점검교육 · 수검 자료  [DK] v1.47 메인 데스크  [UI] v1.48 지원 카드 · 공통 패널 · 부엉이  [AR] v1.49 아르고 AI 도우미  [DS] v1.55 문서 · 규정 검색  [PV] v1.56–1.57 첨부 미리보기(암호 · XLS · HWP)  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
+         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [IM] 한글 입력 보호  [FL] 운항 현황  [AU] 수검 대응 센터  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [SEC] 서버 보안(비공개 파일·살균·CSP)  [PT] 순찰일지  [SK] 자체 보안점검(수준관리지침 별표 · HWPX)  [UP] 점검 표시 · 다가오는 점검  [CM] v1.29 화면 정돈  [CN] v1.30 편집 모드 · 모바일 접기  [ED] v1.39 보안교육 이수 등록(배포용)  [TA] v1.41 점검교육 · 수검 자료  [DK] v1.47 메인 데스크  [UI] v1.48 지원 카드 · 공통 패널 · 부엉이  [AR] v1.49 아르고 AI 도우미  [DS] v1.55 문서 · 규정 검색  [PV] v1.56–1.57 첨부 미리보기(암호 · XLS · HWP)  [FR] v1.81 운항 실시간 · 지도 제자리 갱신 · 처음 화면  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
    ═══════════════════════════════════════════════════════ */
 "use strict";
 const fs = require("fs");
@@ -5011,7 +5011,7 @@ function makeServer(opts = {}) {
       ok(box.querySelector(".fo-pop-h").textContent.includes("지상 2대"));
       const css = read("css/main.css");
       ok(/\.fo-pop-list \.pl-1 \{[^}]*white-space: nowrap/.test(css) && /\.fo-pop-list \.pl-2 \{[^}]*white-space: nowrap/.test(css), "줄바꿈 없음");
-      ok(/bindPopup\(aptPopHTML\(g\), \{ className: "fo-popup", minWidth: 250/.test(read("js/flightops.js")), "최소 폭");
+      ok(/POP_APT = \{ className: "fo-popup", minWidth: 250/.test(read("js/flightops.js")), "최소 폭");
       eq(Fc.fnoOf("@@@@@@@@"), ""); eq(Fc.kstWhen(Fc.kstDayStart(NOW) - 3600000, NOW), "어제 23:00");
     });
     t("FL10 서버 함수: 출발 기록 편명 보정(이륙 때 직전 편 콜사인) · 빈 콜사인 거름", () => {
@@ -5266,7 +5266,7 @@ function makeServer(opts = {}) {
     });
     t("FA03 흉내(shim): 아이콘 글자 = app.js · 공개 키 = sync.js · 비밀 없음", () => {
       const sh = read("js/flight-shim.js"), app = read("js/app.js");
-      ["grid", "locate", "zoombox", "down", "refresh"].forEach(n => {
+      ["home", "grid", "locate", "zoombox", "down", "refresh"].forEach(n => {
         const a = new RegExp("^    " + n + ": ('[^\\n]*?'),?$", "m").exec(app)[1], b = new RegExp("^    " + n + ": ('[^\\n]*?'),?$", "m").exec(sh)[1];
         eq(b, a, n);
       });
@@ -5290,7 +5290,7 @@ function makeServer(opts = {}) {
       deq([st.t, st.exp], [TOK(EXP), EXP], "표 저장(PIN 은 저장 안 함)");
       ok(e.w.localStorage.getItem("hdflight:tok").indexOf("482913") < 0);
       ok(e.q("#dash-flt") && !e.w.document.body.classList.contains("fa-locked"), "지도 화면");
-      eq(e.qa("#dash-flt .fo-tools .fo-tool").length, 3, "지도 도구 3개");
+      eq(e.qa("#dash-flt .fo-tools .fo-tool").length, 4, "지도 도구 4개(인천공항 · 전체 · 내 위치 · 영역 확대)");
       await tick(40);
       const a = adsbCalls(e);
       ok(a.length >= 1, "위치 요청");
@@ -5399,6 +5399,344 @@ function makeServer(opts = {}) {
       q(eh, "#fp-cut").click(); clickOk(eh); await tick(10);
       ok(rc.some(r => r[1].p.act === "cut"), "모두 끊기");
       ok(q(eh, "#toast-wrap").textContent.includes("현장 접속을 모두 끊었습니다"));
+      eq(eh.errors.length, 0, eh.errors.join(" | "));
+    });
+  }
+
+  /* ══════════ [FR] 운항 실시간 · 지도 제자리 갱신 · 처음 화면 (v1.81) — 현장 웹앱(flight.html)에 Leaflet 을 넣고 서버를 흉내 ══════════ */
+  {
+    const FH = read("flight.html");
+    const SRC = ["js/flight-shim.js", "js/flightcore.js", "js/flightops.js", "js/flight-app.js"];
+    const LEAF = read("assets/vendor/leaflet/leaflet.js");
+    const FC = require(path.join(ROOT, "js/flightcore.js"));
+    const iso = (ms) => new Date(ms).toISOString();
+    const EXP = Math.floor(Date.now() / 1000) + 43200;
+    const TOKV = EXP + ".2." + "a".repeat(64);
+    const MW = 390, MH = 470;
+    const enc = (x) => new TextEncoder().encode(x);
+    const sse = (o) => "data: " + JSON.stringify(o) + "\n\n";
+    const mk = (o) => {
+      o = o || {};
+      const vc = new VirtualConsole(); const errors = [];
+      vc.on("jsdomError", (er) => { const m = String(er && er.message || er); if (m.indexOf("Not implemented") < 0) errors.push(m); });
+      const dom = new JSDOM(FH.replace(/<script[\s\S]*?<\/script>/g, ""), { url: "https://logi.test/flight.html", runScripts: "outside-only", pretendToBeVisual: true, virtualConsole: vc });
+      const w = dom.window;
+      w.TextDecoder = TextDecoder; w.TextEncoder = TextEncoder;
+      Object.defineProperty(w.HTMLElement.prototype, "clientWidth", { configurable: true, get() { return this.classList && this.classList.contains("fo-map") ? MW : 0; } });
+      Object.defineProperty(w.HTMLElement.prototype, "clientHeight", { configurable: true, get() { return this.classList && this.classList.contains("fo-map") ? MH : 0; } });
+      w.eval(LEAF);
+      const now = Date.now();
+      const srv = Object.assign({ status: 200, live: "stream", streams: [], polls: 0, base: 0, pollMsg: null,
+        rows: [{ hex: "71bc21", reg: "HL7421", type: "B744", flight: "AIH970", lat: 37.2, lon: 126.6, alt: 8000, gnd: false, gs: 250, trk: 320, vr: -1200, pos_at: iso(now - 10000), seen_at: iso(now - 10000) },
+          { hex: "71bd07", reg: "HL7507", type: "B763", flight: "AIH281", lat: 37.4601, lon: 126.4402, alt: null, gnd: true, gs: 0, seen_at: iso(now - 30000), gnd_since: iso(now - 3600000) }],
+        fleet: [{ reg: "HL7421", hex: "71bc21", type: "B744", model: "747-400F" }, { reg: "HL7507", hex: "71bd07", type: "B763", model: "767-300F" }] }, o.srv || {});
+      const calls = [];
+      const newStream = (signal) => {
+        const qd = []; let wake = null, done = false;
+        const st = { aborted: false, cancelled: false,
+          push(x) { qd.push(enc(x)); if (wake) wake(); }, end() { done = true; if (wake) wake(); } };
+        if (signal) signal.addEventListener("abort", () => { st.aborted = true; if (wake) wake(); });
+        st.reader = { cancel() { st.cancelled = true; return Promise.resolve(); },
+          read() { return new Promise((res, rej) => { const run = () => { wake = null; if (st.aborted) return rej(new Error("abort")); if (qd.length) return res({ done: false, value: qd.shift() }); if (done) return res({ done: true }); wake = run; }; run(); }); } };
+        return st;
+      };
+      w.fetch = (url, init) => {
+        const u = String(url), h = (init && init.headers) || {};
+        calls.push({ url: u, h });
+        if (u.indexOf("semis-logi-adsb") < 0) return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
+        if (srv.status === 401) return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({ error: "auth" }) });
+        const base = () => ({ now: iso(Date.now()), fetched_at: iso(Date.now()), events: [], fleet: srv.fleet, ac: srv.rows });
+        if (u.indexOf("live=1") >= 0 && u.indexOf("stream=1") >= 0) {
+          if (srv.live === "fail") return Promise.reject(new Error("net"));
+          if (srv.live === "old") return Promise.resolve({ ok: true, status: 200, headers: { get: () => "application/json" }, json: () => Promise.resolve(base()) });
+          const st = newStream(init && init.signal);
+          srv.streams.push(st);
+          return Promise.resolve({ ok: true, status: 200, headers: { get: (k) => (String(k).toLowerCase() === "content-type" ? "text/event-stream; charset=utf-8" : null) }, body: { getReader: () => st.reader } });
+        }
+        if (u.indexOf("live=1") >= 0) {
+          srv.polls++;
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(srv.pollMsg || { t: Date.now(), a: 0, ac: [] }) });
+        }
+        srv.base++;
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(base()) });
+      };
+      w.localStorage.setItem("hdflight:tok", JSON.stringify({ t: TOKV, exp: EXP }));
+      SRC.forEach(f => w.eval(read(f)));
+      return { w, srv, calls, errors, q: (x) => w.document.querySelector(x), qa: (x) => Array.from(w.document.querySelectorAll(x)),
+        SF: () => w.SemisFlight, map: () => w.SemisFlight.maps.dash,
+        stream: () => srv.streams[srv.streams.length - 1],
+        liveCalls: () => calls.filter(c => c.url.indexOf("live=1") >= 0) };
+    };
+    const up = async () => { await tick(60); };
+    const row = (lat, lon, o) => { o = o || {}; return ["71bc21", lat, lon, o.alt === undefined ? 4100 : o.alt, o.gs == null ? 180 : o.gs, o.trk == null ? 330 : o.trk, -800, o.g === undefined ? 0 : o.g, "2041", 0, "AIH970", o.sp == null ? 0.4 : o.sp, o.s == null ? 0.2 : o.s]; };
+    const kmBetween = (a, b) => FC.dist({ lat: a[0], lon: a[1] }, { lat: b[0], lon: b[1] });
+
+    t("FR01 구성: 현장 웹앱만 실시간 · 처음 화면 = 활주로 4개의 가운데 5NM · 서버 실시간 경로 · 접근 줄 안쪽은 누름을 받지 않음", () => {
+      const app = read("js/flight-app.js"), ops = read("js/flightops.js"), edge = read("tools/edge/semis-logi-adsb.ts");
+      ok(/SemisFlight\.setView\("dash", \{ lat: c\.lat, lon: c\.lon, nm: 5, label: "인천공항" \}\)/.test(app) && /SemisFlight\.setLive\("dash", true\)/.test(app), "현장 웹앱이 켬");
+      const others = fs.readdirSync(path.join(ROOT, "js")).filter(f => /\.js$/.test(f) && f !== "flight-app.js" && f !== "flightops.js");
+      ok(!others.some(f => /setLive\(|setView\("dash"/.test(read("js/" + f))), "H:drive 는 켜지 않음");
+      eq(FC.HOME_RWYS.length, 4);
+      ok(Math.abs(FC.HOME_CTR.lat - 37.4628275) < 1e-6 && Math.abs(FC.HOME_CTR.lon - 126.438826) < 1e-6, "활주로 4개 중심점의 평균");
+      ok(FC.dist(FC.HOME_CTR, FC.apt("ICN")) < 0.6, "공항 표점 바로 옆");
+      ok(/const live = u\.searchParams\.get\("live"\) === "1";\s*\n\s*const cron = !live && /.test(edge), "실시간은 cron 과 함께 와도 출입 확인");
+      ok(/if \(!cron && !\(await allowed\(req\)\)\) return json\(\{ error: "auth" \}, 401\);\s*\n\s*if \(live\) \{/.test(edge), "출입 확인 뒤에만 실시간");
+      ok(/"Content-Type": "text\/event-stream; charset=utf-8"/.test(edge) && /LIVE_GAP = 4_500/.test(edge) && /LIVE_TICK = 5_000/.test(edge), "5초 간격 · 이어 보내기");
+      ok(/\.appr-row > \* \{ pointer-events: none; \}/.test(read("css/main.css")), "줄 안쪽은 누름을 받지 않음");
+      ok(!/layer\.clearLayers\(\)/.test(ops.replace(/meLayer\.clearLayers\(\)/g, "")), "지도 전체를 지우고 다시 그리지 않음");
+      ok(/LIVE_BASE - 5000\) return;/.test(ops), "실시간 수신 중 기본 갱신은 2분마다");
+    });
+
+    await ta("FR02 처음 화면: 활주로 가운데가 중심 · 반경 5NM 이 한 화면에(정수 단계 · 한 단계 깊으면 넘침) · 인천공항 단추로 되돌아옴", async () => {
+      const e = mk();
+      await up();
+      const m = e.map();
+      ok(m && m.map, "지도");
+      const c = m.map.getCenter(), z = m.map.getZoom();
+      ok(Math.abs(c.lat - FC.HOME_CTR.lat) < 1e-4 && Math.abs(c.lng - FC.HOME_CTR.lon) < 1e-4, "중심 " + c.lat + "," + c.lng);
+      eq(z, Math.round(z), "정수 단계");
+      const box = e.w.L.latLng(FC.HOME_CTR.lat, FC.HOME_CTR.lon).toBounds(5 * 1852 * 2);
+      ok(m.map.getBounds().contains(box), "5NM 이 다 들어옴");
+      const mPerPx = 156543.03392 * Math.cos(c.lat * Math.PI / 180) / Math.pow(2, z + 1);
+      ok(mPerPx * Math.min(MW, MH) < 5 * 1852 * 2, "한 단계 깊으면 넘침(가장 깊은 단계)");
+      eq(z, 11, "390 × 470 화면 = 11단계");
+      const tl = e.qa("#dash-flt .fo-tools .fo-tool");
+      eq([tl[0].dataset.foHome, tl[1].dataset.foFit, tl[2].dataset.foLoc, tl[3].dataset.foBox].join(","), "dash,dash,dash,dash");
+      eq(tl[0].getAttribute("aria-label"), "인천공항");
+      tl[1].click();
+      ok(m.map.getZoom() <= 6.01, "전체 항공기 보기 " + m.map.getZoom());
+      tl[0].click();
+      const c2 = m.map.getCenter();
+      ok(m.map.getZoom() === 11 && Math.abs(c2.lat - FC.HOME_CTR.lat) < 1e-4 && Math.abs(c2.lng - FC.HOME_CTR.lon) < 1e-4, "인천공항 단추 → 처음 화면");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+
+    await ta("FR03 제자리 갱신: 갱신해도 표지 · 묶음 · 공항 점이 같은 것(다시 만들지 않음) · 자리만 옮김 · 열어 둔 정보창 유지 + 내용 갱신 · 지도는 저절로 안 움직임", async () => {
+      const e = mk();
+      await up();
+      const m = e.map(), SF = e.SF();
+      const mk1 = m.marks["71bc21"], bd = m.marks["71bd07"], home = m.home;
+      ok(mk1 && bd && mk1 !== bd && home, "표지 · 묶음 · 공항 점");
+      const el1 = mk1.getElement(), row1 = e.q("#dflt-appr .appr-row");
+      mk1.openPopup();
+      ok(mk1.isPopupOpen() && mk1.getPopup().getContent().includes("8,000 ft"), "정보창");
+      m.map.setView([35.2, 129.0], 9, { animate: false });           // 다른 곳을 보는 중(정보창은 화면 밖)
+      const c0 = m.map.getCenter(), z0 = m.map.getZoom();
+      let pans = 0; m.map.on("autopanstart", () => pans++);
+      const now = Date.now();
+      e.srv.rows[0] = Object.assign({}, e.srv.rows[0], { lat: 37.25, lon: 126.57, alt: 6500, trk: 335, pos_at: iso(now), seen_at: iso(now) });
+      await SF.refresh(true);
+      ok(m.marks["71bc21"] === mk1 && m.marks["71bd07"] === bd && m.home === home, "같은 표지");
+      ok(mk1.getElement() === el1 && m.map.hasLayer(mk1), "표지 요소도 그대로");
+      const ll = mk1.getLatLng();
+      ok(Math.abs(ll.lat - 37.25) < 1e-6 && Math.abs(ll.lng - 126.57) < 1e-6, "자리 옮김 " + ll.lat + "," + ll.lng);
+      eq(el1.querySelector(".fo-ac").style.getPropertyValue("--r"), "335deg", "방향");
+      ok(mk1.isPopupOpen(), "정보창 열린 채");
+      ok(mk1.getPopup().getContent().includes("6,500 ft"), "정보창 내용 갱신");
+      const pl = mk1.getPopup().getLatLng();
+      ok(Math.abs(pl.lat - 37.25) < 1e-6 && Math.abs(pl.lng - 126.57) < 1e-6, "정보창이 표지를 따라감");
+      const c1 = m.map.getCenter();
+      ok(Math.abs(c1.lat - c0.lat) < 1e-9 && Math.abs(c1.lng - c0.lng) < 1e-9 && m.map.getZoom() === z0, "지도 그대로");
+      eq(pans, 0, "자동 이동 없음");
+      mk1.getPopup().update();                                       // 대조 — Leaflet 기본 동작이면 이 상황에서 지도를 끌어감
+      eq(pans, 1, "막지 않으면 끌려가는 상황이 맞음");
+      ok(e.q("#dflt-appr .appr-row") === row1, "접근 줄 단추 그대로(글자만 바뀜)");
+      ok(row1.textContent.includes("6,500 ft"), row1.textContent);
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+
+    await ta("FR04 구성이 바뀔 때만 더하고 뺌: 착륙 → 그 기체 표지만 빠지고 인천 묶음은 그대로(대수 2) · 다시 이륙 → 새 표지", async () => {
+      const e = mk();
+      await up();
+      const m = e.map(), SF = e.SF();
+      const mk1 = m.marks["71bc21"], bd = m.marks["71bd07"];
+      const now = Date.now();
+      e.srv.rows[0] = Object.assign({}, e.srv.rows[0], { lat: 37.4611, lon: 126.4412, alt: null, gnd: true, gs: 20, seen_at: iso(now), gnd_since: iso(now) });
+      await SF.refresh(true);
+      ok(!m.map.hasLayer(mk1), "비행 표지 빠짐");
+      ok(m.marks["71bd07"] === bd && m.marks["71bc21"] === bd, "묶음 표지 그대로 · 두 기체가 같은 묶음");
+      eq(bd.getElement().querySelector(".fo-apt i").textContent, "2");
+      eq(e.qa("#dflt-appr .appr-row").length, 0); eq(e.q("#dflt-n").textContent, "0");
+      e.srv.rows[0] = Object.assign({}, e.srv.rows[0], { lat: 37.5, lon: 126.4, alt: 3000, gnd: false, gs: 220, trk: 330, vr: 1800, seen_at: iso(now + 1000), gnd_since: null });
+      await SF.refresh(true);
+      ok(m.marks["71bc21"] && m.marks["71bc21"] !== bd && m.map.hasLayer(m.marks["71bc21"]), "이륙 → 새 표지");
+      eq(bd.getElement().querySelector(".fo-apt i").textContent, "1");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+
+    await ta("FR05 실시간 이어 받기: 연결 1건(현장 표 머리글) · 쪼개져 온 묶음도 읽음 · 표지가 새 자리로 · '실시간 시:분:초' · 접근 목록 글자 · 바뀐 기체만 와도 유지", async () => {
+      const e = mk();
+      await up();
+      const m = e.map(), SF = e.SF(), L = SF.live;
+      const lc = e.liveCalls();
+      eq(lc.length, 1, "연결 1건");
+      ok(/\?live=1&stream=1$/.test(lc[0].url), lc[0].url);
+      eq(lc[0].h["x-flight-token"], TOKV); ok(lc[0].h.apikey && !lc[0].h["x-semis-token"], "현장 표 · 공개 키");
+      ok(L.on && L.kinds.dash === true, "수신 중");
+      ok(e.q("#fa-upd").textContent.includes("기준"), "받기 전에는 기준 시각");
+      const mk1 = m.marks["71bc21"], row1 = e.q("#dflt-appr .appr-row");
+      const t1 = Date.now();
+      const msg = sse({ t: t1, a: 300, ac: [row(37.3, 126.54), ["71bd07", 37.4601, 126.4402, null, 0, null, null, 1, null, 0, null, 2.5, 1.1], ["ffffff", 1, 2, 3, 4, 5, 6, 0, null, 0, null, 0, 0], "쓰레기"] });
+      e.stream().push(msg.slice(0, 41)); await tick(15);
+      eq(L.msgs, 0, "묶음이 끝나기 전에는 쓰지 않음");
+      e.stream().push(msg.slice(41)); await tick(40);
+      eq(L.msgs, 1);
+      ok(L.rows["71bc21"] && L.rows["71bc21"].lat === 37.3 && L.rows["71bd07"].g === 1, "받은 줄");
+      ok(m.marks["71bc21"] === mk1, "같은 표지");
+      const ll = mk1.getLatLng();
+      const d = kmBetween([ll.lat, ll.lng], [37.3, 126.54]);
+      ok(d < 0.25, "새 자리(받은 위치 + 지난 시간만큼) " + d.toFixed(3) + " km");
+      ok(ll.lat >= 37.3 - 1e-9, "진행 방향(북서) 쪽");
+      ok(/^실시간 \d\d:\d\d:\d\d$/.test(e.q("#dflt-meta").textContent), e.q("#dflt-meta").textContent);
+      await tick(20);
+      eq(e.q("#fa-upd").textContent, e.q("#dflt-meta").textContent, "머리 띠에도");
+      ok(e.q("#dflt-appr .appr-row") === row1 && row1.textContent.includes("4,100 ft"), "접근 줄 그대로 · 글자 갱신 " + row1.textContent);
+      eq(SF.model().items.find(x => x.f.hex === "71bc21").row.reg, "HL7421", "등록부호 등은 서버 기록 그대로");
+      e.stream().push(": 쉼\n\n" + sse({ t: t1 + 5000, a: 250, ac: [row(37.31, 126.533, { alt: 3800 })] })); await tick(40);
+      eq(L.msgs, 2);
+      ok(row1.textContent.includes("3,800 ft"), "두 번째 묶음");
+      ok(L.rows["71bd07"] && L.rows["71bd07"].g === 1, "안 온 기체는 직전 값 유지");
+      eq(e.liveCalls().length, 1, "여전히 연결 1건");
+      ok(L.bytes > 300 && L.conns === 1, "받은 양 " + L.bytes);
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+
+    t("FR06 이어 그리기: 5초 뒤 = 속도 × 5초만큼 방위 쪽 · 18초에서 멈춤 · 새 위치와의 차이는 0.9초에 걸쳐 풂", () => {
+      const e = mk();
+      const SF = e.SF();
+      const T = 1795000000000;
+      const dr = { lat: 37.3, lon: 126.54, t: T, gs: 180, trk: 330, oLat: 0, oLon: 0, ot: 0 };
+      const p0 = SF.drPos(dr, T), p5 = SF.drPos(dr, T + 5000), p18 = SF.drPos(dr, T + 18000), p60 = SF.drPos(dr, T + 60000);
+      ok(p0[0] === 37.3 && p0[1] === 126.54, "받은 순간 = 받은 자리");
+      const d5 = kmBetween([37.3, 126.54], p5);
+      ok(Math.abs(d5 - 180 * 1.852 * 5 / 3600) < 0.002, "5초 = " + d5.toFixed(4) + " km");
+      ok(Math.abs(FC.bearing({ lat: 37.3, lon: 126.54 }, { lat: p5[0], lon: p5[1] }) - 330) < 0.5, "방위");
+      ok(Math.abs(p60[0] - p18[0]) < 1e-12 && Math.abs(p60[1] - p18[1]) < 1e-12, "18초에서 멈춤");
+      ok(Math.abs(kmBetween([37.3, 126.54], p18) - 180 * 1.852 * 18 / 3600) < 0.005);
+      const b = Object.assign({}, dr, { oLat: 0.001, oLon: -0.002, ot: T + 5000 });
+      const q0 = SF.drPos(b, T + 5000), q1 = SF.drPos(b, T + 5450), q2 = SF.drPos(b, T + 5900);
+      ok(Math.abs(q0[0] - (p5[0] + 0.001)) < 1e-9 && Math.abs(q0[1] - (p5[1] - 0.002)) < 1e-9, "받은 순간 = 그리던 자리");
+      ok(Math.abs(q1[0] - SF.drPos(dr, T + 5450)[0] - 0.0005) < 1e-9, "절반");
+      ok(Math.abs(q2[0] - SF.drPos(dr, T + 5900)[0]) < 1e-12, "0.9초 뒤 = 새 예상 자리");
+      const pac = SF.drPos({ lat: 50, lon: 179.999, t: T, gs: 480, trk: 90, oLat: 0, oLon: 0, ot: 0 }, T + 10000);
+      ok(pac[1] > 179.999 && pac[1] < 181, "날짜 변경선을 넘어도 이어짐 " + pac[1]);
+    });
+
+    await ta("FR07 실시간 덮어쓰기 규칙: 서버 기록보다 새로울 때만 · 지상 여부 모름(null)이면 직전 상태 유지 · 지상(1)이면 인천 묶음으로 · 서버 기록이 더 새로우면 무시", async () => {
+      const e = mk();
+      await up();
+      const m = e.map(), SF = e.SF();
+      const it = () => SF.model().items.find(x => x.f.hex === "71bc21");
+      const mk1 = m.marks["71bc21"];
+      const t1 = Date.now();
+      ok(SF.liveTake({ t: t1, a: 0, ac: [row(37.33, 126.52, { g: null, alt: 600, gs: 140 })] }, t1));
+      ok(it().row.lat === 37.33 && it().row.gnd === false && it().row.alt === 600, "모름 → 비행 상태 유지");
+      ok(Number.isFinite(it().row._pl), "이어 그리기용 시각");
+      SF.liveTake({ t: t1 + 5000, a: 0, ac: [row(37.4611, 126.4412, { g: 1, alt: null, gs: 90 })] }, t1 + 5000);
+      const g = it();
+      ok(g.row.gnd === true && g.row.alt === null && g.st.code === "gnd" && g.st.at === "ICN", "지상 → 인천 지상");
+      SF.paintDash();
+      ok(!m.map.hasLayer(mk1) && m.marks["71bc21"] === m.marks["71bd07"], "표지는 인천 묶음으로");
+      SF.liveTake({ t: t1 + 10000, a: 0, ac: [row(37.4622, 126.4401, { g: null, alt: 20, gs: 60 })] }, t1 + 10000);
+      ok(it().row.gnd === true && it().st.code === "gnd", "활주 중 모름 → 직전에 받은 지상 상태 유지(서버 기록은 아직 비행)");
+      // 서버 기록이 더 새로우면(실시간이 끊긴 사이 기본 갱신) 실시간 줄은 쓰지 않음
+      e.srv.rows[0] = Object.assign({}, e.srv.rows[0], { lat: 37.6, lon: 126.3, alt: 9000, gnd: false, seen_at: iso(t1 + 60000), pos_at: iso(t1 + 60000) });
+      await SF.refresh(true);
+      ok(it().row.lat === 37.6 && it().st.code !== "gnd", "서버 기록 우선");
+      ok(Math.abs(it().row._pl - (t1 + 60000 + SF.live.skew)) < 1 && Math.abs(SF.live.skew) < 5, "서버 기록에도 이어 그리기용 시각(위치 시각 + 시계 차이) — 두 자료가 번갈아 와도 표지가 끊기지 않게");
+      ok(!SF.liveTake({ t: "x", ac: [] }, t1) && !SF.liveTake({ t: 1, ac: null }, t1) && SF.liveTake({ t: 0, a: 9e12, ac: [] }, t1), "형식 검사 · 빈 응답");
+      const bad = SF.liveTake({ t: t1 + 70000, a: 0, ac: [["71bc21", "37.1", 126.1, 1000, 100, 10, 0, 0, "<b>", 0, "<i>x", 0, 0]] }, t1 + 70000);
+      ok(bad && it().row.lat === 37.6 && it().row.flight === "AIH970", "숫자가 아닌 좌표 · 형식 밖 편명은 쓰지 않음");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+
+    await ta("FR08 연결 관리: 서버가 끝내면 바로 다시 잇고 · 두 번 못 받으면 15초 간격으로 묻는 방식 · 이전 판 서버면 실시간 끔 · 401 → PIN 화면", async () => {
+      let e = mk();
+      await up();
+      let L = e.SF().live;
+      e.stream().push(sse({ t: Date.now(), a: 0, ac: [row(37.3, 126.54)] }) + sse({ end: 1 })); await tick(40);
+      ok(e.stream().cancelled, "끝 신호 → 읽기 닫음");
+      await tick(330);
+      eq(e.liveCalls().length, 2, "바로 다시 연결");
+      eq(L.mode, "stream");
+      // 이어 받기 실패(망) 두 번 → 묻는 방식
+      e = mk({ srv: { live: "fail" } });
+      await up();
+      L = e.SF().live;
+      eq(e.liveCalls().length, 1);
+      ok(L.wake, "물러나 기다리는 중"); L.wake(); await tick(40);
+      eq(e.liveCalls().filter(c => /stream=1/.test(c.url)).length, 2, "한 번 더 시도");
+      await tick(40);
+      eq(L.mode, "poll");
+      ok(e.srv.polls >= 1 && /\?live=1$/.test(e.liveCalls().pop().url), "묻는 방식으로");
+      eq(L.msgs, 1, "묻는 방식도 같은 자료");
+      ok(L.wake, "다음 물음까지 기다림(15초)"); const p0 = e.srv.polls; await tick(120); eq(e.srv.polls, p0, "그 사이 더 묻지 않음");
+      // 이전 판 서버(실시간 모름) → 10분 쉼, 기본 갱신만
+      e = mk({ srv: { live: "old" } });
+      await up();
+      L = e.SF().live;
+      eq(e.liveCalls().length, 1);
+      ok(L.offUntil > Date.now() + 500000, "10분 뒤 다시 확인");
+      eq(L.msgs, 0);
+      ok(e.q("#fa-upd").textContent.includes("기준") && e.map().marks["71bc21"], "화면은 기본 갱신으로 그대로");
+      // 401
+      e = mk();
+      await up();
+      e.srv.status = 401;
+      e.stream().end(); await tick(30);
+      L = e.SF().live;
+      ok(L.wake, "빈 채로 끝남 → 물러나 기다림"); L.wake(); await tick(60);
+      ok(e.q("#fa-pin") && !e.q("#dash-flt"), "PIN 화면");
+      eq(e.w.localStorage.getItem("hdflight:tok"), null, "표 지움");
+      const n = e.liveCalls().length; await tick(350);
+      eq(e.liveCalls().length, n, "더 연결하지 않음"); ok(!e.SF().live.on);
+    });
+
+    await ta("FR09 탭이 가려지면 연결을 끊고 돌아오면 다시 잇는다", async () => {
+      const e = mk();
+      await up();
+      const L = e.SF().live, s1 = e.stream();
+      let hidden = true;
+      Object.defineProperty(e.w.document, "hidden", { configurable: true, get: () => hidden });
+      e.w.document.dispatchEvent(new e.w.Event("visibilitychange"));
+      await tick(30);
+      ok(s1.aborted && !L.on, "끊음");
+      const n = e.liveCalls().length; await tick(350);
+      eq(e.liveCalls().length, n, "가려진 동안 연결 없음");
+      hidden = false;
+      e.w.document.dispatchEvent(new e.w.Event("visibilitychange"));
+      await tick(40);
+      eq(e.liveCalls().length, n + 1, "다시 연결"); ok(L.on && e.stream() !== s1 && !e.stream().aborted);
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+
+    await ta("FR10 H:drive 운항 현황: 실시간 연결 없음 · 처음 화면 단추 없음 · 갱신해도 같은 표지(정보창 유지) · 경로 선도 제자리", async () => {
+      const hc = [];
+      const now = Date.now();
+      const rows = [{ hex: "71bc21", reg: "HL7421", type: "B744", flight: "AIH970", lat: 37.2, lon: 126.6, alt: 8000, gnd: false, gs: 250, trk: 320, vr: -1200, seen_at: iso(now - 10000), trail: [[Math.floor(now / 1000) - 600, 36.9, 126.9, 15000], [Math.floor(now / 1000) - 300, 37.05, 126.75, 11000]] }];
+      const eh = makeEnv({ fetch: (url) => { hc.push(String(url)); return Promise.resolve({ ok: true, status: 200,
+        json: () => Promise.resolve(String(url).indexOf("semis-logi-adsb") >= 0 ? { fetched_at: iso(Date.now()), ac: rows, events: [] } : []) }); } });
+      eh.w.print = () => {};
+      eh.w.eval(LEAF);
+      Object.defineProperty(eh.w.HTMLElement.prototype, "clientWidth", { configurable: true, get() { return this.classList && this.classList.contains("fo-map") ? 800 : 0; } });
+      Object.defineProperty(eh.w.HTMLElement.prototype, "clientHeight", { configurable: true, get() { return this.classList && this.classList.contains("fo-map") ? 400 : 0; } });
+      loginAs(eh, "hq");
+      go(eh, "flight");
+      await tick(60);
+      const SF = eh.w.SemisFlight, m = SF.maps.full;
+      ok(m && m.marks["71bc21"], "운항 현황 지도 표지");
+      ok(!hc.some(u => u.indexOf("live=1") >= 0) && !SF.live.on, "실시간 연결 없음");
+      ok(!q(eh, "[data-fo-home]"), "처음 화면 단추 없음"); eq(qa(eh, "#fo-page .fo-tools .fo-tool").length, 3);
+      ok(m.map.getZoom() <= 6.01, "전체 항공기 보기로 열림");
+      const mk1 = m.marks["71bc21"], x = m.items["ac:71bc21"];
+      ok(x.trail && x.trail.getLatLngs().length === 3, "비행 경로(2점 + 지금 자리)");
+      mk1.openPopup();
+      rows[0] = Object.assign({}, rows[0], { lat: 37.26, lon: 126.56, alt: 6000, seen_at: iso(Date.now()), trail: rows[0].trail.concat([[Math.floor(Date.now() / 1000) - 60, 37.2, 126.6, 8000]]) });
+      await SF.refresh(true);
+      ok(m.marks["71bc21"] === mk1 && mk1.isPopupOpen() && mk1.getPopup().getContent().includes("6,000 ft"), "같은 표지 · 정보창 유지");
+      ok(m.items["ac:71bc21"].trail === x.trail && x.trail.getLatLngs().length === 4, "경로 선도 제자리에서 늘어남");
+      const end = x.trail.getLatLngs()[3];
+      ok(Math.abs(end.lat - 37.26) < 1e-9 && Math.abs(mk1.getLatLng().lat - 37.26) < 1e-9, "이어 그리기 없이 받은 자리 그대로");
       eq(eh.errors.length, 0, eh.errors.join(" | "));
     });
   }

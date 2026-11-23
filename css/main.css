@@ -2964,6 +2964,7 @@ a.nb-file, .nb-file > a, .nb-editor img, .notice-html img, .ag-memo img, .cn-ric
 .appr-list li + li { border-top: 1px solid #edf1f0; }
 .appr-row { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 10px 6px; border: 0; border-radius: 8px;
   background: none; text-align: left; transition: background-color .15s ease; }
+.appr-row > * { pointer-events: none; }   /* 누름은 늘 줄 단추가 받음 — 실시간 갱신으로 안쪽 글자가 바뀌어도 누름이 사라지지 않게 */
 @media (hover: hover) and (pointer: fine) { .appr-row:hover { background: var(--surface-2); } }
 .ar-id { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .ar-id b { font-size: 1rem; font-weight: 600; }

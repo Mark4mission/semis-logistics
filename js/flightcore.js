@@ -6,6 +6,9 @@
 
 (() => {
   const HOME = "ICN";
+  /* 인천 활주로 4개의 중심점(15L/33R · 15R/33L · 16L/34R · 16R/34L)과 그 가운데 — 현장 화면 지도의 처음 중심(v1.81) */
+  const HOME_RWYS = [[37.470163, 126.452414], [37.468007, 126.448597], [37.458111, 126.42865], [37.455029, 126.425643]];
+  const HOME_CTR = { lat: HOME_RWYS.reduce((a, p) => a + p[0], 0) / HOME_RWYS.length, lon: HOME_RWYS.reduce((a, p) => a + p[1], 0) / HOME_RWYS.length };
 
   /* 공항 — [위도, 경도, 한글 이름]. 입출항 판정(반경 12km)과 이름 표시에 쓴다.
      에어제타 취항지 + 대체·경유로 쓸 만한 화물 공항. 서버(semis-logi-adsb)에도 같은 목록이 있다. */
@@ -227,7 +230,7 @@
   }
 
   const api = {
-    HOME, AIRPORTS, AC_TYPES, DEFAULT_FLEET, EMG, LIVE_MS, APPR_KM, DR_MAX_MS,
+    HOME, HOME_RWYS, HOME_CTR, AIRPORTS, AC_TYPES, DEFAULT_FLEET, EMG, LIVE_MS, APPR_KM, DR_MAX_MS,
     apt, aptName, hlHex, normHex, fnoOf, kstISO, kstHM, kstDayStart, kstWhen, dur, ago, until,
     dist, bearing, destPoint, angDiff, nearestApt, dir8, status, eventsOf, lastDep, nextArr, prevDep
   };

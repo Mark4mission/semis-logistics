@@ -1,6 +1,7 @@
 /* 현장용 운항 현황(flight.html) — 현장 PIN → 12시간 표(서버가 발급 · 확인, tools/sql/semis-logi-flight.sql) → 지도 + 인천 접근 목록.
    지도 · 목록은 H:drive 와 같은 js/flightops.js(SemisFlight.dashHTML · mountDash). 표는 이 기기 localStorage 에만 —
-   만료되거나 위치 서버가 거절(401)하면 지우고 PIN 화면으로. PIN 은 보관하지 않는다. */
+   만료되거나 위치 서버가 거절(401)하면 지우고 PIN 화면으로. PIN 은 보관하지 않는다.
+   v1.81 이 화면만: 실시간(5초 간격 위치 · 그 사이 이어 그리기 — setLive) · 처음 지도 = 인천 활주로 4개의 가운데에서 반경 5NM(setView). */
 "use strict";
 
 (() => {
@@ -91,6 +92,9 @@
   /* ── 지도 + 인천 접근 목록 ── */
   function main() {
     document.body.classList.remove("fa-locked");
+    const c = window.SemisFlightCore.HOME_CTR;
+    SemisFlight.setView("dash", { lat: c.lat, lon: c.lon, nm: 5, label: "인천공항" });
+    SemisFlight.setLive("dash", true);
     app.innerHTML = `<header class="fa-bar">
         <span class="fa-brand"><img src="assets/mark.svg" alt="" width="24" height="24"><span><b>H:</b>drive</span></span>
         <h1 class="fa-t">운항 현황</h1>

@@ -30,7 +30,7 @@ body.fa-locked { background: var(--sidebar-bg); }
 .fa-brand b { color: #5eead4; }
 .fa-t { margin: 0; font-size: 1.07rem; font-weight: 700; white-space: nowrap; }
 .fa-sp { flex: 1; }
-.fa-upd { font-size: max(var(--fs-min), .86rem); color: rgba(255, 255, 255, .72); white-space: nowrap; }
+.fa-upd { font-size: max(var(--fs-min), .86rem); color: rgba(255, 255, 255, .72); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .fa-ref { flex: none; width: 40px; height: 40px; display: grid; place-items: center; border: 0; border-radius: 8px; background: rgba(255, 255, 255, .1); color: #fff; cursor: pointer; }
 .fa-ref:active { transform: scale(.94); }
 .fa-ref.is-busy .ico { animation: cfe-spin .9s linear infinite; }
