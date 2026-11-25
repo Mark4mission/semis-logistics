@@ -8,7 +8,10 @@
      이어 받기를 못 쓰는 망에서는 15초마다 묻는다. 탭이 가려지면 멈춤. 기록 · 입출항은 기존 갱신(실시간 중에는 2분마다)이 맡는다.
    v1.81 처음 화면(setView): 정한 중심 · 반경이 한 화면에 들어오게(현장 웹앱 = 인천 활주로 4개의 가운데 · 반경 5NM).
    v1.83 지상 이동(실시간 지도만 · 10단계부터): 지상에서 움직이는(3kt 이상) 기체는 공항 묶음에 넣지 않고 제자리에 따로 그려 활주 · 유도 움직임을 보여 준다.
-     멈춘 뒤 1분이 지나면 묶음(ICN n)으로 들어간다. 착륙 · 이륙 때 표지는 같은 것이 이어진다(색만 바뀜). */
+     멈춘 뒤 1분이 지나면 묶음(ICN n)으로 들어간다. 착륙 · 이륙 때 표지는 같은 것이 이어진다(색만 바뀜).
+   v1.85 주기장: 무료 수신망은 인천에서 착륙 직전에 끊겨 주기 위치를 모르므로, 서버가 인천공항공사 운항 현황(화물기)의 주기장 번호와
+     AIP 주기장 좌표를 행(stand)에 붙인다. 묶음 정보창 · 기체 정보창 · 출항 대기 표에 주기장(다른 출발 주기장), 14단계부터 주기장 자리에 기체를 그리고,
+     묶음 목록에서 기체를 누르면 그 주기장으로 확대(17단계)해 정보창을 연다. */
 "use strict";
 
 (() => {
@@ -40,6 +43,9 @@
   const GND_SEEN = 15000;     // 이 안에 받은 위치만 '지금 움직임'으로 침
   const GND_Z = 10;           // 이 단계부터 따로 그림(멀리서 보면 묶음과 겹쳐 지저분함)
   const DR_HOLD_GND = 7000;   // 지상은 이어 그리기를 짧게(자주 서고 꺾으므로)
+  /* 주기장(v1.85) — 서버가 인천공항공사 운항 현황(화물기)에서 받은 주기장 번호 + AIP 좌표(행의 stand) */
+  const STAND_Z = 14;         // 이 단계부터 주기장을 아는 인천 지상 기체를 주기장 자리에 따로 그림(그 아래는 공항 묶음)
+  const STAND_FOCUS_Z = 17;   // 묶음 목록에서 누르면 이 단계로 그 주기장에 맞춤
 
   const state = { ts: 0, err: "", ac: [], events: null, trail: false, fetchedAt: 0, srcErr: "", ver: 0, busy: null, me: null, fleet: null, auth: true };
 
@@ -358,11 +364,21 @@
         }).addTo(map);
         map.setView([37.46, 126.44], 4);
         m = maps[kind] = { L, map, el, layer: L.layerGroup().addTo(map), meLayer: L.layerGroup().addTo(map), marks: {}, items: {}, home: null,
-          fitted: false, dirty: false, painting: false, sepGnd: false, lbl: [], boxing: false };
+          fitted: false, dirty: false, painting: false, sepGnd: false, standZ: false, lbl: [], boxing: false };
+        /* 공항 묶음 목록에서 기체를 누르면 그 주기장으로(정보창도 지도 안에 있으므로 지도 틀에서 받음) */
+        const standGo = (e) => {
+          const b = e.target && e.target.closest ? e.target.closest("[data-fo-stand]") : null;
+          if (!b || !el.contains(b)) return;
+          if (e.type === "keydown" && e.key !== "Enter" && e.key !== " ") return;
+          e.preventDefault();
+          goStand(kind, b.getAttribute("data-fo-stand"));
+        };
+        el.addEventListener("click", standGo);
+        el.addEventListener("keydown", standGo);
         map.on("zoomend moveend resize", () => declutter(kind));
         map.on("zoomend", () => {                                        // 확대 애니메이션 중에 미뤄 둔 그리기 · 지상 이동 표시 단계(GND_Z)를 넘나든 때
           if (m.painting) return;
-          if (m.dirty || (live.kinds[kind] && (map.getZoom() >= GND_Z) !== m.sepGnd)) paintMap(kind);
+          if (m.dirty || (live.kinds[kind] && (map.getZoom() >= GND_Z) !== m.sepGnd) || (map.getZoom() >= STAND_Z) !== m.standZ) paintMap(kind);
         });
         map.on("resize", () => { if (!m.fitted && view[kind]) homeView(kind); });
         anchorZoom(m);
@@ -529,7 +545,8 @@
   }
   function popHTML(it) {
     const st = it.st, r = it.row || {};
-    const mv = st.code === "gnd" && (Number(r.gs) || 0) >= GND_MOVE_KT;       // 지상 이동 중(따로 그린 표지에서만 이 창을 씀)
+    const mv = st.code === "gnd" && (Number(r.gs) || 0) >= GND_MOVE_KT &&         // 지상 이동 중 — 방금 받은 위치일 때만(착륙 추정 기체의 마지막 속도는 접근 속도)
+      Number.isFinite(r._pl) && Date.now() - r._pl <= GND_SEEN;
     const rows = [
       ["상태", esc(st.label) + (mv ? " · 이동 중" : "") + (st.code === "lost" ? " · " + esc(F.ago(st.seen)) : "")],
       it.dep ? ["출발", esc((F.aptName(it.dep.apt) || "공항 미상") + " " + F.kstWhen(Date.parse(it.dep.at))) + (it.dep.inferred ? " (추정)" : "")] : null,
@@ -537,11 +554,28 @@
       (st.code !== "gnd" || mv) && r.gs != null ? ["속도", esc(gsTxt(r))] : null,
       st.code === "appr" ? ["인천까지", esc(nf(Math.round(st.dHome)) + " km · 도착 예상 " + F.kstHM(st.eta))] : null,
       st.code === "gnd" && st.since ? ["도착", esc(F.kstWhen(st.since) + " · " + F.dur(Date.now() - st.since) + " 지상")] : null,
+      standOf(it) ? ["주기장", `<b class="mono">${esc(standOf(it).st)}</b>` + (standDep(standOf(it)) ? ` <small>${esc(standDep(standOf(it)))}</small>` : "")] : null,
       r.sqk ? ["스쿽", esc(r.sqk)] : null,
       st.seen ? ["수신", esc(F.kstHM(st.seen) + " · " + F.ago(st.seen))] : null
     ].filter(Boolean);
     return `<div class="fo-pop"><div class="fo-pop-h"><b class="mono">${esc(it.fno || it.f.reg)}</b><span>${esc(it.f.reg)} · ${esc(typeName(it))}</span></div>
       <dl>${rows.map(x => `<dt>${x[0]}</dt><dd>${x[1]}</dd>`).join("")}</dl></div>`;
+  }
+  /* 주기장 — 인천 지상 기체만. 지도 좌표(ll)가 없으면 번호만 보임 */
+  function standOf(it) {
+    const s = it && it.row && it.row.stand;
+    return it && it.st.code === "gnd" && it.st.at === F.HOME && s && typeof s.st === "string" && s.st ? s : null;
+  }
+  function standLL(it) {
+    const s = standOf(it), ll = s && s.ll;
+    return Array.isArray(ll) && ll.length === 2 && Number.isFinite(ll[0]) && Number.isFinite(ll[1]) && Math.abs(ll[0] - 37.46) < 0.1 && Math.abs(ll[1] - 126.44) < 0.1 ? ll : null;
+  }
+  /* "651" · 출발 편이 있으면 "출발 KJ971 18:30" · 출발 주기장이 다르면 "→ 645" */
+  function standDep(s) {
+    const d = s && s.dep;
+    if (!d || !d.flt) return "";
+    const t = Date.parse(d.at);
+    return "출발 " + F.fnoOf(d.flt) + (Number.isFinite(t) ? " " + F.kstHM(t) : "") + (d.st && d.st !== s.st ? " → " + d.st : "");
   }
   /* 지상 기체 한 줄 상태 — 방금 도착(30분 안) · 지상 이동 중(수신 중 · 5kt 이상) · 주기 중 · 마지막 수신 */
   function gndState(it, now) {
@@ -556,9 +590,11 @@
   function aptPopHTML(g) {
     const now = Date.now();
     const rows = g.list.slice().sort((a, b) => (a.st.since || 0) - (b.st.since || 0)).map(it => {
-      const st = it.st, gs = gndState(it, now);
+      const st = it.st, gs = gndState(it, now), sd = standOf(it);
       const sub = [it.fno ? it.fno + " 도착" : "", st.since ? F.kstWhen(st.since, now) : "", st.since ? F.dur(now - st.since) + " 지상" : ""].filter(Boolean).join(" · ");
-      return `<li><div class="pl-1"><b class="mono">${esc(it.f.reg)}</b><span>${esc(typeName(it))}</span>${ui.chip(gs.t, gs.tone)}</div>
+      const go = standLL(it) ? ` class="is-go" data-fo-stand="${esc(F.normHex(it.f.hex))}" role="button" tabindex="0" title="주기장으로 이동"` : "";
+      return `<li${go}><div class="pl-1"><b class="mono">${esc(it.f.reg)}</b><span>${esc(typeName(it))}</span>${ui.chip(gs.t, gs.tone)}</div>
+        ${sd ? `<div class="pl-s"><b>주기장 <span class="mono">${esc(sd.st)}</span></b>${standDep(sd) ? `<span>${esc(standDep(sd))}</span>` : ""}</div>` : ""}
         <div class="pl-2">${esc(sub || "도착 시각 미상")}</div></li>`;
     }).join("");
     return `<div class="fo-pop fo-pop-apt"><div class="fo-pop-h"><b>${esc(g.at ? F.aptName(g.at) : "지상")}</b><span>지상 ${g.list.length}대</span></div>
@@ -679,6 +715,20 @@
   function dropItem(m, x) {
     [x.mk, x.dot, x.line, x.trail].forEach(l => { if (l) m.layer.removeLayer(l); });
   }
+  /* 주기장으로 — 그 주기장에 맞춰 확대하고 기체 정보창을 연다 */
+  function goStand(kind, hex) {
+    const m = maps[kind];
+    if (!m || !m.el.isConnected) return;
+    const it = model().items.find(x => F.normHex(x.f.hex) === hex);
+    const ll = it && standLL(it);
+    if (!ll) return;
+    m.map.closePopup();
+    m.fitted = true;
+    m.map.setView([ll[0], ll[1]], STAND_FOCUS_Z, { animate: false });
+    paintMap(kind);
+    const x = m.items["ac:" + hex];
+    if (x && x.mk) x.mk.openPopup();
+  }
   /* 지도 그리기 — 기체 · 공항 묶음마다 표지를 하나씩 두고 제자리에서 고친다(없어진 것만 지움). 보던 자리 · 열어 둔 정보창은 그대로 */
   function paintMap(kind) {
     const m = maps[kind];
@@ -698,6 +748,7 @@
     const full = kind === "full", liveOn = !!live.kinds[kind];
     if (!m.fitted && view[kind]) homeView(kind);                    // 처음 화면이 정해진 지도 — 그리기 전에 맞춤(아래 단계 판단이 그 화면 기준이 되게)
     const sepGnd = m.sepGnd = liveOn && m.map.getZoom() >= GND_Z;   // 지상 이동 기체를 따로 그릴지
+    const atStand = m.standZ = m.map.getZoom() >= STAND_Z;           // 주기장을 아는 인천 지상 기체를 주기장 자리에 그릴지
     const home = F.apt(F.HOME);
     if (!m.home) m.home = L.circleMarker([home.lat, home.lon], { radius: 5, weight: 2, color: "#0b1f26", fillColor: "#fff", fillOpacity: 1, interactive: false }).addTo(layer);
 
@@ -712,6 +763,14 @@
           if (r && Number.isFinite(r._pl) && now - r._pl <= GND_SEEN && (Number(r.gs) || 0) >= GND_MOVE_KT) live.move[it.f.hex] = now;
         }
         if (!(sepGnd && live.move[it.f.hex] && now - live.move[it.f.hex] < GND_LINGER)) {
+          const sll = atStand ? standLL(it) : null;
+          if (sll) {                                                     // 주기장(v1.85) — 편명 · 등록부호 이름표, 방향은 모름(위쪽)
+            const sat = [sll[0], sll[1]], stitle = (it.fno || it.f.reg) + " 주기장 " + standOf(it).st;
+            want["ac:" + it.f.hex] = { type: "ac", it, at: sat, trail: null, trk: null, pr: 3, z: 50, title: stitle, pop: popHTML(it),
+              sig: ["std", it.fno, it.f.reg, stitle].join("|"), dr: null };
+            pts.push(sat);
+            return;
+          }
           const k = st.at || "@" + it.f.hex;
           (groups[k] = groups[k] || { at: st.at, pos: st.at ? F.apt(st.at) : st.pos, list: [] }).list.push(it);
           return;
@@ -1012,8 +1071,10 @@
     /* 출항 대기 = 인천에 서 있는 기체(스케줄을 쓰지 않으므로 다음 편은 모름). 도착 시각은 날짜까지, 지상 시간 · 상태를 함께 */
     const waitRows = md.gndHome.slice().sort((a, b) => (a.st.since || 0) - (b.st.since || 0)).map(it => {
       const st = it.st, gs = gndState(it, md.now);
+      const sd = standOf(it);
       return `<tr>
         <td class="fo-fn"><b class="mono">${esc(it.f.reg)}</b><small>${esc(typeName(it))}</small></td>
+        <td class="fo-fn fo-std"><b class="mono">${esc(sd ? sd.st : "—")}</b>${sd && standDep(sd) ? `<small>${esc(standDep(sd))}</small>` : ""}</td>
         <td class="fo-fn"><span class="mono">${esc(st.since ? F.kstWhen(st.since, md.now) : "—")}</span><small>${esc([it.fno, st.since ? F.dur(md.now - st.since) + " 지상" : ""].filter(Boolean).join(" · "))}</small></td>
         <td class="fo-note">${ui.chip(gs.t, gs.tone)}</td></tr>`;
     }).join("");
@@ -1031,7 +1092,7 @@
       <section class="card fo-board" aria-label="인천 출항">
         <h2 class="card-title"><span class="fo-up">${icon("down", 18)}</span><span>인천 출항</span></h2>
         <div class="fo-sub"><h3>출항 대기 · 인천 지상</h3><span class="mono">${md.gndHome.length}</span></div>
-        ${waitRows ? `<table class="tbl fo-tbl" data-fold="wait"><thead><tr><th>기체</th><th>인천 도착</th><th>상태</th></tr></thead><tbody>${waitRows}</tbody></table>` : '<p class="fo-none">인천에 서 있는 항공기가 없습니다.</p>'}
+        ${waitRows ? `<table class="tbl fo-tbl" data-fold="wait"><thead><tr><th>기체</th><th>주기장</th><th>인천 도착</th><th>상태</th></tr></thead><tbody>${waitRows}</tbody></table>` : '<p class="fo-none">인천에 서 있는 항공기가 없습니다.</p>'}
         <div class="fo-sub"><h3>오늘 출발</h3><span class="mono">${state.events ? dep.length : "-"}</span></div>
         ${state.events ? evTable(dep, "오늘 출발 기록이 없습니다.", "행선", "dep") : '<p class="fo-none">불러오는 중</p>'}
       </section>
@@ -1316,6 +1377,6 @@
     items: () => fleet().map(f => ({ title: f.reg, sub: (F.AC_TYPES[f.type] || f.type) + " · " + (f.model || ""), route: MOD }))
   });
 
-  window.SemisFlight = { dashHTML, mountDash, paintDash, load, model, state, refresh, fleet, aptPopHTML, gndState, maps, MAX_Z, fieldUrl,
+  window.SemisFlight = { dashHTML, mountDash, paintDash, load, model, state, refresh, fleet, aptPopHTML, gndState, maps, MAX_Z, fieldUrl, goStand, standOf,
     setLive, setView, homeView, live, liveTake, drPos };
 })();

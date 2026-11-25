@@ -10,6 +10,10 @@
    - 실시간(v1.81 · 현장 웹앱): GET ?live=1 → adsb.lol 을 5초 간격으로 받아 DB 를 거치지 않고 그대로 돌려준다(기록 · 입출항 판정은 위 경로만).
      ?live=1&stream=1 → 한 번 연결로 5초마다 이어 보냄(text/event-stream, 처음엔 전체 · 그 뒤엔 바뀐 기체만). 연결 하나 = 호출 1건.
      조회는 이 함수 인스턴스 안에서 화면 여럿이 함께 쓰고(4.5초 안이면 다시 묻지 않음), 실패하면 5초 → 60초로 물러난다. 출입 확인은 같음.
+   - 주기장(v1.85): ?cron=1 때 15분에 한 번(_meta.stand_fetched_at 잠금) 인천 지상 기체가 있으면 인천공항공사 공공데이터
+     「항공기 운항 현황 상세 조회」(statusOfAllFltDeOdp · 화물기 C)에서 등록기호(aircraftRegNo)가 같은 편의 주기장(fstandPosition)을 받아
+     기체 행 stand(jsonb)에 둔다 — 지도 위치는 AIP RKSI 주기장 좌표(사이트의 tools/icn-stands/icn-stands.json, SHA-256 확인). 인증키는 Edge 비밀값 IIAC_SERVICE_KEY(코드 · 저장소에 없음).
+     개발계정 하루 500회: 한 번에 도착(지상 시작일 ~ 오늘, 최대 4일) + 출발(오늘, 18시 뒤엔 내일도) = 2~6회 × 하루 96번 이하.
    - 배포: Supabase MCP deploy_edge_function (verify_jwt true, anon 키로 호출). 이 파일이 원본. */
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -31,7 +35,7 @@ const RECENT = 20 * 60_000;        // 직전 수신이 이 안이면 착륙·이
 const EVENT_KEEP_DAYS = 45;
 const DEFAULT_HEX = ["71bc17", "71bc19", "71bc20", "71bc21", "71bc23", "71bc36", "71be16", "71be20", "71be45", "71be46",
   "71bd07", "71c319", "71c338", "71c355", "71c503"];
-const COLS = "hex,reg,type,flight,lat,lon,alt,gnd,gnd_inferred,gs,trk,vr,sqk,emg,pos_at,seen_at,gnd_since,air_since,updated_at";
+const COLS = "hex,reg,type,flight,lat,lon,alt,gnd,gnd_inferred,gs,trk,vr,sqk,emg,pos_at,seen_at,gnd_since,air_since,updated_at,stand";
 const EMG_SQK = ["7500", "7600", "7700"];
 /* 공항 좌표 — js/flightcore.js AIRPORTS 와 같은 목록 */
 const APTS: Record<string, [number, number]> = {"ICN":[37.4602,126.4407],"GMP":[37.5583,126.7906],"PUS":[35.1795,128.9382],"CJU":[33.5113,126.493],"CJJ":[36.7166,127.4991],"TAE":[35.8941,128.6589],"MWX":[34.9914,126.3828],"NRT":[35.772,140.3929],"HND":[35.5494,139.7798],"KIX":[34.4347,135.244],"NGO":[34.8584,136.8054],"FUK":[33.5859,130.4507],"CTS":[42.7752,141.6923],"OKA":[26.1958,127.6459],"PVG":[31.1443,121.8083],"SHA":[31.1979,121.3363],"PEK":[40.0799,116.6031],"PKX":[39.5098,116.4105],"TSN":[39.1244,117.3464],"YNT":[37.6572,120.9872],"TAO":[36.3619,120.0883],"CTU":[30.5785,103.9471],"TFU":[30.3197,104.445],"CAN":[23.3924,113.2988],"SZX":[22.6393,113.8107],"XMN":[24.544,118.1277],"HGH":[30.2295,120.4344],"NKG":[31.742,118.862],"CGO":[34.5197,113.8409],"WUH":[30.7838,114.2081],"SHE":[41.6398,123.4834],"DLC":[38.9657,121.5386],"CKG":[29.7192,106.6417],"XIY":[34.4471,108.7516],"KMG":[25.1019,102.9292],"TNA":[36.8572,117.2158],"HKG":[22.308,113.9185],"MFM":[22.1496,113.5916],"TPE":[25.0797,121.2342],"KHH":[22.5771,120.35],"HAN":[21.2212,105.8072],"SGN":[10.8188,106.6519],"DAD":[16.0439,108.1994],"BKK":[13.69,100.7501],"DMK":[13.9126,100.6067],"SIN":[1.3644,103.9915],"KUL":[2.7456,101.7072],"MNL":[14.5086,121.0198],"CRK":[15.186,120.56],"CGK":[-6.1256,106.6559],"DAC":[23.8433,90.3978],"DEL":[28.5562,77.1],"BOM":[19.0896,72.8656],"MAA":[12.9941,80.1709],"ALA":[43.3521,77.0405],"NQZ":[51.0222,71.4669],"TAS":[41.2579,69.2812],"NVI":[40.1172,65.1708],"DXB":[25.2532,55.3657],"DWC":[24.8961,55.1614],"DOH":[25.2731,51.6081],"IST":[41.2753,28.7519],"STN":[51.885,0.235],"LHR":[51.47,-0.4543],"FRA":[50.0379,8.5622],"HHN":[49.9487,7.2639],"VIE":[48.1103,16.5697],"MXP":[45.6306,8.7281],"BRU":[50.9014,4.4844],"LGG":[50.6374,5.4432],"AMS":[52.3105,4.7683],"CDG":[49.0097,2.5479],"LUX":[49.6233,6.2044],"MUC":[48.3538,11.7861],"BUD":[47.4298,19.2611],"WAW":[52.1657,20.9671],"PRG":[50.1008,14.26],"LEJ":[51.4239,12.2363],"CGN":[50.8659,7.1427],"MAD":[40.4983,-3.5676],"ANC":[61.1743,-149.9982],"FAI":[64.8151,-147.8561],"SEA":[47.4502,-122.3088],"LAX":[33.9416,-118.4085],"SFO":[37.6213,-122.379],"ONT":[34.056,-117.6012],"LAS":[36.084,-115.1537],"ORD":[41.9742,-87.9073],"RFD":[42.1954,-89.0972],"DFW":[32.8998,-97.0403],"IAH":[29.9902,-95.3368],"ATL":[33.6407,-84.4277],"JFK":[40.6413,-73.7781],"EWR":[40.6895,-74.1745],"MIA":[25.7959,-80.287],"CVG":[39.0488,-84.6678],"IND":[39.7173,-86.2944],"MEM":[35.0421,-89.9792],"SDF":[38.1744,-85.736],"HNL":[21.3187,-157.9225],"GUM":[13.4834,144.796],"YVR":[49.1967,-123.1815],"YYZ":[43.6777,-79.6248]};
@@ -88,6 +92,146 @@ async function allowed(req: Request): Promise<boolean> {
     const { data, error } = await c.rpc("semis_logi_flight_gate", { p_ftok: ft || null });
     return !error && data === true;
   } catch (_) { return false; }
+}
+
+/* ── 주기장(v1.85) — 인천공항공사 운항 현황(화물기) + AIP 주기장 좌표 ── */
+const IIAC = "https://apis.data.go.kr/B551177/statusOfAllFltDeOdp";
+const STAND_GAP = 15 * 60_000;     // 공공데이터 조회 간격(개발계정 하루 500회)
+const STAND_TIMEOUT = 15_000;
+const KST = 9 * 3600_000;
+/* AIP Korea RKSI AD CHART 2-5 INS COORDINATES FOR AIRCRAFT STANDS(WGS-84) — 2026-11-25 AIRAC 판(도면 2026-10-15) 437개.
+   원본은 저장소 tools/icn-stands/icn-stands.json(사이트로 공개) — 인스턴스마다 한 번 받아 SHA-256 이 맞을 때만 쓴다(틀리면 번호만 · 10분 뒤 다시) */
+const STANDS_URL = "https://hdrive.kr/tools/icn-stands/icn-stands.json";
+const STANDS_SHA = "30fa63e5c71529643110757bc088d1f48f928af1657a81bee0e8252c764c48a6";
+type StandMap = Record<string, [number, number]>;
+let standsMap: StandMap | null = null, standsTry = 0;
+export function _standsReset() { standsMap = null; standsTry = 0; }     // 시험용
+async function standsTable(): Promise<StandMap> {
+  if (standsMap) return standsMap;
+  if (Date.now() - standsTry < 10 * 60_000) return {};
+  standsTry = Date.now();
+  try {
+    const r = await fetch(STANDS_URL, { signal: AbortSignal.timeout(8_000) });
+    const buf = new Uint8Array(await r.arrayBuffer());
+    const h = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", buf))).map(b => b.toString(16).padStart(2, "0")).join("");
+    if (!r.ok || h !== STANDS_SHA) throw new Error("stands " + r.status + " " + h.slice(0, 8));
+    const j = JSON.parse(new TextDecoder().decode(buf));
+    standsMap = (j && j.stands) || {};
+    return standsMap!;
+  } catch (e) { console.warn("stands table", (e as Error).message); return {}; }
+}
+const ymdKst = (ms: number) => new Date(ms + KST).toISOString().slice(0, 10).replace(/-/g, "");
+/* "202611251430"(한국 시각) → ms */
+function kstMs(v: unknown): number | null {
+  const m = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})$/.exec(String(v ?? "").trim());
+  return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) - KST : null;
+}
+const regN = (v: unknown) => String(v ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+const standN = (v: unknown) => String(v ?? "").toUpperCase().replace(/\s+/g, "").replace(/^0+(?=\d)/, "").slice(0, 8);
+/* 주기장 → 좌표. 'L/R/A~D' 가 붙었는데 표에 없으면 번호만으로(ex=false) */
+function standLL(s: string, T: StandMap): { ll: [number, number]; ex: boolean } | null {
+  if (T[s]) return { ll: T[s], ex: true };
+  const m = /^(\d+)[A-Z]{1,2}$/.exec(s);
+  return m && T[m[1]] ? { ll: T[m[1]], ex: false } : null;
+}
+/* 하루치(조회일 searchDate, 변경 시각 기준) — data.go.kr 응답: JSON { response: { header, body: { items: { item: [] } | [] | "" , totalCount } } }.
+   인증 오류 등은 type=json 이어도 XML 로 온다 */
+async function iiacDay(key: string, op: string, ymd: string): Promise<Row[]> {
+  const out: Row[] = [];
+  for (let page = 1; page <= 3; page++) {
+    const u = new URL(IIAC + "/" + op);
+    const q: Record<string, string> = { serviceKey: key, pageNo: String(page), numOfRows: "500", searchdtCode: "E", searchDate: ymd,
+      searchFrom: "0000", searchTo: "2400", passengerOrCargo: "C", type: "json" };
+    Object.keys(q).forEach(k => u.searchParams.set(k, q[k]));
+    const res = await fetch(u, { signal: AbortSignal.timeout(STAND_TIMEOUT) });
+    const txt = await res.text();
+    if (txt.trim().startsWith("<")) {
+      const tag = (t: string) => (new RegExp("<" + t + ">([^<]{1,80})<").exec(txt) || [])[1];   // 인증 오류 이름이 가장 구체적
+      throw new Error("iiac " + (tag("returnAuthMsg") || tag("resultMsg") || tag("errMsg") || "xml " + res.status));
+    }
+    if (!res.ok) throw new Error("iiac HTTP " + res.status);
+    const j = JSON.parse(txt);
+    const r = (j && j.response) || j || {};
+    const code = r.header && r.header.resultCode;
+    if (code && code !== "00") throw new Error("iiac " + code + " " + String(r.header.resultMsg || "").slice(0, 60));
+    const b = r.body || {};
+    let it = b.items;
+    if (it && !Array.isArray(it)) it = it.item;
+    if (it && !Array.isArray(it)) it = [it];
+    const list = (Array.isArray(it) ? it : []) as Row[];
+    list.forEach(x => out.push(x));
+    if (!list.length || out.length >= (Number(b.totalCount) || 0)) break;
+  }
+  return out;
+}
+/* 키를 정렬한 JSON — 바뀐 때만 쓰기 위해 */
+const stable = (v: unknown): string => v && typeof v === "object"
+  ? (Array.isArray(v) ? "[" + v.map(stable).join(",") + "]" : "{" + Object.keys(v as Row).sort().map(k => JSON.stringify(k) + ":" + stable((v as Row)[k])).join(",") + "}")
+  : JSON.stringify(v ?? null);
+type Flt = { reg: string; flt: string; t: number; st: string; apt: string; term: string; rmk: string };
+const fltOf = (x: Row): Flt | null => {
+  const t = kstMs(x.estimatedDatetime) ?? kstMs(x.scheduleDatetime);
+  const reg = regN(x.aircraftRegNo);
+  return t && reg ? { reg, flt: str(x.flightId, 10), t, st: standN(x.fstandPosition), apt: str(x.airportCode, 4), term: str(x.terminalId, 4), rmk: str(x.remark, 8) } : null;
+};
+/* 기체 한 대의 주기장 — 도착: 지상 시작 6시간 전 ~ 지금 30분 뒤 사이의 마지막 도착 편 / 출발: 그 뒤 아직 안 떠난 첫 출발 편.
+   지도 위치는 도착 주기장(없으면 출발 주기장). 출발 주기장이 다르면 함께 보냄(옮겨 댈 수 있음) */
+export function pickStand(reg: string, gndSince: number | null, arrs: Flt[], deps: Flt[], now: number, T: StandMap): Row | null {
+  const lo = gndSince ? gndSince - 6 * 3600_000 : now - 4 * 86400_000;
+  const arr = arrs.filter(f => f.reg === reg && f.t >= lo && f.t <= now + 30 * 60_000 && !/결항|회항/.test(f.rmk))
+    .sort((a, b) => b.t - a.t)[0] || null;
+  const from = Math.max(arr ? arr.t : lo, now - 3 * 3600_000);
+  const dep = deps.filter(f => f.reg === reg && f.t >= from && !/결항|출발/.test(f.rmk)).sort((a, b) => a.t - b.t)[0] || null;
+  const st = (arr && arr.st) || (dep && dep.st) || "";
+  if (!st) return null;
+  const g = standLL(st, T);
+  return { st, ll: g ? g.ll : null, ex: g ? g.ex : false, by: arr && arr.st ? "arr" : "dep",
+    arr: arr ? { flt: arr.flt, at: iso(arr.t), apt: arr.apt, st: arr.st } : null,
+    dep: dep ? { flt: dep.flt, at: iso(dep.t), apt: dep.apt, st: dep.st } : null, term: (arr && arr.term) || (dep && dep.term) || "" };
+}
+async function standRefresh(): Promise<string> {
+  let key = (Deno.env.get("IIAC_SERVICE_KEY") || "").trim();
+  if (!key) return "stand: no key";
+  if (/%[0-9A-Fa-f]{2}/.test(key)) { try { key = decodeURIComponent(key); } catch (_) { /* 그대로 */ } }   // 'Encoding' 키를 넣었어도 동작
+  const now = Date.now();
+  const { data: lock } = await db.from("semis_logi_adsb").update({ stand_fetched_at: iso(now) })
+    .eq("hex", "_meta").lt("stand_fetched_at", iso(now - STAND_GAP)).select("hex");   // 마이그레이션이 _meta 에 옛 시각을 넣어 둠
+  if (!lock || !lock.length) return "stand: cached";
+  try {
+    const { data } = await db.from("semis_logi_adsb").select("hex,reg,gnd,gnd_since,lat,lon,stand").neq("hex", "_meta");
+    const rows = (data || []) as Row[];
+    const icn = rows.filter(r => r.gnd && regN(r.reg) && nearestApt(r.lat, r.lon, 15) === "ICN");
+    const want = new Map<string, Row | null>();
+    if (icn.length) {
+      const today = ymdKst(now);
+      const days = new Set<string>([today]);
+      icn.forEach(r => {
+        const g = r.gnd_since ? Date.parse(r.gnd_since as string) : NaN;
+        for (let t = Math.max(Number.isFinite(g) ? g - 6 * 3600_000 : now, now - 3 * 86400_000); ymdKst(t) < today; t += 86400_000) days.add(ymdKst(t));
+      });
+      const arrs: Flt[] = [], deps: Flt[] = [];
+      for (const d of Array.from(days).sort()) (await iiacDay(key, "getFltArrivalsDeOdp", d)).forEach(x => { const f = fltOf(x); if (f) arrs.push(f); });
+      const depDays = [today].concat(new Date(now + KST).getUTCHours() >= 18 ? [ymdKst(now + 86400_000)] : []);
+      for (const d of depDays) (await iiacDay(key, "getFltDeparturesDeOdp", d)).forEach(x => { const f = fltOf(x); if (f) deps.push(f); });
+      const T = await standsTable();
+      icn.forEach(r => want.set(r.hex as string, pickStand(regN(r.reg), r.gnd_since ? Date.parse(r.gnd_since as string) : null, arrs, deps, now, T)));
+    }
+    let n = 0, changed = 0;
+    for (const r of rows) {
+      const v = want.has(r.hex as string) ? want.get(r.hex as string)! : null;
+      if (v) n++;
+      if (stable(v) === stable(r.stand ?? null)) continue;                    // jsonb 는 키 순서를 바꾸므로 정렬해서 비교
+      const { error } = await db.from("semis_logi_adsb").update({ stand: v }).eq("hex", r.hex as string);
+      if (error) throw new Error("stand " + error.message);
+      changed++;
+    }
+    await db.from("semis_logi_adsb").update({ stand: { at: iso(now), icn: icn.length, n, err: null } }).eq("hex", "_meta");
+    return "stand " + n + "/" + icn.length + (changed ? " changed " + changed : "");
+  } catch (e) {
+    const msg = String((e as Error).message || e).slice(0, 160);
+    await db.from("semis_logi_adsb").update({ stand: { at: iso(now), err: msg } }).eq("hex", "_meta");
+    return "stand error " + msg;
+  }
 }
 
 /* ── 실시간 중계(v1.81) — DB 를 읽지도 쓰지도 않는다(기체 목록만 5분에 한 번) ── */
@@ -343,7 +487,11 @@ Deno.serve(async (req: Request) => {
   }
   let note = "";
   try { note = await refresh(); } catch (e) { note = "error " + (e as Error).message; }
-  if (cron) return json({ ok: true, note });
+  if (cron) {
+    let sn = "";
+    try { sn = await standRefresh(); } catch (e) { sn = "stand error " + (e as Error).message; }
+    return json({ ok: true, note, stand: sn });
+  }
   const cols = COLS + (u.searchParams.get("trail") === "1" ? ",trail" : "") + ",fetched_at,err";
   const { data, error } = await db.from("semis_logi_adsb").select(cols);
   if (error) return json({ error: error.message }, 500);

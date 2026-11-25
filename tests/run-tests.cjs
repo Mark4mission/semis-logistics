@@ -5761,6 +5761,58 @@ function makeServer(opts = {}) {
       eq(e.errors.length, 0, e.errors.join(" | "));
     });
 
+    await ta("FR12 주기장(v1.85): 묶음 목록에 주기장 · 출발 편 · 다른 출발 주기장 · 누르면 그 주기장으로(17단계 · 정보창) · 14단계부터 주기장 자리 · 좌표 없는 번호 · 인천 밖은 무시", async () => {
+      const now = Date.now();
+      const S651 = { st: "651", ll: [37.47505, 126.464828], ex: true, by: "arr", term: "C02", arr: { flt: "KJ970", at: iso(now - 7200000), apt: "ANC", st: "651" },
+        dep: { flt: "KJ971", at: iso(Date.UTC(2026, 10, 25, 9, 30)), apt: "ANC", st: "645" } };
+      const rows = [
+        { hex: "71bc21", reg: "HL7421", type: "B744", flight: "AIH970", lat: 37.4931, lon: 126.4312, alt: null, gnd: true, gs: 140, trk: 144, seen_at: iso(now - 7200000), pos_at: iso(now - 7200000), gnd_since: iso(now - 7200000), stand: S651 },
+        { hex: "71bd07", reg: "HL7507", type: "B763", flight: "AIH281", lat: 37.4601, lon: 126.4402, alt: null, gnd: true, gs: 0, seen_at: iso(now - 30000), gnd_since: iso(now - 3600000),
+          stand: { st: "999X", ll: null, ex: false, by: "arr", arr: { flt: "KJ281", at: iso(now - 3600000), apt: "PVG", st: "999X" }, dep: null, term: "C01" } },
+        { hex: "71c503", reg: "HL8503", type: "B763", flight: "AIH374", lat: 33.94, lon: -118.38, alt: null, gnd: true, gs: 0, seen_at: iso(now - 30000), gnd_since: iso(now - 3600000), stand: S651 }
+      ];
+      const e = mk({ srv: { rows, fleet: [{ reg: "HL7421", hex: "71bc21", type: "B744", model: "747-400F" }, { reg: "HL7507", hex: "71bd07", type: "B763", model: "767-300F" }, { reg: "HL8503", hex: "71c503", type: "B763", model: "767-300F" }] } });
+      await up();
+      const m = e.map(), SF = e.SF();
+      ok(m.map.getZoom() < 14, "처음 화면(11단계 남짓) = 묶음");
+      const g = m.marks["71bc21"];
+      ok(g === m.marks["71bd07"] && g.getElement().querySelector(".fo-apt i").textContent === "2", "인천 묶음 2대");
+      eq(SF.standOf(SF.model().items.find(x => x.f.hex === "71c503")), null, "인천 밖 지상 기체의 주기장은 안 씀");
+      g.openPopup();
+      const pop = () => m.el.querySelector(".fo-pop-apt");
+      const li = pop().querySelectorAll("li");
+      eq(li.length, 2);
+      const go = pop().querySelector('li.is-go[data-fo-stand="71bc21"]');
+      ok(go && go.getAttribute("role") === "button" && go.getAttribute("tabindex") === "0", "누를 수 있는 줄");
+      eq(go.querySelector(".pl-s").textContent.replace(/\s+/g, " ").trim(), "주기장 651출발 KJ971 18:30 → 645", "주기장 · 출발 편 · 다른 출발 주기장");
+      const other = pop().querySelector("li:not(.is-go)");
+      ok(other && other.querySelector(".pl-s").textContent.includes("999X") && !other.hasAttribute("data-fo-stand"), "좌표 없는 번호 — 글자만, 누를 수 없음");
+      // 누르면 그 주기장으로
+      go.dispatchEvent(new e.w.MouseEvent("click", { bubbles: true }));
+      eq(m.map.getZoom(), 17, "17단계");
+      const c = m.map.getCenter();
+      ok(Math.abs(c.lat - 37.47505) < 1e-6 && Math.abs(c.lng - 126.464828) < 1e-6, "주기장 가운데 " + c.lat + "," + c.lng);
+      const sm = m.marks["71bc21"];
+      ok(sm && sm !== g && sm.getElement().querySelector('.fo-ac[data-tone="gnd"]'), "주기장 자리에 기체 표지");
+      const sl = sm.getLatLng();
+      ok(Math.abs(sl.lat - 37.47505) < 1e-9 && Math.abs(sl.lng - 126.464828) < 1e-9, "자리 = AIP 651");
+      ok(sm.isPopupOpen() && sm.getPopup().getContent().includes("주기장") && sm.getPopup().getContent().includes(">651<"), "기체 정보창 열림 · 주기장 줄");
+      ok(!sm.getPopup().getContent().includes("이동 중") && !sm.getPopup().getContent().includes("140 kt"), "착륙 추정 기체의 마지막 접근 속도를 '이동 중'으로 보이지 않음");
+      ok(sm.getElement().querySelector(".fo-lb").textContent.includes("KJ970") && sm.getElement().querySelector(".fo-lb").textContent.includes("HL7421"), "이름표 편명 · 등록부호");
+      ok(m.marks["71bd07"].getElement().querySelector(".fo-apt i").textContent === "1", "좌표 없는 기체는 묶음에 남음");
+      // 키보드(Enter)도
+      m.map.setView([37.46, 126.44], 12, { animate: false });
+      ok(m.marks["71bc21"] === m.marks["71bd07"], "14단계 아래 = 다시 묶음");
+      m.marks["71bd07"].openPopup();
+      pop().querySelector('li.is-go').dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      eq(m.map.getZoom(), 17, "Enter 로도");
+      // 실시간 갱신이 와도 주기장은 유지(실시간 줄에는 stand 가 없음)
+      const t = Date.now();
+      SF.liveTake({ t, a: 0, ac: [["71bc21", 37.4931, 126.4312, null, 0, 144, null, 1, null, 0, "AIH970", 0.3, 0.2]] }, t); SF.paintDash();
+      ok(SF.standOf(SF.model().items.find(x => x.f.hex === "71bc21")), "실시간 줄과 합쳐도 주기장 유지");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+
     await ta("FR10 H:drive 운항 현황: 실시간 연결 없음 · 처음 화면 단추 없음 · 갱신해도 같은 표지(정보창 유지) · 경로 선도 제자리", async () => {
       const hc = [];
       const now = Date.now();
@@ -5940,6 +5992,25 @@ function makeServer(opts = {}) {
       ok(!fs.existsSync(path.join(ROOT, "tools/android")) && !/\.keystore|\.jks/.test(require("child_process").execSync("git ls-files", { cwd: ROOT }).toString()), "서명 키는 저장소 밖");
     });
   }
+
+  /* ══════════ [FS] 주기장(v1.85) — 서버 원본 · 좌표표 · 마이그레이션 ══════════ */
+  t("FS01 주기장: Edge 가 받는 좌표표 = tools/icn-stands(AIP 437개 · SHA-256) · 인증키는 Edge 비밀값에서만 · 화물기(C) · 응답 칸 stand · 마이그레이션", () => {
+    const edge = read("tools/edge/semis-logi-adsb.ts");
+    const js = JSON.parse(read("tools/icn-stands/icn-stands.json"));
+    const sha = require("crypto").createHash("sha256").update(fs.readFileSync(path.join(ROOT, "tools/icn-stands/icn-stands.json"))).digest("hex");
+    ok(new RegExp('const STANDS_SHA = "' + sha + '";').test(edge), "Edge 가 확인하는 SHA-256 = 저장소 좌표표");
+    ok(/const STANDS_URL = "https:\/\/hdrive\.kr\/tools\/icn-stands\/icn-stands\.json";/.test(edge), "좌표표 주소");
+    eq(Object.keys(js.stands).length, 437);
+    eq(js.meta.n, 437);
+    const near = (a, b) => Math.abs(a[0] - b[0]) < 1e-6 && Math.abs(a[1] - b[1]) < 1e-6;
+    ok(near(js.stands["651"], [37.47505, 126.464828]) && near(js.stands["1"], [37.449719, 126.455972]), "표본 두 곳(위성사진 대조한 값)");
+    ok(Object.values(js.stands).every(v => Math.abs(v[0] - 37.465) < 0.04 && Math.abs(v[1] - 126.445) < 0.05), "모두 인천공항 안");
+    ok(/Deno\.env\.get\("IIAC_SERVICE_KEY"\)/.test(edge) && !/serviceKey: "[^"]/.test(edge) && !/serviceKey=[A-Za-z0-9%]/.test(edge), "인증키는 비밀값에서만");
+    ok(/passengerOrCargo: "C"/.test(edge) && /type: "json"/.test(edge), "화물기 · JSON");
+    ok(/const COLS = "[^"]*,stand";/.test(edge), "응답 칸 stand");
+    const sql = read("tools/sql/semis-logi-stand.sql");
+    ok(/add column if not exists stand jsonb/.test(sql) && /add column if not exists stand_fetched_at timestamptz/.test(sql) && /set stand_fetched_at = '2000-01-01T00:00:00Z' where hex = '_meta'/.test(sql), "마이그레이션");
+  });
 
   /* ══════════ [SEC] v1.15 서버 보안 — 비공개 파일 · 살균 · CSP · 저장소 위생 ══════════ */
   {
