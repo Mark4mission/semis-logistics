@@ -307,6 +307,19 @@ Deno.test("주기장: 인천 지상 기체만 · 화물기(C) · 도착(지상 �
   const meta = standPatches().find(c => new URL(c.url).searchParams.get("hex") === "eq._meta")!.body.stand as Record<string, unknown>;
   assertEquals([meta.icn, meta.n, meta.err], [3, 3, null]);
 });
+Deno.test("주기장: 지난 날 도착을 이미 찾은 기체는 지난 날을 다시 묻지 않음(오늘 도착 · 출발만) · 저장된 도착으로 주기장 유지", async () => {
+  calls.length = 0; iiacCalls.length = 0; standLock = true; iiac = "ok"; mod._standsReset(); Deno.env.set("IIAC_SERVICE_KEY", "k");
+  const old = T0 - 3 * 86400_000;
+  adsbRows = [{ hex: "_meta" },
+    { hex: "71c319", reg: "HL8319", gnd: true, gnd_since: iso(old), lat: 37.47, lon: 126.46,
+      stand: { st: "612", ll: [37.467758, 126.471661], ex: true, by: "arr", term: "C02", arr: { flt: "KJ948", at: iso(old), apt: "PVG", st: "612" }, dep: null } }];
+  const r = await get("?cron=1");
+  adsbRows = null; standLock = false; Deno.env.delete("IIAC_SERVICE_KEY");
+  assertEquals(r.d.stand.startsWith("stand 1/1"), true, r.d.stand);
+  const kd = (ms: number) => KSTs(ms).slice(0, 8);
+  assertEquals(iiacCalls.filter(u => u.pathname.endsWith("/getFltArrivalsDeOdp")).map(u => u.searchParams.get("searchDate")), [kd(T0)]);   // 오늘만
+  assertEquals(standPatches().some(c => new URL(c.url).searchParams.get("hex") === "eq.71c319"), false);                                   // 그대로(같은 내용)
+});
 Deno.test("주기장: 공공데이터 오류(XML) → _meta 에 오류 · 기체 행은 그대로", async () => {
   calls.length = 0; iiacCalls.length = 0; standLock = true; iiac = "xml"; Deno.env.set("IIAC_SERVICE_KEY", "k");
   adsbRows = [{ hex: "_meta" }, { hex: "71bc21", reg: "HL7421", gnd: true, gnd_since: iso(T0 - 3600_000), lat: 37.47, lon: 126.46, stand: null }];

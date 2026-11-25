@@ -13,7 +13,7 @@
    - 주기장(v1.85): ?cron=1 때 15분에 한 번(_meta.stand_fetched_at 잠금) 인천 지상 기체가 있으면 인천공항공사 공공데이터
      「항공기 운항 현황 상세 조회」(statusOfAllFltDeOdp · 화물기 C)에서 등록기호(aircraftRegNo)가 같은 편의 주기장(fstandPosition)을 받아
      기체 행 stand(jsonb)에 둔다 — 지도 위치는 AIP RKSI 주기장 좌표(사이트의 tools/icn-stands/icn-stands.json, SHA-256 확인). 인증키는 Edge 비밀값 IIAC_SERVICE_KEY(코드 · 저장소에 없음).
-     개발계정 하루 500회: 한 번에 도착(지상 시작일 ~ 오늘, 최대 4일) + 출발(오늘, 18시 뒤엔 내일도) = 2~6회 × 하루 96번 이하.
+     개발계정 하루 500회: 한 번에 도착(오늘 + 아직 못 찾은 기체의 지난 날, 최대 4일) + 출발(오늘, 18시 뒤엔 내일도) — 평소 2~3회 × 하루 96번 이하.
    - 배포: Supabase MCP deploy_edge_function (verify_jwt true, anon 키로 호출). 이 파일이 원본. */
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -205,11 +205,18 @@ async function standRefresh(): Promise<string> {
     if (icn.length) {
       const today = ymdKst(now);
       const days = new Set<string>([today]);
+      const arrs: Flt[] = [], deps: Flt[] = [];
       icn.forEach(r => {
+        /* 지난 날 도착은 한 번 찾았으면 다시 묻지 않음(하루 500회 — 사흘째 서 있는 기체가 있으면 15분마다 4~6회가 됨). 오늘 도착은 늘 받으므로 새 도착이 이김 */
+        const prev = (r.stand || null) as Row | null, pa = (prev && prev.arr) as Row | null;
+        const pt = pa && pa.at ? Date.parse(pa.at as string) : NaN;
+        if (pa && Number.isFinite(pt) && ymdKst(pt) < today) {
+          arrs.push({ reg: regN(r.reg), flt: str(pa.flt, 10), t: pt, st: standN(pa.st), apt: str(pa.apt, 4), term: str(prev!.term, 4), rmk: "" });
+          return;
+        }
         const g = r.gnd_since ? Date.parse(r.gnd_since as string) : NaN;
         for (let t = Math.max(Number.isFinite(g) ? g - 6 * 3600_000 : now, now - 3 * 86400_000); ymdKst(t) < today; t += 86400_000) days.add(ymdKst(t));
       });
-      const arrs: Flt[] = [], deps: Flt[] = [];
       for (const d of Array.from(days).sort()) (await iiacDay(key, "getFltArrivalsDeOdp", d)).forEach(x => { const f = fltOf(x); if (f) arrs.push(f); });
       const depDays = [today].concat(new Date(now + KST).getUTCHours() >= 18 ? [ymdKst(now + 86400_000)] : []);
       for (const d of depDays) (await iiacDay(key, "getFltDeparturesDeOdp", d)).forEach(x => { const f = fltOf(x); if (f) deps.push(f); });
