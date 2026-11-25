@@ -1,0 +1,52 @@
+/* 운항 현황 앱 설치 안내(install.html · v1.84) — 화면: 휴대폰 한 칸씩(그 기종 먼저) · PC 두 칸. 인쇄: A4 세로 한 장, 두 칸 + QR */
+:root { --ink: #0e1a1f; --ink-2: #3b4a50; --ink-3: #667479; --line: #d5dde0; --pri: #0f766e; --bar: #0b1f26; --bg: #f3f5f6; }
+html, body { margin: 0; }
+body.ins-body { background: var(--bg); color: var(--ink); font-family: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  font-size: 15px; line-height: 1.55; -webkit-text-size-adjust: 100%; }
+.ins-top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 10px; height: 52px;
+  padding: env(safe-area-inset-top, 0px) max(14px, env(safe-area-inset-right)) 0 max(14px, env(safe-area-inset-left)); background: var(--bar); color: #fff; }
+.ins-brand { display: inline-flex; align-items: center; gap: 7px; font-weight: 600; color: rgba(255, 255, 255, .88); }
+.ins-brand b { color: #5eead4; }
+.ins-brand img { display: block; }
+.ins-sp { flex: 1; }
+.ins-print { height: 36px; padding: 0 14px; border: 1px solid rgba(255, 255, 255, .35); border-radius: 8px; background: transparent; color: #fff; font: inherit; font-size: 14px; cursor: pointer; }
+.ins-main { max-width: 980px; margin: 0 auto; padding: 18px max(14px, env(safe-area-inset-right)) calc(28px + env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); }
+.ins-head h1 { margin: 4px 0 2px; font-size: 22px; font-weight: 700; }
+.ins-head p { margin: 0 0 14px; color: var(--ink-2); }
+.ins-grid { display: grid; gap: 14px; }
+.ins-grid.is-wide { grid-template-columns: 1fr 1fr; }
+.ins-card { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px 14px; }
+.ins-card h2 { margin: 0 0 10px; font-size: 18px; font-weight: 700; }
+.ins-row { display: flex; align-items: center; gap: 14px; }
+.ins-qr svg { display: block; width: 132px; height: 132px; }
+.ins-act { flex: 1; min-width: 0; }
+.ins-go { display: inline-flex; align-items: center; gap: 6px; min-height: 46px; padding: 0 18px; border-radius: 10px; background: var(--pri); color: #fff;
+  font-weight: 600; text-decoration: none; }
+.ins-go small { font-weight: 500; opacity: .85; }
+.ins-url { margin: 6px 0 0; font-family: "IBM Plex Mono", monospace; font-size: 13px; color: var(--ink-3); word-break: break-all; }
+.ins-steps { margin: 12px 0 0; padding-left: 1.35em; line-height: 1.7; }
+.ins-steps li { margin: 3px 0; }
+.ins-sh { vertical-align: -2px; color: var(--pri); }
+.ins-note { margin: 10px 0 0; font-size: 13px; color: var(--ink-3); }
+@media screen and (max-width: 640px) {
+  .ins-grid.is-wide { grid-template-columns: 1fr; }
+  .ins-qr { display: none; }
+}
+
+@media print {
+  @page { size: A4 portrait; margin: 14mm; }
+  body.ins-body { background: #fff; font-size: 10.5pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .ins-top { display: none; }
+  .ins-main { max-width: none; padding: 0; }
+  .ins-head h1 { font-size: 18pt; margin: 0 0 1mm; }
+  .ins-head p { margin: 0 0 5mm; }
+  .ins-grid, .ins-grid.is-wide { grid-template-columns: 1fr 1fr; gap: 6mm; }
+  .ins-card { border: .3mm solid #9aa7ab; border-radius: 3mm; padding: 5mm; break-inside: avoid; }
+  .ins-card[data-k="android"] { order: 1; }
+  .ins-card[data-k="ios"] { order: 2; }
+  .ins-row { flex-direction: column; align-items: flex-start; gap: 2mm; }
+  .ins-qr { display: block; }
+  .ins-qr svg { width: 42mm; height: 42mm; }
+  .ins-go { display: none; }
+  .ins-url { font-size: 9pt; color: var(--ink); }
+}

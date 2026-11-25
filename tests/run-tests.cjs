@@ -5201,7 +5201,7 @@ function makeServer(opts = {}) {
   /* ══════════ [FA] 현장용 운항 현황(flight.html · v1.80) — PIN · 표 · 지도 + 인천 접근 · 401 · H:drive 출입 머리글 · PIN 관리 창 ══════════ */
   {
     const FH = read("flight.html");
-    const SRC = ["js/flight-shim.js", "js/flightcore.js", "js/flightops.js", "js/flight-app.js"];
+    const SRC = ["js/flight-shim.js", "js/flightcore.js", "js/flightops.js", "js/install-core.js", "js/flight-app.js"];
     const NOW = Date.now(), iso = (ms) => new Date(ms).toISOString();
     const EXP = Math.floor(NOW / 1000) + 43200;
     const TOK = (exp) => exp + ".2." + "a".repeat(64);
@@ -5247,10 +5247,10 @@ function makeServer(opts = {}) {
       ok(/rel="manifest" href="flight\.webmanifest"/.test(FH) && /apple-mobile-web-app-capable" content="yes"/.test(FH) && /apple-mobile-web-app-title" content="운항 현황"/.test(FH), "홈 화면 앱");
       ok(/viewport-fit=cover/.test(FH) && /name="robots" content="noindex"/.test(FH), "안전 영역 · 검색 제외");
       const sc = (FH.match(/<script src="([^"]+)" defer><\/script>/g) || []).map(x => /src="([^"?]+)/.exec(x)[1]);
-      eq(sc.join(","), SRC.join(","), "스크립트 순서(흉내 → 계산 → 운항 → 화면)");
+      eq(sc.join(","), SRC.join(","), "스크립트 순서(흉내 → 계산 → 운항 → 설치 안내 → 화면)");
       const ver = /const VERSION = "([\d.]+)"/.exec(read("js/app.js"))[1];
-      ok((FH.match(/\?v=([\d.]+)"/g) || []).every(x => x.indexOf("?v=" + ver + '"') >= 0) && (FH.match(/\?v=/g) || []).length === 6, "스탬프 = 앱 버전");
-      ok(/\["edu\.html", "learn\.html", "flight\.html"\]/.test(read("tools/bump-version.cjs")), "bump 도구가 flight.html 도");
+      ok((FH.match(/\?v=([\d.]+)"/g) || []).every(x => x.indexOf("?v=" + ver + '"') >= 0) && (FH.match(/\?v=/g) || []).length === 7, "스탬프 = 앱 버전");
+      ok(/\["edu\.html", "learn\.html", "flight\.html", "install\.html"\]/.test(read("tools/bump-version.cjs")), "bump 도구가 flight.html · install.html 도");
       ok(!/인쇄|print/i.test(FH + read("js/flight-app.js")), "인쇄 단추 없음(현장용 예외 — Mark 결정)");
     });
     t("FA02 홈 화면 앱 설명서 · 아이콘(192 · 512, 모서리까지 채움)", () => {
@@ -5383,6 +5383,7 @@ function makeServer(opts = {}) {
       await tick(10);
       eq(q(eh, "#fp-url").textContent, "https://logi.test/flight.html", "주소");
       ok(q(eh, ".fp-qr svg"), "QR");
+      ok(q(eh, "#fp-ins") && q(eh, "#fp-ins").getAttribute("href") === "install.html" && q(eh, "#fp-ins").target === "_blank", "앱 설치 안내 링크(v1.84)");
       ok(q(eh, "#fp-st").textContent.includes("PIN 미설정") && q(eh, "#fp-cut").hidden, "미설정 · 끊기 숨김");
       q(eh, "#fp-a").value = "12345"; q(eh, "#fp-b").value = "12345"; q(eh, "#fp-save").click(); await tick(5);
       ok(q(eh, "#toast-wrap").textContent.includes("숫자 6~10자리"), "형식");
@@ -5406,7 +5407,7 @@ function makeServer(opts = {}) {
   /* ══════════ [FR] 운항 실시간 · 지도 제자리 갱신 · 처음 화면 (v1.81) — 현장 웹앱(flight.html)에 Leaflet 을 넣고 서버를 흉내 ══════════ */
   {
     const FH = read("flight.html");
-    const SRC = ["js/flight-shim.js", "js/flightcore.js", "js/flightops.js", "js/flight-app.js"];
+    const SRC = ["js/flight-shim.js", "js/flightcore.js", "js/flightops.js", "js/install-core.js", "js/flight-app.js"];
     const LEAF = read("assets/vendor/leaflet/leaflet.js");
     const FC = require(path.join(ROOT, "js/flightcore.js"));
     const iso = (ms) => new Date(ms).toISOString();
@@ -5788,6 +5789,155 @@ function makeServer(opts = {}) {
       const end = x.trail.getLatLngs()[3];
       ok(Math.abs(end.lat - 37.26) < 1e-9 && Math.abs(mk1.getLatLng().lat - 37.26) < 1e-9, "이어 그리기 없이 받은 자리 그대로");
       eq(eh.errors.length, 0, eh.errors.join(" | "));
+    });
+  }
+
+  /* ══════════ [FI] 운항 현황 앱 설치(v1.84) — 안드로이드 설치 파일 · 아이폰 홈 화면 추가 안내 · 설치 안내 페이지 · 사이트 확인 파일 ══════════ */
+  {
+    const FH = read("flight.html"), IH = read("install.html");
+    const SRC = ["js/flight-shim.js", "js/flightcore.js", "js/flightops.js", "js/install-core.js", "js/flight-app.js"];
+    const UA = {
+      iphone: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1",
+      kakao: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 KAKAOTALK 25.8.0",
+      android: "Mozilla/5.0 (Linux; Android 14; SM-S918N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36",
+      ipad: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15",
+      pc: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    };
+    const EXP = Math.floor(Date.now() / 1000) + 43200;
+    const deq = (a, b, m) => eq(JSON.stringify(a), JSON.stringify(b), m);
+    const env = (html, url, ua, o) => {
+      o = o || {};
+      const vc = new VirtualConsole(); const errors = [];
+      vc.on("jsdomError", (er) => { const m = String(er && er.message || er); if (m.indexOf("Not implemented") < 0) errors.push(m); });
+      const dom = new JSDOM(html.replace(/<script[\s\S]*?<\/script>/g, ""), { url, runScripts: "outside-only", pretendToBeVisual: true, virtualConsole: vc, referrer: o.referrer });
+      const w = dom.window;
+      Object.defineProperty(w.navigator, "userAgent", { configurable: true, get: () => ua });
+      Object.defineProperty(w.navigator, "maxTouchPoints", { configurable: true, get: () => (o.touch || 0) });
+      w.matchMedia = (qq) => ({ matches: !!o.standalone && /standalone/.test(qq), media: qq, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} });
+      w.fetch = () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ac: [], events: [], fetched_at: new Date().toISOString() }) });
+      if (o.tok) w.localStorage.setItem("hdflight:tok", JSON.stringify({ t: EXP + ".2." + "a".repeat(64), exp: EXP }));
+      return { w, errors, q: (x) => w.document.querySelector(x), qa: (x) => Array.from(w.document.querySelectorAll(x)) };
+    };
+    const field = (ua, o) => { const e = env(FH, "https://logi.test/flight.html", ua, o); SRC.forEach(f => e.w.eval(read(f))); return e; };
+
+    t("FI01 설치 안내 계산(install-core): 기종(아이폰 · 아이패드 · 안드로이드 · PC) · 카카오톡 · 외부 브라우저 주소 · 단계 수 · 인쇄 글자 없음", () => {
+      const e = env(FH, "https://logi.test/flight.html", UA.pc);
+      e.w.eval(read("js/install-core.js"));
+      const I = e.w.SemisInstall;
+      deq([I.platform(UA.iphone), I.platform(UA.android), I.platform(UA.pc), I.platform(UA.ipad)], ["ios", "android", "other", "other"], "터치 없는 맥 = PC");
+      Object.defineProperty(e.w.navigator, "maxTouchPoints", { configurable: true, get: () => 5 });
+      eq(I.platform(UA.ipad), "ios", "아이패드(맥 UA + 터치)");
+      ok(I.inKakao(UA.kakao) && !I.inKakao(UA.iphone), "카카오톡");
+      eq(I.externalHref("https://hdrive.kr/flight.html"), "kakaotalk://web/openExternal?url=https%3A%2F%2Fhdrive.kr%2Fflight.html");
+      deq([I.steps("android").length, I.steps("ios").length], [4, 5]);
+      ok(I.steps("ios")[0].includes("logi.test/flight.html") && I.steps("ios", { here: true })[0].includes("이 화면을"), "아이폰 1단계 — 현장 화면 주소 / 이 화면");
+      ok(I.stepsHTML("ios").includes("홈 화면에 추가") && I.stepsHTML("android").includes("출처를 알 수 없는 앱"));
+      deq([I.APK, I.FIELD, I.PAGE], ["dl/hdrive-flight.apk", "flight.html", "install.html"]);
+      ok(!/인쇄|print/i.test(read("js/install-core.js")), "현장 화면 쪽 글에 인쇄 없음");
+      ok(!I.standalone(), "브라우저");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+    await ta("FI02 현장 화면: 아이폰 → PIN 화면 '앱으로 설치' · 홈 화면 추가 안내(5단계) · 닫기(Esc · 바깥) / 카카오톡 → Safari로 열기", async () => {
+      const e = field(UA.iphone);
+      ok(e.q("#fa-insl") && !e.q("#fa-insl").hidden, "PIN 화면 아래");
+      e.q("#fa-insl").click();
+      ok(e.q("#fa-sheet") && e.q("#fa-sheet-t").textContent === "홈 화면에 추가", "안내 열림");
+      eq(e.qa("#fa-sheet .ins-steps li").length, 5);
+      ok(!e.q("#fa-sheet .fa-ins-go"), "Safari 에서는 열기 단추 없음");
+      eq(e.q("#fa-sheet .fa-sheet-more").getAttribute("href"), "install.html");
+      e.w.document.dispatchEvent(new e.w.KeyboardEvent("keydown", { key: "Escape" }));
+      ok(!e.q("#fa-sheet"), "Esc 로 닫힘");
+      e.q("#fa-insl").click(); e.q("#fa-sheet").click();
+      ok(!e.q("#fa-sheet"), "바깥을 누르면 닫힘");
+      const k = field(UA.kakao);
+      k.q("#fa-insl").click();
+      eq(k.q("#fa-sheet .fa-ins-go").getAttribute("href"), "kakaotalk://web/openExternal?url=https%3A%2F%2Flogi.test%2Fflight.html", "카카오톡 → Safari");
+      eq(e.errors.length + k.errors.length, 0, e.errors.concat(k.errors).join(" | "));
+    });
+    await ta("FI03 현장 화면: 안드로이드 → 설치 파일 받기 · 로그인 뒤 머리 띠 단추 / PC · 앱으로 연 경우(홈 화면 앱 · 안드로이드 앱) → 단추 없음", async () => {
+      const a = field(UA.android, { tok: true });
+      await tick(20);
+      ok(a.q("#fa-ins") && !a.q("#fa-ins").hidden, "머리 띠 단추");
+      a.q("#fa-ins").click();
+      const go = a.q("#fa-sheet .fa-ins-go");
+      ok(a.q("#fa-sheet-t").textContent === "안드로이드 앱 설치" && go.getAttribute("href") === "dl/hdrive-flight.apk" && go.getAttribute("download") === "hdrive-flight.apk", "설치 파일");
+      eq(a.qa("#fa-sheet .ins-steps li").length, 4);
+      a.q("#fa-sheet-x").click();
+      ok(!a.q("#fa-sheet"), "닫기");
+      const pc = field(UA.pc);
+      ok(pc.q("#fa-insl").hidden, "PC — 없음");
+      const st = field(UA.iphone, { standalone: true });
+      ok(st.q("#fa-insl").hidden, "홈 화면 앱으로 열면 없음");
+      const twa = field(UA.android, { referrer: "android-app://kr.hdrive.flight/" });
+      ok(twa.q("#fa-insl").hidden, "안드로이드 앱으로 열면 없음");
+      eq(twa.w.sessionStorage.getItem("hd:app"), "1", "앱 안에서 다른 화면으로 가도 기억");
+      eq(a.errors.length + pc.errors.length + st.errors.length + twa.errors.length, 0, a.errors.concat(pc.errors, st.errors, twa.errors).join(" | "));
+    });
+    t("FI04 설치 안내 페이지(install.html): CSP · 스탬프 · 스크립트 순서 · 인쇄 단추 · A4 인쇄 규칙", () => {
+      const csp = /http-equiv="Content-Security-Policy" content="([^"]+)"/.exec(IH)[1];
+      ok(/script-src 'self';/.test(csp) && /connect-src 'none'/.test(csp) && /object-src 'none'/.test(csp) && /form-action 'none'/.test(csp) && !/unsafe-inline/.test(csp), csp);
+      ok(/name="robots" content="noindex"/.test(IH));
+      const sc = (IH.match(/<script src="([^"]+)" defer><\/script>/g) || []).map(x => /src="([^"?]+)/.exec(x)[1]);
+      eq(sc.join(","), "js/qr.js,js/install-core.js,js/install.js");
+      const ver = /const VERSION = "([\d.]+)"/.exec(read("js/app.js"))[1];
+      ok((IH.match(/\?v=([\d.]+)"/g) || []).every(x => x.indexOf("?v=" + ver + '"') >= 0) && (IH.match(/\?v=/g) || []).length === 4, "스탬프 = 앱 버전");
+      ok(/id="ins-print" data-print-btn="1"/.test(IH), "인쇄 단추");
+      const c = read("css/install.css");
+      ok(/@media print/.test(c) && /@page \{ size: A4 portrait;/.test(c) && /\.ins-top \{ display: none; \}/.test(c), "A4 인쇄 · 머리 띠 숨김");
+      ok(!/style="/.test(IH + read("js/install.js")), "인라인 스타일 없음(CSP)");
+    });
+    await ta("FI05 설치 안내 페이지: 기종별 순서(아이폰 → 아이폰 먼저 · 안드로이드 · PC 두 칸) · QR(설치 파일 · 현장 화면) · 받기 · 카카오톡 · 인쇄", async () => {
+      const page = (ua) => { const e = env(IH, "https://logi.test/install.html", ua); ["js/qr.js", "js/install-core.js", "js/install.js"].forEach(f => e.w.eval(read(f))); return e; };
+      const i = page(UA.iphone);
+      deq(i.qa(".ins-card").map(x => x.dataset.k), ["ios", "android"], "아이폰 먼저");
+      eq(i.q("#ins-open").getAttribute("href"), "flight.html");
+      const k = page(UA.kakao);
+      ok(k.q("#ins-open").getAttribute("href").startsWith("kakaotalk://web/openExternal?url=") && k.q("#ins-open").textContent.includes("Safari"), "카카오톡 → Safari");
+      const a = page(UA.android);
+      deq(a.qa(".ins-card").map(x => x.dataset.k), ["android", "ios"], "안드로이드 먼저");
+      ok(a.q("#ins-apk").getAttribute("href") === "dl/hdrive-flight.apk" && a.q("#ins-apk").getAttribute("download") === "hdrive-flight.apk");
+      const p = page(UA.pc);
+      ok(p.q(".ins-grid.is-wide"), "PC 두 칸");
+      eq(p.qa(".ins-qr svg").length, 2, "QR 2개");
+      deq(p.qa(".ins-url").map(x => x.textContent), ["logi.test/dl/hdrive-flight.apk", "logi.test/flight.html"], "QR 주소(설치 파일 · 현장 화면)");
+      let printed = 0; p.w.print = () => { printed++; };
+      p.q("#ins-print").click();
+      eq(printed, 1, "인쇄");
+      eq(i.errors.length + k.errors.length + a.errors.length + p.errors.length, 0, i.errors.concat(k.errors, a.errors, p.errors).join(" | "));
+    });
+    t("FI06 설치 파일(dl/hdrive-flight.apk): 서명(APK Sig Block · v2) 인증서 SHA-256 = 사이트 확인 파일 · 패키지 kr.hdrive.flight · Pages 가 .well-known 을 올림", () => {
+      const buf = fs.readFileSync(path.join(ROOT, "dl/hdrive-flight.apk"));
+      eq(buf.slice(0, 2).toString("latin1"), "PK", "zip");
+      let eocd = -1;
+      for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65557); i--) if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
+      ok(eocd > 0, "EOCD");
+      const cdOff = buf.readUInt32LE(eocd + 16), cdN = buf.readUInt16LE(eocd + 10);
+      eq(buf.slice(cdOff - 16, cdOff).toString("latin1"), "APK Sig Block 42", "서명 블록");
+      const sz = Number(buf.readBigUInt64LE(cdOff - 24));
+      let p = cdOff - sz, cert = null;
+      while (p < cdOff - 24) {
+        const len = Number(buf.readBigUInt64LE(p)), id = buf.readUInt32LE(p + 8);
+        if (id === 0x7109871a) { let q2 = p + 12 + 12; q2 += 4 + buf.readUInt32LE(q2); q2 += 4; const cl = buf.readUInt32LE(q2); cert = buf.slice(q2 + 4, q2 + 4 + cl); }
+        p += 8 + len;
+      }
+      ok(cert && cert.length > 300, "v2 서명 인증서");
+      const fp = require("crypto").createHash("sha256").update(cert).digest("hex").toUpperCase().match(/../g).join(":");
+      const al = JSON.parse(read(".well-known/assetlinks.json"));
+      deq([al[0].target.namespace, al[0].target.package_name, al[0].target.sha256_cert_fingerprints[0]], ["android_app", "kr.hdrive.flight", fp], "assetlinks = 실제 서명");
+      deq(al[0].relation, ["delegate_permission/common.handle_all_urls"]);
+      let q3 = cdOff, man = null;
+      for (let i = 0; i < cdN; i++) {
+        const m = buf.readUInt16LE(q3 + 10), cs = buf.readUInt32LE(q3 + 20), nl = buf.readUInt16LE(q3 + 28), xl = buf.readUInt16LE(q3 + 30), kl = buf.readUInt16LE(q3 + 32), lo = buf.readUInt32LE(q3 + 42);
+        if (buf.slice(q3 + 46, q3 + 46 + nl).toString() === "AndroidManifest.xml") {
+          const d0 = lo + 30 + buf.readUInt16LE(lo + 26) + buf.readUInt16LE(lo + 28);
+          man = m === 8 ? require("zlib").inflateRawSync(buf.slice(d0, d0 + cs)) : buf.slice(d0, d0 + cs);
+        }
+        q3 += 46 + nl + xl + kl;
+      }
+      ok(man && man.includes(Buffer.from("kr.hdrive.flight", "utf16le")), "패키지 이름");
+      ok(/^include: \["\.well-known"\]$/m.test(read("_config.yml")), "GitHub Pages(Jekyll)가 .well-known 을 올림");
+      ok(buf.length < 4 * 1024 * 1024, "4MB 미만");
+      ok(!fs.existsSync(path.join(ROOT, "tools/android")) && !/\.keystore|\.jks/.test(require("child_process").execSync("git ls-files", { cwd: ROOT }).toString()), "서명 키는 저장소 밖");
     });
   }
 

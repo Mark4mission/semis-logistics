@@ -1249,7 +1249,8 @@
     openModal(`<h3>현장용 운항 현황</h3>
       <div class="fp-link"><div class="fp-qr">${Q ? Q.svg(url, { ecc: "M", size: 148, margin: 2 }) : ""}</div>
         <div class="fp-link-r"><code class="mono fp-url" id="fp-url">${esc(url)}</code>
-          <div class="fp-acts"><button type="button" class="btn btn-ghost btn-sm" id="fp-copy">${icon("copy", 15)}<span>주소 복사</span></button></div>
+          <div class="fp-acts"><button type="button" class="btn btn-ghost btn-sm" id="fp-copy">${icon("copy", 15)}<span>주소 복사</span></button>
+            <a class="btn btn-ghost btn-sm" id="fp-ins" href="install.html" target="_blank" rel="noopener">${icon("down", 15)}<span>앱 설치 안내</span></a></div>
           <p class="fp-st" id="fp-st" aria-live="polite">불러오는 중</p></div></div>
       <div class="fp-form">
         <label class="fp-f"><span>새 PIN</span><input type="password" id="fp-a" inputmode="numeric" autocomplete="new-password" maxlength="10" placeholder="숫자 6~10자리"></label>

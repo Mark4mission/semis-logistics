@@ -50,6 +50,25 @@ body.fa-locked { background: var(--sidebar-bg); }
   .fa-brand span { display: none; }
 }
 
+/* 앱으로 설치(v1.84) — PIN 화면 아래 글자 단추 · 머리 띠 단추 · 아래에서 올라오는 안내 */
+.fa-insl { margin-top: 6px; padding: 6px 10px; border: 0; background: none; color: var(--primary); font-size: .93rem; font-weight: 600; cursor: pointer; }
+.fa-ins { flex: none; width: 40px; height: 40px; display: grid; place-items: center; border: 0; border-radius: 8px; background: rgba(255, 255, 255, .1); color: #fff; cursor: pointer; }
+.fa-ins[hidden], .fa-insl[hidden] { display: none; }
+.fa-sheet { position: fixed; inset: 0; z-index: 950; display: flex; align-items: flex-end; justify-content: center; background: rgba(6, 18, 23, .55); }
+.fa-sheet-box { width: min(100%, 520px); max-height: 88vh; max-height: 88svh; overflow: auto; box-sizing: border-box; background: #fff; color: var(--text);
+  border-radius: 16px 16px 0 0; padding: 16px max(18px, env(safe-area-inset-right)) calc(18px + env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left)); }
+.fa-sheet-h { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.fa-sheet-h h2 { flex: 1; margin: 0; font-size: 1.14rem; font-weight: 700; }
+.fa-sheet-x { padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: 8px; background: #fff; color: var(--text-2); font-size: .86rem; cursor: pointer; }
+.fa-ins-go { display: flex; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box; text-decoration: none; margin: 2px 0 6px; }
+.fa-ins-go small { font-size: .8rem; font-weight: 500; opacity: .8; }
+.ins-steps { margin: 8px 0 0; padding-left: 1.3em; font-size: .95rem; line-height: 1.65; color: var(--text); }
+.ins-steps li { margin: 4px 0; }
+.ins-steps b { font-weight: 700; }
+.ins-sh { vertical-align: -2px; color: var(--primary); }
+.fa-sheet-n { margin: 10px 0 0; font-size: .86rem; color: var(--text-3); }
+.fa-sheet-more { display: inline-block; margin-top: 10px; font-size: .9rem; font-weight: 600; color: var(--primary); }
+
 /* 알림 */
 .fa-toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom)); z-index: 900; max-width: calc(100% - 32px); transform: translate(-50%, 12px);
   padding: 10px 16px; border-radius: 10px; background: #102a33; color: #fff; font-size: .93rem; box-shadow: 0 8px 24px rgba(0, 0, 0, .25);

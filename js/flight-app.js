@@ -1,7 +1,8 @@
 /* 현장용 운항 현황(flight.html) — 현장 PIN → 12시간 표(서버가 발급 · 확인, tools/sql/semis-logi-flight.sql) → 지도 + 인천 접근 목록.
    지도 · 목록은 H:drive 와 같은 js/flightops.js(SemisFlight.dashHTML · mountDash). 표는 이 기기 localStorage 에만 —
    만료되거나 위치 서버가 거절(401)하면 지우고 PIN 화면으로. PIN 은 보관하지 않는다.
-   v1.81 이 화면만: 실시간(5초 간격 위치 · 그 사이 이어 그리기 — setLive) · 처음 지도 = 인천 활주로 4개의 가운데에서 반경 5NM(setView). */
+   v1.81 이 화면만: 실시간(5초 간격 위치 · 그 사이 이어 그리기 — setLive) · 처음 지도 = 인천 활주로 4개의 가운데에서 반경 5NM(setView).
+   v1.84: 휴대폰에서 아직 앱으로 열지 않았으면 '앱으로 설치'(PIN 화면 아래 · 머리 띠 단추) → 안드로이드 설치 파일 / 아이폰 홈 화면 추가 안내. */
 "use strict";
 
 (() => {
@@ -42,6 +43,40 @@
     net: "서버에 연결하지 못했습니다."
   };
 
+  /* ── 앱으로 설치(v1.84) — 휴대폰 · 태블릿에서 아직 앱으로 열지 않았을 때만. 안내는 js/install-core.js ── */
+  const INS = window.SemisInstall;
+  const canIns = () => !!INS && INS.platform() !== "other" && !INS.standalone();
+  function insSheet() {
+    if (!INS || $("#fa-sheet")) return;
+    const kind = INS.platform() === "android" ? "android" : "ios";
+    const top = kind === "android"
+      ? `<a class="fa-go fa-ins-go" href="${esc(INS.APK)}" download="hdrive-flight.apk">${icon("down", 18)}<span>설치 파일 받기</span><small>${esc(INS.APK_SIZE)}</small></a>`
+      : INS.inKakao() ? `<a class="fa-go fa-ins-go" href="${esc(INS.externalHref(INS.abs(INS.FIELD)))}">Safari로 열기</a>` : "";
+    const el = document.createElement("div");
+    el.id = "fa-sheet";
+    el.className = "fa-sheet";
+    el.innerHTML = `<div class="fa-sheet-box" role="dialog" aria-modal="true" aria-labelledby="fa-sheet-t">
+        <div class="fa-sheet-h"><h2 id="fa-sheet-t">${kind === "android" ? "안드로이드 앱 설치" : "홈 화면에 추가"}</h2>
+          <button type="button" class="fa-sheet-x" id="fa-sheet-x">닫기</button></div>
+        ${top}${INS.stepsHTML(kind, { here: true })}
+        <p class="fa-sheet-n">${esc(INS.NOTE[kind])}</p>
+        <a class="fa-sheet-more" href="${esc(INS.PAGE)}">설치 안내 전체</a>
+      </div>`;
+    document.body.appendChild(el);
+    const onKey = (e) => { if (e.key === "Escape") close(); };
+    const close = () => { el.remove(); document.removeEventListener("keydown", onKey); };
+    el.addEventListener("click", (e) => { if (e.target === el) close(); });
+    $("#fa-sheet-x").onclick = close;
+    document.addEventListener("keydown", onKey);
+    try { $("#fa-sheet-x").focus({ preventScroll: true }); } catch (e) { /* 포커스 불가 */ }
+  }
+  function insBtn(sel) {
+    const b = $(sel);
+    if (!b) return;
+    b.hidden = !canIns();
+    b.onclick = insSheet;
+  }
+
   /* ── PIN 화면 ── */
   function gate(msg) {
     if (mo) { mo.disconnect(); mo = null; }
@@ -55,8 +90,10 @@
         <input id="fa-pin" class="fa-pin mono" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="10" required>
         <p class="fa-err" id="fa-err" role="alert">${esc(msg || "")}</p>
         <button type="submit" class="fa-go" id="fa-go">확인</button>
+        <button type="button" class="fa-insl" id="fa-insl" hidden>앱으로 설치</button>
       </form>
     </section>`;
+    insBtn("#fa-insl");
     const f = $("#fa-form"), inp = $("#fa-pin");
     inp.addEventListener("input", () => { inp.value = inp.value.replace(/[^0-9]/g, "").slice(0, 10); });
     f.addEventListener("submit", (e) => { e.preventDefault(); submit(); });
@@ -100,9 +137,11 @@
         <h1 class="fa-t">운항 현황</h1>
         <span class="fa-sp"></span>
         <span class="fa-upd" id="fa-upd" aria-live="polite"></span>
+        <button type="button" class="fa-ins" id="fa-ins" hidden title="앱으로 설치" aria-label="앱으로 설치">${icon("down", 18)}</button>
         <button type="button" class="fa-ref" id="fa-ref" title="새로고침" aria-label="새로고침">${icon("refresh", 18)}</button>
       </header>
       <main class="fa-main" id="fa-main">${SemisFlight.dashHTML()}</main>`;
+    insBtn("#fa-ins");
     const meta = $("#dflt-meta"), upd = $("#fa-upd");
     const copy = () => { if (meta && upd) upd.textContent = meta.textContent; };
     copy();

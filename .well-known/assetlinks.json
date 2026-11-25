@@ -1,0 +1,10 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "kr.hdrive.flight",
+      "sha256_cert_fingerprints": ["8C:B3:F9:14:65:92:0A:47:F9:3D:94:76:B6:6E:A9:DA:0F:EA:56:88:00:44:56:B3:51:AF:80:FD:0C:22:16:BA"]
+    }
+  }
+]
