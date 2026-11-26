@@ -15036,6 +15036,37 @@ function makeServer(opts = {}) {
       eq(sd.map(x => x.g).join(","), "UCC"); eq(sd[0].mem[0].name, "하하하");
       eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
     });
+    t("LN29 팀장(v1.85.1): 서명지는 UCC 서명지 맨 앞 칸 · 진행 현황 소속 = 팀 이름(파트 아님) · UCC 서명지 없으면 첫 파트 서명지(LN25)", () => {
+      const R0 = ROSTER();
+      R0.people.push({ id: "p8", name: "하하하", org: "에어제타", part: "UCC", emp: "900008", gender: "M", title: "팀장" });
+      R0.people.push({ id: "p9", name: "거너더", org: "에어제타", part: "운영(직속)", emp: "900009", gender: "F", title: "대리" });
+      const C = COURSE({ targets: { groups: ["수출파트", "안전보안파트", "UCC"], add: [], except: [] }, excuse: {} });
+      const { e, L } = lnEnv("hq", { people: R0, courses: [C], rows: [] });
+      const c = e.S.data.learn.courses[0];
+      const sd = L.sheetData(c);
+      eq(sd.map(x => x.g).join(","), "수출파트,안전보안파트,UCC", "서명지 " + sd.map(x => x.g).join(","));
+      const su = sd.find(x => x.g === "UCC");
+      eq(su.mem[0].name, "하하하", "UCC 첫 칸 = 팀장"); ok(su.mem[0].lead, "lead 표시"); eq(su.tgt.n, 2, "UCC 대상 = 거너더 · 팀장");
+      ok(!sd.filter(x => x.g !== "UCC").some(x => x.mem.some(m => m.name === "하하하")), "다른 파트 서명지에는 없음");
+      const doc = new JSDOM(L.recordHTML(c, {}, null)).window.document;
+      const sec = Array.from(doc.querySelectorAll("section")).find(x => /UCC/.test(x.textContent));
+      ok(sec && /하하하/.test(sec.textContent), "기록부 UCC 쪽에 팀장");
+      // 진행 현황 — 소속 칸은 팀 이름, 일반 직원은 파트
+      L.setState({ view: "detail", sel: "lc1" }); go(e, "learn");
+      const tdOf = (pid) => { const b = q(e, `[data-lnm="p:${pid}"]`); ok(b, pid + " 줄"); return b.closest("tr").children[1].textContent.trim(); };
+      eq(tdOf("p8"), "인천화물팀", "팀장 소속 칸");
+      ok(!/수입통과파트|수출파트|안전보안파트|UCC/.test(tdOf("p8")), "팀장 소속 칸에 파트 없음");
+      eq(tdOf("p9"), "UCC", "UCC 직원은 파트(대표 이름)"); eq(tdOf("p4"), "수출파트");
+      q(e, '[data-lnm="p:p8"]').click();
+      eq(q(e, "#modal-box h3 small").textContent, "인천화물팀", "⋯ 창 머리도 팀 이름"); e.S.closeModal();
+      // 전파교육 표 — UCC 칸에 팀장 포함(서명지와 같은 묶음)
+      const dr = L.dissemRows()[0].groups.find(x => x.g === "UCC"); eq(dr && dr.n, 2, "전파교육 UCC 칸 대상 2");
+      // UCC 서명지가 없는 교육(안전보안파트만 + 팀장 개별 추가) — 첫 파트 서명지 맨 앞(v1.76.1 그대로)
+      e.S.data.learn.courses = [COURSE({ targets: { groups: ["안전보안파트"], add: ["p8"], except: [] }, excuse: {} })]; L._setRows([]);
+      const sd2 = L.sheetData(e.S.data.learn.courses[0]);
+      eq(sd2.map(x => x.g).join(","), "안전보안파트", "UCC 서명지 따로 안 생김"); eq(sd2[0].mem[0].name, "하하하");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
     t("LN26 장소(v1.76.2): 새 교육 기본 '온라인' · 옛 '온라인(H:drive)'는 수정 화면에서 '온라인' · 집체 ↔ 온라인 전환", () => {
       const { e, L } = lnEnv("hq", { courses: [COURSE({ place: "온라인(H:drive)" })] });
       go(e, "learn");

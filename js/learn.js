@@ -11,7 +11,7 @@
   const MOD = "learn", KEY = "learn";
   const TITLE = "교육 전파 · 서명";
   const R = () => window.SemisRoster;
-  const SELF = "에어제타", TEAM = "인천화물팀";
+  const SELF = "에어제타", TEAM = "인천화물팀", LEAD_HOME = "UCC";   // 팀장 서명 칸이 들어갈 서명지
   const KINDS = ["보안", "안전", "위험물", "기타"];
   const FILE_MAX = 50 * 1024 * 1024;
   const OLD_PLACE = "온라인(H:drive)";   // v1.76.2 전 기본 장소 — H:drive 는 공식 명칭이 아니라 '온라인'으로
@@ -55,6 +55,7 @@
   const groupOf = (p) => (R() ? R().groupOf(p) : "");
   const orgLabel = (p) => (R() ? R().orgLabel(p) : "");
   const groups = () => (R() ? R().groups() : []);
+  const unitOf = (m) => (m.lead ? (P().team || TEAM) : m.group);   // 진행 현황 소속 칸 — 팀장은 파트 대신 팀 이름
   const arrOf = (v) => (Array.isArray(v) ? v : []);
   function isTarget(c, p) {
     const t = (c && c.targets) || {};
@@ -104,13 +105,14 @@
         group: groupOf(r), tgt: false, manual: !!r.manual, row: r, note: "" });
     });
     mem.forEach(m => { m.st = m.row && m.row.state === "ok" ? "ok" : m.note ? "excused" : m.row ? "start" : "todo"; });
-    /* 팀장(에어제타 · 직책 '팀장')은 모든 파트 총괄 — 자기 파트 서명지를 따로 만들지 않고 다른 에어제타 파트 첫 서명지의 맨 앞 칸에 올린다(없으면 제자리) */
+    /* 팀장(에어제타 · 직책 '팀장')은 어느 파트에도 속하지 않는 팀 총괄 — 화면 소속은 팀 이름(unitOf),
+       서명지는 UCC 서명지 맨 앞 칸. UCC 서명지가 없는 교육(다른 파트만 대상 + 팀장 개별 추가)이면 에어제타 파트 첫 서명지 맨 앞 칸(없으면 제자리) */
     const lead = mem.filter(m => m.pid && m.org === SELF && norm(m.title) === "팀장");
     if (lead.length) {
-      const own = new Set(lead.map(m => m.group));
-      const host = Array.from(new Set(mem.filter(m => m.org === SELF && !own.has(m.group)).map(m => m.group))).sort((a, b) => a.localeCompare(b, "ko"))[0];
-      if (host) lead.forEach(m => { m.group = host; });
-      lead.forEach(m => { m.lead = true; });
+      const home = R() && R().canon ? R().canon(LEAD_HOME) : LEAD_HOME;
+      const gs = new Set(mem.filter(m => m.org === SELF && lead.indexOf(m) < 0).map(m => m.group));
+      const host = gs.has(home) ? home : Array.from(gs).sort((a, b) => a.localeCompare(b, "ko"))[0];
+      lead.forEach(m => { if (host) m.group = host; m.lead = true; });
     }
     const by = new Map();
     mem.forEach(m => { if (!by.has(m.group)) by.set(m.group, { g: m.group, self: m.org === SELF, mem: [] }); by.get(m.group).mem.push(m); });
@@ -216,7 +218,7 @@
     return `<div class="table-wrap"><table class="tbl ln-mem"><thead><tr><th>이름</th><th>소속</th><th>사번</th><th>상태</th><th>완료 일시</th><th>서명</th>${canW() ? "<th></th>" : ""}</tr></thead><tbody>
       ${rs.map(m => { const lb = ST_LB[m.st], r = m.row;
         return `<tr><td data-role="title"><b>${esc(m.name)}</b>${m.manual ? ` ${ui.chip("명단 외", "orange")}` : !m.tgt ? ` ${ui.chip("대상 외", "purple")}` : ""}</td>
-          <td>${esc(m.group)}${m.org !== SELF && m.org !== m.group ? "" : ""}</td><td class="mono">${esc(m.emp || "-")}</td>
+          <td>${esc(unitOf(m))}${m.org !== SELF && m.org !== m.group ? "" : ""}</td><td class="mono">${esc(m.emp || "-")}</td>
           <td>${ui.chip(lb[0], lb[1])}${m.note ? ` <span class="ln-dim">${esc(m.note)}</span>` : ""}</td>
           <td class="mono">${esc(r && r.at ? r.at.slice(2).replace(/-/g, ".") : r && r.state === "start" ? "시작 " + String(r.start || "").slice(5).replace(/-/g, ".") : "")}</td>
           <td>${r && r.state === "ok" && signs[r.rid] ? `<img class="ln-sg" src="${esc(signs[r.rid])}" alt="${esc(m.name)} 서명">` : ""}</td>
@@ -303,7 +305,7 @@
     if (r && r.state === "ok") opts.push(["void", "이수 무효(다시 받기)"]);
     if (r && !m.pid) opts.push(["link", "명단 사람과 연결"]);
     if (!opts.length) { toast("할 수 있는 작업이 없습니다."); return; }
-    openModal(`<h3>${esc(m.name)} <small class="ln-dim">${esc(m.group)}</small></h3>
+    openModal(`<h3>${esc(m.name)} <small class="ln-dim">${esc(unitOf(m))}</small></h3>
       <div class="ln-acts">${opts.map(([k, lb]) => `<button type="button" class="btn btn-ghost" data-mk="${k}">${esc(lb)}</button>`).join("")}</div>
       <div class="modal-actions"><button type="button" class="btn btn-ghost" data-act="cancel">닫기</button></div>`);
     $("#modal-box [data-act=cancel]").onclick = closeModal;
