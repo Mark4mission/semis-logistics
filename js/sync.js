@@ -245,6 +245,12 @@
     if (!res.ok) throw httpErr("GET", res);
     return res.json();
   }
+  /* 행마다 key · updated_at 만(수 KB) — 다시 받기 전에 바뀐 컬렉션을 고른다(전체 값은 1.5MB 넘음, 무료 요금제 전송량 한도) */
+  async function restStamps() {
+    const res = await fetchT(REST + "?select=key,updated_at", { headers: hdr() });
+    if (!res.ok) throw httpErr("GET", res);
+    return res.json();
+  }
   /* 저장 — 행마다 base_at(마지막으로 받은 서버 시각) 동봉. 그 사이 서버 값이 바뀌었으면 409 → 받아 병합 후 재저장 */
   async function restUpsert(rows) {
     const res = await fetchT(REST + "?on_conflict=key&select=key,updated_at", {
@@ -487,18 +493,29 @@
     if (!want.length) return false;
     /* GET 이전의 pending·dirty 를 함께 기억한다 — GET 이 도는 동안의 변경도 병합 대상으로 */
     const before = Array.from(new Set(pendingKeys().concat(dirtyKeys())));
-    let rows;
-    try { rows = await restGet(onlyKeys ? want : null); }
+    let rows, stamps = null;
+    try {
+      /* 전체 다시 받기(폴링 · 잠자기 복귀 · 재연결) = 서버 시각만 먼저 보고 바뀐 것 · 미전송분만 값을 받는다.
+         처음 받기 · 서버 시각을 모르는 컬렉션이 있으면 예전처럼 전부 */
+      if (!initial && !onlyKeys && want.every(k => serverAt[k] !== undefined)) {
+        stamps = await restStamps();
+        stamps = (Array.isArray(stamps) ? stamps : []).filter(r => r && want.indexOf(r.key) >= 0);
+        const mine = new Set(pendingKeys().concat(dirtyKeys(), before));
+        const need = stamps.filter(r => mine.has(r.key) || String(r.updated_at || "") !== serverAt[r.key]).map(r => r.key);
+        rows = need.length ? await restGet(need) : [];
+      } else rows = await restGet(onlyKeys ? want : null);
+    }
     catch (e) {
       if (e && (e.status === 401 || e.status === 403)) await checkSession();
       throw e;
     }
     rows = (Array.isArray(rows) ? rows : []).filter(r => r && want.indexOf(r.key) >= 0);
-    if (!onlyKeys && !rows.length && await checkSession()) return false;   // RLS가 모두 걸렀다 = 세션 만료
+    if (!onlyKeys && !(stamps || rows).length && await checkSession()) return false;   // RLS가 모두 걸렀다 = 세션 만료
     const pend = Array.from(new Set(pendingKeys().concat(dirtyKeys(), before))).filter(canWrite);
     const force = !!initial && ss.get(SS_FORCE) === "1";
     let changed = false;
     const present = {};
+    if (stamps) stamps.forEach(r => { present[r.key] = true; });
     rows.forEach(row => {
       present[row.key] = true;
       const remote = canon(row.value);

@@ -412,6 +412,7 @@ function makeServer(opts = {}) {
         if (kin) { const ks = kin[1].split(",").map(decodeURIComponent); rows = rows.filter(x => ks.indexOf(x.key) >= 0); }
         const k1 = /[?&]key=eq\.([^&]+)/.exec(u);
         if (k1) rows = rows.filter(x => x.key === decodeURIComponent(k1[1]));
+        if (/[?&]select=key,updated_at(&|$)/.test(u)) return reply(200, rows.map(x => ({ key: x.key, updated_at: x.updated_at })));
         return reply(200, rows.map(x => JSON.parse(JSON.stringify(x))));
       }
       if (method === "POST") {
@@ -1773,6 +1774,33 @@ function makeServer(opts = {}) {
       ok(e.S.data.notices.some(n => n.id === "bc1"), "반영");
       const gets = server.calls.slice(n0).filter(c => c.method === "GET" && c.url.indexOf("/rest/v1/semis_logi_store") >= 0);
       eq(gets.length, 1); ok(gets[0].url.indexOf("key=in.(notices)") > 0, gets[0].url);
+    });
+    await ta("Y14a 전체 다시 받기(폴링 · 복귀) = 서버 시각만 먼저 · 바뀐 컬렉션만 값 받기", async () => {
+      await Sync._flush().catch(() => {});
+      const storeGets = (n0) => server.calls.slice(n0).filter(c => c.method === "GET" && c.url.indexOf("/rest/v1/semis_logi_store") >= 0).map(c => c.url);
+      let n0 = server.calls.length;
+      await Sync.pull(false);
+      let g = storeGets(n0);
+      eq(g.length, 1, "바뀐 것 없음 = 시각 목록 한 번");
+      ok(/select=key,updated_at$/.test(g[0]), g[0]);
+      const i = server.rows.findIndex(r => r.key === "notices");
+      server.rows[i] = Object.assign({}, server.rows[i], { updated_at: new Date(Date.now() + 5000).toISOString(),
+        value: server.rows[i].value.concat([{ id: "lt1", title: "가벼운 확인으로 받은 공지", body: "", author: "x", pinned: false, created: "2026-09-05T00:00:00Z" }]) });
+      n0 = server.calls.length;
+      await Sync.pull(false);
+      g = storeGets(n0);
+      eq(g.length, 2, "시각 목록 + 바뀐 컬렉션");
+      ok(g[1].indexOf("key=in.(notices)") > 0, g[1]);
+      ok(e.S.data.notices.some(n => n.id === "lt1"), "반영");
+      eq(Sync._serverAt("notices"), server.rows[i].updated_at, "서버 시각 갱신");
+      n0 = server.calls.length;
+      e.S.data.secPost.note = "미전송 변경"; e.S.save();
+      await Sync.pull(false);
+      g = storeGets(n0);
+      ok(g.some(u => u.indexOf("key=in.(secPost)") > 0), "미전송 컬렉션은 값을 받아 병합");
+      ok(!g.some(u => /select=key,value,updated_at,updated_by$/.test(u)), "전체 값 받기 없음");
+      await Sync._flush().catch(() => {});
+      e.S.data.secPost.note = ""; e.S.save(); await Sync._flush().catch(() => {});
     });
     await ta("Y15 manager: 읽기 권한 밖(vault) 미수신 · 쓰기 권한 밖(notices) 전송 안 함", async () => {
       const srvM = makeServer({ rows: [{ key: "contacts", value: { sections: [{ id: "c", title: "관리자 연락처", rows: [] }] } },
