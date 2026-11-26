@@ -605,15 +605,13 @@
   SeMIS.onRerender(() => { prevRoute = location.hash; });
   SeMIS.registerModule("settings", {
     title: "시스템 설정",
-    navBadge: () => (window.SemisKsync ? SemisKsync.badge() : ""),
     render(root) {
       if (!SeMIS.isAdmin()) {
         root.innerHTML = '<div class="card"><div class="empty">시스템관리자 전용 메뉴입니다.</div></div>';
         return;
       }
       const tabs = { menus: renderMenuTab, boards: (box) => { if (window.SemisBoard) SemisBoard.adminTab(box); else box.innerHTML = ""; }, users: renderUserTab, assignees: renderAssigneeTab,
-        data: renderDataTab, storage: renderStorageTab, security: renderSecurityTab,
-        ksync: (box, again) => { if (window.SemisKsync) SemisKsync.tab(box, again); else box.innerHTML = ""; } };
+        data: renderDataTab, storage: renderStorageTab, security: renderSecurityTab };
       const again = prevRoute === location.hash;     // 같은 화면을 다시 그린 것(원격 변경 등) — 사용자가 탭을 연 것이 아니다
       if (!again || !tabs[setTab]) setTab = "menus";
       const tb = (id, label) => `<button class="tab${id === setTab ? " active" : ""}" data-tab="${id}">${label}</button>`;
@@ -630,11 +628,9 @@
           ${tb("data", "데이터 관리")}
           ${tb("storage", "저장소 관리")}
           ${tb("security", "보안")}
-          ${tb("ksync", "K드라이브 동기화")}
         </div>
         <div id="tab-body"></div>`;
       $$(".tab").forEach(t => t.onclick = () => {
-        $$("#view .page-head .ks-hb").forEach(b => b.remove());     // K드라이브 동기화 탭의 머리말 단추
         $$(".tab").forEach(x => x.classList.remove("active"));
         t.classList.add("active");
         setTab = t.dataset.tab;

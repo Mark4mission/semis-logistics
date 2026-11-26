@@ -721,7 +721,7 @@
   let tab = "people", q = "", roleF = "", rgF = "", onlyAct = false, onlySelf = false, year = "", sType = "all", pState = "active", pView = "list";
   let pid = "", sid = "";                       // 개인 화면 · 교육 기록 화면
   const TABS = [["people", "인원"], ["sessions", "교육 기록"], ["catalog", "직무 · 과정"], ["pledges", "SSI 서약"], ["docs", "교육 자료"]];
-  /* 교육 자료 문서함 — K드라이브 '교육 · 훈련' 하위 폴더와 하나씩 연결된다(분류 id 를 바꾸면 연결 · 문서가 떨어짐) */
+  /* 교육 자료 문서함 — 문서는 분류 id 로 묶인다(id 를 바꾸면 문서가 떨어짐) */
   if (window.SemisDocs) SemisDocs.define(MOD, [
     { id: "regular", label: "정기 보안교육" }, { id: "dissem", label: "전파교육" }, { id: "qual", label: "자격교육 교재" },
     { id: "tsa", label: "TSA 교육" }, { id: "misc", label: "기타" }
