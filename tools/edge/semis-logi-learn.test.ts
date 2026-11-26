@@ -65,6 +65,10 @@ Deno.test("sum: 세션 없음 401 · hq 미만 403 · 경로 · 글/PDF 요약 �
   assertEquals((await post({ op: "sum", parts: [{ text: "가" }] })).status, 403);
   who = { ok: true, kind: "signer", rank: 0 };
   assertEquals((await post({ op: "sum", parts: [{ text: "가" }] })).status, 403);
+  who = { ok: true, kind: "user", rank: 0, role: "hq", scoped: true, fol: { learn: [3, 0] } };
+  assertEquals((await post({ op: "sum", parts: [{ text: "가" }] })).status, 403, "범위 계정 — 교육 전파 열람은 거절");
+  who = { ok: true, kind: "user", rank: 0, role: "user", scoped: true, fol: { learn: [3, 3] } };
+  assertEquals((await post({ op: "sum", parts: [{ text: "가" }] })).d.ok, true, "범위 계정 — 교육 전파 편집은 요약 가능");
   who = { ok: true, kind: "user", rank: 3, role: "hq" };
   assertEquals((await post({ op: "sum", parts: [{ path: "docs/a.pdf" }] })).d.error, "path");
   assertEquals((await post({ op: "sum", parts: [{ path: "learn/../a.pdf" }] })).d.error, "path");

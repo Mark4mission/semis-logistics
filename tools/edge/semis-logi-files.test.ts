@@ -77,3 +77,17 @@ Deno.test("desk-in 열람 · 판독 · 복사: 안전보안파트 이상 · 복�
   r = await post({ op: "copy", from: "desk-in/abcdefghijkl_a.pdf", prefix: "minutes" });
   assertEquals(r.d.error, "forbidden", "manager 는 desk-in 원본 열람 불가 → 복사 불가");
 });
+
+Deno.test("범위 계정(메뉴 범위): 폴더표(fol)로만 판정 · 등급만 보는 기능 거절", async () => {
+  who = { ok: true, kind: "user", rank: 0, role: "hq", who: "s1", scoped: true, fol: { schedules: [3, 3], audits: [2, 0], bbs1: [1, 0], "docs-ssi": [2, 0] } };
+  assertEquals((await up("schedules")).status, 200, "편집 폴더 올리기");
+  assertEquals((await up("audits")).d.error, "forbidden", "열람 폴더 올리기 거절");
+  assertEquals((await up("training")).d.error, "forbidden", "범위 밖 폴더");
+  assertEquals((await up("desk-in")).d.error, "forbidden", "직원 접수 제외(내부 계정이라도)");
+  let r = await post({ op: "sign", paths: ["audits/abcdefghijkl_a.pdf", "bbs1/abcdefghijkl_b.png", "training/abcdefghijkl_c.pdf", "docs-ssi/abcdefghijkl_d.pdf"] });
+  assertEquals([Object.keys(r.d.urls).sort().join(","), r.d.denied.length], ["audits/abcdefghijkl_a.pdf,bbs1/abcdefghijkl_b.png", 2], "열람 = 폴더 등급 이상만(SSI 3 · 범위 밖 거절)");
+  r = await post({ op: "desk-read", path: "desk/abcdefghijkl_a.txt", text: "x" });
+  assertEquals(r.d.error, "forbidden", "접수 판독 거절(등급 0)");
+  r = await post({ op: "copy", from: "desk/abcdefghijkl_a.pdf", prefix: "schedules" });
+  assertEquals(r.d.error, "forbidden", "복사 거절");
+});

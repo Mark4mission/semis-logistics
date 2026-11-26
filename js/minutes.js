@@ -54,7 +54,7 @@
 
   const rank = () => SeMIS.roleRank();
   const me = () => (SeMIS.user && (SeMIS.user.origId || SeMIS.user.id)) || "";
-  const canWrite = () => rank() >= 2;                       // 작성: manager 이상
+  const canWrite = () => SeMIS.mayWrite("minutes", rank() >= 2);   // 작성: manager 이상(메뉴 범위 계정은 회의록 '편집')
   const canEditRec = (x) => rank() >= 3 || (!!x && x.byId && x.byId === me());
   const canDelRec = (x) => SeMIS.canDelete() || (canWrite() && !!x && x.byId && x.byId === me());
   const canManageFolders = () => !!SeMIS.isAdmin();   // 폴더 구성은 설정 — 시스템관리자

@@ -156,7 +156,7 @@
 
   /* ── 권한 ── */
   const canRead = () => SeMIS.roleRank() >= 2;
-  const canWrite = () => SeMIS.roleRank() >= WRITE_RANK;
+  const canWrite = () => SeMIS.mayWrite(KEY, SeMIS.roleRank() >= WRITE_RANK);
   const menuOk = () => { const mn = SeMIS.menuForModule(MOD); return !!(mn && SeMIS.navVisible(mn)); };
 
   /* ── 화면 상태 ── */

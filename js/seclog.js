@@ -304,7 +304,7 @@
   if (typeof window !== "undefined") (window.SemisDeep = window.SemisDeep || {})[MOD] = (sub) => { if (TABS.some(x => x[0] === sub)) { tab = sub; q = ""; } };
   const docsHTML = () => `<section class="card">${window.SemisDocs ? SemisDocs.groupsHTML(MOD) : ui.empty("문서함을 불러오지 못했습니다.")}</section>`;
   const routeNow = () => (typeof location !== "undefined" ? location.hash.replace(/^#\//, "") : "") || "dashboard";
-  const canW = () => !!SeMIS.user && SeMIS.roleRank() >= 2 && SeMIS.user.role !== "vendor";
+  const canW = () => SeMIS.mayWrite("seclog", !!SeMIS.user && SeMIS.roleRank() >= 2 && SeMIS.user.role !== "vendor");
   const hay = (a) => a.map(v => String(v || "")).join(" ").toLowerCase();
   function fileChips(files) {
     return filesOf(files).map(f => `<a class="nb-file" href="${esc(f.url)}" target="_blank" rel="noopener">${icon("link", 14)}<span>${esc(f.name || "첨부")}</span></a>`).join("");

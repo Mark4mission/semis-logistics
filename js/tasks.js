@@ -230,6 +230,7 @@
   /* 담당 = 칸 사람 ∪ 글 속 이름('담당 없음' 칸은 글 속 이름만).
      글 · 기억은 add() 앞에 비운다 — 저장 중 화면이 다시 그려져도 넣은 글이 되살아나지 않게 */
   function colAdd(inp) {
+    if (!T.canEdit()) return;
     const text = inp.value.trim(), n = inp.dataset.col;
     if (!text) return;
     const p = parseIn(text);
@@ -280,6 +281,7 @@
         `<button type="button" class="tk-qw" data-qwho="${esc(n)}" aria-pressed="${on.indexOf(n) >= 0}">${dot(n)}${esc(n)}</button>`).join("")}</span>` : "");
   }
   function quickAdd() {
+    if (!T.canEdit()) return;
     const qi = $("#tk-quick", root), text = qi.value.trim();
     if (!text) return;
     const { p, on } = quickCtx(text);
@@ -305,6 +307,7 @@
     return t;
   }
   function setDone(id, on) {
+    if (!T.canEdit()) return;
     const t = T.list().find(x => x.id === id);
     if (!t || t.done === !!on) return false;
     const now = new Date().toISOString(), by = T.me();
@@ -325,6 +328,7 @@
   /* 지우기(줄 끝 휴지통 · 고치기 창) — 지운 할 일과 자리를 돌려준다(되돌리기용).
      마지막 한 건을 지우면 목록이 빈다 — 사람이 한 지우기이므로 대량 삭제 방어(2건 이상 → 0건)가 되살리지 않게 */
   function removeTask(id) {
+    if (!T.canEdit()) return;
     const arr = SeMIS.data[T.KEY], i = Array.isArray(arr) ? arr.findIndex(t => t.id === id) : -1;
     if (i < 0) return null;
     const x = arr.splice(i, 1)[0];
@@ -334,6 +338,7 @@
   }
   /* 되돌리기 — 그 사이 같은 id 가 다시 생겼으면(다른 탭 되돌리기) 두 번 넣지 않는다 */
   function restoreTask(r) {
+    if (!T.canEdit()) return;
     const arr = SeMIS.data[T.KEY];
     if (!r || !Array.isArray(arr) || arr.some(t => t.id === r.x.id)) return false;
     arr.splice(Math.min(r.i, arr.length), 0, r.x);
@@ -343,6 +348,7 @@
   }
   /* 휴지통 = 확인 창 없이 바로 지우고 알림의 '되돌리기'로 살린다 — 키보드로 지웠으면 같은 자리의 다음 휴지통으로 */
   function delTask(id, b) {
+    if (!T.canEdit()) return;
     const box = b.closest("#tk-list, #tk-meetbox") || root, had = document.activeElement === b, at = $$(".tk-del", box).indexOf(b);
     const r = removeTask(id);
     refresh();
@@ -352,6 +358,7 @@
   }
   /* 중요 = 줄 끝 리본 — 켜면 칠한 리본 · 제목 색(별도 표시 없음). 묶음 안 순서는 중요가 위 */
   function toggleStar(id, k, b) {
+    if (!T.canEdit()) return;
     const t = findT(id), had = document.activeElement === b;
     if (!t) return;
     t.star = !t.star;
@@ -368,6 +375,7 @@
     if (i < 0 && t && !(t.notes || []).length) refocus(k, ".tk-nin"); else refocus(k, ".tk-nb");
   }
   function addNote(inp) {
+    if (!T.canEdit()) return;
     if (!inp) return;
     const text = inp.value.trim(), k = inp.dataset.k, row = inp.closest(".tk-row"), t = row && findT(row.dataset.id);
     if (!text) { inp.focus(); return; }
@@ -382,6 +390,7 @@
     refocus(k, ".tk-nin");
   }
   function delNote(id, nid, k) {
+    if (!T.canEdit()) return;
     const t = findT(id), a = t && Array.isArray(t.notes) ? t.notes : [], i = a.findIndex(n => n.id === nid);
     if (i < 0) { refresh(); return; }
     const n = a.splice(i, 1)[0];
@@ -533,6 +542,7 @@
 
   /* id 가 없으면 새 할 일(preset = 처음 칸 값). 창은 오래 쓰므로 바깥 누르기 · Esc 로 닫지 않는다(sticky) */
   function edit(id, preset) {
+    if (!T.canEdit()) return;
     if (!T.canUse()) return;
     const x = id ? T.list().find(t => t.id === id) : null;
     if (id && !x) return;
@@ -668,6 +678,7 @@
 
   /* 체크 = 마침 · 끄면 다시 할 일 — 그 사이 지워졌거나 이미 바뀐 할 일이면 체크 모양만 되돌린다 */
   function checkRow(cb) {
+    if (!T.canEdit()) { cb.checked = !cb.checked; return false; }
     const id = cb.closest(".tk-row").dataset.id, on = cb.checked;
     if (!setDone(id, on)) { cb.checked = !on; return false; }
     if (on) toast("마쳤습니다.", false, { label: "되돌리기", run: () => setDone(id, false) });
@@ -765,13 +776,13 @@
     el.innerHTML =
       ui.head({
         title: TITLE,
-        actions: `<button type="button" class="btn btn-primary" id="tk-add">${icon("plus", 17)}<span>할 일 추가</span></button>` +
+        actions: (T.canEdit() ? `<button type="button" class="btn btn-primary" id="tk-add">${icon("plus", 17)}<span>할 일 추가</span></button>` : "") +
           `<button type="button" class="btn btn-ghost" id="tk-meet">${icon("users", 17)}<span>${st.meet ? "목록 보기" : "회의 모드"}</span></button>` +
           (T.canManage() ? `<button type="button" class="btn btn-ghost btn-sm ph-rare" id="tk-members">${icon("sliders", 16)}<span>담당자 관리</span></button>` : "")
       }) +
       `<div id="tk-stats">${statsHTML()}</div>
       <section class="card tk-card${st.meet ? " tk-meeting" : ""}">
-        <div class="tk-qbox">
+        <div class="tk-qbox"${T.canEdit() ? "" : " hidden"}>
           <div class="tk-qrow"><input id="tk-quick" type="text" autocomplete="off" aria-label="할 일 빠른 입력" placeholder="할 일을 적고 Enter — 예: 내일 오후 3시 보안교육 자료 제출">
             <button type="button" class="btn btn-ghost" id="tk-qadd">${icon("plus", 16)}<span>추가</span></button></div>
           <div class="tk-qprev" id="tk-qprev"></div>
@@ -810,7 +821,8 @@
     $$(".tk-nin", el).forEach(fit);
     card.addEventListener("focusin", (ev) => { const k = dkey(ev.target); if (k) st.fk = k; });
     card.addEventListener("focusout", (ev) => { const x = ev.target, k = dkey(x); if (k) setTimeout(() => dropFocus(x, k), 0); });
-    $("#tk-add", el).onclick = () => { if (typeof T.edit === "function") T.edit(null); };
+    const addB = $("#tk-add", el);
+    if (addB) addB.onclick = () => { if (typeof T.edit === "function") T.edit(null); };
     const mg = $("#tk-members", el);
     if (mg) mg.onclick = editMembers;
     /* 코어 다시 그리기로 — 머리말 인쇄 단추는 코어가 붙인다 */

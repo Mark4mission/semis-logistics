@@ -22,12 +22,18 @@
     usr:      "mgr",  // 미주행 재보안검색 — 최근 달의 전월 대비 변화율만 (js/usrescreen.js)
     build:    "hq"
   };
+  /* 메뉴 범위 계정 — 카드는 그 자료의 메뉴를 받았을 때만(등급 대신) */
+  const DASH_SRC = { upcoming: "schedule", actions: "minutes", flight: "flight", screen: "scr-status", serp: "serp", threat: "threat", audit: "audit", usr: "sec-dash" };
   const cardVis = (id) => {
+    if (SeMIS.scoped && SeMIS.scoped()) {
+      if (id === "build") return false;
+      return !DASH_SRC[id] || SeMIS.navVisible(SeMIS.menuForModule(DASH_SRC[id]));
+    }
     const v = DASH_CARDS[id] || "all";
     const r = SeMIS.roleRank();
     return v === "all" || (v === "mgr" && r >= 2) || (v === "hq" && r >= 3) || (v === "adm" && r >= 4);
   };
-  window.SemisDash = { DASH_CARDS, cardVis };
+  window.SemisDash = { DASH_CARDS, DASH_SRC, cardVis };
   const ico = (n, z) => SeMIS.icon(n, z);
   const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
   const md = (iso) => String(iso || "").slice(5).replace("-", ".");
@@ -301,7 +307,7 @@
       const wk = (() => { const d = new Date(Date.now() + 7 * 86400000); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); })();
       const soon = upcoming.filter(s => String(s.start) <= wk).length;
       const upShow = upcoming.slice(0, 4);
-      const actions = rank >= 2 ? openActions() : [];
+      const actions = (SeMIS.scoped() ? cardVis("actions") : rank >= 2) ? openActions() : [];
       const late = actions.filter(a => a.due && a.due < todayISO()).length;
       const now = new Date();
       const today = todayISO();
@@ -351,7 +357,7 @@
           </div>
           <div id="actions-box" class="act-list"></div>
         </section>` : "";
-      const guest = rank < 2;
+      const guest = !SeMIS.scoped() && rank < 2;
       const todayCard = guest ? "" : todayHTML(upcoming, actions, late);
       root.innerHTML = `
         <div class="page-head">
@@ -366,7 +372,7 @@
         ${cardVis("status") || todayCard ? `<section class="dash-now${guest ? " guest" : ""}${todayCard ? " has-today" : ""}" aria-label="안전보안 현황">${cardVis("status") ? ticketHTML() : ""}${todayCard}</section>` : ""}
         ${cardVis("flight") && menuOk("flight", "SemisFlight") ? SemisFlight.dashHTML() : ""}
         ${guest ? (noticeCol ? `<section class="dash-card">${noticeCol}</section>` : "")
-          : `<div class="dash-sheet-wrap"><div class="dash-sheet cols-${[upcomingCard, noticeCol, actionCol].filter(Boolean).length}">${upcomingCard}${noticeCol}${actionCol}</div></div>`}`;
+          : [upcomingCard, noticeCol, actionCol].some(Boolean) ? `<div class="dash-sheet-wrap"><div class="dash-sheet cols-${[upcomingCard, noticeCol, actionCol].filter(Boolean).length}">${upcomingCard}${noticeCol}${actionCol}</div></div>` : ""}`;
       if (window.SemisHero3D && $("#dash-3d")) SemisHero3D.mount($("#dash-3d"));
       if (window.SemisFlight && $("#dash-flt")) SemisFlight.mountDash();
       if (window.SemisFlight && $("#td-flt")) {
@@ -954,31 +960,127 @@
     ["user", "일반사용자 (화물팀 직원·조업사 — 일반·안내 열람)"],
     ["manager", "화물팀 관리자 (관리 항목 열람 전용)"],
     ["hq", "안전보안파트 (파트원 · 편집 가능)"],
-    ["vendor", "협력업체 (업체별 허용 메뉴만)"],
+    ["vendor", "협력업체 (지정한 메뉴만)"],
     ["admin", "시스템관리자"]];
   const vendorRowHTML = (u) => `
       <div class="form-row" id="row-vendor" ${u && u.role === "vendor" ? "" : 'style="display:none"'}>
-        <label>업체명 (협력업체 계정)</label>
-        <input id="f-uvendor" maxlength="30" value="${esc(u && u.vendor ? u.vendor : "")}" placeholder="예: ○○조업">
-        <div class="form-hint">협력업체 계정은 업체별로 허용된 메뉴(js/app.js VENDOR_ACCESS)만 접근합니다. 레코드 삭제는 항상 차단.${vendorScopeHint()}</div></div>`;
-  function vendorScopeHint() {
-    const acc = SeMIS.VENDOR_ACCESS || {};
-    const rows = Object.keys(acc).map(name => {
-      const a = acc[name] || {};
-      const names = (a.routes || []).map(r => {
-        const mn = D().menus.find(m => m && m.type === "module" && m.module === r);
-        return (mn && mn.label) || r;
-      }).concat((a.links || []).map(l => l.label));
-      return `<br>· ${esc(name)}: ${esc(names.join(" · "))} <b>${a.edit ? "[편집 가능]" : "[열람 전용]"}</b>`;
+        <label for="f-uvendor">업체명</label>
+        <input id="f-uvendor" maxlength="30" value="${esc(u && u.vendor ? u.vendor : "")}" placeholder="예: ○○조업"></div>`;
+
+  /* ── 메뉴 범위 — 계정마다 보이는 메뉴와 메뉴별 단계(숨김 · 열람 · 편집). 협력업체는 늘 지정(기본 홈만).
+     메뉴 목록은 지금 메뉴 자료에서 만든다 — 새 모듈 · 게시판 · 링크 메뉴도 자동으로 나온다(자료 대응은 js/scope.js) ── */
+  const SC_LV = [["", "숨김"], ["r", "열람"], ["w", "편집"]];
+  function scopeItems() {
+    const out = [];
+    const menus = SeMIS.sortedMenus();
+    const usable = (m) => m.type === "module" ? !(m.module === "dashboard" || m.module === "settings" || SeMIS.isPlannedMenu(m)) : (m.type === "board" || m.type === "link");
+    const add = (m, hub, sub) => out.push({ id: m.id, label: m.label, sub: sub || "", hub, kind: m.type === "module" ? "mod" : m.type, hidden: !!SeMIS.menuHidden(m) });
+    menus.filter(g => g.type === "group").forEach(g => {
+      menus.filter(m => m.type !== "group" && SeMIS.hubOf(m) === g.id).forEach(m => {
+        if (m.type === "bundle") menus.filter(x => x.type === "module" && x.parent === m.id && usable(x)).forEach(x => add(x, g, m.label));
+        else if (usable(m)) add(m, g);
+      });
     });
-    return rows.length ? rows.join("") : "<br>· 현재 등록된 업체 프리셋 없음 (기본: 대시보드만)";
+    const etc = { id: "_etc", label: "기타" };
+    menus.filter(m => m.type !== "group" && !m.parent && usable(m) && !out.some(x => x.id === m.id)).forEach(m => add(m, etc));
+    return out;
   }
-  function wireVendorRow() {
+  function scopeEditorHTML(u) {
+    const role = (u && u.role) || "user";
+    const sc = window.SemisScope ? SemisScope.norm(u && u.scope, role) : null;
+    const items = scopeItems();
+    const lvOf = (id) => (sc && sc.m && sc.m[id]) || "";
+    const seg = (id, cur, opts) => `<div class="seg sc-seg" role="group" aria-label="${esc(id)} 단계">${opts.map(([v, lb]) =>
+      `<button type="button" class="seg-btn" data-sc-id="${esc(id)}" data-v="${v}" aria-pressed="${cur === v}">${lb}</button>`).join("")}</div>`;
+    let hub = null, rows = "";
+    items.forEach(it => {
+      if (!hub || hub.id !== it.hub.id) {
+        hub = it.hub;
+        rows += `<div class="sc-hub" data-sc-hub="${esc(hub.id)}"><b>${esc(hub.label)}</b><span class="spacer"></span>
+          ${SC_LV.map(([v, lb]) => `<button type="button" class="link-btn" data-sc-bulk="${esc(hub.id)}" data-v="${v}">모두 ${lb}</button>`).join("")}</div>`;
+      }
+      const opts = it.kind === "link" ? [["", "숨김"], ["r", "보이기"]] : SC_LV;
+      rows += `<div class="sc-row" data-sc-row="${esc(it.id)}" data-sc-in="${esc(it.hub.id)}">
+        <span class="sc-name">${esc(it.label)}${it.sub ? ` <small>${esc(it.sub)}</small>` : ""}${it.kind === "board" ? ' <small>게시판</small>' : it.kind === "link" ? ' <small>외부 사이트</small>' : ""}${it.hidden ? ' <span class="badge badge-gray">숨긴 메뉴</span>' : ""}</span>
+        ${seg(it.id, lvOf(it.id), opts)}</div>`;
+    });
+    return `
+      <div class="form-row" id="row-scope"${role === "admin" ? ' style="display:none"' : ""}>
+        <label>메뉴 범위 ${SeMIS.ui.tip("지정하면 고른 메뉴만 보입니다. 열람 = 보기만 · 편집 = 그 메뉴 안에서 안전보안파트와 같은 편집(시스템 설정은 제외). 접수 카운터 · 아르고는 쓰지 않습니다.", "메뉴 범위 설명")}</label>
+        <div class="seg" role="group" aria-label="메뉴 범위">
+          <button type="button" class="seg-btn" data-sc-mode="all" aria-pressed="${!sc}"${role === "vendor" ? " disabled" : ""}>전체 메뉴 (권한대로)</button>
+          <button type="button" class="seg-btn" data-sc-mode="pick" aria-pressed="${!!sc}">지정 메뉴만</button>
+        </div>
+        <div class="sc-pick" id="sc-pick"${sc ? "" : " hidden"}>
+          <div class="sc-sum">보이는 메뉴 <b class="mono" id="sc-n">0</b>개</div>
+          <div class="sc-list">
+            <div class="sc-row sc-home" data-sc-row="dashboard"><span class="sc-name"><b>홈 (대시보드)</b></span>
+              ${seg("dashboard", sc && sc.home ? "r" : "", [["", "숨김"], ["r", "보이기"]])}</div>
+            ${rows}
+          </div>
+          <label class="sc-cf" id="sc-cf-row"${role === "vendor" ? "" : " hidden"}><input type="checkbox" id="sc-cf"${sc && sc.cf ? " checked" : ""}> 대외비(계약 · 구입가) 보기</label>
+        </div>
+      </div>`;
+  }
+  /* 창의 범위 편집 — 역할을 바꾸면 협력업체는 지정으로 고정, 시스템관리자는 범위 없음 */
+  function wireScopeEditor() {
+    const box = $("#modal-box");
     const sel = $("#f-urole");
-    if (!sel) return;
-    const upd = () => { $("#row-vendor").style.display = sel.value === "vendor" ? "" : "none"; };
-    sel.addEventListener("change", upd); upd();
+    const pick = $("#sc-pick"), row = $("#row-scope");
+    if (!box || !sel || !pick || !row) return;
+    const mode = () => (box.querySelector('[data-sc-mode="pick"]').getAttribute("aria-pressed") === "true" ? "pick" : "all");
+    const setMode = (m) => {
+      $$("[data-sc-mode]", box).forEach(b => b.setAttribute("aria-pressed", String(b.dataset.scMode === m)));
+      pick.hidden = m !== "pick";
+    };
+    const count = () => { const n = $$(".sc-seg .seg-btn[aria-pressed=true]", pick).filter(b => b.dataset.v).length; const el = $("#sc-n"); if (el) el.textContent = n; };
+    const setLv = (id, v) => $$('.seg-btn[data-sc-id="' + id + '"]', pick).forEach(b => b.setAttribute("aria-pressed", String(b.dataset.v === v)));
+    const upd = () => {
+      const role = sel.value;
+      $("#row-vendor").style.display = role === "vendor" ? "" : "none";
+      row.style.display = role === "admin" ? "none" : "";
+      const allB = box.querySelector('[data-sc-mode="all"]');
+      allB.disabled = role === "vendor";
+      if (role === "vendor") setMode("pick");
+      $("#sc-cf-row").hidden = role !== "vendor";
+    };
+    $$("[data-sc-mode]", box).forEach(b => { b.onclick = () => { if (!b.disabled) setMode(b.dataset.scMode); }; });
+    pick.addEventListener("click", (ev) => {
+      const b = ev.target.closest(".seg-btn[data-sc-id], [data-sc-bulk]");
+      if (!b) return;
+      if (b.dataset.scBulk) {
+        $$('[data-sc-in="' + b.dataset.scBulk + '"]', pick).forEach(r => {
+          const id = r.dataset.scRow;
+          const has = !!r.querySelector('.seg-btn[data-v="' + b.dataset.v + '"]');
+          setLv(id, has ? b.dataset.v : (b.dataset.v ? "r" : ""));
+        });
+      } else setLv(b.dataset.scId, b.dataset.v);
+      count();
+    });
+    sel.addEventListener("change", upd);
+    upd(); count();
+    scopeEditorState.read = () => {
+      const role = sel.value;
+      if (role === "admin" || (role !== "vendor" && mode() === "all")) return null;
+      const m = {};
+      $$(".sc-row", pick).forEach(r => {
+        const id = r.dataset.scRow;
+        if (id === "dashboard") return;
+        const on = r.querySelector(".seg-btn[aria-pressed=true]");
+        if (on && on.dataset.v) m[id] = on.dataset.v;
+      });
+      const hb = pick.querySelector(".sc-home .seg-btn[aria-pressed=true]");
+      const home = !!hb && hb.dataset.v === "r";
+      const out = { home, m };
+      if (role === "vendor") out.cf = !!($("#sc-cf") || {}).checked;
+      return out;
+    };
   }
+  const scopeEditorState = { read: () => null };
+  const scopeBadge = (u) => {
+    const sc = window.SemisScope ? SemisScope.norm(u.scope, u.role) : null;
+    return sc ? ` <span class="badge badge-amber" data-hint="메뉴 범위 — 지정한 메뉴만">메뉴 ${SemisScope.count(sc)}</span>` : "";
+  };
   /* 계정·암호는 서버 전용 표에만 있다. 이 화면은 시스템관리자 RPC로 읽고 바꾼다. */
   const USER_ERR = {
     forbidden: "시스템관리자만 할 수 있습니다.",
@@ -986,6 +1088,7 @@
     bad_name: "이름을 입력하세요(20자 이내).",
     bad_role: "권한을 선택하세요.",
     vendor: "업체명을 입력하세요.",
+    bad_scope: "메뉴 범위를 다시 확인하세요.",
     dup_id: "이미 있는 계정 ID입니다.",
     not_found: "계정을 찾을 수 없습니다.",
     self_role: "로그인 중인 본인 계정의 권한은 낮출 수 없습니다.",
@@ -1041,7 +1144,7 @@
       <tbody>${users.map((u, i) => `<tr>
         <td><b>${esc(u.id)}</b>${u.base ? ' <span style="font-size:.81rem;color:var(--text-3)">기본</span>' : ""}</td>
         <td>${esc(u.name)}${u.vendor ? ` <span class="badge badge-green">${esc(u.vendor)}</span>` : ""}</td>
-        <td><span class="badge ${ROLE_BADGE[u.role] || "badge-gray"}">${esc(SeMIS.ROLE_LABEL[u.role] || u.role)}</span></td>
+        <td><span class="badge ${ROLE_BADGE[u.role] || "badge-gray"}">${esc(SeMIS.ROLE_LABEL[u.role] || u.role)}</span>${scopeBadge(u)}</td>
         <td style="white-space:nowrap">${u.lastLoginAt ? esc(fmtStamp(u.lastLoginAt)) : "-"}${Number(u.sessions) ? ` <span class="badge badge-blue">접속 ${esc(String(u.sessions))}</span>` : ""}</td>
         <td>
           <button class="btn btn-ghost btn-sm" data-edit="${i}">수정</button>
@@ -1065,6 +1168,7 @@
     const lockRole = u.origId === "mark3464";
     openModal(`
       <h3>계정 수정 — ${esc(u.origId)}${u.base ? ' <span class="badge badge-gray">기본 계정</span>' : ""}</h3>
+      <div class="uf-form">
       <div class="form-grid">
         <div class="form-row"><label>계정 ID</label><input id="f-uid" maxlength="20" value="${esc(u.id)}"></div>
         <div class="form-row"><label>이름</label><input id="f-uname" maxlength="20" value="${esc(u.name)}"></div>
@@ -1074,11 +1178,13 @@
           ${ROLE_OPTS.map(([v, lb]) => `<option value="${v}" ${u.role === v ? "selected" : ""}>${lb}</option>`).join("")}
         </select></div>
       ${vendorRowHTML(u)}
+      ${scopeEditorHTML(u)}
+      </div>
       <div class="modal-actions">
         <button class="btn btn-ghost" id="f-cancel">취소</button>
         <button class="btn btn-primary" id="f-save">저장</button>
-      </div>`);
-    wireVendorRow();
+      </div>`, { wide: true });
+    wireScopeEditor();
     $("#f-cancel").onclick = closeModal;
     $("#f-save").onclick = async () => {
       const id = $("#f-uid").value.trim(), name = $("#f-uname").value.trim();
@@ -1088,7 +1194,7 @@
       if (!/^[A-Za-z0-9_-]{2,20}$/.test(id)) { toast(USER_ERR.bad_id, true); return; }
       if (!name) { toast(USER_ERR.bad_name, true); return; }
       const btn = $("#f-save"); if (btn) btn.disabled = true;
-      const r = await callAdmin("semis_logi_user_save", { p: { origId: u.origId, id, name, role, vendor } });
+      const r = await callAdmin("semis_logi_user_save", { p: { origId: u.origId, id, name, role, vendor, scope: scopeEditorState.read() } });
       if (btn) btn.disabled = false;
       if (!r.ok) { toast(userErr(r), true); return; }
       closeModal(); toast("계정 정보가 변경되었습니다."); loadUsers(); refreshSelf(u.origId);
@@ -1123,6 +1229,7 @@
   function userForm() {
     openModal(`
       <h3>사용자 추가</h3>
+      <div class="uf-form">
       <div class="form-grid">
         <div class="form-row"><label>계정 ID</label><input id="f-uid" maxlength="20" placeholder="영문/숫자"></div>
         <div class="form-row"><label>이름</label><input id="f-uname" maxlength="20" placeholder="표시 이름"></div>
@@ -1133,11 +1240,13 @@
         </select></div>
       ${vendorRowHTML(null)}
       <div class="form-row"><label>암호</label><input type="password" id="f-upw" autocomplete="new-password" maxlength="64" placeholder="8자 이상"></div>
+      ${scopeEditorHTML(null)}
+      </div>
       <div class="modal-actions">
         <button class="btn btn-ghost" id="f-cancel">취소</button>
         <button class="btn btn-primary" id="f-save">추가</button>
-      </div>`);
-    wireVendorRow();
+      </div>`, { wide: true });
+    wireScopeEditor();
     $("#f-cancel").onclick = closeModal;
     $("#f-save").onclick = async () => {
       const id = $("#f-uid").value.trim(), name = $("#f-uname").value.trim(), pw = $("#f-upw").value;
@@ -1148,7 +1257,7 @@
       if (role === "vendor" && !vendor) { toast("업체명을 입력하세요.", true); return; }
       if (pw.length < 8) { toast(USER_ERR.pw_short, true); return; }
       const btn = $("#f-save"); if (btn) btn.disabled = true;
-      const r = await callAdmin("semis_logi_user_save", { p: { id, name, role, vendor, pw } });
+      const r = await callAdmin("semis_logi_user_save", { p: { id, name, role, vendor, pw, scope: scopeEditorState.read() } });
       if (btn) btn.disabled = false;
       if (!r.ok) { toast(userErr(r), true); return; }
       closeModal(); toast("사용자가 추가되었습니다."); loadUsers();

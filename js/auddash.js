@@ -236,7 +236,7 @@
   /* 다가오는 점검 — ICNKF 수검(우리 팀이 받는 점검) · ICNKF 실행(우리 팀이 하는 점검) 두 구역.
      실행: 대상별 묶음 · 가까운 날짜 순 · 30일 안 강조 · 점검표 바로 가기 / 수검: 수검 대응 센터 일정 */
   const SOON = 30;
-  const canW = () => !!SeMIS.user && SeMIS.roleRank() >= 2 && SeMIS.user.role !== "vendor";
+  const canW = () => { const l = !!SeMIS.user && SeMIS.roleRank() >= 2 && SeMIS.user.role !== "vendor"; return SeMIS.mayWrite("seclog", l) || SeMIS.mayWrite("patrol", l); };
   const WD = ["일", "월", "화", "수", "목", "금", "토"];
   const wd = (iso) => WD[new Date(utc(iso)).getUTCDay()];
   const team = () => (SC() && SC().selfCfg ? SC().selfCfg().by : "인천화물팀");

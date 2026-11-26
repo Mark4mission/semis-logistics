@@ -94,7 +94,7 @@
   function lsSet(k, v) { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch (e) { /* 사생활 보호 창 */ } }
   const recorder = () => norm(lsGet(LS_BY)) || ((SeMIS.user && SeMIS.user.name) || "");
 
-  const canRun = () => SeMIS.roleRank() >= 2;
+  const canRun = () => SeMIS.mayWrite("threatRuns", SeMIS.roleRank() >= 2);
   const canW = () => SeMIS.canEdit();
   const routeNow = () => (typeof location !== "undefined" ? location.hash.replace(/^#\//, "") : "");
   function repaint() { if (routeNow() === MOD) SeMIS.renderView(); }

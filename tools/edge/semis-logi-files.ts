@@ -14,6 +14,7 @@
      op "copy" = desk/ 원본을 반영 대상 폴더로 복사(원본 열람 · 대상 폴더 올리기 등급 확인)
    - v1.59 접수 카운터 직원 접수: desk-in/ 폴더(올리기 1 = 내부 직원만 — 협력업체 · 서명 세션 제외, 열람 3).
      접수 줄은 비공개 표(tools/sql/semis-logi-desk-inbox.sql). desk-read · copy 는 desk/ · desk-in/ 원본 모두
+   - 범위 계정(메뉴 범위): semis_logi_file_auth() 가 rank 0 + fol(폴더별 [열람, 올리기] 등급)을 준다 — 폴더 판정은 fol, 등급만 보는 기능(desk-read · list · delete)은 막힘
    - 배포: Supabase MCP deploy_edge_function (verify_jwt false — 위의 세션 확인으로 대신). 이 파일이 원본. */
 
 const SUPA = Deno.env.get("SUPABASE_URL")!;
@@ -87,7 +88,8 @@ const DESK_SYSTEM = `당신은 항공화물터미널 안전보안 부서의 문�
 - audit.findings.type: 시정조치 car, 개선권고 rec, 현장시정 onsite, 관찰사항 obs.
 - summary · memo 에 전화번호 · 주민번호를 옮기지 않는다.`;
 
-type Who = { ok: boolean; kind?: string; rank?: number; role?: string; who?: string };
+/* fol = 범위 계정(시스템 설정 › 사용자 › 메뉴 범위)의 폴더별 [열람 등급, 올리기 등급] — 있으면 rank(0) 대신 이것으로 판정 */
+type Who = { ok: boolean; kind?: string; rank?: number; role?: string; who?: string; fol?: Record<string, number[]> };
 const STAFF = ["admin", "hq", "manager", "user"];
 
 function cors(origin: string): Record<string, string> {
@@ -129,7 +131,9 @@ async function whoAmI(req: Request): Promise<Who> {
     });
     if (!r.ok) return { ok: false };
     const d = await r.json();
-    return d && d.ok ? { ok: true, kind: String(d.kind), rank: Number(d.rank) || 0, role: String(d.role || ""), who: String(d.who || "") } : { ok: false };
+    if (!d || !d.ok) return { ok: false };
+    const fol = d.fol && typeof d.fol === "object" && !Array.isArray(d.fol) ? d.fol as Record<string, number[]> : undefined;
+    return { ok: true, kind: String(d.kind), rank: Number(d.rank) || 0, role: String(d.role || ""), who: String(d.who || ""), fol };
   } catch (_e) {
     return { ok: false };
   }
@@ -137,11 +141,13 @@ async function whoAmI(req: Request): Promise<Who> {
 function canRead(w: Who, path: string): boolean {
   const f = folderOf(path);
   if (w.kind === "signer") return f === "minutes-sign";
+  if (w.fol) return Number((w.fol[f] || [])[0] ?? 0) >= (READ_RANK[f] ?? DEFAULT_READ);
   return (w.rank ?? 0) >= (READ_RANK[f] ?? DEFAULT_READ);
 }
 function canWrite(w: Who, folder: string): boolean {
   if (w.kind === "signer") return folder === "minutes-sign";
-  if (folder === "desk-in" && (w.kind !== "user" || STAFF.indexOf(w.role || "") < 0)) return false;
+  if (folder === "desk-in" && (w.kind !== "user" || STAFF.indexOf(w.role || "") < 0 || w.fol)) return false;
+  if (w.fol) return Number((w.fol[folder] || [])[1] ?? 0) >= (WRITE_RANK[folder] ?? DEFAULT_WRITE);
   return (w.rank ?? 0) >= (WRITE_RANK[folder] ?? DEFAULT_WRITE);
 }
 const isDeskSrc = (p: string) => folderOf(p) === "desk" || folderOf(p) === "desk-in";

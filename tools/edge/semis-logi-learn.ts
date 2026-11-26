@@ -34,7 +34,7 @@ body 규칙:
 - 동영상 장면(시간 순 정지 화면)이 오면 화면에 보이는 제목 · 자막 · 글 · 도표 · 장면만 근거로 정리한다. 말소리는 알 수 없으니 짐작해서 채우지 않고, 읽을 내용이 적으면 짧게 쓴다.
 - 쉬운 말, 업무 용어는 그대로. 자료에 있는 사실만. 날짜 · 수치 · 조항은 자료 그대로. 전화번호 · 주민번호 · 개인 연락처는 옮기지 않는다.`;
 
-type Who = { ok: boolean; kind?: string; rank?: number };
+type Who = { ok: boolean; kind?: string; rank?: number; fol?: Record<string, number[]> };
 
 function cors(origin: string): Record<string, string> {
   const allow = ORIGINS.includes(origin) || LOCAL_RE.test(origin) ? origin : ORIGINS[0];
@@ -67,7 +67,9 @@ async function whoAmI(req: Request): Promise<Who> {
     });
     if (!r.ok) return { ok: false };
     const d = await r.json();
-    return d && d.ok ? { ok: true, kind: String(d.kind), rank: Number(d.rank) || 0 } : { ok: false };
+    if (!d || !d.ok) return { ok: false };
+    const fol = d.fol && typeof d.fol === "object" && !Array.isArray(d.fol) ? d.fol as Record<string, number[]> : undefined;
+    return { ok: true, kind: String(d.kind), rank: Number(d.rank) || 0, fol };
   } catch (_e) {
     return { ok: false };
   }
@@ -113,7 +115,9 @@ function pickJson(t: string): Record<string, unknown> | null {
 }
 
 async function summarize(w: Who, body: Record<string, unknown>, origin: string): Promise<Response> {
-  if (w.kind !== "user" || (w.rank ?? 0) < 3) return json({ ok: false, error: "forbidden" }, 403, origin);
+  /* 범위 계정은 교육 전파 · 서명 '편집'(learn 폴더 올리기 3)일 때만 */
+  const rk = w.fol ? Number((w.fol.learn || [])[1] ?? 0) : (w.rank ?? 0);
+  if (w.kind !== "user" || rk < 3) return json({ ok: false, error: "forbidden" }, 403, origin);
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY") || "";
   if (!apiKey) return json({ ok: false, error: "no_key" }, 200, origin);
   const name = str(body.name, 160);

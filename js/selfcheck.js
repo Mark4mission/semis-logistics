@@ -192,7 +192,7 @@
   }
   const dday = (due, t) => { if (!isISO(due)) return ""; const n = Math.round((Date.UTC(+due.slice(0, 4), +due.slice(5, 7) - 1, +due.slice(8, 10)) - Date.UTC(+t.slice(0, 4), +t.slice(5, 7) - 1, +t.slice(8, 10))) / 86400000); return n === 0 ? "오늘" : n > 0 ? "D-" + n : "지남 " + (-n) + "일"; };
   const touch = (r) => { r.updatedAt = new Date().toISOString(); r.updatedBy = me(); };
-  const canW = () => !!SeMIS.user && SeMIS.roleRank() >= 2 && SeMIS.user.role !== "vendor";
+  const canW = () => SeMIS.mayWrite("selfChecks", !!SeMIS.user && SeMIS.roleRank() >= 2 && SeMIS.user.role !== "vendor");
   const canDel = (r) => SeMIS.canEdit() || (!!r && !!SeMIS.user && (r.createdBy === me() && canW()));
   const remember = (k, v) => { try { if (v) localStorage.setItem(k, v); } catch (e) { /* 저장소 없음 */ } };
   const recall = (k) => { try { return localStorage.getItem(k) || ""; } catch (e) { return ""; } };

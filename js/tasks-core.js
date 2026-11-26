@@ -223,7 +223,14 @@
 
   /* ── 사람 · 권한 ── */
   /* 화면의 협력업체 등급은 편집 허용 업체면 3 이 되므로 등급만 보지 않는다(서버는 협력업체에 이 행을 주지 않음) */
-  const canUse = () => { const u = SeMIS.user; return !!u && u.role !== "vendor" && u.role !== "signer" && SeMIS.roleRank() >= 3; };
+  const canUse = () => {
+    const u = SeMIS.user;
+    if (!u || u.role === "signer") return false;
+    if (SeMIS.scoped && SeMIS.scoped()) return SeMIS.rankFor(SeMIS.menuForModule("tasks")) >= 3;   // 메뉴 범위 계정 = Task 관리 메뉴를 받았을 때
+    return u.role !== "vendor" && SeMIS.roleRank() >= 3;
+  };
+  /* 고치기 — 메뉴 범위 '열람'이면 보기만(서버도 저장을 막는다) */
+  const canEdit = () => canUse() && (!SeMIS.mayWrite || SeMIS.mayWrite("tasks", true));
   const me = () => { const u = SeMIS.user; return (u && u.name) || ""; };
   /* 인원 관리의 안전보안파트(떠난 사람 빼고 명단 순) */
   const rosterPart = () => {
@@ -272,7 +279,7 @@
 
   window.SemisTasks = {
     KEY, CFG: "taskCfg", CATS, CAT_ORDER, BUCKETS, NOTE_MAX, MEMBERS_MAX, list, catOf, norm, make, makeNote, stamp, parse, dueInfo,
-    canUse, canManage, me, meInPart, partPeople, rosterPart, cfgMembers, teamNames, personColor, splitNames, today, weekStart, dayOf, dayLabel, addDays,
+    canUse, canEdit, canManage, me, meInPart, partPeople, rosterPart, cfgMembers, teamNames, personColor, splitNames, today, weekStart, dayOf, dayLabel, addDays,
     setToday(iso) { fixedToday = isISO(iso) ? iso : ""; }
   };
 })();

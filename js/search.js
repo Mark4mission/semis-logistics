@@ -18,16 +18,15 @@ const SemisSearch = (() => {
     if (i >= 0) providers[i] = p; else providers.push(p);
   }
 
-  const isVendor = () => !!(S().user && S().user.role === "vendor");
-  function vendorRoutes() {
-    try { return S().vendorAccess(S().user).routes || []; } catch (e) { return []; }
-  }
+  const isScoped = () => !!(S().scoped && S().scoped());
   function canUseProvider(p) {
-    if (isVendor()) {
-      // 협력업체: 허용 라우트의 모듈만. 데이터 격리는 각 프로바이더의 격리 뷰가 맡는다.
-      // 대외비(minRank 3+)는 confid 없는 업체(제조사·기술지원)에 검색으로도 열지 않는다.
-      if (p.minRank >= 3 && S().canConfid && !S().canConfid()) return false;
-      return !!(p.module && vendorRoutes().indexOf(p.module) >= 0);
+    if (isScoped()) {
+      // 메뉴 범위 계정(협력업체 포함): 보이는 메뉴의 모듈만 · 등급은 그 메뉴 단계. 자료 자체는 서버가 범위 밖을 주지 않는다.
+      if ((p.id === "desk" || p.id === "argo") && !(S().supportOk && S().supportOk(p.id))) return false;
+      if (p.minRank >= 3 && S().user.role === "vendor" && !(S().scopeOf() || {}).cf) return false;
+      if (!p.module) return !p.minRank || S().roleRank() >= p.minRank;
+      const mn = (D().menus || []).find(m => m && m.type === "module" && m.module === p.module);
+      return !!mn && S().navVisible(mn) && (!p.minRank || S().rankFor(mn) >= p.minRank);
     }
     const rank = S().roleRank();
     if (p.minRank && rank < p.minRank) return false;
@@ -194,16 +193,9 @@ const SemisSearch = (() => {
     });
     const part = [];
 
-    /* 메뉴/링크는 검색 시점에 DATA.menus 를 직접 스캔. vendor는 허용 라우트 모듈 + vendorAccess.links 만 */
+    /* 메뉴/링크는 검색 시점에 DATA.menus 를 직접 스캔(보이는 메뉴만 — 메뉴 범위 계정은 받은 메뉴만) */
     const menuItems = [];
-    if (isVendor()) {
-      const routes = vendorRoutes();
-      S().sortedMenus().forEach(mn => {
-        if (!mn || mn.type !== "module" || routes.indexOf(mn.module) < 0) return;
-        menuItems.push({ title: mn.label, sub: "화면으로 이동", route: mn.module });
-      });
-      (S().vendorAccess(u).links || []).forEach(l => menuItems.push({ title: l.label, sub: "새 창으로 열기", text: [l.label, l.url], url: l.url }));
-    } else S().sortedMenus().forEach(mn => {
+    S().sortedMenus().forEach(mn => {
       if (!mn || mn.type === "group") return;
       if (!(S().navVisible ? S().navVisible(mn) : S().canSee(mn))) return;
       if (mn.type === "module" && mn.planned && !S().hasModule(mn.module) && !S().isAdmin()) return;   // 준비 중 메뉴는 시스템관리자만
@@ -334,7 +326,6 @@ const SemisSearch = (() => {
   /* 지금도 열 수 있는 화면만(권한 · 숨김이 바뀌었을 수 있다) */
   function routeOK(route) {
     const r = String(route || "");
-    if (isVendor()) return vendorRoutes().indexOf(r) >= 0;
     const bm = /^board\/(B\d{3})/.exec(r);
     if (bm) return !!S().canReadBoard(S().boardDef(bm[1]));
     if (/^(embed|links)\//.test(r)) { const mn = (D().menus || []).find(m => m && m.id === r.slice(6)); return !!mn && S().navVisible(mn); }
@@ -388,13 +379,6 @@ const SemisSearch = (() => {
   function homeItems() {
     const u = S().user, out = [];
     if (!u || u.role === "signer") return out;
-    if (isVendor()) {
-      vendorRoutes().forEach(r => {
-        const mn = S().menuForModule(r);
-        if (mn && !S().menuHidden(mn)) out.push({ group: "메뉴", title: mn.label, route: r, ico: "chevron" });
-      });
-      return out;
-    }
     (S().hubList ? S().hubList() : []).forEach(g => {
       S().hubEntries(g.id).forEach(m => {
         if (m.type === "bundle") {
@@ -463,7 +447,7 @@ const SemisSearch = (() => {
   }
   function homeHTML() {
     let html = "";
-    if (!isVendor()) {
+    if (!isScoped()) {
       const fv = favItems();
       if (fv.length) html += '<div class="sp-sec"><div class="sp-sec-h">자주 찾는 것</div><div class="sp-chips">' +
         fv.map(f => '<button type="button" class="sp-chip is-go" data-go="' + esc(f[0]) + '">' + esc(f[1]) + "</button>").join("") + "</div></div>";
@@ -479,7 +463,7 @@ const SemisSearch = (() => {
     const hm = homeItems();
     if (hm.length) {
       html += '<div class="sp-sec"><button type="button" class="sp-menus" data-menus aria-expanded="' + showMenus + '">' + S().icon(showMenus ? "chevup" : "chevdown", 16) + "<span>전체 메뉴 보기</span><small>" + hm.length + "</small></button></div>";
-      if (showMenus || (!ro.length && !rq.length && isVendor())) {
+      if (showMenus || (!ro.length && !rq.length && isScoped())) {
         let last = null;
         hm.forEach(it => {
           if (it.group !== last) { html += '<div class="sp-group">' + esc(it.group) + "</div>"; last = it.group; }

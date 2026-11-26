@@ -31,8 +31,10 @@
   const boards = () => (Array.isArray(D().boards) ? D().boards : []);
   const bdef = (id) => SeMIS.boardDef(id);
   const canRead = (b) => SeMIS.canReadBoard(b);
-  const canWrite = (b) => !!b && canRead(b) && rank() >= (RANK[b.write] || 3);
-  const manage = () => rank() >= 3;
+  /* 게시판별 쓰기 등급 — 메뉴 범위 계정은 그 게시판 메뉴의 단계(편집 = 안전보안파트) */
+  const wRank = (b) => (SeMIS.boardRank ? SeMIS.boardRank(b, true) : rank());
+  const canWrite = (b) => !!b && canRead(b) && wRank(b) >= (RANK[b.write] || 3);
+  const manage = (b) => (b ? wRank(b) : rank()) >= 3;
   const folder = (b) => "bbs" + (RANK[b.read] || 3);
   const pad = (n) => String(n).padStart(2, "0");
   function rpc(name, args) {
@@ -242,7 +244,7 @@
     box.removeAttribute("aria-busy");
     s.page = d.page;
     const rows = d.rows || [], pins = d.pins || [];
-    const mng = manage() && !SeMIS.isMobile();
+    const mng = manage(b) && !SeMIS.isMobile();
     const searching = !!(s.q || s.cat);
     const cols = (mng ? 1 : 0) + 4 + (b.opt.cat ? 1 : 0) + (b.view === "file" ? 1 : 0) + (b.opt.views ? 1 : 0);
     let body;
@@ -338,7 +340,7 @@
     return `<section class="card bb-cmts" aria-label="댓글">
       <h3 class="card-title">댓글 <span class="mono">${cm.length}</span></h3>
       ${cm.length ? `<ul class="bb-cl">${cm.map(c => `<li class="bb-c"><div class="bb-ch"><b>${esc(c.by)}</b><span class="mono cell-sub">${esc(fmt(c.at, true))}</span>
-          ${c.mine || manage() ? `<button type="button" class="mt-btn danger no-print" data-cdel="${esc(c.id)}" aria-label="댓글 삭제" title="삭제">${icon("trash", 14)}</button>` : ""}</div>
+          ${c.mine || manage(b) ? `<button type="button" class="mt-btn danger no-print" data-cdel="${esc(c.id)}" aria-label="댓글 삭제" title="삭제">${icon("trash", 14)}</button>` : ""}</div>
           <p>${esc(c.body).replace(/\n/g, "<br>")}</p></li>`).join("")}</ul>` : ""}
       ${d.can.comment ? `<form class="bb-cform no-print" id="bb-cf"><textarea id="bb-ct" rows="2" maxlength="2000" placeholder="댓글을 입력하세요" aria-label="댓글">${esc(drafts[d.post.id] || "")}</textarea>
         <button type="submit" class="btn btn-primary btn-sm">등록</button></form>` : ""}
@@ -438,7 +440,7 @@
     if (!post && !canWrite(b)) { toast("이 게시판에 글을 쓸 권한이 없습니다.", true); return; }
     let files = post && Array.isArray(post.files) ? post.files.slice() : [];
     let busy = 0;
-    const pinOk = b.opt.pin && manage() && !parent && !(post && post.depth);
+    const pinOk = b.opt.pin && manage(b) && !parent && !(post && post.depth);
     const title0 = post ? post.title : parent ? "Re: " + String(parent.title || "").replace(/^(Re:\s*)+/i, "") : "";
     openModal(`<h3>${post ? "글 수정" : parent ? "답글 쓰기" : "글쓰기"} <small class="au-mh">${esc(label(b))}</small></h3>
       <div class="bb-form">

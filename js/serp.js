@@ -100,7 +100,7 @@
   const recorder = () => norm(lsGet(LS_BY)) || ((SeMIS.user && SeMIS.user.name) || "");
   roleF = lsGet(LS_ROLE);
 
-  const canRun = () => SeMIS.roleRank() >= 2;
+  const canRun = () => SeMIS.mayWrite("serpRuns", SeMIS.roleRank() >= 2);
   const canW = () => SeMIS.canEdit();
   const routeNow = () => (typeof location !== "undefined" ? location.hash.replace(/^#\//, "") : "");
   function repaint() { if (routeNow() === MOD) SeMIS.renderView(); }

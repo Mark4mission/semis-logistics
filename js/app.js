@@ -3,7 +3,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.86.0";
+  const VERSION = "1.87.0";
   const APP_NAME = "H:drive";
   const APP_ALIAS = "ARGOS (Air-cargo Risk & Guard Operations System)";
   /* 데이터 캐시는 탭 sessionStorage 에만(탭 닫기·로그아웃 시 소멸). 화면 설정(LS_UI)만 localStorage */
@@ -25,28 +25,13 @@ const SeMIS = (() => {
      - hq:      안전보안파트원 — 시스템 설정 외 모든 기능(편집 포함)
      - manager: 화물팀 관리자·현장 감독자 — 관리 항목 열람, 편집 불가
      - user:    화물팀 직원·조업사 — 일반·안내 수준만 열람
-     - vendor:  협력업체 — 업체별 허용 라우트만 (VENDOR_ACCESS), edit:true면 그 안에서 hq 동등
-     - signer:  회의록 참석 서명 전용 세션 (QR / 6자리 코드) */
+     - vendor:  협력업체 — 늘 메뉴 범위 계정(범위를 정하지 않으면 홈만)
+     - signer:  회의록 참석 서명 전용 세션 (QR / 6자리 코드)
+     메뉴 범위(시스템 설정 › 사용자): 범위 계정은 고른 메뉴만 보이고, 메뉴마다 열람 · 편집 단계가 그 메뉴 안의 등급을 정한다
+     (편집 = 안전보안파트와 같음 — js/scope.js). 서버가 같은 표로 자료 · 파일을 막는다(tools/sql/semis-logi-scope.sql) */
   const ROLE_RANK  = { admin: 4, hq: 3, manager: 2, user: 1, vendor: 1, signer: 0 };
 
-  /* 협력업체(vendor) 접근 범위 — 업체명별 화이트리스트(없으면 VENDOR_DEFAULT)
-     예) "○○조업": { routes: ["contacts"], links: [], edit: false, confid: false } */
-  const VENDOR_ACCESS = {};
-  const VENDOR_DEFAULT = { routes: ["dashboard"], links: [], edit: false, confid: false };
-  const normVendorKey = (s) => String(s || "").replace(/[\s㈜()]|주식회사/g, "").toLowerCase();
-  function vendorAccess(u) {
-    const raw = String((u && u.vendor) || "").trim();
-    let a = VENDOR_ACCESS[raw];
-    if (!a && raw) {
-      const key = Object.keys(VENDOR_ACCESS).find(k => normVendorKey(k) === normVendorKey(raw));
-      if (key) a = VENDOR_ACCESS[key];
-    }
-    a = a || VENDOR_DEFAULT;
-    const routes = (a.routes || []).slice();
-    if (!routes.length) routes.push("dashboard");
-    return { routes, links: (a.links || []).slice(), edit: !!a.edit, confid: a.confid !== false };
-  }
-  function vendorHome(u) { return vendorAccess(u).routes[0]; }
+  const SCOPE = () => (typeof window !== "undefined" && window.SemisScope) || null;
   const VIS_LABEL  = { all: "전체", mgr: "관리자 이상", hq: "안전보안파트 이상", admin: "시스템관리자" };
 
   /* ── 국가 항공보안등급(5단계) — 화물터미널도 동일 체계 ── */
@@ -219,7 +204,9 @@ const SeMIS = (() => {
   function boardDef(id) { return (DATA && Array.isArray(DATA.boards) ? DATA.boards : []).find(b => b.id === id) || null; }
   /* 게시판 메뉴 노출 — 게시판 읽기 권한 그대로(협력업체 · 서명 세션은 게시판 없음) */
   function canReadBoard(b) {
-    if (!b || !currentUser || currentUser.role === "vendor" || currentUser.role === "signer") return false;
+    if (!b || !currentUser || currentUser.role === "signer") return false;
+    if (scoped()) return boardRank(b, false) >= (BBS_RANK[b.read] || 3);
+    if (currentUser.role === "vendor") return false;
     return roleRank() >= (BBS_RANK[b.read] || 3);
   }
   const boardRoute = (m) => "board/" + (m && m.board);
@@ -737,8 +724,9 @@ const SeMIS = (() => {
     if (!u) return null;
     if (d.kind === "signer" || u.role === "signer")
       return { id: "__signer__", name: u.name || "회의록 참석 서명", role: "signer", signMinuteId: u.signMinuteId || "" };
+    const role = ROLE_RANK[u.role] != null && u.role !== "signer" ? u.role : "user";
     return { id: String(u.id || ""), origId: String(u.origId || u.id || ""), name: String(u.name || u.id || ""),
-             role: ROLE_RANK[u.role] != null && u.role !== "signer" ? u.role : "user", vendor: String(u.vendor || ""), base: !!u.base };
+             role, vendor: String(u.vendor || ""), base: !!u.base, scope: SCOPE() ? SCOPE().norm(u.scope, role) : null };
   }
   const ownerOf = (u) => u ? (u.role === "signer" ? "signer:" + u.signMinuteId : "user:" + u.origId) : "";
   /* 다른 계정의 캐시는 쓰지 않는다 · 읽을 권한이 없는 컬렉션은 기본값으로 비운다 */
@@ -861,8 +849,9 @@ const SeMIS = (() => {
   function sessionUpdated(d) {
     const u = userFrom(d);
     if (!u || !currentUser || u.role === "signer") return;
-    if (u.role === currentUser.role && u.name === currentUser.name && u.id === currentUser.id) return;
-    const roleChanged = u.role !== currentUser.role;
+    const scopeChanged = JSON.stringify(u.scope || null) !== JSON.stringify(currentUser.scope || null);
+    if (u.role === currentUser.role && u.name === currentUser.name && u.id === currentUser.id && !scopeChanged) return;
+    const roleChanged = u.role !== currentUser.role || scopeChanged;
     currentUser = u;
     if (roleChanged) {
       claimCache(u);
@@ -881,27 +870,89 @@ const SeMIS = (() => {
     return u;
   }
   const isAdmin = () => currentUser && currentUser.role === "admin";
-  const roleRank = () => {
+  const baseRank = () => {
     if (!currentUser) return 0;
-    if (currentUser.role === "vendor") return vendorAccess(currentUser).edit ? 3 : 1;
     const r = ROLE_RANK[currentUser.role];
     return (r == null) ? 1 : r;
   };
-  const canEdit = () => roleRank() >= 3;                 // 편집: 안전보안파트(hq) 이상
+  /* ── 메뉴 범위(범위 계정) — 자료 · 파일은 서버가 같은 표로 막고, 화면은 메뉴 노출 · 등급 · 편집 단추를 맞춘다 ── */
+  const scopeOf = () => (currentUser && currentUser.scope) || null;
+  const scoped = () => !!scopeOf();
+  /* 범위 판정 메뉴 id — 링크 묶음 아래 링크는 묶음을 따른다 */
+  function scopeIdOf(menu) {
+    let m = menu;
+    for (let i = 0; m && m.type === "link" && m.parent && i < 4; i++) {
+      const p = DATA.menus.find(x => x && x.id === m.parent);
+      if (!p || p.type !== "link") break;
+      m = p;
+    }
+    return m ? m.id : "";
+  }
+  function menuLevel(menu) { const s = scopeOf(); return s && menu ? SCOPE().level(s, scopeIdOf(menu)) : null; }
+  /* 지금 화면이 모듈 메뉴면 그 메뉴 id(대시보드 포함) */
+  function routeScopeId() {
+    const rt = currentRoute();
+    if (rt === "dashboard") return "dashboard";
+    const mn = DATA && Array.isArray(DATA.menus) ? menuForModule(rt) : null;
+    return mn ? mn.id : "";
+  }
+  /* 범위 계정의 등급 = 지금 화면 메뉴의 단계(편집 3 · 열람 = 보기 수준). 대시보드 · 허브 홈 · 게시판처럼 모듈 메뉴가 아니면 받은 메뉴 중 가장 높은 열람 수준 */
+  function scopedRank() {
+    const s = scopeOf(), S = SCOPE(), base = baseRank(), id = routeScopeId();
+    if (id && id !== "dashboard") { const l = S.level(s, id); if (l) return S.eff(id, l, base); }
+    let best = 1;
+    S.levels(s).forEach(([mid]) => { if (mid !== "*" && S.MAP[mid]) best = Math.max(best, S.eff(mid, "r", base)); });
+    return best;
+  }
+  const roleRank = () => {
+    if (!currentUser) return 0;
+    return scoped() ? scopedRank() : baseRank();
+  };
+  /* 편집: 안전보안파트(hq) 이상 · 범위 계정은 지금 화면 메뉴가 '편집'일 때 */
+  const canEdit = () => {
+    if (scoped()) { const id = routeScopeId(); return !!id && id !== "dashboard" && SCOPE().level(scopeOf(), id) === "w"; }
+    return roleRank() >= 3;
+  };
   const canDelete = () => canEdit() && !(currentUser && currentUser.role === "vendor"); // 삭제: 내부 계정만
   const canConfid = () => {                               // 대외비(계약·비용 등)
     if (roleRank() < 3) return false;
-    if (currentUser && currentUser.role === "vendor") return vendorAccess(currentUser).confid;
+    if (scoped() && currentUser.role === "vendor") return !!scopeOf().cf;
     return true;
   };
+  /* 공용 DB 행 쓰기 — 범위 계정은 서버가 준 행 판정표, 아니면 화면 규칙(legacy) 그대로 */
+  function mayWrite(key, legacy) {
+    if (!scoped()) return !!legacy;
+    const S = typeof window !== "undefined" && window.SemisSync;
+    return !!(S && S.canWrite && S.canWrite(key));
+  }
+  /* 그 메뉴 안의 등급(범위 밖 -1) — 검색처럼 다른 화면에서 메뉴별로 따질 때 */
+  function rankFor(menu) {
+    if (!scoped()) return baseRank();
+    const l = menuLevel(menu);
+    return l ? SCOPE().eff(scopeIdOf(menu), l, baseRank()) : -1;
+  }
+  /* 게시판 읽기 · 쓰기 등급 — 범위 계정은 그 게시판을 가리키는 메뉴의 단계(서버 bbs_rr · bbs_rw 와 같음) */
+  function boardRank(b, write) {
+    if (scoped()) return SCOPE().boardRanks(scopeOf(), DATA.menus, b)[write ? 1 : 0];
+    return roleRank();
+  }
   /* 회의록 참석자 예외 — 등급이 모자라도 본인이 참석·작성한 회의가 있으면 진입 허용 */
   function minutesAttendee(menu) {
-    if (menu.module !== "minutes" || !currentUser) return false;
+    if (menu.module !== "minutes" || !currentUser || scoped()) return false;
     if (currentUser.role === "vendor" || currentUser.role === "signer") return false;
     if (typeof window === "undefined" || !window.SemisMinutes) return false;
     try { return window.SemisMinutes.visibleAll().length > 0; } catch (e) { return false; }
   }
+  function scopedSee(menu) {
+    if (menu.type === "group" || menu.type === "bundle") return true;   // 안에 보이는 화면이 있을 때만 — hubList · navVisible
+    if (menu.type === "board") return !!menuLevel(menu) && canReadBoard(boardDef(menu.board));
+    if (menu.type === "module" && menu.module === "dashboard") return !!scopeOf().home;
+    if (menu.type === "module" && (menu.module === "settings" || isPlannedMenu(menu))) return false;
+    return !!menuLevel(menu);
+  }
   function canSee(menu) {
+    if (!menu) return false;
+    if (scoped()) return scopedSee(menu);
     if (menu.type === "board") return canReadBoard(boardDef(menu.board));
     const vis = menu.vis || "all";
     if (vis === "all") return true;
@@ -1105,7 +1156,7 @@ const SeMIS = (() => {
   function supportOk(id) {
     const role = currentUser && currentUser.role;
     if (!currentUser || role === "signer") return false;
-    const internal = role !== "vendor";
+    const internal = role !== "vendor" && !scoped();
     if (id === "search") return true;
     if (id === "desk") return internal && roleRank() >= 1 && !!support.desk && !(support.desk.ok && !support.desk.ok());
     if (id === "argo") return internal && hasModule("argo");
@@ -1246,6 +1297,24 @@ const SeMIS = (() => {
     if (hub) view.setAttribute("data-hub", hub.id); else view.removeAttribute("data-hub");
   }
 
+  /* 첫 화면 — 홈(대시보드)이 없는 범위 계정은 메뉴 순서의 첫 화면(모듈 · 게시판) */
+  function homeRoute() {
+    if (!scoped() || scopeOf().home) return "dashboard";
+    const m = sortedMenus().find(x => ((x.type === "module" && isLive(x) && x.module !== "dashboard") || x.type === "board") && navVisible(x));
+    return m ? (m.type === "board" ? boardRoute(m) : m.module) : "";
+  }
+  /* 홈 없는 범위 계정이 대시보드 · 권한 밖 화면으로 오면 첫 화면으로(주소도 바꿈). 처리했으면 true */
+  function redirectHome(view) {
+    if (!scoped() || scopeOf().home) return false;
+    const hr = homeRoute();
+    if (hr && hr !== currentRoute()) {
+      try { history.replaceState(null, "", "#/" + hr); } catch (e) { /* 주소만 못 바꿈 */ }
+      if (currentRoute() === hr) { renderViewNow(); return true; }
+    }
+    view.innerHTML = '<div class="empty">볼 수 있는 메뉴가 없습니다. 시스템관리자에게 문의하세요.</div>';
+    renderSubtabs(""); highlightNav(""); closeSidebar();
+    return true;
+  }
   /* 화면을 다시 그린 뒤(원격 변경 · 권한 변경 등) — 열린 패널도 따라 그리게 */
   const viewHooks = [];
   function onRerender(fn) { if (typeof fn === "function") viewHooks.push(fn); }
@@ -1266,19 +1335,8 @@ const SeMIS = (() => {
     if (route !== lastViewRoute) { lastViewRoute = route; mEditRoute = ""; view.classList.remove("m-editing"); }   // 화면을 옮기면 편집 모드 끔
     view.innerHTML = "";
     applyViewWidth(view, route);
-    markHub(view, currentUser && (currentUser.role === "vendor" || currentUser.role === "signer") ? "" : route);
-    if (currentUser && currentUser.role === "vendor") {
-      const allow = vendorAccess(currentUser).routes;
-      if (allow.indexOf(route) < 0) route = vendorHome(currentUser);
-      applyViewWidth(view, route);
-      const def = modules[route] || modules.dashboard;
-      renderSubtabs("");
-      def.render(view);
-      attachPrintBtn(view, route);
-      highlightNav(route);
-      closeSidebar();
-      return;
-    }
+    markHub(view, currentUser && currentUser.role === "signer" ? "" : route);
+    if (route === "dashboard" && redirectHome(view)) return;
     if (currentUser && currentUser.role === "signer") {
       view.classList.remove("view-wide"); view.classList.remove("view-mid");
       const def = modules.minutes || modules.dashboard;
@@ -1299,6 +1357,7 @@ const SeMIS = (() => {
       const hid = route.slice(4);
       if (!window.SemisHub || !hubList().some(g => g.id === hid)) {
         toast("이 허브를 볼 수 없습니다.", true);
+        if (redirectHome(view)) return;
         markHub(view, "dashboard");
         modules.dashboard.render(view);
       } else window.SemisHub.render(view, hid);
@@ -1307,6 +1366,7 @@ const SeMIS = (() => {
       const bd = boardDef(boardIdOf(route));
       if (!bd || !canReadBoard(bd) || !window.SemisBoard) {
         toast(bd ? "접근 권한이 없습니다." : "게시판을 찾을 수 없습니다.", true);
+        if (redirectHome(view)) return;
         markHub(view, "dashboard");
         modules.dashboard.render(view);
       } else window.SemisBoard.render(view, route.slice(6));
@@ -1315,7 +1375,11 @@ const SeMIS = (() => {
       const menu = menuForModule(route);
       const denied = !!menu && !canSee(menu);
       renderSubtabs(denied ? "" : route);
-      if (denied) { toast("접근 권한이 없습니다.", true); def = modules.dashboard; markHub(view, "dashboard"); }
+      if (denied) {
+        toast("접근 권한이 없습니다.", true);
+        if (redirectHome(view)) return;
+        def = modules.dashboard; markHub(view, "dashboard");
+      }
       else if (!def && menu && menu.type === "module") {
         // 예정 모듈 — 모듈 js가 아직 없으면 안내 화면
         renderPlannedView(view, menu);
@@ -1324,7 +1388,10 @@ const SeMIS = (() => {
         closeSidebar();
         return;
       }
-      if (!def) { def = modules.dashboard; markHub(view, "dashboard"); }
+      if (!def) {
+        if (redirectHome(view)) return;
+        def = modules.dashboard; markHub(view, "dashboard");
+      }
       def.render(view);
     }
     attachPrintBtn(view, route);
@@ -1377,6 +1444,7 @@ const SeMIS = (() => {
     const mn = DATA.menus.find(m => m && m.id === id && m.type === "link");
     if (!mn || !canSee(mn)) {
       toast(mn ? "접근 권한이 없습니다." : "메뉴를 찾을 수 없습니다.", true);
+      if (redirectHome(root)) return;
       modules.dashboard.render(root);
       return;
     }
@@ -1433,6 +1501,7 @@ const SeMIS = (() => {
     const mn = DATA.menus.find(m => m && m.id === id && m.type === "link");
     if (!mn || !canSee(mn)) {
       toast(mn ? "접근 권한이 없습니다." : "메뉴를 찾을 수 없습니다.", true);
+      if (redirectHome(root)) return;
       modules.dashboard.render(root);
       return;
     }
@@ -1649,27 +1718,14 @@ const SeMIS = (() => {
     const appEl = $("#app");
     const role = currentUser && currentUser.role;
     if (appEl) {
-      appEl.classList.toggle("nav-lite", role === "vendor" || role === "signer");
+      appEl.classList.toggle("nav-lite", role === "signer");
       appEl.classList.toggle("nav-signer", role === "signer");
       /* 메뉴 패널 — 처음에는 화물팀 관리자 · 일반사용자는 접은 채로(핵심 3종은 상단바), 펼치면 그 설정을 기억 */
       const pc = navPrefs().panelCollapsed;
-      appEl.classList.toggle("panel-collapsed", (typeof pc === "boolean" ? pc : roleRank() <= 2) && role !== "vendor" && role !== "signer");
+      appEl.classList.toggle("panel-collapsed", (typeof pc === "boolean" ? pc : !scoped() && baseRank() <= 2) && role !== "signer");
     }
     let html = "";
-    if (role === "vendor") {
-      const acc = vendorAccess(currentUser);
-      html = '<section class="hub on" data-hub="_lite" aria-label="메뉴"><div class="hub-head"><span class="hub-ico">' + icon("grid", 18) +
-        '</span><h2 class="hub-title">메뉴</h2></div><div class="hub-items">' +
-        acc.routes.map(r => {
-          const mn = menuForModule(r);
-          if (mn && menuHidden(mn)) return "";
-          return '<button type="button" class="nav-item" data-route="' + esc(r) + '"><span class="nav-lbl">' + esc((mn && mn.label) || r) + '</span></button>';
-        }).join("") +
-        acc.links.map(l => '<a class="nav-item nav-link" href="' + esc(l.url) + '" target="_blank" rel="noopener"><span class="nav-lbl">' +
-          esc(l.label) + '</span><span class="ext-mark">' + icon("external", 15) + '</span></a>').join("") +
-        '</div></section>';
-      activeHub = "_lite";
-    } else if (role === "signer") {
+    if (role === "signer") {
       html = '<section class="hub on" data-hub="_lite" aria-label="메뉴"><div class="hub-items">' +
         '<button type="button" class="nav-item active" data-route="minutes"><span class="nav-lbl">회의록 · 참석 서명</span></button></div></section>';
       activeHub = "_lite";
@@ -1802,12 +1858,6 @@ const SeMIS = (() => {
     const role = currentUser && currentUser.role;
     if (role === "signer") return null;
     if (t.sup) return supportOk(t.sup) ? "#" + t.sup : null;
-    if (role === "vendor") {
-      const routes = vendorAccess(currentUser).routes;
-      if (t.route) return routes.indexOf(t.route) >= 0 ? t.route : null;
-      const first = hubEntries(t.hub).find(m => isLive(m) && routes.indexOf(m.module) >= 0);
-      return first ? first.module : null;
-    }
     if (t.route) { const mn = menuForModule(t.route); return mn && navVisible(mn) ? t.route : null; }
     const first = hubEntries(t.hub).find(isLive);
     return first ? first.module : null;
@@ -1862,7 +1912,7 @@ const SeMIS = (() => {
     $$(".tab-btn[data-route]").forEach(el => {
       el.classList.toggle("active", el.dataset.route === route || (!!el.dataset.hub && el.dataset.hub === hub));
     });
-    if (role !== "vendor" && role !== "signer") {
+    if (role !== "signer") {
       if (hub && $('#nav-menu .hub[data-hub="' + hub + '"]')) activeHub = hub;
       $$("#rail-hubs .rail-btn").forEach(b => b.classList.toggle("cur", b.dataset.hub === hub));
     }
@@ -1925,7 +1975,7 @@ const SeMIS = (() => {
       toast(currentUser.role === "signer" ? "서명 화면입니다. 본인 이름을 찾아 서명해 주세요." : currentUser.name + "님, 환영합니다.");
     /* 처음 쓰는 계정은 핵심 3종 안내(테스트 환경 jsdom 은 제외) */
     const dom = typeof navigator !== "undefined" && /jsdom/i.test(navigator.userAgent || "");
-    if (currentUser && currentUser.role !== "signer" && currentUser.role !== "vendor" && !dom && !navPrefs().tourDone)
+    if (currentUser && currentUser.role !== "signer" && !scoped() && !dom && !navPrefs().tourDone)
       setTimeout(() => { if (!document.getElementById("tour")) startTour(false); }, 900);
   }
   function setLoginBusy(on, msg) {
@@ -2792,7 +2842,7 @@ const SeMIS = (() => {
     assignees, seedAssignees,
     get user() { return currentUser; },
     allUsers, isAdmin, roleRank, canEdit, canDelete, canConfid, canSee, navVisible, menuHidden, canHide,
-    VENDOR_ACCESS, vendorAccess, vendorHome,
+    scoped, scopeOf, baseRank, menuLevel, rankFor, mayWrite, boardRank, homeRoute,
     signCodeFor, signCodeFromHash, signUrlFor, signSubmit,
     setAccounts, sessionLost, sessionUpdated, devSession, restoreSession, login, enterApp,
     renderNav, renderHeader, renderSecBadge, renderView, renderPlannedView,

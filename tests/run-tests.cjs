@@ -12,7 +12,7 @@ const { JSDOM, VirtualConsole } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
-const FILES = ["js/loginguard.js", "js/app.js", "js/argo-owl.js", "js/panel.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/preview.js", "js/preview-draw.js", "js/preview-cfb.js", "js/preview-xls.js", "js/preview-hwp.js", "js/docshelf.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/tasks-core.js", "js/tasks.js", "js/board.js", "js/cares.js", "js/hazfind.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/contracts.js", "js/partners.js", "js/kcra.js", "js/seccases.js", "js/dissem.js", "js/roster.js", "js/learn-md.js", "js/learn.js", "js/scrstats.js", "js/usrescreen.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/docread.js", "js/desk.js", "js/argo.js", "js/selfcheck.js", "js/auddash.js", "js/hubhome.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
+const FILES = ["js/loginguard.js", "js/scope.js", "js/app.js", "js/argo-owl.js", "js/panel.js", "js/qr.js", "js/hero3d.js", "js/modules.js", "js/shortcuts.js", "js/files.js", "js/preview.js", "js/preview-draw.js", "js/preview-cfb.js", "js/preview-xls.js", "js/preview-hwp.js", "js/docshelf.js", "js/calendar.js", "js/minutes.js", "js/contacts.js", "js/flowpdf.js", "js/vault.js", "js/regulations.js", "js/search.js", "js/tasks-core.js", "js/tasks.js", "js/board.js", "js/cares.js", "js/hazfind.js", "js/screening.js", "js/equipment.js", "js/secpost.js", "js/secdash.js", "js/crisis.js", "js/serp.js", "js/threat.js", "js/phonebook.js", "js/contracts.js", "js/partners.js", "js/kcra.js", "js/seccases.js", "js/dissem.js", "js/roster.js", "js/learn-md.js", "js/learn.js", "js/scrstats.js", "js/usrescreen.js", "js/audit.js", "js/training.js", "js/seclog.js", "js/patrol.js", "js/hwpx.js", "js/nasforms.js", "js/docread.js", "js/desk.js", "js/argo.js", "js/selfcheck.js", "js/auddash.js", "js/hubhome.js", "js/flightcore.js", "js/flightops.js", "js/sync.js", "js/pow.js", "js/fileauth.js"];
 const ALL_JS = FILES.map(f => read(f)).join("\n;\n");
 const HTML = read("index.html").replace(/<script[\s\S]*?<\/script>/g, "");
 
@@ -73,17 +73,28 @@ const ACL = (() => {
 })();
 const RANK = { admin: 4, hq: 3, manager: 2, user: 1, vendor: 1 };
 function signCodeOf(id) { let h = 5381; for (let i = 0; i < id.length; i++) h = ((h * 33) ^ id.charCodeAt(i)) >>> 0; return String(100000 + (h % 900000)); }
-function sessPayload(role, id) {
+/* 메뉴 범위(js/scope.js) — 서버 session_payload 처럼 범위 계정은 행 판정표를 등급 모양([0|9, 0|9])으로 */
+const SCOPE = require(path.join(ROOT, "js/scope.js"));
+function scopeAcl(role, scope) {
+  const sc = SCOPE.norm(scope, role);
+  if (!sc) return null;
+  const a = SCOPE.acl(sc, RANK[role], ACL);
+  return Object.fromEntries(Object.keys(a).map(k => [k, [a[k][0] ? 0 : 9, a[k][1] ? 0 : 9]]));
+}
+function sessPayload(role, id, scope) {
   const uid = id || "tester";
-  return { ok: true, kind: "user", rank: RANK[role], acl: ACL, def: [2, 3],
-    user: { id: uid, origId: uid, name: "T" + role, role, vendor: role === "vendor" ? "○○조업" : "", base: false } };
+  const sc = SCOPE.norm(scope, role), sa = scopeAcl(role, scope);
+  return { ok: true, kind: "user", rank: RANK[role], acl: sa || ACL, def: sa ? [9, 9] : [2, 3],
+    user: { id: uid, origId: uid, name: "T" + role, role, vendor: role === "vendor" ? "○○조업" : "", base: false, scope: sc } };
 }
 /* 서버 없이 세션만 세운다(계정별 캐시 정리 없음 — 한 화면에서 권한만 바꿔 보는 테스트용) */
 function loginAs(env, role, opts) {
-  const u = env.S.devSession(sessPayload(role, opts && opts.id), opts && opts.token, { keep: !(opts && opts.fresh) });
+  const u = env.S.devSession(sessPayload(role, opts && opts.id, opts && opts.scope), opts && opts.token, { keep: !(opts && opts.fresh) });
   if (!u || u.role !== role) throw new Error("test login failed");
   return u;
 }
+/* 메뉴 범위 계정으로 */
+const scopedAs = (env, role, scope, opts) => loginAs(env, role, Object.assign({}, opts || {}, { scope }));
 function submitLogin(env, pw) {
   const { w } = env;
   w.document.querySelector("#login-pw").value = pw;
@@ -284,9 +295,12 @@ function makeServer(opts = {}) {
   function payload(s) {
     if (s.kind === "signer") return { kind: "signer", user: { id: "__signer__", name: "회의록 참석 서명", role: "signer", signMinuteId: s.minute }, minute: signView(s.minute) };
     const a = accOf(s);
-    return { kind: "user", rank: RANK[a.role], acl: ACL, def: [2, 3],
-      user: { id: a.login, origId: a.id, name: a.name, role: a.role, vendor: a.vendor || "", base: !!a.base } };
+    const sa = scopeAcl(a.role, a.scope);
+    return { kind: "user", rank: RANK[a.role], acl: sa || ACL, def: sa ? [9, 9] : [2, 3],
+      user: { id: a.login, origId: a.id, name: a.name, role: a.role, vendor: a.vendor || "", base: !!a.base, scope: SCOPE.norm(a.scope, a.role) } };
   }
+  /* 서버 정책 흉내 — 범위 계정은 행 판정표, 아니면 등급 */
+  const rowOk = (s, key, w) => { const a = accOf(s); const sa = a && scopeAcl(a.role, a.scope); return sa ? (sa[key] || [9, 9])[w ? 1 : 0] === 0 : rankOf(s) >= acl(key)[w ? 1 : 0]; };
   const isAdmin = (o) => rankOf(sessOf(o)) >= 4;
   const rpc = {
     semis_logi_challenge() { return { ok: true, c: "0".repeat(32) + "." + (Math.floor(Date.now() / 1000) + 120) + ".1.sig" + (++seq), d: 1 }; },
@@ -312,7 +326,7 @@ function makeServer(opts = {}) {
     semis_logi_logout(b, o) { delete srv.sessions[tokOf(o)]; return { ok: true }; },
     semis_logi_users(b, o) {
       if (!isAdmin(o)) return { ok: false, error: "forbidden" };
-      return { ok: true, users: srv.accounts.map(a => ({ id: a.login, origId: a.id, name: a.name, role: a.role, vendor: a.vendor || "",
+      return { ok: true, users: srv.accounts.map(a => ({ id: a.login, origId: a.id, name: a.name, role: a.role, vendor: a.vendor || "", scope: SCOPE.norm(a.scope, a.role),
         base: !!a.base, disabled: false, lastLoginAt: null, sessions: Object.values(srv.sessions).filter(s => s.acc === a.id).length })) };
     },
     semis_logi_user_save(b, o) {
@@ -323,12 +337,13 @@ function makeServer(opts = {}) {
         if (srv.accounts.some(a => a.login === p.id || a.id === p.id)) return { ok: false, error: "dup_id" };
         if (!p.pw || p.pw.length < 8) return { ok: false, error: "pw_short" };
         if (srv.accounts.some(a => a.pw === p.pw)) return { ok: false, error: "pw_in_use" };
-        srv.accounts.push({ id: p.id, login: p.id, name: p.name, role: p.role, vendor: p.vendor || "", pw: p.pw, base: false });
+        srv.accounts.push({ id: p.id, login: p.id, name: p.name, role: p.role, vendor: p.vendor || "", pw: p.pw, base: false, scope: SCOPE.norm(p.scope, p.role) });
         return { ok: true };
       }
       const a = srv.accounts.find(x => x.id === p.origId);
       if (!a) return { ok: false, error: "not_found" };
       a.login = p.id; a.name = p.name; a.role = a.id === "mark3464" ? "admin" : p.role; a.vendor = p.vendor || "";
+      a.scope = SCOPE.norm("scope" in p ? p.scope : a.scope, a.role);
       return { ok: true };
     },
     semis_logi_user_delete(b, o) {
@@ -407,7 +422,7 @@ function makeServer(opts = {}) {
     if (u.indexOf("/rest/v1/semis_logi_store") >= 0) {
       const s = sessOf(o), r = rankOf(s);
       if (method === "GET") {
-        let rows = srv.rows.filter(x => r >= acl(x.key)[0]);
+        let rows = srv.rows.filter(x => rowOk(s, x.key, false));
         const kin = /[?&]key=in\.\(([^)]*)\)/.exec(u);
         if (kin) { const ks = kin[1].split(",").map(decodeURIComponent); rows = rows.filter(x => ks.indexOf(x.key) >= 0); }
         const k1 = /[?&]key=eq\.([^&]+)/.exec(u);
@@ -417,7 +432,7 @@ function makeServer(opts = {}) {
       }
       if (method === "POST") {
         const rows = body || [];
-        if (srv.forceDeny || rows.some(x => r < acl(x.key)[1])) return reply(401, { code: "42501", message: "new row violates row-level security policy" });
+        if (srv.forceDeny || rows.some(x => !rowOk(s, x.key, true))) return reply(401, { code: "42501", message: "new row violates row-level security policy" });
         /* v1.24 저장 충돌 방지(서버 트리거 semis_logi_private.check_base 흉내): 계정 세션이 기존 행을 고칠 때
            base_at 이 지금 행의 updated_at 과 다르면(없으면 포함) 문장 전체 거절 — 409 PT409 semis_conflict */
         if (!srv.noBaseCheck && s && s.kind === "user") {
@@ -693,14 +708,15 @@ function makeServer(opts = {}) {
       ok(!e.S.user); ok(!e.w.sessionStorage.getItem("semisl:tok")); ok(!e.w.sessionStorage.getItem("semisl:data"));
       ok(srvC.calls.some(c => c.url.indexOf("/rpc/semis_logi_logout") > 0 && c.token === tok), "logout RPC");
     });
-    t("C30 vendor: 기본 프리셋은 dashboard만, 사이드바 축소", () => {
+    t("C30 vendor: 늘 메뉴 범위 계정 — 지정하지 않으면 홈만", () => {
       loginAs(e, "vendor");
       eq(e.S.user.role, "vendor");
-      eq(e.S.vendorAccess(e.S.user).routes.join(","), "dashboard");
+      eq(JSON.stringify(e.S.scopeOf()), JSON.stringify({ home: true, m: {}, cf: false }));
       eq(e.S.roleRank(), 1); ok(!e.S.canDelete());
       go(e, "settings");
-      ok(q(e, "#view").textContent.includes("대시보드"));
-      eq(qa(e, ".nav-item").length, 1);
+      ok(q(e, "#view").textContent.includes("대시보드"), "권한 밖 화면 → 홈");
+      eq(qa(e, ".nav-item").length, 0, "메뉴 없음(홈은 레일 · 허브 이름)");
+      eq(qa(e, "#rail-hubs .rail-btn").map(b => b.dataset.hub).join(","), "hub-home");
     });
     t("C31 jsdom 오류 없음(코어 블록)", () => eq(e.errors.length, 0, e.errors.join(" | ")));
   }
@@ -1566,11 +1582,11 @@ function makeServer(opts = {}) {
       q(e, "#f-parent").value = hub.id; q(e, "#f-save").click();
       ok(q(e, `#rail-hubs [data-hub="${hub.id}"]`), "하위가 생기면 레일에 표시");
     });
-    t("H15 vendor·signer: 레일 허브 숨김(nav-lite)", () => {
+    t("H15 signer: 레일 허브 숨김(nav-lite) · 협력업체는 받은 메뉴의 허브만", () => {
       const e3 = makeEnv();
       loginAs(e3, "vendor");
-      ok(q(e3, "#app").classList.contains("nav-lite"));
-      eq(qa(e3, "#rail-hubs .rail-btn").length, 0);
+      ok(!q(e3, "#app").classList.contains("nav-lite"));
+      eq(qa(e3, "#rail-hubs .rail-btn").map(b => b.dataset.hub).join(","), "hub-home");
       eq(qa(e3, "#tabbar .tab-btn[data-route]").map(b => b.dataset.route).join(","), "dashboard");
     });
     t("H17 모듈 템플릿(docs/module-template.js)이 그대로 동작 — 예정→운영 승격 · 키트 화면 · 인쇄 · 배지 · 검색", () => {
@@ -11074,7 +11090,7 @@ function makeServer(opts = {}) {
       ok(/const DESK_MAX_TEXT = 60000;/.test(s));
       ok(/!isDeskSrc\(from\)\) return json/.test(s) && /folder === "desk" \|\| folder === "desk-in"\) return json\(\{ ok: false, error: "prefix" \}/.test(s) && /!canRead\(w, from\) \|\| !canWrite\(w, folder\)/.test(s), "copy 검사");
       ok(/dissem: 3, desk: 3,?\n/.test(s), "올리기 3");
-      ok(/"desk-in": 1,/.test(s) && /if \(folder === "desk-in" && \(w\.kind !== "user" \|\| STAFF\.indexOf\(w\.role \|\| ""\) < 0\)\) return false;/.test(s), "직원 접수 올리기 = 내부 직원만");
+      ok(/"desk-in": 1,/.test(s) && /if \(folder === "desk-in" && \(w\.kind !== "user" \|\| STAFF\.indexOf\(w\.role \|\| ""\) < 0 \|\| w\.fol\)\) return false;/.test(s), "직원 접수 올리기 = 내부 직원만(메뉴 범위 계정 제외)");
       ok(/const STAFF = \["admin", "hq", "manager", "user"\];/.test(s) && /role: String\(d\.role \|\| ""\)/.test(s), "세션 role");
       ok(/\^desk\(-in\)\?\\\/\[A-Za-z0-9\._-\]\{4,160\}\$/.test(s), "판독 경로 desk · desk-in");
       ok(/'role', coalesce\(c\.role, ''\)/.test(read("tools/sql/semis-logi-desk-inbox.sql")) && /'role', coalesce\(c\.role, ''\)/.test(read("tools/sql/semis-logi-security.sql")), "file_auth role");
@@ -14038,7 +14054,7 @@ function makeServer(opts = {}) {
       ok(!/semis_logi_learn_media_ok\(text, text, text\),?\s*\n?\s*public\.semis_logi_learn_stats[\s\S]*?to anon/.test(LSQL.slice(LSQL.indexOf("grant execute"))), "media_ok anon 아님");
       ok(LEDGE.indexOf("semis_logi_learn_media_ok") > 0 && /LEARN_PATH = \/\^learn\\\/\[A-Za-z0-9\._-\]\{4,160\}\$\//.test(LEDGE), "learn/ 경로만");
       ok(/const ORIGINS = \["https:\/\/hdrive\.kr", "https:\/\/mark4mission\.github\.io"\]/.test(LEDGE), "허용 출처 = 파일 함수와 같음");
-      ok(/\(w\.rank \?\? 0\) < 3/.test(LEDGE), "요약 = hq 이상");
+      ok(/const rk = w\.fol \? Number\(\(w\.fol\.learn \|\| \[\]\)\[1\] \?\? 0\) : \(w\.rank \?\? 0\);/.test(LEDGE) && /rk < 3/.test(LEDGE), "요약 = hq 이상(메뉴 범위 계정은 교육 전파 편집)");
       ok(/learn: 3,/.test(read("tools/edge/semis-logi-files.ts")), "파일 함수 learn 폴더");
       ["js/learn.js", "js/learn-app.js", "tools/sql/semis-logi-learn.sql", "tools/edge/semis-logi-learn.ts"].forEach(f => ok(!/1000\d\d|100[1-3]\d\d/.test(read(f)), "실제 사번 형식 없음 " + f));
     });
@@ -14587,11 +14603,13 @@ function makeServer(opts = {}) {
       try {
         ok(TK.canUse(), "hq");
         loginAs(e, "manager"); ok(!TK.canUse(), "manager");
-        e.S.VENDOR_ACCESS["○○조업"] = { routes: ["dashboard"], links: [], edit: true, confid: false };
-        loginAs(e, "vendor"); eq(e.S.roleRank(), 3, "편집 허용 업체 = 화면 등급 3"); ok(!TK.canUse(), "vendor");
+        loginAs(e, "vendor"); ok(!TK.canUse(), "vendor(기본 홈만)");
+        scopedAs(e, "vendor", { home: false, m: { tasks: "w" } }); ok(TK.canUse() && TK.canEdit(), "메뉴 범위 편집 — 협력업체도 사용 · 고치기");
+        scopedAs(e, "user", { home: false, m: { tasks: "r" } }); ok(TK.canUse() && !TK.canEdit(), "메뉴 범위 열람 — 보기만");
+        scopedAs(e, "hq", { home: true, m: { schedule: "w" } }); ok(!TK.canUse(), "범위 밖 — 안전보안파트라도 없음");
         loginAs(e, "signer"); ok(!TK.canUse(), "signer");
-        loginAs(e, "admin"); ok(TK.canUse(), "admin");
-      } finally { delete e.S.VENDOR_ACCESS["○○조업"]; loginAs(e, "hq"); }
+        loginAs(e, "admin"); ok(TK.canUse() && TK.canEdit(), "admin");
+      } finally { loginAs(e, "hq"); }
     });
     t("TK10 파트 사람 · '나' · 관련 팀 · 새 할 일", () => {
       const R = e.w.SemisRoster;
@@ -14812,13 +14830,14 @@ function makeServer(opts = {}) {
           if (r !== "signer") ok(!e.S.navVisible(e.S.menuForModule("tasks")), r + " navVisible");
           go(e, "tasks"); ok(!q(e, "#tk-list"), r + " 화면");
         });
-        e.S.VENDOR_ACCESS["○○조업"] = { routes: ["dashboard"], links: [], edit: true, confid: false };
         loginAs(e, "vendor"); e.S.renderNav();
         ok(!q(e, '#nav-menu [data-route="tasks"]') && !TK.canUse(), "vendor 메뉴");
         go(e, "tasks"); ok(!q(e, "#tk-list"), "vendor 화면");
-        e.S.VENDOR_ACCESS["○○조업"].routes.push("tasks");
-        go(e, "tasks"); ok(!q(e, "#tk-list") && q(e, "#view").textContent.includes("볼 수 있는 권한이 없습니다"), "허용 경로에 넣어도 화면 첫 줄이 막음");
-      } finally { delete e.S.VENDOR_ACCESS["○○조업"]; loginAs(e, "hq"); }
+        scopedAs(e, "user", { home: true, m: { tasks: "r" } }); e.S.renderNav();
+        ok(q(e, '#nav-menu [data-route="tasks"]'), "메뉴 범위 열람 — 메뉴 보임");
+        go(e, "tasks");
+        ok(q(e, "#tk-list") && !q(e, "#tk-add") && q(e, ".tk-qbox").hidden, "열람 — 목록만(추가 단추 · 빠른 입력 없음)");
+      } finally { loginAs(e, "hq"); }
     });
 
     /* ── 고치기 창 · 지우기 · 특정 할 일 열기 ── */
@@ -15905,6 +15924,187 @@ function makeServer(opts = {}) {
       } finally { W.matchMedia = mm0; e.S.ui.ttHide(); }
     });
     e.w.close();
+  }
+
+  /* ══════════ [SP] 계정별 메뉴 범위 — 대응표(js/scope.js = 서버 SQL) · 메뉴 · 주소 · 등급 · 편집 · 사용자 창 ══════════ */
+  {
+    const SCOPE_SQL = read("tools/sql/semis-logi-scope.sql");
+    t("SP01 대응표: SQL <scope-map> 구간 = js/scope.js MAP(생성기 출력 그대로)", () => {
+      const m = /-- <scope-map>[\s\S]*?-- <\/scope-map>/.exec(SCOPE_SQL);
+      ok(m, "구간 표지");
+      eq(m[0], SCOPE.sql(), "node tools/gen-scope-map.cjs --write 로 맞출 것");
+    });
+    t("SP02 새 모듈 · 행 빠짐 방지: 운영 메뉴 모듈 = MAP · 동기화 행 = MAP 행 + 예외 · MAP 행은 모두 권한표에", () => {
+      const e = makeEnv({ boot: false });
+      const seeds = e.S.defaultMenus().filter(m => m.type === "module" && !m.planned && m.module !== "settings").map(m => m.module);
+      seeds.forEach(id => ok(SCOPE.MAP[id], "MAP 에 없는 메뉴: " + id));
+      Object.keys(SCOPE.MAP).filter(id => id !== "*").forEach(id => ok(seeds.indexOf(id) >= 0, "시드에 없는 MAP 메뉴: " + id));
+      const used = new Set();
+      Object.values(SCOPE.MAP).forEach(x => (x.own || []).concat(x.ref || []).forEach(k => used.add(k)));
+      e.Sync.SYNC_KEYS.forEach(k => ok(used.has(k) || SCOPE.EXEMPT[k], "어느 메뉴에도 없는 동기화 행: " + k));
+      used.forEach(k => ok(ACL[k], "권한표에 없는 행: " + k));
+      ok(SCOPE.NEVER.indexOf("settings") >= 0, "시스템 설정은 범위에 넣지 않음");
+      e.w.close();
+    });
+    t("SP03 보기 수준 = 메뉴 기본 공개 범위(3까지) · 편집으로 쓰는 시스템관리자 행은 정한 것만 · 파일 폴더 이름", () => {
+      const e = makeEnv({ boot: false });
+      const R = { all: 1, mgr: 2, hq: 3, admin: 4 };
+      e.S.defaultMenus().filter(m => m.type === "module" && SCOPE.MAP[m.module]).forEach(m => eq(SCOPE.MAP[m.module].view, Math.min(R[m.vis || "all"], 3), m.module + " view"));
+      Object.keys(SCOPE.MAP).forEach(id => (SCOPE.MAP[id].own || []).forEach(k => {
+        if (ACL[k][1] >= 4) ok(SCOPE.OWN_ADMIN_OK.indexOf(k) >= 0, id + " 의 " + k + " 는 설정 행(쓰기 4) — ref 로");
+      }));
+      Object.values(SCOPE.MAP).forEach(x => Object.keys(x.files || {}).forEach(f => ok(/^[a-z][a-z0-9-]{1,30}$/.test(f) && ["own", "ref"].indexOf(x.files[f]) >= 0, f)));
+      e.w.close();
+    });
+    t("SP04 서버 원본: 계정 범위 칸 · 정책은 판정표 · 로그인 응답 · 파일 함수 · 다른 문턱 · 실행 권한", () => {
+      ok(/alter table semis_logi_private\.accounts add column if not exists scope jsonb;/.test(SCOPE_SQL));
+      ok(/create policy "logi session read"[\s\S]*?acl_ok\(\(select semis_logi_private\.acl_now\(\)\), \(select semis_logi_private\.rank_now\(\)\), key, false\)/.test(SCOPE_SQL), "읽기 정책");
+      ok(/'def', case when v_s is null then jsonb_build_array\(2, 3\) else jsonb_build_array\(9, 9\) end/.test(SCOPE_SQL), "범위 계정 기본 = 9");
+      ok(/'rank', 0, 'role', coalesce\(c\.role, ''\)[\s\S]*?'fol', semis_logi_private\.scope_fol/.test(SCOPE_SQL), "파일 = 등급 0 + 폴더표");
+      ok(/semis_logi_private\.scope_of\(a\.role, a\.scope\) is null/.test(SCOPE_SQL), "접수 카운터 제외");
+      ok(/acl_now\(\) is not null then\s+return jsonb_build_object\('ok', false, 'error', 'forbidden'\)/.test(SCOPE_SQL), "아르고 제외");
+      ok(/grant execute on function semis_logi_private\.acl_now\(\), semis_logi_private\.acl_ok\(jsonb, int, text, boolean\) to anon, authenticated, service_role;/.test(SCOPE_SQL), "정책 함수만 anon");
+      ok(read("tools/sql/semis-logi-scope.test.mjs").includes("scope_acl"), "PGlite 검증");
+      const FE = read("tools/edge/semis-logi-files.ts");
+      ok(/if \(w\.fol\) return Number\(\(w\.fol\[f\] \|\| \[\]\)\[0\] \?\? 0\) >= \(READ_RANK\[f\] \?\? DEFAULT_READ\);/.test(FE), "Edge 열람 = 폴더표");
+      ok(/if \(w\.fol\) return Number\(\(w\.fol\[folder\] \|\| \[\]\)\[1\] \?\? 0\) >= \(WRITE_RANK\[folder\] \?\? DEFAULT_WRITE\);/.test(FE), "Edge 올리기 = 폴더표");
+    });
+    t("SP05 범위 계산: 열람은 보기 수준(SSI · 암호 못 읽음) · 편집은 자기 메뉴 행만 · 설정 행 제외 · 게시판 단계", () => {
+      const a = SCOPE.acl(SCOPE.norm({ home: false, m: { audit: "r", schedule: "w", "us-rescreen": "w" } }, "user"), 1, ACL);
+      eq([a.audits.join(""), a.auditMaster.join(""), a.vault.join(""), a.schedules.join(""), a.assignees.join(""), a.usRescreen.join(""), a.menus.join("")].join(","),
+        "10,00,00,11,10,11,10");
+      const h = SCOPE.acl({ home: false, m: { audit: "r" } }, 3, ACL);
+      eq(h.auditMaster.join(""), "10", "안전보안파트 계정의 열람 = 그 등급으로 읽음");
+      const menus = [{ id: "bbs-B001", type: "board", board: "B001" }, { id: "x2", type: "board", board: "B002" }];
+      eq(SCOPE.boardRanks({ m: { "bbs-B001": "r" } }, menus, { id: "B001", read: "all" }).join(","), "1,-1");
+      eq(SCOPE.boardRanks({ m: { x2: "w" } }, menus, { id: "B002", read: "hq" }).join(","), "3,3");
+      eq(SCOPE.boardRanks({ m: {} }, menus, { id: "B002", read: "all" }).join(","), "-1,-1");
+      eq(JSON.stringify(SCOPE.norm({ home: "yes", m: { settings: "w", dashboard: "r", "a b": "r", flight: "x", vault: "r" } }, "manager")), JSON.stringify({ home: true, m: { vault: "r" } }));
+      eq(SCOPE.norm({ home: true, m: { flight: "r" } }, "admin"), null, "시스템관리자는 범위 없음");
+    });
+    const e = makeEnv();
+    const navRoutes = () => Array.from(new Set(qa(e, "#nav-menu .nav-item[data-route]").map(b => b.dataset.route))).filter(r => r.indexOf("hub/") !== 0);
+    t("SP06 지정 메뉴만 · 홈 숨김: 받은 메뉴 · 허브만 · 대시보드 · 권한 밖 주소는 첫 화면으로 · 설정 없음", () => {
+      scopedAs(e, "user", { home: false, m: { training: "r", phonebook: "w" } });
+      e.S.renderNav();
+      eq(navRoutes().filter(r => r !== "dashboard").sort().join(","), "phonebook,training", "메뉴");
+      eq(qa(e, "#rail-hubs .rail-btn").map(b => b.dataset.hub).sort().join(","), "hub-aud,hub-ops", "허브");
+      ok(!e.S.navVisible(e.S.menuForModule("settings")) && !e.S.navVisible(e.S.menuForModule("dashboard")), "설정 · 홈 없음");
+      go(e, "dashboard");
+      eq(e.w.location.hash, "#/training", "홈 → 메뉴 순서의 첫 화면");
+      go(e, "vault");
+      eq(e.w.location.hash, "#/training", "권한 밖 화면 → 첫 화면");
+      go(e, "phonebook");
+      eq(e.w.location.hash, "#/phonebook");
+      ok(!qa(e, "#tabbar .tab-btn[data-route]").length, "모바일 홈 탭 없음");
+    });
+    t("SP07 메뉴 안의 등급 · 편집 · 대외비: 편집 = 안전보안파트 · 열람 = 보기 수준 · 계정 등급이 높으면 그 등급", () => {
+      scopedAs(e, "user", { home: true, m: { training: "r", phonebook: "w", contracts: "r" } });
+      go(e, "phonebook"); eq(e.S.roleRank(), 3); ok(e.S.canEdit() && e.S.canDelete(), "편집 메뉴");
+      go(e, "training"); eq(e.S.roleRank(), 2); ok(!e.S.canEdit(), "열람 메뉴");
+      go(e, "contracts"); eq(e.S.roleRank(), 3); ok(!e.S.canEdit() && e.S.canConfid(), "hq 메뉴 열람 = 3 · 대외비 보기(편집은 안 됨)");
+      go(e, "dashboard"); ok(!e.S.canEdit(), "홈 = 보기만");
+      scopedAs(e, "vendor", { home: true, m: { "scr-equip": "w" } });
+      go(e, "scr-equip"); ok(e.S.canEdit() && !e.S.canDelete() && !e.S.canConfid(), "협력업체 편집 — 삭제 없음 · 대외비는 따로");
+      scopedAs(e, "vendor", { home: true, m: { "scr-equip": "w" }, cf: true });
+      go(e, "scr-equip"); ok(e.S.canConfid(), "대외비 보기 켬");
+      scopedAs(e, "hq", { home: true, m: { inspection: "r" } });
+      go(e, "inspection"); eq(e.S.roleRank(), 3, "안전보안파트 계정 열람 = 3"); ok(!e.S.canEdit(), "그래도 편집 단추 없음");
+      ok(!e.S.mayWrite("seclog", true), "행 쓰기 = 서버 판정표(열람)");
+      loginAs(e, "hq"); go(e, "inspection"); ok(e.S.canEdit() && e.S.mayWrite("seclog", true), "범위 없는 계정 — 예전 그대로");
+    });
+    t("SP08 지원 도구 · 검색: 접수 카운터 · 아르고 없음 · 검색은 받은 메뉴만", () => {
+      scopedAs(e, "hq", { home: true, m: { phonebook: "r" } });
+      ok(e.S.supportOk("search") && !e.S.supportOk("desk") && !e.S.supportOk("argo"));
+      e.S.renderHeader();
+      eq(q(e, "#hdr-desk").hidden, true, "상단바 접수 카운터 숨김");
+      const menus = e.w.SemisSearch.search("연락처").filter(x => x.route).map(x => x.route);
+      ok(menus.indexOf("phonebook") >= 0 && menus.indexOf("contacts") < 0, "검색 = 받은 메뉴만: " + menus.join(","));
+      ok(!e.w.SemisSearch.search("일정").some(x => x.route === "schedule"), "범위 밖 메뉴는 검색에도 없음");
+    });
+    t("SP09 게시판 메뉴: 받은 게시판만 · 열람은 글쓰기 없음 · 편집은 글쓰기 · 관리", () => {
+      scopedAs(e, "user", { home: true, m: { "bbs-B002": "r", "bbs-B001": "w" } });
+      const B = e.w.SemisBoard, bd = (id) => e.S.boardDef(id);
+      ok(e.S.canReadBoard(bd("B002")) && !B.canWrite(bd("B002")), "열람");
+      ok(e.S.canReadBoard(bd("B001")) && B.canWrite(bd("B001")), "편집(공지 쓰기 hq 도)");
+      ok(!e.S.canReadBoard(bd("B003")), "받지 않은 자료실");
+      e.S.renderNav();
+      ok(!q(e, '#nav-menu [data-route="board/B003"]') && q(e, '#nav-menu [data-route="board/B002"]'), "메뉴");
+    });
+    t("SP10 홈(대시보드) 칸 — 받은 메뉴 것만(운항 지도 · 일정 · 회의 결정사항)", () => {
+      scopedAs(e, "user", { home: true, m: { phonebook: "r" } });
+      go(e, "dashboard");
+      ok(!q(e, "#view .dash-up") && !q(e, "#view #td-flt"), "일정 · 운항 없음");
+      scopedAs(e, "user", { home: true, m: { schedule: "r", flight: "r" } });
+      go(e, "dashboard");
+      ok(q(e, "#view .dash-up"), "일정 칸");
+    });
+    t("SP11 세션 갱신으로 범위가 바뀌면 메뉴를 다시 그림", () => {
+      scopedAs(e, "user", { home: true, m: { phonebook: "r" } });
+      e.S.renderNav();
+      ok(navRoutes().indexOf("training") < 0);
+      e.S.sessionUpdated(sessPayload("user", "tester", { home: true, m: { phonebook: "r", training: "w" } }));
+      ok(navRoutes().indexOf("training") >= 0, "새 메뉴");
+      e.S.sessionUpdated(sessPayload("user", "tester", null));
+      ok(!e.S.scoped() && navRoutes().indexOf("schedule") < 0, "범위 해제 — 등급대로(일반사용자는 일정 없음)");
+    });
+    t("SP12 jsdom 오류 없음", () => eq(e.errors.length, 0, e.errors.join(" | ")));
+    e.w.close();
+  }
+  {
+    const srv = makeServer({ accounts: [{ id: "mark3464", login: "mark3464", name: "최고", role: "admin", pw: "admin-pw-1", base: true },
+      { id: "u7", login: "u7", name: "현장", role: "user", pw: "user-pw-77", base: false, scope: { home: false, m: { flight: "r" } } }] });
+    await ta("SP13 사용자 창: 메뉴 범위 지정 · 메뉴별 단계 · 홈 · 허브 일괄 · 협력업체는 지정 고정 · 저장 · 목록 배지", async () => {
+      const e = makeEnv({ boot: false, fetch: srv.fetch });
+      e.S.boot();
+      submitLogin(e, "admin-pw-1"); await tick(40);
+      renderSettings(e, "users"); await tick(40);
+      const row = qa(e, "#user-list tr").find(r => r.textContent.includes("u7"));
+      ok(row && /메뉴 1/.test(row.textContent), "목록 배지");
+      row.querySelector("[data-edit]").click();
+      ok(q(e, "#sc-pick") && !q(e, "#sc-pick").hidden, "지정 메뉴만 열림");
+      const pr = (id) => q(e, '#sc-pick .seg-btn[data-sc-id="' + id + '"][aria-pressed=true]').dataset.v;
+      eq(pr("flight"), "r"); eq(pr("dashboard"), "");
+      q(e, '#sc-pick .seg-btn[data-sc-id="dashboard"][data-v="r"]').click();
+      q(e, '#sc-pick .seg-btn[data-sc-id="phonebook"][data-v="w"]').click();
+      q(e, '#sc-pick [data-sc-bulk="hub-aud"][data-v="r"]').click();
+      eq(pr("training"), "r", "허브 일괄 열람"); eq(pr("dissem"), "r", "묶음 안 메뉴도");
+      ok(!q(e, '#sc-pick [data-sc-row="settings"]') && !q(e, '#sc-pick [data-sc-row="access"]'), "설정 · 예정 메뉴 없음");
+      ok(q(e, '#sc-pick [data-sc-row="bbs-B001"]') && q(e, '#sc-pick [data-sc-row="ref-semis"] .seg-btn[data-v="r"]') && !q(e, '#sc-pick [data-sc-row="ref-semis"] .seg-btn[data-v="w"]'), "게시판 · 외부 사이트(보이기만)");
+      q(e, "#f-save").click(); await tick(40);
+      const a = srv.accounts.find(x => x.id === "u7");
+      eq(a.scope.home, true); eq(a.scope.m.phonebook, "w"); eq(a.scope.m.training, "r"); eq(a.scope.m.flight, "r");
+      qa(e, "#user-list tr").find(r => r.textContent.includes("u7")).querySelector("[data-edit]").click();
+      q(e, '[data-sc-mode="all"]').click();
+      q(e, "#f-save").click(); await tick(40);
+      eq(srv.accounts.find(x => x.id === "u7").scope, null, "전체 메뉴 = 범위 없음");
+      q(e, "#btn-add-user").click();
+      q(e, "#f-uid").value = "v9"; q(e, "#f-uname").value = "업체"; q(e, "#f-upw").value = "vendor-pw-9";
+      const sel = q(e, "#f-urole"); sel.value = "vendor"; sel.dispatchEvent(new e.w.Event("change"));
+      q(e, "#f-uvendor").value = "가나조업";
+      ok(q(e, '[data-sc-mode="all"]').disabled && !q(e, "#sc-pick").hidden && !q(e, "#sc-cf-row").hidden, "협력업체 = 지정 고정 · 대외비 칸");
+      q(e, '#sc-pick .seg-btn[data-sc-id="scr-equip"][data-v="w"]').click();
+      q(e, "#f-save").click(); await tick(40);
+      const v = srv.accounts.find(x => x.id === "v9");
+      eq(JSON.stringify(v.scope), JSON.stringify({ home: false, m: { "scr-equip": "w" }, cf: false }), "협력업체 범위");
+      sel.value = "admin";
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.w.close();
+    });
+    await ta("SP14 범위 계정 로그인 → 서버 판정표로 받은 행만 · 홈 없으면 첫 화면", async () => {
+      srv.accounts.find(x => x.id === "u7").scope = { home: false, m: { phonebook: "r" } };
+      srv.rows.push({ key: "phonebook", value: { rows: [{ id: "p1", name: "가" }] }, updated_at: new Date().toISOString() },
+        { key: "vault", value: { items: [{ id: "x" }] }, updated_at: new Date().toISOString() });
+      const e = makeEnv({ boot: false, fetch: srv.fetch });
+      e.S.boot();
+      submitLogin(e, "user-pw-77"); await tick(80);
+      ok(e.S.scoped(), "범위 계정");
+      eq(e.w.location.hash, "#/phonebook", "첫 화면");
+      ok(e.Sync.canRead("phonebook") && !e.Sync.canRead("vault") && !e.Sync.canWrite("phonebook"), "판정표");
+      ok(!srv.calls.some(c => c.method === "GET" && /key=in\.\([^)]*vault/.test(decodeURIComponent(c.url))), "읽을 수 없는 행은 묻지도 않음");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+      e.w.close();
+    });
   }
 
   /* ══════════ [W] 릴리스 위생 ══════════ */

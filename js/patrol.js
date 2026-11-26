@@ -41,7 +41,7 @@
   const lastDay = (ym) => new Date(Date.UTC(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0)).getUTCDate();
   const addMonth = (ym, n) => { let y = Number(ym.slice(0, 4)), m = Number(ym.slice(5, 7)) + n; while (m < 1) { m += 12; y--; } while (m > 12) { m -= 12; y++; } return y + "-" + p2(m); };
   const ymLabel = (ym) => Number(ym.slice(0, 4)) + "년 " + Number(ym.slice(5, 7)) + "월";
-  const canW = () => !!SeMIS.user && SeMIS.roleRank() >= 2 && SeMIS.user.role !== "vendor";
+  const canW = () => SeMIS.mayWrite("patrol", !!SeMIS.user && SeMIS.roleRank() >= 2 && SeMIS.user.role !== "vendor");
   const routeNow = () => (typeof location !== "undefined" ? location.hash.replace(/^#\//, "") : "") || "dashboard";
   const signOk = (u) => typeof u === "string" && (/^https:\/\/[^\s"'<>]+$/.test(u) || /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(u));
 
