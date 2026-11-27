@@ -238,6 +238,8 @@ Claude가 할 일(순서대로):
 
 ## 7. 미결 · 주의 (열린 일만 — 끝나면 HISTORY.md 로)
 
+- **지나간 길(v1.90.0) — 운영 적용 11-27 17:03 KST**(Mark 승인): ① Edge `semis-logi-adsb` v11 → **v12**(배포 직전 운영 원문 = 저장소 v11 확인) ② main bc053f8(tree 79d76924 대조 같음) · hdrive.kr `flightops.js?v=1.90.0`. 확인: 배포 뒤 `?cron=1` 200 · `_meta.fetched_at` 갱신 · err 없음. **실화면 확인은 Mark**(내장 브라우저가 H:drive 로그아웃 · 현장 화면 PIN 전 상태라 못 봄) — 대시보드 · 현장 화면에서 비행 중 기체 뒤에 최근 1시간 선, 운영 기록에 `?trail=60&events=1` 200. 되돌리기: 화면 = `paintMapNow` 의 `else if (!full) trail = recentTrail(it, at);` 한 줄을 빼고 배포(서버 v12 는 두어도 됨 — `?trail=1` · 없음은 예전과 같음). 참고: 주기장 인증키 `IIAC_SERVICE_KEY` 는 11-27 17:05 기준 아직 없음(`stand_fetched_at` 2000-01-01).
+
 - **계정별 메뉴 범위(v1.87.0) — 운영 적용 11-27**: ① 마이그레이션 두 개(`tools/sql/semis-logi-scope.sql` 을 나눔) — `semis_logi_scope_1`(1~383행 + 끝 '실행 권한' 구간: 칸 · 대응표 · 범위 계산 · 공용 DB 정책) → `semis_logi_scope_1_rpc`(385~999행: 로그인 응답 · 계정 관리 · 파일 · 기능 문턱 · 게시판 RPC). 확인: 메뉴 33 · 대응 164행 · 새 정책 3개 · 범위 계정 0 · 협력업체 계정 0 · 범위 없는 등급 판정 차이 0(key_acl 55행) · anon 도우미 실행 불가(acl_now · acl_ok 만 허용) ② Edge `semis-logi-files` v17 · `semis-logi-learn` v4(verify_jwt false, 배포 직후 auth · op 응답 정상) ③ main 반영(화면). 남은 확인(Mark): 시험 계정에 범위를 줘서 메뉴 · 첫 화면 · 쓰기 거절 확인 후 지움. (apply_migration 이 Supabase 승인 질문에 응답이 없어 2번 시간 초과 — 세 번째에 그대로 적용됨)
 
 - **K드라이브 동기화 제거(v1.86.0) — 운영 적용 11-26**: ① Mac 에이전트 제거(`uninstall.sh` — LaunchAgent `kr.hdrive.ksync` · 설정 · 키체인 키) ② Edge `semis-logi-ksync` v3 = 410 ③ main 반영 ④ 마이그레이션 `semis_logi_ksync_drop`. 남은 것(선택): K 쪽 `_H드라이브_휴지통` · `_H드라이브_이전판` 폴더 · Mac `~/Library/Logs/hdrive-ksync.log` 정리 · 보관 스키마 완전 삭제 여부. 문서함 분류 v1.65 · v1.67 의 K 연결 계획(A · B단계)은 하지 않음
