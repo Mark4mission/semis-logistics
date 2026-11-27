@@ -377,6 +377,7 @@ v2 대응: inspection.js · carcap.js · training.js · certs.js · contracts.js
 
 | 버전 | 날짜 | 내용 |
 |---|---|---|
+| v1.89.0 | 11-27 | 일정관리 — 모든 보기 완료 아래로(evCompare · 주 레인 openTop) · 칩 풀이 data-hint(제목 전체 + 시간 · 담당) · 주 보기 줄 제한 없음 · 주마다 칸 높이 --wkneed(2주 · 월 줄 잘림 해소) |
 | v1.88.0 | 11-27 | 게시판 서식 편집기 문단 정렬 4종(글쓰기 · 고치기) · 교육 전파 · 서명 첫 화면 '전체' · 진행 현황 연락처(교육 담당자 · 완료 아닌 줄) · openedBy · 인천화물팀 비상연락망(11.01) 공용 DB 반영 |
 | v1.87.0 | 11-27 | 계정별 메뉴 범위 — 계정 칸 scope · 대응표(js/scope.js = scope_map) · 공용 DB 정책 행 판정표 · 파일 폴더표 · 게시판 단계 · 문턱(mod_rank) · 사용자 창 · 화면 범위 적용 · 협력업체 고정 목록 이관(VENDOR_ACCESS 삭제) |
 | v1.68.0 | 11-13 | K드라이브 동기화 v2 설계(저장소 밖 `Hdrive_Clone/sync-v2/DESIGN.md`) 1 · 2 · 2b단계 — **링크 정확도**(깃발 `flags.link_all`, 기본 꺼짐: H 옛 판 `ksync_h_olds` 도 '연결만' 후보 · 기준일은 잇는 것을 막지 않음 · 같은 내용 이름 바꿈은 이름이 같은 후보 · 갈리면 `counts.dup` · 색인은 기준일 전 파일 중 링크 후보만 해시, 마이그레이션 `semis_logi_security_34_ksync_links`) · **보고 · 지정 제외**(전체 · 연결마다, 그 아래는 '모름' — 삭제 · 덮어쓰기 · 올리기 없음 · `counts.out`/`mismatch` → `ksync_maps.report` · 새 RPC `semis_logi_ksync_report` · 화면 보고 줄 · 연결 줄 불일치) · **H → K 준실시간**(문서함 트리거 `semis_logi_store_ksync_req` → 요청 표시 · 깨우기 30 → 10분 · 끝낸 날 가드 25 → 9분, 마이그레이션 `semis_logi_security_35_ksync_report`). 에이전트 1.68.0 · Edge 변경 없음. 병렬 PR(v1.67.0 분류 더함)과 겹치지 않게 v1.68.0. **운영 적용 11-14**: 마이그레이션 34 · 35(함수 본문 · 저장된 문장 md5 = 파일) → PR #13 병합 → Mac 1.68.0 재설치(`--dry-run` 1.64.0 과 같음) → 회차 19 · 20 오류 0 |

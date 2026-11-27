@@ -2432,6 +2432,53 @@ function makeServer(opts = {}) {
     const e = makeEnv();
     loginAs(e, "hq");
     const C = e.w.SemisCalendar;
+    t("V00 일정 완료 아래로 · 칩 풀이 · 주 보기 칸 늘림(v1.89): 모든 보기에서 남은 일 위 · 완료 아래(같은 날짜 칸에서 완료가 남은 일보다 위에 오지 않음) · 제목 전체 + 시간 · 담당 data-hint(title 없음) · 주 보기 줄 제한 없음 · 칸 높이 = 보이는 줄", () => {
+      const keep = JSON.stringify(e.S.data.schedules);
+      const ev = [{ id: "vb", title: "기간 막대", start: "2026-11-23", end: "2026-11-25", allDay: true, color: "green", done: false }];
+      for (let i = 0; i < 14; i++) ev.push({ id: "v" + i, title: "금요일 일정 " + i + " 제목이 길어 칸에서 잘림", start: "2026-11-27", end: "2026-11-27", allDay: i % 2 === 0,
+        time: i % 2 ? "0" + (i % 9 + 1) + ":30" : "", color: "blue", done: i % 3 === 0, assignee: i === 1 ? "가나다, 라마바" : "" });
+      ev.push({ id: "vd", title: "수요일 완료", start: "2026-11-25", end: "2026-11-25", allDay: true, color: "red", done: true });
+      ev.push({ id: "vo", title: "수요일 남음", start: "2026-11-25", end: "2026-11-25", allDay: true, color: "red", done: false });
+      e.S.data.schedules = ev;
+      C.setAnchor("2026-11-27"); C.setFilter("", false);
+      const rows = (el) => { const m = /grid-column:\s*(\d+)\s*\/\s*(\d+);\s*grid-row:\s*(\d+)/.exec(el.getAttribute("style")); return { c1: +m[1], c2: +m[2], row: +m[3] }; };
+      const orderOk = () => {
+        const cols = {};
+        qa(e, "#view .cal-week-ev > [data-ev]").forEach(el => { const r = rows(el); for (let c = r.c1; c < r.c2; c++) (cols[c] = cols[c] || []).push({ row: r.row, done: el.classList.contains("done") }); });
+        return Object.values(cols).every(l => { const o = l.filter(x => !x.done).map(x => x.row), d = l.filter(x => x.done).map(x => x.row); return !o.length || !d.length || Math.min(...d) > Math.max(...o); });
+      };
+      C.setView("week"); go(e, "schedule");
+      eq(qa(e, '#view .cal-week-ev > [data-ev^="v"]').length, 17, "주 보기 = 모두 그림(줄 제한 없음)");
+      ok(!q(e, "#view .cal-more"), "'+n개' 없음");
+      ok(orderOk(), "주: 완료가 남은 일 아래");
+      const wk = q(e, "#view .cal-week"), need = Number(/--wkneed:\s*(\d+)px/.exec(wk.getAttribute("style"))[1]);
+      const lanes = Math.max(...qa(e, "#view .cal-week-ev > *").map(el => rows(el).row));
+      eq(need, 24 + lanes * 22 - 2 + 22, "칸 높이 = 날짜 + 줄 " + lanes + " + 여백");
+      const c1 = q(e, '#view [data-ev="v1"]');
+      eq(c1.getAttribute("data-hint"), "금요일 일정 1 제목이 길어 칸에서 잘림\n02:30 · 가나다, 라마바", "풀이 = 제목 전체 + 시간 · 담당");
+      ok(!c1.hasAttribute("title") && !c1.querySelector("[title]"), "title 없음(이름표와 겹침)");
+      ok(/완료$/.test(q(e, '#view [data-ev="v0"]').getAttribute("data-hint")), "완료 표시");
+      ok(q(e, '#view [data-ev="v1"] .chip-check[data-hint="완료 표시"]'), "완료 단추 풀이");
+      ["2week", "month"].forEach(v => {
+        C.setView(v); go(e, "schedule");
+        ok(orderOk(), v + ": 완료가 남은 일 아래");
+        const w = qa(e, "#view .cal-week").find(x => x.querySelector('[data-ev^="v"]'));
+        const hidden = !!w.querySelector(".cal-more"), shown = Math.max(...Array.from(w.querySelectorAll(".cal-week-ev > *")).map(el => rows(el).row));
+        eq(Number(/--wkneed:\s*(\d+)px/.exec(w.getAttribute("style"))[1]), 24 + shown * 22 - 2 + 22, v + " 칸 높이 = 보이는 줄");
+        ok(hidden, v + " 줄 제한(월 5 · 2주 10) 넘으면 '+n개'");
+        if (v === "month") ok(Array.from(w.querySelectorAll('.cal-week-ev [data-ev^="v"]')).filter(el => /^v\d+$/.test(el.dataset.ev)).every(el => !el.classList.contains("done")), "월: 줄이 모자라면 완료가 먼저 '+n개'로");
+      });
+      C.setView("day"); go(e, "schedule");
+      const seq = qa(e, "#view .cal-dayview .cal-chip[data-ev]").map(x => x.classList.contains("done") ? 1 : 0);
+      const half = qa(e, "#view .cal-dayview .cal-sec-label").length;
+      ok(half === 2 && /^0+1+0+1+$/.test(seq.join("")), "일 보기: 구역마다 남은 일 → 완료 " + seq.join(""));
+      ok(q(e, '#view .cal-dayview [data-ev="v1"]').getAttribute("data-hint"), "일 보기 풀이");
+      const css = read("css/main.css");
+      ok(/\.cal-week-bg \.cal-cell \{\s*min-height: max\(var\(--wkmin, 120px\), var\(--wkneed, 0px\)\);/.test(css) && /\.cal-fullscreen \.cal-week \{ flex: 1 1 0; min-height: var\(--wkneed, 0px\); \}/.test(css), "칸 높이 CSS(전체화면 포함)");
+      ok(/\.hover-tip \{[^}]*white-space: pre-line;/.test(css), "이름표 줄바꿈");
+      e.S.data.schedules = JSON.parse(keep); C.setView("month"); C.setAnchor(e.w.SemisCalendar.getAnchor());
+      eq(e.errors.length, 0, e.errors.join("|"));
+    });
     t("V01 팔레트 12색 · id 중복 없음 · 구버전 id(lime·amber·indigo)는 선택지에서 빠지고 가까운 색으로", () => {
       eq(C.COLORS.length, 12);
       eq(new Set(C.COLORS.map(c => c.id)).size, 12);

@@ -497,6 +497,7 @@
       (!fAssignee || hasName(e, fAssignee)) && (!fHideDone || isRepeat(e) || !e.done));
   }
   function evCompare(a, b) {
+    if (!!a.done !== !!b.done) return a.done ? 1 : -1;     // 남은 일 위 · 완료 아래(모든 보기 공통)
     const am = (a.allDay || a.end !== a.start) ? 0 : 1;
     const bm = (b.allDay || b.end !== b.start) ? 0 : 1;
     if (am !== bm) return am - bm;
@@ -560,7 +561,7 @@
     return l && l.go ? l.go(e) : [];
   }
   function goBtns(e, max) {
-    return goOf(e).slice(0, max || 2).map((g, i) => `<button type="button" class="chip-go" data-igo="${i}" ${isInsp(e) ? `data-ik="${esc(e.ik)}"` : `data-gev="${esc(e.id)}"`} title="${esc(g.lb)}" aria-label="${esc(g.lb)}">${SeMIS.icon(g.ico || "external", 13)}</button>`).join("");
+    return goOf(e).slice(0, max || 2).map((g, i) => `<button type="button" class="chip-go" data-igo="${i}" ${isInsp(e) ? `data-ik="${esc(e.ik)}"` : `data-gev="${esc(e.id)}"`} data-hint="${esc(g.lb)}" aria-label="${esc(g.lb)}">${SeMIS.icon(g.ico || "external", 13)}</button>`).join("");
   }
   function runGo(b) {
     const e = b.dataset.ik ? inspIdx[b.dataset.ik] : D().schedules.find(x => x.id === b.dataset.gev);
@@ -573,8 +574,8 @@
   const inspCan = (e) => !!(e && e.chk && typeof e.mark === "function");
   function inspCheckHTML(e) {
     const c = inspCan(e) ? e.chk : {}, attr = ` data-itoggle="${esc(e.ik)}"`;
-    if (e.done) return c.off ? `<span class="chip-check done"${attr} title="완료 — 클릭 시 해제">✓</span>` : '<span class="chip-check done">✓</span>';
-    return c.on ? `<span class="chip-check todo"${attr} title="완료 표시">○</span>` : "";
+    if (e.done) return c.off ? `<span class="chip-check done"${attr} data-hint="완료 — 누르면 해제">✓</span>` : '<span class="chip-check done">✓</span>';
+    return c.on ? `<span class="chip-check todo"${attr} data-hint="완료 표시">○</span>` : "";
   }
   function inspToggle(ik) {
     const e = inspIdx[ik];
@@ -862,19 +863,32 @@
     ((e.reminders || []).length ? "⏰" : "") + (isRepeat(e) ? "🔁" : "") +
     (e.autoDefer ? "⏩" : "") + (e.autoExtend ? "↔️" : "");
 
+  /* 칩 풀이(data-hint — 코어 이름표): 칸에서 잘린 제목 전체 + 시간 · 기간 · 담당 한 줄 */
+  function hintOf(e) {
+    const multi = (e.end || e.start) !== e.start;
+    const meta = [
+      !e.allDay && e.time ? e.time + (e.timeEnd ? "~" + e.timeEnd : "") : "",
+      multi ? md(e.start) + " – " + md(e.end) : "",
+      e.assignee ? String(e.assignee) : "",
+      e.sub || "",
+      e.done ? "완료" : ""
+    ].filter(Boolean).join(" · ");
+    return esc(String(e.title || "") + (meta ? "\n" + meta : ""));
+  }
+
   /* 완료 체크: 완료 ✓(항상) / 미완료 ○(호버 시 노출, 클릭으로 완료). 반복 일정은 회차 단위 */
   function checkHTML(e, canWrite, occIso) {
     const occ = occIso || e.start;
     const rep = isRepeat(e);
     const attr = ` data-donetoggle="${esc(e.id)}" data-occ="${esc(occ)}"`;
-    if (e.done) return `<span class="chip-check done"${canWrite ? attr : ""} title="완료 — 클릭 시 ${rep ? "범위 선택 후 " : ""}해제">✓</span>`;
-    return canWrite ? `<span class="chip-check todo"${attr} title="완료 표시${rep ? " (범위 선택)" : ""}">○</span>` : "";
+    if (e.done) return `<span class="chip-check done"${canWrite ? attr + ` data-hint="완료 — 누르면 ${rep ? "범위 선택 후 " : ""}해제"` : ""}>✓</span>`;
+    return canWrite ? `<span class="chip-check todo"${attr} data-hint="완료 표시${rep ? " (범위 선택)" : ""}">○</span>` : "";
   }
 
   /* 점검 일정 칩 — 끌기 없음, 완료 체크(원본 모듈에 반영) · 눌러 상세 · 아이콘으로 바로 가기 */
   function inspBarHTML(e, style, cls, max) {
     return `<div class="${cls} ev-${esc(pickColor(e.color))} is-insp${e.done ? " done" : ""}${e.late ? " late" : ""}${e.soft ? " soft" : ""}"${style ? ` style="${style}"` : ""}
-        data-ik="${esc(e.ik)}" title="${esc(e.title)}${e.sub ? "\n" + esc(e.sub) : ""}">
+        data-ik="${esc(e.ik)}" data-hint="${hintOf(e)}">
       ${inspCheckHTML(e)}
       <button type="button" class="chip-title">${esc(e.title)}</button>${goBtns(e, max || 1)}</div>`;
   }
@@ -883,17 +897,17 @@
     if (isInsp(e)) return inspBarHTML(e, style, "cal-bar" + (it.contL ? " cont-l" : "") + (it.contR ? " cont-r" : ""), 1);
     if (!e.id && e.gcalId) {
       return `<div class="cal-bar ev-gcal${it.contL ? " cont-l" : ""}${it.contR ? " cont-r" : ""}" style="${style}"
-        data-gcal="${esc(e.gcalId)}" title="Google 캘린더: ${esc(e.title)}"><span class="chip-g">G</span>
+        data-gcal="${esc(e.gcalId)}" data-hint="${hintOf(e)}${esc("\nGoogle 캘린더")}"><span class="chip-g">G</span>
         ${!e.allDay && e.time ? `<span class="chip-time">${esc(e.time)}</span>` : ""}
         <span class="chip-title">${esc(e.title)}</span></div>`;
     }
     return `<div class="cal-bar ev-${esc(e.color || "blue")}${e.done ? " done" : ""}${it.contL ? " cont-l" : ""}${it.contR ? " cont-r" : ""}"
         style="${style}" data-ev="${esc(e.id)}" data-from="${esc(it.from)}" data-occ="${esc(e.start)}" ${canWrite ? 'data-drag="1"' : ""}
-        title="${esc(e.title)}${e.assignee ? " · " + esc(e.assignee) : ""}${e.memo ? "\n" + esc(e.memo) : ""}${canWrite ? "\n(드래그하여 날짜 이동)" : ""}">
+        data-hint="${hintOf(e)}">
       ${checkHTML(e, canWrite, e.start)}
       ${!e.allDay && e.time ? `<span class="chip-time">${esc(e.time)}</span>` : ""}
       <span class="chip-title">${evIcons(e)}${esc(e.title)}</span>
-      ${e.assignee ? `<span class="chip-tag" title="${esc(e.assignee)}">${esc(tagsOf(e.assignee))}</span>` : ""}${goBtns(e, 1)}
+      ${e.assignee ? `<span class="chip-tag">${esc(tagsOf(e.assignee))}</span>` : ""}${goBtns(e, 1)}
     </div>`;
   }
 
@@ -901,18 +915,18 @@
     const e = it.ev;
     if (isInsp(e)) return inspBarHTML(e, style, "cal-tchip", 1);
     if (!e.id && e.gcalId) {
-      return `<div class="cal-tchip ev-gcal" style="${style}" data-gcal="${esc(e.gcalId)}" title="Google 캘린더: ${esc(e.title)}">
+      return `<div class="cal-tchip ev-gcal" style="${style}" data-gcal="${esc(e.gcalId)}" data-hint="${hintOf(e)}${esc("\nGoogle 캘린더")}">
         <span class="chip-g">G</span><span class="chip-time">${esc(e.time || "")}</span>
         <span class="chip-title">${esc(e.title)}</span></div>`;
     }
     return `<div class="cal-tchip ev-${esc(e.color || "blue")}${e.done ? " done" : ""}" style="${style}"
         data-ev="${esc(e.id)}" data-from="${esc(it.from)}" data-occ="${esc(e.start)}" ${canWrite ? 'data-drag="1"' : ""}
-        title="${esc(e.title)}${e.assignee ? " · " + esc(e.assignee) : ""}${e.memo ? "\n" + esc(e.memo) : ""}${canWrite ? "\n(드래그하여 날짜 이동)" : ""}">
+        data-hint="${hintOf(e)}">
       ${checkHTML(e, canWrite, e.start)}
       <span class="chip-dot"></span>
       <span class="chip-time">${esc(e.time || "")}</span>
       <span class="chip-title">${evIcons(e)}${esc(e.title)}</span>
-      ${e.assignee ? `<span class="chip-tag" title="${esc(e.assignee)}">${esc(tagsOf(e.assignee))}</span>` : ""}
+      ${e.assignee ? `<span class="chip-tag">${esc(tagsOf(e.assignee))}</span>` : ""}
     </div>`;
   }
 
@@ -937,23 +951,30 @@
         });
       });
     });
-    // 정렬: 바(빠른 시작, 긴 것) → 시간 칩(요일, 시간순)
+    // 정렬: 남은 일 → 완료, 그 안에서 바(빠른 시작, 긴 것) → 시간 칩(요일, 시간순)
     items.sort((a, b) => {
+      if (!!a.ev.done !== !!b.ev.done) return a.ev.done ? 1 : -1;
       if (a.bar !== b.bar) return a.bar ? -1 : 1;
       if (a.c1 !== b.c1) return a.c1 - b.c1;
       if (a.bar) return ((b.c2 - b.c1) - (a.c2 - a.c1)) || String(a.ev.title).localeCompare(String(b.ev.title));
       return String(a.ev.time || "").localeCompare(String(b.ev.time || "")) || String(a.ev.title).localeCompare(String(b.ev.title));
     });
-    // 레인(행) 배정 — 겹치지 않는 가장 낮은 행
-    const lanes = [];
+    // 레인(행) 배정 — 겹치지 않는 가장 낮은 행. 완료 일정은 그 날짜 칸의 남은 일보다 아래 줄에서만
+    const lanes = [], openTop = Array(7).fill(-1);
     items.forEach(it => {
-      for (let L = 0; ; L++) {
+      let L0 = 0;
+      if (it.ev.done) for (let c = it.c1; c <= it.c2; c++) L0 = Math.max(L0, openTop[c] + 1);
+      for (let L = L0; ; L++) {
         if (!lanes[L]) lanes[L] = [];
         if (lanes[L].every(r => it.c2 < r.c1 || it.c1 > r.c2)) { lanes[L].push(it); it.lane = L; break; }
       }
+      if (!it.ev.done) for (let c = it.c1; c <= it.c2; c++) openTop[c] = Math.max(openTop[c], it.lane);
     });
     const hidden = Array(7).fill(0);
     items.forEach(it => { if (it.lane >= maxLanes) for (let c = it.c1; c <= it.c2; c++) hidden[c]++; });
+    /* 칸 높이 = 날짜(24) + 보이는 줄(줄 20 + 간격 2) + '+n개'(22) — 줄이 칸 밖으로 잘려 안 보이는 일이 없게 */
+    const shown = Math.min(maxLanes, items.reduce((n, it) => Math.max(n, it.lane + 1), 0));
+    const need = 24 + Math.max(0, shown * 22 - 2) + 22;
 
     const bg = days7.map((iso, ci) => {
       const d = fromISO(iso);
@@ -969,7 +990,7 @@
       return it.bar ? barHTML(it, canWrite, style) : tchipHTML(it, canWrite, style);
     }).join("");
 
-    return `<div class="cal-week"><div class="cal-week-bg">${bg}</div><div class="cal-week-ev">${evHtml}</div></div>`;
+    return `<div class="cal-week" style="--wkneed:${need}px"><div class="cal-week-bg">${bg}</div><div class="cal-week-ev">${evHtml}</div></div>`;
   }
 
   function gridHTML(days, monthRef, canWrite, maxLanes, viewCls) {
@@ -994,16 +1015,16 @@
       ? `<span class="chip-time">${esc(e.time)}</span>` : "";
     if (isInsp(e)) return inspBarHTML(e, "", "cal-chip", 2);
     if (!e.id && e.gcalId) {
-      return `<div class="cal-chip ev-gcal" data-gcal="${esc(e.gcalId)}" title="Google 캘린더: ${esc(e.title)}">
+      return `<div class="cal-chip ev-gcal" data-gcal="${esc(e.gcalId)}" data-hint="${hintOf(e)}${esc("\nGoogle 캘린더")}">
         <span class="chip-g">G</span>${timeTxt}
         <span class="chip-title">${cont}${esc(e.title)}${cont2}</span></div>`;
     }
     return `<div class="cal-chip ev-${esc(e.color || "blue")}${e.done ? " done" : ""}"
-        data-ev="${esc(e.id)}" data-from="${esc(dayIso)}" data-occ="${esc(e.start)}" title="${esc(e.title)}${e.assignee ? " · " + esc(e.assignee) : ""}${e.memo ? "\n" + esc(e.memo) : ""}">
+        data-ev="${esc(e.id)}" data-from="${esc(dayIso)}" data-occ="${esc(e.start)}" data-hint="${hintOf(e)}">
       ${checkHTML(e, canWrite, e.start)}
       ${timeTxt}
       <span class="chip-title">${cont}${evIcons(e)}${esc(e.title)}${cont2}</span>
-      ${!noTag && e.assignee ? `<span class="chip-tag" title="${esc(e.assignee)}">${esc(tagsOf(e.assignee))}</span>` : ""}${goBtns(e, compact ? 1 : 2)}
+      ${!noTag && e.assignee ? `<span class="chip-tag">${esc(tagsOf(e.assignee))}</span>` : ""}${goBtns(e, compact ? 1 : 2)}
     </div>`;
   }
 
@@ -1556,7 +1577,7 @@
 
       const body = $("#cal-body");
       if (view === "day") body.innerHTML = dayHTML(canWrite);
-      else if (view === "week") body.innerHTML = gridHTML(daysRange(startOfWeek(anchor), 7), null, canWrite, 12, "view-week");
+      else if (view === "week") body.innerHTML = gridHTML(daysRange(startOfWeek(anchor), 7), null, canWrite, Infinity, "view-week");
       else if (view === "2week") body.innerHTML = gridHTML(daysRange(startOfWeek(anchor), 14), null, canWrite, 10, "view-2week");
       else if (view === "year") body.innerHTML = yearHTML();
       else {

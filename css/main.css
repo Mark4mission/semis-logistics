@@ -737,7 +737,7 @@ dialog.pnl[open]:not([data-closing])::backdrop { background: rgba(11,31,38,.5); 
   display: flex; flex-direction: column;
 }
 .cal-fullscreen .cal-grid-head { flex: none; }
-.cal-fullscreen .cal-week { flex: 1 1 0; min-height: 0; }
+.cal-fullscreen .cal-week { flex: 1 1 0; min-height: var(--wkneed, 0px); }
 .cal-fullscreen .cal-week-bg { height: 100%; grid-template-rows: 1fr; }
 .cal-fullscreen .cal-week-bg .cal-cell { min-height: 0; }
 
@@ -759,7 +759,7 @@ dialog.pnl[open]:not([data-closing])::backdrop { background: rgba(11,31,38,.5); 
 .cal-week { position: relative; border-left: 1px solid var(--border); }
 .cal-week-bg { display: grid; grid-template-columns: repeat(7, 1fr); }
 .cal-week-bg .cal-cell {
-  min-height: var(--wkmin, 120px);
+  min-height: max(var(--wkmin, 120px), var(--wkneed, 0px));
   border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);
   padding: 3px 5px; background: var(--surface); overflow: hidden;
   display: flex; flex-direction: column;
@@ -1941,7 +1941,7 @@ a.ct-tel:hover { color: var(--primary); }
   opacity: 0; visibility: hidden; transform: translateY(-3px); transition: opacity .14s var(--ease-out), transform .14s var(--ease-out), visibility 0s linear .14s; }
 .help-tipbox.on { opacity: 1; visibility: visible; transform: none; transition: opacity .14s var(--ease-out), transform .14s var(--ease-out); }
 /* 기호 풀이 이름표(data-hint) — 아이콘 단추 · 기호에 마우스를 올리면 짧게 */
-.hover-tip { position: fixed; z-index: 1600; left: 0; top: 0; width: max-content; max-width: min(260px, calc(100vw - 16px)); padding: 5px 9px; border-radius: 5px;
+.hover-tip { position: fixed; z-index: 1600; left: 0; top: 0; width: max-content; max-width: min(260px, calc(100vw - 16px)); padding: 5px 9px; border-radius: 5px; white-space: pre-line;
   background: #0e1a1f; color: #eef4f3; font-size: max(var(--fs-min), .8rem); font-weight: 500; line-height: 1.4; box-shadow: 0 6px 18px rgba(11,31,38,.24);
   opacity: 0; visibility: hidden; transition: opacity .1s var(--ease-out), visibility 0s linear .1s; }
 .hover-tip.on { opacity: 1; visibility: visible; transition: opacity .1s var(--ease-out); }
