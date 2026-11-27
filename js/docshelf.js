@@ -1,4 +1,5 @@
 /* 증빙 문서 서가 — 화면마다 붙는 '관련 문서' 묶음. 같은 문서의 여러 판(ser)은 최신 판만 보이고 이전 판은 접는다.
+   새 문서를 올리면(접수 카운터 · 아르고 · 문서 추가) 같은 문서의 이전 판을 찾아 지울지 묻는다 — askOld
    원본은 비공개 버킷(docs/ · 민감보안정보는 docs-ssi/ — hq 이상 열람). 문서 · 판 이름은 공용 DB 에만.
    SeMIS.data.docs = [{ id, mod, grp, title, date, ser, org, note, ssi, mids[], files[{name,size,url}], src, at, by }]
    사용: define(mod, [{ id, label, short?, aka? }], { tab?, pick? }) → card(mod, { q? }) / groupsHTML(mod) → wire(box)
@@ -376,9 +377,167 @@
         org: norm($("#dk-org").value), note: norm($("#dk-note").value), ssi: !!$("#dk-ssi").checked, files: files.slice(), at: new Date().toISOString(), by: me(),
         mids: String($("#dk-mids").value || "").split(/[,\s]+/).map(x => x.trim()).filter(x => /^\d+(\.\d+)*$/.test(x)) };
       if (!Array.isArray(D().docs)) D().docs = [];
-      if (d) Object.assign(d, rec); else D().docs.push(Object.assign({ id: uid() }, rec));
+      const nid = d ? "" : uid();
+      if (d) Object.assign(d, rec); else D().docs.push(Object.assign({ id: nid }, rec));
       SeMIS.save(); closeModal(); toast("저장했습니다."); repaint();
+      if (nid) askOld([nid]);
     };
+  }
+
+  /* ── 이전 판 정리 — 새로 올린 문서와 같은 문서의 옛 판을 찾아 지울지 묻는다(접수 카운터 · 아르고 · 문서 추가 공통) ──
+     같은 화면(mod) 안에서 판 표시(Rev · 차 · 개정 · 날짜 숫자 · 최종 · 수정 등)를 뺀 제목이 같으면 이전 판(기본 선택),
+     제목은 같아도 파일 형식이 다르거나 제목은 달라도 파일 이름이 같으면 후보(기본 선택 안 함).
+     기간이 다른 기록(2026년 1월 · 3분기 · 상반기 · 2026.8 …)은 판이 아니다. 새 문서보다 날짜 · 판 번호 · 발행 날짜 숫자가 늦은 문서는 고르지 않는다.
+     지우면 목록에서만 빠지고 원본 파일은 저장소에 남는다(문서 삭제와 같음 — 변경 이력으로 되살릴 수 있게) */
+  const VER_WORD = /(^|[^a-z])(final|draft|copy|version|ver|rev)(?![a-z])/g;
+  const VER_KO = /개정\s*전문|개정안|개정본|개정판|개정|최종본|최종|수정본|수정|완료|초안|복사본|사본|버전|시행|기준/g;
+  const GENERIC = ["scan", "image", "img", "document", "doc", "untitled", "file", "noname", "문서", "스캔", "스캔본", "사진", "첨부", "새문서"];
+  function verKey(s, isFile) {
+    let t = String(s == null ? "" : s);
+    try { t = t.normalize("NFC"); } catch (e) { /* 정규화 없는 환경은 그대로 */ }
+    t = t.toLowerCase();
+    if (isFile) t = t.replace(/\.[a-z0-9]{1,5}$/, "");
+    t = t.replace(/[+_]/g, " ")
+      .replace(/\(\s*\d{1,2}\s*\)/g, " ")                                              // (1) (2) — 같은 이름 사본 표시
+      .replace(/(^|[^0-9])(19|20)\d{2}[.\-/]\d{1,2}[.\-/]\d{1,2}(?![0-9])/g, "$1 ")    // 2025.6.11
+      .replace(/(^|[^0-9])\d{2}[.\-/]\d{1,2}[.\-/]\d{1,2}(?![0-9])/g, "$1 ")           // 25.6.11
+      .replace(/(^|[^0-9.])\d{1,2}\.\d{1,2}\s*(?=기준|시행|부)/g, "$1 ")                // 9.1 기준
+      .replace(/(^|[^0-9])(\d{6}|\d{8})(?![0-9])/g, "$1 ")                             // 261008 · 20261006
+      .replace(/\(\s*(19|20)\d{2}(\s*[.\-]\s*\d{1,2})?\s*\)/g, " ")                    // (2026) · (2025.11)
+      .replace(/(^|[^a-z0-9])(rev|ver|version|r|v)\s*\.?\s*\d+(\.\d+)*(?![0-9])/g, "$1 ") // Rev.01 · R17 · v1.2
+      .replace(/개정\s*차수\s*\d+/g, " ")
+      .replace(/제?\s*\d+\s*차(?!수)/g, " ")                                            // 제33차 · 17차
+      .replace(/\(\s*안\s*\)/g, " ")
+      .replace(VER_WORD, "$1 ").replace(VER_KO, " ");
+    const k = t.replace(/[^0-9a-z가-힣]/g, "");
+    const bare = k.replace(/[0-9]/g, "");
+    return k.length >= 4 && /[a-z가-힣]/.test(k) && bare.length >= 3 && GENERIC.indexOf(bare) < 0 ? k : "";
+  }
+  /* 기간 표시 — 같은 양식의 다른 달 · 분기 기록을 판으로 보지 않게 */
+  function periodOf(s) {
+    const t = String(s || "").toLowerCase(), out = [];
+    let m;
+    const re = /(\d{2,4})\s*년|(\d{1,2})\s*월|([1-4])\s*분기|(?:^|[^a-z0-9])(?:([1-4])q|q([1-4]))(?![a-z0-9])|(상반기|하반기)|(?:^|[^0-9.])((?:19|20)\d{2})[.\-/](\d{1,2})(?![.\-/]?\d)/g;
+    while ((m = re.exec(t))) {
+      if (m[1]) out.push("y" + (m[1].length === 2 ? "20" + m[1] : m[1]));
+      else if (m[2]) out.push("m" + Number(m[2]));
+      else if (m[3] || m[4] || m[5]) out.push("q" + (m[3] || m[4] || m[5]));
+      else if (m[6]) out.push(m[6] === "상반기" ? "h1" : "h2");
+      else if (m[7]) out.push("y" + m[7], "m" + Number(m[8]));
+    }
+    return Array.from(new Set(out)).sort().join(",");
+  }
+  const periodDoc = (d) => periodOf([d.title].concat((d.files || []).map(f => f && f.name)).join(" "));
+  const fileKeys = (d) => (d.files || []).map(f => verKey(f && f.name, true)).filter(Boolean);
+  const extsOf = (d) => (d.files || []).map(f => ext(f)).filter(x => x !== "FILE");
+  /* 판 번호 · 발행 날짜 숫자(제목 + 파일 이름에서 가장 큰 값) — 옛 판이 더 새것이면 고르지 않는다 */
+  function verSig(d) {
+    const t = [d.title].concat((d.files || []).map(f => f && f.name)).join(" ").toLowerCase().replace(/[+_]/g, " ");
+    let vn = -1, dc = "", m;
+    const vr = /(?:^|[^a-z0-9])(?:rev|ver|r|v)\s*\.?\s*(\d{1,3})(?![0-9])|제?\s*(\d{1,3})\s*차(?!수)|개정\s*차수\s*(\d{1,3})/g;
+    while ((m = vr.exec(t))) vn = Math.max(vn, Number(m[1] || m[2] || m[3]));
+    const pad = (x) => String(x).padStart(2, "0");
+    const ok = (y, mo, da) => { mo = Number(mo); da = Number(da); return mo >= 1 && mo <= 12 && da >= 1 && da <= 31 ? y + pad(mo) + pad(da) : ""; };
+    const dr = /(?:^|[^0-9])(?:((?:19|20)\d{2})[.\-/](\d{1,2})[.\-/](\d{1,2})|(\d{2})[.\-/](\d{1,2})[.\-/](\d{1,2})|((?:19|20)\d{2})(\d{2})(\d{2})|(\d{2})(\d{2})(\d{2}))(?![0-9])/g;
+    while ((m = dr.exec(t))) {
+      const v = m[1] ? ok(m[1], m[2], m[3]) : m[4] ? ok("20" + m[4], m[5], m[6]) : m[7] ? ok(m[7], m[8], m[9]) : ok("20" + m[10], m[11], m[12]);
+      if (v > dc) dc = v;
+    }
+    return { vn, dc };
+  }
+  /* 이 문서(저장 전 모양도 됨 — mod · title · date · files[{name}])의 이전 판 후보 [{ d, by: "title" | "file" }] */
+  function olderOf(doc, o) {
+    if (!doc || !doc.mod) return [];
+    const skip = new Set([doc.id].concat((o && o.exclude) || []).filter(Boolean));
+    const kt = verKey(doc.title), kf = fileKeys(doc), pn = periodDoc(doc), xs = extsOf(doc), sg = verSig(doc);
+    if (!kt && !kf.length) return [];
+    const fileHit = (d) => kf.length > 0 && fileKeys(d).some(k => kf.indexOf(k) >= 0);
+    return all().filter(d => d && d.id && !skip.has(d.id) && d.mod === doc.mod && !lockedOf(d))
+      .filter(d => !(isISO(d.date) && isISO(doc.date) && d.date > doc.date))
+      .filter(d => { const pd = periodDoc(d); return !(pn && pd && pn !== pd); })
+      .filter(d => { const o = verSig(d); return !(o.vn >= 0 && sg.vn >= 0 && o.vn > sg.vn) && !(o.dc && sg.dc && o.dc > sg.dc); })
+      .map(d => {
+        /* 같은 날짜 문서는 같은 파일(같은 형식)을 다시 올린 것만 — 형식만 다른 사본(HWP · PDF) · 나눠 올린 부분은 판이 아니다 */
+        if (isISO(d.date) && d.date === doc.date) return fileHit(d) && extsOf(d).some(x => xs.indexOf(x) >= 0) ? { d, by: kt && verKey(d.title) === kt ? "title" : "file" } : null;
+        const other = xs.length > 0 && extsOf(d).length > 0 && !extsOf(d).some(x => xs.indexOf(x) >= 0);
+        return kt && verKey(d.title) === kt ? { d, by: other ? "format" : "title" } : fileHit(d) ? { d, by: "file" } : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => byDate(a.d, b.d))
+      .slice(0, 20);
+  }
+  /* 지우기 — 체크리스트 번호(mids)는 새 판으로 옮기고, 수검 자료 요청 항목이 고른 증빙 문서(dids)는 새 판으로 바꾼다 */
+  function dropOld(pairs) {
+    const to = {};
+    pairs.forEach(p => { if (p && p.old && p.to && !to[p.old]) to[p.old] = p.to; });
+    const ids = Object.keys(to);
+    if (!ids.length) return 0;
+    const byId = {};
+    all().forEach(d => { if (d && d.id) byId[d.id] = d; });
+    ids.forEach(id => {
+      const old = byId[id], nw = byId[to[id]];
+      if (old && nw) { const ms = midsOf(nw); midsOf(old).forEach(m => { if (ms.indexOf(m) < 0) ms.push(m); }); if (ms.length) nw.mids = ms; }
+    });
+    /* 수검 기록을 쓸 수 없는 계정(메뉴 범위 등)은 서버가 받지 않으므로 건드리지 않는다 */
+    const S = window.SemisSync, sess = S && S.auth && S.auth.session ? S.auth.session() : null;
+    if (Array.isArray(D().audits) && !(sess && typeof S.canWrite === "function" && !S.canWrite("audits"))) {
+      D().audits.forEach(a => (a && Array.isArray(a.checklist) ? a.checklist : []).forEach(c => {
+        if (!c || !Array.isArray(c.dids) || !c.dids.some(x => to[x])) return;
+        c.dids = c.dids.map(x => to[x] || x).filter((x, i, xs) => xs.indexOf(x) === i);
+      }));
+    }
+    const before = all().length;
+    D().docs = all().filter(d => !(d && to[d.id]));
+    return before - D().docs.length;
+  }
+  /* 새 문서 id 목록 → 이전 판이 있으면 묻는다. Promise<{ asked, removed }> — 남겨 두기 · 창이 다른 창으로 바뀌면 removed 0 */
+  function askOld(newIds, o) {
+    o = o || {};
+    const ids = (newIds || []).filter(Boolean);
+    const news = ids.map(id => all().find(d => d && d.id === id)).filter(Boolean);
+    const groups = news.map(n => ({ n, olds: olderOf(n, { exclude: ids }) })).filter(g => g.olds.length);
+    if (!groups.length || !SeMIS.canEdit() || !(SeMIS.canDelete ? SeMIS.canDelete() : true)) return Promise.resolve({ asked: false, removed: 0 });
+    const seen = {};
+    groups.forEach(g => { g.olds = g.olds.filter(x => (seen[x.d.id] ? false : (seen[x.d.id] = true))); });
+    const rowOf = (x, gi) => {
+      const d = x.d, f = (d.files || [])[0];
+      const meta = [labelOf(d.mod, d.grp), dot(d.date), f ? f.name : ""].filter(Boolean).join(" · ");
+      return `<label class="op-row"><input type="checkbox" data-op="${esc(d.id)}" data-op-to="${esc(groups[gi].n.id)}"${x.by === "title" ? " checked" : ""}>
+        <span class="op-t"><span><b>${esc(d.title || "(이름 없음)")}</b>${d.ssi ? ' <span class="dk-ssi" title="민감보안정보">SSI</span>' : ""}</span><small>${esc(meta)}${x.by === "file" ? " · 파일 이름이 같음" : x.by === "format" ? " · 파일 형식이 다름" : ""}</small></span></label>`;
+    };
+    const html = `<h3>이전 판 정리</h3>
+      <div class="op-list" data-op-root>${groups.map((g, gi) => `<div class="op-grp">
+        <div class="op-new"><span class="op-k">새 판</span><b>${esc(g.n.title)}</b>${isISO(g.n.date) ? `<small>${esc(dot(g.n.date))}</small>` : ""}</div>
+        ${g.olds.map(x => rowOf(x, gi)).join("")}</div>`).join("")}</div>
+      <p class="op-note">지울 이전 판을 고르세요. 지운 판은 목록에서 빠지고 원본 파일은 저장소에 남습니다.</p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" data-act="keep">남겨 두기</button>
+        <button type="button" class="btn btn-danger" data-act="del">지우기</button>
+      </div>`;
+    return new Promise(res => {
+      let over = false, obs = null;
+      const end = (v) => { if (over) return; over = true; if (obs) obs.disconnect(); res(v); };
+      openModal(html, { sticky: true });
+      const box = $("#modal-box"), root = $("[data-op-root]", box), del = $("[data-act=del]", box);
+      const picked = () => $$("[data-op]", box).filter(i => i.checked);
+      const paint = () => { const n = picked().length; del.disabled = !n; del.textContent = n ? "선택한 " + n + "건 지우기" : "지우기"; };
+      $$("[data-op]", box).forEach(i => i.onchange = paint);
+      paint();
+      $("[data-act=keep]", box).onclick = () => { closeModal(); end({ asked: true, removed: 0 }); };
+      del.onclick = () => {
+        const pairs = picked().map(i => ({ old: i.getAttribute("data-op"), to: i.getAttribute("data-op-to") }));
+        if (!pairs.length) return;
+        const n = dropOld(pairs);
+        closeModal();
+        if (!o.noSave) { SeMIS.save(); toast("이전 판 " + n + "건을 지웠습니다."); repaint(); }
+        end({ asked: true, removed: n });
+      };
+      /* 다른 창이 이 창을 덮으면 남겨 둔 것으로 본다(기다리는 쪽이 멈추지 않게) */
+      if (typeof MutationObserver !== "undefined" && box) {
+        obs = new MutationObserver(() => { if (!root.isConnected) end({ asked: true, removed: 0 }); });
+        obs.observe(box, { childList: true });
+      }
+    });
   }
 
   const modVisible = (mod) => {
@@ -409,5 +568,5 @@
   else (window.__semisSearchQ = window.__semisSearchQ || []).push(searchProvider);
 
   window.SemisDocs = { define, groupsOf, labelOf, shortOf, list, series, latest, forMid, midsOf, evid, shelf, groupsHTML, card, refresh, count, wire, form, daysAgo,
-    setQuery, getQuery: (mod) => stOf(mod).q, isBoard, BOARD_MIN, hits: (d, q) => hits(d, termsOf(q)), pickTo };
+    setQuery, getQuery: (mod) => stOf(mod).q, isBoard, BOARD_MIN, hits: (d, q) => hits(d, termsOf(q)), pickTo, verKey, periodOf, olderOf, dropOld, askOld };
 })();

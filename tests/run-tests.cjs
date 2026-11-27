@@ -3,7 +3,7 @@
    실행: npm test  (jsdom 필요: npm install)
    구성: [C] 코어(해시·계정·메뉴·정규화·권한·라우터·예정 모듈)
          [D] 대시보드·공지·현황판  [S] 시스템 설정  [M] 이식 모듈 스모크(일정·회의록·연락망·검색)
-         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [IM] 한글 입력 보호  [FL] 운항 현황  [AU] 수검 대응 센터  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [SEC] 서버 보안(비공개 파일·살균·CSP)  [PT] 순찰일지  [SK] 자체 보안점검(수준관리지침 별표 · HWPX)  [UP] 점검 표시 · 다가오는 점검  [CM] v1.29 화면 정돈  [CN] v1.30 편집 모드 · 모바일 접기  [ED] v1.39 보안교육 이수 등록(배포용)  [TA] v1.41 점검교육 · 수검 자료  [DK] v1.47 메인 데스크  [UI] v1.48 지원 카드 · 공통 패널 · 부엉이  [AR] v1.49 아르고 AI 도우미  [DS] v1.55 문서 · 규정 검색  [PV] v1.56–1.57 첨부 미리보기(암호 · XLS · HWP)  [FR] v1.81 운항 실시간 · 지도 제자리 갱신 · 처음 화면 · v1.82 지상 이동  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
+         [Y] 동기화  [CF] 보고 체계도(탭·뷰어·편집)  [FP] 개정 PDF 비교  [SC] 화물 보안(CARES 연동)  [FV] 첨부 뷰어  [CR] 위기대응 담당자  [IM] 한글 입력 보호  [FL] 운항 현황  [AU] 수검 대응 센터  [V] v1.9 비주얼(일정 폼·팔레트·설명 말풍선·허브 배너·3D 히어로)  [SEC] 서버 보안(비공개 파일·살균·CSP)  [PT] 순찰일지  [SK] 자체 보안점검(수준관리지침 별표 · HWPX)  [UP] 점검 표시 · 다가오는 점검  [CM] v1.29 화면 정돈  [CN] v1.30 편집 모드 · 모바일 접기  [ED] v1.39 보안교육 이수 등록(배포용)  [TA] v1.41 점검교육 · 수검 자료  [DK] v1.47 메인 데스크  [UI] v1.48 지원 카드 · 공통 패널 · 부엉이  [AR] v1.49 아르고 AI 도우미  [DS] v1.55 문서 · 규정 검색  [OP] v1.91 이전 판 정리  [PV] v1.56–1.57 첨부 미리보기(암호 · XLS · HWP)  [FR] v1.81 운항 실시간 · 지도 제자리 갱신 · 처음 화면 · v1.82 지상 이동  [W] 릴리스 위생(버전 스탬프·문자열 잔재)
    ═══════════════════════════════════════════════════════ */
 "use strict";
 const fs = require("fs");
@@ -12679,6 +12679,189 @@ function makeServer(opts = {}) {
       eq(q(e, '[data-ttab="docs"]').getAttribute("aria-selected"), "true", "검색 결과 → 교육 자료 탭");
       eq(SD.getQuery("training"), "출석부");
       eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+  }
+
+  /* ══════════ [OP] v1.91 이전 판 정리 — 새 판을 올리면(접수 카운터 · 아르고 · 문서 추가) 같은 문서의 이전 판을 찾아 지울지 묻는다 ══════════ */
+  {
+    const PUB = "https://mzyuzrxkdcpzxojenwat.supabase.co/storage/v1/object/public/semis-logi-files/";
+    const FD = (n) => ({ name: n, size: 10, url: PUB + "docs/x_" + encodeURIComponent(n) });
+    const AI = (o) => Object.assign({ type: "other", title: "", summary: "", date: "", org: "", conf: 0.9, certs: [], events: [], dissem: null, audit: null, case: null, hardcopy: null, shelf: null }, o);
+    const opEnv = (role) => {
+      const e = makeEnv();
+      for (const k of ["TextEncoder", "TextDecoder", "CompressionStream", "DecompressionStream"]) if (!e.w[k]) e.w[k] = globalThis[k];
+      loginAs(e, role || "hq");
+      e.S.data.docs = [
+        { id: "o1", mod: "reg-sec", grp: "ssop", title: "화물 처리 교범 Rev.16", date: "2026-04-21", ser: "", mids: ["2.7"], files: [FD("화물 처리 교범_R16.pdf")] },
+        { id: "o2", mod: "reg-sec", grp: "misc", title: "화물 처리 교범 제15차 개정", date: "2025-10-01", ser: "", files: [FD("화물 처리 교범_15차.hwp")] },
+        { id: "o3", mod: "reg-sec", grp: "notice", title: "처리교범 안내문", date: "2026-03-01", ser: "", files: [FD("화물 처리 교범_R17.pdf")] },
+        { id: "o4", mod: "reg-sec", grp: "ssop", title: "화물 처리 교범 Rev.18", date: "2026-03-01", ser: "", files: [FD("교범18.pdf")] },
+        { id: "o5", mod: "partners", grp: "misc", title: "화물 처리 교범 Rev.16", date: "2026-01-01", ser: "", files: [FD("p.pdf")] },
+        { id: "o6", mod: "reg-sec", grp: "gov", title: "2026년 10월 위해물품 관리대장", date: "2026-10-01", ser: "", files: [FD("26년 10월 관리대장.pdf")] },
+        { id: "o7", mod: "reg-sec", grp: "gov", title: "보고 체계 연락처 (2025.6.11)", date: "2025-06-12", ser: "보고체계", files: [FD("보고체계(25.6.11 부).pdf")] }
+      ];
+      e.S.data.audits = [{ id: "au1", org: "지방항공청", kind: "정기점검", start: "2026-11-09", checklist: [{ id: "ck1", mid: "1", text: "교범", dids: ["o1", "o3", "x9"] }], findings: [] }];
+      e.S.data.desk = { cfg: { areas: {} }, log: [] };
+      return e;
+    };
+    const ids = (xs) => xs.map(x => x.d.id + ":" + x.by).join();
+    const modal = (e) => q(e, "#modal-box [data-op-root]");
+
+    t("OP01 판별 규칙: 판 표시를 뺀 제목 · 파일 이름 · 형식 · 기간 · 날짜 · 판 번호", () => {
+      const e = opEnv("hq");
+      const SD = e.w.SemisDocs;
+      eq(SD.verKey("보안표준업무절차_Amend_Rev01(261008)"), SD.verKey("보안표준업무절차_Amend_Rev01(261013)"), "발행 날짜 숫자");
+      ok(SD.verKey("보안표준업무절차_Amend_Rev01(261008)") !== SD.verKey("보안표준업무절차_Comp_Rev01(261008)"), "본문 · 대비표는 다른 문서");
+      eq(SD.verKey("[HANSF] 지점보안업무절차(SSOP) Rev.2"), SD.verKey("(HANSF) 지점보안업무절차 (SSOP) Rev.5_수정"), "Rev · 수정 · 괄호");
+      eq(SD.verKey("보고 체계 연락처 (2026.9.1 기준)"), SD.verKey("보고 체계 연락처 (2025.6.11)"), "날짜");
+      eq(SD.verKey("사진촬영지침서 개정 전문(260323)"), SD.verKey("사진촬영 지침서"), "띄어쓰기 · 개정 전문");
+      eq(SD.verKey("Handling Manual_R17.pdf", true), SD.verKey("Handling Manual_R16.pdf", true), "파일 R17 · R16");
+      eq(SD.verKey("인수인계서 양식 (개정차수 17)"), SD.verKey("인수인계서 양식"), "개정차수");
+      eq(SD.verKey("16112026104611.pdf", true), "", "스캐너 숫자 이름은 판별하지 않음");
+      eq(SD.verKey("scan_001.pdf", true), "", "흔한 이름");
+      eq(SD.periodOf("2026년 1월 위해물품 관리대장"), "m1,y2026");
+      eq(SD.periodOf("2026.8 제출자료.xlsx"), "m8,y2026", "숫자 연 · 월");
+      eq(SD.periodOf("보고 체계 (2026.9.1 기준)"), "", "날짜는 기간이 아님");
+      eq(SD.periodOf("3분기 보안점검"), "q3");
+      /* 새 판 Rev.17 — Rev.16(제목, 기본 선택) · 15차(다른 묶음 · 형식 다름) · 같은 파일 이름(o3) / Rev.18(늦은 판) · 다른 화면 · 기간 기록은 아님 */
+      const nw = { mod: "reg-sec", title: "화물 처리 교범 Rev.17", date: "2026-11-27", files: [{ name: "화물 처리 교범_R17.pdf" }] };
+      eq(ids(SD.olderOf(nw)), "o1:title,o3:file,o2:format");
+      eq(ids(SD.olderOf(Object.assign({}, nw, { date: "2026-02-01" }))), "o2:format", "새 문서보다 늦은 날짜는 고르지 않음");
+      eq(ids(SD.olderOf({ mod: "reg-sec", title: "2026년 11월 위해물품 관리대장", date: "2026-11-01", files: [{ name: "26년 11월 관리대장.pdf" }] })), "", "다른 달 기록");
+      eq(ids(SD.olderOf({ mod: "reg-sec", title: "보고 체계 연락처 (2026.9.1 기준)", date: "2026-09-07", files: [{ name: "x.pdf" }] })), "o7:title");
+      /* 같은 날짜 — 같은 파일(같은 형식)만 · 형식만 다른 사본 · 나눠 올린 부분은 아님 */
+      e.S.data.docs.push({ id: "s1", mod: "audit", grp: "misc", title: "점검 결과", date: "2026-11-02", files: [FD("점검 결과.hwpx")] },
+        { id: "s2", mod: "audit", grp: "misc", title: "점검 결과", date: "2026-11-02", files: [FD("점검 결과(기계).pdf")] });
+      eq(ids(SD.olderOf({ mod: "audit", title: "점검 결과", date: "2026-11-02", files: [{ name: "점검 결과.pdf" }] })), "", "형식 · 부분");
+      eq(ids(SD.olderOf({ mod: "audit", title: "점검 결과", date: "2026-11-02", files: [{ name: "점검 결과.hwpx" }] })), "s1:title", "같은 파일 다시 올림");
+      /* 민감보안정보는 열람 등급 밖이면 후보가 아님 */
+      e.S.data.docs.push({ id: "z1", mod: "audit", grp: "misc", title: "비공개 점검", date: "2026-01-01", ssi: true, files: [FD("비공개 점검.pdf")] });
+      eq(ids(SD.olderOf({ mod: "audit", title: "비공개 점검", date: "2026-11-02", files: [] })), "z1:title");
+      loginAs(e, "manager");
+      eq(ids(SD.olderOf({ mod: "audit", title: "비공개 점검", date: "2026-11-02", files: [] })), "", "manager 에게 잠긴 문서");
+      e.w.close();
+    });
+
+    await ta("OP02 확인 창: 기본 선택(제목) · 고른 것만 지움 · 체크리스트 번호와 증빙 문서를 새 판으로 · 남겨 두기 · 후보 없으면 묻지 않음", async () => {
+      const e = opEnv("hq");
+      const SD = e.w.SemisDocs, D = e.S.data;
+      D.docs.push({ id: "n1", mod: "reg-sec", grp: "ssop", title: "화물 처리 교범 Rev.17", date: "2026-11-27", ser: "", files: [FD("화물 처리 교범_R17.pdf")] });
+      let p = SD.askOld(["n1"]);
+      ok(modal(e), "창");
+      eq(qa(e, "#modal-box [data-op]").map(i => i.getAttribute("data-op") + (i.checked ? "+" : "-")).join(), "o1+,o3-,o2-", "기본 선택");
+      ok(/파일 이름이 같음/.test(q(e, '#modal-box [data-op="o3"]').closest("label").textContent) && /파일 형식이 다름/.test(q(e, '#modal-box [data-op="o2"]').closest("label").textContent), "까닭");
+      ok(/화물 처리 교범 Rev\.17/.test(q(e, "#modal-box .op-new").textContent), "새 판 표시");
+      eq(q(e, "#modal-box [data-act=del]").textContent, "선택한 1건 지우기");
+      ok(q(e, "#modal-box").hasAttribute("data-sticky"), "바깥 누르기로 닫히지 않음");
+      const o3 = q(e, '#modal-box [data-op="o3"]'); o3.checked = true; o3.dispatchEvent(new e.w.Event("change"));
+      eq(q(e, "#modal-box [data-act=del]").textContent, "선택한 2건 지우기");
+      q(e, "#modal-box [data-act=del]").click();
+      let r = await p;
+      eq(r.removed, 2); ok(!modal(e), "창 닫힘");
+      ok(!D.docs.some(d => d.id === "o1" || d.id === "o3") && D.docs.some(d => d.id === "o2"), "고른 것만");
+      eq(D.docs.find(d => d.id === "n1").mids.join(), "2.7", "체크리스트 번호 옮김");
+      eq(D.audits[0].checklist[0].dids.join(), "n1,x9", "증빙 문서 → 새 판(중복 없이)");
+      /* 남겨 두기 */
+      D.docs.push({ id: "n2", mod: "reg-sec", grp: "ssop", title: "화물 처리 교범 Rev.19", date: "2026-12-01", ser: "", files: [FD("교범19.pdf")] });
+      p = SD.askOld(["n2"]);
+      q(e, "#modal-box [data-act=keep]").click();
+      r = await p;
+      eq(r.removed, 0); ok(D.docs.some(d => d.id === "n1"), "그대로");
+      /* 다른 창이 덮으면 남겨 둔 것으로 */
+      p = SD.askOld(["n2"]);
+      e.S.openModal("<p>다른 창</p>");
+      r = await p;
+      eq(r.removed, 0, "덮이면 끝남"); e.S.closeModal();
+      /* 후보 없음 */
+      D.docs.push({ id: "n3", mod: "reg-sec", grp: "misc", title: "새로운 안내문", date: "2026-12-01", ser: "", files: [FD("안내.pdf")] });
+      r = await SD.askOld(["n3"]);
+      ok(!r.asked && !modal(e), "묻지 않음");
+      /* 같이 올린 새 문서끼리는 후보가 아님 */
+      D.docs.push({ id: "n4", mod: "partners", grp: "misc", title: "협약서", date: "2026-12-01", files: [FD("협약서.hwp")] },
+        { id: "n5", mod: "partners", grp: "misc", title: "협약서", date: "2026-12-01", files: [FD("협약서.pdf")] });
+      r = await SD.askOld(["n4", "n5"]);
+      ok(!r.asked, "한꺼번에 올린 형식별 사본");
+      eq(e.errors.length, 0, e.errors.join("|"));   // 화면 다시 그리기(requestAnimationFrame)가 남아 창은 닫지 않는다
+    });
+
+    await ta("OP03 문서 추가(문서함): 새 문서를 저장하면 이전 판을 묻는다 · 고치기는 묻지 않음", async () => {
+      const e = opEnv("hq");
+      const D = e.S.data;
+      go(e, "reg-sec");
+      q(e, '[data-dk-card="reg-sec"] [data-dk-add]').click();
+      q(e, "#dk-title").value = "화물 처리 교범 Rev.17";
+      q(e, "#dk-date").value = "2026-11-27";
+      q(e, "#modal-box [data-act=ok]").click();
+      ok(modal(e), "저장 뒤 이전 판 창");
+      const nid = D.docs[D.docs.length - 1].id;
+      ok(q(e, '#modal-box [data-op="o1"]').checked, "Rev.16 기본 선택");
+      q(e, "#modal-box [data-act=del]").click();
+      await tick(5);
+      ok(!D.docs.some(d => d.id === "o1") && D.docs.some(d => d.id === nid), "이전 판 지움 · 새 판 남음");
+      ok(!q(e, '[data-dk="o1"]'), "화면에서도 빠짐");
+      /* 고치기(이미 있는 문서) — 묻지 않음 */
+      q(e, '[data-dk-edit="' + nid + '"]').click();
+      q(e, "#modal-box [data-act=ok]").click();
+      ok(!modal(e), "고치기는 묻지 않음");
+      eq(e.errors.length, 0, e.errors.join("|"));   // 화면 다시 그리기(requestAnimationFrame)가 남아 창은 닫지 않는다
+    });
+
+    await ta("OP04 접수 카운터: 문서함 줄에 '이전 판 n건' · 저장한 뒤 지울지 묻는다", async () => {
+      const e = opEnv("hq");
+      const DK = e.w.SemisDesk, Sy = e.w.SemisSync, D = e.S.data;
+      DK.setToday("2026-11-27");
+      Sy.uploadFile = async (file, prefix) => ({ name: file.name, size: 3, url: PUB + prefix + "/zz_" + file.name });
+      Sy.filesCall = async (b) => {
+        if (b.op === "desk-read") return { ok: true, data: AI({ type: "other", title: "화물 처리 교범 Rev.17", date: "2026-11-27", shelf: { mod: "reg-sec", grp: "ssop", title: "화물 처리 교범 Rev.17", date: "2026-11-27" } }) };
+        if (b.op === "copy") return { ok: true, path: b.prefix + "/c", url: PUB + b.prefix + "/cc_교범.pdf" };
+        throw new Error("op");
+      };
+      go(e, "desk");
+      await DK.intake([new e.w.File([new Uint8Array([37, 80, 68, 70])], "화물 처리 교범_R17.pdf")]);
+      for (let i = 0; i < 20 && D.desk.log[0] && D.desk.log[0].status !== "wait"; i++) await tick(5);
+      const lg = D.desk.log[0];
+      eq(lg.status, "wait");
+      await tick(40);
+      const row = q(e, ".dkc-row.on");
+      ok(row && /문서함/.test(row.textContent), "문서함 줄");
+      ok(/이전 판 3건/.test(row.textContent), "이전 판 표시(후보 모두): " + row.textContent.replace(/\s+/g, " "));
+      await DK.apply(lg.id);
+      eq(lg.status, "done");
+      ok(modal(e), "저장 뒤 이전 판 창");
+      q(e, "#modal-box [data-act=del]").click();
+      await tick(5);
+      ok(!D.docs.some(d => d.id === "o1"), "Rev.16 지움");
+      ok(D.docs.some(d => d.src === "desk" && d.title === "화물 처리 교범 Rev.17"), "새 판 저장");
+      eq(e.errors.length, 0, e.errors.join("|"));   // 패널 움직임(requestAnimationFrame)이 남아 창은 닫지 않는다(DK · AR 과 같음)
+    });
+
+    await ta("OP05 아르고 문서함 보관: 확인 카드에 이전 판 줄 · 보관 뒤 묻기 · 결과 줄 · 되돌리면 새 판 빠지고 이전 판 · 증빙 문서 돌아옴", async () => {
+      const e = opEnv("hq");
+      const A = e.w.SemisArgo, D = e.S.data, Sy = e.w.SemisSync;
+      A._reset();
+      Sy.uploadFile = async (file, prefix) => ({ name: file.name, size: 3, url: PUB + prefix + "/zz_" + file.name });
+      const f1 = { fid: "f1", name: "화물 처리 교범_R17.pdf", kind: "pdf", file: new e.w.File(["x"], "화물 처리 교범_R17.pdf") };
+      A.open();
+      const turn = { id: "tq-op", q: "", files: [], a: "", log: "", cards: [], pending: true }; A.conv.turns.push(turn);
+      const p = A.runTool("doc_shelve", { mod: "reg-sec", grp: "ssop", title: "화물 처리 교범 Rev.17", date: "2026-11-27", file: "f1" }, { turn, files: { f1 }, up: {}, log: [] });
+      await tick(10);
+      const cf = turn.cards.find(c => c.k === "confirm");
+      ok(cf && cf.lines.some(l => /이전 판 3건 — 보관한 뒤 지울지 묻습니다/.test(l)), "확인 카드 줄: " + (cf && cf.lines.join(" / ")));
+      q(e, '#pnl-argo [data-cf][data-ok="1"]').click();
+      await tick(10);
+      ok(modal(e), "보관 뒤 이전 판 창");
+      q(e, "#modal-box [data-act=del]").click();
+      const r = await p;
+      ok(r.ok && r.oldRemoved === 1, JSON.stringify(r));
+      const card = turn.cards.find(c => c.k === "result");
+      ok(card && card.lines.some(l => l === "이전 판 1건 지움"), "결과 줄");
+      ok(!D.docs.some(d => d.id === "o1"), "Rev.16 지움");
+      const nw = D.docs.find(d => d.title === "화물 처리 교범 Rev.17");
+      eq(D.audits[0].checklist[0].dids[0], nw.id, "증빙 문서 → 새 판");
+      ok(A.undo(A.latestUndo().id));
+      ok(D.docs.some(d => d.id === "o1") && !D.docs.some(d => d.title === "화물 처리 교범 Rev.17"), "되돌림: 이전 판 복원 · 새 판 빠짐");
+      eq(D.audits[0].checklist[0].dids.join(), "o1,o3,x9", "증빙 문서 되돌림");
+      eq(e.errors.length, 0, e.errors.join("|"));   // 패널 움직임(requestAnimationFrame)이 남아 창은 닫지 않는다(DK · AR 과 같음)
     });
   }
 

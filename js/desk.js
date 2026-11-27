@@ -89,6 +89,9 @@
       .map(m => ({ mod: m.module, label: m.label, groups: SemisDocs.groupsOf(m.module) }));
   }
   const shelfOk = (mod, grp) => shelfMods().some(m => m.mod === mod && m.groups.some(g => g.id === grp));
+  /* 문서함 줄의 이전 판 수 — 저장한 뒤 지울지 묻는다(SemisDocs.askOld) */
+  const olderOf = (a, e) => (window.SemisDocs && SemisDocs.olderOf
+    ? SemisDocs.olderOf({ mod: a.mod, title: norm(a.title), date: isISO(a.date) ? a.date : "", files: e && e.file ? [{ name: e.file.name }] : [] }).length : 0);
   const pathOf = (url) => { const pre = window.SemisSync ? SemisSync.PUBLIC_PREFIX : ""; const u = String(url || ""); return pre && u.indexOf(pre) === 0 ? decodeURIComponent(u.slice(pre.length)) : ""; };
 
   /* AI 에 보내는 목록 — 이름 · 연락처는 넣지 않는다 */
@@ -540,7 +543,9 @@
       delete busy[id]; toast("파일을 옮기지 못했습니다. 다시 눌러 주세요.", true); repaint();
       return;
     }
+    const had = new Set((Array.isArray(D().docs) ? D().docs : []).map(d => d && d.id));
     const done = commit(acts, files, e);
+    const fresh = (Array.isArray(D().docs) ? D().docs : []).filter(d => d && d.id && !had.has(d.id)).map(d => d.id);
     const cur = findLog(id) || e;
     Object.assign(cur, { status: "done", acts: done, doneAt: new Date().toISOString(), doneBy: me() });
     delete cur.ai; delete cur.err; delete cur.info;
@@ -553,6 +558,7 @@
     const where = Array.from(new Set(done.map(x => (KINDS[x.k] || {}).label).filter(Boolean)));
     toast("저장했습니다 — " + (where.length > 2 ? where.slice(0, 2).join(" · ") + " 외 " + (where.length - 2) + "곳" : where.join(" · ")), false,
       go ? { label: "바로 가기", run: () => { close(); SeMIS.navigate(go.route); } } : null);
+    if (fresh.length && window.SemisDocs && SemisDocs.askOld) SemisDocs.askOld(fresh);
   }
   const goOk = (route) => { const mn = SeMIS.menuForModule && SeMIS.menuForModule(route); return !!(mn && SeMIS.navVisible(mn) && SeMIS.hasModule(route)); };
   function keep(id) {
@@ -757,11 +763,12 @@
   function actHTML(e, a) {
     const msg = a.on ? check(a) : "";
     const dup = a.k === "cert" && a.pid !== "_new" && dupRec(a.pid, a.cid, a.date);
+    const olds = a.k === "shelf" && a.on && shelfOk(a.mod, a.grp) ? olderOf(a, e) : 0;
     const open = !!((fixOpen[e.id] || {})[a.id]) || !!msg;
     return `<div class="dkc-row${a.on ? " on" : ""}" data-aid="${esc(a.id)}">
       <div class="dkc-rh"><label class="dkc-ck"><input type="checkbox" data-f="on"${a.on ? " checked" : ""}>
         <span class="dkc-rt"><b>${esc(KINDS[a.k].save)}</b><small>${esc(rowSub(a))}</small></span></label>
-        ${dup ? ui.chip("이미 등록된 기록", "amber") : ""}${msg ? `<span class="dkc-need">${icon("alert", 14)}${esc(msg)}</span>` : ""}
+        ${dup ? ui.chip("이미 등록된 기록", "amber") : ""}${olds ? ui.chip("이전 판 " + olds + "건", "amber") : ""}${msg ? `<span class="dkc-need">${icon("alert", 14)}${esc(msg)}</span>` : ""}
         <button type="button" class="btn btn-ghost dkc-fix" data-fix aria-expanded="${open}">${icon(open ? "chevup" : "edit", 16)}<span>${open ? "접기" : "고치기"}</span></button></div>
       <div class="dk-ab"${open ? "" : " hidden"}>${actBody(a)}</div></div>`;
   }

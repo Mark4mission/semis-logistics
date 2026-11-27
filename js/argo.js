@@ -778,13 +778,14 @@
       }
     },
     doc_shelve: {
-      label: "문서함 보관", verb: "보관하기", keys: ["docs"],
+      label: "문서함 보관", verb: "보관하기", keys: ["docs", "audits"],
       preview: (inp, p) => {
         if (!p || !p.a) return [];
-        const a = p.a, SD = window.SemisDesk;
+        const a = p.a, SD = window.SemisDesk, DS = window.SemisDocs;
         const m = SD ? SD.shelfMods().find(x => x.mod === a.mod) : null;
-        return ["보관할 곳: " + (m ? m.label : a.mod) + " › " + (window.SemisDocs ? SemisDocs.labelOf(a.mod, a.grp) : a.grp), "문서 이름: " + a.title + (a.ssi ? " (민감보안정보)" : ""),
-          "원본: " + (ctxName(p, inp.file) || "첨부")];
+        const olds = DS && DS.olderOf ? DS.olderOf({ mod: a.mod, title: a.title, date: a.date, files: ctxName(p, inp.file) ? [{ name: ctxName(p, inp.file) }] : [] }).length : 0;
+        return ["보관할 곳: " + (m ? m.label : a.mod) + " › " + (DS ? DS.labelOf(a.mod, a.grp) : a.grp), "문서 이름: " + a.title + (a.ssi ? " (민감보안정보)" : ""),
+          "원본: " + (ctxName(p, inp.file) || "첨부")].concat(olds ? ["이전 판 " + olds + "건 — 보관한 뒤 지울지 묻습니다"] : []);
       },
       async prep(inp, ctx) {
         const SD = window.SemisDesk;
@@ -801,9 +802,14 @@
         if (up.error) return up;
         if (!up.url) return { error: "원본 보관은 안전보안파트 이상만 할 수 있습니다." };
         p.files[fd] = up;
+        const had = new Set(arr(D().docs).map(d => d && d.id));
         const out = window.SemisDesk.commit([p.a], p.files);
-        return { lines: out.map(o => o.label).concat([p.a.title + (p.a.ssi ? " (민감보안정보)" : "")]), go: uniqGo(out.map(o => ({ label: (SeMIS.menuForModule(o.route) || {}).label || "문서함", route: o.route }))),
-          result: { done: out.map(o => o.label) }, log: "doc_shelve " + p.a.mod + "/" + p.a.grp + " '" + p.a.title + "'" };
+        const fresh = arr(D().docs).filter(d => d && d.id && !had.has(d.id)).map(d => d.id);
+        /* 같은 문서의 이전 판 — 사람이 고른 것만 지운다(되돌리기에 함께 들어감) */
+        const old = fresh.length && window.SemisDocs && SemisDocs.askOld ? await SemisDocs.askOld(fresh, { noSave: true }) : { removed: 0 };
+        return { lines: out.map(o => o.label).concat([p.a.title + (p.a.ssi ? " (민감보안정보)" : "")], old.removed ? ["이전 판 " + old.removed + "건 지움"] : []),
+          go: uniqGo(out.map(o => ({ label: (SeMIS.menuForModule(o.route) || {}).label || "문서함", route: o.route }))),
+          result: { done: out.map(o => o.label), oldRemoved: old.removed || 0 }, log: "doc_shelve " + p.a.mod + "/" + p.a.grp + " '" + p.a.title + "'" + (old.removed ? " · 이전 판 " + old.removed + "건 지움" : "") };
       }
     },
     audit_findings_add: {

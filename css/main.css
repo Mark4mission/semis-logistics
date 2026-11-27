@@ -6010,6 +6010,20 @@ button.hc-d:focus-visible { outline: 2px solid var(--primary); outline-offset: 1
 .dk-row.is-old .dk-ext { opacity: .7; }
 .dk-row.is-old .dk-t { font-weight: 500; }
 .dk-add { display: inline-flex; align-items: center; gap: 3px; font-size: max(var(--fs-min), .82rem); color: var(--text-3); }
+/* 이전 판 정리 창 */
+.op-list { display: flex; flex-direction: column; gap: 12px; max-height: min(52vh, 420px); overflow-y: auto; margin: 4px 0 8px; }
+.op-grp { border-top: 1px solid var(--border); padding-top: 8px; }
+.op-grp:first-child { border-top: none; padding-top: 0; }
+.op-new { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin-bottom: 4px; font-size: .9rem; overflow-wrap: anywhere; }
+.op-new small { color: var(--text-3); font-size: max(var(--fs-min), .82rem); }
+.op-k { flex: none; padding: 0 6px; border-radius: 4px; background: var(--primary-soft); color: var(--primary-dark); font-size: max(var(--fs-min), .76rem); font-weight: 700; }
+.op-row { display: flex; align-items: flex-start; gap: 10px; padding: 7px 4px 7px 2px; border-radius: 6px; cursor: pointer; }
+@media (hover: hover) and (pointer: fine) { .op-row:hover { background: var(--surface-2); } }
+.op-row input { flex: none; width: 18px; height: 18px; margin-top: 2px; }
+.op-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; font-size: .9rem; overflow-wrap: anywhere; }
+.op-t b { font-weight: 600; }
+.op-t small { color: var(--text-3); font-size: max(var(--fs-min), .82rem); }
+.op-note { margin: 0 0 4px; font-size: max(var(--fs-min), .84rem); color: var(--text-2); }
 .dk-add:hover { color: var(--primary); }
 .card-title .dk-add { margin: 0; }
 .dk-top { display: flex; justify-content: flex-end; margin: -4px 0 6px; }
