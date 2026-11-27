@@ -152,6 +152,35 @@ Deno.test("공용 DB 기체 목록이 없으면 fleet 없음(화면은 기본 15
   assertEquals(r.d.fleet, undefined);
 });
 
+Deno.test("경로(v1.90): ?trail=60 → 최근 60분 점만 · ?trail=1 → 이륙부터 전부 · 없으면 경로 칸을 읽지 않음", async () => {
+  gate = true;
+  const s = Math.floor(Date.now() / 1000);
+  adsbRows = [{ hex: "_meta", fetched_at: "2026-11-27T00:00:00Z", err: null },
+    { hex: "71bc21", reg: "HL7421", lat: 37.4, lon: 126.5, trail: [[s - 7200, 36, 127, 30000], [s - 3500, 36.5, 126.9, 20000], [s - 240, 37.3, 126.6, 5000]] },
+    { hex: "71c503", reg: "HL8503", lat: 37.46, lon: 126.44, trail: null }];
+  const sel = () => decodeURIComponent(calls.filter(c => c.method === "GET" && c.url.includes("/rest/v1/semis_logi_adsb?")).pop()!.url);
+  try {
+    calls.length = 0;
+    let r = await get("?trail=60&events=1", FT);
+    assertEquals(r.status, 200);
+    assertEquals(sel().includes(",trail,"), true);
+    assertEquals(r.d.ac[0].trail.map((x: number[]) => x[0]), [s - 3500, s - 240]);
+    assertEquals(r.d.ac[1].trail, []);
+    calls.length = 0;
+    r = await get("?trail=1", FT);
+    assertEquals(r.d.ac[0].trail.length, 3);
+    assertEquals(r.d.ac[1].trail, null);
+    calls.length = 0;
+    r = await get("?events=1", FT);
+    assertEquals(sel().includes("trail"), false);
+    assertEquals(sel().includes("stand"), true);
+  } finally { adsbRows = null; }
+  assertEquals(["1", "0", "60", "3", "2000", "99999", "abc", "-5", ""].map(mod.trailMin), [0, 0, 60, 5, 1440, 0, 0, 0, 0]);
+  assertEquals(mod.trailMin(null), 0);
+  assertEquals(mod.trailSince([[s - 61 * 60, 1, 2, 3], [s - 59 * 60, 1, 2, 3], "x", null], s * 1000, 60).length, 1);
+  assertEquals(mod.trailSince(null, s * 1000, 60), []);
+});
+
 /* ── 실시간(v1.81) — 아래 시험은 순서대로(같은 인스턴스의 조회 보관을 이어 씀) ── */
 const loose = { sanitizeOps: false, sanitizeResources: false };
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));

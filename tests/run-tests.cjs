@@ -5904,6 +5904,63 @@ function makeServer(opts = {}) {
       eq(e.errors.length, 0, e.errors.join(" | "));
     });
 
+    await ta("FR13 지나간 길(v1.90): 현장 지도 최근 1시간 — 서버 기록(?trail=60 · 1시간 넘은 점 빠짐) + 실시간 점(15초 · 꺾이면 3초 · 같은 점 한 번) · 선 끝 = 이어 그리는 표지 · 1시간 지난 실시간 점 버림 · 착륙하면 지움", async () => {
+      const now = Date.now(), s0 = Math.floor(now / 1000);
+      const e = mk({ srv: { rows: [
+        { hex: "71bc21", reg: "HL7421", type: "B744", flight: "AIH970", lat: 37.2, lon: 126.6, alt: 8000, gnd: false, gs: 250, trk: 320, vr: -1200, pos_at: iso(now - 10000), seen_at: iso(now - 10000),
+          trail: [[s0 - 4000, 36.2, 127.6, 30000], [s0 - 3000, 36.6, 127.2, 20000], [s0 - 1500, 36.9, 126.9, 15000], [s0 - 300, 37.1, 126.7, 10000]] },
+        { hex: "71bd07", reg: "HL7507", type: "B763", flight: "AIH281", lat: 37.4601, lon: 126.4402, alt: null, gnd: true, gs: 0, seen_at: iso(now - 30000), gnd_since: iso(now - 3600000), trail: [[s0 - 4000, 35, 128, 30000], [s0 - 3700, 36, 127, 9000]] }] } });
+      await up();
+      const m = e.map(), SF = e.SF(), L = SF.live;
+      const base = e.calls.filter(c => c.url.indexOf("live=1") < 0);
+      ok(base.length && base.every(c => /semis-logi-adsb\?trail=60&events=1$/.test(c.url)), "기본 조회 = 최근 60분 경로 " + base.map(c => c.url).join(" "));
+      let x = m.items["ac:71bc21"];
+      ok(x && x.trail, "비행 기체 경로 선");
+      const ll0 = x.trail.getLatLngs();
+      eq(ll0.length, 4, "1시간 안 서버 점 3 + 지금 자리");
+      ok(Math.abs(ll0[0].lat - 36.6) < 1e-9 && Math.abs(ll0[3].lat - 37.2) < 1e-9, "오래된 점(66분) 빠짐 · 끝 = 지금 자리");
+      ok(!(m.items["ac:71bd07"] && m.items["ac:71bd07"].trail), "지상 기체는 선 없음");
+      eq(x.trail.options.color, "#b45309", "접근 중 = 운항 현황과 같은 색"); eq(x.trail.options.weight, 2);
+      // 실시간 점 — 15초 간격, 꺾이면 3초 만에도, 같은 시각은 한 번
+      const t0 = Date.now(), msg = (dt, lat, lon, o) => ({ t: t0 + dt, a: 0, ac: [row(lat, lon, Object.assign({ sp: 0, s: 0 }, o || {}))] });
+      SF.liveTake(msg(0, 37.22, 126.58, { trk: 330 }), Date.now());
+      SF.liveTake(msg(0, 37.22, 126.58, { trk: 330 }), Date.now());
+      SF.liveTake(msg(5000, 37.23, 126.57, { trk: 331 }), Date.now());
+      SF.liveTake(msg(10000, 37.24, 126.56, { trk: 345 }), Date.now());
+      SF.liveTake(msg(12000, 37.245, 126.555, { trk: 359 }), Date.now());
+      SF.liveTake(msg(26000, 37.26, 126.55, { trk: 359 }), Date.now());
+      eq(L.tr["71bc21"].map(p => p[0] - t0).join(","), "0,10000,26000", "0초 · 꺾인 10초 · 16초 뒤 26초");
+      SF.paintDash();
+      x = m.items["ac:71bc21"];
+      const ll1 = x.trail.getLatLngs(), mkp = x.mk.getLatLng();
+      eq(ll1.length, 7, "서버 점 3 + 실시간 점 3 + 표지 자리");
+      ok(Math.abs(ll1[3].lat - 37.22) < 1e-9 && Math.abs(ll1[5].lat - 37.26) < 1e-9, "서버 점 뒤에 실시간 점");
+      ok(x.dr && ll1[6].lat === mkp.lat && ll1[6].lng === mkp.lng, "선 끝 = 이어 그리는 표지 자리");
+      const p0 = [mkp.lat, mkp.lng];
+      await tick(450);
+      const mk2 = x.mk.getLatLng(), end2 = x.trail.getLatLngs()[6];
+      ok(kmBetween(p0, [mk2.lat, mk2.lng]) > 0.01, "표지가 이어 그려짐 " + kmBetween(p0, [mk2.lat, mk2.lng]));
+      ok(kmBetween([end2.lat, end2.lng], [mk2.lat, mk2.lng]) < 0.04, "선 끝이 표지를 따라감 " + kmBetween([end2.lat, end2.lng], [mk2.lat, mk2.lng]));
+      // 50분 뒤 — 서버 점은 지금부터 1시간 안 것만(5분 전 점 하나), 실시간 점은 그대로
+      SF.liveTake(msg(50 * 60000, 37.4, 126.5, { trk: 300 }), Date.now());
+      SF.paintDash();
+      eq(m.items["ac:71bc21"].trail.getLatLngs().length, 6, "서버 점 1 + 실시간 점 4 + 표지");
+      // 70분 뒤 — 1시간 지난 실시간 점은 버림
+      SF.liveTake(msg(70 * 60000, 37.45, 126.45, { trk: 300 }), Date.now());
+      eq(L.tr["71bc21"].map(p => (p[0] - t0) / 60000).join(","), "50,70", "1시간 지난 점 버림");
+      SF.paintDash();
+      eq(m.items["ac:71bc21"].trail.getLatLngs().length, 3);
+      // 착륙 — 점을 비우고 선을 지움
+      SF.liveTake(msg(71 * 60000, 37.4611, 126.4412, { g: 1, alt: null, gs: 40, trk: 330 }), Date.now());
+      ok(!L.tr["71bc21"], "착륙 → 실시간 점 비움");
+      SF.paintDash();
+      const xg = m.items["ac:71bc21"];
+      ok(!(xg && xg.trail), "지상(활주) 표지에는 선 없음");
+      let pl = 0; m.layer.eachLayer(l => { if (l instanceof e.w.L.Polyline) pl++; });
+      eq(pl, 0, "지도에 남은 선 없음");
+      eq(e.errors.length, 0, e.errors.join(" | "));
+    });
+
     await ta("FR10 H:drive 운항 현황: 실시간 연결 없음 · 처음 화면 단추 없음 · 갱신해도 같은 표지(정보창 유지) · 경로 선도 제자리", async () => {
       const hc = [];
       const now = Date.now();
@@ -5931,6 +5988,41 @@ function makeServer(opts = {}) {
       ok(m.items["ac:71bc21"].trail === x.trail && x.trail.getLatLngs().length === 4, "경로 선도 제자리에서 늘어남");
       const end = x.trail.getLatLngs()[3];
       ok(Math.abs(end.lat - 37.26) < 1e-9 && Math.abs(mk1.getLatLng().lat - 37.26) < 1e-9, "이어 그리기 없이 받은 자리 그대로");
+      eq(eh.errors.length, 0, eh.errors.join(" | "));
+    });
+
+    await ta("FR14 지나간 길(v1.90): H:drive 대시보드 지도 = 최근 1시간(?trail=60 · 실시간 없음) · 운항 현황으로 가면 이륙부터 전부(?trail=1)", async () => {
+      const hc = [];
+      const now = Date.now(), s0 = Math.floor(now / 1000);
+      const rows = [{ hex: "71be46", reg: "HL7646", type: "B744", flight: "AIH587", lat: 45, lon: 150, alt: 33000, gnd: false, gs: 560, trk: 60, vr: 0, seen_at: iso(now - 10000), pos_at: iso(now - 10000),
+        trail: [[s0 - 5 * 3600, 37.5, 127, 30000], [s0 - 3000, 41, 139, 33000], [s0 - 600, 44, 147, 33000]] }];
+      const eh = makeEnv({ fetch: (url) => { hc.push(String(url)); return Promise.resolve({ ok: true, status: 200,
+        json: () => Promise.resolve(String(url).indexOf("semis-logi-adsb") >= 0 ? { now: iso(Date.now()), fetched_at: iso(Date.now()), ac: rows, events: [] } : []) }); } });
+      eh.w.print = () => {};
+      eh.w.eval(LEAF);
+      Object.defineProperty(eh.w.HTMLElement.prototype, "clientWidth", { configurable: true, get() { return this.classList && this.classList.contains("fo-map") ? 800 : 0; } });
+      Object.defineProperty(eh.w.HTMLElement.prototype, "clientHeight", { configurable: true, get() { return this.classList && this.classList.contains("fo-map") ? 400 : 0; } });
+      loginAs(eh, "hq");
+      go(eh, "dashboard");
+      await tick(60);
+      const SF = eh.w.SemisFlight, m = SF.maps.dash;
+      const adsb = () => hc.filter(u => u.indexOf("semis-logi-adsb") >= 0);
+      ok(adsb().length && adsb().every(u => /\?trail=60&events=1$/.test(u)), "대시보드 = 최근 60분 " + adsb().join(" "));
+      ok(!adsb().some(u => u.indexOf("live=1") >= 0) && !SF.live.on, "실시간 없음");
+      const x = m && m.items["ac:71be46"];
+      ok(x && x.trail, "대시보드 지도에 선");
+      const ll = x.trail.getLatLngs();
+      eq(ll.length, 3, "1시간 안 점 2 + 지금 자리");
+      ok(Math.abs(ll[0].lat - 41) < 1e-9 && Math.abs(ll[2].lat - 45) < 1e-9 && Math.abs(ll[2].lng - 150) < 1e-9);
+      ok(!x.dr, "이어 그리기 없음");
+      const n0 = adsb().length;
+      go(eh, "flight");
+      await tick(60);
+      ok(adsb().slice(n0).some(u => /\?trail=1&events=1$/.test(u)), "운항 현황 = 이륙부터 전부");
+      eq(SF.maps.full.items["ac:71be46"].trail.getLatLngs().length, 4, "운항 현황은 5시간 전 점까지");
+      go(eh, "dashboard");
+      await tick(60);
+      eq(SF.maps.dash.items["ac:71be46"].trail.getLatLngs().length, 3, "대시보드로 돌아와도 1시간만(받아 둔 전체 경로에서 자름)");
       eq(eh.errors.length, 0, eh.errors.join(" | "));
     });
   }

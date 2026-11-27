@@ -46,8 +46,14 @@
   /* 주기장(v1.85) — 서버가 인천공항공사 운항 현황(화물기)에서 받은 주기장 번호 + AIP 좌표(행의 stand) */
   const STAND_Z = 14;         // 이 단계부터 주기장을 아는 인천 지상 기체를 주기장 자리에 따로 그림(그 아래는 공항 묶음)
   const STAND_FOCUS_Z = 17;   // 묶음 목록에서 누르면 이 단계로 그 주기장에 맞춤
+  /* 지나간 길(v1.90) — 대시보드 · 현장 지도는 최근 1시간(서버 기록 4분 간격 + 실시간 점), 운항 현황은 이륙부터 전부(서버 기록) */
+  const TRAIL_MIN = 60;           // 분
+  const TRAIL_GAP_LIVE = 15000;   // 실시간 점 간격 — 방향이 10° 넘게 꺾이면 3초 만에도(선회가 각지지 않게)
+  const TRAIL_TURN = 10;
+  const TRAIL_LIVE_MAX = 600;     // 기체마다 들고 있는 실시간 점 상한
+  const TRAIL_TAIL = 250;         // 이어 그리는 표지에 선 끝을 맞추는 간격(ms)
 
-  const state = { ts: 0, err: "", ac: [], events: null, trail: false, fetchedAt: 0, srcErr: "", ver: 0, busy: null, me: null, fleet: null, auth: true };
+  const state = { ts: 0, err: "", ac: [], events: null, trail: 0, fetchedAt: 0, srcErr: "", ver: 0, busy: null, me: null, fleet: null, auth: true, srvAt: 0, srvRx: 0 };
 
   /* ── 데이터 ── */
   function fleet() {
@@ -61,16 +67,21 @@
     const t = window.SemisSync && SemisSync.auth && typeof SemisSync.auth.token === "function" ? SemisSync.auth.token() : "";
     return t ? { "x-semis-token": t } : {};
   }
+  /* 경로 단계 — 0 없음 · 1 최근 1시간(대시보드 · 현장 지도) · 2 이륙부터 전부(운항 현황). 화면에 있는 지도가 정함(부른 쪽이 빠뜨려도 지도가 비지 않게) */
+  function trailNeed() {
+    if (typeof document === "undefined" || !document) return 0;
+    return document.getElementById("fo-page") ? 2 : document.getElementById("dash-flt") ? 1 : 0;
+  }
   function load(opts) {
     const o = opts || {};
-    const wantTrail = !!o.trail, wantEvents = !!o.events;
+    const wantTrail = Math.max(o.trail === true ? 2 : Number(o.trail) || 0, trailNeed()), wantEvents = !!o.events;
     const age = Date.now() - state.ts;
-    if (!o.force && state.ts && age < 30000 && !state.err && (!wantTrail || state.trail) && (!wantEvents || state.events)) return Promise.resolve(state);
+    if (!o.force && state.ts && age < 30000 && !state.err && state.trail >= wantTrail && (!wantEvents || state.events)) return Promise.resolve(state);
     if (state.busy) return state.busy;
     state.busy = (async () => {
       try {
         const key = window.SemisSync && SemisSync.ANON;
-        const qs = [wantTrail ? "trail=1" : "", wantEvents ? "events=1" : ""].filter(Boolean).join("&");
+        const qs = [wantTrail === 2 ? "trail=1" : wantTrail ? "trail=" + TRAIL_MIN : "", wantEvents ? "events=1" : ""].filter(Boolean).join("&");
         /* fetch 에 cache: "no-store" 를 주지 않는다(v1.81.1) — 주면 브라우저가 사전 확인(OPTIONS) 기억도 건너뛰어 요청마다 서버 호출이 2건.
            응답이 Cache-Control: no-store 라 보관되지는 않는다(아래 실시간 요청도 같음) */
         const r = await fetch(FN_URL + (qs ? "?" + qs : ""), {
@@ -90,6 +101,8 @@
         state.srcErr = j.err || "";
         if (wantEvents) state.events = Array.isArray(j.events) ? j.events : [];
         state.trail = wantTrail;
+        const sa = j.now ? Date.parse(j.now) : NaN;
+        if (Number.isFinite(sa)) { state.srvAt = sa; state.srvRx = Date.now(); }
         state.err = "";
         liveSync();
       } catch (e) {
@@ -148,7 +161,8 @@
      기기 시계가 틀려도 움직임은 맞고, 기본 갱신으로 온 서버 기록에도 같은 식을 써서 두 자료가 번갈아 와도 표지가 끊기지 않는다. */
   const live = { kinds: {}, rows: {}, t: 0, rx: 0, age: 0, skew: null, err: false, on: false, gen: 0, ctrl: null, wake: null,
     mode: "stream", fails: 0, pollUntil: 0, offUntil: 0, got: 0, bytes: 0, msgs: 0, conns: 0,
-    move: {} };                  // 기체별 마지막으로 지상에서 움직인 때(이 기기 시계) — v1.83
+    move: {},                    // 기체별 마지막으로 지상에서 움직인 때(이 기기 시계) — v1.83
+    tr: {} };                    // 기체별 지나간 길 실시간 점 [서버 시각 ms, lat, lon, trk] — v1.90
   const fnum = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
   const liveFresh = () => !!live.t && Date.now() - live.rx < LIVE_FRESH && live.age < LIVE_FRESH;
   /* 서버 기록 줄에 이어 그리기용 시각을 붙임 — 실시간을 한 번이라도 받은 뒤에만(H:drive 에서는 그대로) */
@@ -188,9 +202,49 @@
         sqk: r[8] ? String(r[8]).slice(0, 4) : null, emg: r[9] === 1,
         flight: typeof r[10] === "string" && /^[A-Z0-9]{2,8}$/.test(r[10]) ? r[10] : null,
         pos_at: has ? new Date(j.t - sp).toISOString() : null, seen_at: new Date(j.t - sn).toISOString(), _pl: has ? rx - a - sp : null };
+      trailLive(hex, live.rows[hex], has ? j.t - sp : null);
     });
     live.t = j.t; live.rx = rx; live.age = a; live.skew = rx - (j.t + a); live.err = !!j.e;
     return true;
+  }
+  /* 지나간 길 실시간 점(v1.90) — 공중(지상 여부 0)일 때만 15초 간격(꺾이면 3초), 1시간 넘은 점은 버림. 지상(1)이면 비움 = 다음 이륙부터 새로 */
+  function trailLive(hex, r, t) {
+    if (r.g === 1) { delete live.tr[hex]; return; }
+    if (r.g !== 0 || t == null || r.lat == null || r.lon == null) return;
+    const a = live.tr[hex] || (live.tr[hex] = []), l = a[a.length - 1];
+    if (l && t <= l[0]) return;                                       // 같은 위치를 다시 받음(이어 받기는 바뀐 기체만이지만 묻는 방식은 전체)
+    if (l && t - l[0] < TRAIL_GAP_LIVE) {
+      const turn = r.trk != null && l[3] != null ? Math.abs(((r.trk - l[3]) % 360 + 540) % 360 - 180) : 0;
+      if (!(t - l[0] >= 3000 && turn >= TRAIL_TURN)) return;
+    }
+    a.push([t, r.lat, r.lon, r.trk]);
+    const cut = t - TRAIL_MIN * 60000;
+    while (a.length && (a[0][0] < cut || a.length > TRAIL_LIVE_MAX)) a.shift();
+  }
+  /* 서버 시계로 지금 — 실시간을 받았으면 그 차이로, 아니면 기본 응답의 now 로(기기 시계가 틀려도 1시간 자르기가 맞게) */
+  function srvNow() {
+    const now = Date.now();
+    if (live.skew != null) return now - live.skew;
+    return state.srvAt ? state.srvAt + (now - state.srvRx) : now;
+  }
+  /* 최근 1시간 지나간 길 — 서버 기록(첫 실시간 점보다 앞선 것만) + 실시간 점, 끝은 지금 자리. 점이 없으면 null */
+  function recentTrail(it, at) {
+    const hex = F.normHex(it.f.hex), cut = srvNow() - TRAIL_MIN * 60000;
+    const lv = live.tr[hex] || [], t0 = lv.length ? lv[0][0] : Infinity;
+    const pts = [];
+    const db = it.row && Array.isArray(it.row.trail) ? it.row.trail : [];
+    db.forEach(p => {
+      if (!Array.isArray(p) || fnum(p[0]) == null || fnum(p[1]) == null || fnum(p[2]) == null) return;
+      const t = p[0] * 1000;
+      if (t >= cut && t < t0) pts.push([t, p[1], p[2]]);
+    });
+    lv.forEach(p => { if (p[0] >= cut) pts.push(p); });
+    if (!pts.length) return null;
+    const out = [];
+    let ref = at[1];
+    for (let i = pts.length - 1; i >= 0; i--) { const lo = near(lonN(pts[i][2]), ref); out.unshift([pts[i][1], lo]); ref = lo; }
+    out.push(at);
+    return out;
   }
   /* 한 묶음에 여러 건이 와도 화면은 한 번만 — 지도 표지 · 접근 목록 글자만 제자리에서 고침 */
   let applyT = 0;
@@ -667,6 +721,7 @@
       }
       if (w.dr && w.dr.fresh) { x.dr = w.dr; at = drPos(x.dr, now); }
       x.mk = L.marker(at, { icon: acIcon(L, w.it, { label: true, est: w.type === "lost", rot: x.rot }), keyboard: true, title: w.title, zIndexOffset: w.z });
+      if (x.trail && x.dr) tailTo(x, now);
     }
     x.mk.bindPopup(w.pop, w.type === "apt" ? POP_APT : POP_AC).addTo(layer);
     if (typeof x.mk._movePopup === "function") x.mk.off("move", x.mk._movePopup);     // 정보창은 moveMk 가 직접 옮김
@@ -707,10 +762,19 @@
           const cur = x.mk.getLatLng();
           if (!sameLL([cur.lat, cur.lng], w.at)) moveMk(x, w.at);
         }
+        if (x.trail && x.dr) tailTo(x, now);                                         // 선 끝 = 이어 그리는 표지 자리
       }
     }
     x.at = w.at;
     setPop(x, w.pop);
+  }
+  /* 지나간 길의 끝을 표지 자리로(v1.90) — 이어 그리는 동안 선이 표지 뒤에 처지지 않게 */
+  function tailTo(x, now) {
+    const a = x.trail.getLatLngs();
+    if (a.length < 2) return;
+    x.tt = now;
+    a[a.length - 1] = x.mk.getLatLng();
+    x.trail.setLatLngs(a);
   }
   function dropItem(m, x) {
     [x.mk, x.dot, x.line, x.trail].forEach(l => { if (l) m.layer.removeLayer(l); });
@@ -800,7 +864,7 @@
         let ref = lon;
         for (let i = tr.length - 1; i >= 0; i--) { const lo = near(tr[i][2], ref); trail.unshift([tr[i][1], lo]); ref = lo; }
         trail.push(at);
-      }
+      } else if (!full) trail = recentTrail(it, at);                   // 대시보드 · 현장 지도 — 최근 1시간(v1.90)
       const title = (it.fno || it.f.reg) + " " + st.label;
       want["ac:" + it.f.hex] = { type: "ac", it, at, trail, trk, pr: PR[st.code] == null ? 3 : PR[st.code], z: st.code === "appr" || st.code === "emg" ? 500 : 0,
         title, pop: popHTML(it), sig: [st.code, it.fno, it.f.reg, title].join("|"), dr: liveOn ? drOf(it, now) : null };
@@ -862,7 +926,9 @@
           const x = m.items[k];
           if (!x.dr || !drMoving(x.dr, now)) return;
           any = true;
-          if (!m.map._animatingZoom) moveMk(x, drPos(x.dr, now));
+          if (m.map._animatingZoom) return;
+          moveMk(x, drPos(x.dr, now));
+          if (x.trail && (now - (x.tt || 0) >= TRAIL_TAIL || !drMoving(x.dr, now + ANIM_MS))) tailTo(x, now);   // 멈추기 직전에도 한 번
         });
       });
       if (!any) return;

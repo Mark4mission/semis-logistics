@@ -4,7 +4,8 @@
    - adsb.lol 은 브라우저 직접 호출(CORS)을 막아 두어 이 함수가 중계한다.
    - adsb.lol 조회는 50초에 한 번(_meta 행 조건부 갱신으로 잠금). pg_cron 이 2분마다 ?cron=1 로 호출해 끊김 없이 기록.
    - 기체 목록: semis_logi_store.fleet[].hex (없으면 기본 15대)
-   - GET ?trail=1 → 비행 경로 포함 · ?events=1 → 최근 48시간 입출항 기록 포함 · 응답에 기체 목록 fleet(공용 DB 에 있을 때)
+   - GET ?trail=1 → 비행 경로(이륙부터) 포함 · ?trail=<분>(2~1440, 5분 미만은 5) → 그 시간 안의 경로 점만(v1.90 대시보드 · 현장 지도 = 60)
+     · ?events=1 → 최근 48시간 입출항 기록 포함 · 응답에 기체 목록 fleet(공용 DB 에 있을 때)
    - 출입(v1.80): H:drive 로그인 세션(x-semis-token) 또는 현장 웹앱 PIN 표(x-flight-token) — 판정은 SQL semis_logi_flight_gate
      (tools/sql/semis-logi-flight.sql, strict 가 꺼져 있으면 모두 통과). ?cron=1 은 기록만 하고 위치를 돌려주지 않으므로 확인하지 않음
    - 실시간(v1.81 · 현장 웹앱): GET ?live=1 → adsb.lol 을 5초 간격으로 받아 DB 를 거치지 않고 그대로 돌려준다(기록 · 입출항 판정은 위 경로만).
@@ -31,6 +32,15 @@ const MIN_GAP = 50_000;            // adsb.lol 조회 최소 간격
 const TRAIL_GAP = 240;             // 경로 점 간격(초)
 const TRAIL_KEEP = 20 * 3600;      // 경로 보관(초)
 const TRAIL_MAX = 400;
+/* 최근 경로(v1.90) — ?trail=<분> 의 분(1 = 이륙부터 전부 · 0 · 그 밖 = 경로 없음) */
+export function trailMin(q: string | null): number {
+  const n = /^\d{1,4}$/.test(q || "") ? Number(q) : 0;
+  return n >= 2 ? Math.min(1440, Math.max(5, n)) : 0;
+}
+export function trailSince(tr: unknown, nowMs: number, min: number): number[][] {
+  const cut = Math.floor(nowMs / 1000) - min * 60;
+  return Array.isArray(tr) ? (tr as number[][]).filter(x => Array.isArray(x) && Number(x[0]) >= cut) : [];
+}
 const RECENT = 20 * 60_000;        // 직전 수신이 이 안이면 착륙·이륙 시각을 그대로 인정
 const EVENT_KEEP_DAYS = 45;
 const DEFAULT_HEX = ["71bc17", "71bc19", "71bc20", "71bc21", "71bc23", "71bc36", "71be16", "71be20", "71be45", "71be46",
@@ -499,14 +509,19 @@ Deno.serve(async (req: Request) => {
     try { sn = await standRefresh(); } catch (e) { sn = "stand error " + (e as Error).message; }
     return json({ ok: true, note, stand: sn });
   }
-  const cols = COLS + (u.searchParams.get("trail") === "1" ? ",trail" : "") + ",fetched_at,err";
+  const tq = u.searchParams.get("trail"), tmin = trailMin(tq);
+  const cols = COLS + (tq === "1" || tmin ? ",trail" : "") + ",fetched_at,err";
   const { data, error } = await db.from("semis_logi_adsb").select(cols);
   if (error) return json({ error: error.message }, 500);
   const rows = (data || []) as unknown as Row[];
   const meta = rows.find(r => r.hex === "_meta") || {};
   const out: Row = {
     now: iso(Date.now()), note, fetched_at: meta.fetched_at || null, err: meta.err || null, src: "adsb.lol (ODbL)",
-    ac: rows.filter(r => r.hex !== "_meta").map(r => { delete r.fetched_at; delete r.err; return r; })
+    ac: rows.filter(r => r.hex !== "_meta").map(r => {
+      delete r.fetched_at; delete r.err;
+      if (tmin) r.trail = trailSince(r.trail, Date.now(), tmin);
+      return r;
+    })
   };
   const fl = await fleetList();
   if (fl) out.fleet = fl;
