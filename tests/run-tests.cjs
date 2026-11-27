@@ -12234,6 +12234,33 @@ function makeServer(opts = {}) {
       ok(/@media screen and \(max-width: 767px\)[\s\S]*\.bb-search \{ margin-left: 0; width: 100%; \}/.test(c));
       ok(BJS.indexOf("SeMIS.isMobile()") > 0 && BJS.indexOf("bb-mlist") > 0, "모바일 목록");
     });
+    await ta("BB17 서식 편집기 문단 정렬(v1.88): 글쓰기 · 고치기 모두 왼쪽 · 가운데 · 오른쪽 · 양쪽 단추(그림 + 풀이 · title 없음) · 커서 문단 정렬을 눌린 상태로 · 정렬 스타일 저장 · 글 화면 유지", async () => {
+      const { e, sv } = await boardEnv("hq-pw-2222");
+      go(e, "board/B001");
+      await tick(20);
+      q(e, "#bb-write").click();
+      const al = () => qa(e, '#modal-box .nb-toolbar [role="group"] [data-al]');
+      eq(al().map(b => b.dataset.cmd + ":" + b.getAttribute("data-hint")).join(","), "justifyLeft:왼쪽 정렬,justifyCenter:가운데 정렬,justifyRight:오른쪽 정렬,justifyFull:양쪽 정렬");
+      ok(al().every(b => b.querySelector("svg.ico") && b.querySelector(".sr-only") && !b.hasAttribute("title")), "그림 단추 · 이름 · title 없음");
+      const ed = q(e, "#bb-wed");
+      ed.innerHTML = '<p style="text-align: center;">가운데 문단</p><p>보통 문단</p>';
+      const at = (el) => { const r = e.w.document.createRange(); r.setStart(el.firstChild, 1); r.collapse(true); const sl = e.w.getSelection(); sl.removeAllRanges(); sl.addRange(r); el.closest("#bb-wed").dispatchEvent(new e.w.MouseEvent("mouseup", { bubbles: true })); };
+      const on = () => al().filter(b => b.getAttribute("aria-pressed") === "true").map(b => b.dataset.al).join(",");
+      at(ed.children[0]); eq(on(), "center", "가운데 문단");
+      at(ed.children[1]); eq(on(), "left", "보통 문단 = 왼쪽");
+      q(e, "#bb-wt").value = "정렬 시험";
+      q(e, "#modal-box [data-act=ok]").click();
+      await tick(40);
+      const sv1 = sv.bbs.calls.filter(c => c.name === "save").pop().body;
+      ok(/text-align:\s*center/.test(sv1.html), "정렬 스타일 저장 " + sv1.html);
+      await tick(30);
+      ok(/text-align:\s*center/.test(q(e, ".bb-content").innerHTML), "글 화면에 정렬");
+      q(e, "[data-bb-edit]").click();
+      eq(al().length, 4, "고치기 화면에도 정렬 단추");
+      at(q(e, "#bb-wed").children[0]); eq(on(), "center", "고치기 — 기존 정렬 표시");
+      e.S.closeModal();
+      e.Sync.stop();
+    });
   }
 
   /* ══════════ [DS] v1.55 문서 · 규정 검색 — 파일명 검색 · 게시판형 문서 목록 · 규정 화면 검색칸 하나 ══════════ */
@@ -13750,16 +13777,17 @@ function makeServer(opts = {}) {
       e.w.close();
     });
 
-    t("LN03 목록: 진행 중 표 · 완료 막대 · 상태 · 새 교육(hq만) · 명단 단추 · 인쇄 · manager 는 만들기 없음", () => {
+    t("LN03 목록: 첫 화면 = 전체(v1.88) · 진행 중 거르기 · 완료 막대 · 상태 · 새 교육(hq만) · 명단 단추 · 인쇄 · manager 는 만들기 없음", () => {
       const { e } = lnEnv("hq", { courses: [COURSE(), COURSE({ id: "lc2", code: "bbbbbbbb2222", title: "예정 교육", start: "2026-11-20", end: "2026-11-30" }), COURSE({ id: "lc3", code: "cccccccc3333", state: "draft", title: "준비 중 교육" })] });
       go(e, "learn");
+      eq(q(e, '[data-lnf][aria-pressed="true"]').dataset.lnf, "all", "첫 화면 선택 = 전체");
+      eq(qa(e, ".ln-tbl tbody tr").length, 3, "전체");
+      ok(/준비 중/.test(q(e, ".ln-tbl").textContent));
+      q(e, '[data-lnf="live"]').click();
       eq(qa(e, ".ln-tbl tbody tr").length, 1, "진행 중만");
       ok(/3\/6/.test(q(e, ".ln-tbl tbody tr").textContent) && /50%/.test(q(e, ".ln-tbl tbody tr").textContent), "완료 3/6 · 50%");
       ok(q(e, ".page-head [data-ln-new].btn-primary") && q(e, "#ln-to-roster.ph-rare"), "새 교육 · 명단");
       ok(q(e, ".page-head [data-print-btn]"), "인쇄 단추");
-      q(e, '[data-lnf="all"]').click();
-      eq(qa(e, ".ln-tbl tbody tr").length, 3, "전체");
-      ok(/준비 중/.test(q(e, ".ln-tbl").textContent));
       loginAs(e, "manager"); e.S.renderView();
       ok(!q(e, "[data-ln-new]"), "manager 만들기 없음");
       eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
@@ -14405,6 +14433,56 @@ function makeServer(opts = {}) {
       eq(sd.map(x => x.g).join(","), "UCC"); eq(sd[0].mem[0].name, "하하하");
       eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
     });
+    t("LN30 진행 현황 연락처(v1.88): 교육 담당자(만든 사람 · 연 사람)만 연락처 칸 · 미완료 · 진행 중 · 사유 줄만 번호(휴대 = 전화 걸기 · 구내) · 완료는 비움 · 번호 없으면 '-' · 다른 hq · manager 는 칸 없음 · 기록부 · 엑셀에 번호 없음", () => {
+      const people = ROSTER().people.map(p => Object.assign({}, p, { p1: { mobile: "010-1111-2222", office: "032-744-0001" }, p2: { mobile: "010-3333-4444" }, p4: { office: "0004" } }[p.id] || {}));
+      const { e, L } = lnEnv("hq", { people: Object.assign(ROSTER(), { people }), courses: [COURSE({ createdBy: "Thq" })] });
+      L.setState({ view: "detail", sel: "lc1" });
+      go(e, "learn");
+      const c = e.S.data.learn.courses[0];
+      ok(L.isOwner(c), "만든 사람");
+      const heads = qa(e, ".ln-mem thead th").map(x => x.textContent.trim());
+      eq(heads.indexOf("연락처"), 4, "상태 다음 칸 " + heads.join("|"));
+      const row = (nm) => qa(e, ".ln-mem tbody tr").find(tr => tr.querySelector("td").textContent.indexOf(nm) >= 0);
+      const tel = (nm) => row(nm).querySelector("td.ln-tel");
+      eq(tel("가나다").textContent.trim(), "", "완료 = 비움");
+      eq(tel("라마바").querySelector('a[href^="tel:"]').getAttribute("href"), "tel:01033334444", "사유 줄 = 휴대 전화 걸기");
+      eq(tel("차카타").textContent.trim(), "구내 0004", "진행 중 = 구내만");
+      ok(!tel("차카타").querySelector("a"), "휴대 없으면 링크 없음");
+      eq(tel("나다라").textContent.trim(), "-", "번호 없음");
+      eq(tel("홍길동").textContent.trim(), "", "명단 외(완료) = 비움");
+      q(e, '[data-lndf="todo"]').click();
+      ok(qa(e, ".ln-mem tbody tr").every(tr => tr.querySelector("td.ln-tel")), "미완료 거르기에서도 칸");
+      const html = String(L.recordHTML(c, {}, {}) || "");
+      ok(html.indexOf("010-3333-4444") < 0 && html.indexOf("032-744-0001") < 0 && html.indexOf("구내") < 0, "기록부에 번호 없음");
+      loginAs(e, "hq", { id: "other" }); e.S.renderView();
+      ok(!L.isOwner(c) || e.S.user.name === "Thq", "같은 이름 = 같은 담당자");
+      c.createdBy = "다른 사람"; e.S.renderView();
+      ok(!L.isOwner(c) && !q(e, ".ln-mem td.ln-tel") && qa(e, ".ln-mem thead th").every(x => x.textContent.trim() !== "연락처"), "담당자가 아니면 칸 없음");
+      c.openedBy = "Thq"; e.S.renderView();
+      ok(L.isOwner(c) && q(e, ".ln-mem td.ln-tel"), "교육을 연 사람");
+      c.openedBy = ""; loginAs(e, "manager"); e.S.renderView();
+      ok(!q(e, ".ln-mem td.ln-tel"), "manager 칸 없음");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+
+    t("LN31 교육 열기 · 다시 열기는 연 사람(openedBy)을 남기고 수정 저장해도 유지(v1.88)", () => {
+      const { e, L } = lnEnv("hq", { courses: [COURSE({ state: "draft", createdBy: "다른 사람" })] });
+      L.setState({ view: "detail", sel: "lc1" });
+      go(e, "learn");
+      q(e, '[data-lnx="link"]').click();
+      q(e, "#ln-open").click();
+      const c = () => e.S.data.learn.courses[0];
+      eq(c().state, "open"); eq(c().openedBy, "Thq", "연 사람");
+      ok(L.isOwner(c()), "연 사람 = 담당자");
+      e.S.closeModal();
+      L.openEdit("lc1");
+      ok(q(e, "#ln-esave"), "수정 화면");
+      q(e, "#ln-esave").click();
+      eq(c().updatedBy, "Thq", "저장됨");
+      eq(c().openedBy, "Thq", "수정 저장 뒤에도");
+      eq(e.errors.length, 0, e.errors.join("|")); e.w.close();
+    });
+
     t("LN29 팀장(v1.85.1): 서명지는 UCC 서명지 맨 앞 칸 · 진행 현황 소속 = 팀 이름(파트 아님) · UCC 서명지 없으면 첫 파트 서명지(LN25)", () => {
       const R0 = ROSTER();
       R0.people.push({ id: "p8", name: "하하하", org: "에어제타", part: "UCC", emp: "900008", gender: "M", title: "팀장" });

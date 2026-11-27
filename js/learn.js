@@ -36,6 +36,8 @@
   const uid = (p) => (p || "x") + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   const who = () => (SeMIS.user && SeMIS.user.name) || "";
   const canW = () => SeMIS.canEdit();
+  /* 교육 담당자(만든 사람 · 교육을 연 사람) — 진행 현황의 미완료 · 진행 중 연락처는 담당자 화면에만 */
+  const isOwner = (c) => { const me = who(); return !!me && !!c && (c.createdBy === me || c.openedBy === me); };
   const kb = (n) => (n >= 1048576 ? (n / 1048576).toFixed(1) + "MB" : Math.max(1, Math.round((n || 0) / 1024)) + "KB");
   const mmss = (s) => { s = Math.round(s || 0); return s >= 60 ? Math.floor(s / 60) + "분" + (s % 60 ? " " + (s % 60) + "초" : "") : s + "초"; };
   /* 학습 주소 코드 — 공개 저장소에서 추측하지 못하게 무작위 12자(서버 형식 [a-z2-9]) */
@@ -98,7 +100,7 @@
       const r = byPid[p.id], tg = !p.left && isTarget(c, p);
       if (!tg && !(r && r.state === "ok")) return;
       mem.push({ key: "p:" + p.id, pid: p.id, name: p.name, org: p.org || "", part: p.part || "", emp: p.emp || "", gender: p.gender || "", title: p.title || "",
-        group: groupOf(p), tgt: tg, row: r || null, note: !r || r.state !== "ok" ? norm(ex[p.id]) : "" });
+        group: groupOf(p), tgt: tg, row: r || null, note: !r || r.state !== "ok" ? norm(ex[p.id]) : "", mobile: norm(p.mobile), office: norm(p.office) });
     });
     rows.filter(r => !r.pid || !people().some(p => p.id === r.pid)).forEach(r => {
       mem.push({ key: "r:" + r.rid, pid: "", name: r.name, org: r.org, part: r.part, emp: r.emp, gender: r.gender || "", title: "",
@@ -132,7 +134,7 @@
   }
 
   /* ── 상태 ── */
-  let view = "list", sel = "", filt = "live", q = "", dq = "", dfilt = "all", dgrp = "", dtab = "mem";
+  let view = "list", sel = "", filt = "all", q = "", dq = "", dfilt = "all", dgrp = "", dtab = "mem";
   let edit = null;
   const memo = {}, vmemo = {};    // 올린 문서의 글(이 화면에서만 — AI 요약용)
   const cur = () => courses().find(c => c.id === sel) || null;
@@ -215,15 +217,24 @@
     if (!g.loaded) return ui.empty(S.err ? "이수 기록을 불러오지 못했습니다." : "이수 기록을 불러오는 중입니다.");
     const rs = memRows(c, g), signs = S.signs[c.id] || {};
     if (!rs.length) return ui.empty(g.n ? "조건에 맞는 사람이 없습니다." : "대상이 없습니다. 교육 수정에서 대상을 고르세요.");
-    return `<div class="table-wrap"><table class="tbl ln-mem"><thead><tr><th>이름</th><th>소속</th><th>사번</th><th>상태</th><th>완료 일시</th><th>서명</th>${canW() ? "<th></th>" : ""}</tr></thead><tbody>
+    const own = isOwner(c);
+    return `<div class="table-wrap"><table class="tbl ln-mem"><thead><tr><th>이름</th><th>소속</th><th>사번</th><th>상태</th>${own ? "<th>연락처</th>" : ""}<th>완료 일시</th><th>서명</th>${canW() ? "<th></th>" : ""}</tr></thead><tbody>
       ${rs.map(m => { const lb = ST_LB[m.st], r = m.row;
         return `<tr><td data-role="title"><b>${esc(m.name)}</b>${m.manual ? ` ${ui.chip("명단 외", "orange")}` : !m.tgt ? ` ${ui.chip("대상 외", "purple")}` : ""}</td>
           <td>${esc(unitOf(m))}${m.org !== SELF && m.org !== m.group ? "" : ""}</td><td class="mono">${esc(m.emp || "-")}</td>
           <td>${ui.chip(lb[0], lb[1])}${m.note ? ` <span class="ln-dim">${esc(m.note)}</span>` : ""}</td>
+          ${own ? `<td class="ln-tel">${telCell(m)}</td>` : ""}
           <td class="mono">${esc(r && r.at ? r.at.slice(2).replace(/-/g, ".") : r && r.state === "start" ? "시작 " + String(r.start || "").slice(5).replace(/-/g, ".") : "")}</td>
           <td>${r && r.state === "ok" && signs[r.rid] ? `<img class="ln-sg" src="${esc(signs[r.rid])}" alt="${esc(m.name)} 서명">` : ""}</td>
           ${canW() ? `<td class="td-act"><button type="button" class="mt-btn" data-lnm="${esc(m.key)}" title="${esc(m.name)} 관리" aria-label="${esc(m.name)} 관리">${icon("more", 16)}</button></td>` : ""}</tr>`; }).join("")}
     </tbody></table></div>`;
+  }
+  /* 완료한 사람은 비움 · 번호가 없으면 '-' */
+  function telCell(m) {
+    if (m.st === "ok") return "";
+    const mob = m.mobile ? `<a class="mono" href="tel:${esc(m.mobile.replace(/[^0-9+]/g, ""))}">${esc(m.mobile)}</a>` : "";
+    const off = m.office ? `<span class="mono ln-dim">구내 ${esc(m.office)}</span>` : "";
+    return mob || off ? mob + (mob && off ? "<br>" : "") + off : `<span class="ln-dim">-</span>`;
   }
   function grpBody(g) {
     if (!g.loaded) return ui.empty("이수 기록을 불러오는 중입니다.");
@@ -383,6 +394,7 @@
   function setState(c, st) {
     if (!canW()) return;
     c.state = st; c.updatedAt = new Date().toISOString(); c.updatedBy = who();
+    if (st === "open") c.openedBy = who();
     SeMIS.save(); toast(st === "open" ? "교육을 열었습니다." : st === "closed" ? "교육을 마감했습니다." : "저장했습니다."); SeMIS.renderView();
   }
 
@@ -407,7 +419,7 @@
     if (op) op.onclick = () => {
       if (!isISO(c.start) || !isISO(c.end)) { toast("교육 기간을 먼저 정하세요.", true); return; }
       if (!c.offline && !String(c.body || "").trim() && !arrOf(c.items).length) { toast("교육 내용을 먼저 넣으세요.", true); return; }
-      c.state = "open"; c.updatedAt = new Date().toISOString(); c.updatedBy = who();
+      c.state = "open"; c.updatedAt = new Date().toISOString(); c.updatedBy = who(); c.openedBy = who();
       SeMIS.save(); toast("교육을 열었습니다."); linkModal(c); SeMIS.renderView();
     };
   }
@@ -831,6 +843,7 @@
       targets: { groups: e.targets.groups.slice(), add: e.targets.add.slice(), except: e.targets.except.slice() },
       excuse: isObj(e.excuse) ? e.excuse : {}, dissem: e.dissem || "",
       createdAt: e.createdAt || now, createdBy: e.createdBy || who(), updatedAt: now, updatedBy: who() };
+    if (e.openedBy) out.openedBy = e.openedBy;
     if (e.offline) { out.offline = true; out.recBody = out.body; out.recItems = out.items; out.body = ""; out.items = []; out.minSec = 0; }
     const i = courses().findIndex(x => x.id === out.id);
     if (i >= 0) L().courses.splice(L().courses.indexOf(courses()[i]), 1, out); else L().courses.push(out);
@@ -1229,11 +1242,11 @@
   });
 
   window.SemisLearn = {
-    TITLE, SELF, KINDS, groupOf, groups, isTarget, prog, statusOf, loadStats, loadSigns, calItems, todayData, todaySub, mountToday, dashPane, wireDash, remote,
+    TITLE, SELF, KINDS, groupOf, groups, isTarget, isOwner, prog, statusOf, loadStats, loadSigns, calItems, todayData, todaySub, mountToday, dashPane, wireDash, remote,
     RC, dissemRows, fitRecord, recordHTML, contentHTML, recordMedia, frames, LOGO_SVG, recordBook, bookParts, xlsxBytes, sheetData, learnUrl, newCode, autoMin, period,
     open(id) { go("detail", id); }, openEdit, go,
     setToday(t) { fixedToday = isISO(t) ? t : ""; },
-    setState(o) { o = o || {}; if (o.view) view = o.view; if (o.sel !== undefined) sel = o.sel; if (o.filt) filt = o.filt; if (o.q !== undefined) q = o.q; if (o.dfilt) dfilt = o.dfilt; if (o.dtab) dtab = o.dtab; if (o.dgrp !== undefined) dgrp = o.dgrp; if (o.reset) { view = "list"; sel = ""; filt = "live"; q = ""; dq = ""; dfilt = "all"; dgrp = ""; dtab = "mem"; edit = null; } },
+    setState(o) { o = o || {}; if (o.view) view = o.view; if (o.sel !== undefined) sel = o.sel; if (o.filt) filt = o.filt; if (o.q !== undefined) q = o.q; if (o.dfilt) dfilt = o.dfilt; if (o.dtab) dtab = o.dtab; if (o.dgrp !== undefined) dgrp = o.dgrp; if (o.reset) { view = "list"; sel = ""; filt = "all"; q = ""; dq = ""; dfilt = "all"; dgrp = ""; dtab = "mem"; edit = null; } },
     _S: S, _setRows(rows) { S.rows = rows; S.at = rows ? Date.now() : 0; }, _setSigns(cid, m) { S.signs[cid] = m; }, _edit: () => edit, _vmemo: vmemo
   };
 })();

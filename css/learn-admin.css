@@ -8,6 +8,7 @@
 .ln-tl:hover { color: var(--primary-dark); text-decoration: underline; text-underline-offset: 3px; }
 .ln-sg { display: block; height: 30px; max-width: 110px; object-fit: contain; }
 .ln-mem td, .ln-grp td { vertical-align: middle; }
+.ln-tel { white-space: nowrap; }
 
 .ln-info .ln-dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0 0 10px; font-size: .9rem; }
 .ln-info .ln-dl dt { color: var(--text-3); }

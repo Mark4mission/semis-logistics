@@ -3,7 +3,7 @@
 
 const SeMIS = (() => {
 
-  const VERSION = "1.87.0";
+  const VERSION = "1.88.0";
   const APP_NAME = "H:drive";
   const APP_ALIAS = "ARGOS (Air-cargo Risk & Guard Operations System)";
   /* 데이터 캐시는 탭 sessionStorage 에만(탭 닫기·로그아웃 시 소멸). 화면 설정(LS_UI)만 localStorage */
@@ -130,7 +130,11 @@ const SeMIS = (() => {
     reply: '<path d="M9.5 7 4.5 12l5 5"/><path d="M4.5 12H14a5.5 5.5 0 0 1 5.5 5.5v1"/>',
     up: '<path d="M12 20V9"/><path d="m7.5 12.5 4.5-4.5 4.5 4.5"/><path d="M4.5 4.5h15"/>',
     locate: '<circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="2.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/>',
-    zoombox: '<path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M12 4h1.5M4 12v1.5M4 17v1.5A1.5 1.5 0 0 0 5.5 20H8M17 4h1.5A1.5 1.5 0 0 1 20 5.5V8"/><circle cx="15" cy="15" r="3.2"/><path d="m17.4 17.4 2.8 2.8"/>'
+    zoombox: '<path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M12 4h1.5M4 12v1.5M4 17v1.5A1.5 1.5 0 0 0 5.5 20H8M17 4h1.5A1.5 1.5 0 0 1 20 5.5V8"/><circle cx="15" cy="15" r="3.2"/><path d="m17.4 17.4 2.8 2.8"/>',
+    alignl: '<path d="M4 6h16M4 10h10M4 14h16M4 18h10"/>',
+    alignc: '<path d="M4 6h16M7 10h10M4 14h16M7 18h10"/>',
+    alignr: '<path d="M4 6h16M10 10h10M4 14h16M10 18h10"/>',
+    alignj: '<path d="M4 6h16M4 10h16M4 14h16M4 18h16"/>'
   });
   /* 허브 선택용 아이콘 목록 (시스템 설정 → 메뉴 관리) */
   const HUB_ICONS = ["home", "bbs", "scan", "hardhat", "clipboard", "users", "book", "folder", "calendar", "notes", "alert", "link", "doc"];

@@ -23,6 +23,8 @@
   const VIEW = { list: "목록형", file: "자료형", gallery: "사진형" };
   const FILE_MAX = 50 * 1024 * 1024;
   const FILES_MAX = 30;
+  const ALIGNS = [["justifyLeft", "left", "alignl", "왼쪽 정렬"], ["justifyCenter", "center", "alignc", "가운데 정렬"],
+    ["justifyRight", "right", "alignr", "오른쪽 정렬"], ["justifyFull", "justify", "alignj", "양쪽 정렬"]];
   const CACHE_MS = 30000;
 
   const rank = () => SeMIS.roleRank();
@@ -454,6 +456,8 @@
             <button type="button" data-cmd="bold" title="굵게"><b>B</b></button><button type="button" data-cmd="italic" title="기울임"><i>I</i></button>
             <button type="button" data-cmd="underline" title="밑줄"><u>U</u></button><button type="button" data-cmd="strikeThrough" title="취소선"><s>S</s></button>
             <span class="nb-sep"></span><button type="button" data-cmd="insertUnorderedList" title="글머리 목록">• 목록</button><button type="button" data-cmd="insertOrderedList" title="번호 목록">1. 목록</button>
+            <span class="nb-sep"></span><span class="nb-grp" role="group" aria-label="문단 정렬">${ALIGNS.map(([cmd, al, ic, lb]) =>
+              `<button type="button" data-cmd="${cmd}" data-al="${al}" data-hint="${lb}" aria-pressed="false">${icon(ic, 16)}<span class="sr-only">${lb}</span></button>`).join("")}</span>
             <span class="nb-sep"></span><button type="button" id="bb-wtbl" title="표 삽입(3×3)">표</button><button type="button" id="bb-wimg" title="이미지 삽입">이미지</button><button type="button" id="bb-wlink" title="선택한 글자에 링크">링크</button>
           </div><div id="bb-wed" class="nb-editor bb-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="내용"></div>
           <input type="file" id="bb-wimgf" accept="image/*" hidden>`
@@ -471,7 +475,26 @@
       if (window.SemisNotice) SemisNotice.wireRichMedia(ed, folder(b));
       const exec = (cmd, val) => { ed.focus(); try { document.execCommand(cmd, false, val); } catch (e) { /* 지원 안 함 */ } };
       const ins = (h) => { ed.focus(); try { if (!document.execCommand("insertHTML", false, h)) ed.innerHTML += h; } catch (e) { ed.innerHTML += h; } };
-      $$("#modal-box .nb-toolbar [data-cmd]").forEach(x => { x.onmousedown = (ev) => ev.preventDefault(); x.onclick = () => exec(x.dataset.cmd); });
+      /* 지금 문단의 정렬(상속 포함 — 붙여 넣은 글의 align 속성 · 스타일도)을 단추에 표시 */
+      const alBtns = $$("#modal-box .nb-toolbar [data-al]");
+      const alignNow = () => {
+        const sel = window.getSelection ? window.getSelection() : null;
+        let n = sel && sel.rangeCount ? sel.anchorNode : null;
+        if (!n || !ed.contains(n)) return "";
+        if (n.nodeType !== 1) n = n.parentNode;
+        let a = "";
+        try { a = String(getComputedStyle(n).textAlign || ""); } catch (e) { a = ""; }
+        return /center/.test(a) ? "center" : /right|end/.test(a) ? "right" : /justify/.test(a) ? "justify" : "left";
+      };
+      const syncAlign = () => { const a = alignNow(); alBtns.forEach(x => x.setAttribute("aria-pressed", String(!!a && x.dataset.al === a))); };
+      /* 크롬은 맨 앞 줄(블록 밖 글)을 정렬할 때 편집기 글자 크기를 span 으로 박아 넣는다 — 글 화면 글자 크기와 달라지므로 물려받은 크기와 같은 span 은 푼다 */
+      const dropSizeSpans = () => $$("span[style]", ed).forEach(sp => {
+        if (sp.style.length !== 1 || !sp.style.fontSize || !sp.parentNode) return;
+        try { if (getComputedStyle(sp).fontSize !== getComputedStyle(sp.parentNode).fontSize) return; } catch (e) { return; }
+        sp.replaceWith(...Array.from(sp.childNodes));
+      });
+      ["keyup", "mouseup", "focus"].forEach(t => ed.addEventListener(t, syncAlign));
+      $$("#modal-box .nb-toolbar [data-cmd]").forEach(x => { x.onmousedown = (ev) => ev.preventDefault(); x.onclick = () => { exec(x.dataset.cmd); if (x.dataset.al) { dropSizeSpans(); syncAlign(); } }; });
       $("#bb-wtbl").onclick = () => ins(`<table class="nb-table"><tbody>${("<tr>" + "<td>&nbsp;</td>".repeat(3) + "</tr>").repeat(3)}</tbody></table><p><br></p>`);
       $("#bb-wlink").onclick = () => { let u = ""; try { u = window.prompt("링크 주소(https://…)", "https://") || ""; } catch (e) { u = ""; } if (/^https?:\/\/.+/.test(u)) exec("createLink", u); };
       $("#bb-wimg").onclick = () => $("#bb-wimgf").click();
